@@ -142,7 +142,7 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: cs.surface,
         surfaceTintColor: cs.surface,

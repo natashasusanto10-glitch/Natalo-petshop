@@ -104,9 +104,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       resizeToAvoidBottomInset: true,
       appBar: const _ForgotPasswordHeader(),
       body: SafeArea(
@@ -512,7 +511,9 @@ class _ForgotPasswordEmailField extends StatelessWidget {
           ),
           isDense: true,
           filled: true,
-          fillColor: cs.surfaceContainerHighest,
+          fillColor: Theme.of(context).brightness == Brightness.dark
+              ? cs.surfaceContainerHighest
+              : const Color(0xFFF8FAFD),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 14,
             vertical: 18,

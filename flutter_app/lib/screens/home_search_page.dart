@@ -117,6 +117,7 @@ class _HomeSearchPageState extends State<HomeSearchPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       backgroundColor: cs.surface,
       resizeToAvoidBottomInset: true,
@@ -132,7 +133,11 @@ class _HomeSearchPageState extends State<HomeSearchPage> {
               onSubmitted: _submitQuery,
               onClear: _clearInput,
             ),
-            Divider(height: 1, thickness: 0.5, color: cs.outlineVariant),
+            Divider(
+              height: 1,
+              thickness: 0.5,
+              color: isDark ? cs.outlineVariant : const Color(0xFFEEF1F4),
+            ),
             Expanded(
               child: _SearchInitialContent(
                 onTapKeyword: _tapKeyword,

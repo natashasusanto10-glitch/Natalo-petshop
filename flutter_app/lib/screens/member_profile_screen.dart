@@ -284,7 +284,10 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: cs.surface,
+      // Page bg off-white (#F7FAFF light) seperti semula — pakai
+      // scaffoldBackgroundColor, BUKAN cs.surface (putih) yang bikin kartu
+      // putih hilang kontras.
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: cs.surface,
         surfaceTintColor: cs.surface,
@@ -1162,9 +1165,13 @@ class _FormDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(left: 66),
+      // Divider antar-field sengaja super halus di light (#EFF2F6) seperti
+      // semula; dark pakai border gelap.
       child: Divider(
         height: 1,
-        color: Theme.of(context).colorScheme.outlineVariant,
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Theme.of(context).colorScheme.outlineVariant
+            : const Color(0xFFEFF2F6),
       ),
     );
   }

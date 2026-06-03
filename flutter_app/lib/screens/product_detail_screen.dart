@@ -2787,10 +2787,11 @@ class _ReviewSummaryHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
+        color: isDark ? cs.surfaceContainerHighest : const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: cs.outlineVariant),
       ),
@@ -2935,6 +2936,7 @@ class _FullReviewTile extends StatelessWidget {
     ].join('\n');
 
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -3063,7 +3065,9 @@ class _FullReviewTile extends StatelessWidget {
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest,
+                      color: isDark
+                          ? cs.surfaceContainerHighest
+                          : const Color(0xFFF8FAFC),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: cs.outlineVariant),
                     ),
@@ -3655,6 +3659,7 @@ class _VariantEntryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final previewVariants = _previewVariants();
 
     return AppPressable(
@@ -3725,7 +3730,9 @@ class _VariantEntryRow extends StatelessWidget {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: cs.surfaceContainerHighest,
+                          color: isDark
+                              ? cs.surfaceContainerHighest
+                              : const Color(0xFFEAF3FF),
                           borderRadius: BorderRadius.circular(999),
                           border: Border.all(color: cs.outlineVariant),
                         ),
@@ -4315,11 +4322,12 @@ class _VariantChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = selected
         ? _brandBlue
         : enabled
             ? cs.surface
-            : cs.surfaceContainerHighest;
+            : (isDark ? cs.surfaceContainerHighest : const Color(0xFFEFF2F6));
     final borderColor = selected ? _brandBlue : cs.outlineVariant;
     final textColor = selected
         ? Colors.white

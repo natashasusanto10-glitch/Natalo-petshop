@@ -337,10 +337,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget _buildAuthenticatedContent(BuildContext context) {
     final result = _result;
     final unread = result?.unreadCount ?? 0;
-    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -524,7 +523,13 @@ class _NotificationTabs extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: cs.surface,
-        border: Border(bottom: BorderSide(color: cs.outlineVariant)),
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? cs.outlineVariant
+                : const Color(0xFFE8EEF7),
+          ),
+        ),
       ),
       child: SizedBox(
         height: 54,
@@ -601,7 +606,9 @@ class _NotificationTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: notification.read
-                  ? cs.outlineVariant
+                  ? (Theme.of(context).brightness == Brightness.dark
+                      ? cs.outlineVariant
+                      : const Color(0xFFE8EEF7))
                   : _brandBlue.withValues(alpha: 0.25),
             ),
             boxShadow: [
@@ -1181,10 +1188,11 @@ class _NotifLoginRequiredScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: cs.surface,
+        backgroundColor: isDark ? cs.surface : const Color(0xFFF6F9FF),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),

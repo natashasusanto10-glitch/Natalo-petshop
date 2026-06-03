@@ -134,7 +134,7 @@ class _MemberAddressesScreenState extends State<MemberAddressesScreen> {
       // Solid white bg (was transparent → kalau parent transparent ke
       // device bg, content GlassSurface BackdropFilter bisa render
       // weird di iOS — text invisible, blank screen reports dari user).
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: cs.surface,
         surfaceTintColor: cs.surface,

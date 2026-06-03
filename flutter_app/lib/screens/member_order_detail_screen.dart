@@ -1739,7 +1739,9 @@ class _OrderItemsCard extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? cs.surfaceContainerHighest
+                    : const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: cs.outlineVariant),
               ),
@@ -1855,9 +1857,15 @@ class _OrderProductTileState extends State<_OrderProductTile> {
         child: Ink(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? cs.surfaceContainerHighest
+                : const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: cs.outlineVariant),
+            border: Border.all(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? cs.outlineVariant
+                  : const Color(0xFFE7EEF7),
+            ),
           ),
           child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -2757,7 +2765,9 @@ class _ShippingInfoCard extends StatelessWidget {
                 vertical: 10,
               ),
               decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? cs.surfaceContainerHighest
+                    : const Color(0xFFF9FAFB),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: cs.outlineVariant),
               ),
@@ -2802,7 +2812,9 @@ class _ShippingInfoCard extends StatelessWidget {
                 vertical: 10,
               ),
               decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? cs.surfaceContainerHighest
+                    : const Color(0xFFF9FAFB),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: cs.outlineVariant),
               ),

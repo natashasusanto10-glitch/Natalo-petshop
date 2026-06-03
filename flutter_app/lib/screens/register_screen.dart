@@ -412,7 +412,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: cs.surface,
         elevation: 0,
@@ -857,7 +857,9 @@ class _RegisterTextField extends StatelessWidget {
                 ),
               ),
         filled: true,
-        fillColor: cs.surfaceContainerHighest,
+        fillColor: Theme.of(context).brightness == Brightness.dark
+            ? cs.surfaceContainerHighest
+            : const Color(0xFFF8FBFF),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
           borderSide: BorderSide(color: cs.outlineVariant),

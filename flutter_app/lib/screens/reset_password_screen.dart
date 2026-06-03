@@ -148,7 +148,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: cs.surface,
         elevation: 0,
@@ -174,7 +174,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-              color: cs.surfaceContainerHighest,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? cs.surfaceContainerHighest
+                  : const Color(0xFFEFF2F6),
               child: Column(
                 children: [
                   Container(

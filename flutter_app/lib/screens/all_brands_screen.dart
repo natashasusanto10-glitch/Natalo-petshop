@@ -36,11 +36,12 @@ class AllBrandsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Semua Brand'),
-        backgroundColor: cs.surface,
+        backgroundColor: isDark ? cs.surface : const Color(0xFFF7FAFF),
         elevation: 0,
       ),
       body: GridView.builder(

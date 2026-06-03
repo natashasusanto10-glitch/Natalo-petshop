@@ -13,11 +13,12 @@ class HelpCenterScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Pusat Bantuan'),
-        backgroundColor: cs.surface,
+        backgroundColor: isDark ? cs.surface : const Color(0xFFF7FAFF),
         elevation: 0,
       ),
       body: ListView(
@@ -243,7 +244,11 @@ class _ContactCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: cs.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: cs.outlineVariant),
+          border: Border.all(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? cs.outlineVariant
+                : const Color(0xFFDDE8F8),
+          ),
         ),
         child: Row(
           children: [
@@ -306,7 +311,11 @@ class _FaqItem extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant),
+        border: Border.all(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? cs.outlineVariant
+              : const Color(0xFFDDE8F8),
+        ),
       ),
       child: ExpansionTile(
         shape: const Border(),

@@ -2738,7 +2738,14 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                   ),
                 ),
               ),
-              Divider(height: 1, color: cs.outlineVariant),
+              // Divider header sheet sengaja super halus di light (#EEF2F6)
+              // seperti semula; dark pakai border gelap.
+              Divider(
+                height: 1,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? cs.outlineVariant
+                    : const Color(0xFFEEF2F6),
+              ),
               Flexible(
                 child: Builder(builder: (context) {
                   if (_loading) {
@@ -2882,7 +2889,14 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                 padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
                 decoration: BoxDecoration(
                   border: Border(
-                    top: BorderSide(color: cs.outlineVariant, width: 1),
+                    // Border atas input super halus di light (#EEF2F6)
+                    // seperti semula; dark pakai border gelap.
+                    top: BorderSide(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? cs.outlineVariant
+                          : const Color(0xFFEEF2F6),
+                      width: 1,
+                    ),
                   ),
                 ),
                 child: Row(

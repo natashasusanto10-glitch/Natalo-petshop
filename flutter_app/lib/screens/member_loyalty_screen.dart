@@ -521,7 +521,11 @@ class _TierCard extends StatelessWidget {
                 alignment: Alignment.center,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
-                  color: canClaim ? _brandBlue : cs.surfaceContainerHighest,
+                  color: canClaim
+                      ? _brandBlue
+                      : (Theme.of(context).brightness == Brightness.dark
+                          ? cs.surfaceContainerHighest
+                          : const Color(0xFFEFF2F6)),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: loading

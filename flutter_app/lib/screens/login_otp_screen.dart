@@ -252,7 +252,7 @@ class _LoginOtpScreenState extends State<LoginOtpScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: cs.surface,
@@ -491,7 +491,9 @@ class _PhoneStep extends StatelessWidget {
                 ),
                 isDense: true,
                 filled: true,
-                fillColor: cs.surfaceContainerHighest,
+                fillColor: Theme.of(context).brightness == Brightness.dark
+                    ? cs.surfaceContainerHighest
+                    : const Color(0xFFF8FAFD),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 14,
                   vertical: 18,
@@ -679,7 +681,9 @@ class _CodeStep extends StatelessWidget {
                 ),
                 isDense: true,
                 filled: true,
-                fillColor: cs.surfaceContainerHighest,
+                fillColor: Theme.of(context).brightness == Brightness.dark
+                    ? cs.surfaceContainerHighest
+                    : const Color(0xFFF8FAFD),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 14,
                   vertical: 14,

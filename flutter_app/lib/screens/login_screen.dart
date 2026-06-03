@@ -274,7 +274,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final sectionGap = isSmallHeight ? 20.0 : 26.0;
 
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: cs.surface,
@@ -742,7 +742,9 @@ class _LoginTextField extends StatelessWidget {
         ),
         suffixIcon: suffix,
         filled: true,
-        fillColor: cs.surfaceContainerHighest,
+        fillColor: Theme.of(context).brightness == Brightness.dark
+            ? cs.surfaceContainerHighest
+            : const Color(0xFFF8FBFF),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 16,

@@ -24,7 +24,7 @@ class AccountSettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: cs.surface,
         surfaceTintColor: cs.surface,
@@ -304,7 +304,12 @@ class _SettingsSectionState extends State<SettingsSection>
                     ],
                   ),
                   child: Column(
-                    children: _withDividers(widget.children, cs.outlineVariant),
+                    children: _withDividers(
+                      widget.children,
+                      Theme.of(context).brightness == Brightness.dark
+                          ? cs.outlineVariant
+                          : const Color(0xFFEFF2F6),
+                    ),
                   ),
                 ),
         ),

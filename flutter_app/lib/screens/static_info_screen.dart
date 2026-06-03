@@ -21,12 +21,14 @@ class StaticInfoScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final appBarBg = isDark ? cs.surface : const Color(0xFFF7FAFF);
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(_page.title),
-        backgroundColor: cs.surface,
-        surfaceTintColor: cs.surface,
+        backgroundColor: appBarBg,
+        surfaceTintColor: appBarBg,
         elevation: 0,
         scrolledUnderElevation: 1,
       ),
@@ -148,11 +150,14 @@ class _InfoSectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cs.outlineVariant),
+        border: Border.all(
+          color: isDark ? cs.outlineVariant : const Color(0xFFDDE8F8),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.035),
@@ -170,7 +175,7 @@ class _InfoSectionCard extends StatelessWidget {
                 height: 1,
                 indent: 16,
                 endIndent: 16,
-                color: cs.outlineVariant,
+                color: isDark ? cs.outlineVariant : const Color(0xFFE8EEF7),
               ),
           ],
         ],
@@ -252,7 +257,11 @@ class _InfoNote extends StatelessWidget {
             ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
             : NataloColors.primarySoft,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outlineVariant),
+        border: Border.all(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? cs.outlineVariant
+              : const Color(0xFFD8E7FF),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -1119,11 +1119,14 @@ class _CatalogHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: cs.surface,
         border: Border(
-          bottom: BorderSide(color: cs.outlineVariant),
+          bottom: BorderSide(
+            color: isDark ? cs.outlineVariant : const Color(0xFFF1F5F9),
+          ),
         ),
       ),
       child: Column(

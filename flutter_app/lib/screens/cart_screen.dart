@@ -660,7 +660,7 @@ class _CartScreenState extends State<CartScreen> {
       // Solid surface bg — override theme transparency yang bikin header
       // & content nampak semi-transparent / kurang sharp (spec: header
       // harus solid, tidak terkena efek glass/blur dari layer lain).
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       // Custom title dengan count subtitle — match PWA cart header
       // "Keranjang\n0 jenis produk (0 item)".
       // AppBar override eksplisit ke putih solid (theme global pakai
@@ -672,7 +672,12 @@ class _CartScreenState extends State<CartScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         shape: Border(
-          bottom: BorderSide(color: cs.outlineVariant, width: 1),
+          bottom: BorderSide(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? cs.outlineVariant
+                : const Color(0xFFE5EAF2),
+            width: 1,
+          ),
         ),
         title: const Text('Keranjang'),
         actions: [
@@ -745,7 +750,10 @@ class _CartScreenState extends State<CartScreen> {
                                   child: Divider(
                                     height: 1,
                                     thickness: 1,
-                                    color: cs.outlineVariant,
+                                    color: Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? cs.outlineVariant
+                                        : const Color(0xFFEEF2F6),
                                   ),
                                 )
                               else
@@ -882,7 +890,12 @@ class _CartSelectedRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surface,
         border: Border(
-          bottom: BorderSide(color: cs.outlineVariant, width: 1),
+          bottom: BorderSide(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? cs.outlineVariant
+                : const Color(0xFFE8EDF5),
+            width: 1,
+          ),
         ),
       ),
       child: Row(
@@ -2175,17 +2188,21 @@ class _StickyVoucherBar extends StatelessWidget {
     final leadingColor = hasSelection ? _discountRed : cs.onSurfaceVariant;
     final leadingBackground =
         hasSelection ? _discountRedSoft : cs.surfaceContainerHighest;
-    final leadingBorder =
-        hasSelection ? _discountRedBorder : cs.outlineVariant;
+    final leadingBorder = hasSelection ? _discountRedBorder : cs.outlineVariant;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
-      color: cs.surface,
+      color: isDark ? cs.surface : const Color(0xFFF8FAFC),
       child: Container(
         height: _voucherBarHeight,
         padding: const EdgeInsets.fromLTRB(16, 7, 16, 7),
         decoration: BoxDecoration(
           color: cs.surface,
-          border: Border(top: BorderSide(color: cs.outlineVariant)),
+          border: Border(
+            top: BorderSide(
+              color: isDark ? cs.outlineVariant : const Color(0xFFE5EAF1),
+            ),
+          ),
         ),
         child: InkWell(
           onTap: onTap,
@@ -2848,9 +2865,8 @@ class _CartVoucherCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: enabled
-                          ? cs.onSurfaceVariant
-                          : cs.onSurfaceVariant,
+                      color:
+                          enabled ? cs.onSurfaceVariant : cs.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                     ),
@@ -3023,7 +3039,9 @@ class _CartSummaryBar extends StatelessWidget {
     final checkoutLabel =
         disabled ? 'Checkout' : 'Checkout ($selectedQuantity)';
     return Material(
-      color: cs.surface,
+      color: Theme.of(context).brightness == Brightness.dark
+          ? cs.surface
+          : const Color(0xFFF8FAFC),
       elevation: 8,
       shadowColor: Colors.black.withValues(alpha: 0.08),
       child: SafeArea(

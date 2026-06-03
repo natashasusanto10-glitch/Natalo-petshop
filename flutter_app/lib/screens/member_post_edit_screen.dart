@@ -180,11 +180,17 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: cs.surface,
+      // Page bg off-white (#F7FAFF light) seperti semula — pakai
+      // scaffoldBackgroundColor, BUKAN cs.surface (putih) yang bikin
+      // kartu putih hilang kontras.
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Edit Postingan'),
-        backgroundColor: cs.surface,
+        // AppBar tint off-white (#F7FAFF) di light seperti semula; dark
+        // pakai surface gelap.
+        backgroundColor: isDark ? cs.surface : const Color(0xFFF7FAFF),
         elevation: 0,
       ),
       body: ListView(

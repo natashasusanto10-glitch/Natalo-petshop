@@ -145,7 +145,7 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Ulasan Produk'),
         backgroundColor: cs.surface,
@@ -1450,7 +1450,9 @@ class _ReviewMediaPicker extends StatelessWidget {
                       errorBuilder: (_, __, ___) => Container(
                         height: 84,
                         width: 84,
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Theme.of(context).colorScheme.surfaceContainerHighest
+                            : const Color(0xFFEFF4FA),
                         child: const Icon(Icons.image_not_supported_outlined),
                       ),
                     ),
@@ -1511,7 +1513,9 @@ class _AddMediaTile extends StatelessWidget {
         height: 84,
         width: 112,
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Theme.of(context).colorScheme.surfaceContainerHighest
+              : const Color(0xFFF8FBFF),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: const Color(0xFFBFDBFE)),
         ),

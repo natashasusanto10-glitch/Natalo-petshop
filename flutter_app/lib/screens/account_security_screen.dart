@@ -232,7 +232,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(title: const Text('Keamanan Akun')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),

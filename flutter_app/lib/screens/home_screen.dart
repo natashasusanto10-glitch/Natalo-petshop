@@ -907,7 +907,9 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
     final t = Curves.easeOutCubic.transform(rawProgress);
 
     final cs = Theme.of(context).colorScheme;
-    final headerBorder = cs.outlineVariant;
+    final headerBorder = Theme.of(context).brightness == Brightness.dark
+        ? cs.outlineVariant
+        : const Color(0xFFEFF4FA);
     return SizedBox.expand(
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -1078,7 +1080,9 @@ class _HomeHeader extends StatelessWidget {
               height: 42,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Theme.of(context).colorScheme.surfaceContainerHighest
+                    : const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: Theme.of(context).colorScheme.outlineVariant,
@@ -2755,7 +2759,9 @@ class _HomeProductImagePlaceholder extends StatelessWidget {
       height: height,
       width: double.infinity,
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
+        color: Theme.of(context).brightness == Brightness.dark
+            ? cs.surfaceContainerHighest
+            : const Color(0xFFF3F7FF),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Center(

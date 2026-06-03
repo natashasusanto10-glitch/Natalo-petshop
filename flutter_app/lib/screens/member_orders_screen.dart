@@ -122,7 +122,7 @@ class _MemberOrdersScreenState extends State<MemberOrdersScreen> {
     }
 
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Pesanan Saya'),
         actions: [
@@ -927,7 +927,11 @@ class _OrderCardState extends State<_OrderCard> {
             color: cs.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(24),
-              side: BorderSide(color: cs.outlineVariant),
+              side: BorderSide(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? cs.outlineVariant
+                    : const Color(0xFFEEF3FB),
+              ),
             ),
             clipBehavior: Clip.antiAlias,
             child: InkWell(

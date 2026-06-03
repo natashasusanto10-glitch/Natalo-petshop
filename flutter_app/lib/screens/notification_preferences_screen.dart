@@ -147,11 +147,12 @@ class _NotificationPreferencesScreenState
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Preferensi Notifikasi'),
-        backgroundColor: cs.surface,
+        backgroundColor: isDark ? cs.surface : const Color(0xFFF7FAFF),
         elevation: 0,
       ),
       body: ListView(
@@ -424,7 +425,11 @@ class _PushDiagnosticPanelState extends State<_PushDiagnosticPanel> {
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant),
+        border: Border.all(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? cs.outlineVariant
+              : const Color(0xFFDDE8F8),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -493,7 +498,11 @@ class _PushDiagnosticPanelState extends State<_PushDiagnosticPanel> {
                   label: const Text('Daftar Ulang'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: cs.onSurface,
-                    side: BorderSide(color: cs.outlineVariant),
+                    side: BorderSide(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? cs.outlineVariant
+                          : const Color(0xFFCBD5E1),
+                    ),
                     textStyle: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
@@ -723,7 +732,11 @@ class _ToggleTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant),
+        border: Border.all(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? cs.outlineVariant
+              : const Color(0xFFDDE8F8),
+        ),
       ),
       child: SwitchListTile(
         secondary: Container(

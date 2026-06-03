@@ -360,7 +360,9 @@ class _VoucherCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: voucher.applicable
                 ? cs.surface
-                : cs.surfaceContainerHighest,
+                : (Theme.of(context).brightness == Brightness.dark
+                    ? cs.surfaceContainerHighest
+                    : const Color(0xFFFAFAFA)),
             borderRadius: BorderRadius.circular(26),
             border: Border.all(
               color: voucher.applicable

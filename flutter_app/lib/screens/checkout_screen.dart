@@ -638,7 +638,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     // Slot product: kalau kosong, pick best PUBLIC_PRODUCT_DISCOUNT.
     if (_selectedProductVoucher == null) {
       final candidate = available
-          .where((v) => v.isProductDiscount && !v.isLoyaltyClaim && !v.isPrivateManual)
+          .where((v) =>
+              v.isProductDiscount && !v.isLoyaltyClaim && !v.isPrivateManual)
           .toList()
         ..sort((a, b) => b.discount.compareTo(a.discount));
       if (candidate.isNotEmpty) {
@@ -649,9 +650,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     // Slot loyalty: kalau kosong, pick best LOYALTY_POINT_CLAIM.
     if (_selectedLoyaltyVoucher == null) {
-      final candidate = available
-          .where((v) => v.isLoyaltyClaim)
-          .toList()
+      final candidate = available.where((v) => v.isLoyaltyClaim).toList()
         ..sort((a, b) => b.discount.compareTo(a.discount));
       if (candidate.isNotEmpty) {
         _selectedLoyaltyVoucher = candidate.first;
@@ -1085,7 +1084,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         final cs = Theme.of(context).colorScheme;
         if (_redirectingToLogin) {
           return Scaffold(
-            backgroundColor: cs.surface,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             body: const Center(
               child: CircularProgressIndicator(color: _brandBlue),
             ),
@@ -1104,7 +1103,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             }
           },
           child: Scaffold(
-            backgroundColor: cs.surface,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             appBar: AppBar(
               backgroundColor: cs.surface,
               elevation: 0,
@@ -1184,11 +1183,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                       // Saldo Refund — render hanya kalau user punya saldo
                       // available. Toggle ON/OFF recompute pricing.
-                      if ((_checkoutPricing?.refundBalanceAvailable ?? 0) > 0) ...[
+                      if ((_checkoutPricing?.refundBalanceAvailable ?? 0) >
+                          0) ...[
                         const SizedBox(height: 12),
                         _RefundBalanceCard(
-                          available:
-                              _checkoutPricing!.refundBalanceAvailable.toDouble(),
+                          available: _checkoutPricing!.refundBalanceAvailable
+                              .toDouble(),
                           used: _useRefundBalance
                               ? _checkoutPricing!.refundBalanceUsed.toDouble()
                               : 0,
@@ -1210,7 +1210,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         productDiscount: _productDiscount,
                         shippingDiscount: _shippingDiscount,
                         refundBalanceUsed: _useRefundBalance
-                            ? (_checkoutPricing?.refundBalanceUsed.toDouble() ?? 0)
+                            ? (_checkoutPricing?.refundBalanceUsed.toDouble() ??
+                                0)
                             : 0,
                         grandTotal: _grandTotal,
                         syncing: _syncingPricing,
@@ -1526,7 +1527,8 @@ class _BenefitSummaryText extends StatelessWidget {
           children: [
             TextSpan(text: formatRupiah(voucherDiscount), style: bold),
             const TextSpan(text: ' di checkout ini.\n'),
-            const TextSpan(text: 'Lanjutkan pesanan agar voucher tidak terlewat.'),
+            const TextSpan(
+                text: 'Lanjutkan pesanan agar voucher tidak terlewat.'),
           ],
         ),
         textAlign: TextAlign.center,
@@ -1639,7 +1641,11 @@ class _CheckoutCardShell extends StatelessWidget {
             padding: padding,
             decoration: BoxDecoration(
               borderRadius: radius,
-              border: Border.all(color: cs.outlineVariant),
+              border: Border.all(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? cs.outlineVariant
+                    : const Color(0xFFE8EEF7),
+              ),
             ),
             child: child,
           ),
@@ -1821,7 +1827,11 @@ class _CheckoutOrderSuccessDialog extends StatelessWidget {
               decoration: BoxDecoration(
                 color: cs.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: cs.outlineVariant),
+                border: Border.all(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? cs.outlineVariant
+                      : const Color(0xFFE8EEF7),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2212,7 +2222,12 @@ class _CheckoutProductsSummaryCard extends StatelessWidget {
           }),
           if (remaining > 0 && onViewAll != null) ...[
             const SizedBox(height: 12),
-            Divider(height: 1, color: cs.outlineVariant),
+            Divider(
+              height: 1,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? cs.outlineVariant
+                  : const Color(0xFFE8EEF7),
+            ),
             TextButton(
               onPressed: onViewAll,
               style: TextButton.styleFrom(
@@ -2361,7 +2376,12 @@ class _CheckoutProductsSheet extends StatelessWidget {
                   ],
                 ),
               ),
-              Divider(height: 1, color: cs.outlineVariant),
+              Divider(
+                height: 1,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? cs.outlineVariant
+                    : const Color(0xFFE8EEF7),
+              ),
               Expanded(
                 child: ListView.separated(
                   controller: controller,
@@ -2482,11 +2502,19 @@ class _CheckoutNoteSheet extends StatelessWidget {
                   fillColor: cs.surfaceContainerHighest,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: cs.outlineVariant),
+                    borderSide: BorderSide(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? cs.outlineVariant
+                          : const Color(0xFFE8EEF7),
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: cs.outlineVariant),
+                    borderSide: BorderSide(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? cs.outlineVariant
+                          : const Color(0xFFE8EEF7),
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -2646,7 +2674,11 @@ class _CheckoutShippingMethodCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: cs.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cs.outlineVariant),
+                border: Border.all(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? cs.outlineVariant
+                      : const Color(0xFFE8EEF7),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2779,7 +2811,12 @@ class _ShippingMethodSheet extends StatelessWidget {
               if (loading)
                 const LinearProgressIndicator(minHeight: 2)
               else
-                Divider(height: 1, color: cs.outlineVariant),
+                Divider(
+                  height: 1,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? cs.outlineVariant
+                      : const Color(0xFFE8EEF7),
+                ),
               if (message != null && message!.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
@@ -3016,7 +3053,11 @@ class _ShippingRateTile extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: active ? _brandBlue : cs.outlineVariant,
+              color: active
+                  ? _brandBlue
+                  : (Theme.of(context).brightness == Brightness.dark
+                      ? cs.outlineVariant
+                      : const Color(0xFFE8EEF7)),
             ),
           ),
           child: Row(
@@ -3241,7 +3282,11 @@ class _PaymentMethodTile extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: active ? _brandBlue : cs.outlineVariant,
+              color: active
+                  ? _brandBlue
+                  : (Theme.of(context).brightness == Brightness.dark
+                      ? cs.outlineVariant
+                      : const Color(0xFFE8EEF7)),
             ),
           ),
           child: Row(
@@ -4458,7 +4503,12 @@ class _CheckoutVoucherDetailsSheet extends StatelessWidget {
                   ),
                 ),
                 if (loading) const LinearProgressIndicator(minHeight: 2),
-                Divider(height: 1, color: cs.outlineVariant),
+                Divider(
+                  height: 1,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? cs.outlineVariant
+                      : const Color(0xFFE8EEF7),
+                ),
                 Expanded(
                   child: hasAny
                       ? ListView(
@@ -4788,7 +4838,9 @@ class _VoucherDetailTile extends StatelessWidget {
           color: cs.surface,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: cs.outlineVariant,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? cs.outlineVariant
+                : const Color(0xFFE8EEF7),
             width: 1,
           ),
         ),
@@ -4847,7 +4899,8 @@ class _VoucherDetailTile extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: enabled ? cs.onSurfaceVariant : cs.onSurfaceVariant,
+                      color:
+                          enabled ? cs.onSurfaceVariant : cs.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       height: 1.35,
@@ -5004,11 +5057,19 @@ class _ManualVoucherCodeField extends StatelessWidget {
             const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: cs.outlineVariant),
+          borderSide: BorderSide(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? cs.outlineVariant
+                : const Color(0xFFE8EEF7),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: cs.outlineVariant),
+          borderSide: BorderSide(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? cs.outlineVariant
+                : const Color(0xFFE8EEF7),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
