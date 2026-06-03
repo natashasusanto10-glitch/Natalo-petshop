@@ -46,7 +46,11 @@ async function main() {
   console.log("🚀 Memulai import produk dari Excel...\n");
 
   // Load data dari JSON
-  const dataPath = path.join(__dirname, "products_import.json");
+  // Coba products_import.json dulu, fallback ke products_import_new.json
+  const jsonName = require("fs").existsSync(path.join(__dirname, "products_import.json"))
+    ? "products_import.json"
+    : "products_import_new.json";
+  const dataPath = path.join(__dirname, jsonName);
   const raw = fs.readFileSync(dataPath, "utf-8");
   const data: ImportData = JSON.parse(raw);
 
@@ -63,7 +67,7 @@ async function main() {
     const result = await prisma.category.upsert({
       where: { slug: cat.slug },
       update: { name: cat.name },
-      create: { name: cat.name, slug: cat.slug },
+      create: { name: cat.name, slug: cat.slug, isConsumable: false },
     });
     categoryMap[cat.slug] = result.id;
   }

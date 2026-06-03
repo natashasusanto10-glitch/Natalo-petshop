@@ -44,7 +44,7 @@ import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { syncProductsToSearchIndex } from "@/lib/search";
-import importData from "@/prisma/products_import.json";
+import importData from "@/prisma/products_import_new.json";
 
 interface VariantData {
   label: string;
