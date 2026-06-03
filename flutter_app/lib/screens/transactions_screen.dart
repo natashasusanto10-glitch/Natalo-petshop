@@ -33,7 +33,10 @@ class TransactionsScreen extends StatelessWidget {
         }
 
         return Scaffold(
-          backgroundColor: Theme.of(context).colorScheme.surface,
+          // Page bg off-white (#F8FAFC light) seperti semula — pakai
+          // scaffoldBackgroundColor, BUKAN colorScheme.surface (putih) yang
+          // bikin kartu putih hilang kontras & border tampak seperti garis.
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           body: const _TransactionsBody(),
           bottomNavigationBar: const BottomNavBar(currentIndex: 3),
         );
@@ -980,7 +983,11 @@ class _TransactionMenuItem extends StatelessWidget {
             Divider(
               height: 1,
               thickness: 1,
-              color: cs.outlineVariant,
+              // Divider antar-menu sengaja super halus (nyaris tak terlihat)
+              // di light seperti semula; di dark pakai border gelap.
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? cs.outlineVariant
+                  : const Color(0xFFEEF2F7),
               indent: 55,
             ),
         ],
