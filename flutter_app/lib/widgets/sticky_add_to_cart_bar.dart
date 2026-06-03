@@ -37,7 +37,7 @@ class StickyAddToCartBar extends StatelessWidget {
             MotionPrefs.effective(context, const Duration(milliseconds: 180)),
         opacity: visible ? 1.0 : 0.0,
         child: Material(
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.surface,
           elevation: 18,
           shadowColor: Colors.black.withValues(alpha: 0.18),
           child: SafeArea(

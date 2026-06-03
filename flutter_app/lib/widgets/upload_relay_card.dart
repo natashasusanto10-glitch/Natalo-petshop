@@ -72,9 +72,6 @@ class _RelayCardBody extends StatefulWidget {
 
 class _RelayCardBodyState extends State<_RelayCardBody> {
   static const _nataloBlue = Color(0xFF1E5BFF);
-  static const _textDark = Color(0xFF111827);
-  static const _textMuted = Color(0xFF6B7280);
-  static const _border = Color(0xFFE5EAF2);
   static const _errorRed = Color(0xFFEF4444);
 
   // ── Smooth progress (2-layer display) ──
@@ -164,18 +161,19 @@ class _RelayCardBodyState extends State<_RelayCardBody> {
     final isUploading = task.status == FeedUploadStatus.uploading ||
         task.status == FeedUploadStatus.preparing ||
         task.status == FeedUploadStatus.processing;
+    final cs = Theme.of(context).colorScheme;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: Material(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(20),
         elevation: 0,
         child: Ink(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: cs.surface,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _border),
+            border: Border.all(color: cs.outlineVariant),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.06),
@@ -199,7 +197,7 @@ class _RelayCardBodyState extends State<_RelayCardBody> {
                   const SizedBox(width: 4),
                   IconButton(
                     icon: const Icon(Icons.close_rounded, size: 18),
-                    color: _textMuted,
+                    color: cs.onSurfaceVariant,
                     visualDensity: VisualDensity.compact,
                     constraints: const BoxConstraints.tightFor(
                       width: 32,
@@ -218,6 +216,7 @@ class _RelayCardBodyState extends State<_RelayCardBody> {
   }
 
   Widget _buildContent(BuildContext context, bool isFailed, bool isUploading) {
+    final cs = Theme.of(context).colorScheme;
     final task = widget.task;
     final title = _titleText();
     final subtitle = _subtitleText();
@@ -245,8 +244,8 @@ class _RelayCardBodyState extends State<_RelayCardBody> {
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: _textDark,
+                style: TextStyle(
+                  color: cs.onSurface,
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
                   height: 1.25,
@@ -270,8 +269,8 @@ class _RelayCardBodyState extends State<_RelayCardBody> {
           subtitle,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: _textMuted,
+          style: TextStyle(
+            color: cs.onSurfaceVariant,
             fontSize: 12,
             fontWeight: FontWeight.w600,
             height: 1.3,
@@ -305,7 +304,7 @@ class _RelayCardBodyState extends State<_RelayCardBody> {
             child: LinearProgressIndicator(
               minHeight: 4,
               value: displayValue > 0 ? displayValue : null,
-              backgroundColor: _border,
+              backgroundColor: cs.surfaceContainerHighest,
               valueColor: const AlwaysStoppedAnimation<Color>(_nataloBlue),
             ),
           ),
