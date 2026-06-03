@@ -98,40 +98,16 @@ class _SettingsContent extends StatelessWidget {
           title: 'PENGATURAN APLIKASI',
           collapsible: true,
           children: [
-            // KILL SWITCH (v1.0.138): dark mode sementara dinonaktifkan
-            // karena banyak screen belum dipoles untuk tema gelap. App
-            // di-force light di main.dart. Item ini tampil "Segera hadir"
-            // + tidak buka sheet pilihan supaya user tidak set dark lalu
-            // bingung kenapa tidak berubah. Aktifkan kembali (restore
-            // _openThemeSheet) setelah audit dark theme selesai.
-            SettingsListItem(
-              icon: Icons.light_mode_outlined,
-              title: 'Mode Tampilan',
-              subtitle: 'Mode gelap segera hadir',
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 3,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF4FF),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: const Text(
-                  'Segera hadir',
-                  style: TextStyle(
-                    color: Color(0xFF1E5FBF),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Mode gelap masih dalam pengembangan 🌙'),
-                    duration: Duration(seconds: 2),
-                  ),
+            // Mode Tampilan — pilih Terang / Gelap / Ikuti Sistem.
+            // Kill switch dibuka (v1.0.140): dark theme audit selesai.
+            AnimatedBuilder(
+              animation: appSettingsStore,
+              builder: (context, _) {
+                return SettingsListItem(
+                  icon: _themeIcon(appSettingsStore.themeMode),
+                  title: 'Mode Tampilan',
+                  subtitle: _themeLabel(appSettingsStore.themeMode),
+                  onTap: () => _openThemeSheet(context),
                 );
               },
             ),
@@ -604,9 +580,6 @@ class _AppVersionFooterState extends State<_AppVersionFooter> {
   }
 }
 
-// Disimpan untuk restore setelah audit dark theme selesai (lihat kill
-// switch di main.dart + item "Mode Tampilan" di atas).
-// ignore: unused_element
 IconData _themeIcon(ThemeMode mode) {
   switch (mode) {
     case ThemeMode.dark:
@@ -618,7 +591,6 @@ IconData _themeIcon(ThemeMode mode) {
   }
 }
 
-// ignore: unused_element
 String _themeLabel(ThemeMode mode) {
   switch (mode) {
     case ThemeMode.dark:
@@ -630,7 +602,6 @@ String _themeLabel(ThemeMode mode) {
   }
 }
 
-// ignore: unused_element
 Future<void> _openThemeSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
