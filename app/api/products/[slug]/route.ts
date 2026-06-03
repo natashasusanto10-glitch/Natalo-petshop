@@ -73,8 +73,18 @@ export async function GET(
       product: {
         ...product,
         soldCount: soldSummary._sum.quantity ?? 0,
+        // Object tetap dikirim untuk web/kompat lama, TAPI Flutter butuh
+        // field flat — model client fallback ke `brand`/`category` object
+        // lalu stringify jadi "{id:.., name: Yang, slug: yang}" (bug
+        // tampilan). brandName/categoryName flat bikin client baca nama
+        // bersih; categoryName juga ganti tampilan slug "peralatan-aquarium"
+        // → "Peralatan Aquarium".
         brand: productExtras?.brand ?? null,
+        brandName: productExtras?.brand?.name ?? null,
+        brandSlug: productExtras?.brand?.slug ?? null,
         category: productExtras?.category ?? null,
+        categoryName: productExtras?.category?.name ?? null,
+        categorySlug: productExtras?.category?.slug ?? null,
       },
     },
   );

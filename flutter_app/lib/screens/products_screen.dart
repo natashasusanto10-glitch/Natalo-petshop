@@ -10,6 +10,7 @@ import '../theme/natalo_colors.dart';
 // API-driven dari Capacitor backend. Loading state pakai skeleton grid,
 // error state pakai banner + pull-to-refresh.
 import '../models/product.dart';
+import '../models/home_category.dart';
 import '../services/product_service.dart';
 import '../state/recently_viewed_store.dart';
 import '../state/search_history_store.dart';
@@ -116,6 +117,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
   String? _nextCursor;
   bool _loadingMore = false;
   bool _hasMore = true;
+  // Daftar kategori MASTER dari /api/categories (semua kategori yang punya
+  // produk aktif + jumlahnya). Dipakai untuk isi filter sheet — sebelumnya
+  // sheet derive dari produk yang KEBETULAN ter-load (page 1 = 24 produk),
+  // jadi cuma muncul 2 kategori walau DB punya 20. Fallback ke derived
+  // (_categories) kalau fetch master gagal.
+  List<HomeCategory> _allCategories = const [];
   // ── Catalog rotation state — persisted via SharedPreferences ──
   //
   // Sebelumnya state in-memory only → reset tiap app restart, navigate
@@ -170,8 +177,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
           widget.selectedBrand == null || product.brand == widget.selectedBrand;
       final filterBrandMatch =
           _filter.brand == null || product.brand == _filter.brand;
-      final categoryMatch =
-          _filter.category == null || product.category == _filter.category;
+      // Kategori sudah difilter SERVER-SIDE di _loadProducts (lihat sana).
+      // JANGAN filter lagi di client: _filter.category bisa berisi nama
+      // ("Makanan Kucing") dari home chip sedang product.category = slug
+      // ("makanan-kucing") → kalau dibandingkan langsung, semua produk
+      // ke-filter habis walau server sudah kembalikan yang benar.
+      const categoryMatch = true;
       final stockMatch = !_filter.inStockOnly || product.stock > 0;
       final discountMatch = !_filter.discountOnly || product.hasDiscount;
       final flashSaleMatch =
@@ -239,7 +250,21 @@ class _ProductsScreenState extends State<ProductsScreen> {
     _scrollController.addListener(_onScroll);
     _loadSearchHistory();
     _loadRotationState();
+    _loadAllCategories();
     _loadProducts();
+  }
+
+  /// Fetch daftar kategori master (/api/categories) untuk filter sheet.
+  /// Fire-and-forget — kalau gagal, sheet fallback ke kategori yang
+  /// ter-derive dari produk ter-load (_categories getter).
+  Future<void> _loadAllCategories() async {
+    try {
+      final cats = await productService.fetchCategories();
+      if (!mounted) return;
+      setState(() => _allCategories = cats);
+    } catch (_) {
+      // Diam — fallback derived categories tetap jalan.
+    }
   }
 
   /// Load persisted rotation counter + catalog generation dari prefs.
@@ -306,6 +331,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
       query: _query,
       limit: _pageSize,
       cursor: _nextCursor,
+      // Kategori difilter SERVER-SIDE (backend terima slug atau nama).
+      // Sebelumnya kategori cuma difilter client dari produk ter-load →
+      // pilih kategori di luar page 1 = 0 hasil. Brand sengaja TIDAK
+      // dikirim ke server (tetap client-side) karena backend brand match
+      // slug saja, sedang _filter.brand berisi nama.
+      category: _filter.category,
       newFilter: _filter.apiNewFilter,
       popularFilter: _filter.apiPopularFilter,
       inStock: _filter.inStockOnly,
@@ -340,6 +371,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
       query: _query,
       limit: _pageSize,
       // cursor: null → fetch dari awal
+      category: _filter.category,
       newFilter: _filter.apiNewFilter,
       popularFilter: _filter.apiPopularFilter,
       inStock: _filter.inStockOnly,
@@ -541,7 +573,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   Future<void> _openCategoryBottomSheet() async {
     FocusScope.of(context).unfocus();
-    final categories = ['Semua', ..._categories];
+    // Sumber utama: kategori master dari /api/categories (semua kategori
+    // dengan produk aktif). Fallback ke kategori derive-dari-produk-terload
+    // kalau master belum/ gagal ke-fetch. Value = slug; label di sheet
+    // diformat via formatCategoryLabel.
+    final masterSlugs = _allCategories
+        .where((c) => c.productCount > 0)
+        .map((c) => c.slug)
+        .toList();
+    final categories = [
+      'Semua',
+      ...(masterSlugs.isNotEmpty ? masterSlugs : _categories),
+    ];
     final picked = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -854,7 +897,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     activeMode: _activeMode,
                     selectedCategory: _filter.category,
                     visibleCount: products.length,
-                    totalCount: _result.products.length,
+                    // Total dari API (jumlah produk sesuai filter di DB),
+                    // bukan jumlah yang kebetulan ter-load. Tanpa ini header
+                    // selalu tampil "24" walau DB punya ribuan → "dari N"
+                    // tidak pernah muncul. Fallback ke loaded length kalau
+                    // API tidak kirim total.
+                    totalCount: _result.total ?? _result.products.length,
                     onQueryChanged: _onQueryChanged,
                     onSubmitQuery: _commitSearch,
                     onFilterModeChanged: _onFilterModeChanged,

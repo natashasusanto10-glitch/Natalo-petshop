@@ -415,15 +415,19 @@ class Product {
       id: _string(json['id'], fallback: _string(json['slug'])),
       slug: _string(json['slug'], fallback: _string(json['id'])),
       title: _string(json['name'] ?? json['title'], fallback: 'Produk Natalo'),
-      category: _string(
+      category: _nameOrString(
         // recommendations & recently-viewed API return 'category' sebagai string.
-        json['category_name'] ??
+        // Detail API (/products/[slug]) sekarang kirim categoryName flat;
+        // kalau tidak ada, fallback ke object {id,name,slug} → _nameOrString
+        // ekstrak .name biar tidak ke-stringify jadi "{id:.., name:..}".
+        json['categoryName'] ??
+            json['category_name'] ??
             json['categorySlug'] ??
             json['category_slug'] ??
             json['category'],
         fallback: 'Produk',
       ),
-      brand: _string(
+      brand: _nameOrString(
         json['brand_name'] ??
             json['brandName'] ??
             json['brand_slug'] ??
@@ -611,6 +615,19 @@ String _string(Object? value, {String fallback = ''}) {
   if (value == null) return fallback;
   final text = value.toString();
   return text.isEmpty ? fallback : text;
+}
+
+/// Seperti [_string] tapi kalau value berupa Map {id,name,slug} (mis. detail
+/// API kirim brand/category sebagai object), ekstrak `name` (atau `slug`)
+/// alih-alih stringify seluruh map jadi "{id:.., name: Yang, slug: yang}".
+/// Defensif terhadap perubahan bentuk response backend.
+String _nameOrString(Object? value, {String fallback = ''}) {
+  if (value is Map) {
+    final picked = value['name'] ?? value['slug'];
+    final text = picked?.toString().trim() ?? '';
+    return text.isEmpty ? fallback : text;
+  }
+  return _string(value, fallback: fallback);
 }
 
 String? _stringOrNull(Object? value) {

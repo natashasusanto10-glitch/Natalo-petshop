@@ -957,7 +957,20 @@ function buildProductWhere({
 
   return {
     isActive: true,
-    ...(category ? { category: { slug: category } } : {}),
+    // Category param terima SLUG atau NAMA (case-insensitive). Flutter
+    // kirim slug dari filter sheet (sumber /api/categories), TAPI home
+    // category chip + ProductCatalogArgs kirim nama ("Makanan Kucing").
+    // Tanpa OR ini, nav dari home gagal match (slug != nama) → 0 produk.
+    ...(category
+      ? {
+          category: {
+            OR: [
+              { slug: category },
+              { name: { equals: category, mode: "insensitive" as const } },
+            ],
+          },
+        }
+      : {}),
     ...(brand ? { brand: { slug: brand, isActive: true } } : {}),
     ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
     ...(createdAtCutoff
