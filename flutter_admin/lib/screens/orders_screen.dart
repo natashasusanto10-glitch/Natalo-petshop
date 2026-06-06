@@ -19,13 +19,17 @@ class _OrdersScreenState extends State<OrdersScreen>
   final _searchController = TextEditingController();
   String _searchQuery = '';
 
-  // Tab key = status enum yang dikirim ke backend.
+  // Tab key = status enum yang dikirim ke backend (comma-separated untuk
+  // multi-status). Mapping:
   // - "PENDING" → order baru dibuat, belum dibayar
   // - "PAID,PROCESSING,READY_FOR_PICKUP" → sudah bayar, butuh dikirim
-  //   (multi-status supaya tab "Perlu Kirim" cover seluruh lifecycle
-  //   pre-shipment, bukan cuma PAID).
+  //   (cover seluruh lifecycle pre-shipment, bukan cuma PAID)
   // - "SHIPPED" → sudah dikirim, dalam perjalanan
   // - "DELIVERED" → sudah sampai/selesai
+  // - "CANCELLED,REFUNDED" → order yang dibatalkan / di-refund
+  //   (admin bisa audit history pembatalan; cancellation request yang
+  //   masih PENDING ada di tab "Perlu Kirim" karena status order belum
+  //   berubah sampai admin approve)
   static const _statuses = <_OrderStatus>[
     _OrderStatus(key: 'all', label: 'Semua'),
     _OrderStatus(key: 'PENDING', label: 'Belum Bayar'),
@@ -33,6 +37,7 @@ class _OrdersScreenState extends State<OrdersScreen>
         key: 'PAID,PROCESSING,READY_FOR_PICKUP', label: 'Perlu Kirim'),
     _OrderStatus(key: 'SHIPPED', label: 'Dikirim'),
     _OrderStatus(key: 'DELIVERED', label: 'Selesai'),
+    _OrderStatus(key: 'CANCELLED,REFUNDED', label: 'Pembatalan'),
   ];
 
   @override
