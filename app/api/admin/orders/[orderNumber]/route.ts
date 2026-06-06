@@ -26,75 +26,90 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ orderNumber: string }> },
 ) {
-  const session = await getSession("ADMIN");
-  if (!session) {
+  try {
+    const session = await getSession("ADMIN");
+    if (!session) {
+      return NextResponse.json(
+        { error: "Unauthorized — admin session required" },
+        { status: 401 },
+      );
+    }
+
+    const { orderNumber } = await params;
+    const order = await prisma.order.findUnique({
+      where: { orderNumber },
+      include: {
+        items: {
+          select: {
+            id: true,
+            name: true,
+            variantLabel: true,
+            quantity: true,
+            price: true,
+            weightGram: true,
+            productId: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phoneNumber: true,
+          },
+        },
+        // Refund history — mobile detail screen menampilkan badge total
+        // refunded + breakdown per-case (item-level vs whole-order).
+        refundCases: {
+          select: {
+            id: true,
+            orderItemId: true,
+            reason: true,
+            amount: true,
+            destination: true,
+            status: true,
+            adminNote: true,
+            createdAt: true,
+            creditedAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+        },
+      },
+    });
+
+    if (!order) {
+      return NextResponse.json({ error: "Order tidak ditemukan" }, { status: 404 });
+    }
+
+    // Flatten — schema yang sudah ada sebenarnya sudah include semua field
+    // cancellation* + payment*. Tapi Prisma Json fields (cancellationReason
+    // is plain string), DateTime serialized as ISO via Next response — jadi
+    // langsung return order udah cukup. Tambahkan flag boleh-refund supaya
+    // mobile tidak perlu duplicate logic status guard.
+    const refundEligible =
+      order.status !== "DELIVERED" &&
+      order.status !== "CANCELLED" &&
+      order.status !== "REFUNDED" &&
+      order.userId !== null;
+
+    return NextResponse.json({
+      ...order,
+      refundEligible,
+    });
+  } catch (error) {
+    // Log full error ke Vercel logs untuk debug. Return summary ke client
+    // — tanpa stack trace supaya tidak leak internals.
+    console.error("[GET /api/admin/orders/[orderNumber]] error:", error);
+    const message =
+      error instanceof Error ? error.message : "Internal server error";
     return NextResponse.json(
-      { error: "Unauthorized — admin session required" },
-      { status: 401 },
+      {
+        error: "Gagal load order",
+        detail: message,
+      },
+      { status: 500 },
     );
   }
-
-  const { orderNumber } = await params;
-  const order = await prisma.order.findUnique({
-    where: { orderNumber },
-    include: {
-      items: {
-        select: {
-          id: true,
-          name: true,
-          variantLabel: true,
-          quantity: true,
-          price: true,
-          weightGram: true,
-          productId: true,
-        },
-      },
-      user: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phoneNumber: true,
-        },
-      },
-      // Refund history — mobile detail screen menampilkan badge total
-      // refunded + breakdown per-case (item-level vs whole-order).
-      refundCases: {
-        select: {
-          id: true,
-          orderItemId: true,
-          reason: true,
-          amount: true,
-          destination: true,
-          status: true,
-          adminNote: true,
-          createdAt: true,
-          creditedAt: true,
-        },
-        orderBy: { createdAt: "desc" },
-      },
-    },
-  });
-
-  if (!order) {
-    return NextResponse.json({ error: "Order tidak ditemukan" }, { status: 404 });
-  }
-
-  // Flatten — schema yang sudah ada sebenarnya sudah include semua field
-  // cancellation* + payment*. Tapi Prisma Json fields (cancellationReason
-  // is plain string), DateTime serialized as ISO via Next response — jadi
-  // langsung return order udah cukup. Tambahkan flag boleh-refund supaya
-  // mobile tidak perlu duplicate logic status guard.
-  const refundEligible =
-    order.status !== "DELIVERED" &&
-    order.status !== "CANCELLED" &&
-    order.status !== "REFUNDED" &&
-    order.userId !== null;
-
-  return NextResponse.json({
-    ...order,
-    refundEligible,
-  });
 }
 
 /**
