@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_client.dart';
@@ -356,6 +357,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               ],
             ),
           ),
+
+          // Order timeline — Shopee-style step indicator.
+          // Sembunyikan untuk CANCELLED/REFUNDED karena status flow tidak
+          // applicable (cancellation banner sudah handle visual-nya).
+          if (!_isTerminalCancelled((o['status'] ?? '').toString()))
+            _OrderTimeline(
+              status: (o['status'] ?? 'PENDING').toString(),
+              createdAt: o['createdAt']?.toString(),
+              shippedAt: o['shippedAt']?.toString(),
+              updatedAt: o['updatedAt']?.toString(),
+            ),
 
           // Cancellation request banner — muncul kalau ada request PENDING /
           // APPROVED / REJECTED. PENDING punya tombol Setujui & Tolak.
@@ -1760,6 +1772,280 @@ class _ShipFormState extends State<_ShipForm> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// True jika status order = CANCELLED / REFUNDED → tidak relevan tampilkan
+/// timeline normal (Dibuat→Selesai) karena flow sudah putus.
+bool _isTerminalCancelled(String status) {
+  final s = status.toUpperCase();
+  return s == 'CANCELLED' || s == 'REFUNDED';
+}
+
+/// Order Timeline — visual step indicator gaya Shopee/Tokopedia.
+///
+/// 5 step:
+///   0. Dibuat       (PENDING)
+///   1. Dibayar      (PAID)
+///   2. Dikemas      (PROCESSING / READY_FOR_PICKUP)
+///   3. Dikirim      (SHIPPED)
+///   4. Selesai      (DELIVERED)
+///
+/// Visual:
+///   - Step "done" : circle terisi penuh + check icon + timestamp
+///   - Step "active": circle terisi (color primary) + pulse-style border
+///   - Step "upcoming": circle outline kosong + label muted
+///   - Connector line antara step: solid kalau next step sudah done,
+///     dashed kalau next step belum
+///
+/// Layout horizontal — paling cocok untuk mobile portrait (5 step
+/// muat dengan icon kecil + label 1 baris di bawah).
+class _OrderTimeline extends StatelessWidget {
+  final String status;
+  final String? createdAt;
+  final String? shippedAt;
+  final String? updatedAt;
+
+  const _OrderTimeline({
+    required this.status,
+    this.createdAt,
+    this.shippedAt,
+    this.updatedAt,
+  });
+
+  /// Map status → index step yang sedang aktif (sedang berlangsung).
+  /// Semua step dengan index < activeStep dianggap sudah selesai.
+  int _activeStepIndex(String status) {
+    switch (status.toUpperCase()) {
+      case 'PENDING':
+      case 'PENDING_PAYMENT':
+        return 0;
+      case 'PAID':
+        return 1;
+      case 'PROCESSING':
+      case 'READY_FOR_PICKUP':
+        return 2;
+      case 'SHIPPED':
+      case 'IN_TRANSIT':
+        return 3;
+      case 'DELIVERED':
+      case 'COMPLETED':
+        return 4;
+      default:
+        return 0;
+    }
+  }
+
+  String? _timestampFor(int stepIndex, int activeIndex) {
+    // Step 0 (Dibuat) → selalu createdAt.
+    if (stepIndex == 0) return createdAt;
+    // Step 3 (Dikirim) → shippedAt (explicit timestamp dari backend).
+    if (stepIndex == 3 && activeIndex >= 3) return shippedAt;
+    // Step 4 (Selesai) → updatedAt sebagai best-estimate.
+    if (stepIndex == 4 && activeIndex >= 4) return updatedAt;
+    // Step 1 (Dibayar) / 2 (Dikemas) tidak punya timestamp explicit di
+    // schema sekarang — kalau step "active", tampilkan updatedAt (best
+    // fallback). Kalau "done", tidak tampilkan timestamp (admin sudah
+    // tahu order ini lewat status berikutnya).
+    if (stepIndex == activeIndex) return updatedAt;
+    return null;
+  }
+
+  String _formatShort(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return '';
+    return DateFormat('dd MMM HH:mm', 'id_ID').format(dt.toLocal());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final activeIndex = _activeStepIndex(status);
+    const steps = <_TimelineStep>[
+      _TimelineStep(label: 'Dibuat', icon: Icons.receipt_long_rounded),
+      _TimelineStep(label: 'Dibayar', icon: Icons.payments_rounded),
+      _TimelineStep(label: 'Dikemas', icon: Icons.inventory_2_rounded),
+      _TimelineStep(label: 'Dikirim', icon: Icons.local_shipping_rounded),
+      _TimelineStep(label: 'Selesai', icon: Icons.check_circle_rounded),
+    ];
+
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(8, 16, 8, 12),
+      margin: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              'Progress Pesanan',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: AdminColors.textSecondary,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < steps.length; i++) ...[
+                Expanded(
+                  child: _TimelineNode(
+                    step: steps[i],
+                    isDone: i < activeIndex,
+                    isActive: i == activeIndex,
+                    timestamp: _formatShort(_timestampFor(i, activeIndex)),
+                  ),
+                ),
+                if (i < steps.length - 1)
+                  _TimelineConnector(
+                    isDone: i < activeIndex,
+                    isActiveTo: i == activeIndex,
+                  ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelineStep {
+  final String label;
+  final IconData icon;
+  const _TimelineStep({required this.label, required this.icon});
+}
+
+class _TimelineNode extends StatelessWidget {
+  final _TimelineStep step;
+  final bool isDone;
+  final bool isActive;
+  final String timestamp;
+
+  const _TimelineNode({
+    required this.step,
+    required this.isDone,
+    required this.isActive,
+    required this.timestamp,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Color logic:
+    //   done   → success green (selesai, no further action)
+    //   active → primary coral (sedang berlangsung, fokus admin)
+    //   upcoming → muted grey
+    final Color circleColor = isDone
+        ? AdminColors.success
+        : isActive
+            ? AdminColors.primary
+            : AdminColors.divider;
+    final Color iconColor = isDone || isActive
+        ? Colors.white
+        : AdminColors.textMuted;
+    final Color labelColor = isDone
+        ? AdminColors.textPrimary
+        : isActive
+            ? AdminColors.primary
+            : AdminColors.textMuted;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            // Outer pulse-ring untuk step active — visual hint kalau ini
+            // step yang sedang menunggu action.
+            if (isActive)
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AdminColors.primary.withValues(alpha: 0.15),
+                ),
+              ),
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: circleColor,
+                shape: BoxShape.circle,
+                border: !isDone && !isActive
+                    ? Border.all(color: AdminColors.divider, width: 1.5)
+                    : null,
+              ),
+              child: Icon(
+                isDone ? Icons.check_rounded : step.icon,
+                size: 16,
+                color: iconColor,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Text(
+            step.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+              color: labelColor,
+            ),
+          ),
+        ),
+        const SizedBox(height: 2),
+        SizedBox(
+          height: 12,
+          child: Text(
+            timestamp,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 9,
+              color: AdminColors.textMuted,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TimelineConnector extends StatelessWidget {
+  final bool isDone;
+  final bool isActiveTo;
+  const _TimelineConnector({required this.isDone, required this.isActiveTo});
+
+  @override
+  Widget build(BuildContext context) {
+    // Line color: hijau kalau step ini sudah dilewati (i < activeIndex);
+    // primary kalau ini line yang mengarah ke active step; grey kalau
+    // belum tercapai.
+    final color = isDone
+        ? AdminColors.success
+        : isActiveTo
+            ? AdminColors.primary
+            : AdminColors.divider;
+    return Padding(
+      padding: const EdgeInsets.only(top: 13),
+      child: Container(
+        width: 16,
+        height: 2,
+        color: color,
       ),
     );
   }
