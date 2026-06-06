@@ -55,7 +55,9 @@ export async function GET(
             id: true,
             name: true,
             email: true,
-            phoneNumber: true,
+            // Schema: User.phone (bukan phoneNumber). Prisma reject
+            // invocation sebelumnya karena field name salah.
+            phone: true,
           },
         },
         // Refund history — mobile detail screen menampilkan badge total

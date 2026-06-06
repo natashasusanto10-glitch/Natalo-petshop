@@ -260,8 +260,18 @@ class AdminApiClient {
     if (body.isEmpty) return null;
     try {
       final decoded = jsonDecode(body);
-      if (decoded is Map && decoded['error'] is String) {
-        return decoded['error'] as String;
+      if (decoded is Map) {
+        final err = decoded['error'];
+        final detail = decoded['detail'];
+        // Kalau backend kirim {error: "...", detail: "..."}, gabungkan
+        // jadi "error: detail" supaya admin lihat root cause bukan cuma
+        // generic message. Pattern ini cocok untuk endpoint yang kasih
+        // try/catch dengan detail Prisma error / validation msg.
+        if (err is String && detail is String && detail.isNotEmpty) {
+          return '$err: $detail';
+        }
+        if (err is String) return err;
+        if (detail is String) return detail;
       }
     } catch (_) {}
     return null;
