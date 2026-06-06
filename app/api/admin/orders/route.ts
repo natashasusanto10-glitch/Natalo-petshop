@@ -35,7 +35,11 @@ export async function GET(request: NextRequest) {
 
   const where: Prisma.OrderWhereInput = {};
   if (status && status !== "all") {
-    // Validate enum value sebelum query supaya prisma tidak throw.
+    // Support comma-separated multi-status (mis. "PAID,PROCESSING,READY_FOR_PICKUP")
+    // supaya satu tab bisa cover beberapa status yang semantically sama.
+    // Tab "Perlu Kirim" di mobile butuh ini karena order yang sudah dibayar
+    // bisa di status PAID (baru bayar) atau PROCESSING (admin sedang siapkan)
+    // atau READY_FOR_PICKUP — semua butuh perhatian admin untuk dikirim.
     const validStatuses: OrderStatus[] = [
       "PENDING",
       "PAID",
@@ -46,9 +50,18 @@ export async function GET(request: NextRequest) {
       "CANCELLED",
       "REFUNDED",
     ];
-    if (validStatuses.includes(status as OrderStatus)) {
-      where.status = status as OrderStatus;
+    const requested = status
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter((s) => validStatuses.includes(s as OrderStatus)) as OrderStatus[];
+    if (requested.length === 1) {
+      where.status = requested[0];
+    } else if (requested.length > 1) {
+      where.status = { in: requested };
     }
+    // Kalau requested kosong (semua invalid) → tidak filter — sama dengan
+    // perilaku lama tapi sekarang strict: status mismatch sengaja
+    // di-treat sebagai "no filter" daripada throw 500.
   }
   if (q) {
     where.OR = [

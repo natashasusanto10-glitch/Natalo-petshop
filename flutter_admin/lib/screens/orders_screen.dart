@@ -19,10 +19,18 @@ class _OrdersScreenState extends State<OrdersScreen>
   final _searchController = TextEditingController();
   String _searchQuery = '';
 
+  // Tab key = status enum yang dikirim ke backend.
+  // - "PENDING" → order baru dibuat, belum dibayar
+  // - "PAID,PROCESSING,READY_FOR_PICKUP" → sudah bayar, butuh dikirim
+  //   (multi-status supaya tab "Perlu Kirim" cover seluruh lifecycle
+  //   pre-shipment, bukan cuma PAID).
+  // - "SHIPPED" → sudah dikirim, dalam perjalanan
+  // - "DELIVERED" → sudah sampai/selesai
   static const _statuses = <_OrderStatus>[
     _OrderStatus(key: 'all', label: 'Semua'),
-    _OrderStatus(key: 'PENDING_PAYMENT', label: 'Belum Bayar'),
-    _OrderStatus(key: 'PAID', label: 'Perlu Kirim'),
+    _OrderStatus(key: 'PENDING', label: 'Belum Bayar'),
+    _OrderStatus(
+        key: 'PAID,PROCESSING,READY_FOR_PICKUP', label: 'Perlu Kirim'),
     _OrderStatus(key: 'SHIPPED', label: 'Dikirim'),
     _OrderStatus(key: 'DELIVERED', label: 'Selesai'),
   ];
@@ -365,7 +373,7 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (bg, fg, label) = switch (status.toUpperCase()) {
-      'PENDING_PAYMENT' => (
+      'PENDING' || 'PENDING_PAYMENT' => (
         const Color(0xFFFFF8E1),
         AdminColors.warning,
         'Belum Bayar'
@@ -374,6 +382,16 @@ class _StatusChip extends StatelessWidget {
         const Color(0xFFFFF3F0),
         AdminColors.primary,
         'Perlu Kirim'
+      ),
+      'PROCESSING' => (
+        const Color(0xFFFFF3F0),
+        AdminColors.primary,
+        'Diproses'
+      ),
+      'READY_FOR_PICKUP' => (
+        const Color(0xFFFFF3F0),
+        AdminColors.primary,
+        'Siap Kirim'
       ),
       'SHIPPED' || 'IN_TRANSIT' => (
         const Color(0xFFE3F2FD),
