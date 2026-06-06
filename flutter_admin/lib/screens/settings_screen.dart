@@ -10,7 +10,9 @@ import 'audit_log_screen.dart';
 import 'broadcast_screen.dart';
 import 'feed_create_screen.dart';
 import 'feed_moderation_screen.dart';
+import 'feed_reports_screen.dart';
 import 'login_screen.dart';
+import 'reviews_moderation_screen.dart';
 import 'vouchers_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -143,7 +145,12 @@ class SettingsScreen extends StatelessWidget {
           _SettingsTile(
             icon: Icons.reviews_outlined,
             label: 'Moderasi Ulasan',
-            onTap: () => _comingSoon(context),
+            subtitle: 'Hide/delete review + reply ke customer',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const ReviewsModerationScreen(),
+              ),
+            ),
           ),
 
           const SizedBox(height: 12),
@@ -154,6 +161,14 @@ class SettingsScreen extends StatelessWidget {
             subtitle: 'Review akun suspicious + voucher abuse',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AbuseFlagsScreen()),
+            ),
+          ),
+          _SettingsTile(
+            icon: Icons.flag_outlined,
+            label: 'Feed Reports',
+            subtitle: 'Report dari customer terhadap post/komentar feed',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const FeedReportsScreen()),
             ),
           ),
           _SettingsTile(
