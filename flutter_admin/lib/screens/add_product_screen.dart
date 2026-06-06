@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import '../services/api_client.dart';
 import '../services/upload_service.dart';
 import '../theme/admin_theme.dart';
+import 'variant_management_screen.dart';
 
 /// Form untuk tambah produk baru. POST /api/admin/products.
 ///
@@ -96,7 +97,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
     setState(() => _saving = true);
     try {
-      await adminApi.postJson(
+      final result = await adminApi.postJson(
         '/api/admin/products',
         body: {
           'name': name,
@@ -117,6 +118,32 @@ class _AddProductScreenState extends State<AddProductScreen> {
           behavior: SnackBarBehavior.floating,
         ),
       );
+
+      // Ambil productId dari response — backend balikan
+      // { product: { id, name, slug, ... } } atau langsung { id }.
+      final newProductId = _extractProductId(result);
+      if (newProductId != null) {
+        // Tanya admin: mau setup varian (ukuran/warna/dll) sekarang?
+        // Kalau ya, langsung navigate ke VariantManagementScreen
+        // (full-replace produk yang baru dibuat).
+        final wantVariants = await _askAddVariants();
+        if (!mounted) return;
+        if (wantVariants == true) {
+          // Push variant screen di atas → pop AddProduct setelah variant
+          // kembali. Pakai pushReplacement supaya back button tidak balik
+          // ke form add product yang sudah submit.
+          await Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => VariantManagementScreen(
+                productId: newProductId,
+                productName: name,
+              ),
+            ),
+          );
+          return; // Stop — Variant screen yang handle pop.
+        }
+      }
+
       Navigator.of(context).pop(true);
     } on AdminApiException catch (e) {
       _err('Gagal: ${e.message}');
@@ -125,6 +152,50 @@ class _AddProductScreenState extends State<AddProductScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// Backend POST /api/admin/products bisa balikan beberapa shape:
+  ///   { id: "...", ... }      ← langsung product
+  ///   { product: { id: "..." } }
+  ///   { data: { id: "..." } }
+  /// Cari id dari shape mana saja yang muncul.
+  String? _extractProductId(dynamic res) {
+    if (res is Map) {
+      final direct = res['id'];
+      if (direct is String && direct.isNotEmpty) return direct;
+      for (final key in const ['product', 'data', 'result']) {
+        final nested = res[key];
+        if (nested is Map) {
+          final id = nested['id'];
+          if (id is String && id.isNotEmpty) return id;
+        }
+      }
+    }
+    return null;
+  }
+
+  Future<bool?> _askAddVariants() {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Setup varian sekarang?'),
+        content: const Text(
+          'Kalau produk ini punya pilihan ukuran/warna/berat/rasa, '
+          'kamu bisa setup sekarang. Atau lewati & tambah nanti dari '
+          'Edit Produk → Kelola Varian.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Nanti saja'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Setup Varian'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _err(String msg) {

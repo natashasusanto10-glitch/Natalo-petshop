@@ -6,6 +6,7 @@ import '../theme/admin_theme.dart';
 import '../widgets/skeletons.dart';
 import 'add_product_screen.dart';
 import 'product_edit_screen.dart';
+import 'variant_management_screen.dart';
 
 class ProductsScreen extends StatefulWidget {
   const ProductsScreen({super.key});
@@ -63,6 +64,90 @@ class _ProductsScreenState extends State<ProductsScreen> {
       return data.whereType<Map<String, dynamic>>().toList();
     }
     return const [];
+  }
+
+  Future<void> _openVariants(_ProductRow product) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => VariantManagementScreen(
+          productId: product.id,
+          productName: product.name,
+        ),
+      ),
+    );
+    _load();
+  }
+
+  void _showQuickActions(_ProductRow product) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.layers_outlined),
+              title: const Text('Kelola Varian'),
+              subtitle: const Text('Tambah ukuran/warna/berat'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openVariants(product);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Edit Produk'),
+              subtitle: const Text('Nama, harga, foto, stok'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openEdit(product);
+              },
+            ),
+            ListTile(
+              leading: Icon(product.isActive
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined),
+              title: Text(product.isActive
+                  ? 'Sembunyikan dari customer'
+                  : 'Tampilkan kembali'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await _toggleActive(product);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleActive(_ProductRow product) async {
+    try {
+      await adminApi.patchJson(
+        '/api/admin/products/${Uri.encodeComponent(product.id)}',
+        body: {'isActive': !product.isActive},
+      );
+      if (!mounted) return;
+      setState(() {
+        final idx = _products.indexWhere((p) => p.id == product.id);
+        if (idx >= 0) {
+          _products[idx] = product.copyWith(isActive: !product.isActive);
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(product.isActive
+              ? 'Produk disembunyikan'
+              : 'Produk ditampilkan'),
+        ),
+      );
+    } on AdminApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal: ${e.message}')),
+        );
+      }
+    }
   }
 
   Future<void> _openEdit(_ProductRow product) async {
@@ -221,6 +306,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
             onStockMinus: () => _updateStock(p, -1),
             onStockPlus: () => _updateStock(p, 1),
             onTap: () => _openEdit(p),
+            onLongPress: () => _showQuickActions(p),
           );
         },
       ),
@@ -278,12 +364,14 @@ class _ProductCard extends StatelessWidget {
   final VoidCallback onStockMinus;
   final VoidCallback onStockPlus;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   const _ProductCard({
     required this.product,
     required this.onStockMinus,
     required this.onStockPlus,
     required this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -291,6 +379,7 @@ class _ProductCard extends StatelessWidget {
     final lowStock = product.stock <= 5;
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       borderRadius: BorderRadius.circular(8),
       child: Container(
       padding: const EdgeInsets.all(12),
