@@ -172,11 +172,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   List<Product> get _products {
     final keyword = _query.trim().toLowerCase();
+    final selectedBrandLc = widget.selectedBrand?.toLowerCase();
+    final filterBrandLc = _filter.brand?.toLowerCase();
     final filtered = _result.products.where((product) {
+      // Brand filter case-insensitive — defensive guard. Server SUDAH filter
+      // by slug/name (lihat _loadProducts), tapi client compare jaga-jaga
+      // kalau ada produk lolos dari server filter karena cache stale atau
+      // data anomaly. Tanpa lowercase, "Whiskas" != "WHISKAS" → produk hilang.
+      final productBrandLc = product.brand.toLowerCase();
       final brandMatch =
-          widget.selectedBrand == null || product.brand == widget.selectedBrand;
+          selectedBrandLc == null || productBrandLc == selectedBrandLc;
       final filterBrandMatch =
-          _filter.brand == null || product.brand == _filter.brand;
+          filterBrandLc == null || productBrandLc == filterBrandLc;
       // Kategori sudah difilter SERVER-SIDE di _loadProducts (lihat sana).
       // JANGAN filter lagi di client: _filter.category bisa berisi nama
       // ("Makanan Kucing") dari home chip sedang product.category = slug
@@ -331,12 +338,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
       query: _query,
       limit: _pageSize,
       cursor: _nextCursor,
-      // Kategori difilter SERVER-SIDE (backend terima slug atau nama).
-      // Sebelumnya kategori cuma difilter client dari produk ter-load →
-      // pilih kategori di luar page 1 = 0 hasil. Brand sengaja TIDAK
-      // dikirim ke server (tetap client-side) karena backend brand match
-      // slug saja, sedang _filter.brand berisi nama.
+      // Kategori & brand difilter SERVER-SIDE. Backend sekarang accept
+      // brand by slug ATAU name (case-insensitive) — fix di
+      // lib/products.ts:974. Tanpa ini, brand cuma di-filter client dari
+      // produk ter-load page-N → pilih brand kecil = 0 hasil walau ada
+      // produk-nya. selectedBrand prioritas (dari home tap Brand Favorit),
+      // _filter.brand fallback (dari filter sheet single-brand picker).
       category: _filter.category,
+      brand: widget.selectedBrand ?? _filter.brand,
       newFilter: _filter.apiNewFilter,
       popularFilter: _filter.apiPopularFilter,
       inStock: _filter.inStockOnly,
@@ -372,6 +381,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
       limit: _pageSize,
       // cursor: null → fetch dari awal
       category: _filter.category,
+      // Brand server-side (sama logic dengan _loadMore — lihat komentar di sana).
+      brand: widget.selectedBrand ?? _filter.brand,
       newFilter: _filter.apiNewFilter,
       popularFilter: _filter.apiPopularFilter,
       inStock: _filter.inStockOnly,
@@ -684,12 +695,15 @@ class _ProductsScreenState extends State<ProductsScreen> {
   /// getter, tapi terima filter parameter custom.
   int _previewFilterMatchCount(ProductCatalogFilter filter) {
     final keyword = _query.trim().toLowerCase();
+    final selectedBrandLc = widget.selectedBrand?.toLowerCase();
+    final filterBrandLc = filter.brand?.toLowerCase();
     var count = 0;
     for (final product in _result.products) {
+      final productBrandLc = product.brand.toLowerCase();
       final brandMatch =
-          widget.selectedBrand == null || product.brand == widget.selectedBrand;
+          selectedBrandLc == null || productBrandLc == selectedBrandLc;
       final filterBrandMatch =
-          filter.brand == null || product.brand == filter.brand;
+          filterBrandLc == null || productBrandLc == filterBrandLc;
       final categoryMatch =
           filter.category == null || product.category == filter.category;
       final stockMatch = !filter.inStockOnly || product.stock > 0;

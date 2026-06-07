@@ -971,7 +971,21 @@ function buildProductWhere({
           },
         }
       : {}),
-    ...(brand ? { brand: { slug: brand, isActive: true } } : {}),
+    // Brand filter — accept BOTH slug ("whiskas") and display name ("Whiskas")
+    // case-insensitive. Flutter customer app kirim brand.name dari home card
+    // sedangkan admin/seo URL pakai slug. Server normalize keduanya supaya
+    // tidak ada mismatch (lihat fix ini di komentar product_service.dart).
+    ...(brand
+      ? {
+          brand: {
+            isActive: true,
+            OR: [
+              { slug: brand },
+              { name: { equals: brand, mode: "insensitive" as const } },
+            ],
+          },
+        }
+      : {}),
     ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
     ...(createdAtCutoff
       ? { createdAt: { gte: createdAtCutoff, lte: new Date() } }
