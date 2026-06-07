@@ -50,6 +50,11 @@ export type StoreProduct = {
   soldCount?: number;
   categoryId?: string | null;
   categorySlug?: string | null;
+  /** Brand name (display) — dipakai customer app untuk filter & label.
+   *  Server filter by brand SUDAH benar, tapi tanpa field ini di response,
+   *  defensive client-side filter di Flutter buang semua produk karena
+   *  product.brand kosong → 0 visible walau total > 0 (bug 1310acb). */
+  brand?: string | null;
   voucherPreview?: ProductVoucherPreview | null;
   shippingVoucherPreview?: ProductVoucherPreview | null;
   /** ISO timestamp — kalau di-set, admin explicit tag produk ini Flash
@@ -105,6 +110,12 @@ function getProductListInclude() {
   const now = new Date();
   return {
     category: { select: { id: true, slug: true } },
+    // Brand harus ikut di-select supaya mapProductListRecord bisa kirim
+    // brand.name ke client. Tanpa ini, Flutter receive product.brand="" →
+    // defensive client filter (cross-check vs widget.selectedBrand) drop
+    // semua produk → 0 visible walau total benar (bug user lapor di
+    // Brand Favorit tap → /products kosong).
+    brand: { select: { name: true, slug: true } },
     variants: {
       where: { deletedAt: null, isActive: true },
       select: { id: true, price: true, stock: true },
@@ -175,6 +186,7 @@ function mapProductListRecord(p: ProductListRecord): StoreProduct {
       reviewCount: p.reviewCount,
       categoryId: p.category?.id ?? null,
       categorySlug: p.category?.slug ?? null,
+      brand: p.brand?.name ?? null,
       voucherPreview: null,
       shippingVoucherPreview: null,
       flashSaleEndsAt: p.flashSaleEndsAt?.toISOString() ?? null,
@@ -221,6 +233,7 @@ function mapProductListRecord(p: ProductListRecord): StoreProduct {
     reviewCount: p.reviewCount,
     categoryId: p.category?.id ?? null,
     categorySlug: p.category?.slug ?? null,
+    brand: p.brand?.name ?? null,
     voucherPreview: null,
     shippingVoucherPreview: null,
     flashSaleEndsAt: effectiveFlashSaleEndsAt,
