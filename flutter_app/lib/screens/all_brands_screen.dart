@@ -101,11 +101,10 @@ class _AllBrandsScreenState extends State<AllBrandsScreen> {
                       crossAxisCount: 3,
                       mainAxisSpacing: 12,
                       crossAxisSpacing: 12,
-                      // Aspect 1.15 (lebih lebar dari tinggi) — match pattern
-                      // _BrandGridCard di home_screen yang pakai 1.45. Bikin
-                      // logo area landscape supaya logo brand (umumnya
-                      // wordmark wide) tidak punya space kosong atas-bawah.
-                      childAspectRatio: 1.15,
+                      // Aspect 1.0 (square card) — combo dengan BoxFit.cover
+                      // di logo bikin logo isi penuh card edge-to-edge,
+                      // tidak ada whitespace vertikal yg jelek.
+                      childAspectRatio: 1.0,
                     ),
                     itemCount: _brands.length,
                     itemBuilder: (context, index) {
@@ -154,36 +153,44 @@ class _BrandCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // Layout mirror _BrandGridCard di home_screen — proporsional logo area
-    // (flex 5) + label nama + sub-label productCount. Tidak ada square 56x56
-    // cage — logo isi seluruh area atas yang landscape, tidak ada space
-    // kosong atas-bawah untuk wordmark wide.
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Layout: card PUTIH (matches white-bg PNG logo dari admin upload —
+    // tidak ada visible whitespace strip). Logo BoxFit.cover + ClipRRect
+    // → isi penuh card area edge-to-edge, kalau perlu crop tipis di
+    // edges, lebih bagus daripada whitespace kosong.
+    // Brand name + productCount jadi badge OVERLAY di bawah card,
+    // tidak ambil space dari logo area.
     return Material(
-      color: cs.surface,
+      color: isDark ? cs.surfaceContainerHighest : Colors.white,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: cs.outlineVariant),
+            border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.025),
+                color: Colors.black.withValues(alpha: 0.03),
                 blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
             ],
           ),
+          clipBehavior: Clip.antiAlias,
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Logo area: isi 65% tinggi card, BoxFit.contain (preserve
+              // full logo, jangan crop). Whitespace di sekitar logo BLEND
+              // INVISIBLE dengan card putih karena PNG logo dari admin
+              // umumnya transparent atau white bg. Aspect square (1.0) +
+              // padding 8 → logo punya nafas tapi tetap dominant.
               Expanded(
-                flex: 5,
+                flex: 65,
                 child: Padding(
-                  padding: const EdgeInsets.all(4),
+                  padding: const EdgeInsets.all(8),
                   child: brand.logoUrl != null
                       ? CachedNetworkImage(
                           imageUrl: brand.logoUrl!,
@@ -196,27 +203,45 @@ class _BrandCard extends StatelessWidget {
                       : _BrandInitial(brand: brand),
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(
-                brand.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              if (brand.productCount > 0)
-                Text(
-                  '${brand.productCount} produk',
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w600,
+              // Footer badge: brand name + productCount, sectioned dengan
+              // garis halus di atas biar terpisah dari logo.
+              Container(
+                padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: cs.outlineVariant.withValues(alpha: 0.4),
+                    ),
                   ),
                 ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      brand.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: cs.onSurface,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        height: 1.2,
+                      ),
+                    ),
+                    if (brand.productCount > 0)
+                      Text(
+                        '${brand.productCount} produk',
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                          height: 1.3,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
