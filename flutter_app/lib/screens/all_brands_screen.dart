@@ -101,7 +101,11 @@ class _AllBrandsScreenState extends State<AllBrandsScreen> {
                       crossAxisCount: 3,
                       mainAxisSpacing: 12,
                       crossAxisSpacing: 12,
-                      childAspectRatio: 0.92,
+                      // Aspect 1.15 (lebih lebar dari tinggi) — match pattern
+                      // _BrandGridCard di home_screen yang pakai 1.45. Bikin
+                      // logo area landscape supaya logo brand (umumnya
+                      // wordmark wide) tidak punya space kosong atas-bawah.
+                      childAspectRatio: 1.15,
                     ),
                     itemCount: _brands.length,
                     itemBuilder: (context, index) {
@@ -150,62 +154,69 @@ class _BrandCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: onTap,
-      child: Ink(
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: cs.outlineVariant),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(8),
+    // Layout mirror _BrandGridCard di home_screen — proporsional logo area
+    // (flex 5) + label nama + sub-label productCount. Tidak ada square 56x56
+    // cage — logo isi seluruh area atas yang landscape, tidak ada space
+    // kosong atas-bawah untuk wordmark wide.
+    return Material(
+      color: cs.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: cs.outlineVariant),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.025),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: brand.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
+              Expanded(
+                flex: 5,
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: brand.logoUrl != null
+                      ? CachedNetworkImage(
+                          imageUrl: brand.logoUrl!,
+                          fit: BoxFit.contain,
+                          fadeInDuration: const Duration(milliseconds: 180),
+                          placeholder: (_, __) => _BrandInitial(brand: brand),
+                          errorWidget: (_, __, ___) =>
+                              _BrandInitial(brand: brand),
+                        )
+                      : _BrandInitial(brand: brand),
                 ),
-                clipBehavior: Clip.antiAlias,
-                // Logo dari API kalau ada, fallback inisial nama brand.
-                child: brand.logoUrl != null
-                    ? CachedNetworkImage(
-                        imageUrl: brand.logoUrl!,
-                        fit: BoxFit.contain,
-                        errorWidget: (_, __, ___) => _BrandInitial(brand: brand),
-                        placeholder: (_, __) => _BrandInitial(brand: brand),
-                      )
-                    : _BrandInitial(brand: brand),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 2),
               Text(
                 brand.name,
-                textAlign: TextAlign.center,
-                maxLines: 2,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   color: cs.onSurface,
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
-                  height: 1.2,
                 ),
               ),
-              if (brand.productCount > 0) ...[
-                const SizedBox(height: 2),
+              if (brand.productCount > 0)
                 Text(
                   '${brand.productCount} produk',
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
-                    fontSize: 10,
+                    fontSize: 9,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-              ],
             ],
           ),
         ),

@@ -19,8 +19,15 @@ export async function GET() {
         name: true,
         slug: true,
         logoUrl: true,
+        // productCount HARUS cocok dengan apa yang user lihat ketika tap
+        // brand → /products. Default filter customer app: isActive=true
+        // AND stock>0 (lihat ProductCatalogFilter.inStockOnly default).
+        // Tanpa stock filter: brand bisa tampilkan "82 produk" tapi user
+        // tap → 0 produk (semuanya stok habis) → confusing UX.
         _count: {
-          select: { products: { where: { isActive: true } } },
+          select: {
+            products: { where: { isActive: true, stock: { gt: 0 } } },
+          },
         },
       },
     })
