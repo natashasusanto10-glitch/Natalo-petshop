@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_client.dart';
+import '../services/export_service.dart';
 import '../services/notification_counts.dart';
 import '../theme/admin_theme.dart';
 
@@ -32,6 +33,46 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  /// Resi cuma relevan untuk order yang sudah dibayar dan butuh kirim
+  /// (PAID/PROCESSING/READY_FOR_PICKUP/SHIPPED). Untuk PENDING admin
+  /// belum tahu pasti pesanan jadi atau tidak — print resi pemborosan.
+  /// Untuk DELIVERED/CANCELLED/REFUNDED sudah lewat — historical only.
+  bool _canPrintResi(Map<String, dynamic> order) {
+    final s = (order['status'] ?? '').toString().toUpperCase();
+    return s == 'PAID' ||
+        s == 'PROCESSING' ||
+        s == 'READY_FOR_PICKUP' ||
+        s == 'SHIPPED';
+  }
+
+  Future<void> _printResi() async {
+    if (_order == null) return;
+    HapticFeedback.lightImpact();
+    try {
+      await AdminExportService.instance.printResi(_order!);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal cetak: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _shareResi() async {
+    if (_order == null) return;
+    HapticFeedback.lightImpact();
+    try {
+      await AdminExportService.instance.shareResi(_order!);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal share: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _load() async {
@@ -286,6 +327,38 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       appBar: AppBar(
         title: Text('#${widget.orderNumber}'),
         actions: [
+          // Menu cetak / share resi — disabled kalau order belum loaded
+          // atau status belum siap kirim (PENDING/CANCELLED tidak butuh
+          // label resi).
+          if (_order != null && _canPrintResi(_order!))
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.print_rounded),
+              tooltip: 'Cetak / Share Resi',
+              onSelected: (v) async {
+                if (v == 'print') await _printResi();
+                if (v == 'share') await _shareResi();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'print',
+                  child: ListTile(
+                    leading: Icon(Icons.print_outlined),
+                    title: Text('Cetak Resi'),
+                    subtitle: Text('Via printer Bluetooth/WiFi'),
+                    dense: true,
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'share',
+                  child: ListTile(
+                    leading: Icon(Icons.share_outlined),
+                    title: Text('Share PDF Resi'),
+                    subtitle: Text('Kirim ke WA/Drive/Email'),
+                    dense: true,
+                  ),
+                ),
+              ],
+            ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             onPressed: _loading ? null : _load,

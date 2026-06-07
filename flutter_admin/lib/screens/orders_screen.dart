@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../services/export_service.dart';
 import '../services/notification_counts.dart';
 import '../theme/admin_theme.dart';
 import '../widgets/skeletons.dart';
@@ -65,11 +66,147 @@ class _OrdersScreenState extends State<OrdersScreen>
     setState(() => _searchQuery = '');
   }
 
+  /// Dialog pilih range tanggal untuk export CSV. Default: bulan ini.
+  /// Lalu fetch + generate + share via system dialog (WA/Drive/Email).
+  Future<void> _showExportDialog(BuildContext context) async {
+    final now = DateTime.now();
+    DateTime start = DateTime(now.year, now.month, 1);
+    DateTime end = now;
+    final result = await showModalBottomSheet<({DateTime s, DateTime e})>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSt) => Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 16,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Export Order ke CSV',
+                  style:
+                      TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Pilih rentang tanggal. File akan di-share via WhatsApp/Email/Drive.',
+                  style: TextStyle(
+                      fontSize: 12, color: AdminColors.textSecondary),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.calendar_today_outlined),
+                  title: const Text('Dari Tanggal'),
+                  subtitle: Text(
+                    '${start.day} ${_monthName(start.month)} ${start.year}',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: start,
+                      firstDate: DateTime(2020),
+                      lastDate: now,
+                    );
+                    if (picked != null) setSt(() => start = picked);
+                  },
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.event_outlined),
+                  title: const Text('Sampai Tanggal'),
+                  subtitle: Text(
+                    '${end.day} ${_monthName(end.month)} ${end.year}',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: end,
+                      firstDate: start,
+                      lastDate: now,
+                    );
+                    if (picked != null) setSt(() => end = picked);
+                  },
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.file_download_outlined),
+                    label: const Text('Export & Share'),
+                    onPressed: () => Navigator.pop(ctx, (s: start, e: end)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (result == null) return;
+    if (!context.mounted) return;
+
+    // Show loading snackbar — CSV bisa lambat kalau banyak order.
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(children: [
+          SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: Colors.white)),
+          SizedBox(width: 12),
+          Text('Mengumpulkan data order...'),
+        ]),
+        duration: Duration(seconds: 30),
+      ),
+    );
+    try {
+      await AdminExportService.instance.shareOrdersCsv(
+        startDate: result.s,
+        endDate: result.e,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal export: $e')),
+        );
+      }
+    }
+  }
+
+  String _monthName(int m) {
+    const names = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+      'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
+    ];
+    return names[(m - 1).clamp(0, 11)];
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pesanan'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.file_download_outlined),
+            tooltip: 'Export Order CSV',
+            onPressed: () => _showExportDialog(context),
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(108),
           child: Column(
