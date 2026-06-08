@@ -13,6 +13,7 @@ import '../models/feed_comment.dart';
 import '../models/feed_post.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
+import '../services/report_service.dart';
 import '../state/feed_local_store.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
@@ -23,6 +24,7 @@ import '../utils/mention_text.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/emoji_picker_panel.dart';
 import '../widgets/mention_picker.dart';
+import '../widgets/moderation_action_sheet.dart';
 import '../widgets/post_likers_sheet.dart';
 import '../widgets/profile_avatar.dart';
 import '../shared/widgets/natalo_post_action_icon.dart';
@@ -3054,7 +3056,15 @@ class _CommentTile extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final liked = comment.viewerLiked;
     final author = comment.author;
-    return Padding(
+    final canDelete = onDelete != null;
+    // Long-press → action sheet (Salin/Balas/Hapus untuk komentar sendiri,
+    // Salin/Balas/Lapor/Blokir untuk komentar orang lain). Sebelumnya
+    // "Hapus" tampil INLINE merah di samping "Balas" → cluttered + risiko
+    // mis-tap (label kecil 11px berdempetan). Match pola feed_comment_sheet
+    // (Reels) + standar industri IG/TikTok/Shopee. Caption tile (isCaption
+    // == true) tidak dapat long-press karena itu post sendiri (sudah ada
+    // menu titik-tiga di header post).
+    final body = Padding(
       // Reply indented ~40px supaya jelas hierarchy parent → reply.
       padding: EdgeInsets.only(left: isReply ? 40 : 0),
       child: Row(
@@ -3142,23 +3152,9 @@ class _CommentTile extends StatelessWidget {
                         ),
                       ),
                     ],
-                    // Hapus — hanya untuk komentar milik viewer sendiri
-                    // (onDelete non-null). Backend authorize author + admin.
-                    if (!isCaption && onDelete != null) ...[
-                      const SizedBox(width: 12),
-                      GestureDetector(
-                        onTap: onDelete,
-                        behavior: HitTestBehavior.opaque,
-                        child: const Text(
-                          'Hapus',
-                          style: TextStyle(
-                            color: Color(0xFFDC2626),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
+                    // Hapus dipindah ke long-press action sheet (lihat
+                    // _ModerationSheet wrapper di luar). Sebelumnya inline
+                    // di samping "Balas" → mis-tap risk + visual noise.
                   ],
                 ),
               ],
@@ -3190,6 +3186,41 @@ class _CommentTile extends StatelessWidget {
           ],
         ],
       ),
+    );
+
+    // Caption = post itu sendiri (sudah punya menu titik-tiga di header
+    // post). Tidak perlu long-press. Komentar/reply: long-press buka
+    // action sheet — own → Hapus, others → Lapor + Blokir.
+    if (isCaption) return body;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: () {
+        AppHaptics.tap();
+        showModerationActions(
+          context,
+          targetKind: ReportTargetKind.feedComment,
+          targetId: comment.id,
+          authorId: author.id,
+          // Sembunyikan nama author di header sheet untuk komentar sendiri
+          // ("Lapor @nama"-style header tidak relevan). Untuk komentar
+          // orang lain, tampilkan supaya user yakin lapor/blokir target
+          // yang benar.
+          authorName: canDelete ? null : author.name,
+          allowBlock: !canDelete,
+          allowSelfDelete: canDelete,
+          onSelfDelete: canDelete && onDelete != null
+              // _deleteComment di parent return Future<void>; bungkus jadi
+              // Future<bool> yang sheet expect. Anggap true (UI optimistic
+              // remove + toast error sudah handle di parent).
+              ? () async {
+                  onDelete!.call();
+                  return true;
+                }
+              : null,
+        );
+      },
+      child: body,
     );
   }
 }
