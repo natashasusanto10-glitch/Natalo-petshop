@@ -66,6 +66,7 @@ class ProductsScreen extends StatefulWidget {
   final String? initialCategory;
   final bool discountOnly;
   final bool flashSaleOnly;
+  final bool newestOnly;
 
   const ProductsScreen({
     super.key,
@@ -74,6 +75,7 @@ class ProductsScreen extends StatefulWidget {
     this.initialCategory,
     this.discountOnly = false,
     this.flashSaleOnly = false,
+    this.newestOnly = false,
   });
 
   @override
@@ -253,6 +255,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
     if (widget.discountOnly) {
       _filter = _filter.copyWith(discountOnly: true);
+      _activeMode = _ProductFilterMode.semua;
+    }
+    // Shortcut "Produk Baru" → buka langsung mode terbaru (sort newest +
+    // pill "Produk Baru" aktif). apiNewFilter derive dari sort==newest.
+    if (widget.newestOnly) {
+      _filter = _filter.copyWith(sort: ProductSort.newest, clearCategory: true);
+      _activeMode = _ProductFilterMode.baru;
     }
     _scrollController.addListener(_onScroll);
     _loadSearchHistory();

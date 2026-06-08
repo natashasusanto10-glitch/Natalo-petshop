@@ -2140,7 +2140,9 @@ class _ShortcutGrid extends StatelessWidget {
     // Grooming/Blog). Search intent + reward CTA dalam satu grid.
     // Pet category tap → ProductsScreen filtered by category name.
     final items = <_ShortcutItem>[
-      // ── Row 1: Pet category (drive product discovery) ──
+      // ── Row 1: Kategori utama (selaras katalog live — semua ada isi) ──
+      // Slug dipakai (bukan nama) supaya match backend + highlight sheet
+      // kategori akurat. Lihat /api/categories untuk jumlah produk.
       _ShortcutItem(
         Icons.pets_rounded,
         'Makanan Kucing',
@@ -2150,7 +2152,7 @@ class _ShortcutGrid extends StatelessWidget {
           ctx,
           '/products',
           arguments:
-              const ProductCatalogArgs(initialCategory: 'Makanan Kucing'),
+              const ProductCatalogArgs(initialCategory: 'makanan-kucing'),
         ),
       ),
       _ShortcutItem(
@@ -2162,32 +2164,54 @@ class _ShortcutGrid extends StatelessWidget {
           ctx,
           '/products',
           arguments:
-              const ProductCatalogArgs(initialCategory: 'Makanan Anjing'),
+              const ProductCatalogArgs(initialCategory: 'makanan-anjing'),
         ),
       ),
       _ShortcutItem(
-        Icons.inventory_2_rounded,
-        'Pasir',
-        const Color(0xFFF1F5F9),
-        const Color(0xFF475569),
+        Icons.set_meal_rounded,
+        'Makanan Ikan',
+        const Color(0xFFECFEFF),
+        const Color(0xFF0891B2),
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
           '/products',
-          arguments: const ProductCatalogArgs(initialCategory: 'Pasir Kucing'),
+          arguments: const ProductCatalogArgs(initialCategory: 'makanan-ikan'),
         ),
       ),
       _ShortcutItem(
-        Icons.medication_liquid_rounded,
-        'Vitamin',
+        Icons.medication_rounded,
+        'Obat & Suplemen',
         const Color(0xFFFEF2F2),
         const Color(0xFFEF4444),
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
           '/products',
-          arguments: const ProductCatalogArgs(initialCategory: 'Vitamin'),
+          arguments: const ProductCatalogArgs(initialCategory: 'obat-suplemen'),
         ),
       ),
-      // ── Row 2: Commerce shortcuts (drive engagement + reward) ──
+      // ── Row 2: Promo + Produk Baru + reward ──
+      _ShortcutItem(
+        Icons.local_fire_department_rounded,
+        'Promo',
+        const Color(0xFFFFF1F2),
+        const Color(0xFFE11D48),
+        onTap: (ctx) => Navigator.pushNamed(
+          ctx,
+          '/products',
+          arguments: const ProductCatalogArgs(discountOnly: true),
+        ),
+      ),
+      _ShortcutItem(
+        Icons.new_releases_rounded,
+        'Produk Baru',
+        const Color(0xFFECFDF5),
+        const Color(0xFF16A34A),
+        onTap: (ctx) => Navigator.pushNamed(
+          ctx,
+          '/products',
+          arguments: const ProductCatalogArgs(newestOnly: true),
+        ),
+      ),
       _ShortcutItem(
         Icons.local_offer_rounded,
         'Voucher',
@@ -2201,15 +2225,6 @@ class _ShortcutGrid extends StatelessWidget {
         const Color(0xFFFFF7ED),
         const Color(0xFFEA580C),
         onTap: (ctx) => Navigator.pushNamed(ctx, '/member/loyalty'),
-      ),
-      const _ShortcutItem(
-          Icons.spa_rounded, 'Grooming', Color(0xFFECFDF5), Color(0xFF16A34A)),
-      const _ShortcutItem(
-        Icons.menu_book_rounded,
-        'Blog & Tips',
-        Color(0xFFFEFCE8),
-        Color(0xFFCA8A04),
-        onTap: AppInAppBrowser.openBlog,
       ),
     ];
 

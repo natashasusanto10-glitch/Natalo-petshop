@@ -278,6 +278,8 @@ class NataloPetshopApp extends StatelessWidget {
                       (settings.arguments as ProductCatalogArgs).discountOnly,
                   flashSaleOnly:
                       (settings.arguments as ProductCatalogArgs).flashSaleOnly,
+                  newestOnly:
+                      (settings.arguments as ProductCatalogArgs).newestOnly,
                 ),
               '/products' => ProductsScreen(
                   selectedBrand: settings.arguments is String

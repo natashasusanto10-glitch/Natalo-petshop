@@ -13,12 +13,17 @@ class ProductCatalogArgs {
   final bool discountOnly;
   final bool flashSaleOnly;
 
+  /// Buka layar Produk langsung di mode "Produk Baru" (sort terbaru).
+  /// Dipakai shortcut Beranda "Produk Baru".
+  final bool newestOnly;
+
   const ProductCatalogArgs({
     this.selectedBrand,
     this.initialQuery,
     this.initialCategory,
     this.discountOnly = false,
     this.flashSaleOnly = false,
+    this.newestOnly = false,
   });
 }
 
