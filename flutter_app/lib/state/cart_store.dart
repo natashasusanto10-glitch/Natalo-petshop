@@ -167,28 +167,51 @@ class CartStore extends ChangeNotifier {
     return true;
   }
 
+  /// Qty item tertentu di cart sekarang (0 kalau tidak ada). Dipakai
+  /// product detail untuk pre-check stok sebelum add (toast "Stok cuma N").
+  int quantityFor(String key) => _items[key]?.quantity ?? 0;
+
   /// Add cart line (atau increment qty kalau sudah ada).
-  Future<void> addItem(CartItem item) async {
+  ///
+  /// Return `true` kalau qty ke-CLAMP ke stok (user minta lebih dari stok).
+  /// Caller bisa pakai ini untuk toast "Stok tinggal N". Clamp di sini =
+  /// single source of truth: semua entry point (+Keranjang, Beli Sekarang,
+  /// reorder, feed quick-add) otomatis ter-batasi tanpa ubah signature.
+  /// Stok <= 0 dianggap TIDAK diketahui (data belum fresh) → tidak di-clamp;
+  /// server /api/cart/validate tetap backstop otoritatif.
+  Future<bool> addItem(CartItem item) async {
     final existing = _items[item.key];
-    _items[item.key] = existing == null
-        ? item
-        : existing.copyWith(quantity: existing.quantity + item.quantity);
+    final desired = (existing?.quantity ?? 0) + item.quantity;
+    final stock = item.effectiveStock;
+    final capped = stock > 0 ? desired.clamp(1, stock) : desired;
+    final clamped = capped < desired;
+    final base = existing ?? item;
+    _items[item.key] = base.copyWith(quantity: capped);
     notifyListeners();
     await _persist();
     _scheduleRemoteSync();
+    return clamped;
   }
 
-  Future<void> updateQuantity(String key, int quantity) async {
+  /// Return `true` kalau qty diminta di-CLAMP ke stok.
+  Future<bool> updateQuantity(String key, int quantity) async {
     final item = _items[key];
-    if (item == null) return;
+    if (item == null) return false;
     if (quantity <= 0) {
       _items.remove(key);
-    } else {
-      _items[key] = item.copyWith(quantity: quantity);
+      notifyListeners();
+      await _persist();
+      _scheduleRemoteSync();
+      return false;
     }
+    final stock = item.effectiveStock;
+    final capped = stock > 0 ? quantity.clamp(1, stock) : quantity;
+    final clamped = capped < quantity;
+    _items[key] = item.copyWith(quantity: capped);
     notifyListeners();
     await _persist();
     _scheduleRemoteSync();
+    return clamped;
   }
 
   Future<void> remove(String key) async {

@@ -259,6 +259,23 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       _openVariantSheet();
       return;
     }
+    // Pre-check stok vs qty yang SUDAH di keranjang. cartStore.addItem
+    // meng-clamp ke stok (single source of truth), tapi di sini kita kasih
+    // feedback eksplisit supaya user paham kenapa qty tidak nambah.
+    final variantId = variant?.id;
+    final key =
+        variantId == null ? product.id : '${product.id}:$variantId';
+    final stock = variant?.stock ?? product.stock;
+    final currentQty = cartStore.quantityFor(key);
+    if (stock > 0 && currentQty >= stock) {
+      AppHaptics.tap();
+      AppToast.show(
+        context,
+        'Stok cuma $stock — semua sudah ada di keranjang.',
+        kind: ToastKind.info,
+      );
+      return;
+    }
     AppHaptics.success();
     // Fire fly-to-cart animation dulu (Overlay-based, tidak block UI).
     // Mini product image fly dari posisi hero image → cart icon di AppBar
@@ -274,11 +291,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       variantLabel: _variantLabelFor(variant),
       quantity: quantity,
     );
-    AppToast.showCartAdded(
-      context,
-      '${product.title} masuk keranjang',
-      onTap: () => Navigator.pushNamed(context, '/cart'),
-    );
+    // Kalau jumlah yang diminta melebihi stok → ke-clamp di store, beri tahu.
+    if (stock > 0 && currentQty + quantity > stock) {
+      AppToast.show(
+        context,
+        'Stok tinggal $stock, jumlah disesuaikan.',
+        kind: ToastKind.info,
+      );
+    } else {
+      AppToast.showCartAdded(
+        context,
+        '${product.title} masuk keranjang',
+        onTap: () => Navigator.pushNamed(context, '/cart'),
+      );
+    }
   }
 
   void _buyNow({
