@@ -11,6 +11,7 @@ import {
 import { InvalidCustomerSessionError, resolveOrderIdentity } from "@/lib/order-identity";
 import { buildOrderDetailPath, buildOrderSuccessUrl, createTrackingToken } from "@/lib/order-detail";
 import { debitWallet, getOrCreateWallet } from "@/lib/refund-wallet";
+import { withSerializationRetry, isSerializationFailure } from "@/lib/db-retry";
 import { SELF_PICKUP_METHOD, SELF_PICKUP_STORE } from "@/lib/self-pickup";
 // Catatan: notifikasi order via WhatsApp sudah dihapus (per keputusan
 // product owner). Customer dapat info order via email + push notification.
@@ -538,7 +539,13 @@ export async function POST(request: Request) {
         : null;
     const earnedPoints = Math.floor(total / 20000);
 
-    const order = await prisma.$transaction(async (tx) => {
+    // withSerializationRetry: Serializable isolation di bawah bisa abort
+    // dengan P2034 (40001) saat 2+ checkout konkuren menyentuh produk yang
+    // sama (flash sale). Retry sampai 3x supaya user tidak dapat error 500
+    // untuk konflik yang sebenarnya transient. StockConflictError (stok
+    // benar-benar habis) BUKAN P2034 → propagate tanpa retry.
+    const order = await withSerializationRetry(() =>
+      prisma.$transaction(async (tx) => {
       // Track produk varian yang stoknya berubah → perlu re-sync Product.stock
       const variantProductIdsToSync = new Set<string>();
 
@@ -765,7 +772,8 @@ export async function POST(request: Request) {
       }
 
       return createdOrder;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+    );
 
     let paymentUrl: string | undefined;
     let paymentReference: string | undefined;
@@ -889,6 +897,16 @@ export async function POST(request: Request) {
     }
     if (error instanceof InvalidCustomerSessionError) {
       return NextResponse.json({ message: error.message }, { status: 401 });
+    }
+    // Serialization failure (P2034) yang sudah exhaust retry di
+    // withSerializationRetry — kontensi tinggi tak teratasi. Return 409
+    // (bukan 500) dengan pesan retry-able supaya client bisa prompt user
+    // coba lagi, bukan treat sebagai error fatal.
+    if (isSerializationFailure(error)) {
+      return NextResponse.json(
+        { message: "Sistem sedang sibuk memproses banyak pesanan. Coba lagi sebentar." },
+        { status: 409 },
+      );
     }
     return NextResponse.json({ message: error instanceof Error ? error.message : "Gagal membuat order." }, { status: 500 });
   }
