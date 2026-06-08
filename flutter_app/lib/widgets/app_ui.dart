@@ -299,6 +299,40 @@ class AppStatusPill extends StatelessWidget {
 
 /// Soft-style ListTile dengan icon kotak + chevron. Dipakai di setting /
 /// detail screens untuk grouped nav rows.
+/// Kotak ikon ber-tint (rounded, background soft) — TANPA ListTile.
+///
+/// Dipakai sebagai `leading:` di ListTile lain, atau standalone icon badge.
+/// JANGAN pakai [SoftIconTile] untuk ini — SoftIconTile adalah full ListTile
+/// (punya title/subtitle/trailing sendiri); kalau ditaruh di slot leading
+/// ListTile lain, layout-nya pecah jadi kotak besar kosong (bug search
+/// suggestion + home search row). SoftIconBox hanya kotak ikon, aman.
+class SoftIconBox extends StatelessWidget {
+  final IconData icon;
+  final double size;
+  final Color? color;
+
+  const SoftIconBox({
+    super.key,
+    required this.icon,
+    this.size = 40,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tint = color ?? NataloColors.primary;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: tint.withValues(alpha: 0.12),
+        borderRadius: AppRadius.medium,
+      ),
+      child: Icon(icon, color: tint, size: size * 0.5),
+    );
+  }
+}
+
 class SoftIconTile extends StatelessWidget {
   final IconData icon;
 
@@ -335,15 +369,7 @@ class SoftIconTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final tint = color ?? iconColor ?? NataloColors.primary;
     return ListTile(
-      leading: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: tint.withValues(alpha: 0.12),
-          borderRadius: AppRadius.medium,
-        ),
-        child: Icon(icon, color: tint, size: size * 0.5),
-      ),
+      leading: SoftIconBox(icon: icon, size: size, color: tint),
       title: Text(
         _title,
         style: const TextStyle(fontWeight: FontWeight.w700),

@@ -2480,7 +2480,7 @@ class _SuggestionTile extends StatelessWidget {
     return ListTile(
       dense: true,
       contentPadding: EdgeInsets.zero,
-      leading: SoftIconTile(icon: icon, size: 38),
+      leading: SoftIconBox(icon: icon, size: 38),
       title: Text(
         title,
         maxLines: 1,

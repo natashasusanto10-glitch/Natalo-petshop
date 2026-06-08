@@ -1586,7 +1586,7 @@ class _HomeSearchRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: SoftIconTile(icon: icon, size: 40),
+      leading: SoftIconBox(icon: icon, size: 40),
       title: Text(
         title,
         maxLines: 1,
