@@ -141,6 +141,23 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return;
     }
 
+    // User follow event → buka profile publik follower. URL pattern
+    // `/u/{username}` (lihat lib/social/notifications.ts:40-42). Sebelumnya
+    // fallback ke AnnouncementDetailScreen karena tidak ada handler `/u/`
+    // di chain — sekarang explicit route ke PublicProfileScreen.
+    if (eventType == 'user_followed') {
+      final username = _extractProfileUsername(item.url);
+      if (username != null) {
+        await Navigator.pushNamed(context, '/u', arguments: username);
+        return;
+      }
+      // Fallback: kalau username tidak bisa ke-extract, buka feed (sebagai
+      // entry point yang reasonable — daripada catch-all AnnouncementDetailScreen
+      // yang tidak relevan untuk notif follow).
+      await Navigator.pushNamed(context, '/feed');
+      return;
+    }
+
     if (_isShopPromoNotification(item)) {
       await Navigator.pushNamed(
         context,
@@ -385,6 +402,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final slug = match.group(1)?.trim() ?? '';
     if (slug.isEmpty) return null;
     return Uri.decodeComponent(slug);
+  }
+
+  /// Extract username dari URL pattern `/u/{username}` (deep link
+  /// public profile). Lowercase karena DB username always lowercase.
+  String? _extractProfileUsername(String? url) {
+    if (url == null || url.isEmpty) return null;
+    final match = RegExp(r'/u/([^/?#]+)').firstMatch(url);
+    if (match == null) return null;
+    final username = match.group(1)?.trim().toLowerCase() ?? '';
+    if (username.isEmpty) return null;
+    return Uri.decodeComponent(username);
   }
 
   @override

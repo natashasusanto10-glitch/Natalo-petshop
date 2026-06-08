@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../screens/member_post_detail_screen.dart';
 import 'feed_service.dart';
+import 'order_service.dart';
 import 'product_service.dart';
 
 /// Deep link handler — terima link share (mis. wa.me share product) dari
@@ -71,20 +72,45 @@ class DeepLinkService {
         break;
       case 'akun':
         if (segments.length > 1 && segments[1] == 'pesanan') {
-          // /akun/pesanan or /akun/pesanan/<orderNumber>
-          // Future: pass order number as arg untuk auto-open detail.
-          nav.pushNamed('/member/orders');
+          // /akun/pesanan/<orderNumber> → open order detail
+          // /akun/pesanan → orders list
+          if (segments.length > 2 && segments[2].isNotEmpty) {
+            await _openOrderByNumber(nav, segments[2], uri.queryParameters['token']);
+          } else {
+            nav.pushNamed('/member/orders');
+          }
         } else {
           nav.pushNamed('/member');
         }
         break;
+      case 'pesanan':
+        // /pesanan/<orderNumber>?token=X — URL pattern dari push notif
+        // order status update (lib/push.ts:115 buildOrderDetailPath).
+        // Sebelumnya jatuh ke default case (push '/') → user dump ke home,
+        // tidak tahu pesanan mana yang ada update.
+        if (segments.length > 1 && segments[1].isNotEmpty) {
+          await _openOrderByNumber(nav, segments[1], uri.queryParameters['token']);
+        } else {
+          nav.pushNamed('/member/orders');
+        }
+        break;
       case 'member':
         // /member/loyalty → halaman tukar poin (deep-link notif reminder
-        // poin). /member/orders → daftar pesanan. /member → halaman akun.
+        // poin). /member/orders → daftar pesanan. /member/order-detail
+        // ?orderNumber=X → detail order (push notif confirm_reminder dan
+        // cancellation_rejected, lihat lib/push.ts:353 + lib/push-refund.ts:175).
+        // /member → halaman akun.
         if (segments.length > 1 && segments[1] == 'loyalty') {
           nav.pushNamed('/member/loyalty');
         } else if (segments.length > 1 && segments[1] == 'orders') {
           nav.pushNamed('/member/orders');
+        } else if (segments.length > 1 && segments[1] == 'order-detail') {
+          final orderNumber = uri.queryParameters['orderNumber']?.trim() ?? '';
+          if (orderNumber.isNotEmpty) {
+            await _openOrderByNumber(nav, orderNumber, uri.queryParameters['token']);
+          } else {
+            nav.pushNamed('/member/orders');
+          }
         } else {
           nav.pushNamed('/member');
         }
@@ -161,6 +187,27 @@ class DeepLinkService {
     // search query hint (mis. `royal-canin-kitten` → `royal canin kitten`).
     final keyword = slug.replaceAll('-', ' ').trim();
     nav.pushNamed('/products', arguments: {'initialQuery': keyword});
+  }
+
+  /// Fetch order by orderNumber (+ optional trackingToken untuk akses
+  /// guest/non-login) lalu push /member/order-detail dengan OrderSummary
+  /// arg. Fallback ke /member/orders list kalau fetch gagal (order
+  /// dihapus / token invalid / user belum login).
+  Future<void> _openOrderByNumber(
+    NavigatorState nav,
+    String orderNumber,
+    String? trackingToken,
+  ) async {
+    try {
+      final order = await orderService.fetchOrderDetail(
+        orderNumber,
+        trackingToken: trackingToken,
+      );
+      nav.pushNamed('/member/order-detail', arguments: order);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[DeepLink] fetchOrderDetail failed: $e');
+      nav.pushNamed('/member/orders');
+    }
   }
 
   /// Handle URI dari source eksternal (push notification deep link, dll).
