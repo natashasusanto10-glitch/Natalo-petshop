@@ -360,6 +360,10 @@ class OrderSummary {
   final DateTime? completedAt;
   final DateTime? statusUpdatedAt;
 
+  /// Batas waktu bayar transfer manual (countdown). Null untuk non-manual,
+  /// sudah bayar, atau sudah upload bukti (auto-cancel berhenti).
+  final DateTime? paymentDeadline;
+
   /// Detail URL — direct link ke /pesanan/[orderNumber] di web.
   final String? detailUrl;
 
@@ -432,6 +436,7 @@ class OrderSummary {
     this.deliveredAt,
     this.completedAt,
     this.statusUpdatedAt,
+    this.paymentDeadline,
     this.detailUrl,
     this.cancellationRequestStatus,
     this.cancellationReason,
@@ -565,6 +570,9 @@ class OrderSummary {
         json['statusUpdatedAt'] ?? json['status_updated_at'],
       ),
       updatedAt: _asDateTimeOrNull(json['updatedAt'] ?? json['updated_at']),
+      paymentDeadline: _asDateTimeOrNull(
+        json['paymentDeadline'] ?? json['payment_deadline'],
+      ),
       itemCountFromApi: _asInt(json['itemCount']),
       subtotal: _asDouble(json['subtotal']),
       shippingCost: _asDouble(json['shippingCost']),

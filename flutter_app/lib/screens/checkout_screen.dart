@@ -3584,6 +3584,49 @@ class _PaymentSummaryCard extends StatelessWidget {
             value: formatRupiah(grandTotal),
             strong: true,
           ),
+          // Poin yang akan didapat — earn formula mirror backend
+          // (/api/orders/route.ts): floor(total / 20000). Sebelumnya cuma
+          // muncul di dialog back-to-cart; di ringkasan utama bikin user
+          // sadar benefit loyalty sebelum bayar (perceived value).
+          if ((grandTotal / 20000).floor() > 0) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Icon(Icons.monetization_on_rounded,
+                    size: 16, color: Color(0xFFE0A52E)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Kamu akan dapat ${(grandTotal / 20000).floor()} poin',
+                    style: const TextStyle(
+                      color: Color(0xFFB45309),
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 12),
+          // Trust badge — sinyal keamanan pembayaran (standar e-commerce).
+          Row(
+            children: [
+              Icon(Icons.lock_outline_rounded,
+                  size: 14, color: cs.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Pembayaran aman & terenkripsi.',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );

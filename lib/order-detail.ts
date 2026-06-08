@@ -111,6 +111,25 @@ export function isOrderContactMatch(
   );
 }
 
+// Window pembayaran manual = createdAt + AUTO_CANCEL_MANUAL_HOURS (default
+// 24 jam). HARUS mirror logika cron auto-cancel-unpaid-manual supaya
+// countdown di app akurat (kalau cron pakai 24 jam, app tidak boleh
+// tampil window beda). Deadline cuma relevan saat order MANUAL masih
+// nunggu bayar & belum upload bukti — setelah bukti masuk, auto-cancel
+// berhenti (lihat guard paymentProofUrl di cron) jadi tidak ada deadline.
+function manualPaymentDeadlineIso(order: OrderDetailRecord): string | null {
+  if (order.paymentProvider !== "MANUAL") return null;
+  if (order.paymentStatus !== "PENDING") return null;
+  if (order.status !== "PENDING") return null;
+  if (order.paymentProofUrl) return null;
+  const hoursEnv = process.env.AUTO_CANCEL_MANUAL_HOURS;
+  const parsed = hoursEnv ? parseInt(hoursEnv, 10) : 24;
+  const hours = Number.isFinite(parsed) && parsed > 0 ? parsed : 24;
+  return new Date(
+    order.createdAt.getTime() + hours * 60 * 60 * 1000
+  ).toISOString();
+}
+
 export function serializeOrderDetail(order: OrderDetailRecord) {
   const isSelfPickup = order.orderType === SELF_PICKUP_METHOD;
 
@@ -218,6 +237,9 @@ export function serializeOrderDetail(order: OrderDetailRecord) {
     cancellationRejectReason: order.cancellationRejectReason,
     createdAt: order.createdAt.toISOString(),
     updatedAt: order.updatedAt.toISOString(),
+    // Batas waktu bayar transfer manual (countdown di app). Null untuk
+    // non-manual / sudah bayar / sudah upload bukti.
+    paymentDeadline: manualPaymentDeadlineIso(order),
     items: order.items.map((item) => ({
       id: item.id,
       name: item.name,

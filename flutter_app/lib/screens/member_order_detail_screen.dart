@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -638,6 +640,17 @@ class _PaymentActionCard extends StatelessWidget {
     final bank = _bankAccounts[order.manualBank ?? 'BCA_NATASHA'] ??
         _bankAccounts['BCA_NATASHA']!;
     final totalTransfer = order.total + (order.uniqueCode ?? 0);
+    final hasProof = order.paymentProofUrl != null &&
+        order.paymentProofUrl!.trim().isNotEmpty;
+    final deadline = order.paymentDeadline;
+    final expired =
+        !hasProof && deadline != null && DateTime.now().isAfter(deadline);
+    // Instruksi transfer hanya relevan saat order masih aktif menunggu
+    // bayar (belum upload bukti & belum lewat deadline). Setelah bukti
+    // masuk → tampil "menunggu verifikasi"; setelah expired → tampil
+    // "batas waktu habis". Menyembunyikan instruksi mencegah user transfer
+    // ulang (double bayar) atau transfer ke order yang sudah hangus.
+    final showInstructions = !hasProof && !expired;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -663,47 +676,428 @@ class _PaymentActionCard extends StatelessWidget {
             subtitle: 'Transfer sesuai nominal agar verifikasi lebih cepat.',
           ),
           const SizedBox(height: 14),
-          _CopyRow(
-            label: 'Bank tujuan',
-            value: bank.bankName,
-            helper: 'a/n ${bank.accountName}',
-            onCopy: () => _copy(
-              context,
-              bank.accountNumber,
-              'Nomor rekening tersalin.',
+          // Status: countdown bayar / menunggu verifikasi / kadaluarsa.
+          _ManualPaymentBanner(deadline: deadline, hasProof: hasProof),
+          if (showInstructions) ...[
+            const SizedBox(height: 14),
+            // Badge bank — chip teks berwarna (tanpa aset logo).
+            _BankBadge(name: bank.bankName),
+            const SizedBox(height: 12),
+            _CopyRow(
+              label: 'Bank tujuan',
+              value: bank.bankName,
+              helper: 'a/n ${bank.accountName}',
+              onCopy: () => _copy(
+                context,
+                bank.accountNumber,
+                'Nomor rekening tersalin.',
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          _CopyRow(
-            label: 'Nomor rekening',
-            value: bank.accountNumber,
-            monospace: true,
-            onCopy: () => _copy(
-              context,
-              bank.accountNumber,
-              'Nomor rekening tersalin.',
+            const SizedBox(height: 10),
+            _CopyRow(
+              label: 'Nomor rekening',
+              value: bank.accountNumber,
+              monospace: true,
+              onCopy: () => _copy(
+                context,
+                bank.accountNumber,
+                'Nomor rekening tersalin.',
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          _CopyRow(
-            label: 'Total transfer',
-            value: formatRupiah(totalTransfer),
-            strong: true,
-            // Emphasize transfer PERSIS — kode unik (sudah termasuk di
-            // nominal) bikin tiap order beda supaya admin gampang cocokkan
-            // dengan bukti. User cukup transfer angka pas ini, JANGAN
-            // dibulatkan (kalau dibulatkan, kode unik hilang → admin susah
-            // verifikasi).
-            helper: order.uniqueCode == null
-                ? 'Transfer dengan nominal pas, jangan dibulatkan ya.'
-                : 'Transfer PAS sampai 3 digit terakhir (sudah termasuk kode unik ${order.uniqueCode}). Jangan dibulatkan.',
-            onCopy: () => _copy(
-              context,
-              totalTransfer.round().toString(),
-              'Nominal transfer tersalin.',
+            const SizedBox(height: 10),
+            _CopyRow(
+              label: 'Total transfer',
+              value: formatRupiah(totalTransfer),
+              strong: true,
+              // Emphasize transfer PERSIS — kode unik (sudah termasuk di
+              // nominal) bikin tiap order beda supaya admin gampang cocokkan
+              // dengan bukti. User cukup transfer angka pas ini, JANGAN
+              // dibulatkan (kalau dibulatkan, kode unik hilang → admin susah
+              // verifikasi).
+              helper: order.uniqueCode == null
+                  ? 'Transfer dengan nominal pas, jangan dibulatkan ya.'
+                  : 'Transfer PAS sampai 3 digit terakhir (sudah termasuk kode unik ${order.uniqueCode}). Jangan dibulatkan.',
+              onCopy: () => _copy(
+                context,
+                totalTransfer.round().toString(),
+                'Nominal transfer tersalin.',
+              ),
+            ),
+            const SizedBox(height: 16),
+            _BcaTransferSteps(
+              accountNumber: bank.accountNumber,
+              accountName: bank.accountName,
+              totalTransfer: totalTransfer,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Banner status pembayaran manual — 3 state:
+///  - belum bayar  → countdown "Bayar dalam HH:MM:SS" (amber, < 1 jam jadi
+///    merah urgensi)
+///  - sudah upload bukti → "Menunggu verifikasi" (biru, no timer)
+///  - lewat deadline → "Batas waktu habis" (abu)
+/// Ticker 1 detik hanya jalan saat countdown aktif. Warna pakai tint-alpha
+/// dari warna semantik supaya kebaca di light & dark theme (bukan bg terang
+/// hardcoded).
+class _ManualPaymentBanner extends StatefulWidget {
+  final DateTime? deadline;
+  final bool hasProof;
+
+  const _ManualPaymentBanner({required this.deadline, required this.hasProof});
+
+  @override
+  State<_ManualPaymentBanner> createState() => _ManualPaymentBannerState();
+}
+
+class _ManualPaymentBannerState extends State<_ManualPaymentBanner> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Ticker hanya perlu saat ada countdown aktif (belum bukti + ada
+    // deadline). Tidak boot timer kalau cuma tampil banner statis.
+    if (!widget.hasProof && widget.deadline != null) {
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String _fmt(Duration d) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    final h = d.inHours;
+    final m = d.inMinutes % 60;
+    final s = d.inSeconds % 60;
+    return h > 0 ? '${two(h)}:${two(m)}:${two(s)}' : '${two(m)}:${two(s)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.hasProof) {
+      return _banner(
+        accent: const Color(0xFF2563EB),
+        icon: Icons.hourglass_top_rounded,
+        title: 'Bukti terkirim — menunggu verifikasi',
+        subtitle: 'Admin akan cek pembayaranmu. Biasanya beberapa menit.',
+      );
+    }
+    final deadline = widget.deadline;
+    if (deadline == null) return const SizedBox.shrink();
+    final remaining = deadline.difference(DateTime.now());
+    if (remaining <= Duration.zero) {
+      return _banner(
+        accent: const Color(0xFF6B7280),
+        icon: Icons.timer_off_rounded,
+        title: 'Batas waktu bayar habis',
+        subtitle: 'Pesanan akan dibatalkan otomatis. Silakan pesan lagi.',
+      );
+    }
+    final urgent = remaining.inMinutes < 60;
+    return _banner(
+      accent: urgent ? const Color(0xFFDC2626) : const Color(0xFFB45309),
+      icon: Icons.timer_outlined,
+      title: 'Bayar dalam ${_fmt(remaining)}',
+      subtitle: urgent
+          ? 'Segera selesaikan sebelum pesanan dibatalkan otomatis.'
+          : 'Selesaikan transfer sebelum batas waktu agar pesanan tidak batal.',
+      mono: true,
+    );
+  }
+
+  Widget _banner({
+    required Color accent,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    bool mono = false,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: 0.30)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: accent, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: accent,
+                    fontWeight: FontWeight.w900,
+                    fontSize: mono ? 17 : 14.5,
+                    fontFeatures: mono
+                        ? const [FontFeature.tabularFigures()]
+                        : null,
+                    letterSpacing: mono ? 0.5 : 0,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 11.5,
+                    height: 1.3,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Chip teks bank (tanpa aset logo) — keputusan desain: badge teks berwarna.
+class _BankBadge extends StatelessWidget {
+  final String name;
+  const _BankBadge({required this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    const accent = Color(0xFF1D4ED8);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: accent.withValues(alpha: 0.30)),
+      ),
+      child: Text(
+        name,
+        style: const TextStyle(
+          color: accent,
+          fontWeight: FontWeight.w900,
+          fontSize: 13,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+/// Langkah transfer m-BCA (ringkas, channel paling umum). Numbered list
+/// dengan nominal + rekening inline supaya user tidak bolak-balik scroll.
+class _BcaTransferSteps extends StatelessWidget {
+  final String accountNumber;
+  final String accountName;
+  final double totalTransfer;
+
+  const _BcaTransferSteps({
+    required this.accountNumber,
+    required this.accountName,
+    required this.totalTransfer,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final steps = <String>[
+      'Buka aplikasi BCA mobile, login dengan kode akses.',
+      'Pilih m-Transfer → Transfer ke BCA.',
+      'Masukkan nomor rekening $accountNumber (bisa salin di atas).',
+      'Masukkan nominal PERSIS ${formatRupiah(totalTransfer)} — jangan dibulatkan.',
+      'Pastikan nama penerima $accountName, lalu konfirmasi.',
+      'Simpan bukti transfer, lalu upload di kartu "Bukti Transfer" di bawah.',
+    ];
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.format_list_numbered_rounded,
+                  size: 18, color: cs.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Text(
+                'Cara bayar via BCA mobile',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < steps.length; i++) ...[
+            if (i > 0) const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 22,
+                  height: 22,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: _brandBlue.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    '${i + 1}',
+                    style: const TextStyle(
+                      color: _brandBlue,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      steps[i],
+                      style: TextStyle(
+                        color: cs.onSurface,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Thumbnail bukti transfer ter-upload — tap untuk lihat full-screen
+/// (pinch-zoom). Tampil read-only; ganti bukti lewat tombol "Ganti Bukti".
+class _ProofThumbnail extends StatelessWidget {
+  final String url;
+  const _ProofThumbnail({required this.url});
+
+  void _openFull(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.92),
+      builder: (ctx) => GestureDetector(
+        onTap: () => Navigator.of(ctx).pop(),
+        child: Stack(
+          children: [
+            InteractiveViewer(
+              minScale: 1,
+              maxScale: 4,
+              child: Center(
+                child: Image.network(url, fit: BoxFit.contain),
+              ),
+            ),
+            Positioned(
+              top: 44,
+              right: 16,
+              child: IconButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                icon: const Icon(Icons.close_rounded, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: () => _openFull(context),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Stack(
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 180),
+              child: Container(
+                width: double.infinity,
+                color: cs.surfaceContainerHighest,
+                child: Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  height: 180,
+                  width: double.infinity,
+                  loadingBuilder: (ctx, child, progress) => progress == null
+                      ? child
+                      : const SizedBox(
+                          height: 180,
+                          child: Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                  errorBuilder: (ctx, _, __) => SizedBox(
+                    height: 180,
+                    child: Center(
+                      child: Icon(Icons.broken_image_outlined,
+                          color: cs.onSurfaceVariant),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              right: 8,
+              bottom: 8,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.zoom_in_rounded, color: Colors.white, size: 14),
+                    SizedBox(width: 4),
+                    Text(
+                      'Lihat',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -827,6 +1221,16 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
               ),
             ],
           ),
+          // Preview thumbnail bukti yang sudah di-upload — tap untuk lihat
+          // full-screen. Sebelumnya user cuma dapat flag boolean tanpa bisa
+          // memastikan foto yang ke-upload benar/jelas.
+          if (_hasProof &&
+              (_proofUrl ?? widget.order.paymentProofUrl) != null) ...[
+            const SizedBox(height: 14),
+            _ProofThumbnail(
+              url: (_proofUrl ?? widget.order.paymentProofUrl)!,
+            ),
+          ],
           const SizedBox(height: 14),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 180),
