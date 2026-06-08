@@ -260,7 +260,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           tooltip: 'Kembali',
         ),
         title: Text(
-          _profile?.displayHandle ?? widget.username,
+          // Akun official (Natalo Petshop): AppBar tampil nama brand, BUKAN
+          // username "natasha" (identitas pemilik). displayHandle untuk akun
+          // official = username karena username ter-set → bocor nama asli.
+          // Konsisten dgn branding Opsi B (body profil sudah override).
+          (_profile?.isOfficial ?? false)
+              ? (_profile?.name ?? 'Natalo Petshop')
+              : (_profile?.displayHandle ?? widget.username),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
