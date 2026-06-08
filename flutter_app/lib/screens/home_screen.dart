@@ -89,6 +89,17 @@ class _HomeScreenState extends State<HomeScreen> {
   List<HomeCategory> _categories = const [];
   List<HomeBanner> _banners = const [];
 
+  /// Brand untuk slider "Brand Favorit" di Home — HANYA brand yang punya
+  /// logo gambar (admin upload). Brand tanpa logo (fallback huruf inisial)
+  /// disembunyikan dari Home supaya rapi & profesional; tetap muncul di
+  /// /brands "Lihat semua". TANPA cap jumlah — urutan diatur admin via
+  /// position (API /api/brands orderBy position asc), jadi brand prioritas
+  /// otomatis di slide depan. Sebelumnya di-cap take(12) → cuma 2 slide
+  /// walau brand banyak.
+  List<PetBrand> get _logoBrands => _brands
+      .where((b) => b.logoUrl != null && b.logoUrl!.trim().isNotEmpty)
+      .toList();
+
   // ── Personalized recommendations dari server ──
   // Backend scan full catalog dengan scoring weighted: purchase × 3.0
   // (brand) / × 2.5 (category), view × 1.2 / × 1.8. Untuk user login
@@ -641,14 +652,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             _openProductDetail(context, product),
                       ),
                     ),
-                  // Brand section — sembunyikan kalau API belum return data.
+                  // Brand section — sembunyikan kalau tidak ada brand berlogo.
                   // Tidak ada fallback ke sampleBrands lagi: brand di Flutter
-                  // harus sync dengan Capacitor admin dashboard (single source
-                  // of truth). Skeleton/empty state ditangani di section sendiri.
-                  if (_brands.isNotEmpty)
+                  // harus sync dengan admin dashboard (single source of truth).
+                  // Pakai _logoBrands (hanya yang punya logo, tanpa cap) supaya
+                  // semua brand berlogo bisa di-slide, bukan cuma 12.
+                  if (_logoBrands.isNotEmpty)
                     SliverToBoxAdapter(
                       child: _BrandChoiceSection(
-                        brands: _brands.take(12).toList(),
+                        brands: _logoBrands,
                         onTap: (brand) =>
                             _openProducts(context, brand: brand.name),
                       ),
