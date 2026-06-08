@@ -433,13 +433,26 @@ class ProductService {
     }
   }
 
-  Future<SearchSuggestionResult> fetchSuggestions(String query) async {
+  Future<SearchSuggestionResult> fetchSuggestions(
+    String query, {
+    /// Filter kategori/brand aktif dari catalog screen — supaya suggestion
+    /// konsisten dengan grid produk yang sedang di-filter. Boleh nama atau
+    /// slug; server resolve keduanya. Null/kosong = suggestion global.
+    String? category,
+    String? brand,
+  }) async {
     final keyword = query.trim();
     if (keyword.length < 2) return const SearchSuggestionResult();
     try {
       final data = await apiClient.getJson(
         '/api/search/suggest',
-        query: {'q': keyword, 'limit': '8'},
+        query: {
+          'q': keyword,
+          'limit': '8',
+          if (category != null && category.trim().isNotEmpty)
+            'category': category.trim(),
+          if (brand != null && brand.trim().isNotEmpty) 'brand': brand.trim(),
+        },
       );
       final map = _asMap(data);
       return map == null

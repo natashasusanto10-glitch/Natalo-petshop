@@ -478,7 +478,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
 
     setState(() => _suggestionLoading = true);
-    final suggestions = await productService.fetchSuggestions(keyword);
+    // Pass filter kategori/brand aktif → suggestion konsisten dengan grid
+    // (Opsi C). selectedBrand prioritas (dari home tap Brand Favorit),
+    // _filter.brand fallback (dari filter sheet).
+    final suggestions = await productService.fetchSuggestions(
+      keyword,
+      category: _filter.category,
+      brand: widget.selectedBrand ?? _filter.brand,
+    );
     if (!mounted || _query.trim() != keyword) return;
     setState(() {
       _suggestions = suggestions;
@@ -534,6 +541,53 @@ class _ProductsScreenState extends State<ProductsScreen> {
     FocusManager.instance.primaryFocus?.unfocus();
     await _saveSearch(keyword);
     await _loadProducts();
+  }
+
+  /// Tap product suggestion → buka product detail LANGSUNG (Opsi A).
+  /// Sebelumnya _commitSearch(item.name) → cari nama produk dalam filter
+  /// aktif, bisa 0 hasil (produk beda kategori dari filter). Suggestion
+  /// sudah identify produk spesifik via slug → fetch + buka detail.
+  /// Fallback: kalau slug gagal fetch (produk dihapus / network), jatuh
+  /// ke _commitSearch(name) sebagai degradasi.
+  Future<void> _openProductSuggestion(ProductSuggestion item) async {
+    setState(() {
+      _suggestions = const SearchSuggestionResult();
+      _showSuggestionPanel = false;
+    });
+    FocusManager.instance.primaryFocus?.unfocus();
+    await _saveSearch(item.name);
+    if (!mounted) return;
+
+    final rootNav = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: 0.25),
+      builder: (_) => const Center(
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: CircularProgressIndicator(strokeWidth: 2.6),
+        ),
+      ),
+    );
+
+    Product? product;
+    try {
+      product = await productService.fetchProductBySlug(item.slug);
+    } catch (_) {
+      product = null;
+    }
+
+    rootNav.pop(); // tutup loading dialog
+    if (!mounted) return;
+
+    if (product == null) {
+      // Slug gagal fetch — degradasi ke search by name.
+      await _commitSearch(item.name);
+      return;
+    }
+    await Navigator.pushNamed(context, '/product-detail', arguments: product);
   }
 
   void _applySuggestedCategory(String name) {
@@ -936,7 +990,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   suggestions: _suggestions,
                   loading: _suggestionLoading,
                   history: _searchHistory,
-                  onProduct: (item) => _commitSearch(item.name),
+                  onProduct: _openProductSuggestion,
                   onCategory: (item) => _applySuggestedCategory(item.name),
                   onBrand: (item) => _applySuggestedBrand(item.name),
                   onSearchQuery: _commitSearch,

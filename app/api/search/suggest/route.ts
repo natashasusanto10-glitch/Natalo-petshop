@@ -63,9 +63,37 @@ function scoreLabel(label: string, query: string) {
   return score;
 }
 
-async function suggestFromMeili(q: string, limit: number): Promise<SuggestResponse> {
+/** Filter kategori/brand aktif dari catalog screen — supaya suggestion
+ *  konsisten dengan grid produk yang sedang di-filter. id untuk query DB,
+ *  slug untuk filter Meili. Null = tidak ada filter (suggestion global). */
+type SuggestFilter = {
+  categoryId: string | null;
+  categorySlug: string | null;
+  brandId: string | null;
+  brandSlug: string | null;
+};
+
+const NO_FILTER: SuggestFilter = {
+  categoryId: null,
+  categorySlug: null,
+  brandId: null,
+  brandSlug: null,
+};
+
+async function suggestFromMeili(
+  q: string,
+  limit: number,
+  filter: SuggestFilter,
+): Promise<SuggestResponse> {
+  const filterClauses = ["is_active = true"];
+  if (filter.categorySlug) {
+    filterClauses.push(`category_slug = "${filter.categorySlug}"`);
+  }
+  if (filter.brandSlug) {
+    filterClauses.push(`brand_slug = "${filter.brandSlug}"`);
+  }
   const result = await productIndex.search(q, {
-    filter: "is_active = true",
+    filter: filterClauses.join(" AND "),
     limit,
     attributesToRetrieve: [
       "id",
@@ -239,6 +267,7 @@ function resolveInlineDiscount(
 
 async function hydrateMeiliProductsFromDb(
   meiliProducts: SuggestProduct[],
+  filter: SuggestFilter,
 ): Promise<SuggestProduct[]> {
   const ids = meiliProducts.map((product) => product.id).filter(Boolean);
   if (ids.length === 0) return [];
@@ -249,6 +278,8 @@ async function hydrateMeiliProductsFromDb(
       id: { in: ids },
       isActive: true,
       OR: suggestableProductState,
+      ...(filter.categoryId ? { categoryId: filter.categoryId } : {}),
+      ...(filter.brandId ? { brandId: filter.brandId } : {}),
     },
     include: {
       brand: { select: { name: true } },
@@ -279,14 +310,29 @@ async function hydrateMeiliProductsFromDb(
   return ids.map((id) => byId.get(id)).filter((product): product is SuggestProduct => Boolean(product));
 }
 
-async function trigramSuggestIds(query: string, limit: number): Promise<string[]> {
+async function trigramSuggestIds(
+  query: string,
+  limit: number,
+  filter: SuggestFilter,
+): Promise<string[]> {
   const q = query.trim().toLowerCase();
   if (q.length < 2) return [];
+
+  // Filter kategori/brand aktif — supaya kandidat suggestion produk match
+  // grid yang sedang di-filter. Prisma.empty = no-op kalau filter null.
+  const categoryClause = filter.categoryId
+    ? Prisma.sql`AND "categoryId" = ${filter.categoryId}`
+    : Prisma.empty;
+  const brandClause = filter.brandId
+    ? Prisma.sql`AND "brandId" = ${filter.brandId}`
+    : Prisma.empty;
 
   const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     SELECT id
     FROM "Product"
     WHERE "isActive" = true
+      ${categoryClause}
+      ${brandClause}
       AND (
         "searchText" ILIKE ${"%" + q + "%"}
         OR "searchText" % ${q}
@@ -306,14 +352,18 @@ async function trigramSuggestIds(query: string, limit: number): Promise<string[]
   return rows.map((row) => row.id);
 }
 
-async function suggestFromDb(q: string, limit: number): Promise<SuggestResponse> {
+async function suggestFromDb(
+  q: string,
+  limit: number,
+  filter: SuggestFilter,
+): Promise<SuggestResponse> {
   const tokens = tokensFor(q);
   const labelOr = [
     { name: { contains: q, mode: "insensitive" as const } },
     ...tokens.map((token) => ({ name: { contains: token, mode: "insensitive" as const } })),
   ];
 
-  const candidateIds = await trigramSuggestIds(q, Math.max(limit * 4, 12));
+  const candidateIds = await trigramSuggestIds(q, Math.max(limit * 4, 12), filter);
 
   const now2 = new Date();
   const productsPromise =
@@ -324,6 +374,8 @@ async function suggestFromDb(q: string, limit: number): Promise<SuggestResponse>
             id: { in: candidateIds },
             isActive: true,
             OR: suggestableProductState,
+            ...(filter.categoryId ? { categoryId: filter.categoryId } : {}),
+            ...(filter.brandId ? { brandId: filter.brandId } : {}),
           },
           include: {
             brand: { select: { name: true } },
@@ -373,23 +425,70 @@ async function suggestFromDb(q: string, limit: number): Promise<SuggestResponse>
 
   return {
     products: productSuggestions,
-    categories: categories
-      .sort((a, b) => scoreLabel(b.name, q) - scoreLabel(a.name, q))
-      .slice(0, 5)
-      .map((category) => ({
-        slug: category.slug,
-        name: category.name,
-        count: category._count.products,
-      })),
-    brands: brands
-      .sort((a, b) => scoreLabel(b.name, q) - scoreLabel(a.name, q))
-      .slice(0, 5)
-      .map((brand) => ({
-        slug: brand.slug,
-        name: brand.name,
-        count: brand._count.products,
-      })),
+    // Skip label kategori kalau user SUDAH di kategori tertentu (redundant
+    // saran "Kategori: X" saat sudah di X). Sama untuk brand.
+    categories: filter.categoryId
+      ? []
+      : categories
+          .sort((a, b) => scoreLabel(b.name, q) - scoreLabel(a.name, q))
+          .slice(0, 5)
+          .map((category) => ({
+            slug: category.slug,
+            name: category.name,
+            count: category._count.products,
+          })),
+    brands: filter.brandId
+      ? []
+      : brands
+          .sort((a, b) => scoreLabel(b.name, q) - scoreLabel(a.name, q))
+          .slice(0, 5)
+          .map((brand) => ({
+            slug: brand.slug,
+            name: brand.name,
+            count: brand._count.products,
+          })),
     total: productSuggestions.length,
+  };
+}
+
+/** Resolve nama-atau-slug kategori/brand jadi canonical id+slug.
+ *  Dipakai untuk filter suggestion konsisten dengan grid catalog. */
+async function resolveSuggestFilter(
+  categoryParam: string,
+  brandParam: string,
+): Promise<SuggestFilter> {
+  if (!categoryParam && !brandParam) return NO_FILTER;
+
+  const [category, brand] = await Promise.all([
+    categoryParam
+      ? prisma.category.findFirst({
+          where: {
+            OR: [
+              { slug: categoryParam },
+              { name: { equals: categoryParam, mode: "insensitive" } },
+            ],
+          },
+          select: { id: true, slug: true },
+        })
+      : Promise.resolve(null),
+    brandParam
+      ? prisma.brand.findFirst({
+          where: {
+            OR: [
+              { slug: brandParam },
+              { name: { equals: brandParam, mode: "insensitive" } },
+            ],
+          },
+          select: { id: true, slug: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  return {
+    categoryId: category?.id ?? null,
+    categorySlug: category?.slug ?? null,
+    brandId: brand?.id ?? null,
+    brandSlug: brand?.slug ?? null,
   };
 }
 
@@ -401,13 +500,25 @@ export async function GET(request: NextRequest) {
 
     if (q.length < 2) return NextResponse.json(EMPTY);
 
+    // Filter kategori/brand aktif (dari catalog screen). Terima nama ATAU
+    // slug (catalog kirim nama dari home chip / slug dari deep-link).
+    // Resolve ke canonical id+slug. Kalau tidak resolve (typo/stale),
+    // treat sebagai no-filter (suggestion global) — graceful, tidak
+    // bikin suggestion kosong total.
+    const categoryParam = (sp.get("category") ?? "").trim().slice(0, 80);
+    const brandParam = (sp.get("brand") ?? "").trim().slice(0, 80);
+    const filter = await resolveSuggestFilter(categoryParam, brandParam);
+
     const [meiliResult, dbResult] = await Promise.all([
-      isMeiliEnabled() ? suggestFromMeili(q, limit).catch(() => EMPTY) : Promise.resolve(EMPTY),
-      suggestFromDb(q, limit).catch(() => EMPTY),
+      isMeiliEnabled()
+        ? suggestFromMeili(q, limit, filter).catch(() => EMPTY)
+        : Promise.resolve(EMPTY),
+      suggestFromDb(q, limit, filter).catch(() => EMPTY),
     ]);
-    const hydratedMeiliProducts = await hydrateMeiliProductsFromDb(meiliResult.products).catch(
-      () => [],
-    );
+    const hydratedMeiliProducts = await hydrateMeiliProductsFromDb(
+      meiliResult.products,
+      filter,
+    ).catch(() => []);
     const products = mergeSuggestionProducts({
       dbProducts: dbResult.products,
       meiliProducts: hydratedMeiliProducts,
