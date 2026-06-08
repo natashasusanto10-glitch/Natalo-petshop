@@ -83,14 +83,17 @@ class _WishlistScreenState extends State<WishlistScreen> {
   }
 
   /// Load favorite products dari favoriteStore atau API.
+  ///
+  /// PENTING: error TIDAK di-swallow jadi empty list. Kalau di-swallow,
+  /// user logged-in yang punya wishlist tapi network gagal akan lihat
+  /// "wishlist kosong" → kira barang tersimpan hilang (anxiety untuk
+  /// e-commerce). Rethrow → FutureBuilder tampilkan AppErrorState dengan
+  /// retry, BUKAN empty state. Guest (belum login) tetap return empty
+  /// (memang tidak punya wishlist — bukan error).
   Future<List<Product>> _loadProducts() async {
     if (!memberStore.isLoggedIn) return const [];
-    try {
-      await favoriteStore.refresh();
-      return favoriteStore.fetchFavoriteProducts();
-    } catch (_) {
-      return const [];
-    }
+    await favoriteStore.refresh();
+    return favoriteStore.fetchFavoriteProducts();
   }
 
   Future<void> _loadSearchHistory() async {
@@ -250,7 +253,17 @@ class _WishlistScreenState extends State<WishlistScreen> {
       await favoriteStore.refresh();
     }
     setState(() => _productsFuture = _loadProducts());
-    await _productsFuture;
+    // _productsFuture sekarang bisa throw (error tidak lagi di-swallow ke
+    // empty). Catch di sini supaya error tetap ke-surface ke FutureBuilder
+    // (via _productsFuture state) TAPI _refresh lanjut ke section lain
+    // (search history + look-again) — jangan biarkan satu section gagal
+    // membatalkan refresh seluruh halaman.
+    try {
+      await _productsFuture;
+    } catch (_) {
+      // FutureBuilder yang handle tampilan error; di sini cukup swallow
+      // supaya flow lanjut.
+    }
     await _loadSearchHistory();
     await _loadLookAgain(initial: true);
   }
@@ -371,6 +384,31 @@ class _WishlistScreenState extends State<WishlistScreen> {
                 SizedBox(height: 24),
                 SkeletonProductGrid(count: 4, showAddToCart: true),
               ],
+            );
+          }
+
+          // Error state — fetch wishlist gagal (network / server). Tampilkan
+          // retry, BUKAN empty card. Distinguish dari genuinely-empty: kalau
+          // hasError true, wishlist user mungkin ADA tapi gagal load. Empty
+          // card ("jelajahi produk") di kasus ini menyesatkan — user kira
+          // favorit mereka hilang.
+          if (snapshot.hasError && !snapshot.hasData) {
+            return NataloPawRefreshIndicator(
+              onRefresh: _refresh,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 60, 16, 132),
+                children: [
+                  AppErrorState(
+                    variant: AppErrorVariant.network,
+                    title: 'Gagal memuat wishlist',
+                    description:
+                        'Produk favoritmu aman tersimpan. Cek koneksi lalu '
+                        'coba lagi.',
+                    onRetry: _refresh,
+                  ),
+                ],
+              ),
             );
           }
 
