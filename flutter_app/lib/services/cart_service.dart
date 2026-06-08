@@ -98,8 +98,9 @@ class CartService {
         },
       );
       final issues = data['issues'];
+      // Backend (reconcileCartItemsWithStock) balikin `ok`, bukan `valid`.
       return CartValidationResult(
-        valid: data['valid'] != false,
+        valid: (data['ok'] ?? data['valid']) != false,
         issues: issues is List
             ? issues
                 .whereType<Map<String, dynamic>>()
@@ -155,28 +156,46 @@ class CartValidationResult {
   const CartValidationResult({required this.valid, required this.issues});
 }
 
+/// Isu stok per item dari POST /api/cart/validate (reconcileCartItemsWithStock).
+/// Backend balikin per item bermasalah: action "removed" (stok habis /
+/// produk tidak tersedia) atau "reduced" (stok < qty diminta, qty perlu
+/// disesuaikan ke availableStock).
 class CartValidationIssue {
   final String productId;
-  final String code; // mis. "OUT_OF_STOCK", "PRICE_CHANGED", "DISABLED"
+  final String? variantId;
+
+  /// "removed" = stok habis / produk nonaktif (tidak bisa checkout).
+  /// "reduced" = stok tersisa < qty di cart (availableStock = sisa).
+  final String action;
+  final int availableStock;
   final String message;
-  final int? newStock;
-  final num? newPrice;
 
   const CartValidationIssue({
     required this.productId,
-    required this.code,
+    this.variantId,
+    required this.action,
+    required this.availableStock,
     required this.message,
-    this.newStock,
-    this.newPrice,
   });
 
+  /// Tidak bisa di-checkout sama sekali (stok 0 / nonaktif).
+  bool get isOutOfStock => action == 'removed' || availableStock <= 0;
+
+  /// Stok berkurang tapi masih ada — qty harus disesuaikan.
+  bool get isReduced => action == 'reduced' && availableStock > 0;
+
+  /// Key konsisten productId:variantId (variantId kosong = produk tanpa
+  /// varian). Dipakai cart_screen untuk map issue → item.
+  String get matchKey => '$productId:${variantId ?? ''}';
+
   factory CartValidationIssue.fromJson(Map<String, dynamic> json) {
+    final rawVariant = json['variantId']?.toString() ?? '';
     return CartValidationIssue(
       productId: (json['productId'] ?? '').toString(),
-      code: (json['code'] ?? 'UNKNOWN').toString(),
+      variantId: rawVariant.isEmpty ? null : rawVariant,
+      action: (json['action'] ?? 'removed').toString(),
+      availableStock: _asInt(json['availableStock'], fallback: 0),
       message: (json['message'] ?? '').toString(),
-      newStock: _asInt(json['newStock'], fallback: 0),
-      newPrice: json['newPrice'] is num ? json['newPrice'] as num : null,
     );
   }
 }

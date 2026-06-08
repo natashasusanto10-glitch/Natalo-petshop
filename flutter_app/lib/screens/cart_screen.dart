@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/cart_item.dart';
 import '../models/member_profile.dart';
 import '../models/product.dart';
+import '../services/cart_service.dart';
 import '../services/member_service.dart';
 import '../services/product_service.dart';
 import '../state/cart_store.dart';
@@ -89,6 +90,10 @@ class _CartScreenState extends State<CartScreen> {
   // saat keluar screen.
   Set<String> _selectedIds = <String>{};
 
+  /// Isu stok per item (key `productId:variantId`) dari POST /api/cart/validate.
+  /// Kosong = semua aman. Dipakai render badge + auto-deselect.
+  Map<String, CartValidationIssue> _stockIssues = {};
+
   @override
   void initState() {
     super.initState();
@@ -100,6 +105,44 @@ class _CartScreenState extends State<CartScreen> {
     cartStore.addListener(_onCartChanged);
     memberStore.addListener(_onMemberChanged);
     recentlyViewedStore.addListener(_loadRecentlyViewed);
+    _syncVouchersForSelection();
+    // Validasi stok server saat cart dibuka — badge stok habis/sisa-N +
+    // auto-deselect item habis supaya tidak ikut checkout.
+    _validateStock();
+  }
+
+  String _issueKeyForItem(CartItem item) =>
+      '${item.product.id}:${item.variantId ?? ''}';
+
+  CartValidationIssue? _issueFor(CartItem item) =>
+      _stockIssues[_issueKeyForItem(item)];
+
+  /// Panggil endpoint validasi stok, map issue → item, lalu auto-deselect
+  /// item yang stoknya habis (action "removed"). Best-effort: kalau error,
+  /// _stockIssues dikosongkan (anggap aman, checkout server tetap guard).
+  Future<void> _validateStock() async {
+    final items = cartStore.items;
+    if (items.isEmpty) {
+      if (mounted) setState(() => _stockIssues = {});
+      return;
+    }
+    final result = await cartService.validate(items);
+    if (!mounted) return;
+    final map = <String, CartValidationIssue>{};
+    for (final issue in result.issues) {
+      map[issue.matchKey] = issue;
+    }
+    setState(() {
+      _stockIssues = map;
+      // Auto-deselect item out-of-stock supaya keluar dari subtotal +
+      // tombol checkout.
+      for (final item in items) {
+        final issue = map[_issueKeyForItem(item)];
+        if (issue != null && issue.isOutOfStock) {
+          _selectedIds.remove(item.key);
+        }
+      }
+    });
     _syncVouchersForSelection();
   }
 
@@ -261,6 +304,7 @@ class _CartScreenState extends State<CartScreen> {
     // Auto-add baru added cart items ke selection (default semua selected).
     // Prune selected IDs yang sudah tidak di cart (saat item di-remove).
     final cartKeys = cartStore.items.map((i) => i.key).toSet();
+    final hasNewItem = cartKeys.any((key) => !_selectedIds.contains(key));
     setState(() {
       // Add semua key yang belum di set (new items).
       for (final key in cartKeys) {
@@ -268,8 +312,15 @@ class _CartScreenState extends State<CartScreen> {
       }
       // Prune key yang sudah tidak di cart.
       _selectedIds.retainAll(cartKeys);
+      // Bersihkan issue untuk item yang sudah tidak ada di cart.
+      _stockIssues.removeWhere((key, _) => !cartStore.items.any(
+            (item) => _issueKeyForItem(item) == key,
+          ));
     });
     _syncVouchersForSelection();
+    // Re-validasi stok kalau ada item baru masuk cart (mis. dari "Beli
+    // lagi" / rekomendasi) supaya badge stok langsung akurat.
+    if (hasNewItem) _validateStock();
   }
 
   void _onMemberChanged() {
@@ -732,6 +783,17 @@ class _CartScreenState extends State<CartScreen> {
                             12,
                           ),
                           children: [
+                            // Banner ringkas kalau ada item stok habis —
+                            // jelaskan kenapa item tertentu tidak ikut total.
+                            if (_stockIssues.values
+                                .any((issue) => issue.isOutOfStock)) ...[
+                              _CartStockBanner(
+                                count: _stockIssues.values
+                                    .where((issue) => issue.isOutOfStock)
+                                    .length,
+                              ),
+                              const SizedBox(height: 4),
+                            ],
                             // Cart items dengan checkbox per item.
                             for (var i = 0; i < items.length; i++) ...[
                               _CartItemCard(
@@ -740,6 +802,7 @@ class _CartScreenState extends State<CartScreen> {
                                 selected: _selectedIds.contains(items[i].key),
                                 onToggleSelected: () =>
                                     _toggleItem(items[i].key),
+                                stockIssue: _issueFor(items[i]),
                               ),
                               // Divider indented dari kiri checkbox — start setelah
                               // checkbox area supaya garis tidak full-width.
@@ -1063,17 +1126,104 @@ class _CartDeleteConfirmDialog extends StatelessWidget {
 /// - Title + brand•category + stock
 /// - Swipe kiri untuk hapus + undo snackbar
 /// - Bottom row: price + strikethrough + discount% + qty stepper
+/// Banner ringkas di atas list cart saat ada item stok habis.
+class _CartStockBanner extends StatelessWidget {
+  final int count;
+  const _CartStockBanner({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    const accent = Color(0xFFDC2626);
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accent.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline_rounded, size: 18, color: accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '$count produk stok habis dan tidak ikut checkout. Hapus atau ganti varian.',
+              style: const TextStyle(
+                color: accent,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Badge stok di cart item — "Stok habis" (merah) atau "Sisa N" (amber).
+/// Warna pakai tint-alpha agar kebaca di light & dark.
+class _StockBadge extends StatelessWidget {
+  final bool outOfStock;
+  final int availableStock;
+  const _StockBadge({required this.outOfStock, required this.availableStock});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent =
+        outOfStock ? const Color(0xFFDC2626) : const Color(0xFFB45309);
+    final label =
+        outOfStock ? 'Stok habis' : 'Sisa $availableStock — segera checkout';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            outOfStock
+                ? Icons.remove_shopping_cart_outlined
+                : Icons.inventory_2_outlined,
+            size: 12,
+            color: accent,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: accent,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CartItemCard extends StatelessWidget {
   final CartItem item;
   final int index;
   final bool selected;
   final VoidCallback onToggleSelected;
 
+  /// Isu stok dari validasi server (null = aman). `removed` → stok habis
+  /// (tidak bisa checkout, auto-deselect di parent), `reduced` → stok
+  /// tersisa < qty (badge "Sisa N").
+  final CartValidationIssue? stockIssue;
+
   const _CartItemCard({
     required this.item,
     required this.index,
     required this.selected,
     required this.onToggleSelected,
+    this.stockIssue,
   });
 
   void _removeWithUndo(BuildContext context) {
@@ -1122,6 +1272,11 @@ class _CartItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final outOfStock = stockIssue?.isOutOfStock ?? false;
+    final reduced = stockIssue?.isReduced ?? false;
+    // Stok efektif untuk cap stepper — pakai availableStock dari server
+    // kalau ada isu, else effectiveStock lokal.
+    final availableStock = stockIssue?.availableStock ?? item.effectiveStock;
     final price = item.effectivePrice;
     final regular = item.variant?.price.toDouble() ?? item.product.price;
     final hasDiscount = regular > price;
@@ -1191,30 +1346,37 @@ class _CartItemCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Checkbox kiri.
+              // Stok habis → checkbox dikunci & tidak tercentang (item ini
+              // di-auto-deselect di parent supaya tidak ikut checkout).
               Checkbox(
-                value: selected,
+                value: outOfStock ? false : selected,
                 activeColor: _brandBlue,
-                onChanged: (_) => onToggleSelected(),
+                onChanged:
+                    outOfStock ? null : (_) => onToggleSelected(),
                 visualDensity: VisualDensity.compact,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               const SizedBox(width: 4),
               // Product image — soft bg, no border. Dibuat lebih besar agar
-              // varian visual produk lebih mudah dikenali di cart.
-              InkWell(
-                onTap: () => _openProductDetail(context),
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  width: 88,
-                  height: 88,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: AppProductImage(
-                    imageUrl: item.product.imageUrl,
-                    fit: BoxFit.cover,
+              // varian visual produk lebih mudah dikenali di cart. Di-dim +
+              // overlay "Stok habis" saat out-of-stock.
+              Opacity(
+                opacity: outOfStock ? 0.45 : 1,
+                child: InkWell(
+                  onTap: () => _openProductDetail(context),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: 88,
+                    height: 88,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: AppProductImage(
+                      imageUrl: item.product.imageUrl,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
               ),
@@ -1232,13 +1394,24 @@ class _CartItemCard extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: cs.onSurface,
+                          color: outOfStock
+                              ? cs.onSurfaceVariant
+                              : cs.onSurface,
                           fontSize: 14,
                           height: 1.3,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),
+                    // Badge stok: habis (merah) / sisa-N (amber). Full
+                    // opacity walau item lain di-dim — ini sinyal penting.
+                    if (outOfStock || reduced) ...[
+                      const SizedBox(height: 6),
+                      _StockBadge(
+                        outOfStock: outOfStock,
+                        availableStock: availableStock,
+                      ),
+                    ],
                     // Variant chip — tampil kalau item menyimpan pilihan
                     // varian, termasuk cart lama yang product snapshot-nya
                     // partial dari server.
@@ -1313,32 +1486,49 @@ class _CartItemCard extends StatelessWidget {
                             ],
                           ),
                         ),
-                        _QtyStepper(
-                          quantity: item.quantity,
-                          maxQty: item.effectiveStock,
-                          onSetQuantity: (quantity) {
-                            AppHaptics.tap();
-                            cartStore.updateQuantity(item.key, quantity);
-                          },
-                          onDecrement: () {
-                            AppHaptics.tap();
-                            if (item.quantity <= 1) {
-                              _removeWithUndo(context);
-                            } else {
+                        // Stok habis → stepper diganti tombol "Hapus" supaya
+                        // user bisa bersihkan item mati dari cart. Reduced →
+                        // stepper tetap, tapi maxQty di-cap ke stok tersisa.
+                        if (outOfStock)
+                          TextButton.icon(
+                            onPressed: () => _removeWithUndo(context),
+                            icon: const Icon(Icons.delete_outline_rounded,
+                                size: 18),
+                            label: const Text('Hapus'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFFDC2626),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          )
+                        else
+                          _QtyStepper(
+                            quantity: item.quantity,
+                            maxQty: reduced ? availableStock : item.effectiveStock,
+                            onSetQuantity: (quantity) {
+                              AppHaptics.tap();
+                              cartStore.updateQuantity(item.key, quantity);
+                            },
+                            onDecrement: () {
+                              AppHaptics.tap();
+                              if (item.quantity <= 1) {
+                                _removeWithUndo(context);
+                              } else {
+                                cartStore.updateQuantity(
+                                  item.key,
+                                  item.quantity - 1,
+                                );
+                              }
+                            },
+                            onIncrement: () {
+                              AppHaptics.tap();
                               cartStore.updateQuantity(
                                 item.key,
-                                item.quantity - 1,
+                                item.quantity + 1,
                               );
-                            }
-                          },
-                          onIncrement: () {
-                            AppHaptics.tap();
-                            cartStore.updateQuantity(
-                              item.key,
-                              item.quantity + 1,
-                            );
-                          },
-                        ),
+                            },
+                          ),
                       ],
                     ),
                   ],
