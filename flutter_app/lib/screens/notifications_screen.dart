@@ -7,6 +7,7 @@ import '../models/product.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
 import '../services/notification_service.dart';
+import '../services/product_service.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -129,6 +130,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<void> _navigateForNotification(AppNotification item) async {
     final url = item.url?.trim() ?? '';
     final haystack = _notificationHaystack(item);
+
+    // EventType-based routing — paling reliable (vs substring URL/title
+    // match). Server set eventType di lib/reviews.ts saat admin reply
+    // review → kirim user ke detail produk + auto-scroll ke ulasan.
+    final eventType = item.eventType?.trim().toLowerCase() ?? '';
+    final source = item.source?.trim().toLowerCase() ?? '';
+    if (eventType == 'review_reply' || source == 'review') {
+      await _openReviewedProduct(item);
+      return;
+    }
 
     if (_isShopPromoNotification(item)) {
       await Navigator.pushNamed(
@@ -308,6 +319,72 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ),
       ),
     );
+  }
+
+  /// Handler untuk notif "Toko membalas ulasanmu" (eventType=review_reply).
+  /// Extract slug dari url `/products/{slug}` → fetch Product → buka
+  /// ProductDetailScreen dengan focusReviewSection=true (auto-scroll ke
+  /// section ulasan). Fallback: kalau slug invalid atau produk dihapus
+  /// admin, redirect ke /akun/ulasan supaya user tetap bisa lihat balasan
+  /// di history ulasan mereka.
+  Future<void> _openReviewedProduct(AppNotification item) async {
+    final slug = _extractProductSlug(item.url);
+    if (slug == null) {
+      await Navigator.pushNamed(context, '/akun/ulasan');
+      return;
+    }
+
+    final rootNav = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: 0.25),
+      builder: (_) => const Center(
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: CircularProgressIndicator(strokeWidth: 2.6),
+        ),
+      ),
+    );
+
+    Product? product;
+    try {
+      product = await productService.fetchProductBySlug(slug);
+    } catch (_) {
+      product = null;
+    }
+
+    rootNav.pop(); // tutup loading dialog
+    if (!mounted) return;
+
+    if (product == null) {
+      // Produk dihapus / belum ke-fetch — fallback ke list ulasan user
+      // (balasan toko tetap ke-attach ke review di sana).
+      await Navigator.pushNamed(context, '/akun/ulasan');
+      return;
+    }
+
+    await Navigator.pushNamed(
+      context,
+      '/product-detail',
+      arguments: ProductDetailArgs(
+        product: product,
+        focusReviewSection: true,
+      ),
+    );
+  }
+
+  /// Extract product slug dari URL pattern `/products/{slug}` atau
+  /// `/produk/{slug}`. Return null kalau URL tidak match atau slug kosong.
+  /// URL-decode untuk handle slug ber-spesial-character.
+  String? _extractProductSlug(String? url) {
+    if (url == null || url.isEmpty) return null;
+    final match = RegExp(r'/produk(?:s)?/([^/?#]+)').firstMatch(url);
+    if (match == null) return null;
+    final slug = match.group(1)?.trim() ?? '';
+    if (slug.isEmpty) return null;
+    return Uri.decodeComponent(slug);
   }
 
   @override

@@ -48,7 +48,17 @@ const _starAmber = Color(0xFFF59E0B);
 class ProductDetailScreen extends StatefulWidget {
   final Product product;
 
-  const ProductDetailScreen({super.key, required this.product});
+  /// Saat dibuka dari notif "Toko membalas ulasanmu" (lihat
+  /// notifications_screen.dart `_openReviewedProduct`), set true →
+  /// auto-scroll ke section ulasan setelah first frame + tab badge
+  /// di "Ulasan". Default false untuk entry-point lain (cart, search, dst).
+  final bool focusReviewSection;
+
+  const ProductDetailScreen({
+    super.key,
+    required this.product,
+    this.focusReviewSection = false,
+  });
 
   @override
   State<ProductDetailScreen> createState() => _ProductDetailScreenState();
@@ -136,6 +146,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     _loadReviewPreview();
     _loadVouchers();
     _loadCustomerPosts();
+
+    // Auto-scroll ke section ulasan kalau dibuka dari notif review_reply.
+    // _reviewsKey ada di tree dari initial render (preview section eagerly
+    // rendered, isi reviews di-fetch async). Delay 350ms supaya layout
+    // sudah settle setelah first frame + sticky tab bar terbentuk.
+    if (widget.focusReviewSection) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future.delayed(const Duration(milliseconds: 350), () {
+          if (!mounted) return;
+          _scrollToSection(_reviewsKey, 1);
+        });
+      });
+    }
   }
 
   /// Fetch list voucher untuk produk ini. Non-blocking — kalau gagal /

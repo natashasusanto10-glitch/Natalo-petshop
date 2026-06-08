@@ -22,6 +22,21 @@ class ProductCatalogArgs {
   });
 }
 
+/// Navigation args untuk ProductDetailScreen ketika butuh extra config
+/// di luar Product object. Existing call site (cart, search, dst) tetap
+/// bisa pass Product langsung sebagai arguments. Wrapper ini dipakai
+/// kalau perlu flag tambahan, mis. `focusReviewSection: true` saat dibuka
+/// dari notif "Toko membalas ulasanmu" supaya auto-scroll ke ulasan.
+class ProductDetailArgs {
+  final Product product;
+  final bool focusReviewSection;
+
+  const ProductDetailArgs({
+    required this.product,
+    this.focusReviewSection = false,
+  });
+}
+
 /// Convert relative URL backend (mis. `/uploads/abc.jpg`) ke absolute
 /// origin yang bisa di-load Flutter (mis. `https://natalopetshop.com/uploads/abc.jpg`).
 /// Idempotent — kalau sudah absolute, return as-is.

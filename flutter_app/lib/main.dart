@@ -357,6 +357,18 @@ class NataloPetshopApp extends StatelessWidget {
                 RefundDetailScreen(caseId: settings.arguments as String),
               '/product-detail' when settings.arguments is Product =>
                 ProductDetailScreen(product: settings.arguments as Product),
+              // ProductDetailArgs wrapper — dipakai notif "Toko membalas
+              // ulasanmu" untuk pass focusReviewSection flag (auto-scroll
+              // ke section ulasan). Existing call site dengan Product
+              // langsung tetap jalan via case di atas.
+              '/product-detail' when settings.arguments is ProductDetailArgs =>
+                () {
+                  final args = settings.arguments as ProductDetailArgs;
+                  return ProductDetailScreen(
+                    product: args.product,
+                    focusReviewSection: args.focusReviewSection,
+                  );
+                }(),
               _ => const HomeScreen(),
             };
 
