@@ -63,6 +63,11 @@ const NAV_GROUPS: NavGroup[] = [
         icon: <Glyph d="M12 2 2 7l10 5 10-5-10-5ZM2 17l10 5 10-5M2 12l10 5 10-5" />,
       },
       {
+        href: "/admin/banners",
+        label: "Banner Beranda",
+        icon: <Glyph d="M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1ZM3 15l5-5 4 4 3-3 6 6" />,
+      },
+      {
         href: "/admin/broadcast",
         label: "Broadcast Notifikasi",
         icon: <Glyph d="M3 11l18-8-5 18-4-9-9-1zM13 12l8-9" />,

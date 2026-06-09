@@ -12,10 +12,50 @@
 import { NextResponse } from "next/server";
 import { heroSlides } from "@/data/heroSlides";
 import { filterActiveSlides } from "@/lib/filterActiveSlides";
+import { prisma } from "@/lib/prisma";
+import { bannerLinkToHref } from "@/lib/home-banners";
 
 export const revalidate = 300;
 
 export async function GET() {
+  // Sumber utama: tabel HomeBanner (admin-managed via /admin/banners).
+  // Kalau ada minimal 1 banner aktif, pakai itu. Kalau kosong (belum
+  // di-setup admin), fallback ke heroSlides.ts hardcoded supaya app
+  // tidak pernah tampil tanpa banner.
+  try {
+    const dbBanners = await prisma.homeBanner.findMany({
+      where: { isActive: true },
+      orderBy: [{ position: "asc" }, { createdAt: "desc" }],
+      select: {
+        id: true,
+        imageUrl: true,
+        imageAlt: true,
+        linkType: true,
+        linkValue: true,
+      },
+    });
+
+    if (dbBanners.length > 0) {
+      const banners = dbBanners.map((b) => ({
+        id: b.id,
+        image: b.imageUrl,
+        imageAlt: b.imageAlt,
+        href: bannerLinkToHref(b.linkType, b.linkValue),
+      }));
+      return NextResponse.json(
+        { banners },
+        {
+          headers: {
+            "Cache-Control":
+              "public, s-maxage=300, stale-while-revalidate=3600",
+          },
+        },
+      );
+    }
+  } catch {
+    // DB error → fallback ke heroSlides di bawah.
+  }
+
   const active = filterActiveSlides(heroSlides);
 
   // Normalize: hanya kirim field yg Flutter perlu (image, href, alt).

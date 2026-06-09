@@ -316,6 +316,35 @@ model Brand {
   updatedAt DateTime  @updatedAt
 }
 
+/// Hero banner slider di Home (Beranda) app customer. Admin-managed via
+/// /admin/banners — ganti gambar, atur urutan, set link tujuan, tanpa
+/// redeploy. Menggantikan data/heroSlides.ts yang hardcoded (heroSlides
+/// tetap jadi fallback kalau tabel kosong).
+///
+/// linkType + linkValue = tujuan tap banner (structured, dikonversi ke
+/// href di /api/banners untuk konsumsi Flutter):
+///   none     → tidak bisa di-tap
+///   category → linkValue = slug kategori  → /products?kategori=<slug>
+///   product  → linkValue = slug produk    → /products/<slug> (detail)
+///   brand    → linkValue = slug brand     → /products?brand=<slug>
+///   promo    → /products?diskon=1 (katalog produk diskon)
+///   voucher  → /member/vouchers
+///   loyalty  → /member/loyalty (tukar poin)
+///   url      → linkValue = URL eksternal  → in-app browser
+model HomeBanner {
+  id        String   @id @default(cuid())
+  imageUrl  String
+  imageAlt  String   @default("")
+  linkType  String   @default("none")
+  linkValue String?
+  position  Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, position])
+}
+
 model Product {
   id                    String                      @id @default(cuid())
   name                  String

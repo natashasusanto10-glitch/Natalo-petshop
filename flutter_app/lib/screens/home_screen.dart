@@ -1964,12 +1964,31 @@ class _HeroBannerState extends State<_HeroBanner> {
 
   void _onTap(String? href) {
     if (href == null || href.isEmpty) return;
-    // Parse href ke route — pattern ringkas, deep link service untuk
-    // case kompleks. Mayoritas href: /products?kategori=X atau /member/X.
     final uri = Uri.tryParse(href);
     if (uri == null) return;
+
+    // 1) URL eksternal (banner linkType=url) → buka di browser.
+    //    Internal href selalu path-only (mulai '/'), jadi adanya scheme
+    //    http(s) = eksternal.
+    if (uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https')) {
+      launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+
     final path = uri.path;
-    if (path.startsWith('/products')) {
+    final segments = uri.pathSegments;
+
+    // 2) /products/<slug> → product detail (banner linkType=product).
+    //    Fetch produk by slug lalu push detail. Dibedakan dari /products
+    //    (catalog) yang tanpa slug.
+    if (segments.length == 2 && segments[0] == 'products') {
+      _openBannerProduct(segments[1]);
+      return;
+    }
+
+    // 3) /products (catalog) — dengan optional filter dari query.
+    //    diskon=1 → mode produk diskon (banner linkType=promo).
+    if (path == '/products' || path.startsWith('/products')) {
       Navigator.pushNamed(
         context,
         '/products',
@@ -1977,15 +1996,52 @@ class _HeroBannerState extends State<_HeroBanner> {
           initialCategory: uri.queryParameters['kategori'],
           initialQuery: uri.queryParameters['q'],
           selectedBrand: uri.queryParameters['brand'],
+          discountOnly: uri.queryParameters['diskon'] == '1',
         ),
       );
-    } else if (path == '/member' || path.startsWith('/member/')) {
+      return;
+    }
+
+    // 4) Internal routes lain.
+    if (path == '/member' || path.startsWith('/member/')) {
       Navigator.pushNamed(context, path);
     } else if (path == '/feed') {
       Navigator.pushNamed(context, '/feed');
     } else if (path == '/cart') {
       Navigator.pushNamed(context, '/cart');
     }
+  }
+
+  /// Banner linkType=product → fetch produk by slug lalu buka detail.
+  /// Loading dialog singkat; kalau gagal fetch (slug salah / dihapus),
+  /// fallback ke katalog produk.
+  Future<void> _openBannerProduct(String slug) async {
+    final rootNav = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: 0.25),
+      builder: (_) => const Center(
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: CircularProgressIndicator(strokeWidth: 2.6),
+        ),
+      ),
+    );
+    Product? product;
+    try {
+      product = await productService.fetchProductBySlug(slug);
+    } catch (_) {
+      product = null;
+    }
+    rootNav.pop();
+    if (!mounted) return;
+    if (product == null) {
+      Navigator.pushNamed(context, '/products');
+      return;
+    }
+    Navigator.pushNamed(context, '/product-detail', arguments: product);
   }
 
   @override
