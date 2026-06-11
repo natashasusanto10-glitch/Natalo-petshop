@@ -299,6 +299,52 @@ class AppStatusPill extends StatelessWidget {
 
 /// Soft-style ListTile dengan icon kotak + chevron. Dipakai di setting /
 /// detail screens untuk grouped nav rows.
+/// Transisi halus skeleton → konten (cross-fade 220ms).
+///
+/// Bungkus titik swap `loading ? Skeleton : Content` supaya konten tidak
+/// "pop" kasar saat data masuk. AnimatedSwitcher butuh key BEDA antar
+/// state — widget ini auto-assign ValueKey dari [stateKey] (mis. 'loading'
+/// / 'content' / 'empty') supaya caller tidak perlu mikir key.
+///
+/// Pakai:
+/// ```dart
+/// AppFadeSwitcher(
+///   stateKey: _loading ? 'loading' : 'content',
+///   child: _loading ? const MySkeleton() : MyContent(),
+/// )
+/// ```
+class AppFadeSwitcher extends StatelessWidget {
+  final Widget child;
+
+  /// Identifier state saat ini — transisi fire saat nilai ini berubah.
+  final String stateKey;
+
+  final Duration duration;
+
+  const AppFadeSwitcher({
+    super.key,
+    required this.child,
+    required this.stateKey,
+    this.duration = const Duration(milliseconds: 220),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: duration,
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      // Layout: stack alignment top — hindari "jump" vertikal saat ukuran
+      // skeleton beda dengan konten.
+      layoutBuilder: (currentChild, previousChildren) => Stack(
+        alignment: Alignment.topCenter,
+        children: [...previousChildren, if (currentChild != null) currentChild],
+      ),
+      child: KeyedSubtree(key: ValueKey(stateKey), child: child),
+    );
+  }
+}
+
 /// Kotak ikon ber-tint (rounded, background soft) — TANPA ListTile.
 ///
 /// Dipakai sebagai `leading:` di ListTile lain, atau standalone icon badge.

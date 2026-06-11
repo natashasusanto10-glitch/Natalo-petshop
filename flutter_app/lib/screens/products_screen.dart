@@ -1058,7 +1058,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
               else if (products.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
-                  child: _EmptyProductsState(onReset: _resetFilters),
+                  child: _EmptyProductsState(
+                    onReset: _resetFilters,
+                    // "Terakhir kamu lihat" — jangan dead-end. Saat filter/
+                    // search 0 hasil, kasih jalan keluar berupa produk yang
+                    // pernah user buka (recently viewed, client-side store).
+                    recentProducts: recentlyViewedStore.items.take(10).toList(),
+                    onProductTap: _openProduct,
+                  ),
                 )
               else
                 SliverPadding(
@@ -1430,12 +1437,26 @@ class _HeaderActionPill extends StatelessWidget {
 class _EmptyProductsState extends StatelessWidget {
   final VoidCallback onReset;
 
-  const _EmptyProductsState({required this.onReset});
+  /// Produk yang pernah dibuka user (recently viewed) — ditampilkan
+  /// sebagai strip horizontal "Terakhir kamu lihat" supaya 0-hasil tidak
+  /// jadi dead-end. Kosong = strip disembunyikan (mis. user baru).
+  final List<Product> recentProducts;
+  final ValueChanged<Product>? onProductTap;
+
+  const _EmptyProductsState({
+    required this.onReset,
+    this.recentProducts = const [],
+    this.onProductTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Padding(
+    // SingleChildScrollView guard — dengan strip "Terakhir kamu lihat",
+    // konten bisa melebihi sisa viewport di layar pendek (SliverFillRemaining
+    // hasScrollBody:false akan overflow tanpa ini).
+    return SingleChildScrollView(
+      child: Padding(
       padding: const EdgeInsets.all(28),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1490,7 +1511,102 @@ class _EmptyProductsState extends StatelessWidget {
               style: TextStyle(fontWeight: FontWeight.w900),
             ),
           ),
+          if (recentProducts.isNotEmpty) ...[
+            const SizedBox(height: 32),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Terakhir kamu lihat',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 168,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: recentProducts.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, index) {
+                  final product = recentProducts[index];
+                  return _RecentlyViewedMiniCard(
+                    product: product,
+                    onTap: () => onProductTap?.call(product),
+                  );
+                },
+              ),
+            ),
+          ],
         ],
+      ),
+      ),
+    );
+  }
+}
+
+/// Kartu mini produk untuk strip "Terakhir kamu lihat" di empty state.
+/// Compact (112px lebar) — image + nama 2 baris + harga.
+class _RecentlyViewedMiniCard extends StatelessWidget {
+  final Product product;
+  final VoidCallback onTap;
+
+  const _RecentlyViewedMiniCard({required this.product, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: 112,
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: cs.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: AppProductImage(
+                imageUrl: product.imageUrl,
+                width: 96,
+                height: 84,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              product.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: cs.onSurface,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              formatRupiah(product.finalPrice),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: NataloColors.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -465,7 +465,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               },
             ),
             Expanded(
-              child: _buildContent(result),
+              // Cross-fade skeleton → list/error/empty supaya konten tidak
+              // "pop" kasar saat data masuk.
+              child: AppFadeSwitcher(
+                stateKey: _loading && result == null
+                    ? 'loading'
+                    : _error != null && result == null
+                        ? 'error'
+                        : 'content',
+                child: _buildContent(result),
+              ),
             ),
           ],
         ),

@@ -373,6 +373,19 @@ class _WishlistScreenState extends State<WishlistScreen> {
       body: FutureBuilder<List<Product>>(
         future: _productsFuture,
         builder: (context, snapshot) {
+          final loading = snapshot.connectionState == ConnectionState.waiting &&
+              !snapshot.hasData;
+          final errored = snapshot.hasError && !snapshot.hasData;
+          // Cross-fade skeleton → konten — hindari "pop" kasar saat data
+          // wishlist masuk. Inner Builder supaya early-return branches di
+          // bawah tetap utuh tanpa restruktur.
+          return AppFadeSwitcher(
+            stateKey: loading
+                ? 'loading'
+                : errored
+                    ? 'error'
+                    : 'content',
+            child: Builder(builder: (context) {
           if (snapshot.connectionState == ConnectionState.waiting &&
               !snapshot.hasData) {
             // Shimmer grid 2-col untuk wishlist — feels lebih native daripada
@@ -514,6 +527,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
                 ),
               ],
             ),
+          );
+            }),
           );
         },
       ),

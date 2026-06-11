@@ -8,6 +8,7 @@ import '../services/follow_service.dart';
 import '../services/profile_service.dart';
 import '../state/feed_store.dart';
 import '../utils/haptics.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 import 'member_post_detail_screen.dart';
 import 'public_profile_follow_list_screen.dart';
 
@@ -292,8 +293,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       return _ErrorView(message: _errorText!, onRetry: _load);
     }
     final profile = _profile!;
-    return RefreshIndicator(
-      color: _brandBlue,
+    return NataloPawRefreshIndicator(
       onRefresh: _refresh,
       child: CustomScrollView(
         controller: _scrollController,

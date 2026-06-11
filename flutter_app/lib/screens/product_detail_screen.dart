@@ -27,6 +27,7 @@ import '../utils/fly_to_cart.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_cart_button.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
@@ -2770,7 +2771,7 @@ class _ProductReviewsScreenState extends State<_ProductReviewsScreen> {
           ),
         ],
       ),
-      body: RefreshIndicator(
+      body: NataloPawRefreshIndicator(
         onRefresh: _loadInitial,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 126),

@@ -6,6 +6,7 @@ import '../services/api_client.dart';
 import '../services/follow_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
 
@@ -374,8 +375,7 @@ class _FollowListPaneState extends State<_FollowListPane>
       );
     }
 
-    return RefreshIndicator(
-      color: _brandBlue,
+    return NataloPawRefreshIndicator(
       onRefresh: _refresh,
       child: ListView.separated(
         controller: _scrollController,

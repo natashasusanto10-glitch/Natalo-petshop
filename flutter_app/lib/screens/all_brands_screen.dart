@@ -5,6 +5,8 @@ import '../models/brand.dart';
 import '../models/product.dart';
 import '../services/product_service.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_ui.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 
 /// Semua Brand — grid logo brand pet care yang tersedia di Natalo.
 ///
@@ -65,9 +67,16 @@ class _AllBrandsScreenState extends State<AllBrandsScreen> {
         backgroundColor: isDark ? cs.surface : const Color(0xFFF7FAFF),
         elevation: 0,
       ),
-      body: RefreshIndicator(
+      body: NataloPawRefreshIndicator(
         onRefresh: _load,
-        child: _loading
+        // Cross-fade skeleton → grid supaya transisi loading halus.
+        child: AppFadeSwitcher(
+          stateKey: _loading
+              ? 'loading'
+              : _brands.isEmpty
+                  ? 'empty'
+                  : 'content',
+          child: _loading
             ? const _BrandGridSkeleton()
             : _brands.isEmpty
                 ? ListView(
@@ -115,6 +124,7 @@ class _AllBrandsScreenState extends State<AllBrandsScreen> {
                       );
                     },
                   ),
+        ),
       ),
     );
   }
