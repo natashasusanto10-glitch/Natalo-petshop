@@ -119,6 +119,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
   String? _nextCursor;
   bool _loadingMore = false;
   bool _hasMore = true;
+  // BUGFIX(audit): epoch token cegah stale-future race. _loadProducts
+  // increment epoch (reset point saat filter/query berubah); _loadMore &
+  // _loadProducts capture epoch di awal & buang hasil kalau epoch berubah
+  // saat await (request lama datang belakangan menimpa state baru).
+  int _loadEpoch = 0;
   // Daftar kategori MASTER dari /api/categories (semua kategori yang punya
   // produk aktif + jumlahnya). Dipakai untuk isi filter sheet — sebelumnya
   // sheet derive dari produk yang KEBETULAN ter-load (page 1 = 24 produk),
@@ -342,6 +347,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
   /// Stop kalau response nextCursor null (no more pages).
   Future<void> _loadMore() async {
     if (_loadingMore || !_hasMore || _nextCursor == null) return;
+    final epoch = _loadEpoch;
     setState(() => _loadingMore = true);
     final result = await productService.fetchProducts(
       query: _query,
@@ -361,7 +367,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
       withImage: _filter.withImageOnly,
       discountOnly: widget.flashSaleOnly || _filter.discountOnly,
     );
-    if (!mounted) return;
+    // Stale guard: filter/query berubah saat fetch in-flight (_loadProducts
+    // increment epoch) → JANGAN append hasil lama ke list baru + JANGAN
+    // timpa _nextCursor dengan cursor lama. Buang diam-diam.
+    if (!mounted || epoch != _loadEpoch) {
+      if (mounted) _loadingMore = false;
+      return;
+    }
     setState(() {
       // Append produk baru ke list existing.
       _result = ProductResult(
@@ -379,11 +391,16 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   /// Load halaman pertama. Reset cursor + accumulator.
   Future<void> _loadProducts() async {
+    // Increment epoch → invalidasi _loadMore / _loadProducts lama yang masih
+    // in-flight. Reset _loadingMore juga supaya tidak stuck kalau ada
+    // loadMore yang ke-buang oleh stale-guard.
+    final epoch = ++_loadEpoch;
     setState(() {
       _loading = true;
       // Reset pagination saat filter/query change.
       _nextCursor = null;
       _hasMore = true;
+      _loadingMore = false;
     });
     final result = await productService.fetchProducts(
       query: _query,
@@ -398,7 +415,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
       withImage: _filter.withImageOnly,
       discountOnly: widget.flashSaleOnly || _filter.discountOnly,
     );
-    if (!mounted) return;
+    // Stale guard: kalau filter/query berubah lagi saat fetch in-flight
+    // (epoch ber-increment), buang hasil lama — response yang datang
+    // belakangan tidak boleh menimpa hasil filter terbaru.
+    if (!mounted || epoch != _loadEpoch) return;
     setState(() {
       _result = result;
       _nextCursor = result.nextCursor;

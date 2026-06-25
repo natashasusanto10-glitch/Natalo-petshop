@@ -321,13 +321,24 @@ class _FeedScreenState extends State<FeedScreen> {
       // Pagination error — silent. User tetap bisa lihat existing posts.
       if (!mounted) return;
       setState(() => _loadingMore = false);
+    } catch (_) {
+      // BUGFIX(audit): error non-ApiException (mis. JSON parse / type-cast
+      // saat response korup / schema berubah) sebelumnya BOCOR keluar tanpa
+      // reset _loadingMore → guard di awal selalu return → pagination MATI
+      // PERMANEN walau koneksi pulih. Reset flag di sini.
+      if (!mounted) return;
+      setState(() => _loadingMore = false);
     }
   }
 
   void _onPageChanged(int index) {
     setState(() => _activeIndex = index);
     _preloadNext(index);
-    if (index >= _posts.length - 2 && _nextCursor != null) {
+    // BUGFIX(audit): bandingkan index dengan _visiblePosts (list TERFILTER
+    // yang dipakai PageView), bukan _posts (unfiltered). Saat ada user
+    // diblok, _visiblePosts.length < _posts.length → trigger loadMore meleset
+    // (kepicu kecepatan / tak pernah kepicu di ujung list pendek).
+    if (index >= _visiblePosts.length - 2 && _nextCursor != null) {
       _loadMore();
     }
   }
@@ -359,11 +370,17 @@ class _FeedScreenState extends State<FeedScreen> {
     // Forward preload 2 (next + next+1) — penting untuk smooth TikTok-style
     // swipe sequence. Backward preload 1 (prev) cukup karena user jarang
     // swipe-back lebih dari sekali berturut-turut.
+    // BUGFIX(audit): index window pakai _visiblePosts (list TERFILTER yg
+    // dipakai PageView), bukan _posts (unfiltered). activeIndex = index di
+    // VISIBLE list (dari onPageChanged). Saat ada user diblok, _posts[index]
+    // BUKAN post yang ditonton user → preload controller video untuk post
+    // yang salah (swipe tidak instan). Pakai _visiblePosts konsisten.
+    final visible = _visiblePosts;
     final keepIds = <String>{};
     for (final offset in const [-1, 0, 1, 2]) {
       final i = activeIndex + offset;
-      if (i >= 0 && i < _posts.length) {
-        keepIds.add(_posts[i].id);
+      if (i >= 0 && i < visible.length) {
+        keepIds.add(visible[i].id);
       }
     }
 
@@ -387,8 +404,8 @@ class _FeedScreenState extends State<FeedScreen> {
 
     // Pre-init controllers yang masih dalam window tapi belum ada.
     // Paralel init (Future.wait) supaya prev + next siap bersamaan.
-    final activePost = activeIndex >= 0 && activeIndex < _posts.length
-        ? _posts[activeIndex]
+    final activePost = activeIndex >= 0 && activeIndex < visible.length
+        ? visible[activeIndex]
         : null;
     final initFutures = <Future<void>>[];
 

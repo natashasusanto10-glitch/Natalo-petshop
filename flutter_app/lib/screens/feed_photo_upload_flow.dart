@@ -75,12 +75,27 @@ class _FeedPhotoPickerScreenState extends State<FeedPhotoPickerScreen> {
         AppHaptics.warning();
         return;
       }
-      final files = picked.map((x) => File(x.path)).toList();
+      final newFiles = picked.map((x) => File(x.path)).toList();
       if (!mounted) return;
+      // BUGFIX(audit): tombol berlabel "Ganti / Tambah Foto" tapi sebelumnya
+      // MENIMPA seluruh seleksi (`_selected = files`) → foto yang sudah
+      // dipilih hilang, padahal label janji "Tambah". Sekarang MERGE ke
+      // seleksi existing, dedup by path, cap _kPhotoMax. Hapus foto tertentu
+      // tetap bisa via tombol X per-thumbnail (onRemove/_removeAt).
+      final seenPaths = <String>{};
+      final merged = <File>[];
+      for (final f in [..._selected, ...newFiles]) {
+        if (seenPaths.add(f.path)) merged.add(f);
+      }
+      final overflow = merged.length > _kPhotoMax;
       setState(() {
-        _selected = files;
+        _selected = overflow ? merged.take(_kPhotoMax).toList() : merged;
         _busy = false;
+        _error = overflow
+            ? 'Maksimal $_kPhotoMax foto dalam 1 postingan.'
+            : null;
       });
+      if (overflow) AppHaptics.warning();
     } catch (e) {
       if (!mounted) return;
       setState(() {

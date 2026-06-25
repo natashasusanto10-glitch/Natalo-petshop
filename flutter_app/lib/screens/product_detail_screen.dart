@@ -2771,6 +2771,10 @@ class _ProductReviewsScreenState extends State<_ProductReviewsScreen> {
   bool _mediaOnly = false;
   bool _loading = true;
   bool _loadingMore = false;
+  // BUGFIX(audit): epoch token cegah stale-future race saat ganti filter
+  // ulasan cepat (bintang 5 → 4). Tanpa ini, response yang datang belakangan
+  // menimpa list → list tidak cocok dengan chip filter aktif.
+  int _reviewEpoch = 0;
 
   @override
   void initState() {
@@ -2785,6 +2789,7 @@ class _ProductReviewsScreenState extends State<_ProductReviewsScreen> {
       );
 
   Future<void> _loadInitial() async {
+    final epoch = ++_reviewEpoch;
     setState(() => _loading = true);
     try {
       final results = await Future.wait([
@@ -2792,7 +2797,9 @@ class _ProductReviewsScreenState extends State<_ProductReviewsScreen> {
         reviewService.fetchReviews(widget.product.slug,
             filter: _filter, limit: 20),
       ]);
-      if (!mounted) return;
+      // Stale guard: filter berubah lagi saat fetch in-flight → buang hasil
+      // lama supaya list cocok dengan chip filter terbaru.
+      if (!mounted || epoch != _reviewEpoch) return;
       final summary = results[0] as ReviewSummary;
       final page = results[1] as ProductReviewPage;
       setState(() {
@@ -2802,13 +2809,14 @@ class _ProductReviewsScreenState extends State<_ProductReviewsScreen> {
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || epoch != _reviewEpoch) return;
       setState(() => _loading = false);
     }
   }
 
   Future<void> _loadMore() async {
     if (_loadingMore || _nextCursor == null) return;
+    final epoch = _reviewEpoch;
     setState(() => _loadingMore = true);
     try {
       final page = await reviewService.fetchReviews(
@@ -2816,14 +2824,19 @@ class _ProductReviewsScreenState extends State<_ProductReviewsScreen> {
         filter: _filter.copyWith(cursor: _nextCursor),
         limit: 20,
       );
-      if (!mounted) return;
+      // Stale guard: filter berubah saat fetch in-flight → jangan append
+      // page lama ke list filter baru.
+      if (!mounted || epoch != _reviewEpoch) {
+        if (mounted) _loadingMore = false;
+        return;
+      }
       setState(() {
         _reviews = [..._reviews, ...page.reviews];
         _nextCursor = page.nextCursor;
         _loadingMore = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || epoch != _reviewEpoch) return;
       setState(() => _loadingMore = false);
     }
   }
