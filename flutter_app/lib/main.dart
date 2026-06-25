@@ -388,37 +388,42 @@ class _SmoothPageRoute extends PageRouteBuilder<void> {
   _SmoothPageRoute({required RouteSettings settings, required this.child})
       : super(
           settings: settings,
-          transitionDuration: const Duration(milliseconds: 340),
-          reverseTransitionDuration: const Duration(milliseconds: 260),
+          // Diperpendek dari 340/260 — navigasi sering, durasi pendek terasa
+          // lebih ringan & tidak melelahkan.
+          transitionDuration: const Duration(milliseconds: 280),
+          reverseTransitionDuration: const Duration(milliseconds: 240),
           pageBuilder: (context, animation, secondaryAnimation) => child,
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             final isRoot = settings.name == '/';
+            final content = _SlideBackGesture(enabled: !isRoot, child: child);
+
+            // Reduce-motion (OS "Kurangi Gerak" ATAU toggle user di Settings):
+            // cross-fade halus tanpa translasi/zoom — sesuai Apple HIG.
+            // Sebelumnya transisi mengabaikan MotionPrefs sama sekali.
+            if (MotionPrefs.shouldReduce(context)) {
+              return FadeTransition(opacity: animation, child: content);
+            }
+
             final curved = CurvedAnimation(
               parent: animation,
               curve: Curves.easeOutCubic,
               reverseCurve: Curves.easeInCubic,
             );
-            final offset = Tween<Offset>(
-              begin: isRoot ? const Offset(0.04, 0.02) : const Offset(1, 0),
-              end: Offset.zero,
-            ).animate(curved);
-            final scale = Tween<double>(
-              begin: isRoot ? 0.985 : 1,
-              end: 1,
-            ).animate(curved);
 
-            return FadeTransition(
-              opacity: curved,
-              child: SlideTransition(
-                position: offset,
-                child: ScaleTransition(
-                  scale: scale,
-                  child: _SlideBackGesture(
-                    enabled: !isRoot,
-                    child: child,
-                  ),
-                ),
-              ),
+            // Balik ke Home (root): cukup fade halus — TANPA zoom + diagonal
+            // yang dulu bikin pusing (3 sumbu gerak sekaligus).
+            if (isRoot) {
+              return FadeTransition(opacity: curved, child: content);
+            }
+
+            // Halaman lain: geser bersih dari kanan (native iOS feel) —
+            // TANPA fade-tumpuk & TANPA scale. Satu sumbu gerak saja.
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(1, 0),
+                end: Offset.zero,
+              ).animate(curved),
+              child: content,
             );
           },
         );
