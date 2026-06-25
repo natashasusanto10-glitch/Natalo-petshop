@@ -385,21 +385,35 @@ class NataloPetshopApp extends StatelessWidget {
 class _SmoothPageRoute extends PageRouteBuilder<void> {
   final Widget child;
 
+  // Root ('/') = Beranda. Itu tujuan TAB (lewat bottom nav
+  // pushNamedAndRemoveUntil), bukan drill-down. Tab bar semestinya ganti
+  // INSTAN (ala IG/Tokopedia) — bukan cross-fade seluruh layar yang bikin
+  // pusing. Jadi durasi root = 0 (tanpa animasi).
+  static bool _routeIsRoot(RouteSettings settings) => settings.name == '/';
+
   _SmoothPageRoute({required RouteSettings settings, required this.child})
       : super(
           settings: settings,
-          // Diperpendek dari 340/260 — navigasi sering, durasi pendek terasa
-          // lebih ringan & tidak melelahkan.
-          transitionDuration: const Duration(milliseconds: 280),
-          reverseTransitionDuration: const Duration(milliseconds: 240),
+          // Beranda (tab) instan; halaman lain 280/240 (geser bersih).
+          transitionDuration: _routeIsRoot(settings)
+              ? Duration.zero
+              : const Duration(milliseconds: 280),
+          reverseTransitionDuration: _routeIsRoot(settings)
+              ? Duration.zero
+              : const Duration(milliseconds: 240),
           pageBuilder: (context, animation, secondaryAnimation) => child,
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             final isRoot = settings.name == '/';
             final content = _SlideBackGesture(enabled: !isRoot, child: child);
 
+            // Beranda: INSTAN, tanpa animasi apa pun (no fade/slide/zoom).
+            // Ini menghilangkan cross-fade seluruh layar yang bikin pusing.
+            if (isRoot) {
+              return content;
+            }
+
             // Reduce-motion (OS "Kurangi Gerak" ATAU toggle user di Settings):
             // cross-fade halus tanpa translasi/zoom — sesuai Apple HIG.
-            // Sebelumnya transisi mengabaikan MotionPrefs sama sekali.
             if (MotionPrefs.shouldReduce(context)) {
               return FadeTransition(opacity: animation, child: content);
             }
@@ -409,12 +423,6 @@ class _SmoothPageRoute extends PageRouteBuilder<void> {
               curve: Curves.easeOutCubic,
               reverseCurve: Curves.easeInCubic,
             );
-
-            // Balik ke Home (root): cukup fade halus — TANPA zoom + diagonal
-            // yang dulu bikin pusing (3 sumbu gerak sekaligus).
-            if (isRoot) {
-              return FadeTransition(opacity: curved, child: content);
-            }
 
             // Halaman lain: geser bersih dari kanan (native iOS feel) —
             // TANPA fade-tumpuk & TANPA scale. Satu sumbu gerak saja.
