@@ -737,18 +737,30 @@ class _FeedPostDetailScreenState extends State<FeedPostDetailScreen> {
       _loadingProducts = true;
       _showingPurchased = false;
     });
-    final result = await productService.fetchProducts(
-      query: query,
-      limit: 12,
-      inStock: true,
-      hasPrice: true,
-      withImage: true,
-    );
-    if (!mounted) return;
-    setState(() {
-      _products = result.products.take(12).toList();
-      _loadingProducts = false;
-    });
+    // BUGFIX(audit): tanpa try/catch, throw saat fetch (API/DB down) bikin
+    // _loadingProducts stuck true → "Memuat produk..." selamanya. Catch
+    // reset flag + kosongkan list (graceful), bukan stuck.
+    try {
+      final result = await productService.fetchProducts(
+        query: query,
+        limit: 12,
+        inStock: true,
+        hasPrice: true,
+        withImage: true,
+      );
+      if (!mounted) return;
+      setState(() {
+        _products = result.products.take(12).toList();
+        _loadingProducts = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _products = const [];
+          _loadingProducts = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadPurchasedProducts() async {
@@ -757,9 +769,10 @@ class _FeedPostDetailScreenState extends State<FeedPostDetailScreen> {
       _showingPurchased = true;
       _productSearchController.clear();
     });
-    final pinnable = await feedService.fetchPinnableProducts();
-    if (!mounted) return;
-    final products = pinnable.whereType<Map>().map((p) {
+    try {
+      final pinnable = await feedService.fetchPinnableProducts();
+      if (!mounted) return;
+      final products = pinnable.whereType<Map>().map((p) {
       final priceRaw = p['price'] ?? p['discountPrice'] ?? 0;
       return Product(
         id: (p['productId'] ?? p['id'] ?? '').toString(),
@@ -777,11 +790,19 @@ class _FeedPostDetailScreenState extends State<FeedPostDetailScreen> {
         stock: p['stock'] is num ? (p['stock'] as num).toInt() : 0,
         description: '',
       );
-    }).toList();
-    setState(() {
-      _products = products;
-      _loadingProducts = false;
-    });
+      }).toList();
+      setState(() {
+        _products = products;
+        _loadingProducts = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _products = const [];
+          _loadingProducts = false;
+        });
+      }
+    }
   }
 
   void _toggleProduct(Product product) {

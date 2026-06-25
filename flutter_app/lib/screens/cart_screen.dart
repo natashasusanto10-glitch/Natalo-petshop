@@ -208,51 +208,59 @@ class _CartScreenState extends State<CartScreen> {
         cartStore.items.map((item) => item.product.id).toList();
     final viewedIds = recentlyViewedStore.items.map((p) => p.id).toList();
 
-    final results = await Future.wait<dynamic>([
-      productService.fetchPersonalizedRecommendations(
-        viewedIds: viewedIds,
-        excludeIds: cartProductIds,
-        limit: 8,
-      ),
-      productService.fetchProductsPage(
-        cursor: startCursor,
-        limit: 8,
-        inStock: true,
-        hasPrice: true,
-        withImage: false,
-      ),
-    ]);
-    final personalized = results[0] as List<Product>;
-    var page = results[1] as ProductPage;
+    // BUGFIX(audit): tanpa try/catch, kalau fetch throw (API/DB down),
+    // setState(_loadingBossProducts=false) tidak pernah tercapai → skeleton
+    // rekomendasi "Ayoo diborong" loading SELAMANYA. Catch reset flag +
+    // biarkan section kosong (graceful degrade), bukan stuck.
+    try {
+      final results = await Future.wait<dynamic>([
+        productService.fetchPersonalizedRecommendations(
+          viewedIds: viewedIds,
+          excludeIds: cartProductIds,
+          limit: 8,
+        ),
+        productService.fetchProductsPage(
+          cursor: startCursor,
+          limit: 8,
+          inStock: true,
+          hasPrice: true,
+          withImage: false,
+        ),
+      ]);
+      final personalized = results[0] as List<Product>;
+      var page = results[1] as ProductPage;
 
-    // Fallback rotation kalau startOffset out-of-bounds — ulangi tanpa cursor.
-    if (page.products.isEmpty && startCursor != null) {
-      page = await productService.fetchProductsPage(
-        limit: 8,
-        inStock: true,
-        hasPrice: true,
-        withImage: false,
-      );
+      // Fallback rotation kalau startOffset out-of-bounds — ulangi tanpa cursor.
+      if (page.products.isEmpty && startCursor != null) {
+        page = await productService.fetchProductsPage(
+          limit: 8,
+          inStock: true,
+          hasPrice: true,
+          withImage: false,
+        );
+      }
+      if (!mounted) return;
+
+      // Merge personalized + rotation, dedup by id, exclude cart products.
+      final cartIdSet = cartProductIds.toSet();
+      final seen = <String>{};
+      final merged = <Product>[];
+      for (final product in [...personalized, ...page.products]) {
+        if (product.id.isEmpty) continue;
+        if (cartIdSet.contains(product.id)) continue;
+        if (!seen.add(product.id)) continue;
+        merged.add(product);
+      }
+
+      setState(() {
+        _bossProducts = merged;
+        _bossProductsCursor = page.nextCursor;
+        _bossProductsHasMore = page.hasMore;
+        _loadingBossProducts = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingBossProducts = false);
     }
-    if (!mounted) return;
-
-    // Merge personalized + rotation, dedup by id, exclude cart products.
-    final cartIdSet = cartProductIds.toSet();
-    final seen = <String>{};
-    final merged = <Product>[];
-    for (final product in [...personalized, ...page.products]) {
-      if (product.id.isEmpty) continue;
-      if (cartIdSet.contains(product.id)) continue;
-      if (!seen.add(product.id)) continue;
-      merged.add(product);
-    }
-
-    setState(() {
-      _bossProducts = merged;
-      _bossProductsCursor = page.nextCursor;
-      _bossProductsHasMore = page.hasMore;
-      _loadingBossProducts = false;
-    });
   }
 
   void _onCartScroll() {
@@ -280,24 +288,31 @@ class _CartScreenState extends State<CartScreen> {
   Future<void> _loadMoreBossProducts() async {
     if (_loadingMoreBossProducts || !_bossProductsHasMore) return;
     setState(() => _loadingMoreBossProducts = true);
-    final page = await productService.fetchProductsPage(
-      cursor: _bossProductsCursor,
-      limit: 8,
-      inStock: true,
-      hasPrice: true,
-      withImage: false,
-    );
-    if (!mounted) return;
-    final existingIds = _bossProducts.map((product) => product.id).toSet();
-    final nextProducts = page.products
-        .where((product) => !existingIds.contains(product.id))
-        .toList();
-    setState(() {
-      _bossProducts = [..._bossProducts, ...nextProducts];
-      _bossProductsCursor = page.nextCursor;
-      _bossProductsHasMore = page.hasMore;
-      _loadingMoreBossProducts = false;
-    });
+    // BUGFIX(audit): tanpa try/catch, throw saat fetch bikin
+    // _loadingMoreBossProducts stuck true → guard di _onCartScroll selalu
+    // return → pagination mati PERMANEN sisa sesi. Catch reset flag.
+    try {
+      final page = await productService.fetchProductsPage(
+        cursor: _bossProductsCursor,
+        limit: 8,
+        inStock: true,
+        hasPrice: true,
+        withImage: false,
+      );
+      if (!mounted) return;
+      final existingIds = _bossProducts.map((product) => product.id).toSet();
+      final nextProducts = page.products
+          .where((product) => !existingIds.contains(product.id))
+          .toList();
+      setState(() {
+        _bossProducts = [..._bossProducts, ...nextProducts];
+        _bossProductsCursor = page.nextCursor;
+        _bossProductsHasMore = page.hasMore;
+        _loadingMoreBossProducts = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingMoreBossProducts = false);
+    }
   }
 
   void _onCartChanged() {

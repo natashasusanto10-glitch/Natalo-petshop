@@ -115,6 +115,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   /// Otherwise default ke cartStore.items.
   List<CartItem> get _checkoutItems => widget.items ?? cartStore.items;
 
+  /// BUGFIX(audit): bersihkan keranjang setelah order sukses TANPA menghapus
+  /// item yang TIDAK di-order.
+  /// - widget.items == null → full-cart checkout: semua item di cart memang
+  ///   di-order → clear() seluruhnya (perilaku lama, benar).
+  /// - widget.items != null → Buy Now / checkout sebagian: hapus HANYA item
+  ///   yang benar-benar di-order (by key). remove() no-op untuk item Buy Now
+  ///   yang memang tidak ada di cart. Sebelumnya clear() menghapus SELURUH
+  ///   cart → item yang tidak dibeli ikut hilang (data loss).
+  void _clearOrderedItemsFromCart() {
+    final ordered = widget.items;
+    if (ordered == null) {
+      cartStore.clear();
+      return;
+    }
+    for (final item in ordered) {
+      cartStore.remove(item.key);
+    }
+  }
+
   /// Subtotal dari items (cartStore-aware atau override).
   double get _localItemsSubtotal => widget.items != null
       ? widget.items!.fold<double>(0, (sum, item) => sum + item.lineTotal)
@@ -993,7 +1012,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           message: result.message,
           hasPaymentLink: hasPaymentLink,
           onDone: () {
-            cartStore.clear();
+            _clearOrderedItemsFromCart();
             Navigator.pop(context);
             Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
           },
@@ -1041,7 +1060,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   void _openCreatedOrder(OrderSummary order) {
-    cartStore.clear();
+    _clearOrderedItemsFromCart();
     Navigator.pop(context);
     Navigator.pushNamedAndRemoveUntil(
       context,

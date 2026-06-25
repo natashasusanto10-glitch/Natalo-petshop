@@ -672,18 +672,30 @@ class _FeedPhotoDetailScreenState extends State<FeedPhotoDetailScreen> {
 
   Future<void> _loadProducts() async {
     setState(() => _loadingProducts = true);
-    final result = await productService.fetchProducts(
-      query: '',
-      limit: 12,
-      inStock: true,
-      hasPrice: true,
-      withImage: true,
-    );
-    if (!mounted) return;
-    setState(() {
-      _products = result.products.take(12).toList();
-      _loadingProducts = false;
-    });
+    // BUGFIX(audit): tanpa try/catch, throw saat fetch (API/DB down) bikin
+    // _loadingProducts stuck true → spinner produk muter selamanya. Catch
+    // reset flag + kosongkan list (graceful degrade).
+    try {
+      final result = await productService.fetchProducts(
+        query: '',
+        limit: 12,
+        inStock: true,
+        hasPrice: true,
+        withImage: true,
+      );
+      if (!mounted) return;
+      setState(() {
+        _products = result.products.take(12).toList();
+        _loadingProducts = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _products = const [];
+          _loadingProducts = false;
+        });
+      }
+    }
   }
 
   void _toggleProduct(Product product) {

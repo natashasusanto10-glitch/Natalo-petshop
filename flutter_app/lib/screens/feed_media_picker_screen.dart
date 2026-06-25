@@ -367,7 +367,12 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         ],
       ),
     );
-    if (!mounted || albums.isEmpty) {
+    // BUGFIX(audit): guard mounted terbalik — sebelumnya `if (!mounted ||
+    // albums.isEmpty) setState(...)` tetap memanggil setState saat !mounted
+    // (picker ditutup saat getAssetPathList masih await) → crash. Cek
+    // mounted dulu & return, baru handle albums kosong.
+    if (!mounted) return;
+    if (albums.isEmpty) {
       setState(() => _albums = albums);
       return;
     }
@@ -501,7 +506,15 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     final controller = _videoController;
     _videoController = null;
     _videoControllerPath = null;
-    setState(() => _videoControllerReady = false);
+    // BUGFIX(audit): method ini dipanggil juga dari dispose() (di mana
+    // mounted == false). setState() saat unmount → assertion 'setState()
+    // called after dispose()'. Guard mounted: kalau lagi dispose, cukup
+    // set field tanpa setState (UI sudah mau dibuang).
+    if (mounted) {
+      setState(() => _videoControllerReady = false);
+    } else {
+      _videoControllerReady = false;
+    }
     await controller?.pause();
     await controller?.dispose();
   }

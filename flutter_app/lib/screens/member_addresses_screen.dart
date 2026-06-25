@@ -28,18 +28,26 @@ class _MemberAddressesScreenState extends State<MemberAddressesScreen> {
 
   Future<List<MemberAddress>> _loadAddresses() async {
     if (!memberStore.isLoggedIn) return [];
-    try {
-      final addresses = await memberService.fetchAddresses();
-      _addresses = addresses;
-      return _addresses;
-    } catch (_) {
-      return [];
-    }
+    // BUGFIX(audit): JANGAN telan error jadi []. Kalau fetch gagal (DB/API
+    // down), return [] bikin layar tampil "Belum ada alamat" → user kira
+    // alamatnya HILANG (bisa bikin alamat duplikat / panik). Rethrow supaya
+    // FutureBuilder bisa bedakan error vs benar-benar kosong & tampil retry.
+    final addresses = await memberService.fetchAddresses();
+    _addresses = addresses;
+    return _addresses;
   }
 
   Future<void> _refresh() async {
     setState(() => _addressesFuture = _loadAddresses());
-    await _addressesFuture;
+    // _loadAddresses sekarang bisa throw — catch di sini supaya error
+    // ke-surface ke FutureBuilder (via _addressesFuture) TAPI _refresh tidak
+    // melempar ke caller (mis. _setPrimary yang refetch setelah sukses,
+    // biar tidak salah tampil "gagal set utama" padahal yang gagal refetch).
+    try {
+      await _addressesFuture;
+    } catch (_) {
+      // FutureBuilder yang handle tampilan error.
+    }
   }
 
   Future<void> _openAddressForm([MemberAddress? address]) async {
@@ -166,6 +174,27 @@ class _MemberAddressesScreenState extends State<MemberAddressesScreen> {
           if (snapshot.connectionState == ConnectionState.waiting &&
               !snapshot.hasData) {
             return const AppSkeletonList(itemCount: 5);
+          }
+          // Error state — hanya kalau TIDAK ada data lama (first-load gagal).
+          // Kalau sudah punya _addresses (refresh gagal), biarkan list lama
+          // tampil (graceful), jangan ganti jadi error screen.
+          if (snapshot.hasError && _addresses.isEmpty) {
+            return NataloPawRefreshIndicator(
+              onRefresh: _refresh,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 60, 16, 132),
+                children: [
+                  AppErrorState(
+                    variant: AppErrorVariant.network,
+                    title: 'Gagal memuat alamat',
+                    description:
+                        'Alamat tersimpanmu aman. Cek koneksi lalu coba lagi.',
+                    onRetry: _refresh,
+                  ),
+                ],
+              ),
+            );
           }
           final addresses = snapshot.data ?? _addresses;
           return NataloPawRefreshIndicator(
