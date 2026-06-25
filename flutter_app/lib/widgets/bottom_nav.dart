@@ -21,15 +21,18 @@ import '../state/member_store.dart';
 enum BottomNavVariant { light, dark }
 
 const _navBackground = Color(0xFFFFFFFF);
-const _navTopBorder = Color(0xFFE5E7EB);
 const _navActiveBlue = Color(0xFF2563EB);
 const _navInactive = Color(0xFF6B7280);
+// Pill mengambang (floating) — border tipis + indikator aktif soft blue.
+const _navPillBorder = Color(0xFFEDEFF2);
+const _navIndicatorLight = Color(0xFFEAF1FE); // pill biru lembut di balik ikon aktif
 // Dark glass tokens — semi-transparent black supaya video di belakang
 // masih kelihatan, blur untuk feel "frosted glass dark mode".
 const _navDarkGlass = Color(0xCC0A0A0A); // black 80% alpha
 const _navDarkTopBorder = Color(0x33FFFFFF); // white 20% alpha
 const _navDarkActive = Color(0xFFFFFFFF);
 const _navDarkInactive = Color(0xFF9CA3AF);
+const _navIndicatorDark = Color(0x29FFFFFF); // white ~16% untuk dark glass
 
 class BottomNavBar extends StatelessWidget {
   final int currentIndex;
@@ -89,96 +92,114 @@ class BottomNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = variant == BottomNavVariant.dark;
-    final background = dark ? _navDarkGlass : _navBackground;
-    final borderColor = dark ? _navDarkTopBorder : _navTopBorder;
     final activeColor = dark ? _navDarkActive : _navActiveBlue;
     final inactiveColor = dark ? _navDarkInactive : _navInactive;
+    final indicatorColor = dark ? _navIndicatorDark : _navIndicatorLight;
+    final borderColor = dark ? _navDarkTopBorder : _navPillBorder;
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
 
-    final content = Container(
-      decoration: BoxDecoration(
-        color: background,
-        border: Border(
-          top: BorderSide(
-            color: borderColor,
-            width: 0.5,
+    final row = SizedBox(
+      height: 54,
+      child: Row(
+        children: [
+          _BottomNavItem(
+            icon: Icons.home_outlined,
+            selectedIcon: Icons.home_rounded,
+            label: 'Beranda',
+            selected: currentIndex == 0,
+            activeColor: activeColor,
+            inactiveColor: inactiveColor,
+            indicatorColor: indicatorColor,
+            onTap: () => _onTap(context, 0),
           ),
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        // Ultra-compact nav — 46px content. Tokopedia/Lazada exact match.
-        // Total iPhone notch: 46 + 34 safe = 80px. Android gesture:
-        // 46 + ~20 = 66px. Lebih kecil dari 50px sebelumnya, masih
-        // accommodate icon 24 + label 11.5 dengan padding tight.
-        child: SizedBox(
-          height: 46,
-          child: Row(
-            children: [
-              _BottomNavItem(
-                icon: Icons.home_outlined,
-                selectedIcon: Icons.home_rounded,
-                label: 'Beranda',
-                selected: currentIndex == 0,
-                activeColor: activeColor,
-                inactiveColor: inactiveColor,
-                onTap: () => _onTap(context, 0),
-              ),
-              _BottomNavItem(
-                icon: Icons.shopping_bag_outlined,
-                selectedIcon: Icons.shopping_bag_rounded,
-                label: 'Produk',
-                selected: currentIndex == 1,
-                activeColor: activeColor,
-                inactiveColor: inactiveColor,
-                onTap: () => _onTap(context, 1),
-              ),
-              _BottomNavItem(
-                icon: Icons.play_circle_outline_rounded,
-                selectedIcon: Icons.play_circle_fill_rounded,
-                label: 'Feed',
-                selected: currentIndex == 2,
-                activeColor: activeColor,
-                inactiveColor: inactiveColor,
-                onTap: () => _onTap(context, 2),
-              ),
-              _BottomNavItem(
-                icon: Icons.receipt_long_outlined,
-                selectedIcon: Icons.receipt_long_rounded,
-                label: 'Transaksi',
-                selected: currentIndex == 3,
-                activeColor: activeColor,
-                inactiveColor: inactiveColor,
-                onTap: () => _onTap(context, 3),
-              ),
-              // Tab Akun pakai avatar foto profil (Instagram-style).
-              // Listen ke memberStore supaya saat user upload foto baru
-              // / logout / login, icon auto-update. Ukuran icon SAMA
-              // dengan tab lain — slot kotak 24px, supaya bottom nav
-              // height tetap 46px (NO change ke nav structure).
-              _BottomNavAvatarItem(
-                label: 'Akun',
-                selected: currentIndex == 4,
-                activeColor: activeColor,
-                inactiveColor: inactiveColor,
-                onTap: () => _onTap(context, 4),
-              ),
-            ],
+          _BottomNavItem(
+            icon: Icons.shopping_bag_outlined,
+            selectedIcon: Icons.shopping_bag_rounded,
+            label: 'Produk',
+            selected: currentIndex == 1,
+            activeColor: activeColor,
+            inactiveColor: inactiveColor,
+            indicatorColor: indicatorColor,
+            onTap: () => _onTap(context, 1),
           ),
-        ),
+          _BottomNavItem(
+            icon: Icons.play_circle_outline_rounded,
+            selectedIcon: Icons.play_circle_fill_rounded,
+            label: 'Feed',
+            selected: currentIndex == 2,
+            activeColor: activeColor,
+            inactiveColor: inactiveColor,
+            indicatorColor: indicatorColor,
+            onTap: () => _onTap(context, 2),
+          ),
+          _BottomNavItem(
+            icon: Icons.receipt_long_outlined,
+            selectedIcon: Icons.receipt_long_rounded,
+            label: 'Transaksi',
+            selected: currentIndex == 3,
+            activeColor: activeColor,
+            inactiveColor: inactiveColor,
+            indicatorColor: indicatorColor,
+            onTap: () => _onTap(context, 3),
+          ),
+          // Tab Akun pakai avatar foto profil (Instagram-style).
+          _BottomNavAvatarItem(
+            label: 'Akun',
+            selected: currentIndex == 4,
+            activeColor: activeColor,
+            inactiveColor: inactiveColor,
+            indicatorColor: indicatorColor,
+            onTap: () => _onTap(context, 4),
+          ),
+        ],
       ),
     );
 
-    // Dark variant pakai true glass effect — BackdropFilter blur video di
-    // belakang. Light variant solid putih, no blur (no GPU cost).
+    final borderRadius = BorderRadius.circular(26);
+
+    // Pill mengambang (floating, ala IG baru) — TAPI tetap terang + label +
+    // aktif brand untuk e-commerce. Light: putih + bayangan lembut. Dark:
+    // frosted glass (blur video di belakang) untuk Feed.
+    Widget pill;
     if (dark) {
-      return ClipRect(
+      pill = ClipRRect(
+        borderRadius: borderRadius,
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-          child: content,
+          child: Container(
+            decoration: BoxDecoration(
+              color: _navDarkGlass,
+              borderRadius: borderRadius,
+              border: Border.all(color: borderColor, width: 0.5),
+            ),
+            child: row,
+          ),
         ),
       );
+    } else {
+      pill = Container(
+        decoration: BoxDecoration(
+          color: _navBackground,
+          borderRadius: borderRadius,
+          border: Border.all(color: borderColor, width: 0.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.10),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: row,
+      );
     }
-    return content;
+
+    // Margin samping + bawah supaya pill "mengambang" di atas home indicator.
+    // bottomInset clear home indicator iPhone / gesture bar Android, +10 gap.
+    return Padding(
+      padding: EdgeInsets.fromLTRB(14, 6, 14, bottomInset + 10),
+      child: pill,
+    );
   }
 }
 
@@ -189,6 +210,7 @@ class _BottomNavItem extends StatelessWidget {
   final bool selected;
   final Color activeColor;
   final Color inactiveColor;
+  final Color indicatorColor;
   final VoidCallback onTap;
 
   const _BottomNavItem({
@@ -198,6 +220,7 @@ class _BottomNavItem extends StatelessWidget {
     required this.selected,
     required this.activeColor,
     required this.inactiveColor,
+    required this.indicatorColor,
     required this.onTap,
   });
 
@@ -214,44 +237,47 @@ class _BottomNavItem extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             onTap: onTap,
+            borderRadius: BorderRadius.circular(20),
             splashColor: activeColor.withValues(alpha: 0.08),
             highlightColor: activeColor.withValues(alpha: 0.06),
             child: Center(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 3, bottom: 1),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    AnimatedScale(
-                      scale: selected ? 1.02 : 1,
-                      duration: const Duration(milliseconds: 160),
-                      curve: Curves.easeOutCubic,
-                      child: Icon(
-                        selected ? selectedIcon : icon,
-                        color: color,
-                        size: selected ? 24 : 23,
-                      ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Indikator pill di balik ikon aktif (Material 3 / IG-ish).
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: selected ? indicatorColor : Colors.transparent,
+                      borderRadius: BorderRadius.circular(999),
                     ),
-                    const SizedBox(height: 2),
-                    AnimatedDefaultTextStyle(
-                      duration: const Duration(milliseconds: 160),
-                      curve: Curves.easeOutCubic,
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 11.5,
-                        fontWeight:
-                            selected ? FontWeight.w600 : FontWeight.w500,
-                        height: 1,
-                      ),
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                    child: Icon(
+                      selected ? selectedIcon : icon,
+                      color: color,
+                      size: 22,
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 3),
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 160),
+                    curve: Curves.easeOutCubic,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 11,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      height: 1,
+                    ),
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -279,6 +305,7 @@ class _BottomNavAvatarItem extends StatelessWidget {
   final bool selected;
   final Color activeColor;
   final Color inactiveColor;
+  final Color indicatorColor;
   final VoidCallback onTap;
 
   const _BottomNavAvatarItem({
@@ -286,6 +313,7 @@ class _BottomNavAvatarItem extends StatelessWidget {
     required this.selected,
     required this.activeColor,
     required this.inactiveColor,
+    required this.indicatorColor,
     required this.onTap,
   });
 
@@ -301,49 +329,51 @@ class _BottomNavAvatarItem extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             onTap: onTap,
+            borderRadius: BorderRadius.circular(20),
             splashColor: activeColor.withValues(alpha: 0.08),
             highlightColor: activeColor.withValues(alpha: 0.06),
             child: Center(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 3, bottom: 1),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    AnimatedScale(
-                      scale: selected ? 1.02 : 1,
-                      duration: const Duration(milliseconds: 160),
-                      curve: Curves.easeOutCubic,
-                      child: AnimatedBuilder(
-                        animation: memberStore,
-                        builder: (context, _) {
-                          return _AvatarIcon(
-                            selected: selected,
-                            activeColor: activeColor,
-                            inactiveColor: color,
-                          );
-                        },
-                      ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: selected ? indicatorColor : Colors.transparent,
+                      borderRadius: BorderRadius.circular(999),
                     ),
-                    const SizedBox(height: 2),
-                    AnimatedDefaultTextStyle(
-                      duration: const Duration(milliseconds: 160),
-                      curve: Curves.easeOutCubic,
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 11.5,
-                        fontWeight:
-                            selected ? FontWeight.w600 : FontWeight.w500,
-                        height: 1,
-                      ),
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                    child: AnimatedBuilder(
+                      animation: memberStore,
+                      builder: (context, _) {
+                        return _AvatarIcon(
+                          selected: selected,
+                          activeColor: activeColor,
+                          inactiveColor: color,
+                        );
+                      },
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 3),
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 160),
+                    curve: Curves.easeOutCubic,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 11,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      height: 1,
+                    ),
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
