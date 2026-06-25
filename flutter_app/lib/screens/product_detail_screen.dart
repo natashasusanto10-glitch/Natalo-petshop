@@ -827,7 +827,6 @@ class _ProductInfo extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final hasDiscount = product.hasDiscount;
     final discount = product.discountPercent;
-    final savings = product.price - product.finalPrice;
     final hasRating = product.rating > 0;
     final hasReviews = product.reviewCount > 0;
     final hasSold = product.soldCount > 0;
@@ -840,7 +839,9 @@ class _ProductInfo extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: cs.onSurface,
+            // Merah saat ADA diskon harga (ala Tokopedia); hitam saat tidak
+            // — jangan bikin "merah = hemat" kalau harga normal.
+            color: hasDiscount ? _discountRed : cs.onSurface,
             fontSize: 32,
             fontWeight: FontWeight.w900,
             height: 1,
@@ -850,48 +851,43 @@ class _ProductInfo extends StatelessWidget {
           const SizedBox(height: 10),
           Wrap(
             crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 10,
+            spacing: 8,
             runSpacing: 8,
             children: [
+              // %pill solid (putih di atas merah) — pengganti teks % polos,
+              // satu aksen merah tegas yang mengikat ke harga.
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _discountRed,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '$discount%',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              // Harga coret ABU (bukan merah) — biar pill % jadi satu-satunya
+              // merah yang menonjol, hierarki bersih.
               Text(
                 formatRupiah(product.price),
                 style: const TextStyle(
-                  color: _discountRed,
+                  color: _textGray,
                   fontSize: 14,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                   decoration: TextDecoration.lineThrough,
-                  decorationColor: _discountRed,
+                  decorationColor: _textGray,
                 ),
               ),
-              Text(
-                '$discount%',
-                style: const TextStyle(
-                  color: _discountRed,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              if (savings > 0)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _softDiscountBg,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'Hemat ${formatRupiah(savings)}',
-                    style: const TextStyle(
-                      color: _discountRed,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
             ],
           ),
         ],
-        if (_VoucherAndTrust.hasVoucher(product, vouchers)) ...[
+        if (_VoucherAndTrust.shouldShow(product, vouchers)) ...[
           const SizedBox(height: 12),
           _VoucherAndTrust(
             product: product,
@@ -1085,11 +1081,16 @@ class _VoucherAndTrust extends StatelessWidget {
     this.vouchers = const [],
   });
 
-  static bool hasVoucher(
+  /// Rail tampil kalau ada diskon harga (chip "Diskon X% (Yrb)") ATAU ada
+  /// voucher. Diskon harga TANPA voucher tetap dapat rail (sebelumnya rail
+  /// cuma muncul kalau ada voucher).
+  static bool shouldShow(
     Product product,
     List<ProductVoucherPreview> vouchers,
   ) {
-    return _resolveVouchers(product, vouchers).isNotEmpty;
+    final savings = product.price - product.finalPrice;
+    final hasDiscountChip = product.hasDiscount && savings > 0;
+    return hasDiscountChip || _resolveVouchers(product, vouchers).isNotEmpty;
   }
 
   static List<ProductVoucherPreview> _resolveVouchers(
@@ -1115,48 +1116,73 @@ class _VoucherAndTrust extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final resolved = _resolveVouchers(product, vouchers);
-    if (resolved.isEmpty) return const SizedBox.shrink();
+    final savings = product.price - product.finalPrice;
+    final hasBaseDiscount = product.hasDiscount && savings > 0;
+    if (resolved.isEmpty && !hasBaseDiscount) return const SizedBox.shrink();
 
+    // "Hero" = chip pertama yang di-FILL solid jadi anchor energi rail.
+    // Kalau ada chip diskon harga, itu hero-nya → voucher semua soft.
+    // Kalau TIDAK ada diskon harga, voucher non-ongkir pertama jadi hero
+    // supaya rail tetap punya 1 chip mencolok (kasus produk voucher-only).
+    int heroVoucherIndex = -1;
+    if (!hasBaseDiscount) {
+      for (var i = 0; i < resolved.length; i++) {
+        if (!resolved[i].isShippingVoucher) {
+          heroVoucherIndex = i;
+          break;
+        }
+      }
+    }
+
+    final rail = SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: [
+          if (hasBaseDiscount) ...[
+            _DiscountChip(
+              percent: product.discountPercent,
+              savings: savings,
+            ),
+            const SizedBox(width: 8),
+          ],
+          for (var i = 0; i < resolved.length; i++) ...[
+            _VoucherChip(voucher: resolved[i], hero: i == heroVoucherIndex),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+
+    // Rail tanpa garis pemisah atas-bawah (sebelumnya terlihat seperti baris
+    // menu netral) — chip menempel ke harga. "Lihat semua" merah jadi CTA
+    // (bukan chevron abu yang terbaca "navigasi"); hanya saat ada voucher
+    // yang bisa diklaim di sheet.
+    if (resolved.isEmpty) {
+      return rail;
+    }
     return AppPressable(
       onTap: () => _showPromoSheet(context, resolved),
       borderRadius: BorderRadius.circular(10),
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 46),
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          border: Border(
-            top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.72)),
-            bottom:
-                BorderSide(color: cs.outlineVariant.withValues(alpha: 0.72)),
+      child: Row(
+        children: [
+          Expanded(child: rail),
+          const SizedBox(width: 4),
+          const Text(
+            'Lihat semua',
+            style: TextStyle(
+              color: _discountRed,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                child: Row(
-                  children: [
-                    for (final voucher in resolved) ...[
-                      _VoucherChip(voucher: voucher),
-                      const SizedBox(width: 8),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 4),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: cs.onSurface,
-              size: 22,
-            ),
-          ],
-        ),
+          const Icon(
+            Icons.chevron_right_rounded,
+            color: _discountRed,
+            size: 18,
+          ),
+        ],
       ),
     );
   }
@@ -1179,17 +1205,70 @@ class _VoucherAndTrust extends StatelessWidget {
   }
 }
 
+/// Chip diskon harga dasar — fill solid merah + ikon ⚡, gabung persen +
+/// nominal ("Diskon 24% (15rb)") ala Tokopedia. Anchor energi rail.
+class _DiscountChip extends StatelessWidget {
+  final int? percent;
+  final double savings;
+
+  const _DiscountChip({required this.percent, required this.savings});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = (percent != null && percent! > 0)
+        ? 'Diskon $percent% (${formatRupiahCompact(savings)})'
+        : 'Hemat ${formatRupiahCompact(savings)}';
+    return Container(
+      height: 30,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: _discountRed,
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.bolt_rounded, size: 15, color: Colors.white),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+              height: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _VoucherChip extends StatelessWidget {
   final ProductVoucherPreview voucher;
 
-  const _VoucherChip({required this.voucher});
+  /// Hero = di-FILL solid (anchor rail) — dipakai saat tak ada chip diskon
+  /// harga, supaya rail tetap punya satu chip mencolok.
+  final bool hero;
+
+  const _VoucherChip({required this.voucher, this.hero = false});
 
   @override
   Widget build(BuildContext context) {
     final shipping = voucher.isShippingVoucher;
     final tone = shipping ? _successGreen : _discountRed;
-    final bg = shipping ? const Color(0xFFEFFAF4) : _softDiscountBg;
-    final border = shipping ? const Color(0xFFC7F0D8) : const Color(0xFFFFC9D0);
+    final icon = shipping
+        ? Icons.local_shipping_rounded
+        : Icons.confirmation_number_rounded;
+    // Hero non-ongkir → fill solid + teks/ikon putih. Selain itu soft (bg
+    // pucat + teks tone). Voucher ongkir selalu hijau soft.
+    final fill = hero && !shipping;
+    final bg = fill
+        ? _discountRed
+        : (shipping ? const Color(0xFFEFFAF4) : _softDiscountBg);
+    final fg = fill ? Colors.white : tone;
     return Container(
       height: 30,
       padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -1197,18 +1276,31 @@ class _VoucherChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(9),
-        border: Border.all(color: border),
+        border: fill
+            ? null
+            : Border.all(
+                color: shipping
+                    ? const Color(0xFFC7F0D8)
+                    : const Color(0xFFFFC9D0),
+              ),
       ),
-      child: Text(
-        _voucherChipText(voucher),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: tone,
-          fontSize: 13,
-          fontWeight: FontWeight.w900,
-          height: 1,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: fg),
+          const SizedBox(width: 5),
+          Text(
+            _voucherChipText(voucher),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: fg,
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+              height: 1,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1561,7 +1653,7 @@ String _voucherChipText(ProductVoucherPreview voucher) {
   if (voucher.isShippingVoucher) return 'Gratis Ongkir';
   final amount = voucher.discountAmount ?? voucher.savingAmount;
   if (amount != null && amount > 0) {
-    return '-${formatRupiahCompact(amount)}';
+    return 'Hemat ${formatRupiahCompact(amount)}';
   }
   final percent = voucher.discountPercent;
   if (percent != null && percent > 0) {
