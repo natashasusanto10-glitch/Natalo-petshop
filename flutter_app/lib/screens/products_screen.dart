@@ -3375,7 +3375,15 @@ class _FilterSheetState extends State<_FilterSheet> {
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton(
-                      onPressed: previewCount > 0 ? _apply : null,
+                      // BUGFIX(audit): JANGAN gate Apply pakai previewCount.
+                      // previewCount cuma hitung produk yang KEBETULAN ter-load
+                      // di memori (page 1), padahal filter sebenarnya server-
+                      // side. Filter valid yang match-nya tidak ada di page
+                      // ter-load → previewCount 0 → tombol mati permanen
+                      // (user tak bisa apply filter yang sah). Selalu enable;
+                      // kalau hasil 0 setelah apply, empty-state + Reset
+                      // Filter yang handle.
+                      onPressed: _apply,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF2568C7),
                         foregroundColor: Colors.white,
@@ -3392,7 +3400,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                       child: Text(
                         previewCount > 0
                             ? 'Tampilkan $previewCount produk'
-                            : 'Tidak ada produk match',
+                            : 'Terapkan Filter',
                       ),
                     ),
                   ),

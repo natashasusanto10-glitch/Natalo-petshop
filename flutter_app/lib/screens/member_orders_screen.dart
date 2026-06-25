@@ -110,8 +110,15 @@ class _MemberOrdersScreenState extends State<MemberOrdersScreen> {
               payment == 'PENDING'),
       _OrderFilter.processing => status == 'PROCESSING' || status == 'PAID',
       _OrderFilter.shipped => status == 'SHIPPED',
-      _OrderFilter.delivered => status == 'DELIVERED',
-      _OrderFilter.cancelled => status == 'CANCELLED',
+      // BUGFIX(audit): COMPLETED diperlakukan setara DELIVERED di seluruh file
+      // (_statusLabel 'Selesai', _isReorderable, _showOrderOptions) tapi tab
+      // "Selesai" cuma match DELIVERED → order COMPLETED hilang dari tab-nya
+      // (cuma muncul di "Semua"). Sertakan COMPLETED. Sama, CANCELED (1 L)
+      // alias diterima _isCancelled/_statusLabel jadi ikut di tab Dibatalkan.
+      _OrderFilter.delivered =>
+        status == 'DELIVERED' || status == 'COMPLETED',
+      _OrderFilter.cancelled =>
+        status == 'CANCELLED' || status == 'CANCELED',
     };
   }
 
@@ -1335,7 +1342,11 @@ class _OrderProductPreview extends StatelessWidget {
 
     final first = items.first;
     final second = items.length > 1 ? items[1] : null;
-    final extraCount = (_displayItemCount(order) - 1).clamp(0, 999).toInt();
+    // BUGFIX(audit): pakai jumlah produk DISTINCT (items.length), bukan
+    // _displayItemCount yang = SUM(quantity) unit. Sebelumnya 1 produk qty 3
+    // tampil "+2 produk lainnya" padahal cuma 1 produk. items[] dijamin
+    // non-empty di sini (early-return di atas kalau kosong).
+    final extraCount = (items.length - 1).clamp(0, 999).toInt();
     final subtitle = extraCount > 0
         ? '+$extraCount produk lainnya'
         : first.variantLabel ??

@@ -836,6 +836,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _placeOrder() async {
+    // BUGFIX(audit): guard re-entry. Tombol "Buat Pesanan" ada di DUA tempat
+    // (bottom bar + final payment panel) & disable-nya baru efektif setelah
+    // rebuild. Dua tap nyaris bersamaan bisa lolos sebelum disable → kirim
+    // createOrder 2x (order duplikat). Early-return kalau sudah submitting.
+    if (_submitting) return;
     setState(() => _submitting = true);
     try {
       final profile = memberStore.profile;
@@ -1051,7 +1056,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           productId: item.product.id,
           name: item.product.title,
           quantity: item.quantity,
-          price: item.product.finalPrice.round(),
+          // BUGFIX(audit): pakai effectivePrice (harga varian/yang ditagih),
+          // bukan product.finalPrice (harga base). Untuk produk bervarian,
+          // summary order sebelumnya tampil harga base yang SALAH (tidak
+          // sesuai yang dibayar). Payload order sebenarnya pakai
+          // effectivePrice juga.
+          price: item.effectivePrice.round(),
           imageUrl: item.product.imageUrl,
           categoryName: item.product.category,
         );

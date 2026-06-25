@@ -55,7 +55,14 @@ class _MemberLoyaltyScreenState extends State<MemberLoyaltyScreen> {
   int get _availablePoints => memberStore.profile?.points ?? 0;
 
   Future<void> _confirmAndClaim(_LoyaltyTier tier) async {
+    // BUGFIX(audit): guard re-entry. Sebelumnya _claimingTierPoints baru
+    // di-set di _executeClaim (SETELAH dialog dikonfirmasi), jadi tap cepat
+    // ke-2 saat dialog pertama masih terbuka membuka dialog ke-2 → user bisa
+    // konfirmasi keduanya → 2× claim + 2× potong poin. Set guard SEKARANG
+    // (sebelum dialog), reset kalau batal.
+    if (_claimingTierPoints != -1) return;
     AppHaptics.tap();
+    setState(() => _claimingTierPoints = tier.points);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -133,7 +140,12 @@ class _MemberLoyaltyScreenState extends State<MemberLoyaltyScreen> {
       },
     );
 
-    if (confirmed != true || !mounted) return;
+    // Batal / unmount → LEPAS guard (kalau tidak, tombol stuck disabled
+    // selamanya). _executeClaim punya finally sendiri yang reset guard.
+    if (confirmed != true || !mounted) {
+      if (mounted) setState(() => _claimingTierPoints = -1);
+      return;
+    }
     await _executeClaim(tier);
   }
 

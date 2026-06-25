@@ -308,32 +308,43 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
-  void _buyNow({
+  bool _buyNowPushing = false;
+
+  Future<void> _buyNow({
     ProductVariant? variant,
     int quantity = 1,
-  }) {
+  }) async {
     if (product.hasVariants && variant == null) {
       _openVariantSheet();
       return;
     }
+    // BUGFIX(audit): guard double-tap. Navigator.push sinkron tanpa proteksi
+    // → dua tap cepat "Beli Sekarang" menumpuk DUA CheckoutScreen di stack.
+    // Flag di-reset setelah route checkout di-pop (push future selesai).
+    if (_buyNowPushing) return;
+    _buyNowPushing = true;
     AppHaptics.impact();
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => CheckoutScreen(
-          items: [
-            CartItem(
-              product: product,
-              quantity: quantity,
-              variant: variant,
-              variantLabel: _variantLabelFor(variant),
-              unitPrice: variant == null
-                  ? null
-                  : effectiveCartVariantPrice(product, variant),
-            ),
-          ],
+    try {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => CheckoutScreen(
+            items: [
+              CartItem(
+                product: product,
+                quantity: quantity,
+                variant: variant,
+                variantLabel: _variantLabelFor(variant),
+                unitPrice: variant == null
+                    ? null
+                    : effectiveCartVariantPrice(product, variant),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      if (mounted) _buyNowPushing = false;
+    }
   }
 
   Future<void> _openVariantSheet() async {
