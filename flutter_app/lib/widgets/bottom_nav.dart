@@ -23,16 +23,16 @@ enum BottomNavVariant { light, dark }
 const _navBackground = Color(0xFFFFFFFF);
 const _navActiveBlue = Color(0xFF2563EB);
 const _navInactive = Color(0xFF6B7280);
-// Pill mengambang (floating) — border tipis + indikator aktif soft blue.
+// Pill mengambang (floating) — border tipis. Indikator aktif = WARNA ikon
+// + label (biru), TANPA kapsul/pill di balik ikon. Ditandai bounce halus
+// saat mendarat di tab.
 const _navPillBorder = Color(0xFFEDEFF2);
-const _navIndicatorLight = Color(0xFFEAF1FE); // pill biru lembut di balik ikon aktif
 // Dark glass tokens — semi-transparent black supaya video di belakang
 // masih kelihatan, blur untuk feel "frosted glass dark mode".
 const _navDarkGlass = Color(0xCC0A0A0A); // black 80% alpha
 const _navDarkTopBorder = Color(0x33FFFFFF); // white 20% alpha
 const _navDarkActive = Color(0xFFFFFFFF);
 const _navDarkInactive = Color(0xFF9CA3AF);
-const _navIndicatorDark = Color(0x29FFFFFF); // white ~16% untuk dark glass
 
 class BottomNavBar extends StatelessWidget {
   final int currentIndex;
@@ -94,7 +94,6 @@ class BottomNavBar extends StatelessWidget {
     final dark = variant == BottomNavVariant.dark;
     final activeColor = dark ? _navDarkActive : _navActiveBlue;
     final inactiveColor = dark ? _navDarkInactive : _navInactive;
-    final indicatorColor = dark ? _navIndicatorDark : _navIndicatorLight;
     final borderColor = dark ? _navDarkTopBorder : _navPillBorder;
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
 
@@ -109,7 +108,6 @@ class BottomNavBar extends StatelessWidget {
             selected: currentIndex == 0,
             activeColor: activeColor,
             inactiveColor: inactiveColor,
-            indicatorColor: indicatorColor,
             onTap: () => _onTap(context, 0),
           ),
           _BottomNavItem(
@@ -119,7 +117,6 @@ class BottomNavBar extends StatelessWidget {
             selected: currentIndex == 1,
             activeColor: activeColor,
             inactiveColor: inactiveColor,
-            indicatorColor: indicatorColor,
             onTap: () => _onTap(context, 1),
           ),
           _BottomNavItem(
@@ -129,7 +126,6 @@ class BottomNavBar extends StatelessWidget {
             selected: currentIndex == 2,
             activeColor: activeColor,
             inactiveColor: inactiveColor,
-            indicatorColor: indicatorColor,
             onTap: () => _onTap(context, 2),
           ),
           _BottomNavItem(
@@ -139,7 +135,6 @@ class BottomNavBar extends StatelessWidget {
             selected: currentIndex == 3,
             activeColor: activeColor,
             inactiveColor: inactiveColor,
-            indicatorColor: indicatorColor,
             onTap: () => _onTap(context, 3),
           ),
           // Tab Akun pakai avatar foto profil (Instagram-style).
@@ -148,7 +143,6 @@ class BottomNavBar extends StatelessWidget {
             selected: currentIndex == 4,
             activeColor: activeColor,
             inactiveColor: inactiveColor,
-            indicatorColor: indicatorColor,
             onTap: () => _onTap(context, 4),
           ),
         ],
@@ -210,7 +204,6 @@ class _BottomNavItem extends StatelessWidget {
   final bool selected;
   final Color activeColor;
   final Color inactiveColor;
-  final Color indicatorColor;
   final VoidCallback onTap;
 
   const _BottomNavItem({
@@ -220,7 +213,6 @@ class _BottomNavItem extends StatelessWidget {
     required this.selected,
     required this.activeColor,
     required this.inactiveColor,
-    required this.indicatorColor,
     required this.onTap,
   });
 
@@ -245,23 +237,17 @@ class _BottomNavItem extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Indikator pill di balik ikon aktif (Material 3 / IG-ish).
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeOutCubic,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: selected ? indicatorColor : Colors.transparent,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
+                  // TANPA kapsul/pill — aktif ditandai warna + bounce halus
+                  // saat mendarat di tab (lihat _NavBounce).
+                  _NavBounce(
+                    selected: selected,
                     child: Icon(
                       selected ? selectedIcon : icon,
                       color: color,
-                      size: 22,
+                      size: 23,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 4),
                   AnimatedDefaultTextStyle(
                     duration: const Duration(milliseconds: 160),
                     curve: Curves.easeOutCubic,
@@ -287,6 +273,76 @@ class _BottomNavItem extends StatelessWidget {
   }
 }
 
+/// Bounce halus untuk ikon nav: memantul sekali (~1.14×) saat item jadi
+/// terpilih — dipicu saat mendarat di tab (mount selected) atau saat
+/// `selected` berubah false→true. Pengganti kapsul/pill indikator.
+class _NavBounce extends StatefulWidget {
+  final bool selected;
+  final Widget child;
+
+  const _NavBounce({required this.selected, required this.child});
+
+  @override
+  State<_NavBounce> createState() => _NavBounceState();
+}
+
+class _NavBounceState extends State<_NavBounce>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 360),
+    );
+    // Pegas lembut: naik ke 1.14, sedikit turun ke 0.98, balik 1.0.
+    _scale = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 1.0, end: 1.14)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 42,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.14, end: 0.98)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 32,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 0.98, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 26,
+      ),
+    ]).animate(_controller);
+    if (widget.selected) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _controller.forward(from: 0);
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(_NavBounce oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.selected && widget.selected) {
+      _controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(scale: _scale, child: widget.child);
+  }
+}
+
 /// Tab Akun varian dengan avatar foto profil user (Instagram-style).
 ///
 /// Render persis di slot ukuran yang sama dengan _BottomNavItem reguler
@@ -305,7 +361,6 @@ class _BottomNavAvatarItem extends StatelessWidget {
   final bool selected;
   final Color activeColor;
   final Color inactiveColor;
-  final Color indicatorColor;
   final VoidCallback onTap;
 
   const _BottomNavAvatarItem({
@@ -313,7 +368,6 @@ class _BottomNavAvatarItem extends StatelessWidget {
     required this.selected,
     required this.activeColor,
     required this.inactiveColor,
-    required this.indicatorColor,
     required this.onTap,
   });
 
@@ -337,15 +391,9 @@ class _BottomNavAvatarItem extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeOutCubic,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: selected ? indicatorColor : Colors.transparent,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
+                  // TANPA kapsul — avatar memantul halus saat tab Akun aktif.
+                  _NavBounce(
+                    selected: selected,
                     child: AnimatedBuilder(
                       animation: memberStore,
                       builder: (context, _) {
@@ -357,7 +405,7 @@ class _BottomNavAvatarItem extends StatelessWidget {
                       },
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 4),
                   AnimatedDefaultTextStyle(
                     duration: const Duration(milliseconds: 160),
                     curve: Curves.easeOutCubic,
