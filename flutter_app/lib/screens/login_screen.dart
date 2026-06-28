@@ -743,7 +743,7 @@ class _LoginTextField extends StatelessWidget {
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: const TextStyle(
-          color: Color(0xFF98A2B3),
+          color: Color(0xFF6B7280),
           fontWeight: FontWeight.w600,
         ),
         prefixIcon: Icon(prefixIcon, color: cs.onSurfaceVariant, size: 23),

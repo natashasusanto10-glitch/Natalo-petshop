@@ -24,7 +24,6 @@ import '../widgets/bottom_nav.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 
 const _brandBlue = NataloColors.nataloBlue;
-const _dangerRed = Color(0xFFEF4444);
 
 /// Format raw category slug ke label readable. Defensive helper — kalau
 /// backend Capacitor return slug-style (mis. `snack-treat-anjing`) langsung,
@@ -1054,7 +1053,17 @@ class _ProductsScreenState extends State<ProductsScreen> {
               if (hasLoadError)
                 SliverFillRemaining(
                   hasScrollBody: false,
-                  child: _ProductErrorState(onRetry: _loadProducts),
+                  // #4: AppErrorState dengan varian dari statusCode asli —
+                  // 5xx tampil "server bermasalah" (bukan salah label
+                  // "cek koneksi"), offline tampil network.
+                  child: Center(
+                    child: AppErrorState(
+                      variant:
+                          appErrorVariantFromStatus(_result.errorStatusCode),
+                      title: 'Gagal memuat produk',
+                      onRetry: _loadProducts,
+                    ),
+                  ),
                 )
               else if (_loading && products.isEmpty)
                 SliverPadding(
@@ -1627,75 +1636,6 @@ class _RecentlyViewedMiniCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _ProductErrorState extends StatelessWidget {
-  final VoidCallback onRetry;
-
-  const _ProductErrorState({required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 92,
-            height: 92,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF1F2),
-              borderRadius: BorderRadius.circular(28),
-            ),
-            child: const Icon(
-              Icons.wifi_off_rounded,
-              color: _dangerRed,
-              size: 42,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'Gagal memuat produk',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: cs.onSurface,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Periksa koneksi internet kamu lalu coba lagi.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: cs.onSurfaceVariant,
-              fontSize: 14,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 18),
-          ElevatedButton(
-            onPressed: onRetry,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _brandBlue,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-            ),
-            child: const Text(
-              'Coba Lagi',
-              style: TextStyle(fontWeight: FontWeight.w900),
-            ),
-          ),
-        ],
       ),
     );
   }

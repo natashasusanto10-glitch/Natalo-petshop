@@ -493,9 +493,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     final error = _error;
     if (error != null && result == null) {
-      return _NotificationErrorState(
-        message: _errorMessage(error),
-        onRetry: _load,
+      // #4: pakai AppErrorState (komponen tunggal) + varian DITURUNKAN dari
+      // exception asli — 5xx=server, koneksi=network, 404=notFound. Tidak
+      // lagi salah label "cek koneksi" untuk error server.
+      return AppErrorState(
+        variant: appErrorVariantFromError(error),
+        title: 'Notifikasi gagal dimuat',
+        description: _errorMessage(error),
+        onRetry: () => _load(),
       );
     }
 
@@ -901,70 +906,6 @@ class _NotificationEmptyState extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _NotificationErrorState extends StatelessWidget {
-  final String message;
-  final Future<void> Function() onRetry;
-
-  const _NotificationErrorState({
-    required this.message,
-    required this.onRetry,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              height: 82,
-              width: 82,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFEEF1),
-                borderRadius: BorderRadius.circular(28),
-              ),
-              child: const Icon(
-                Icons.notifications_off_rounded,
-                color: Color(0xFFE11D48),
-                size: 38,
-              ),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              'Notifikasi gagal dimuat',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: cs.onSurface,
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 18),
-            OutlinedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Coba lagi'),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

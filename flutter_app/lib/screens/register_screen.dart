@@ -225,7 +225,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _passwordController.text.length >= 8;
 
     if (!_otpSent) return baseValid;
-    return baseValid && _otpController.text.trim().length >= 4;
+    // #6: konsisten dengan login OTP & hint "6 digit" — wajib tepat 6.
+    return baseValid && _otpController.text.trim().length == 6;
   }
 
   Future<void> _onPrimary() async {
@@ -355,8 +356,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       passwordErr = 'Password minimal 8 karakter.';
     }
 
-    if (_otpSent && _otpController.text.trim().length < 4) {
-      otpErr = 'Masukkan kode OTP yang dikirim ke email / WhatsApp.';
+    if (_otpSent && _otpController.text.trim().length != 6) {
+      otpErr = 'Kode OTP harus 6 digit.';
     }
 
     setState(() {
@@ -529,9 +530,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         keyboardType: TextInputType.number,
                         autofillHints: const [AutofillHints.oneTimeCode],
                         errorText: _otpError,
-                        onChanged: (_) {
+                        // #6: batasi 6 digit angka + auto-submit saat lengkap
+                        // (konsisten dengan login OTP).
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(6),
+                        ],
+                        onChanged: (value) {
                           if (_otpError != null) {
                             setState(() => _otpError = null);
+                          }
+                          // Auto-submit begitu 6 digit terisi (mis. autofill
+                          // OTP dari SMS) + form valid + tidak sedang loading.
+                          if (value.trim().length == 6 &&
+                              !_loading &&
+                              _canSubmit) {
+                            _onPrimary();
                           }
                         },
                       ),
@@ -864,7 +878,7 @@ class _RegisterTextField extends StatelessWidget {
           color: Color(0xFF98A2B3),
           fontWeight: FontWeight.w600,
         ),
-        prefixIcon: Icon(icon, color: const Color(0xFF98A2B3), size: 22),
+        prefixIcon: Icon(icon, color: const Color(0xFF6B7280), size: 22),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 18,
@@ -879,7 +893,7 @@ class _RegisterTextField extends StatelessWidget {
                   obscure
                       ? Icons.visibility_outlined
                       : Icons.visibility_off_outlined,
-                  color: const Color(0xFF98A2B3),
+                  color: const Color(0xFF6B7280),
                 ),
               ),
         filled: true,

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart' as lottie;
 import 'package:shimmer/shimmer.dart';
 
+import '../services/api_client.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/natalo_colors.dart';
@@ -530,8 +531,10 @@ class _AppAnimatedEntranceState extends State<AppAnimatedEntrance>
   }
 }
 
-/// Stub Lottie asset — kalau asset file tidak ada di assets/lottie/,
-/// fallback ke icon. Dipakai untuk empty-state animasi.
+/// Lottie animation asset untuk empty/success state. Render animasi
+/// branded; kalau asset hilang/corrupt fallback ke [fallbackIcon] supaya
+/// UI tidak pernah crash / kosong. Asset tersedia di assets/lottie/
+/// (empty_box, loading_paw, order_created, success_check).
 class AppLottieAsset extends StatelessWidget {
   final String asset;
   final double size;
@@ -548,12 +551,23 @@ class AppLottieAsset extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // TODO: pakai package:lottie LottieBuilder.asset(asset) — saat ini
-    // fallback ke icon supaya tidak crash kalau asset belum ada.
-    return Icon(
-      fallbackIcon,
-      size: size,
-      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    final cs = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: size,
+      width: size,
+      child: lottie.Lottie.asset(
+        asset,
+        fit: BoxFit.contain,
+        repeat: repeat,
+        // 30fps cap — hemat baterai untuk loop animasi subtle.
+        frameRate: const lottie.FrameRate(30),
+        // Fallback aman: asset hilang / corrupt → icon static, tidak crash.
+        errorBuilder: (_, __, ___) => Icon(
+          fallbackIcon,
+          size: size * 0.5,
+          color: cs.onSurfaceVariant,
+        ),
+      ),
     );
   }
 }
@@ -665,6 +679,23 @@ enum AppErrorVariant {
 
   /// Generic / unknown error. Icon: error_outline.
   generic,
+}
+
+/// Map HTTP status code → [AppErrorVariant]. null = network/timeout
+/// (offline). 404=notFound, 5xx=server, sisanya generic.
+AppErrorVariant appErrorVariantFromStatus(int? statusCode) {
+  if (statusCode == null) return AppErrorVariant.network;
+  if (statusCode == 404) return AppErrorVariant.notFound;
+  if (statusCode >= 500) return AppErrorVariant.server;
+  return AppErrorVariant.generic;
+}
+
+/// Map exception → [AppErrorVariant] supaya error state tampil pesan/icon
+/// yang BENAR. Fix bug umum: error 500 (server) salah dilabeli "cek koneksi
+/// internet". ApiException bawa statusCode (null = network/timeout).
+AppErrorVariant appErrorVariantFromError(Object? error) {
+  if (error is ApiException) return appErrorVariantFromStatus(error.statusCode);
+  return AppErrorVariant.generic;
 }
 
 /// Inline error state — gantiin ad-hoc "Gagal memuat" plain text yang

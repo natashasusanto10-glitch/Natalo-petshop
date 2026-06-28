@@ -108,12 +108,18 @@ class ProductResult extends ProductFetchResult {
   final String? error;
   final int? total;
 
+  /// HTTP status code dari error (kalau ada). null = network/timeout
+  /// (offline). Dipakai UI untuk pilih AppErrorVariant yang benar
+  /// (5xx=server, dst) supaya error state tidak salah label.
+  final int? errorStatusCode;
+
   const ProductResult({
     super.products = const [],
     super.nextCursor,
     this.fromApi = true,
     this.error,
     this.total,
+    this.errorStatusCode,
   });
 }
 
@@ -202,10 +208,13 @@ class ProductService {
         total: map == null ? products.length : _asInt(map['total']),
       );
     } catch (error) {
-      return const ProductResult(
-        products: <Product>[],
+      // Simpan statusCode (kalau ApiException) supaya UI bisa bedakan
+      // error server (5xx) vs offline (network) — fix mislabel error state.
+      return ProductResult(
+        products: const <Product>[],
         fromApi: false,
         error: 'Belum berhasil memuat. Tarik ke bawah untuk coba lagi.',
+        errorStatusCode: error is ApiException ? error.statusCode : null,
       );
     }
   }
