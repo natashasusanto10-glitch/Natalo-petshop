@@ -41,7 +41,9 @@ class AuthService {
     required String email,
     required String phone,
     required String password,
-    required String confirmPassword,
+    // Konfirmasi password DIHAPUS dari UI (#2a) — opsional di sini untuk
+    // backward-compat. Kalau tidak dikirim, server skip cek match.
+    String? confirmPassword,
     String? otp,
   }) async {
     // Register bikin user baru di DB production — block di read-only
@@ -61,7 +63,8 @@ class AuthService {
           'email': email.trim().toLowerCase(),
           'phone': phone.trim(),
           'password': password,
-          'confirmPassword': confirmPassword,
+          if (confirmPassword != null && confirmPassword.isNotEmpty)
+            'confirmPassword': confirmPassword,
           if (otp != null && otp.trim().isNotEmpty) 'otp': otp.trim(),
         },
       ),

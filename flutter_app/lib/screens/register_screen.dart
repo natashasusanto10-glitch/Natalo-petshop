@@ -37,10 +37,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _confirmController = TextEditingController();
   final _otpController = TextEditingController();
   bool _obscurePassword = true;
-  bool _obscureConfirm = true;
   bool _loading = false;
   bool _otpSent = false; // step 1 sukses → tampilkan field OTP
   // #3 inline validation: error per-field (null = tidak ada error). Diisi
@@ -49,7 +47,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String? _emailError;
   String? _phoneError;
   String? _passwordError;
-  String? _confirmError;
   String? _otpError;
   // Resend OTP countdown — disabled selama N detik setelah kirim OTP
   // supaya user tidak spam request. Reset ke 60 setiap kali OTP terkirim
@@ -66,7 +63,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _emailController,
       _phoneController,
       _passwordController,
-      _confirmController,
       _otpController,
     ]) {
       controller.addListener(_onFormChanged);
@@ -120,7 +116,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _emailController,
       _phoneController,
       _passwordController,
-      _confirmController,
       _otpController,
     ]) {
       controller.removeListener(_onFormChanged);
@@ -129,7 +124,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController.dispose();
     _phoneController.dispose();
     _passwordController.dispose();
-    _confirmController.dispose();
     _otpController.dispose();
     _resendTimer?.cancel();
     super.dispose();
@@ -187,7 +181,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         email: _emailController.text,
         phone: phoneRaw,
         password: _passwordController.text,
-        confirmPassword: _confirmController.text,
         otp: null, // null = step 1, kirim OTP baru
       );
       if (!mounted) return;
@@ -229,8 +222,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final baseValid = _nameController.text.trim().isNotEmpty &&
         _hasValidEmail &&
         _hasValidPhone &&
-        _passwordController.text.length >= 8 &&
-        _passwordController.text == _confirmController.text;
+        _passwordController.text.length >= 8;
 
     if (!_otpSent) return baseValid;
     return baseValid && _otpController.text.trim().length >= 4;
@@ -250,7 +242,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         email: _emailController.text,
         phone: phoneRaw,
         password: _passwordController.text,
-        confirmPassword: _confirmController.text,
         otp: _otpSent ? _otpController.text : null,
       );
       if (!mounted) return;
@@ -342,7 +333,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     String? emailErr;
     String? phoneErr;
     String? passwordErr;
-    String? confirmErr;
     String? otpErr;
 
     if (_nameController.text.trim().isEmpty) {
@@ -364,9 +354,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (_passwordController.text.length < 8) {
       passwordErr = 'Password minimal 8 karakter.';
     }
-    if (_passwordController.text != _confirmController.text) {
-      confirmErr = 'Konfirmasi password tidak sama.';
-    }
 
     if (_otpSent && _otpController.text.trim().length < 4) {
       otpErr = 'Masukkan kode OTP yang dikirim ke email / WhatsApp.';
@@ -377,7 +364,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _emailError = emailErr;
       _phoneError = phoneErr;
       _passwordError = passwordErr;
-      _confirmError = confirmErr;
       _otpError = otpErr;
     });
 
@@ -385,7 +371,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         emailErr == null &&
         phoneErr == null &&
         passwordErr == null &&
-        confirmErr == null &&
         otpErr == null;
     if (!ok) AppHaptics.warning();
     return ok;
@@ -444,87 +429,97 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const _FieldLabel('Nama lengkap'),
-                    _RegisterTextField(
-                      controller: _nameController,
-                      hint: 'Contoh: Andi Setiawan',
-                      icon: Icons.person_outline_rounded,
-                      autofillHints: const [AutofillHints.name],
-                      errorText: _nameError,
-                      onChanged: (_) {
-                        if (_nameError != null) {
-                          setState(() => _nameError = null);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    const _FieldLabel('Email'),
-                    _RegisterTextField(
-                      controller: _emailController,
-                      hint: 'Contoh: nama@email.com',
-                      icon: Icons.mail_outline_rounded,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
-                      errorText: _emailError,
-                      onChanged: (_) {
-                        if (_emailError != null) {
-                          setState(() => _emailError = null);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    const _FieldLabel('No. handphone'),
-                    _RegisterTextField(
-                      controller: _phoneController,
-                      hint: 'Contoh: 0812-3456-789',
-                      icon: Icons.phone_outlined,
-                      keyboardType: TextInputType.phone,
-                      autofillHints: const [AutofillHints.telephoneNumber],
-                      errorText: _phoneError,
-                      inputFormatters: [PhoneFormatter()],
-                      onChanged: (_) {
-                        if (_phoneError != null) {
-                          setState(() => _phoneError = null);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    const _OtpInfoBox(),
-                    const SizedBox(height: 14),
-                    const _FieldLabel('Password'),
-                    _RegisterTextField(
-                      controller: _passwordController,
-                      hint: 'Minimal 8 karakter',
-                      icon: Icons.lock_outline_rounded,
-                      obscure: _obscurePassword,
-                      autofillHints: const [AutofillHints.newPassword],
-                      errorText: _passwordError,
-                      onToggleObscure: () =>
-                          setState(() => _obscurePassword = !_obscurePassword),
-                      onChanged: (_) {
-                        if (_passwordError != null) {
-                          setState(() => _passwordError = null);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    const _FieldLabel('Konfirmasi password'),
-                    _RegisterTextField(
-                      controller: _confirmController,
-                      hint: 'Ulangi password yang sama',
-                      icon: Icons.lock_outline_rounded,
-                      obscure: _obscureConfirm,
-                      autofillHints: const [AutofillHints.newPassword],
-                      errorText: _confirmError,
-                      onToggleObscure: () =>
-                          setState(() => _obscureConfirm = !_obscureConfirm),
-                      onChanged: (_) {
-                        if (_confirmError != null) {
-                          setState(() => _confirmError = null);
-                        }
-                      },
-                    ),
-                    if (_otpSent) ...[
+                    // #2c — 2 langkah. LANGKAH 1: identitas. LANGKAH 2: OTP
+                    // saja (field identitas disembunyikan supaya fokus &
+                    // tidak terasa "tembok panjang"). _otpSent jadi penanda
+                    // langkah aktif.
+                    if (!_otpSent) ...[
+                      // ── LANGKAH 1: Data diri ──
+                      const _FieldLabel('Nama lengkap'),
+                      _RegisterTextField(
+                        controller: _nameController,
+                        hint: 'Contoh: Andi Setiawan',
+                        icon: Icons.person_outline_rounded,
+                        autofillHints: const [AutofillHints.name],
+                        errorText: _nameError,
+                        onChanged: (_) {
+                          if (_nameError != null) {
+                            setState(() => _nameError = null);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      const _FieldLabel('Email'),
+                      _RegisterTextField(
+                        controller: _emailController,
+                        hint: 'Contoh: nama@email.com',
+                        icon: Icons.mail_outline_rounded,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
+                        errorText: _emailError,
+                        onChanged: (_) {
+                          if (_emailError != null) {
+                            setState(() => _emailError = null);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      const _FieldLabel('No. handphone'),
+                      _RegisterTextField(
+                        controller: _phoneController,
+                        hint: 'Contoh: 0812-3456-789',
+                        icon: Icons.phone_outlined,
+                        keyboardType: TextInputType.phone,
+                        autofillHints: const [AutofillHints.telephoneNumber],
+                        errorText: _phoneError,
+                        inputFormatters: [PhoneFormatter()],
+                        onChanged: (_) {
+                          if (_phoneError != null) {
+                            setState(() => _phoneError = null);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      const _OtpInfoBox(),
+                      const SizedBox(height: 14),
+                      const _FieldLabel('Password'),
+                      // #2a — konfirmasi password DIHAPUS. User pakai tombol
+                      // 👁 (show/hide) untuk verifikasi sendiri ketikannya.
+                      _RegisterTextField(
+                        controller: _passwordController,
+                        hint: 'Minimal 8 karakter',
+                        icon: Icons.lock_outline_rounded,
+                        obscure: _obscurePassword,
+                        autofillHints: const [AutofillHints.newPassword],
+                        errorText: _passwordError,
+                        onToggleObscure: () => setState(
+                            () => _obscurePassword = !_obscurePassword),
+                        onChanged: (_) {
+                          if (_passwordError != null) {
+                            setState(() => _passwordError = null);
+                          }
+                        },
+                      ),
+                    ] else ...[
+                      // ── LANGKAH 2: Verifikasi OTP ──
+                      Text(
+                        'Verifikasi akun',
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Masukkan kode yang kami kirim ke email & WhatsApp kamu.',
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          height: 1.4,
+                        ),
+                      ),
                       const SizedBox(height: 14),
                       const _FieldLabel('Kode OTP'),
                       _RegisterTextField(
@@ -543,8 +538,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const SizedBox(height: 8),
                       // Destination hint — confirmasi ke user OTP dikirim
                       // ke mana, supaya tidak bingung buka email vs WA.
-                      // Phone di-mask partial (0812***4567) untuk privacy
-                      // (kalau screen di-screenshot tidak expose nomor full).
                       _OtpDestinationHint(
                         email: _emailController.text.trim(),
                         phone: _phoneController.text.trim(),
@@ -555,6 +548,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         countdown: _resendCountdown,
                         loading: _resendingOtp,
                         onTap: _resendOtp,
+                      ),
+                      const SizedBox(height: 4),
+                      // Kembali ke langkah 1 untuk ubah email/HP/dll.
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: _loading
+                              ? null
+                              : () => setState(() => _otpSent = false),
+                          icon: const Icon(Icons.arrow_back_rounded, size: 16),
+                          label: const Text('Ubah data'),
+                        ),
                       ),
                     ],
                     const SizedBox(height: 22),

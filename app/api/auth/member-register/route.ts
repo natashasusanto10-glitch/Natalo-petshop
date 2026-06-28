@@ -45,7 +45,7 @@ function parsePayload(body: Record<string, unknown>) {
 }
 
 function validatePayload(payload: ReturnType<typeof parsePayload>) {
-  if (!payload.name || !payload.email || !payload.phone || !payload.password || !payload.confirmPassword) {
+  if (!payload.name || !payload.email || !payload.phone || !payload.password) {
     return "Semua field wajib diisi";
   }
 
@@ -69,7 +69,9 @@ function validatePayload(payload: ReturnType<typeof parsePayload>) {
     return "Password minimal 8 karakter";
   }
 
-  if (payload.password !== payload.confirmPassword) {
+  // Konfirmasi password OPSIONAL (#2a — field dihapus dari UI). Cek match
+  // HANYA kalau client mengirimnya (client lama). Client baru tidak kirim.
+  if (payload.confirmPassword && payload.password !== payload.confirmPassword) {
     return "Konfirmasi password tidak sama";
   }
 
