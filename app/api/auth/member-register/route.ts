@@ -12,6 +12,7 @@ import {
 import {
   validateUsernameFormat,
   checkUsernameAvailability,
+  generateUniqueUsername,
 } from "@/lib/username";
 import { grantWelcomeVoucher } from "@/lib/welcome-voucher";
 import bcrypt from "bcryptjs";
@@ -48,12 +49,13 @@ function validatePayload(payload: ReturnType<typeof parsePayload>) {
     return "Semua field wajib diisi";
   }
 
-  if (!payload.username) {
-    return "Username wajib diisi";
+  // Username OPSIONAL untuk client baru — server auto-generate dari nama
+  // (lihat generateUniqueUsername). Client lama yang masih KIRIM username
+  // tetap divalidasi formatnya (backward-compat). Kosong = akan di-generate.
+  if (payload.username) {
+    const formatError = validateUsernameFormat(payload.username);
+    if (formatError) return formatError.message;
   }
-
-  const formatError = validateUsernameFormat(payload.username);
-  if (formatError) return formatError.message;
 
   if (!isValidEmail(payload.email)) {
     return "Format email tidak valid";
@@ -151,21 +153,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Email atau no. handphone sudah terdaftar" }, { status: 409 });
   }
 
-  // Username uniqueness check — server-side, baik di step-1 (send OTP)
-  // maupun step-2 (verify OTP). Stop early kalau username taken/reserved
-  // supaya user tidak waste OTP step dengan handle yang konflik. Skip
-  // `excludeUserId` karena user belum ada (sign-up flow).
-  const usernameStatus = await checkUsernameAvailability(payload.username);
-  if (!usernameStatus.available) {
-    return NextResponse.json(
-      {
-        error: usernameStatus.reason === "TAKEN"
-          ? "Username sudah dipakai. Coba yang lain."
-          : "Username ini baru saja dilepas. Pilih yang lain (reservasi 30 hari).",
-        field: "username",
-      },
-      { status: 409 },
-    );
+  // Username uniqueness check — HANYA kalau client KIRIM username (client
+  // lama). Client baru tidak kirim → username di-generate otomatis di
+  // step-2 (verify OTP) lewat generateUniqueUsername yang sudah jamin unik.
+  if (payload.username) {
+    const usernameStatus = await checkUsernameAvailability(payload.username);
+    if (!usernameStatus.available) {
+      return NextResponse.json(
+        {
+          error: usernameStatus.reason === "TAKEN"
+            ? "Username sudah dipakai. Coba yang lain."
+            : "Username ini baru saja dilepas. Pilih yang lain (reservasi 30 hari).",
+          field: "username",
+        },
+        { status: 409 },
+      );
+    }
   }
 
   if (payload.otp) {
@@ -211,11 +214,14 @@ export async function POST(request: NextRequest) {
         data: { verifiedAt: new Date() },
       });
 
-      // Defensive: pending.username bisa null (row legacy pre-Fase 1.4).
-      // Fallback ke payload.username yang current (sudah re-validated di
-      // atas). Step-2 verifyOtp dipanggil setelah validation pass, jadi
-      // payload.username konsisten dengan input user.
-      const finalUsername = pending.username ?? payload.username;
+      // Username final: kalau step-1 sudah simpan (client lama / sudah
+      // ke-generate) pakai itu; kalau null (client baru tidak kirim
+      // username) generate UNIK dari nama sekarang. generateUniqueUsername
+      // cek availability + suffix angka kalau bentrok; unique constraint
+      // DB jadi penjaga terakhir.
+      const finalUsername =
+        pending.username ??
+        (payload.username || (await generateUniqueUsername(pending.name)));
       const now = new Date();
       return tx.user.create({
         data: {
@@ -283,7 +289,10 @@ export async function POST(request: NextRequest) {
     await tx.registrationOtp.create({
       data: {
         name: payload.name,
-        username: payload.username,
+        // null kalau client tidak kirim username (akan di-generate di
+        // step-2). String kosong '' JANGAN disimpan — `?? ` di step-2
+        // tidak menangkapnya dan bisa bikin username kosong.
+        username: payload.username || null,
         email: payload.email,
         phone: payload.phone,
         passwordHash,

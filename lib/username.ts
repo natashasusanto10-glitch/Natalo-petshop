@@ -12,6 +12,7 @@
  * user lain untuk claim — anti @mention hijack. Setelah 30 hari,
  * handle release.
  */
+import { randomInt } from "crypto";
 import { prisma } from "@/lib/prisma";
 
 /** Hari reservasi handle lama setelah user ganti. */
@@ -168,6 +169,66 @@ export async function checkUsernameAvailability(
   }
 
   return { available: true };
+}
+
+/**
+ * Slugify nama → kandidat username base (lowercase, strip aksen, non-
+ * alfanumerik jadi underscore, rapikan). Tidak menjamin valid/unik —
+ * itu tugas [generateUniqueUsername].
+ */
+function slugifyName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // buang aksen kombinasi (é→e)
+    .replace(/[^a-z0-9]+/g, "_") // non-alfanumerik → underscore
+    .replace(/_+/g, "_") // rapatkan underscore beruntun
+    .replace(/^[._]+|[._]+$/g, ""); // buang ._ di awal/akhir
+}
+
+/**
+ * Generate username UNIK otomatis dari nama (untuk sign-up — user tidak
+ * lagi mengisi username manual; bisa ganti nanti via setUserUsername).
+ *
+ * Strategi:
+ *   1. Slugify nama → base ("Andi Setiawan" → "andi_setiawan").
+ *   2. Pad/truncate ke aturan panjang (3-30), sisakan ruang untuk suffix.
+ *   3. Coba base apa adanya; kalau format invalid (mis. reserved) /
+ *      sudah dipakai / reserved-history, append angka acak sampai unik.
+ *   4. Fallback terakhir: base + angka panjang (collision ~mustahil).
+ *
+ * Selalu mengembalikan username yang LULUS validateUsernameFormat DAN
+ * available saat dicek. Unique constraint DB tetap penjaga terakhir.
+ */
+export async function generateUniqueUsername(name: string): Promise<string> {
+  let base = slugifyName(name);
+
+  // Pad kalau kependekan / kosong (nama cuma simbol/emoji).
+  if (base.length < USERNAME_MIN_LENGTH) {
+    base = base ? `${base}_user` : "user";
+  }
+  // Sisakan ~5 char untuk numeric suffix.
+  const maxBase = USERNAME_MAX_LENGTH - 5;
+  if (base.length > maxBase) {
+    base = base.slice(0, maxBase).replace(/[._]+$/g, "");
+  }
+
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const candidate =
+      attempt === 0 && validateUsernameFormat(base) === null
+        ? base
+        : `${base}${randomInt(10, 10000)}`.slice(0, USERNAME_MAX_LENGTH);
+
+    // Skip kandidat yang format-nya invalid (mis. base = reserved word).
+    if (validateUsernameFormat(candidate) !== null) continue;
+
+    const status = await checkUsernameAvailability(candidate);
+    if (status.available) return candidate;
+  }
+
+  // Fallback: base + angka 6 digit. Praktis tidak mungkin tabrakan.
+  return `${base}${randomInt(100000, 1000000)}`.slice(0, USERNAME_MAX_LENGTH);
 }
 
 /**

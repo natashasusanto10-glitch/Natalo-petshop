@@ -35,7 +35,9 @@ class AuthService {
   /// satu endpoint (otp empty = step 1, otp filled = step 2).
   Future<MemberProfile?> register({
     required String name,
-    required String username,
+    // Username OPSIONAL — server auto-generate dari nama kalau tidak dikirim.
+    // User bisa atur username sendiri nanti (UsernameSetupScreen).
+    String? username,
     required String email,
     required String phone,
     required String password,
@@ -54,7 +56,8 @@ class AuthService {
             : const Duration(seconds: 75),
         body: {
           'name': name.trim(),
-          'username': username.trim().toLowerCase(),
+          if (username != null && username.trim().isNotEmpty)
+            'username': username.trim().toLowerCase(),
           'email': email.trim().toLowerCase(),
           'phone': phone.trim(),
           'password': password,
