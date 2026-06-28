@@ -344,7 +344,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ],
                       ),
-                      child: Column(
+                      child: AutofillGroup(
+                        child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // Email / No HP field
@@ -362,6 +363,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             keyboardType: TextInputType.emailAddress,
                             hint: 'Masukkan email atau nomor HP',
                             prefixIcon: Icons.mail_outline_rounded,
+                            autofillHints: const [
+                              AutofillHints.username,
+                              AutofillHints.email,
+                            ],
                           ),
                           const SizedBox(height: 16),
                           // Password label + Lupa password? link
@@ -397,6 +402,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             obscureText: _obscure,
                             hint: 'Masukkan password',
                             prefixIcon: Icons.lock_outline_rounded,
+                            autofillHints: const [AutofillHints.password],
                             suffix: IconButton(
                               onPressed: () =>
                                   setState(() => _obscure = !_obscure),
@@ -467,6 +473,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 14),
                           _WhatsAppOtpLoginButton(onTap: _openOtpLogin),
                         ],
+                      ),
                       ),
                     ),
                     Padding(
@@ -707,6 +714,8 @@ class _LoginTextField extends StatelessWidget {
   final TextInputType? keyboardType;
   final bool obscureText;
   final Widget? suffix;
+  // #1 autofill: aktifkan Google Password Manager / auto-isi credential.
+  final List<String>? autofillHints;
 
   const _LoginTextField({
     required this.controller,
@@ -715,6 +724,7 @@ class _LoginTextField extends StatelessWidget {
     this.keyboardType,
     this.obscureText = false,
     this.suffix,
+    this.autofillHints,
   });
 
   @override
@@ -724,6 +734,7 @@ class _LoginTextField extends StatelessWidget {
       controller: controller,
       keyboardType: keyboardType,
       obscureText: obscureText,
+      autofillHints: autofillHints,
       style: TextStyle(
         color: cs.onSurface,
         fontSize: 15,

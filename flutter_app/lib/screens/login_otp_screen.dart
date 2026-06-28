@@ -473,6 +473,7 @@ class _PhoneStep extends StatelessWidget {
               focusNode: focusNode,
               keyboardType: TextInputType.phone,
               textInputAction: TextInputAction.done,
+              autofillHints: const [AutofillHints.telephoneNumber],
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[\d+\s-]')),
                 LengthLimitingTextInputFormatter(20),
@@ -662,6 +663,8 @@ class _CodeStep extends StatelessWidget {
               textInputAction: TextInputAction.done,
               textAlign: TextAlign.center,
               autofocus: true,
+              // #1 autofill: auto-isi kode OTP dari SMS/WhatsApp (Android).
+              autofillHints: const [AutofillHints.oneTimeCode],
               inputFormatters: [
                 FilteringTextInputFormatter.digitsOnly,
                 LengthLimitingTextInputFormatter(6),
