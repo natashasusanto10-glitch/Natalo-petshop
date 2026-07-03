@@ -17,7 +17,6 @@ import '../services/product_service.dart';
 import '../services/report_service.dart';
 import '../services/review_service.dart';
 import '../services/stock_notification_service.dart';
-import '../shared/widgets/natalo_post_action_icon.dart';
 import '../state/cart_store.dart';
 import '../state/member_store.dart';
 import '../state/recently_viewed_store.dart';
@@ -494,15 +493,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         scrolledUnderElevation: 1,
         shadowColor: Colors.black.withValues(alpha: 0.08),
         title: const Text('Detail Produk'),
+        // Samakan back button dengan layar lain (login/checkout/cart/notif
+        // dll pakai arrow_back_rounded). Default AppBar pakai arrow_back
+        // (tidak rounded) → tampil beda sendiri.
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+          onPressed: () => Navigator.maybePop(context),
+        ),
         actions: [
           AppHeaderIconButton(
             onPressed: () => _shareProduct(context),
             tooltip: 'Bagikan',
-            child: const NataloPostActionIcon(
-              type: NataloPostActionIconType.share,
-              size: 24,
-              strokeWidth: 2.3,
-            ),
+            // Ikon share Material — konsisten dengan back + cart di app bar
+            // ini dan dengan Icons.ios_share_rounded yang sudah dipakai di
+            // in-app browser. Sebelumnya pakai NataloPostActionIcon custom
+            // (aslinya untuk baris aksi Feed) dengan stroke 2.3 → tampil
+            // jauh lebih tebal dari ikon Material di sebelahnya.
+            child: const Icon(Icons.ios_share_rounded, size: 24),
           ),
           const AppCartButton(),
         ],
@@ -1341,22 +1349,27 @@ class _PromoVoucherSheet extends StatelessWidget {
         (product.finalPrice - bestVoucherDiscount).clamp(0, double.infinity);
 
     final cs = Theme.of(context).colorScheme;
-    return SafeArea(
-      top: false,
-      child: Container(
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.68,
-          minChildSize: 0.42,
-          maxChildSize: 0.92,
-          builder: (context, scrollController) {
-            return ListView(
-              controller: scrollController,
-              padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
+    // Inset home-indicator diterapkan sebagai padding bawah KONTEN, bukan
+    // sebagai SafeArea yang membungkus Container putih. Sebelumnya
+    // SafeArea(top: false) ada di LUAR Container → background putih terdorong
+    // naik sejauh inset, menyisakan strip abu (barrier) di tepi bawah layar.
+    // Sekarang putih menjangkau tepi bawah fisik; konten tetap tidak
+    // tertutup home indicator berkat padding bawah = 24 + viewPadding.bottom.
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.68,
+        minChildSize: 0.42,
+        maxChildSize: 0.92,
+        builder: (context, scrollController) {
+          return ListView(
+            controller: scrollController,
+            padding: EdgeInsets.fromLTRB(18, 10, 18, 24 + bottomInset),
               children: [
                 Center(
                   child: Container(
@@ -1426,8 +1439,7 @@ class _PromoVoucherSheet extends StatelessWidget {
             );
           },
         ),
-      ),
-    );
+      );
   }
 }
 
