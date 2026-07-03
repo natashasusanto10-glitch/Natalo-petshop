@@ -254,17 +254,28 @@ class _ProductsScreenState extends State<ProductsScreen> {
         TextPosition(offset: initialQuery.length),
       );
     }
-    if (widget.initialCategory?.trim().isNotEmpty == true) {
-      _filter = _filter.copyWith(category: widget.initialCategory!.trim());
+    final initialCategory = widget.initialCategory?.trim() ?? '';
+    // Guard sama seperti _onCategorySelected: "Semua" bukan nama kategori
+    // asli — server tidak punya kategori bernama "Semua" (return total:0
+    // kalau dikirim literal). Bisa masuk lewat deep link (?kategori=Semua)
+    // atau share link — tanpa guard ini, halaman Produk kosong walau
+    // Beranda (yang tidak kena filter ini) tetap normal.
+    if (initialCategory.isNotEmpty && initialCategory.toLowerCase() != 'semua') {
+      _filter = _filter.copyWith(category: initialCategory);
     }
     if (widget.discountOnly) {
       _filter = _filter.copyWith(discountOnly: true);
       _activeMode = _ProductFilterMode.semua;
     }
     // Shortcut "Produk Baru" → buka langsung mode terbaru (sort newest +
-    // pill "Produk Baru" aktif). apiNewFilter derive dari sort==newest.
+    // pill "Produk Baru" aktif + newArrivalsOnly true supaya server terapkan
+    // cutoff 30-hari — lihat catatan di apiNewFilter).
     if (widget.newestOnly) {
-      _filter = _filter.copyWith(sort: ProductSort.newest, clearCategory: true);
+      _filter = _filter.copyWith(
+        sort: ProductSort.newest,
+        clearCategory: true,
+        newArrivalsOnly: true,
+      );
       _activeMode = _ProductFilterMode.baru;
     }
     _scrollController.addListener(_onScroll);
@@ -445,18 +456,24 @@ class _ProductsScreenState extends State<ProductsScreen> {
           break;
         case _ProductFilterMode.kategori:
           // Tetap pertahankan filter category yang sudah dipilih kalau ada.
-          _filter = _filter.copyWith(sort: ProductSort.newest);
+          // newArrivalsOnly: false — browsing kategori bukan "produk baru".
+          _filter = _filter.copyWith(
+            sort: ProductSort.newest,
+            newArrivalsOnly: false,
+          );
           break;
         case _ProductFilterMode.baru:
           _filter = _filter.copyWith(
             sort: ProductSort.newest,
             clearCategory: true,
+            newArrivalsOnly: true,
           );
           break;
         case _ProductFilterMode.populer:
           _filter = _filter.copyWith(
             sort: ProductSort.popular,
             clearCategory: true,
+            newArrivalsOnly: false,
           );
           break;
       }
@@ -711,8 +728,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
         _filter = const ProductCatalogFilter();
         _activeMode = _ProductFilterMode.semua;
       } else {
-        _filter =
-            _filter.copyWith(category: category, sort: ProductSort.newest);
+        _filter = _filter.copyWith(
+          category: category,
+          sort: ProductSort.newest,
+          newArrivalsOnly: false,
+        );
         _activeMode = _ProductFilterMode.kategori;
       }
     });
@@ -2698,10 +2718,24 @@ class ProductCatalogFilter {
   /// Minimum rating (1-5). 0 = no rating filter.
   final int minRating;
 
+  /// True HANYA kalau user eksplisit pilih shortcut "Produk Baru" (pill
+  /// _ProductFilterMode.baru). Server pakai flag ini untuk terapkan cutoff
+  /// createdAt 30-hari (lihat NEW_PRODUCT_WINDOW_DAYS di lib/products.ts).
+  ///
+  /// SENGAJA dipisah dari `sort` — sebelumnya apiNewFilter derive dari
+  /// `sort == ProductSort.newest`, padahal itu JUGA default sort untuk
+  /// seluruh katalog (dan value yang dipakai saat pilih kategori/urutan
+  /// "Terbaru" manual). Akibatnya server diam-diam filter HANYA produk
+  /// umur <30 hari di kondisi normal → tab Produk kosong total kalau
+  /// catalog di-bulk-import lebih dari 30 hari lalu (bug nyata, root
+  /// cause "halaman produk kosong padahal DB penuh").
+  final bool newArrivalsOnly;
+
   const ProductCatalogFilter({
     this.category,
     this.brand,
     this.sort = ProductSort.newest,
+    this.newArrivalsOnly = false,
     // Default `true` — customer tidak lihat produk stok habis di katalog.
     // Behavior e-commerce standar (Shopee, Tokopedia): produk habis
     // di-hide dari list/search.
@@ -2724,7 +2758,7 @@ class ProductCatalogFilter {
     this.minRating = 0,
   });
 
-  String? get apiNewFilter => sort == ProductSort.newest ? 'newest' : null;
+  String? get apiNewFilter => newArrivalsOnly ? 'newest' : null;
 
   String? get apiPopularFilter {
     return switch (sort) {
@@ -2774,6 +2808,7 @@ class ProductCatalogFilter {
     bool clearMaxPrice = false,
     Set<String>? brands,
     int? minRating,
+    bool? newArrivalsOnly,
   }) {
     return ProductCatalogFilter(
       category: clearCategory ? null : category ?? this.category,
@@ -2786,6 +2821,7 @@ class ProductCatalogFilter {
       maxPrice: clearMaxPrice ? null : maxPrice ?? this.maxPrice,
       brands: brands ?? this.brands,
       minRating: minRating ?? this.minRating,
+      newArrivalsOnly: newArrivalsOnly ?? this.newArrivalsOnly,
     );
   }
 }

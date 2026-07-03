@@ -63,7 +63,15 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(200, parsePositiveInt(sp.get("limit"), 24));
   const cursor = Math.max(0, parsePositiveInt(sp.get("cursor"), 0));
   const search = (sp.get("search") ?? sp.get("q") ?? "").trim();
-  const category = (sp.get("category") ?? sp.get("kategori") ?? "").trim();
+  // "semua"/"all" bukan nama kategori asli — ini sentinel client-side untuk
+  // "tanpa filter". Kalau lolos ke sini literal (deep link lama, share link),
+  // treat sebagai tanpa filter alih-alih dicari sebagai kategori (yang pasti
+  // 0 hasil karena tidak ada kategori bernama itu di DB).
+  const rawCategory = (sp.get("category") ?? sp.get("kategori") ?? "").trim();
+  const category =
+    rawCategory.toLowerCase() === "semua" || rawCategory.toLowerCase() === "all"
+      ? ""
+      : rawCategory;
   const brand = (sp.get("brand") ?? "").trim();
   const newFilter = asNewFilter(sp.get("new"));
   const popularFilter = asPopularFilter(sp.get("popular"));
