@@ -262,7 +262,15 @@ class _ZoomableImageState extends State<_ZoomableImage>
   // consume horizontal drag → PageView dapat swipe foto.
   bool _isZoomed = false;
 
+  // Posisi tap terakhir (viewport coords) dari onDoubleTapDown — dipakai
+  // supaya double-tap zoom TERPUSAT di titik yang di-tap, bukan selalu
+  // tengah layar.
+  Offset? _doubleTapPosition;
+
   static const double _zoomedThreshold = 1.02;
+  // Level zoom saat double-tap dari kondisi normal. Di antara minScale(1)
+  // dan maxScale(4). Pinch tetap bisa lanjut sampai 4x.
+  static const double _doubleTapScale = 2.5;
 
   @override
   void initState() {
@@ -305,11 +313,42 @@ class _ZoomableImageState extends State<_ZoomableImage>
         .entries
         .every((e) => e.value == Matrix4.identity().storage[e.key]);
     if (isIdentity) return;
+    _animateTo(Matrix4.identity());
+  }
+
+  /// Animasi transform dari matrix sekarang ke [target] pakai _anim +
+  /// Matrix4Tween. Dipakai bersama untuk snap-back (target=identity) dan
+  /// double-tap zoom-in (target=zoomed matrix).
+  void _animateTo(Matrix4 target) {
     _resetAnim = Matrix4Tween(
-      begin: current,
-      end: Matrix4.identity(),
+      begin: _controller.value,
+      end: target,
     ).animate(CurvedAnimation(parent: _anim, curve: Curves.easeOut));
     _anim.forward(from: 0);
+  }
+
+  void _handleDoubleTapDown(TapDownDetails details) {
+    _doubleTapPosition = details.localPosition;
+  }
+
+  void _handleDoubleTap() {
+    final scale = _controller.value.getMaxScaleOnAxis();
+    // Sudah zoom → double-tap balikkan ke normal. Masih normal → zoom in
+    // ke _doubleTapScale, terpusat di titik tap.
+    if (scale > _zoomedThreshold) {
+      _animateTo(Matrix4.identity());
+      return;
+    }
+    final position = _doubleTapPosition;
+    if (position == null) return;
+    // Translate supaya titik tap tetap di posisi layar yang sama setelah
+    // di-scale: pt_screen = scale * pt + t → agar tetap, t = -pt*(scale-1).
+    final dx = -position.dx * (_doubleTapScale - 1);
+    final dy = -position.dy * (_doubleTapScale - 1);
+    final target = Matrix4.identity()
+      ..translateByDouble(dx, dy, 0, 1)
+      ..scaleByDouble(_doubleTapScale, _doubleTapScale, _doubleTapScale, 1);
+    _animateTo(target);
   }
 
   @override
@@ -328,20 +367,29 @@ class _ZoomableImageState extends State<_ZoomableImage>
         // Di kondisi default (1 finger + scale=1) panEnabled=false → drag
         // diteruskan ke PageView untuk swipe ke foto lain.
         final panEnabled = widget.multiTouch || _isZoomed;
-        return InteractiveViewer(
-          transformationController: _controller,
-          panEnabled: panEnabled,
-          scaleEnabled: true,
-          minScale: 1,
-          maxScale: 4,
-          onInteractionEnd: _onInteractionEnd,
-          child: Center(
-            child: AppProductImage(
-              imageUrl: widget.imageUrl,
-              width: w,
-              height: h,
-              fit: BoxFit.contain,
-              borderRadius: BorderRadius.zero,
+        // GestureDetector di LUAR InteractiveViewer: onDoubleTapDown
+        // localPosition = viewport coords (sama ruang dengan transform
+        // InteractiveViewer), jadi zoom bisa terpusat di titik tap.
+        // DoubleTap tidak bentrok dengan pinch/pan (tap ≠ drag) maupun
+        // PageView swipe (tidak ada aksi single-tap di foto).
+        return GestureDetector(
+          onDoubleTapDown: _handleDoubleTapDown,
+          onDoubleTap: _handleDoubleTap,
+          child: InteractiveViewer(
+            transformationController: _controller,
+            panEnabled: panEnabled,
+            scaleEnabled: true,
+            minScale: 1,
+            maxScale: 4,
+            onInteractionEnd: _onInteractionEnd,
+            child: Center(
+              child: AppProductImage(
+                imageUrl: widget.imageUrl,
+                width: w,
+                height: h,
+                fit: BoxFit.contain,
+                borderRadius: BorderRadius.zero,
+              ),
             ),
           ),
         );
