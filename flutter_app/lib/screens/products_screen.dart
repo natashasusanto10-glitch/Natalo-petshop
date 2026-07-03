@@ -1119,23 +1119,51 @@ class _ProductsScreenState extends State<ProductsScreen> {
               else
                 SliverPadding(
                   padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding),
-                  sliver: SliverGrid(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 12,
-                      crossAxisSpacing: 12,
-                      childAspectRatio: 0.58,
-                    ),
+                  // Grid 2-kolom auto-height (bukan SliverGrid dengan
+                  // childAspectRatio tetap). Tiap baris = 1 Row berisi 2
+                  // kartu. crossAxisAlignment.stretch bikin 2 kartu SEBARIS
+                  // sama tinggi (rapi), tapi tinggi BARIS ikut konten
+                  // terpanjang di baris itu — jadi produk tanpa badge/
+                  // rating/terjual tidak lagi menyisakan ruang kosong
+                  // gede seperti waktu tinggi dipaku 0.58 untuk semua.
+                  sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final product = products[index];
-                        return _ProductsPageProductCard(
-                          product: product,
-                          onTap: () => _openProduct(product),
+                      (context, rowIndex) {
+                        final leftIndex = rowIndex * 2;
+                        final rightIndex = leftIndex + 1;
+                        final left = products[leftIndex];
+                        final hasRight = rightIndex < products.length;
+                        final rowCount = (products.length + 1) ~/ 2;
+                        final isLastRow = rowIndex == rowCount - 1;
+                        return Padding(
+                          padding: EdgeInsets.only(bottom: isLastRow ? 0 : 12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                child: _ProductsPageProductCard(
+                                  product: left,
+                                  onTap: () => _openProduct(left),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: hasRight
+                                    ? _ProductsPageProductCard(
+                                        product: products[rightIndex],
+                                        onTap: () =>
+                                            _openProduct(products[rightIndex]),
+                                      )
+                                    // Slot kanan kosong (jumlah produk ganjil)
+                                    // — jaga kartu kiri tetap selebar 1 kolom,
+                                    // tidak melar full-width.
+                                    : const SizedBox.shrink(),
+                              ),
+                            ],
+                          ),
                         );
                       },
-                      childCount: products.length,
+                      childCount: (products.length + 1) ~/ 2,
                     ),
                   ),
                 ),
