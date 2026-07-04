@@ -3170,7 +3170,10 @@ class _CartRecommendationsSection extends StatelessWidget {
                   mainAxisSpacing: 12,
                   crossAxisSpacing: 12,
                   // Lebih tinggi untuk metadata hemat + rating/terjual.
-                  childAspectRatio: 0.54,
+                  // 0.50 (bukan 0.54) — beri ruang ekstra supaya tidak
+                  // overflow di font-scale besar (RenderFlex "bottom
+                  // overflowed by 1.7 pixels" pada device tertentu).
+                  childAspectRatio: 0.50,
                 ),
                 itemBuilder: (context, index) {
                   final product = products[index];
