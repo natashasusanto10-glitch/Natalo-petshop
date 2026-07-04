@@ -1791,7 +1791,6 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                       ),
                       const SizedBox(height: _feedActionItemSpacing),
                       if (products.isNotEmpty) ...[
-                        const SizedBox(height: _feedActionItemSpacing),
                         AnimatedBuilder(
                           animation: cartStore,
                           builder: (context, _) => _ReelsAction(
@@ -1801,6 +1800,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                                 Navigator.of(context).pushNamed('/cart'),
                           ),
                         ),
+                        const SizedBox(height: _feedActionItemSpacing),
                       ],
                       // More actions (Report/Block) — Google Play UGC policy.
                       _ReelsAction(
@@ -3301,8 +3301,6 @@ class _FeedPostViewState extends State<_FeedPostView>
                                   const SizedBox(
                                       height: _feedActionItemSpacing),
                                   if (products.isNotEmpty) ...[
-                                    const SizedBox(
-                                        height: _feedActionItemSpacing),
                                     AnimatedBuilder(
                                       animation: cartStore,
                                       builder: (context, _) => _ReelsAction(
@@ -3312,6 +3310,8 @@ class _FeedPostViewState extends State<_FeedPostView>
                                             .pushNamed('/cart'),
                                       ),
                                     ),
+                                    const SizedBox(
+                                        height: _feedActionItemSpacing),
                                   ],
                                   // ── More actions (Report / Block) ──
                                   // Google Play UGC policy requirement: setiap
