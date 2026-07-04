@@ -1124,11 +1124,17 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding),
                   // Grid 2-kolom auto-height (bukan SliverGrid dengan
                   // childAspectRatio tetap). Tiap baris = 1 Row berisi 2
-                  // kartu. crossAxisAlignment.stretch bikin 2 kartu SEBARIS
-                  // sama tinggi (rapi), tapi tinggi BARIS ikut konten
-                  // terpanjang di baris itu — jadi produk tanpa badge/
-                  // rating/terjual tidak lagi menyisakan ruang kosong
-                  // gede seperti waktu tinggi dipaku 0.58 untuk semua.
+                  // kartu; tinggi BARIS ikut konten terpanjang di baris itu —
+                  // jadi produk tanpa badge/rating/terjual tidak menyisakan
+                  // ruang kosong gede seperti waktu tinggi dipaku 0.58.
+                  //
+                  // WAJIB CrossAxisAlignment.start — JANGAN .stretch. Kartu
+                  // berisi CachedNetworkImage(width: double.infinity); .stretch
+                  // memaksa Row menghitung intrinsic-height sebaris, yang tak
+                  // bisa disediakan oleh CachedNetworkImage → throw layout
+                  // exception yang DITELAN FlutterError.onError (app_crashlytics
+                  // tanpa presentError) → seluruh grid blank tanpa jejak.
+                  // Sama persis bug yang dulu bikin Beranda blank.
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, rowIndex) {
@@ -1141,7 +1147,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                         return Padding(
                           padding: EdgeInsets.only(bottom: isLastRow ? 0 : 12),
                           child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Expanded(
                                 child: _ProductsPageProductCard(

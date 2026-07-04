@@ -252,11 +252,12 @@ class NataloPetshopApp extends StatelessWidget {
                     // notifier yang dibaca semua BottomNavBar. Satu titik,
                     // cover semua layar tanpa per-screen wiring. Carousel
                     // horizontal diabaikan (cek axis).
-                    child: NotificationListener<UserScrollNotification>(
+                    child: NotificationListener<ScrollUpdateNotification>(
                       onNotification: (notification) {
-                        if (notification.metrics.axis == Axis.vertical) {
-                          updateBottomNavCollapse(notification.direction);
-                        }
+                        // Hysteresis + threshold ada di updateBottomNavScroll
+                        // (akumulasi jarak), bukan flip per-arah. Carousel
+                        // horizontal diabaikan di dalam fungsi (cek axis).
+                        updateBottomNavScroll(notification);
                         return false;
                       },
                       child: Stack(
