@@ -1790,6 +1790,18 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                         onTap: _onShare,
                       ),
                       const SizedBox(height: _feedActionItemSpacing),
+                      if (products.isNotEmpty) ...[
+                        const SizedBox(height: _feedActionItemSpacing),
+                        AnimatedBuilder(
+                          animation: cartStore,
+                          builder: (context, _) => _ReelsAction(
+                            iconChild:
+                                _ReelsCartGlyph(count: cartStore.totalQuantity),
+                            onTap: () =>
+                                Navigator.of(context).pushNamed('/cart'),
+                          ),
+                        ),
+                      ],
                       // More actions (Report/Block) — Google Play UGC policy.
                       _ReelsAction(
                         iconChild: const _ReelsMoreGlyph(),
@@ -3288,6 +3300,19 @@ class _FeedPostViewState extends State<_FeedPostView>
                                   ),
                                   const SizedBox(
                                       height: _feedActionItemSpacing),
+                                  if (products.isNotEmpty) ...[
+                                    const SizedBox(
+                                        height: _feedActionItemSpacing),
+                                    AnimatedBuilder(
+                                      animation: cartStore,
+                                      builder: (context, _) => _ReelsAction(
+                                        iconChild: _ReelsCartGlyph(
+                                            count: cartStore.totalQuantity),
+                                        onTap: () => Navigator.of(context)
+                                            .pushNamed('/cart'),
+                                      ),
+                                    ),
+                                  ],
                                   // ── More actions (Report / Block) ──
                                   // Google Play UGC policy requirement: setiap
                                   // post UGC harus ada cara user laporkan +
@@ -4641,6 +4666,60 @@ class _MoreGlyphPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _ReelsCartGlyph extends StatelessWidget {
+  final int count;
+
+  const _ReelsCartGlyph({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        const Icon(
+          Icons.shopping_cart,
+          color: _feedActionForegroundColor,
+          size: _feedActionIconSize,
+          shadows: [
+            Shadow(
+              color: _feedActionShadowColor,
+              blurRadius: 4,
+              offset: Offset(0, 1),
+            ),
+          ],
+        ),
+        if (count > 0)
+          Positioned(
+            top: -5,
+            right: -7,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: _feedCommerceOrange,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  width: 1.2,
+                ),
+              ),
+              constraints: const BoxConstraints(minWidth: 17, minHeight: 17),
+              child: Text(
+                count > 99 ? '99+' : '$count',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w900,
+                  height: 1.2,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 /// Compact product pill — Final Lock Spec Feed Product Tag.
