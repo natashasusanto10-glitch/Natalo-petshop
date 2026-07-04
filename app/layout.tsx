@@ -22,6 +22,7 @@ import { ViewTransitionsProvider } from "@/components/ViewTransitionsProvider";
 import { PushNotificationManager } from "@/components/PushNotificationManager";
 import { FeedUploadProvider } from "@/components/feed/FeedUploadProvider";
 import { FeedUploadToast } from "@/components/feed/FeedUploadToast";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const nunito = Nunito({
   subsets: ["latin"],
@@ -177,6 +178,7 @@ export default function RootLayout({
           </Suspense>
         </StoreOnly>
         <ToastProvider />
+        <SpeedInsights />
       </body>
     </html>
   );
