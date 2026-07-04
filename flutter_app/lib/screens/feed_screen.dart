@@ -55,6 +55,9 @@ const _feedActionCountFontSize = 12.0;
 const _feedActionItemSpacing = 18.0;
 const _feedActionBottomInset = 24.0;
 const _feedActionRailRightInset = 4.0;
+// Aksen commerce oranye — dipakai untuk aksi tambah-keranjang (kartu anchor
+// + cart-pill rail). Tombol "Beli" utama tetap biru brand.
+const _feedCommerceOrange = Color(0xFFFF7A00);
 const _feedTopActionRightInset = 8.0;
 
 /// Instagram Reels-style fullscreen vertical video feed.
@@ -1787,6 +1790,18 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                         onTap: _onShare,
                       ),
                       const SizedBox(height: _feedActionItemSpacing),
+                      if (products.isNotEmpty) ...[
+                        AnimatedBuilder(
+                          animation: cartStore,
+                          builder: (context, _) => _ReelsAction(
+                            iconChild:
+                                _ReelsCartGlyph(count: cartStore.totalQuantity),
+                            onTap: () =>
+                                Navigator.of(context).pushNamed('/cart'),
+                          ),
+                        ),
+                        const SizedBox(height: _feedActionItemSpacing),
+                      ],
                       // More actions (Report/Block) — Google Play UGC policy.
                       _ReelsAction(
                         iconChild: const _ReelsMoreGlyph(),
@@ -1817,7 +1832,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                       // Reuse widget yang sama dengan _FeedPostView untuk
                       // consistency visual antar video post & photo carousel.
                       if (products.isNotEmpty) ...[
-                        _ProductLinkChip(
+                        _ProductAnchorCard(
                           products: products,
                           featuredProduct: featuredProduct!,
                           featuredIndex:
@@ -1914,8 +1929,8 @@ class _FeedPostViewState extends State<_FeedPostView>
 
   // End-of-video product CTA — slide-in card di 2.5s terakhir tiap loop
   // supaya user yang nonton sampai abis lihat reminder produk dengan tombol
-  // "Beli" lebih prominent dari `_ProductLinkChip` yang selalu visible kecil
-  // di bawah. Reset tiap loop wrap (position < 500ms), tapi sticky setelah
+  // "Beli" lebih prominent dari product chip kecil di bottom info yang selalu
+  // visible. Reset tiap loop wrap (position < 500ms), tapi sticky setelah
   // user dismiss (per-session). Skip untuk post tanpa tagged products atau
   // video <3 detik.
   bool _endOfVideoCtaVisible = false;
@@ -3285,6 +3300,19 @@ class _FeedPostViewState extends State<_FeedPostView>
                                   ),
                                   const SizedBox(
                                       height: _feedActionItemSpacing),
+                                  if (products.isNotEmpty) ...[
+                                    AnimatedBuilder(
+                                      animation: cartStore,
+                                      builder: (context, _) => _ReelsAction(
+                                        iconChild: _ReelsCartGlyph(
+                                            count: cartStore.totalQuantity),
+                                        onTap: () => Navigator.of(context)
+                                            .pushNamed('/cart'),
+                                      ),
+                                    ),
+                                    const SizedBox(
+                                        height: _feedActionItemSpacing),
+                                  ],
                                   // ── More actions (Report / Block) ──
                                   // Google Play UGC policy requirement: setiap
                                   // post UGC harus ada cara user laporkan +
@@ -4640,6 +4668,60 @@ class _MoreGlyphPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+class _ReelsCartGlyph extends StatelessWidget {
+  final int count;
+
+  const _ReelsCartGlyph({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        const Icon(
+          Icons.shopping_cart,
+          color: _feedActionForegroundColor,
+          size: _feedActionIconSize,
+          shadows: [
+            Shadow(
+              color: _feedActionShadowColor,
+              blurRadius: 4,
+              offset: Offset(0, 1),
+            ),
+          ],
+        ),
+        if (count > 0)
+          Positioned(
+            top: -5,
+            right: -7,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: _feedCommerceOrange,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  width: 1.2,
+                ),
+              ),
+              constraints: const BoxConstraints(minWidth: 17, minHeight: 17),
+              child: Text(
+                count > 99 ? '99+' : '$count',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w900,
+                  height: 1.2,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 /// Compact product pill — Final Lock Spec Feed Product Tag.
 ///
 /// Layout: `[icon bag biru] [Diskon X% merah] | [Nama produk putih] [chevron]`
@@ -4706,7 +4788,7 @@ class _ProductCommerceOverlayGroup extends StatelessWidget {
                 )
               : const SizedBox.shrink(key: ValueKey('product-card-closed')),
         ),
-        _ProductLinkChip(
+        _ProductAnchorCard(
           products: products,
           featuredProduct: featuredProduct,
           featuredIndex: featuredIndex,
@@ -4757,18 +4839,14 @@ class _DownArrowPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class _ProductLinkChip extends StatelessWidget {
+class _ProductAnchorCard extends StatelessWidget {
   final List<FeedProductLink> products;
   final FeedProductLink featuredProduct;
   final int featuredIndex;
   final VoidCallback onTap;
-  // onQuickAdd kept di signature untuk backward-compat dengan call sites
-  // di feed screen — TIDAK dirender di pill (per spec). Bisa di-remove
-  // belakangan setelah audit semua call sites.
-  // ignore: unused_element_parameter
   final VoidCallback? onQuickAdd;
 
-  const _ProductLinkChip({
+  const _ProductAnchorCard({
     required this.products,
     required this.featuredProduct,
     required this.featuredIndex,
@@ -4779,117 +4857,192 @@ class _ProductLinkChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final product = featuredProduct;
-    // Label by discountSource dari backend: Flash Sale → "Flash Sale X%",
-    // Promo Toko → "Diskon X%". Sebelumnya hardcode "Flash Sale" untuk
-    // semua diskon → Promo Toko salah tampil "Flash Sale".
+    final pricing = _feedProductPricing(product);
     final badgeText = product.hasActiveDiscount
         ? (product.isFlashSale
             ? 'Flash Sale ${product.discountPercent}%'
             : 'Diskon ${product.discountPercent}%')
         : null;
-    return Material(
-      color: Colors.transparent,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(18),
-            child: Container(
-              height: 50,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.48),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.16),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (badgeText != null) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF4D4F),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              badgeText,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w900,
+                height: 1,
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E7BFF),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.18),
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.shopping_bag_outlined,
-                      color: Colors.white,
-                      size: 20,
-                    ),
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+        Material(
+          color: Colors.transparent,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.52),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.16),
+                    width: 1,
                   ),
-                  if (badgeText != null) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        badgeText,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          height: 1,
+                ),
+                padding: const EdgeInsets.all(7),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: onTap,
+                        borderRadius: BorderRadius.circular(9),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: SizedBox(
+                                width: 40,
+                                height: 40,
+                                child: (product.imageUrl != null &&
+                                        product.imageUrl!.isNotEmpty)
+                                    ? CachedNetworkImage(
+                                        imageUrl: product.imageUrl!,
+                                        fit: BoxFit.cover,
+                                        placeholder: (_, __) => Container(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.08),
+                                        ),
+                                        errorWidget: (_, __, ___) => Container(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.08),
+                                          child: const Icon(
+                                            Icons.image_not_supported_outlined,
+                                            color: Colors.white54,
+                                            size: 18,
+                                          ),
+                                        ),
+                                      )
+                                    : Container(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.08),
+                                        child: const Icon(
+                                          Icons.shopping_bag_outlined,
+                                          color: Colors.white54,
+                                          size: 18,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 9),
+                            Expanded(
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 260),
+                                transitionBuilder: (child, animation) =>
+                                    FadeTransition(
+                                        opacity: animation, child: child),
+                                child: Column(
+                                  key: ValueKey(product.id),
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      product.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w800,
+                                        height: 1.15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.baseline,
+                                      textBaseline: TextBaseline.alphabetic,
+                                      children: [
+                                        Text(
+                                          formatRupiah(pricing.displayPrice),
+                                          style: const TextStyle(
+                                            color: Color(0xFFFF5A5F),
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w900,
+                                            height: 1,
+                                          ),
+                                        ),
+                                        if (pricing.hasPromo) ...[
+                                          const SizedBox(width: 5),
+                                          Text(
+                                            formatRupiah(pricing.originalPrice),
+                                            style: TextStyle(
+                                              color: Colors.white
+                                                  .withValues(alpha: 0.5),
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w600,
+                                              height: 1,
+                                              decoration:
+                                                  TextDecoration.lineThrough,
+                                              decorationColor: Colors.white
+                                                  .withValues(alpha: 0.5),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    _AnchorCartButton(onTap: onQuickAdd),
                   ],
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 260),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) =>
-                          FadeTransition(opacity: animation, child: child),
-                      child: Row(
-                        key: ValueKey(product.id),
-                        children: [
-                          Expanded(
-                            child: Text(
-                              product.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: Colors.white.withValues(alpha: 0.90),
-                    size: 24,
-                  ),
-                ],
+                ),
               ),
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AnchorCartButton extends StatelessWidget {
+  final VoidCallback? onTap;
+
+  const _AnchorCartButton({this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _feedCommerceOrange,
+      borderRadius: BorderRadius.circular(9),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(9),
+        child: const SizedBox(
+          width: 34,
+          height: 34,
+          child: Icon(
+            Icons.add_shopping_cart_rounded,
+            color: Colors.white,
+            size: 18,
           ),
         ),
       ),
@@ -4971,68 +5124,75 @@ class _FeedTaggedProductsSheet extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // Cart icon dengan badge count — tap → close sheet
-                    // (user bisa lanjut buka cart di tab Akun/cart screen).
-                    AnimatedBuilder(
-                      animation: cartStore,
-                      builder: (context, _) {
-                        final count = cartStore.totalQuantity;
-                        return Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Container(
-                              width: 38,
-                              height: 38,
-                              decoration: BoxDecoration(
-                                color: Colors.transparent,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: const Color(0xFF1E5BFF),
-                                  width: 1.5,
-                                ),
-                              ),
-                              child: const Icon(
-                                Icons.shopping_bag_outlined,
-                                color: Color(0xFF1E5BFF),
-                                size: 20,
-                              ),
-                            ),
-                            if (count > 0)
-                              Positioned(
-                                top: -4,
-                                right: -4,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 5,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFFA726),
-                                    borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(
-                                      color: const Color(0xFF0B0D12),
-                                      width: 1.4,
-                                    ),
-                                  ),
-                                  constraints: const BoxConstraints(
-                                    minWidth: 18,
-                                    minHeight: 18,
-                                  ),
-                                  child: Text(
-                                    count > 99 ? '99+' : '$count',
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w900,
-                                      height: 1.1,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        );
+                    // Cart icon dengan badge count — tap → buka Keranjang.
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        final nav = Navigator.of(context);
+                        nav.pop();
+                        nav.pushNamed('/cart');
                       },
+                      child: AnimatedBuilder(
+                        animation: cartStore,
+                        builder: (context, _) {
+                          final count = cartStore.totalQuantity;
+                          return Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                width: 38,
+                                height: 38,
+                                decoration: BoxDecoration(
+                                  color: Colors.transparent,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: const Color(0xFF1E5BFF),
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.shopping_cart_outlined,
+                                  color: Color(0xFF1E5BFF),
+                                  size: 20,
+                                ),
+                              ),
+                              if (count > 0)
+                                Positioned(
+                                  top: -4,
+                                  right: -4,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 5,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFFA726),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: const Color(0xFF0B0D12),
+                                        width: 1.4,
+                                      ),
+                                    ),
+                                    constraints: const BoxConstraints(
+                                      minWidth: 18,
+                                      minHeight: 18,
+                                    ),
+                                    child: Text(
+                                      count > 99 ? '99+' : '$count',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                        height: 1.1,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
                     ),
                     const SizedBox(width: 8),
                     IconButton(
@@ -5085,7 +5245,7 @@ class _FeedTaggedProductsSheet extends StatelessWidget {
 
 /// Banner promo di atas product list bottom sheet.
 /// Layout: [icon discount oranye] [Diskon X% merah / "Khusus untuk produk
-/// di video ini" putih] [badge "Khusus Video" putih].
+/// di video ini" putih].
 class _VideoPromoBanner extends StatelessWidget {
   final int percent;
 
@@ -5142,36 +5302,7 @@ class _VideoPromoBanner extends StatelessWidget {
               ],
             ),
           ),
-          const _KhususVideoBadge(),
         ],
-      ),
-    );
-  }
-}
-
-/// Badge `Khusus Video` putih — dipakai di banner + card.
-/// Outlined style: border + text putih, no fill (clean & kontras di atas
-/// dark background).
-class _KhususVideoBadge extends StatelessWidget {
-  const _KhususVideoBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
-      ),
-      child: const Text(
-        'Khusus Video',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 10.5,
-          fontWeight: FontWeight.w800,
-          height: 1,
-        ),
       ),
     );
   }
@@ -5258,7 +5389,7 @@ class _FeedTaggedProductCardState extends State<_FeedTaggedProductCard> {
                             height: 1.16,
                           ),
                         ),
-                        // ── Badges row: Diskon X% merah + Khusus Video putih ──
+                        // ── Badges row: Diskon X% merah ──
                         const SizedBox(height: 6),
                         Wrap(
                           spacing: 6,
@@ -5289,7 +5420,6 @@ class _FeedTaggedProductCardState extends State<_FeedTaggedProductCard> {
                                   ),
                                 ),
                               ),
-                            const _KhususVideoBadge(),
                           ],
                         ),
                         // ── Rating + terjual row ──
@@ -6488,7 +6618,7 @@ class _ProductMetaChip extends StatelessWidget {
 
 /// End-of-video product CTA — card prominent yang muncul slide-up dari bawah
 /// di ~2.5 detik terakhir tiap loop video. Lebih besar + lebih visible dari
-/// `_ProductLinkChip` di bottom info biar user yang nonton sampai abis lihat
+/// `product chip kecil` di bottom info biar user yang nonton sampai abis lihat
 /// reminder produk dengan tombol "Beli" jelas. Hidden saat long-press
 /// preview atau comment sheet open. Dismissable via X icon (sticky sampai
 /// user swipe ke post lain).
@@ -6496,7 +6626,7 @@ class _ProductMetaChip extends StatelessWidget {
 /// trigger di feed_screen line 1847). Layout Final Lock Spec:
 ///  - Dark glass card dengan arrow pointing down ke pill
 ///  - Thumbnail produk (kiri, 4:5 portrait)
-///  - Content right: nama + badges (Diskon merah + Khusus Video putih)
+///  - Content right: nama + badges (Diskon merah)
 ///    + rating (★ 4.9 · 73,6 rb+ terjual) + harga (coret + display merah)
 ///    + bottom row: cart icon biru + tombol Beli biru
 ///  - Small X dismiss di kanan atas
@@ -6622,7 +6752,6 @@ class _EndOfVideoProductCta extends StatelessWidget {
                                         ),
                                       ),
                                     ),
-                                  const _KhususVideoBadge(),
                                 ],
                               ),
                               // Rating row (conditional)
