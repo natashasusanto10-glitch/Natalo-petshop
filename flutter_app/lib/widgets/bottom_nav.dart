@@ -34,8 +34,10 @@ enum BottomNavVariant { light, dark }
 const _navInactive = Color(0xFF6B7280);
 // Border tipis khas kaca — menangkap "cahaya" di tepi pill.
 const _navLightBorder = Color(0xB3FFFFFF); // white 70% alpha
-// Dark glass tokens — untuk Feed over video.
-const _navDarkGlass = Color(0xCC0A0A0A); // black 80% alpha
+// Dark glass tokens — untuk Feed over video. Alpha diturunkan dari 80%→60%
+// (0xCC→0x99) supaya sepadan dengan light glass (64%) — 80% terlalu pekat,
+// video di belakang nyaris tidak tembus sama sekali.
+const _navDarkGlass = Color(0x990A0A0A); // black 60% alpha
 const _navDarkTopBorder = Color(0x33FFFFFF); // white 20% alpha
 const _navDarkActive = Color(0xFFFFFFFF);
 const _navDarkInactive = Color(0xFF9CA3AF);
@@ -43,6 +45,17 @@ const _navDarkInactive = Color(0xFF9CA3AF);
 // Tint frosted glass light — putih semi-transparan supaya konten di
 // belakang tembus tapi ikon tetap terbaca.
 const _navLightGlass = Color(0xA3FFFFFF); // white 64% alpha
+
+/// Jarak dari tepi bawah layar yang perlu di-clear supaya konten TIDAK
+/// tertutup floating nav — TIDAK termasuk safe-area device (caller tambah
+/// sendiri via `MediaQuery.paddingOf(context).bottom`). Nilai = margin
+/// bawah pill (10) + tinggi pill (54) + gap napas (12).
+///
+/// Dipakai layar full-bleed dengan overlay custom (mis. Feed video/foto
+/// post — caption, action rail) yang tidak lewat `bottomNavigationBar`
+/// slot Scaffold biasa, jadi perlu hitung clearance manual saat
+/// `extendBody: true`.
+const kFloatingNavClearance = 76.0;
 
 class _NavItemData {
   final IconData icon;
@@ -153,11 +166,11 @@ class BottomNavBar extends StatelessWidget {
     final glassColor = dark ? _navDarkGlass : _navLightGlass;
 
     // Collapse dibaca dari notifier global (di-drive listener scroll di root
-    // app). Varian dark (Feed) TIDAK ikut collapse — nav Reels tetap penuh.
+    // app). Berlaku sama untuk varian light & dark — Feed juga menyempit
+    // saat scroll supaya konsisten dengan halaman lain.
     return ValueListenableBuilder<bool>(
       valueListenable: bottomNavCollapsed,
-      builder: (context, collapsedGlobal, _) {
-        final collapsed = dark ? false : collapsedGlobal;
+      builder: (context, collapsed, _) {
 
         final row = SizedBox(
           height: 54,

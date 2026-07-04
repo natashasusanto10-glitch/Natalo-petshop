@@ -561,12 +561,14 @@ class _FeedScreenState extends State<FeedScreen> {
       backgroundColor: Colors.black,
       resizeToAvoidBottomInset: false,
       extendBodyBehindAppBar: true,
-      // extendBody: false — media (video/foto) berhenti di atas bottom nav,
-      // TIDAK extend ke belakang nav. Per spec: "Media tidak masuk ke
-      // bawah bottom navigation". Scaffold sizing body = screenHeight -
-      // bottomNavHeight - safeBottom (otomatis), jadi overlay insets di
-      // bawah cukup relatif ke body bottom tanpa manual safeBottom add.
-      extendBody: false,
+      // extendBody: true — media (video/foto) memanjang ke belakang bottom
+      // nav supaya frosted glass nav (BottomNavVariant.dark) punya konten
+      // untuk di-blur, konsisten dengan halaman lain. Sebelumnya false
+      // (media berhenti di atas nav) → nav Feed jadi hitam solid, tidak
+      // tembus seperti nav di halaman lain. Caption/actions overlay pakai
+      // Positioned dengan padding eksplisit dari MediaQuery bottom inset,
+      // jadi tidak tertutup nav walau media kini extend penuh ke bawah.
+      extendBody: true,
       body: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle.light,
         // Outer Stack — feed content only. Upload entry tetap tersedia via
@@ -733,7 +735,10 @@ class _LoadingState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
-    const actionRailInset = _feedActionBottomInset;
+    // extendBody: true → tambah kFloatingNavClearance supaya shimmer
+    // placeholder action rail tidak tertutup floating nav.
+    final actionRailInset =
+        _feedActionBottomInset + mediaQuery.padding.bottom + kFloatingNavClearance;
     final feedInfoInset = mediaQuery.padding.bottom + 100;
 
     return Shimmer.fromColors(
@@ -771,10 +776,10 @@ class _LoadingState extends StatelessWidget {
 
           // Right action rail mock — Like/Comment/Share only. Match
           // positioning aktual yang duduk tepat di atas bottom nav.
-          const Positioned(
+          Positioned(
             right: _feedActionRailRightInset,
             bottom: actionRailInset,
-            child: Column(
+            child: const Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 _SkeletonCircle(size: 38),
@@ -1578,8 +1583,14 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   Widget build(BuildContext context) {
     final post = widget.post;
     final photos = post.mediaItems;
-    const actionRailInset = _feedActionBottomInset;
-    const feedInfoInset = 24.0;
+    // extendBody: true di Scaffold → Stack ini memanjang sampai tepi bawah
+    // layar (bukan berhenti di atas nav lagi). kFloatingNavClearance
+    // (dari bottom_nav.dart) + safe-area device supaya action rail/caption
+    // tidak tertutup floating nav.
+    final navClearance =
+        MediaQuery.paddingOf(context).bottom + kFloatingNavClearance;
+    final actionRailInset = _feedActionBottomInset + navClearance;
+    final feedInfoInset = 24.0 + navClearance;
 
     // Product chip — same rotation pattern dengan video post.
     final products = _rotatingProductsForPost(post);
@@ -2975,16 +2986,15 @@ class _FeedPostViewState extends State<_FeedPostView>
           // Cache media area width untuk zone detection di long-press
           // handler (left/center/right 2x speed vs pause).
           _mediaAreaWidth = constraints.maxWidth;
-          // extendBody: false di Scaffold → body bottom = top edge bottom
-          // nav (safeBottom sudah di-consume nav widget). Insets di sini
-          // relatif ke body bottom, BUKAN screen bottom. Tidak perlu
-          // tambah safeBottom — sudah otomatis di-handle Scaffold.
-          //
-          // Per spec safe area: bottom nav height + safeBottom otomatis
-          // consumed via Scaffold. Yang perlu di sini cuma offset visual
-          // antara overlay dengan top edge bottom nav.
-          const feedInfoInset = 24.0;
-          const actionRailInset = _feedActionBottomInset;
+          // extendBody: true di Scaffold → Stack ini memanjang sampai tepi
+          // bawah layar (dulu false, body berhenti di atas nav). Sekarang
+          // insets di sini relatif ke SCREEN bottom, jadi tambah
+          // kFloatingNavClearance (dari bottom_nav.dart) + safe-area device
+          // supaya action rail/caption tidak tertutup floating nav.
+          final navClearance =
+              MediaQuery.paddingOf(context).bottom + kFloatingNavClearance;
+          final feedInfoInset = 24.0 + navClearance;
+          final actionRailInset = _feedActionBottomInset + navClearance;
           final minimized = _commentSheetOpen;
 
           return ColoredBox(
