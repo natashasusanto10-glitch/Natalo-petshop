@@ -3161,57 +3161,41 @@ class _CartRecommendationsSection extends StatelessWidget {
         else
           Column(
             children: [
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: products.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  // Lebih tinggi untuk metadata hemat + rating/terjual.
-                  // 0.50 (bukan 0.54) — beri ruang ekstra supaya tidak
-                  // overflow di font-scale besar (RenderFlex "bottom
-                  // overflowed by 1.7 pixels" pada device tertentu).
-                  childAspectRatio: 0.50,
+              // Grid 2-kolom AUTO-HEIGHT (bukan GridView dengan
+              // childAspectRatio tetap) — tinggi tiap BARIS ikut konten
+              // terpanjang di baris itu. Kartu tanpa chip ongkir/hemat
+              // atau tanpa rating tidak menyisakan ruang kosong; kartu
+              // dengan 2 chip tidak overflow. Pola sama dengan Beranda &
+              // halaman Produk.
+              //
+              // WAJIB CrossAxisAlignment.start — JANGAN .stretch: stretch
+              // memaksa Row menghitung intrinsic-height kartu (berisi
+              // CachedNetworkImage) → layout exception yang DITELAN
+              // FlutterError.onError → seluruh section blank tanpa jejak.
+              // Lihat catatan lengkap di products_screen.dart.
+              for (var row = 0; row < (products.length + 1) ~/ 2; row++)
+                Padding(
+                  padding: EdgeInsets.only(
+                    bottom:
+                        row == (products.length + 1) ~/ 2 - 1 ? 0 : 12,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _buildCard(context, products[row * 2]),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: row * 2 + 1 < products.length
+                            ? _buildCard(context, products[row * 2 + 1])
+                            // Jumlah ganjil — slot kanan kosong, kartu
+                            // kiri tetap selebar 1 kolom.
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
+                  ),
                 ),
-                itemBuilder: (context, index) {
-                  final product = products[index];
-                  return CompactCommerceProductCard(
-                    product: product,
-                    onTap: () {
-                      AppHaptics.tap();
-                      Navigator.pushNamed(
-                        context,
-                        '/product-detail',
-                        arguments: product,
-                      );
-                    },
-                    onAddToCart: () {
-                      if (product.hasVariants) {
-                        AppHaptics.tap();
-                        Navigator.pushNamed(
-                          context,
-                          '/product-detail',
-                          arguments: product,
-                        );
-                        AppToast.show(
-                          context,
-                          'Pilih varian produk dulu.',
-                          kind: ToastKind.info,
-                        );
-                        return;
-                      }
-                      AppHaptics.success();
-                      cartStore.addProduct(product);
-                      AppToast.showCartAdded(
-                        context,
-                        '${product.title} masuk keranjang',
-                      );
-                    },
-                  );
-                },
-              ),
               if (loadingMore && showLoadingPlaceholder) ...[
                 const SizedBox(height: 12),
                 const SkeletonProductGrid(count: 2, showAddToCart: true),
@@ -3219,6 +3203,42 @@ class _CartRecommendationsSection extends StatelessWidget {
             ],
           ),
       ],
+    );
+  }
+
+  Widget _buildCard(BuildContext context, Product product) {
+    return CompactCommerceProductCard(
+      product: product,
+      onTap: () {
+        AppHaptics.tap();
+        Navigator.pushNamed(
+          context,
+          '/product-detail',
+          arguments: product,
+        );
+      },
+      onAddToCart: () {
+        if (product.hasVariants) {
+          AppHaptics.tap();
+          Navigator.pushNamed(
+            context,
+            '/product-detail',
+            arguments: product,
+          );
+          AppToast.show(
+            context,
+            'Pilih varian produk dulu.',
+            kind: ToastKind.info,
+          );
+          return;
+        }
+        AppHaptics.success();
+        cartStore.addProduct(product);
+        AppToast.showCartAdded(
+          context,
+          '${product.title} masuk keranjang',
+        );
+      },
     );
   }
 }

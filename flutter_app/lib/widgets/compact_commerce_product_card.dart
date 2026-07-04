@@ -59,6 +59,10 @@ class CompactCommerceProductCard extends StatelessWidget {
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            // min — kartu shrink-wrap ke kontennya (auto-height grid +
+            // rail horizontal). Tanpa ini Column mengisi penuh constraint
+            // dan menyisakan ruang kosong di bawah harga.
+            mainAxisSize: MainAxisSize.min,
             children: [
               _ProductImage(
                 product: product,
@@ -84,9 +88,16 @@ class CompactCommerceProductCard extends StatelessWidget {
                   children: promoChips,
                 ),
               ],
-              const SizedBox(height: 7),
-              _RatingSoldRow(product: product),
-              const Spacer(),
+              // Rating/terjual hanya dirender kalau datanya ada — produk
+              // baru tanpa rating & belum terjual tidak menyisakan baris
+              // kosong. Spacer DIBUANG: kartu ini sekarang dipakai di grid
+              // auto-height (tinggi baris ikut konten), Spacer butuh tinggi
+              // bounded dan justru bikin unbounded-height error.
+              if (product.rating > 0 || product.soldCount > 0) ...[
+                const SizedBox(height: 7),
+                _RatingSoldRow(product: product),
+              ],
+              const SizedBox(height: 10),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [

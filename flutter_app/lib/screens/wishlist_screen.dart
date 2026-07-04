@@ -453,27 +453,56 @@ class _WishlistScreenState extends State<WishlistScreen> {
                 else
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    sliver: SliverGrid(
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
-                        childAspectRatio: 0.54,
-                      ),
+                    // Grid 2-kolom AUTO-HEIGHT (bukan SliverGrid dengan
+                    // childAspectRatio tetap) — tinggi baris ikut konten:
+                    // kartu tanpa chip/rating tidak menyisakan ruang
+                    // kosong, kartu 2 chip tidak overflow. WAJIB
+                    // CrossAxisAlignment.start, JANGAN .stretch (intrinsic
+                    // height → exception ditelan → blank). Lihat catatan
+                    // di products_screen.dart.
+                    sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final product = products[index];
-                          return AppAnimatedEntrance(
-                            index: index,
-                            child: CompactCommerceProductCard(
-                              product: product,
-                              onTap: () => _openProduct(product),
-                              onAddToCart: () => _addToCart(product),
+                        (context, rowIndex) {
+                          final rowCount = (products.length + 1) ~/ 2;
+                          final left = products[rowIndex * 2];
+                          final rightIndex = rowIndex * 2 + 1;
+                          return Padding(
+                            padding: EdgeInsets.only(
+                              bottom: rowIndex == rowCount - 1 ? 0 : 12,
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: AppAnimatedEntrance(
+                                    index: rowIndex * 2,
+                                    child: CompactCommerceProductCard(
+                                      product: left,
+                                      onTap: () => _openProduct(left),
+                                      onAddToCart: () => _addToCart(left),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: rightIndex < products.length
+                                      ? AppAnimatedEntrance(
+                                          index: rightIndex,
+                                          child: CompactCommerceProductCard(
+                                            product: products[rightIndex],
+                                            onTap: () => _openProduct(
+                                                products[rightIndex]),
+                                            onAddToCart: () => _addToCart(
+                                                products[rightIndex]),
+                                          ),
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                              ],
                             ),
                           );
                         },
-                        childCount: products.length,
+                        childCount: (products.length + 1) ~/ 2,
                       ),
                     ),
                   ),
@@ -493,27 +522,51 @@ class _WishlistScreenState extends State<WishlistScreen> {
                 else
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    sliver: SliverGrid(
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
-                        childAspectRatio: 0.54,
-                      ),
+                    // Sama dengan grid wishlist di atas: 2-kolom
+                    // auto-height, start (bukan stretch).
+                    sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final product = lookAgain[index];
-                          return AppAnimatedEntrance(
-                            index: index,
-                            child: CompactCommerceProductCard(
-                              product: product,
-                              onTap: () => _openProduct(product),
-                              onAddToCart: () => _addToCart(product),
+                        (context, rowIndex) {
+                          final rowCount = (lookAgain.length + 1) ~/ 2;
+                          final left = lookAgain[rowIndex * 2];
+                          final rightIndex = rowIndex * 2 + 1;
+                          return Padding(
+                            padding: EdgeInsets.only(
+                              bottom: rowIndex == rowCount - 1 ? 0 : 12,
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: AppAnimatedEntrance(
+                                    index: rowIndex * 2,
+                                    child: CompactCommerceProductCard(
+                                      product: left,
+                                      onTap: () => _openProduct(left),
+                                      onAddToCart: () => _addToCart(left),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: rightIndex < lookAgain.length
+                                      ? AppAnimatedEntrance(
+                                          index: rightIndex,
+                                          child: CompactCommerceProductCard(
+                                            product: lookAgain[rightIndex],
+                                            onTap: () => _openProduct(
+                                                lookAgain[rightIndex]),
+                                            onAddToCart: () => _addToCart(
+                                                lookAgain[rightIndex]),
+                                          ),
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                              ],
                             ),
                           );
                         },
-                        childCount: lookAgain.length,
+                        childCount: (lookAgain.length + 1) ~/ 2,
                       ),
                     ),
                   ),
