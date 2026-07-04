@@ -11,14 +11,28 @@ const COLS: Record<number, { base: string; sm: string; lg: string; xl: string; x
   6: { base: "grid-cols-6", sm: "sm:grid-cols-6", lg: "lg:grid-cols-6", xl: "xl:grid-cols-6", xxl: "2xl:grid-cols-6" },
 };
 
+const VALID_COLS = [2, 3, 4, 5, 6];
+
+function getColsWithGuard(
+  colCount: number,
+  breakpoint: keyof Omit<(typeof COLS)[2], never>,
+): string {
+  if (!COLS[colCount]) {
+    throw new Error(
+      `Invalid column count: ${colCount}. Must be one of ${VALID_COLS.join(", ")}.`,
+    );
+  }
+  return COLS[colCount][breakpoint];
+}
+
 export function gridColsClass(opts?: Cols): string {
   if (!opts) {
     return "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
   }
-  const parts = [COLS[opts.base ?? 2].base];
-  if (opts.sm !== undefined) parts.push(COLS[opts.sm].sm);
-  if (opts.lg !== undefined) parts.push(COLS[opts.lg].lg);
-  if (opts.xl !== undefined) parts.push(COLS[opts.xl].xl);
-  if (opts.xxl !== undefined) parts.push(COLS[opts.xxl].xxl);
+  const parts = [getColsWithGuard(opts.base ?? 2, "base")];
+  if (opts.sm !== undefined) parts.push(getColsWithGuard(opts.sm, "sm"));
+  if (opts.lg !== undefined) parts.push(getColsWithGuard(opts.lg, "lg"));
+  if (opts.xl !== undefined) parts.push(getColsWithGuard(opts.xl, "xl"));
+  if (opts.xxl !== undefined) parts.push(getColsWithGuard(opts.xxl, "xxl"));
   return parts.join(" ");
 }

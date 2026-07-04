@@ -19,3 +19,12 @@ test("respects overrides and xxl", () => {
 test("omits unset breakpoints", () => {
   assert.equal(gridColsClass({ base: 3 }), "grid-cols-3");
 });
+
+test("throws on invalid column count", () => {
+  assert.throws(
+    () => gridColsClass({ base: 7 }),
+    {
+      message: /Invalid column count: 7\. Must be one of 2, 3, 4, 5, 6\./,
+    },
+  );
+});
