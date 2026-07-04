@@ -1929,8 +1929,8 @@ class _FeedPostViewState extends State<_FeedPostView>
 
   // End-of-video product CTA — slide-in card di 2.5s terakhir tiap loop
   // supaya user yang nonton sampai abis lihat reminder produk dengan tombol
-  // "Beli" lebih prominent dari `_ProductLinkChip` yang selalu visible kecil
-  // di bawah. Reset tiap loop wrap (position < 500ms), tapi sticky setelah
+  // "Beli" lebih prominent dari product chip kecil di bottom info yang selalu
+  // visible. Reset tiap loop wrap (position < 500ms), tapi sticky setelah
   // user dismiss (per-session). Skip untuk post tanpa tagged products atau
   // video <3 detik.
   bool _endOfVideoCtaVisible = false;
@@ -5245,7 +5245,7 @@ class _FeedTaggedProductsSheet extends StatelessWidget {
 
 /// Banner promo di atas product list bottom sheet.
 /// Layout: [icon discount oranye] [Diskon X% merah / "Khusus untuk produk
-/// di video ini" putih] [badge "Khusus Video" putih].
+/// di video ini" putih].
 class _VideoPromoBanner extends StatelessWidget {
   final int percent;
 
@@ -5389,7 +5389,7 @@ class _FeedTaggedProductCardState extends State<_FeedTaggedProductCard> {
                             height: 1.16,
                           ),
                         ),
-                        // ── Badges row: Diskon X% merah + Khusus Video putih ──
+                        // ── Badges row: Diskon X% merah ──
                         const SizedBox(height: 6),
                         Wrap(
                           spacing: 6,
@@ -6618,7 +6618,7 @@ class _ProductMetaChip extends StatelessWidget {
 
 /// End-of-video product CTA — card prominent yang muncul slide-up dari bawah
 /// di ~2.5 detik terakhir tiap loop video. Lebih besar + lebih visible dari
-/// `_ProductLinkChip` di bottom info biar user yang nonton sampai abis lihat
+/// `product chip kecil` di bottom info biar user yang nonton sampai abis lihat
 /// reminder produk dengan tombol "Beli" jelas. Hidden saat long-press
 /// preview atau comment sheet open. Dismissable via X icon (sticky sampai
 /// user swipe ke post lain).
@@ -6626,7 +6626,7 @@ class _ProductMetaChip extends StatelessWidget {
 /// trigger di feed_screen line 1847). Layout Final Lock Spec:
 ///  - Dark glass card dengan arrow pointing down ke pill
 ///  - Thumbnail produk (kiri, 4:5 portrait)
-///  - Content right: nama + badges (Diskon merah + Khusus Video putih)
+///  - Content right: nama + badges (Diskon merah)
 ///    + rating (★ 4.9 · 73,6 rb+ terjual) + harga (coret + display merah)
 ///    + bottom row: cart icon biru + tombol Beli biru
 ///  - Small X dismiss di kanan atas
