@@ -1590,7 +1590,9 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     final navClearance =
         MediaQuery.paddingOf(context).bottom + kFloatingNavClearance;
     final actionRailInset = _feedActionBottomInset + navClearance;
-    final feedInfoInset = 24.0 + navClearance;
+    // Foto carousel tidak punya rail durasi, jadi caption dirapatkan langsung
+    // ke atas nav (gap kecil) — konsisten "rapat" dengan video, tanpa void.
+    final feedInfoInset = navClearance + 12.0;
 
     // Product chip — same rotation pattern dengan video post.
     final products = _rotatingProductsForPost(post);
@@ -2993,8 +2995,15 @@ class _FeedPostViewState extends State<_FeedPostView>
           // supaya action rail/caption tidak tertutup floating nav.
           final navClearance =
               MediaQuery.paddingOf(context).bottom + kFloatingNavClearance;
-          final feedInfoInset = 24.0 + navClearance;
-          final actionRailInset = _feedActionBottomInset + navClearance;
+          // Stack bawah rapat ala IG Reels (bawah → atas):
+          //   nav → rail durasi (bottom: navClearance) → caption → nama.
+          // Scrubber box 28px, visual line di dasarnya duduk tepat di atas
+          // floating nav. Caption di atas rail dengan gap kecil supaya tidak
+          // overlap hit-area scrub. Sebelumnya rail di bottom:0 (tenggelam di
+          // bawah nav) + caption di 24+navClearance → void besar di antara.
+          const railBand = 28.0;
+          final feedInfoInset = navClearance + railBand + 6.0;
+          final actionRailInset = _feedActionBottomInset + navClearance + railBand;
           final minimized = _commentSheetOpen;
 
           return ColoredBox(
@@ -3222,7 +3231,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                           Positioned(
                             left: 0,
                             right: 0,
-                            bottom: 0,
+                            bottom: navClearance,
                             child: FeedVideoScrubber(
                               controller: _videoController!,
                               isCurrent: widget.isActive,
