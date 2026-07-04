@@ -2516,11 +2516,12 @@ class _FlashSaleGrid extends StatelessWidget {
               crossAxisCount: 3,
               mainAxisSpacing: 10,
               crossAxisSpacing: 10,
-              // 0.62 → 0.56: cell sedikit lebih tinggi (~+8px) supaya text
-              // section (title 32px + price + strikethrough optional) tidak
-              // overflow di card produk dengan diskon. Saat ada strikethrough,
-              // sebelumnya overflow ~4.6px.
-              childAspectRatio: 0.56,
+              // 0.62 → 0.56 → 0.52: cell makin tinggi untuk muat text section
+              // (title + harga + strikethrough) di card diskon. Grid 3-kolom
+              // wajib tinggi seragam (bukan auto-height), jadi turunkan aspect
+              // ratio. Di 0.56 masih overflow ~5.7px saat ada strikethrough;
+              // 0.52 kasih ruang cukup.
+              childAspectRatio: 0.52,
             ),
             itemBuilder: (context, index) {
               final product = visible[index];
@@ -3366,7 +3367,12 @@ class _HorizontalProductSection extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           SizedBox(
-            height: 260,
+            // 260 → 274: ListView horizontal butuh tinggi tetap (semua kartu
+            // sebaris = seragam). _MiniProductCard dengan diskon (harga
+            // coret) + 2 badge (ongkir+hemat) + rating overflow ~9px di 260.
+            // +14 kasih ruang cukup untuk kasus terburuk tanpa boros
+            // berlebih. (Bukan auto-height: horizontal scroll wajib seragam.)
+            height: 274,
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               scrollDirection: Axis.horizontal,

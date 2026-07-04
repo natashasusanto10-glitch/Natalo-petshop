@@ -43,10 +43,12 @@ const _navDarkActive = Color(0xFFFFFFFF);
 const _navDarkInactive = Color(0xFF9CA3AF);
 
 // Tint frosted glass light — putih semi-transparan supaya konten di
-// belakang tembus tapi ikon tetap terbaca. Diturunkan dari 64%→46%
-// (0xA3→0x75) — 64% terlalu pekat, warna asli produk di belakang jadi
-// pudar/abu-abu alih-alih tembus vibrant.
-const _navLightGlass = Color(0x75FFFFFF); // white 46% alpha
+// belakang tembus tapi ikon tetap terbaca. Diturunkan bertahap 64%→46%→
+// 30% (0xA3→0x75→0x4D) mengikuti feedback "terlalu abu". Kunci kesan
+// "kaca IG terbaru" = tint TIPIS (30%) + blur KUAT (34, dinaikkan dari
+// 22) supaya konten di belakang tembus jelas tapi tetap frosted, bukan
+// bening. Ikon tetap terbaca berkat blur yang meratakan latar.
+const _navLightGlass = Color(0x4DFFFFFF); // white 30% alpha
 
 /// Jarak dari tepi bawah layar yang perlu di-clear supaya konten TIDAK
 /// tertutup floating nav — TIDAK termasuk safe-area device (caller tambah
@@ -197,7 +199,7 @@ class BottomNavBar extends StatelessWidget {
         final pill = ClipRRect(
           borderRadius: borderRadius,
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+            filter: ImageFilter.blur(sigmaX: 34, sigmaY: 34),
             child: Container(
               decoration: BoxDecoration(
                 color: glassColor,
