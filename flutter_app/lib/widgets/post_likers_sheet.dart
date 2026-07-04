@@ -531,7 +531,7 @@ class _FollowButton extends StatelessWidget {
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
               )
-            : const Text('Follow'),
+            : const Text('Ikuti'),
       ),
     );
   }

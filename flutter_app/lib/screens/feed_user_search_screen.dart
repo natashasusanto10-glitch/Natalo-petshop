@@ -736,7 +736,7 @@ class _FollowButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = following ? 'Mengikuti' : 'Follow';
+    final label = following ? 'Mengikuti' : 'Ikuti';
     return SizedBox(
       height: 34,
       child: following

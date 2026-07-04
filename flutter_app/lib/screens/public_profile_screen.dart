@@ -649,7 +649,7 @@ class _Header extends StatelessWidget {
           shape: shape,
         ),
         child: _FollowButtonContent(
-          label: 'Follow',
+          label: 'Ikuti',
           busy: followBusy,
           spinnerColor: Colors.white,
         ),

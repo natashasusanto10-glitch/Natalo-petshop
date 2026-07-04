@@ -442,8 +442,8 @@ class _FollowUserTile extends StatelessWidget {
         : user.isFollowing
             ? 'Mengikuti'
             : kind == FollowListKind.followers
-                ? 'Follow balik'
-                : 'Follow';
+                ? 'Ikuti balik'
+                : 'Ikuti';
     final useFilled = !user.isSelf && !user.isFollowing;
 
     return InkWell(
