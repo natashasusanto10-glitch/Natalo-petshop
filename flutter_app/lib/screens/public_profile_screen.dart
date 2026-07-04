@@ -257,7 +257,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           ? ApiConfig.uri('/u/$username').toString()
           : ApiConfig.uri('/').toString();
       final label = profile.isOfficial ? profile.name : profile.displayHandle;
-      await Share.share('Lihat profil $label di Natalo\n$url');
+      // sharePositionOrigin WAJIB untuk iOS (popover anchor); tanpa ini share
+      // gagal/senyap di iOS. Di Android tak berpengaruh.
+      final box = context.findRenderObject() as RenderBox?;
+      await Share.share(
+        'Lihat profil $label di Natalo\n$url',
+        sharePositionOrigin:
+            box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+      );
     } catch (_) {
       // Cancel / share fail — silent.
     }

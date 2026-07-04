@@ -2,9 +2,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 
-import '../config/api_config.dart';
 import '../models/feed_post.dart';
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
@@ -21,6 +19,7 @@ import '../widgets/profile_avatar.dart';
 import '../widgets/update_profile_photo_sheet.dart';
 import '../widgets/username_prompt_banner.dart';
 import 'member_post_detail_screen.dart';
+import 'profile_qr_screen.dart';
 import 'public_profile_follow_list_screen.dart';
 
 /// Halaman Akun — social profile + galeri postingan user.
@@ -202,20 +201,20 @@ class _ProfilePageState extends State<_ProfilePage>
     if (mounted) await memberStore.hydrateFromApi();
   }
 
-  /// Share link profil publik `/u/{username}` via native share sheet.
+  /// Buka layar kartu QR profil ala IG (Desain C) — QR + Bagikan + Salin
+  /// link. Share sheet native dipicu dari dalam layar tsb.
   Future<void> _shareProfile() async {
     final profile = memberStore.profile;
     if (profile == null) return;
     AppHaptics.tap();
-    try {
-      final username = profile.username;
-      final url = (username != null && username.isNotEmpty)
-          ? ApiConfig.uri('/u/$username').toString()
-          : ApiConfig.uri('/').toString();
-      await Share.share('Lihat profil ${profile.displayHandle} di Natalo\n$url');
-    } catch (_) {
-      // Cancel / share fail — silent.
-    }
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ProfileQrScreen(
+          displayName: profile.name,
+          username: profile.username,
+        ),
+      ),
+    );
   }
 
   /// Buka daftar Pengikut / Mengikuti. Bangun PublicProfile dari
