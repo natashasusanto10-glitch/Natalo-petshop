@@ -32,23 +32,67 @@ import '../theme/natalo_colors.dart';
 enum BottomNavVariant { light, dark }
 
 const _navInactive = Color(0xFF6B7280);
-// Border tipis khas kaca — menangkap "cahaya" di tepi pill.
-const _navLightBorder = Color(0xB3FFFFFF); // white 70% alpha
+// Border nyaris tak kasat mata — cukup menangkap highlight tepi, tidak
+// membuat pill terlihat sebagai kotak solid.
+const _navLightBorder = Color(0x40FFFFFF); // white 25% alpha (highlight tepi)
 // Dark glass tokens — untuk Feed over video. Alpha diturunkan dari 80%→60%
-// (0xCC→0x99) supaya sepadan dengan light glass (64%) — 80% terlalu pekat,
+// (0xCC→0x99) supaya sepadan dengan light glass — 80% terlalu pekat,
 // video di belakang nyaris tidak tembus sama sekali.
 const _navDarkGlass = Color(0x990A0A0A); // black 60% alpha
 const _navDarkTopBorder = Color(0x33FFFFFF); // white 20% alpha
 const _navDarkActive = Color(0xFFFFFFFF);
 const _navDarkInactive = Color(0xFF9CA3AF);
 
-// Tint frosted glass light — putih semi-transparan supaya konten di
-// belakang tembus tapi ikon tetap terbaca. Diturunkan bertahap 64%→46%→
-// 30% (0xA3→0x75→0x4D) mengikuti feedback "terlalu abu". Kunci kesan
-// "kaca IG terbaru" = tint TIPIS (30%) + blur KUAT (34, dinaikkan dari
-// 22) supaya konten di belakang tembus jelas tapi tetap frosted, bukan
-// bening. Ikon tetap terbaca berkat blur yang meratakan latar.
-const _navLightGlass = Color(0x4DFFFFFF); // white 30% alpha
+// INSIGHT KUNCI (setelah bandingkan langsung dengan nav IG terbaru): kesan
+// "abu"/keruh BUKAN cuma soal tint — blur sigma tinggi (34) meratakan
+// warna di belakang jadi abu (color averaging), jadi walau tint sudah
+// diturunkan ke 30%, hasil tetap terlihat "susu keruh", bukan "kaca
+// bening". Nav IG asli pakai blur RENDAH supaya variasi warna asli (biru
+// langit, oranye sunset dll) tetap tembus jelas, cuma sedikit buram tepi
+// ikonnya. Makanya sekarang blur diturunkan 34→18 SEKALIGUS tint
+// diturunkan lagi 30%→15% (0x4D→0x26) — dua-duanya harus turun bareng,
+// bukan cuma salah satu.
+// FORMULA GLASS IG SEJATI = tint NETRAL super tipis + blur + saturasi boost.
+// IG pakai tint putih ~8% (bukan warna), lalu andalkan saturasi (lihat
+// _glassFilter) untuk mengembalikan warna konten yang tercuci blur. Di atas
+// konten berwarna (kartu produk) → kaca hidup berwarna. Di atas ruang putih
+// → pucat, PERSIS seperti bar IG kalau kebetulan melayang di atas area
+// terang. Inilah sifat asli kaca; tint tipis = paling dekat ke IG.
+const _navLightGlass = Color(0x14FFFFFF); // white ~8% alpha
+
+/// Color matrix untuk menaikkan saturasi backdrop di belakang kaca.
+///
+/// INI RAHASIA "bening berwarna" ala IG iOS. Blur Gaussian secara
+/// matematis merata-ratakan pixel tetangga → kalau background warna-warni
+/// (produk pink, badge merah), hasil rata-ratanya condong ABU. iOS
+/// menambalnya dengan boost saturasi (vibrancy) supaya warna asli pop
+/// kembali; Flutter BackdropFilter tidak, makanya default-nya keruh.
+///
+/// Kita kembalikan sendiri lewat ColorFilter.matrix di-compose dengan
+/// blur. `s` = faktor saturasi (1.0 = netral, 1.4 = +40%). Rumus standar
+/// luminance-preserving saturation matrix (koef ITU-R BT.601).
+List<double> _saturationMatrix(double s) {
+  const lumR = 0.213, lumG = 0.715, lumB = 0.072;
+  final sr = (1 - s) * lumR, sg = (1 - s) * lumG, sb = (1 - s) * lumB;
+  return <double>[
+    sr + s, sg, sb, 0, 0,
+    sr, sg + s, sb, 0, 0,
+    sr, sg, sb + s, 0, 0,
+    0, 0, 0, 1, 0,
+  ];
+}
+
+/// Backdrop filter kaca: blur + boost saturasi. Untuk light glass, saturasi
+/// dinaikkan supaya warna tembus jelas (bukan abu). Dark glass (Feed over
+/// video) tetap blur murni — video sudah kaya warna, tak perlu di-boost.
+ImageFilter _glassFilter({required bool dark}) {
+  final blur = ImageFilter.blur(sigmaX: 18, sigmaY: 18);
+  if (dark) return blur;
+  return ImageFilter.compose(
+    outer: blur,
+    inner: ColorFilter.matrix(_saturationMatrix(1.4)),
+  );
+}
 
 /// Jarak dari tepi bawah layar yang perlu di-clear supaya konten TIDAK
 /// tertutup floating nav — TIDAK termasuk safe-area device (caller tambah
@@ -199,7 +243,7 @@ class BottomNavBar extends StatelessWidget {
         final pill = ClipRRect(
           borderRadius: borderRadius,
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 34, sigmaY: 34),
+            filter: _glassFilter(dark: dark),
             child: Container(
               decoration: BoxDecoration(
                 color: glassColor,
