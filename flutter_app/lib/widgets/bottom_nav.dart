@@ -43,8 +43,10 @@ const _navDarkActive = Color(0xFFFFFFFF);
 const _navDarkInactive = Color(0xFF9CA3AF);
 
 // Tint frosted glass light — putih semi-transparan supaya konten di
-// belakang tembus tapi ikon tetap terbaca.
-const _navLightGlass = Color(0xA3FFFFFF); // white 64% alpha
+// belakang tembus tapi ikon tetap terbaca. Diturunkan dari 64%→46%
+// (0xA3→0x75) — 64% terlalu pekat, warna asli produk di belakang jadi
+// pudar/abu-abu alih-alih tembus vibrant.
+const _navLightGlass = Color(0x75FFFFFF); // white 46% alpha
 
 /// Jarak dari tepi bawah layar yang perlu di-clear supaya konten TIDAK
 /// tertutup floating nav — TIDAK termasuk safe-area device (caller tambah
