@@ -26,7 +26,18 @@ class AppCrashlytics {
           .setCrashlyticsCollectionEnabled(!kDebugMode);
 
       // Hook semua Flutter framework error.
+      //
+      // CRITICAL: presentError WAJIB dipanggil di debug. Tanpa ini, error
+      // LAYOUT/PAINT-phase (mis. RenderFlex exception dari
+      // CrossAxisAlignment.stretch di Row berisi widget tanpa intrinsic
+      // dimension) tidak pernah tercetak ke console DAN tidak diganti
+      // ErrorWidget (ErrorWidget.builder cuma nangkep build-phase exception,
+      // bukan layout/paint-phase) — hasilnya: bagian layar itu blank
+      // SENYAP, tanpa jejak sama sekali. Bug ini sudah 4× ditemukan di app
+      // ini (Beranda, Produk, Detail Produk) justru karena tidak ada
+      // presentError, tiap kali makan waktu lama untuk root-cause.
       FlutterError.onError = (errorDetails) {
+        if (kDebugMode) FlutterError.presentError(errorDetails);
         FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
       };
 
