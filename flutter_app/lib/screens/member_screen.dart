@@ -582,6 +582,9 @@ class _ProfileActionButton extends StatelessWidget {
         style: OutlinedButton.styleFrom(
           foregroundColor: cs.onSurface,
           side: BorderSide(color: cs.outlineVariant),
+          padding: EdgeInsets.zero,
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           textStyle: const TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w800,
