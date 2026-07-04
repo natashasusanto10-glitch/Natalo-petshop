@@ -7,6 +7,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CartCount } from "./CartCount";
 import { NotificationBell } from "./NotificationBell";
 import { HomeSearchBar } from "@/components/home/HomeSearchBar";
+import { AnnouncementBar } from "@/components/header/AnnouncementBar";
+import { DesktopCategoryNav } from "@/components/header/DesktopCategoryNav";
 import { bootstrapCartSync, switchToGuestCart } from "@/lib/cart";
 import { prefetchCategories } from "@/lib/client-performance";
 import { shareContent } from "@/lib/share";
@@ -250,6 +252,7 @@ export function Header() {
           : "nat-site-header mobile-sticky-header md:sticky"
       }
     >
+      <AnnouncementBar />
       {isProductDetail && (
         <div className="product-detail-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 md:hidden">
           <button
@@ -405,7 +408,10 @@ export function Header() {
           </div>
         </div>
         {isHome && <HomeSearchBar />}
+        {/* Desktop: search bar selalu tampil di header (semua halaman), center. */}
+        <HomeSearchBar className="mx-auto hidden w-full max-w-xl px-0 md:flex md:pb-2" />
       </div>
+      {!isProductDetail && <DesktopCategoryNav />}
     </header>
   );
 }
