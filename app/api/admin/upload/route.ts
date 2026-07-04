@@ -2,10 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { validateImageMagicBytes } from "@/lib/upload/validate-image-bytes";
+import { normalizeBrandLogo } from "@/lib/upload/normalize-logo";
 import { uploadToUT } from "@/lib/uploadthing";
 
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const MAX_SIZE = 2 * 1024 * 1024;
+
+export type UploadKind = "product" | "brand-logo";
+
+export function resolveUploadKind(rawKind: FormDataEntryValue | null): UploadKind {
+  return rawKind === "brand-logo" ? "brand-logo" : "product";
+}
 
 export async function POST(request: NextRequest) {
   const csrfReject = assertSameOrigin(request);
@@ -18,6 +25,7 @@ export async function POST(request: NextRequest) {
 
   const formData = await request.formData();
   const file = formData.get("file") as File | null;
+  const kind = resolveUploadKind(formData.get("kind"));
 
   if (!file) {
     return NextResponse.json({ error: "File tidak ditemukan" }, { status: 400 });
@@ -43,7 +51,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { url } = await uploadToUT(file, "product");
+    const uploadFile =
+      kind === "brand-logo"
+        ? new File([await normalizeBrandLogo(buffer)], file.name.replace(/\.\w+$/, ".png"), {
+            type: "image/png",
+          })
+        : file;
+    const { url } = await uploadToUT(uploadFile, kind === "brand-logo" ? "brand-logo" : "product");
     return NextResponse.json({ url });
   } catch (e) {
     return NextResponse.json(

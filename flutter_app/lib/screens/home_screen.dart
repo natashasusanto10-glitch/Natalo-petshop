@@ -3529,11 +3529,13 @@ class _BrandChoiceSectionState extends State<_BrandChoiceSection> {
     }
 
     // Compute card height dari aspect ratio + screen width
-    // (childAspectRatio: 1.45 = width/height).
+    // (childAspectRatio: 1.35 = width/height — sedikit lebih tinggi dari
+    // sebelumnya (1.45) supaya logo kotak/tinggi punya ruang yang sama
+    // dengan logo banner lebar; lihat BrandLogoImage untuk patok tinggi).
     final screenWidth = MediaQuery.sizeOf(context).width;
     final innerWidth = screenWidth - 32; // 16 padding × 2
     final cardWidth = (innerWidth - 24) / 3; // 12 spacing × 2 between 3 cols
-    final cardHeight = cardWidth / 1.45;
+    final cardHeight = cardWidth / 1.35;
     final gridHeight = (cardHeight * 2) + 12; // 2 rows + mainAxisSpacing
 
     return Padding(
@@ -3581,12 +3583,12 @@ class _BrandChoiceSectionState extends State<_BrandChoiceSection> {
                       crossAxisCount: 3,
                       mainAxisSpacing: 12,
                       crossAxisSpacing: 12,
-                      childAspectRatio: 1.45,
+                      childAspectRatio: 1.35,
                     ),
                     itemCount: pageBrands.length,
                     itemBuilder: (context, idx) {
                       final brand = pageBrands[idx];
-                      return _BrandGridCard(
+                      return BrandGridCard(
                         brand: brand,
                         onTap: () => widget.onTap(brand),
                       );
@@ -3604,11 +3606,11 @@ class _BrandChoiceSectionState extends State<_BrandChoiceSection> {
 
 /// Compact brand card untuk 2×3 grid carousel.
 /// Pertahankan visual style Natalo (white bg, soft border, soft shadow).
-class _BrandGridCard extends StatelessWidget {
+class BrandGridCard extends StatelessWidget {
   final PetBrand brand;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
-  const _BrandGridCard({required this.brand, required this.onTap});
+  const BrandGridCard({super.key, required this.brand, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -3619,7 +3621,7 @@ class _BrandGridCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
@@ -3636,14 +3638,17 @@ class _BrandGridCard extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Expanded(
-                flex: 5,
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: _BrandLogoImage(brand: brand),
-                ),
+              // Patok tinggi logo ke garis yang sama untuk semua brand —
+              // ini yang menghentikan logo banner lebar (Happy Dog, Royal
+              // Canin) melar mepet tepi sementara logo kotak (Nexgard,
+              // Whiskas) tenggelam kecil. BoxFit.contain di dalam
+              // ConstrainedBox mengepaskan ke TINGGI yang sama, bukan ke
+              // seluruh area kartu.
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 26),
+                child: BrandLogoImage(brand: brand),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 4),
               Text(
                 brand.name,
                 maxLines: 1,
@@ -3663,10 +3668,10 @@ class _BrandGridCard extends StatelessWidget {
   }
 }
 
-class _BrandLogoImage extends StatelessWidget {
+class BrandLogoImage extends StatelessWidget {
   final PetBrand brand;
 
-  const _BrandLogoImage({required this.brand});
+  const BrandLogoImage({super.key, required this.brand});
 
   @override
   Widget build(BuildContext context) {
@@ -3684,7 +3689,7 @@ class _BrandLogoImage extends StatelessWidget {
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
         ),
-        errorWidget: (context, url, error) => _BrandInitial(brand: brand),
+        errorWidget: (context, url, error) => BrandInitial(brand: brand),
       );
     }
     // 2) Image asset lokal (sampleBrands fallback)
@@ -3694,18 +3699,18 @@ class _BrandLogoImage extends StatelessWidget {
         imageAsset,
         fit: BoxFit.contain,
         errorBuilder: (context, error, stackTrace) =>
-            _BrandInitial(brand: brand),
+            BrandInitial(brand: brand),
       );
     }
     // 3) Fallback: inisial huruf
-    return _BrandInitial(brand: brand);
+    return BrandInitial(brand: brand);
   }
 }
 
-class _BrandInitial extends StatelessWidget {
+class BrandInitial extends StatelessWidget {
   final PetBrand brand;
 
-  const _BrandInitial({required this.brand});
+  const BrandInitial({super.key, required this.brand});
 
   @override
   Widget build(BuildContext context) {

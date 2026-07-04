@@ -52,6 +52,7 @@ export function BrandLogoUploadButton({
     setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("kind", "brand-logo");
 
     try {
       const response = await fetch("/api/admin/upload", {
