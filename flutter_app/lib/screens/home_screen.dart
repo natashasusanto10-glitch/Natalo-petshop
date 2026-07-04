@@ -708,39 +708,68 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    sliver: SliverGrid(
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
-                        // Lebih tinggi untuk metadata hemat + rating/terjual.
-                        childAspectRatio: 0.54,
-                      ),
+                    // Grid 2-kolom AUTO-HEIGHT (bukan SliverGrid dengan
+                    // childAspectRatio tetap). Tiap baris = 1 Row berisi 2
+                    // kartu; crossAxisAlignment.stretch bikin 2 kartu sebaris
+                    // sama tinggi, tapi tinggi BARIS ikut konten terpanjang.
+                    // Sebelumnya 0.54 dipaku → kartu dengan diskon + 2 badge
+                    // (ongkir+hemat, wrap 2 baris) + rating overflow ~8-9px.
+                    // Auto-height hilangkan overflow tanpa ruang kosong di
+                    // kartu minim konten. Pola sama dengan halaman Produk.
+                    sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
-                        (context, index) {
+                        (context, rowIndex) {
                           // Saat first load belum ada produk + masih loading,
                           // tampilkan skeleton — feels lebih native dari blank.
-                          if (_exploreProducts.isEmpty &&
-                              !_exploreInitialLoaded) {
-                            return const SkeletonProductCard(
-                              showAddToCart: false,
+                          final showingSkeleton = _exploreProducts.isEmpty &&
+                              !_exploreInitialLoaded;
+                          final itemCount =
+                              showingSkeleton ? 6 : _exploreProducts.length;
+                          final leftIndex = rowIndex * 2;
+                          final rightIndex = leftIndex + 1;
+                          final rowCount = (itemCount + 1) ~/ 2;
+                          final isLastRow = rowIndex == rowCount - 1;
+
+                          Widget cell(int index) {
+                            if (showingSkeleton) {
+                              return const SkeletonProductCard(
+                                showAddToCart: false,
+                              );
+                            }
+                            final product = _exploreProducts[index];
+                            return _HomeProductCard(
+                              product: product,
+                              onTap: () =>
+                                  _openProductDetail(context, product),
                             );
                           }
-                          if (index >= _exploreProducts.length) {
-                            // Safety guard
-                            return const SizedBox.shrink();
-                          }
-                          final product = _exploreProducts[index];
-                          return _HomeProductCard(
-                            product: product,
-                            onTap: () => _openProductDetail(context, product),
+
+                          return Padding(
+                            padding:
+                                EdgeInsets.only(bottom: isLastRow ? 0 : 12),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(child: cell(leftIndex)),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: rightIndex < itemCount
+                                      ? cell(rightIndex)
+                                      // Jumlah ganjil — slot kanan kosong,
+                                      // kartu kiri tetap selebar 1 kolom.
+                                      : const SizedBox.shrink(),
+                                ),
+                              ],
+                            ),
                           );
                         },
-                        childCount:
-                            _exploreProducts.isEmpty && !_exploreInitialLoaded
-                                ? 6
-                                : _exploreProducts.length,
+                        childCount: (() {
+                          final showingSkeleton = _exploreProducts.isEmpty &&
+                              !_exploreInitialLoaded;
+                          final itemCount =
+                              showingSkeleton ? 6 : _exploreProducts.length;
+                          return (itemCount + 1) ~/ 2;
+                        })(),
                       ),
                     ),
                   ),
