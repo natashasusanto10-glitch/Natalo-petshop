@@ -5149,36 +5149,7 @@ class _VideoPromoBanner extends StatelessWidget {
               ],
             ),
           ),
-          const _KhususVideoBadge(),
         ],
-      ),
-    );
-  }
-}
-
-/// Badge `Khusus Video` putih — dipakai di banner + card.
-/// Outlined style: border + text putih, no fill (clean & kontras di atas
-/// dark background).
-class _KhususVideoBadge extends StatelessWidget {
-  const _KhususVideoBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
-      ),
-      child: const Text(
-        'Khusus Video',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 10.5,
-          fontWeight: FontWeight.w800,
-          height: 1,
-        ),
       ),
     );
   }
@@ -5296,7 +5267,6 @@ class _FeedTaggedProductCardState extends State<_FeedTaggedProductCard> {
                                   ),
                                 ),
                               ),
-                            const _KhususVideoBadge(),
                           ],
                         ),
                         // ── Rating + terjual row ──
@@ -6629,7 +6599,6 @@ class _EndOfVideoProductCta extends StatelessWidget {
                                         ),
                                       ),
                                     ),
-                                  const _KhususVideoBadge(),
                                 ],
                               ),
                               // Rating row (conditional)
