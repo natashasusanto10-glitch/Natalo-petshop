@@ -98,19 +98,9 @@ class _SettingsContent extends StatelessWidget {
           title: 'PENGATURAN APLIKASI',
           collapsible: true,
           children: [
-            // Mode Tampilan — pilih Terang / Gelap / Ikuti Sistem.
-            // Kill switch dibuka (v1.0.140): dark theme audit selesai.
-            AnimatedBuilder(
-              animation: appSettingsStore,
-              builder: (context, _) {
-                return SettingsListItem(
-                  icon: _themeIcon(appSettingsStore.themeMode),
-                  title: 'Mode Tampilan',
-                  subtitle: _themeLabel(appSettingsStore.themeMode),
-                  onTap: () => _openThemeSheet(context),
-                );
-              },
-            ),
+            // Mode Tampilan dihapus dari Pengaturan — app di-force
+            // ThemeMode.light selalu (lihat main.dart), toggle ini tidak
+            // lagi punya efek jadi disembunyikan supaya tidak membingungkan.
             AnimatedBuilder(
               animation: appSettingsStore,
               builder: (context, _) {
@@ -583,88 +573,6 @@ class _AppVersionFooterState extends State<_AppVersionFooter> {
       ],
     );
   }
-}
-
-IconData _themeIcon(ThemeMode mode) {
-  switch (mode) {
-    case ThemeMode.dark:
-      return Icons.dark_mode_outlined;
-    case ThemeMode.system:
-      return Icons.brightness_auto_outlined;
-    case ThemeMode.light:
-      return Icons.light_mode_outlined;
-  }
-}
-
-String _themeLabel(ThemeMode mode) {
-  switch (mode) {
-    case ThemeMode.dark:
-      return 'Gelap';
-    case ThemeMode.system:
-      return 'Sistem';
-    case ThemeMode.light:
-      return 'Terang';
-  }
-}
-
-Future<void> _openThemeSheet(BuildContext context) {
-  return showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-    ),
-    builder: (context) {
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-          child: AnimatedBuilder(
-            animation: appSettingsStore,
-            builder: (context, _) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Mode Tampilan',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 12),
-                  _SheetOption(
-                    icon: Icons.light_mode_rounded,
-                    title: 'Terang',
-                    selected: appSettingsStore.themeMode == ThemeMode.light,
-                    onTap: () async {
-                      await appSettingsStore.setThemeMode(ThemeMode.light);
-                      if (context.mounted) Navigator.pop(context);
-                    },
-                  ),
-                  _SheetOption(
-                    icon: Icons.dark_mode_rounded,
-                    title: 'Gelap',
-                    selected: appSettingsStore.themeMode == ThemeMode.dark,
-                    onTap: () async {
-                      await appSettingsStore.setThemeMode(ThemeMode.dark);
-                      if (context.mounted) Navigator.pop(context);
-                    },
-                  ),
-                  _SheetOption(
-                    icon: Icons.brightness_auto_rounded,
-                    title: 'Ikuti Sistem',
-                    selected: appSettingsStore.themeMode == ThemeMode.system,
-                    onTap: () async {
-                      await appSettingsStore.setThemeMode(ThemeMode.system);
-                      if (context.mounted) Navigator.pop(context);
-                    },
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-      );
-    },
-  );
 }
 
 Future<void> _openVideoQualitySheet(BuildContext context) {
