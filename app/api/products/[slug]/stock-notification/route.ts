@@ -1,9 +1,9 @@
 /**
  * Stock notification subscription API — pre-order out-of-stock.
  *
- * - GET    /api/products/[id]/stock-notification        → cek status subscribe
- * - POST   /api/products/[id]/stock-notification        → subscribe (upsert)
- * - DELETE /api/products/[id]/stock-notification        → unsubscribe
+ * - GET    /api/products/[slug]/stock-notification        → cek status subscribe
+ * - POST   /api/products/[slug]/stock-notification        → subscribe (upsert)
+ * - DELETE /api/products/[slug]/stock-notification        → unsubscribe
  *
  * Body POST/DELETE (optional):
  *   { variantId?: string }
@@ -24,7 +24,14 @@ export const dynamic = "force-dynamic";
 
 // Next.js 16: dynamic route params di-wrap dalam Promise. Harus await
 // sebelum akses property-nya.
-type Params = { params: Promise<{ id: string }> };
+//
+// Param di-name "slug" (bukan "id") supaya konsisten dengan sibling route
+// app/api/products/[slug]/route.ts — Next.js melarang dua dynamic segment
+// berbeda nama di posisi path yang sama ('id' !== 'slug'). Value yang
+// dikirim di URL tetap product ID asli (lihat caller di
+// flutter_app/lib/services/stock_notification_service.dart), hanya nama
+// parameter internal yang berubah.
+type Params = { params: Promise<{ slug: string }> };
 
 /** GET — cek apakah user sudah subscribe untuk product/variant ini. */
 export async function GET(request: NextRequest, { params }: Params) {
@@ -35,7 +42,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       { status: 401 },
     );
   }
-  const { id: productId } = await params;
+  const { slug: productId } = await params;
   const variantId = request.nextUrl.searchParams.get("variantId") || null;
 
   const sub = await prisma.stockNotification
@@ -68,7 +75,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     );
   }
 
-  const { id: productId } = await params;
+  const { slug: productId } = await params;
   const body = (await request.json().catch(() => ({}))) as {
     variantId?: string | null;
   };
@@ -166,7 +173,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "LOGIN_REQUIRED" }, { status: 401 });
   }
 
-  const { id: productId } = await params;
+  const { slug: productId } = await params;
   const variantId = request.nextUrl.searchParams.get("variantId") || null;
 
   await prisma.stockNotification.deleteMany({
