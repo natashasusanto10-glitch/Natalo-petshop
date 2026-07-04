@@ -2,7 +2,9 @@
 
 **Tanggal:** 2026-07-04
 **Status:** Disetujui (design), menunggu review spec sebelum implementasi
-**Cakupan:** Fondasi design-system + Homepage + Header/Footer desktop
+**Cakupan:** **Seluruh halaman storefront** — UI website lebih premium namun tetap mudah dipakai pembeli. Dieksekusi bertahap di atas satu fondasi design-system yang sama, dimulai dari fondasi + homepage + header/footer.
+
+**Prinsip premium-tapi-usable:** rapi, lapang, hierarki jelas, konsisten; hindari dekorasi berlebihan, jaga tap target & alur belanja tetap simpel dan cepat.
 
 ---
 
@@ -106,6 +108,16 @@ Gabung `HomeProductCard` ke `ProductCard.tsx` (prop `variant`). Kartu final: ras
 - Flutter native app tidak tersentuh.
 - Primitive baru bersifat aditif; refactor per-area agar reversible.
 
-## 7. Di luar cakupan Fase 1 (fase berikutnya)
+## 7. Gelombang eksekusi (semua halaman, di atas fondasi yang sama)
 
-Listing/kategori/search desktop mendalam; product detail (galeri kiri + sticky purchase panel); cart/checkout desktop; SEO lanjutan; performance optimization; analytics/A-B testing.
+Semua halaman memakai `PageContainer`, `ResponsiveGrid`, `SectionHeader`, `Button`, token, dan `ProductCard` terpadu. Diverifikasi (lint + build + preview 375/768/1024/1280/1440/1920) di akhir tiap gelombang sebelum lanjut.
+
+- **G1 — Fondasi + Homepage + Header/Footer** (Bagian 1–5 di atas).
+- **G2 — Product listing & discovery**: `/products` (+ `ProductsInfiniteGrid`), `/kategori` (`CategoryTabPage`), `/brands`, `/search` — breadcrumb, jumlah produk, sorting, sidebar filter desktop (perluas yang sudah ada di search), grid seragam, empty/loading/error state konsisten.
+- **G3 — Product detail** (`app/products/[slug]`): galeri kiri + info kanan, sticky purchase panel desktop, breadcrumb, deskripsi/spesifikasi/review/rekomendasi terstruktur. Tidak ubah logic add-to-cart/variasi.
+- **G4 — Cart & Checkout**: cart tabel/card rapi + ringkasan sticky; checkout summary sticky; voucher/diskon/ongkir/poin/total hierarki jelas. **Logic transaksi tidak disentuh.**
+- **G5 — Account & pendukung**: `/account`/`/member`, `/wishlist`, `/pesanan` (order tracking), halaman kebijakan/bantuan — layout desktop rapi, container konsisten.
+
+## 8. Di luar cakupan (fase lanjutan)
+
+SEO lanjutan (sitemap/OG per-page mendalam); performance optimization (bundle, image budget); analytics/A-B testing; redesign checkout flow substansial.
