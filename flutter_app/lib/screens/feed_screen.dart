@@ -60,6 +60,21 @@ const _feedActionRailRightInset = 4.0;
 const _feedCommerceOrange = Color(0xFFFF7A00);
 const _feedTopActionRightInset = 8.0;
 
+/// Jarak dasar overlay bawah feed (rail durasi / caption / action rail)
+/// dari tepi bawah layar — dipakai SEMUA state (loading, foto, video)
+/// supaya spacing konsisten.
+///
+/// PENTING — akar bug "caption melayang jauh di atas nav":
+/// Dengan `Scaffold(extendBody: true)` + `bottomNavigationBar`, Flutter
+/// OTOMATIS menyuntikkan tinggi penuh bottom nav (pill + margin + safe-area
+/// device) ke `MediaQuery.padding.bottom` milik body. Jadi nilai ini SUDAH
+/// mencakup seluruh footprint nav. Dulu kode menambahkan
+/// `kFloatingNavClearance` (76px) LAGI di atasnya → jarak dihitung dobel,
+/// caption/rail melayang ±76px di atas nav (tidak rapat seperti IG).
+/// Sekarang cukup padding bawaan + gap napas kecil.
+double _feedOverlayBaseInset(BuildContext context) =>
+    MediaQuery.paddingOf(context).bottom + 4.0;
+
 /// Instagram Reels-style fullscreen vertical video feed.
 /// - Fullscreen video/image background per post (cover fit)
 /// - Top right: + button untuk upload (placeholder snackbar)
@@ -737,12 +752,11 @@ class _LoadingState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mediaQuery = MediaQuery.of(context);
-    // extendBody: true → tambah kFloatingNavClearance supaya shimmer
-    // placeholder action rail tidak tertutup floating nav.
-    final actionRailInset =
-        _feedActionBottomInset + mediaQuery.padding.bottom + kFloatingNavClearance;
-    final feedInfoInset = mediaQuery.padding.bottom + 100;
+    // MediaQuery.padding.bottom SUDAH mencakup tinggi nav (extendBody) —
+    // lihat _feedOverlayBaseInset. Jangan tambah kFloatingNavClearance.
+    final base = _feedOverlayBaseInset(context);
+    final actionRailInset = _feedActionBottomInset + base;
+    final feedInfoInset = base + 12.0;
 
     return Shimmer.fromColors(
       baseColor: _baseColor,
@@ -1586,16 +1600,13 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   Widget build(BuildContext context) {
     final post = widget.post;
     final photos = post.mediaItems;
-    // extendBody: true di Scaffold → Stack ini memanjang sampai tepi bawah
-    // layar (bukan berhenti di atas nav lagi). kFloatingNavClearance
-    // (dari bottom_nav.dart) + safe-area device supaya action rail/caption
-    // tidak tertutup floating nav.
-    final navClearance =
-        MediaQuery.paddingOf(context).bottom + kFloatingNavClearance;
+    // MediaQuery.padding.bottom SUDAH mencakup tinggi nav (extendBody) —
+    // lihat _feedOverlayBaseInset. Jangan tambah kFloatingNavClearance.
+    final navClearance = _feedOverlayBaseInset(context);
     final actionRailInset = _feedActionBottomInset + navClearance;
     // Foto carousel tidak punya rail durasi, jadi caption dirapatkan langsung
     // ke atas nav (gap kecil) — konsisten "rapat" dengan video, tanpa void.
-    final feedInfoInset = navClearance + 12.0;
+    final feedInfoInset = navClearance + 8.0;
 
     // Product chip — same rotation pattern dengan video post.
     final products = _rotatingProductsForPost(post);
@@ -3003,21 +3014,17 @@ class _FeedPostViewState extends State<_FeedPostView>
           // Cache media area width untuk zone detection di long-press
           // handler (left/center/right 2x speed vs pause).
           _mediaAreaWidth = constraints.maxWidth;
-          // extendBody: true di Scaffold → Stack ini memanjang sampai tepi
-          // bawah layar (dulu false, body berhenti di atas nav). Sekarang
-          // insets di sini relatif ke SCREEN bottom, jadi tambah
-          // kFloatingNavClearance (dari bottom_nav.dart) + safe-area device
-          // supaya action rail/caption tidak tertutup floating nav.
-          final navClearance =
-              MediaQuery.paddingOf(context).bottom + kFloatingNavClearance;
+          // MediaQuery.padding.bottom SUDAH mencakup tinggi nav
+          // (extendBody) — lihat _feedOverlayBaseInset. Jangan tambah
+          // kFloatingNavClearance (dulu ditambah → jarak dobel).
+          final navClearance = _feedOverlayBaseInset(context);
           // Stack bawah rapat ala IG Reels (bawah → atas):
           //   nav → rail durasi (bottom: navClearance) → caption → nama.
-          // Scrubber box 28px, visual line di dasarnya duduk tepat di atas
-          // floating nav. Caption di atas rail dengan gap kecil supaya tidak
-          // overlap hit-area scrub. Sebelumnya rail di bottom:0 (tenggelam di
-          // bawah nav) + caption di 24+navClearance → void besar di antara.
+          // Scrubber box 28px (hit-area), visual line 2px di DASAR box →
+          // line duduk tepat di atas floating nav. Caption di atas rail
+          // dengan gap kecil supaya tidak overlap hit-area scrub.
           const railBand = 28.0;
-          final feedInfoInset = navClearance + railBand + 6.0;
+          final feedInfoInset = navClearance + railBand + 4.0;
           final actionRailInset = _feedActionBottomInset + navClearance + railBand;
           final minimized = _commentSheetOpen;
 
