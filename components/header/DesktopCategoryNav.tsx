@@ -41,6 +41,12 @@ export function DesktopCategoryNav() {
     }
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (closeTimer.current) window.clearTimeout(closeTimer.current);
+    };
+  }, []);
+
   function openNow() {
     if (closeTimer.current) window.clearTimeout(closeTimer.current);
     setOpen(true);
