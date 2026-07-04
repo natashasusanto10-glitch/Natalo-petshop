@@ -51,12 +51,21 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const uploadFile =
-      kind === "brand-logo"
-        ? new File([await normalizeBrandLogo(buffer)], file.name.replace(/\.\w+$/, ".png"), {
-            type: "image/png",
-          })
-        : file;
+    let uploadFile: File;
+    if (kind === "brand-logo") {
+      const normalized = await normalizeBrandLogo(buffer);
+      // Buffer (ArrayBufferLike) tidak assignable ke BlobPart di TS strict
+      // (bisa SharedArrayBuffer). Salin ke Uint8Array ber-ArrayBuffer bersih
+      // supaya File() menerimanya — kalau tidak, `next build` gagal
+      // type-check dan SELURUH deploy Vercel merah.
+      uploadFile = new File(
+        [new Uint8Array(normalized)],
+        file.name.replace(/\.\w+$/, ".png"),
+        { type: "image/png" },
+      );
+    } else {
+      uploadFile = file;
+    }
     const { url } = await uploadToUT(uploadFile, kind === "brand-logo" ? "brand-logo" : "product");
     return NextResponse.json({ url });
   } catch (e) {
