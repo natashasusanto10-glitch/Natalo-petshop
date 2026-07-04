@@ -4971,68 +4971,75 @@ class _FeedTaggedProductsSheet extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // Cart icon dengan badge count — tap → close sheet
-                    // (user bisa lanjut buka cart di tab Akun/cart screen).
-                    AnimatedBuilder(
-                      animation: cartStore,
-                      builder: (context, _) {
-                        final count = cartStore.totalQuantity;
-                        return Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Container(
-                              width: 38,
-                              height: 38,
-                              decoration: BoxDecoration(
-                                color: Colors.transparent,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: const Color(0xFF1E5BFF),
-                                  width: 1.5,
-                                ),
-                              ),
-                              child: const Icon(
-                                Icons.shopping_bag_outlined,
-                                color: Color(0xFF1E5BFF),
-                                size: 20,
-                              ),
-                            ),
-                            if (count > 0)
-                              Positioned(
-                                top: -4,
-                                right: -4,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 5,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFFA726),
-                                    borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(
-                                      color: const Color(0xFF0B0D12),
-                                      width: 1.4,
-                                    ),
-                                  ),
-                                  constraints: const BoxConstraints(
-                                    minWidth: 18,
-                                    minHeight: 18,
-                                  ),
-                                  child: Text(
-                                    count > 99 ? '99+' : '$count',
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w900,
-                                      height: 1.1,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        );
+                    // Cart icon dengan badge count — tap → buka Keranjang.
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        final nav = Navigator.of(context);
+                        nav.pop();
+                        nav.pushNamed('/cart');
                       },
+                      child: AnimatedBuilder(
+                        animation: cartStore,
+                        builder: (context, _) {
+                          final count = cartStore.totalQuantity;
+                          return Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                width: 38,
+                                height: 38,
+                                decoration: BoxDecoration(
+                                  color: Colors.transparent,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: const Color(0xFF1E5BFF),
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.shopping_cart_outlined,
+                                  color: Color(0xFF1E5BFF),
+                                  size: 20,
+                                ),
+                              ),
+                              if (count > 0)
+                                Positioned(
+                                  top: -4,
+                                  right: -4,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 5,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFFA726),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: const Color(0xFF0B0D12),
+                                        width: 1.4,
+                                      ),
+                                    ),
+                                    constraints: const BoxConstraints(
+                                      minWidth: 18,
+                                      minHeight: 18,
+                                    ),
+                                    child: Text(
+                                      count > 99 ? '99+' : '$count',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                        height: 1.1,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
                     ),
                     const SizedBox(width: 8),
                     IconButton(
