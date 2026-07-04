@@ -226,12 +226,14 @@ class NataloPetshopApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           theme: NataloTheme.lightTheme,
           darkTheme: NataloTheme.darkTheme,
-          // Kill switch dibuka (v1.0.140) — audit dark theme selesai
-          // (~38 screen + shared widgets di-adaptif via colorScheme).
-          // themeMode kembali ikut pilihan user / sistem HP supaya dark
-          // mode bisa di-QA & dipakai. Toggle in-app via Pengaturan →
-          // "Mode Tampilan".
-          themeMode: appSettingsStore.themeMode,
+          // Kill switch DITUTUP LAGI — force ThemeMode.light selalu,
+          // tidak ikut sistem HP / pilihan tersimpan user. Toggle "Mode
+          // Tampilan" di Pengaturan dinonaktifkan (lihat
+          // account_settings_screen.dart) supaya user tidak bisa masuk
+          // dark mode sama sekali. appSettingsStore.themeMode masih
+          // tersimpan di disk (tidak dihapus) untuk memudahkan buka
+          // kembali fitur ini nanti, tapi diabaikan di sini.
+          themeMode: ThemeMode.light,
           builder: (context, child) {
             // Solid background dari ThemeData.scaffoldBackgroundColor —
             // no gradient overlay. Faster rendering di HP murah, better
