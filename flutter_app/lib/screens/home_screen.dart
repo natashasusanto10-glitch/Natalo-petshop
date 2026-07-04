@@ -3531,7 +3531,7 @@ class _BrandChoiceSectionState extends State<_BrandChoiceSection> {
     // Compute card height dari aspect ratio + screen width
     // (childAspectRatio: 1.35 = width/height — sedikit lebih tinggi dari
     // sebelumnya (1.45) supaya logo kotak/tinggi punya ruang yang sama
-    // dengan logo banner lebar; lihat _BrandLogoImage untuk patok tinggi).
+    // dengan logo banner lebar; lihat BrandLogoImage untuk patok tinggi).
     final screenWidth = MediaQuery.sizeOf(context).width;
     final innerWidth = screenWidth - 32; // 16 padding × 2
     final cardWidth = (innerWidth - 24) / 3; // 12 spacing × 2 between 3 cols

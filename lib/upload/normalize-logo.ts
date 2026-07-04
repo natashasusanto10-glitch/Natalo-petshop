@@ -19,7 +19,6 @@ const LOGO_FILL_RATIO = 0.8;
 
 export async function normalizeBrandLogo(input: Buffer): Promise<Buffer> {
   const trimmed = await sharp(input).trim().png().toBuffer();
-  const trimmedMeta = await sharp(trimmed).metadata();
 
   const maxLogoDimension = Math.round(CANVAS_SIZE * LOGO_FILL_RATIO);
   const resized = await sharp(trimmed)
@@ -27,9 +26,10 @@ export async function normalizeBrandLogo(input: Buffer): Promise<Buffer> {
       width: maxLogoDimension,
       height: maxLogoDimension,
       fit: "inside",
-      withoutEnlargement:
-        (trimmedMeta.width ?? 0) >= maxLogoDimension ||
-        (trimmedMeta.height ?? 0) >= maxLogoDimension,
+      // Small logos must enlarge to fill ~80% of canvas (LOGO_FILL_RATIO).
+      // With fit: "inside", sharp never upscales beyond the target box
+      // regardless of withoutEnlargement, so this must remain false.
+      withoutEnlargement: false,
     })
     .png()
     .toBuffer();
