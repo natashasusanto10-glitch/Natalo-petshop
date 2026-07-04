@@ -710,12 +710,24 @@ class _HomeScreenState extends State<HomeScreen> {
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                     // Grid 2-kolom AUTO-HEIGHT (bukan SliverGrid dengan
                     // childAspectRatio tetap). Tiap baris = 1 Row berisi 2
-                    // kartu; crossAxisAlignment.stretch bikin 2 kartu sebaris
-                    // sama tinggi, tapi tinggi BARIS ikut konten terpanjang.
-                    // Sebelumnya 0.54 dipaku → kartu dengan diskon + 2 badge
-                    // (ongkir+hemat, wrap 2 baris) + rating overflow ~8-9px.
-                    // Auto-height hilangkan overflow tanpa ruang kosong di
-                    // kartu minim konten. Pola sama dengan halaman Produk.
+                    // kartu — tinggi BARIS ikut konten terpanjang. Sebelumnya
+                    // 0.54 dipaku → kartu dengan diskon + 2 badge (ongkir+
+                    // hemat, wrap 2 baris) + rating overflow ~8-9px.
+                    //
+                    // BUKAN CrossAxisAlignment.stretch (beda dari pola yang
+                    // sama di halaman Produk!): stretch di Row memaksa
+                    // Flutter hitung intrinsic-height _HomeProductCard.
+                    // Sesuatu di widget tree kartu ini tidak mendukung
+                    // perhitungan itu → layout exception. Di app ini,
+                    // FlutterError.onError (app_crashlytics.dart) di-override
+                    // TANPA memanggil FlutterError.presentError, jadi
+                    // exception layout itu tidak tercetak ke console SAMA
+                    // SEKALI — hasilnya Beranda blank total (bukan cuma grid
+                    // ini) tanpa jejak error apa pun. Ke-2 kartu di satu
+                    // baris kebetulan hampir selalu sama tinggi (struktur
+                    // konten seragam), jadi tanpa stretch pun rapi secara
+                    // visual — trade-off yang aman untuk menghindari crash
+                    // senyap ini.
                     sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (context, rowIndex) {
@@ -748,7 +760,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             padding:
                                 EdgeInsets.only(bottom: isLastRow ? 0 : 12),
                             child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Expanded(child: cell(leftIndex)),
                                 const SizedBox(width: 12),
@@ -3911,25 +3923,48 @@ class _RecommendationGrid extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          GridView.builder(
-            physics: const NeverScrollableScrollPhysics(),
-            shrinkWrap: true,
-            itemCount: products.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              // Lebih tinggi untuk metadata hemat + rating/terjual.
-              childAspectRatio: 0.54,
+          // Grid 2-kolom AUTO-HEIGHT (bukan GridView dengan childAspectRatio
+          // tetap). Sebelumnya 0.54 dipaku → kartu dengan diskon + 2 badge
+          // (ongkir+hemat, wrap 2 baris) + rating overflow ~8-9px. Sama
+          // root cause & fix dengan section "Jelajahi Produk Natalo" —
+          // lihat catatan lengkap di sana.
+          //
+          // BUKAN CrossAxisAlignment.stretch: stretch di Row memaksa
+          // Flutter hitung intrinsic-height _HomeProductCard, yang
+          // menyebabkan layout exception. FlutterError.onError custom di
+          // app ini tidak memanggil FlutterError.presentError, jadi
+          // exception itu tidak tercetak sama sekali — hasilnya SELURUH
+          // Beranda blank tanpa jejak error apa pun. Kedua kartu di satu
+          // baris kebetulan hampir selalu sama tinggi, jadi tanpa stretch
+          // pun rapi secara visual.
+          for (var i = 0; i < (products.length + 1) ~/ 2; i++)
+            Padding(
+              padding: EdgeInsets.only(
+                bottom: i == ((products.length + 1) ~/ 2) - 1 ? 0 : 12,
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _HomeProductCard(
+                      product: products[i * 2],
+                      onTap: () => onTap(products[i * 2]),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: i * 2 + 1 < products.length
+                        ? _HomeProductCard(
+                            product: products[i * 2 + 1],
+                            onTap: () => onTap(products[i * 2 + 1]),
+                          )
+                        // Jumlah ganjil — slot kanan kosong, kartu kiri
+                        // tetap selebar 1 kolom.
+                        : const SizedBox.shrink(),
+                  ),
+                ],
+              ),
             ),
-            itemBuilder: (context, index) {
-              final product = products[index];
-              return _HomeProductCard(
-                product: product,
-                onTap: () => onTap(product),
-              );
-            },
-          ),
         ],
       ),
     );
