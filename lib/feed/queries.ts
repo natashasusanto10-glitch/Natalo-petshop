@@ -304,6 +304,21 @@ export async function listFeedPosts({
     viewerLikedIds = new Set(likes.map((l) => l.postId));
   }
 
+  // Follow state viewer→author, batch 1 query (pola sama dgn viewerLikedIds,
+  // no N+1) — dipakai chip "Ikuti/Mengikuti" di samping nama kreator di
+  // feed app (IG parity). Anon viewer → semua false.
+  let viewerFollowedAuthorIds = new Set<string>();
+  if (viewerUserId && posts.length > 0) {
+    const follows = await prisma.userFollow.findMany({
+      where: {
+        followerId: viewerUserId,
+        followingId: { in: [...new Set(posts.map((p) => p.authorId))] },
+      },
+      select: { followingId: true },
+    });
+    viewerFollowedAuthorIds = new Set(follows.map((f) => f.followingId));
+  }
+
   // Batched soldCount aggregate — kumpulkan semua productId dari main
   // product + taggedProducts, lalu 1 query groupBy ambil _sum quantity
   // sekaligus. Pattern sama dengan /api/products/[slug] (status filter:
@@ -451,6 +466,9 @@ export async function listFeedPosts({
         | "ADMIN"
         | "CUSTOMER",
       profilePhotoUrl: p.author.profilePhotoUrl ?? null,
+      // Chip "Ikuti/Mengikuti" di feed app — snapshot saat fetch; toggle
+      // selanjutnya di-track client-side (followOverrides).
+      isFollowing: viewerFollowedAuthorIds.has(p.author.id),
     },
     recentLikers: p.likes.map((like) => ({
       id: like.user.id,

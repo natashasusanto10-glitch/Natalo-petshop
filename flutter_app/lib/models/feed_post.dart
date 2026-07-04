@@ -24,6 +24,12 @@ class FeedAuthor {
   final bool isAdmin;
   final bool isOfficial;
 
+  /// Per-viewer: apakah viewer sudah follow author ini — snapshot dari
+  /// payload feed saat fetch (server compute batch, anon = false).
+  /// Toggle SETELAH fetch di-track terpisah via followOverrides
+  /// (state/follow_override_store.dart) supaya konsisten antar post.
+  final bool isFollowing;
+
   const FeedAuthor({
     required this.id,
     required this.name,
@@ -33,6 +39,7 @@ class FeedAuthor {
     this.role = 'CUSTOMER',
     this.isAdmin = false,
     this.isOfficial = false,
+    this.isFollowing = false,
   });
 
   bool get isOfficialAccount => isAdmin || isOfficial;
@@ -69,6 +76,7 @@ class FeedAuthor {
       role: role,
       isAdmin: json['isAdmin'] as bool? ?? (role.toUpperCase() == 'ADMIN'),
       isOfficial: json['isOfficial'] as bool? ?? false,
+      isFollowing: json['isFollowing'] == true,
     );
   }
 }

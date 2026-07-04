@@ -18,6 +18,11 @@ export type FeedPostAuthor = {
   role: "ADMIN" | "CUSTOMER";
   profilePhotoUrl?: string | null;
   avatarUrl?: string | null;
+  // Per-viewer: apakah viewer sudah follow author ini. Server compute
+  // kalau session ada (batch query di listFeedPosts), false kalau anon.
+  // Optional — endpoint lain yang pakai type ini (komentar/likers) tidak
+  // wajib mengisi.
+  isFollowing?: boolean;
 };
 
 export type FeedPostProduct = {

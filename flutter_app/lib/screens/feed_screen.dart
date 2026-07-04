@@ -25,12 +25,14 @@ import '../screens/feed_user_search_screen.dart';
 import '../services/api_client.dart';
 import '../services/block_service.dart';
 import '../services/feed_service.dart';
+import '../services/follow_service.dart';
 import '../services/product_service.dart';
 import '../services/report_service.dart';
 import '../services/video_quality_service.dart';
 import '../state/cart_store.dart';
 import '../state/feed_local_store.dart';
 import '../state/feed_store.dart';
+import '../state/follow_override_store.dart';
 import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/android_back_overlays.dart';
@@ -3542,6 +3544,13 @@ class _FeedCreatorIdentity extends StatelessWidget {
             ],
           ),
         ],
+        // Chip Ikuti/Mengikuti ala IG — di samping nama. Official account
+        // tidak dapat chip (brand tunggal, bukan akun sosial biasa);
+        // self juga tidak (tidak bisa follow diri sendiri).
+        if (!author.isOfficialAccount) ...[
+          const SizedBox(width: 10),
+          _FeedFollowChip(author: author),
+        ],
       ],
     );
     if (!canOpenProfile) return row;
@@ -3556,6 +3565,107 @@ class _FeedCreatorIdentity extends StatelessWidget {
         );
       },
       child: row,
+    );
+  }
+}
+
+/// Chip Ikuti/Mengikuti di samping nama kreator — IG Reels parity:
+/// pill transparan + border putih tipis, teks kecil bold.
+///
+/// State = override sesi (followOverrides, konsisten antar post dari
+/// author sama) ?? snapshot payload (author.isFollowing). Tap →
+/// optimistic toggle + call API; revert kalau gagal. Belum login → tap
+/// diarahkan ke halaman login (chip tetap tampil "Ikuti" ala IG).
+class _FeedFollowChip extends StatefulWidget {
+  final FeedAuthor author;
+
+  const _FeedFollowChip({required this.author});
+
+  @override
+  State<_FeedFollowChip> createState() => _FeedFollowChipState();
+}
+
+class _FeedFollowChipState extends State<_FeedFollowChip> {
+  bool _busy = false;
+
+  Future<void> _toggle(bool currentlyFollowing) async {
+    if (_busy) return;
+    AppHaptics.tap();
+    if (!memberStore.isLoggedIn) {
+      Navigator.pushNamed(context, '/member/login');
+      return;
+    }
+    _busy = true;
+    final target = !currentlyFollowing;
+    // Optimistic — chip (dan semua chip author sama di post lain)
+    // langsung berubah; revert kalau API gagal.
+    setFollowOverride(widget.author.id, target);
+    try {
+      if (target) {
+        await followService.follow(widget.author.id);
+      } else {
+        await followService.unfollow(widget.author.id);
+      }
+    } catch (_) {
+      if (mounted) {
+        setFollowOverride(widget.author.id, currentlyFollowing);
+        AppToast.show(context, 'Gagal memperbarui. Coba lagi.');
+      }
+    } finally {
+      _busy = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Sembunyikan untuk diri sendiri — tidak bisa follow akun sendiri.
+    // AnimatedBuilder ke memberStore supaya chip hilang/muncul benar
+    // saat login state berubah tanpa perlu feed re-fetch.
+    return AnimatedBuilder(
+      animation: memberStore,
+      builder: (context, _) {
+        final selfId = memberStore.profile?.id;
+        if (selfId != null && selfId == widget.author.id) {
+          return const SizedBox.shrink();
+        }
+        return ValueListenableBuilder<Map<String, bool>>(
+          valueListenable: followOverrides,
+          builder: (context, overrides, _) {
+            final following =
+                overrides[widget.author.id] ?? widget.author.isFollowing;
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _toggle(following),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+                decoration: BoxDecoration(
+                  // Transparan ala IG — cuma border, konten video tembus.
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(
+                    color: Colors.white.withValues(
+                      alpha: following ? 0.38 : 0.85,
+                    ),
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  following ? 'Mengikuti' : 'Ikuti',
+                  style: TextStyle(
+                    color: following ? Colors.white70 : Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    height: 1,
+                    shadows: const [
+                      Shadow(color: Colors.black45, blurRadius: 4),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
