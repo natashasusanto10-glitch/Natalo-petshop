@@ -3,36 +3,89 @@ import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../state/bottom_nav_scroll.dart';
 import '../state/member_store.dart';
+import '../theme/natalo_colors.dart';
 
-/// Bottom nav bar Natalo: compact, integrated, 5 menu utama.
+/// Bottom nav bar Natalo: floating glass pill, gaya premium IG/Material 3.
 ///
 /// Index urutan:
 ///  0 = Beranda    /
 ///  1 = Produk     /products
 ///  2 = Feed       /feed
-///  3 = Transaksi  /transactions   ⭐ NEW
+///  3 = Transaksi  /transactions
 ///  4 = Akun       /member
 ///
+/// **Desain (Arah 1 + Gaya C):**
+/// - Hanya tab AKTIF yang menampilkan label (ikon filled biru brand +
+///   teks). Tab non-aktif = ikon outline abu, tanpa teks.
+/// - `collapsed=true` (saat user scroll konten ke bawah): label aktif
+///   menyusut hilang + seluruh pill menyempit dari sisi ke tengah
+///   (Gaya C). Scroll balik ke atas → melebar penuh lagi.
+/// - Light variant = frosted glass (BackdropFilter blur 22 + tint putih
+///   0.64 + border putih 0.70). Butuh `Scaffold(extendBody: true)` di
+///   shell supaya konten tembus di belakang nav.
+///
 /// `variant` tetap dipertahankan agar call-site lama tidak perlu berubah.
-/// - light: putih polos seperti marketplace besar (rendah, separator tipis)
-/// - dark: GLASS hitam (semi-transparent + BackdropFilter blur) untuk
-///   Feed page over video — visual Reels/TikTok style.
+/// - light: frosted glass putih (halaman umum)
+/// - dark: frosted glass hitam untuk Feed over video (Reels style)
 enum BottomNavVariant { light, dark }
 
-const _navBackground = Color(0xFFFFFFFF);
-const _navActiveBlue = Color(0xFF2563EB);
 const _navInactive = Color(0xFF6B7280);
-// Pill mengambang (floating) — border tipis. Indikator aktif = WARNA ikon
-// + label (biru), TANPA kapsul/pill di balik ikon. Ditandai bounce halus
-// saat mendarat di tab.
-const _navPillBorder = Color(0xFFEDEFF2);
-// Dark glass tokens — semi-transparent black supaya video di belakang
-// masih kelihatan, blur untuk feel "frosted glass dark mode".
+// Border tipis khas kaca — menangkap "cahaya" di tepi pill.
+const _navLightBorder = Color(0xB3FFFFFF); // white 70% alpha
+// Dark glass tokens — untuk Feed over video.
 const _navDarkGlass = Color(0xCC0A0A0A); // black 80% alpha
 const _navDarkTopBorder = Color(0x33FFFFFF); // white 20% alpha
 const _navDarkActive = Color(0xFFFFFFFF);
 const _navDarkInactive = Color(0xFF9CA3AF);
+
+// Tint frosted glass light — putih semi-transparan supaya konten di
+// belakang tembus tapi ikon tetap terbaca.
+const _navLightGlass = Color(0xA3FFFFFF); // white 64% alpha
+
+class _NavItemData {
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  final bool isAvatar;
+
+  const _NavItemData({
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+    this.isAvatar = false,
+  });
+}
+
+const List<_NavItemData> _navItems = [
+  _NavItemData(
+    icon: Icons.home_outlined,
+    selectedIcon: Icons.home_rounded,
+    label: 'Beranda',
+  ),
+  _NavItemData(
+    icon: Icons.shopping_bag_outlined,
+    selectedIcon: Icons.shopping_bag_rounded,
+    label: 'Produk',
+  ),
+  _NavItemData(
+    icon: Icons.play_circle_outline_rounded,
+    selectedIcon: Icons.play_circle_fill_rounded,
+    label: 'Feed',
+  ),
+  _NavItemData(
+    icon: Icons.receipt_long_outlined,
+    selectedIcon: Icons.receipt_long_rounded,
+    label: 'Transaksi',
+  ),
+  _NavItemData(
+    icon: Icons.person_outline_rounded,
+    selectedIcon: Icons.person_rounded,
+    label: 'Akun',
+    isAvatar: true,
+  ),
+];
 
 class BottomNavBar extends StatelessWidget {
   final int currentIndex;
@@ -92,125 +145,95 @@ class BottomNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = variant == BottomNavVariant.dark;
-    final activeColor = dark ? _navDarkActive : _navActiveBlue;
+    final activeColor = dark ? _navDarkActive : NataloColors.primary;
     final inactiveColor = dark ? _navDarkInactive : _navInactive;
-    final borderColor = dark ? _navDarkTopBorder : _navPillBorder;
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    final borderRadius = BorderRadius.circular(24);
+    final borderColor = dark ? _navDarkTopBorder : _navLightBorder;
+    final glassColor = dark ? _navDarkGlass : _navLightGlass;
 
-    final row = SizedBox(
-      height: 54,
-      child: Row(
-        children: [
-          _BottomNavItem(
-            icon: Icons.home_outlined,
-            selectedIcon: Icons.home_rounded,
-            label: 'Beranda',
-            selected: currentIndex == 0,
-            activeColor: activeColor,
-            inactiveColor: inactiveColor,
-            onTap: () => _onTap(context, 0),
-          ),
-          _BottomNavItem(
-            icon: Icons.shopping_bag_outlined,
-            selectedIcon: Icons.shopping_bag_rounded,
-            label: 'Produk',
-            selected: currentIndex == 1,
-            activeColor: activeColor,
-            inactiveColor: inactiveColor,
-            onTap: () => _onTap(context, 1),
-          ),
-          _BottomNavItem(
-            icon: Icons.play_circle_outline_rounded,
-            selectedIcon: Icons.play_circle_fill_rounded,
-            label: 'Feed',
-            selected: currentIndex == 2,
-            activeColor: activeColor,
-            inactiveColor: inactiveColor,
-            onTap: () => _onTap(context, 2),
-          ),
-          _BottomNavItem(
-            icon: Icons.receipt_long_outlined,
-            selectedIcon: Icons.receipt_long_rounded,
-            label: 'Transaksi',
-            selected: currentIndex == 3,
-            activeColor: activeColor,
-            inactiveColor: inactiveColor,
-            onTap: () => _onTap(context, 3),
-          ),
-          // Tab Akun pakai avatar foto profil (Instagram-style).
-          _BottomNavAvatarItem(
-            label: 'Akun',
-            selected: currentIndex == 4,
-            activeColor: activeColor,
-            inactiveColor: inactiveColor,
-            onTap: () => _onTap(context, 4),
-          ),
-        ],
-      ),
-    );
+    // Collapse dibaca dari notifier global (di-drive listener scroll di root
+    // app). Varian dark (Feed) TIDAK ikut collapse — nav Reels tetap penuh.
+    return ValueListenableBuilder<bool>(
+      valueListenable: bottomNavCollapsed,
+      builder: (context, collapsedGlobal, _) {
+        final collapsed = dark ? false : collapsedGlobal;
 
-    final borderRadius = BorderRadius.circular(26);
-
-    // Pill mengambang (floating, ala IG baru) — TAPI tetap terang + label +
-    // aktif brand untuk e-commerce. Light: putih + bayangan lembut. Dark:
-    // frosted glass (blur video di belakang) untuk Feed.
-    Widget pill;
-    if (dark) {
-      pill = ClipRRect(
-        borderRadius: borderRadius,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-          child: Container(
-            decoration: BoxDecoration(
-              color: _navDarkGlass,
-              borderRadius: borderRadius,
-              border: Border.all(color: borderColor, width: 0.5),
-            ),
-            child: row,
+        final row = SizedBox(
+          height: 54,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              for (var i = 0; i < _navItems.length; i++)
+                _BottomNavItem(
+                  data: _navItems[i],
+                  selected: currentIndex == i,
+                  collapsed: collapsed,
+                  activeColor: activeColor,
+                  inactiveColor: inactiveColor,
+                  onTap: () => _onTap(context, i),
+                ),
+            ],
           ),
-        ),
-      );
-    } else {
-      pill = Container(
-        decoration: BoxDecoration(
-          color: _navBackground,
+        );
+
+        // Frosted glass 3-lapis: blur (BackdropFilter) + tint (glassColor) +
+        // border tipis. Sama untuk light & dark, beda cuma warna tint/border.
+        final pill = ClipRRect(
           borderRadius: borderRadius,
-          border: Border.all(color: borderColor, width: 0.5),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.10),
-              blurRadius: 18,
-              offset: const Offset(0, 6),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+            child: Container(
+              decoration: BoxDecoration(
+                color: glassColor,
+                borderRadius: borderRadius,
+                border: Border.all(color: borderColor, width: 0.5),
+                boxShadow: dark
+                    ? null
+                    : [
+                        // Bayangan halus bernuansa brand (bukan hitam pekat).
+                        BoxShadow(
+                          color: NataloColors.primary.withValues(alpha: 0.12),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+              ),
+              child: row,
             ),
-          ],
-        ),
-        child: row,
-      );
-    }
+          ),
+        );
 
-    // Margin samping + bawah supaya pill "mengambang" di atas home indicator.
-    // bottomInset clear home indicator iPhone / gesture bar Android, +10 gap.
-    return Padding(
-      padding: EdgeInsets.fromLTRB(14, 6, 14, bottomInset + 10),
-      child: pill,
+        // Gaya C — margin samping membesar saat collapsed → pill menyempit
+        // ke tengah. Margin bawah selalu clear home indicator + gap.
+        return AnimatedPadding(
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.fromLTRB(
+            collapsed ? 52 : 8,
+            6,
+            collapsed ? 52 : 8,
+            bottomInset + 10,
+          ),
+          child: pill,
+        );
+      },
     );
   }
 }
 
 class _BottomNavItem extends StatelessWidget {
-  final IconData icon;
-  final IconData selectedIcon;
-  final String label;
+  final _NavItemData data;
   final bool selected;
+  final bool collapsed;
   final Color activeColor;
   final Color inactiveColor;
   final VoidCallback onTap;
 
   const _BottomNavItem({
-    required this.icon,
-    required this.selectedIcon,
-    required this.label,
+    required this.data,
     required this.selected,
+    required this.collapsed,
     required this.activeColor,
     required this.inactiveColor,
     required this.onTap,
@@ -219,52 +242,71 @@ class _BottomNavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = selected ? activeColor : inactiveColor;
+    // Label hanya muncul saat tab AKTIF dan nav TIDAK collapsed (Arah 1).
+    final showLabel = selected && !collapsed;
 
-    return Expanded(
-      child: Semantics(
-        button: true,
-        selected: selected,
-        label: label,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(20),
-            splashColor: activeColor.withValues(alpha: 0.08),
-            highlightColor: activeColor.withValues(alpha: 0.06),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // TANPA kapsul/pill — aktif ditandai warna + bounce halus
-                  // saat mendarat di tab (lihat _NavBounce).
-                  _NavBounce(
-                    selected: selected,
-                    child: Icon(
-                      selected ? selectedIcon : icon,
-                      color: color,
-                      size: 23,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 160),
-                    curve: Curves.easeOutCubic,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 11,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      height: 1,
-                    ),
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
+    final iconWidget = data.isAvatar
+        ? _NavBounce(
+            selected: selected,
+            child: AnimatedBuilder(
+              animation: memberStore,
+              builder: (context, _) => _AvatarIcon(
+                selected: selected,
+                activeColor: activeColor,
+                inactiveColor: color,
               ),
+            ),
+          )
+        : _NavBounce(
+            selected: selected,
+            child: Icon(
+              selected ? data.selectedIcon : data.icon,
+              color: color,
+              size: 25,
+            ),
+          );
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: data.label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          splashColor: activeColor.withValues(alpha: 0.08),
+          highlightColor: activeColor.withValues(alpha: 0.06),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                iconWidget,
+                // AnimatedSize: label melebar/menyusut halus saat tab jadi
+                // aktif atau saat collapse.
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  child: showLabel
+                      ? Padding(
+                          padding: const EdgeInsets.only(left: 7),
+                          child: Text(
+                            data.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.clip,
+                            softWrap: false,
+                            style: TextStyle(
+                              color: activeColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              height: 1,
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
             ),
           ),
         ),
@@ -275,7 +317,7 @@ class _BottomNavItem extends StatelessWidget {
 
 /// Bounce halus untuk ikon nav: memantul sekali (~1.14×) saat item jadi
 /// terpilih — dipicu saat mendarat di tab (mount selected) atau saat
-/// `selected` berubah false→true. Pengganti kapsul/pill indikator.
+/// `selected` berubah false→true.
 class _NavBounce extends StatefulWidget {
   final bool selected;
   final Widget child;
@@ -298,7 +340,6 @@ class _NavBounceState extends State<_NavBounce>
       vsync: this,
       duration: const Duration(milliseconds: 360),
     );
-    // Pegas lembut: naik ke 1.14, sedikit turun ke 0.98, balik 1.0.
     _scale = TweenSequence<double>([
       TweenSequenceItem(
         tween: Tween(begin: 1.0, end: 1.14)
@@ -344,93 +385,7 @@ class _NavBounceState extends State<_NavBounce>
 }
 
 /// Tab Akun varian dengan avatar foto profil user (Instagram-style).
-///
-/// Render persis di slot ukuran yang sama dengan _BottomNavItem reguler
-/// supaya bottom nav height TIDAK berubah (tetap 46px). Cuma swap konten
-/// icon dari IconData ke CircleAvatar 22px.
-///
-/// State changes:
-///  - Listen `memberStore` → kalau profile.photoUrl berubah (user upload
-///    foto baru), avatar auto-refresh.
-///  - Active state: 2px ring warna activeColor di sekeliling avatar.
-///  - Inactive state: no ring, plain avatar.
-///  - Fallback kalau profile null / photo null: pakai inisial nama atau
-///    default person icon (sama style dengan _BottomNavItem reguler).
-class _BottomNavAvatarItem extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final Color activeColor;
-  final Color inactiveColor;
-  final VoidCallback onTap;
-
-  const _BottomNavAvatarItem({
-    required this.label,
-    required this.selected,
-    required this.activeColor,
-    required this.inactiveColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = selected ? activeColor : inactiveColor;
-    return Expanded(
-      child: Semantics(
-        button: true,
-        selected: selected,
-        label: label,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(20),
-            splashColor: activeColor.withValues(alpha: 0.08),
-            highlightColor: activeColor.withValues(alpha: 0.06),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // TANPA kapsul — avatar memantul halus saat tab Akun aktif.
-                  _NavBounce(
-                    selected: selected,
-                    child: AnimatedBuilder(
-                      animation: memberStore,
-                      builder: (context, _) {
-                        return _AvatarIcon(
-                          selected: selected,
-                          activeColor: activeColor,
-                          inactiveColor: color,
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 160),
-                    curve: Curves.easeOutCubic,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 11,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      height: 1,
-                    ),
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
+/// Ring warna activeColor saat aktif; fallback inisial/person icon.
 class _AvatarIcon extends StatelessWidget {
   final bool selected;
   final Color activeColor;
@@ -447,10 +402,8 @@ class _AvatarIcon extends StatelessWidget {
     final profile = memberStore.profile;
     final photoUrl = profile?.profilePhotoUrl;
     final initial = profile?.initial ?? '';
-    // Slot size 24px (match _BottomNavItem icon size 23-24). Ring +2px
-    // saat active masuk ke padding luar — total tetap 24×24 dengan ring,
-    // jadi visual size sama dengan icon tab lain.
-    const slotSize = 24.0;
+    // Slot 26px match icon size non-avatar (25) + ring.
+    const slotSize = 26.0;
     const ringWidth = 2.0;
     final avatarSize = selected ? slotSize - (ringWidth * 2) : slotSize;
     return SizedBox(
@@ -498,7 +451,6 @@ class _AvatarFallback extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (initial.isEmpty) {
-      // No inisial (guest) → pakai default person icon.
       return Container(
         color: const Color(0xFFE5E7EB),
         child: Icon(

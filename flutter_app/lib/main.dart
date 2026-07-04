@@ -46,6 +46,7 @@ import 'screens/onboarding_screen.dart';
 import 'screens/product_detail_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/static_info_screen.dart';
+import 'state/bottom_nav_scroll.dart';
 import 'state/cart_store.dart';
 import 'state/feed_local_store.dart';
 import 'state/member_store.dart';
@@ -218,7 +219,9 @@ class NataloPetshopApp extends StatelessWidget {
           navigatorKey: rootNavigatorKey,
           // Analytics observer — auto log screen view + crashlytics breadcrumb
           // setiap push/replace. Cover semua route tanpa per-screen edits.
-          navigatorObservers: [nataloAnalyticsObserver],
+          // BottomNavScrollObserver reset collapse nav tiap pindah route
+          // supaya layar baru mulai dengan nav penuh (lihat bottom_nav_scroll).
+          navigatorObservers: [nataloAnalyticsObserver, BottomNavScrollObserver()],
           title: 'Natalo Petshop',
           debugShowCheckedModeBanner: false,
           theme: NataloTheme.lightTheme,
@@ -243,18 +246,32 @@ class NataloPetshopApp extends StatelessWidget {
                     color: Theme.of(context).brightness == Brightness.dark
                         ? NataloColors.feedBlack
                         : NataloColors.background,
-                    child: Stack(
-                      children: [
-                        child ?? const SizedBox.shrink(),
-                        // Offline banner di top — auto slide-in/out berdasar
-                        // connectivity status. Z-index above semua screen.
-                        const Positioned(
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          child: OfflineBanner(),
-                        ),
-                      ],
+                    // Listener global untuk collapse bottom nav (gaya IG):
+                    // menangkap scroll VERTIKAL dari layar mana pun (semua
+                    // route ada di subtree Navigator = `child`) → update
+                    // notifier yang dibaca semua BottomNavBar. Satu titik,
+                    // cover semua layar tanpa per-screen wiring. Carousel
+                    // horizontal diabaikan (cek axis).
+                    child: NotificationListener<UserScrollNotification>(
+                      onNotification: (notification) {
+                        if (notification.metrics.axis == Axis.vertical) {
+                          updateBottomNavCollapse(notification.direction);
+                        }
+                        return false;
+                      },
+                      child: Stack(
+                        children: [
+                          child ?? const SizedBox.shrink(),
+                          // Offline banner di top — auto slide-in/out berdasar
+                          // connectivity status. Z-index above semua screen.
+                          const Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            child: OfflineBanner(),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

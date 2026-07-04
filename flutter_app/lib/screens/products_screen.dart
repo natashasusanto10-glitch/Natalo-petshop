@@ -991,6 +991,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
     return Scaffold(
       backgroundColor: cs.surface,
+      // extendBody: konten tembus di belakang floating glass nav. Grid
+      // sudah pakai bottomPadding (kBottomNavigationBarHeight + inset + 16).
+      extendBody: true,
       body: NataloPawRefreshIndicator(
         onRefresh: _refreshAll,
         child: SafeArea(

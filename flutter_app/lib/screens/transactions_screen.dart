@@ -37,6 +37,8 @@ class TransactionsScreen extends StatelessWidget {
           // scaffoldBackgroundColor, BUKAN colorScheme.surface (putih) yang
           // bikin kartu putih hilang kontras & border tampak seperti garis.
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          // extendBody: konten tembus di belakang floating glass nav.
+          extendBody: true,
           body: const _TransactionsBody(),
           bottomNavigationBar: const BottomNavBar(currentIndex: 3),
         );
@@ -1080,6 +1082,7 @@ class _LoginRequiredScaffold extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: cs.surface,
+      extendBody: true,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),

@@ -526,6 +526,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _surface,
+      // extendBody: konten memanjang ke belakang floating nav → frosted
+      // glass nav punya konten untuk di-blur (efek kaca tembus). Grid/list
+      // sudah kasih bottom padding untuk clear nav.
+      extendBody: true,
       // SafeArea(top: true, bottom: false) — top handle status bar / notch /
       // camera punch-hole (Android). Bottom inset di-handle Scaffold
       // bottomNavigationBar slot, BUKAN SafeArea internal — supaya tidak

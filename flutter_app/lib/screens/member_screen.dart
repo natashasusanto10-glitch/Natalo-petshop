@@ -86,6 +86,8 @@ class _LoadingShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
+      // extendBody: konten tembus di belakang floating glass nav.
+      extendBody: true,
       body: const Center(
         child: CircularProgressIndicator(color: _brandBlue, strokeWidth: 2.4),
       ),
@@ -221,6 +223,8 @@ class _ProfilePageState extends State<_ProfilePage>
     final profile = memberStore.profile!;
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
+      // extendBody: konten tembus di belakang floating glass nav.
+      extendBody: true,
       appBar: _ProfileAppBar(onCreatePost: _openCreatePost),
       body: NataloPawRefreshIndicator(
         onRefresh: _refresh,

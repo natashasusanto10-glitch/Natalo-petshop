@@ -288,6 +288,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
     if (!memberStore.isLoggedIn) {
       return Scaffold(
         backgroundColor: Colors.transparent,
+        extendBody: true,
         appBar: AppBar(
           title: const Text('Wishlist'),
           actions: const [AppCartButton()],
@@ -325,6 +326,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      extendBody: true,
       appBar: AppBar(
         titleSpacing: 8,
         toolbarHeight: 64,
