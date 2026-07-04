@@ -2,12 +2,16 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../config/api_config.dart';
 import '../models/feed_post.dart';
+import '../models/public_profile.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
+import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_notification_button.dart';
 import '../widgets/bottom_nav.dart';
@@ -17,12 +21,13 @@ import '../widgets/profile_avatar.dart';
 import '../widgets/update_profile_photo_sheet.dart';
 import '../widgets/username_prompt_banner.dart';
 import 'member_post_detail_screen.dart';
+import 'public_profile_follow_list_screen.dart';
 
 /// Halaman Akun — social profile + galeri postingan user.
 ///
-/// Layout: Header (+ icon, bell, cart) → Profile section (foto + nama +
-/// stats Postingan/Disukai/Produk Ditag) → Tab bar (Postingan/Video/
-/// Produk Ditag) → Grid 3-kolom user posts.
+/// Layout: Header (+ icon, bell, cart) → Profile section (foto + stats
+/// Postingan/Pengikut/Mengikuti + nama + @username + bio + tombol Edit/
+/// Bagikan) → Tab bar (Postingan/Video/Produk Ditag) → Grid 3-kolom.
 ///
 /// Semua menu transaksi (Pesanan, Voucher, Wishlist, Alamat, Poin, Ulasan)
 /// SUDAH DIPINDAH ke halaman /transactions. Halaman ini fokus jadi
@@ -110,7 +115,6 @@ class _ProfilePageState extends State<_ProfilePage>
   late TabController _tabController;
   List<FeedPost> _allPosts = const [];
   bool _loadingPosts = true;
-  int _likedPostsCount = 0;
   String? _postsError;
 
   @override
@@ -134,17 +138,12 @@ class _ProfilePageState extends State<_ProfilePage>
     });
     final fetchedAt = DateTime.now();
     try {
-      final results = await Future.wait<dynamic>([
-        feedService.fetchMyPosts(filter: 'all'),
-        feedService.fetchMyLikesCount(),
-      ]);
+      // fetchMyPosts return FeedPostPage (cursor-paginated). Untuk header
+      // summary di Akun (stat post count), kita pakai page pertama saja —
+      // tidak perlu fetch all pages. Stats Pengikut/Mengikuti diambil dari
+      // memberStore.profile (di-hydrate dari /api/auth/me), bukan di sini.
+      final page = await feedService.fetchMyPosts(filter: 'all');
       if (!mounted) return;
-      // fetchMyPosts return FeedPostPage (cursor-paginated). Untuk
-      // header summary di Akun (stat post count), kita pakai page pertama
-      // saja — tidak perlu fetch all pages. Total post count tetap akurat
-      // via len(items) untuk preview, atau ambil dari totalCount kalau
-      // butuh exact (future enhancement).
-      final page = results[0] as FeedPage;
       // Seed FeedStore — cross-screen sync (Reels/Detail toggle ke-reflect
       // di Postingan Saya preview kalau di masa depan tile tampil count).
       feedStore.mergeFromServer(
@@ -153,7 +152,6 @@ class _ProfilePageState extends State<_ProfilePage>
       );
       setState(() {
         _allPosts = page.items;
-        _likedPostsCount = results[1] as int;
         _loadingPosts = false;
       });
     } on ApiException catch (error) {
@@ -179,7 +177,13 @@ class _ProfilePageState extends State<_ProfilePage>
   }
 
   Future<void> _refresh() async {
-    await _loadAll();
+    // Segarkan posts + profil (follower/following count di /api/auth/me)
+    // paralel. hydrateFromApi notify listeners → AnimatedBuilder luar
+    // rebuild dgn count terbaru.
+    await Future.wait([
+      _loadAll(),
+      memberStore.hydrateFromApi(),
+    ]);
   }
 
   Future<void> _openCreatePost() async {
@@ -188,6 +192,60 @@ class _ProfilePageState extends State<_ProfilePage>
     if (uploaded == true && mounted) {
       await _loadAll();
     }
+  }
+
+  /// Buka halaman edit profil (nama, bio, foto, username). Refresh saat
+  /// balik supaya perubahan langsung terlihat di header.
+  Future<void> _openEditProfile() async {
+    AppHaptics.tap();
+    await Navigator.pushNamed(context, '/member/profile');
+    if (mounted) await memberStore.hydrateFromApi();
+  }
+
+  /// Share link profil publik `/u/{username}` via native share sheet.
+  Future<void> _shareProfile() async {
+    final profile = memberStore.profile;
+    if (profile == null) return;
+    AppHaptics.tap();
+    try {
+      final username = profile.username;
+      final url = (username != null && username.isNotEmpty)
+          ? ApiConfig.uri('/u/$username').toString()
+          : ApiConfig.uri('/').toString();
+      await Share.share('Lihat profil ${profile.displayHandle} di Natalo\n$url');
+    } catch (_) {
+      // Cancel / share fail — silent.
+    }
+  }
+
+  /// Buka daftar Pengikut / Mengikuti. Bangun PublicProfile dari
+  /// MemberProfile (owner view) supaya reuse layar follow-list yang sama
+  /// dgn profil publik.
+  Future<void> _openFollowList(FollowListKind kind) async {
+    final profile = memberStore.profile;
+    if (profile == null) return;
+    AppHaptics.tap();
+    final pub = PublicProfile(
+      id: profile.id,
+      name: profile.name,
+      username: profile.username,
+      profilePhotoUrl: profile.profilePhotoUrl,
+      bio: profile.bio,
+      postCount: _allPosts.length,
+      followersCount: profile.followersCount,
+      followingCount: profile.followingCount,
+      isOwner: true,
+    );
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PublicProfileFollowListScreen(
+          profile: pub,
+          initialKind: kind,
+        ),
+      ),
+    );
+    if (mounted) await memberStore.hydrateFromApi();
   }
 
   void _openProfilePhotoSheet() {
@@ -242,9 +300,11 @@ class _ProfilePageState extends State<_ProfilePage>
               child: _ProfileSection(
                 profile: profile,
                 postsCount: _allPosts.length,
-                likedCount: _likedPostsCount,
-                taggedCount: _taggedPosts.length,
                 onAvatarTap: _openProfilePhotoSheet,
+                onEditProfile: _openEditProfile,
+                onShareProfile: _shareProfile,
+                onFollowersTap: () => _openFollowList(FollowListKind.followers),
+                onFollowingTap: () => _openFollowList(FollowListKind.following),
               ),
             ),
             SliverPersistentHeader(
@@ -371,26 +431,34 @@ class _ProfileAppBar extends StatelessWidget implements PreferredSizeWidget {
 class _ProfileSection extends StatelessWidget {
   final dynamic profile; // MemberProfile — keep dynamic supaya tidak import.
   final int postsCount;
-  final int likedCount;
-  final int taggedCount;
   final VoidCallback onAvatarTap;
+  final VoidCallback onEditProfile;
+  final VoidCallback onShareProfile;
+  final VoidCallback onFollowersTap;
+  final VoidCallback onFollowingTap;
 
   const _ProfileSection({
     required this.profile,
     required this.postsCount,
-    required this.likedCount,
-    required this.taggedCount,
     required this.onAvatarTap,
+    required this.onEditProfile,
+    required this.onShareProfile,
+    required this.onFollowersTap,
+    required this.onFollowingTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final ink = Theme.of(context).colorScheme.onSurface;
+    final cs = Theme.of(context).colorScheme;
+    final ink = cs.onSurface;
+    final username = profile.username as String?;
+    final hasUsername = username != null && username.isNotEmpty;
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 6, 18, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Baris atas: avatar + stats sejajar (IG-modern).
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -402,70 +470,127 @@ class _ProfileSection extends StatelessWidget {
                 showCameraBadge: true,
                 onTap: onAvatarTap,
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 8),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    Text(
-                      (profile.name as String?) ?? 'Member Natalo',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: ink,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        height: 1.15,
+                    Expanded(
+                      child: _ProfileStat(
+                        value: postsCount,
+                        label: 'Postingan',
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _ProfileStat(
-                            value: postsCount,
-                            label: 'Postingan',
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _ProfileStat(
-                            value: likedCount,
-                            label: 'Disukai',
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _ProfileStat(
-                            value: taggedCount,
-                            label: 'Produk Ditag',
-                          ),
-                        ),
-                      ],
+                    Expanded(
+                      child: _ProfileStat(
+                        value: profile.followersCount as int,
+                        label: 'Pengikut',
+                        onTap: onFollowersTap,
+                      ),
+                    ),
+                    Expanded(
+                      child: _ProfileStat(
+                        value: profile.followingCount as int,
+                        label: 'Mengikuti',
+                        onTap: onFollowingTap,
+                      ),
                     ),
                   ],
                 ),
               ),
             ],
           ),
-          // Bio (kalau ada) — IG-style di bawah row avatar+nama+stats.
-          // Multiline, 3 max biar tidak push down hasil scroll. Auto-hide
-          // kalau profile.bio null/empty (jangan render kosong takes space).
+          const SizedBox(height: 12),
+          // Nama + @username (IG-style, full-width di bawah row).
+          Text(
+            (profile.name as String?) ?? 'Member Natalo',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: ink,
+              fontSize: 15.5,
+              fontWeight: FontWeight.w800,
+              height: 1.15,
+            ),
+          ),
+          if (hasUsername) ...[
+            const SizedBox(height: 2),
+            Text(
+              '@$username',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.1,
+              ),
+            ),
+          ],
+          // Bio (kalau ada) — auto-hide kalau null/empty.
           if ((profile.bio as String?)?.trim().isNotEmpty ?? false) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Text(
               profile.bio as String,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: ink,
-                fontSize: 13.5,
-                fontWeight: FontWeight.w500,
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
                 height: 1.4,
               ),
             ),
           ],
+          const SizedBox(height: 14),
+          // Tombol Edit Profil + Bagikan (dua tombol setara ala IG).
+          Row(
+            children: [
+              Expanded(
+                child: _ProfileActionButton(
+                  label: 'Edit Profil',
+                  onTap: onEditProfile,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _ProfileActionButton(
+                  label: 'Bagikan Profil',
+                  onTap: onShareProfile,
+                ),
+              ),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _ProfileActionButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _ProfileActionButton({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: 34,
+      child: OutlinedButton(
+        onPressed: onTap,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: cs.onSurface,
+          side: BorderSide(color: cs.outlineVariant),
+          textStyle: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+        child: Text(label),
       ),
     );
   }
@@ -474,27 +599,28 @@ class _ProfileSection extends StatelessWidget {
 class _ProfileStat extends StatelessWidget {
   final int value;
   final String label;
+  final VoidCallback? onTap;
 
-  const _ProfileStat({required this.value, required this.label});
+  const _ProfileStat({required this.value, required this.label, this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Column(
+    final content = Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(
-          _formatCount(value),
+          formatCountCompact(value),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: cs.onSurface,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
             height: 1.0,
           ),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 3),
         Text(
           label,
           maxLines: 1,
@@ -509,19 +635,19 @@ class _ProfileStat extends StatelessWidget {
         ),
       ],
     );
+    if (onTap == null) return content;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: content,
+        ),
+      ),
+    );
   }
-}
-
-String _formatCount(int n) {
-  if (n < 1000) return '$n';
-  if (n < 1000000) {
-    final v = n / 1000;
-    if (v == v.roundToDouble()) return '${v.toInt()}K';
-    return '${v.toStringAsFixed(1).replaceAll('.', ',')}K';
-  }
-  final v = n / 1000000;
-  if (v == v.roundToDouble()) return '${v.toInt()}M';
-  return '${v.toStringAsFixed(1).replaceAll('.', ',')}M';
 }
 
 // ─── Tab bar ────────────────────────────────────────────────────────

@@ -28,6 +28,8 @@ export async function GET() {
         createdAt: true,
         profilePhotoUrl: true,
         bio: true,
+        followersCount: true,
+        followingCount: true,
       },
     }),
     prisma.customerPoint.aggregate({
@@ -171,6 +173,8 @@ export async function PATCH(request: NextRequest) {
           createdAt: true,
           profilePhotoUrl: true,
           bio: true,
+          followersCount: true,
+          followingCount: true,
         },
       }),
       // Same aggregate seperti GET — supaya Flutter yang replace profile

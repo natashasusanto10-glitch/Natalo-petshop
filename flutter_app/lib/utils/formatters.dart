@@ -64,6 +64,37 @@ String formatRupiahCompact(num value) {
   return formatRupiah(value);
 }
 
+/// Format jumlah (follower, like, dsb) ala Instagram Indonesia:
+/// 281 → "281", 1234 → "1.234", 17000 → "17 rb", 1250000 → "1,3 jt".
+/// Di bawah 10rb tampil angka penuh (grouping titik) supaya presisi;
+/// mulai 10rb baru diringkas jadi "rb"/"jt".
+String formatCountCompact(int value) {
+  if (value < 10000) return _groupThousands(value < 0 ? 0 : value);
+  if (value < 1000000) {
+    final rb = value / 1000;
+    final txt = rb == rb.roundToDouble()
+        ? rb.toInt().toString()
+        : rb.toStringAsFixed(1).replaceAll('.', ',');
+    return '$txt rb';
+  }
+  final jt = value / 1000000;
+  final txt = jt == jt.roundToDouble()
+      ? jt.toInt().toString()
+      : jt.toStringAsFixed(1).replaceAll('.', ',');
+  return '$txt jt';
+}
+
+/// Grouping ribuan dengan titik: 1234 → "1.234". Tanpa prefix "Rp".
+String _groupThousands(int value) {
+  final str = value.toString();
+  final buf = StringBuffer();
+  for (int i = 0; i < str.length; i++) {
+    if (i > 0 && (str.length - i) % 3 == 0) buf.write('.');
+    buf.write(str[i]);
+  }
+  return buf.toString();
+}
+
 /// TextInputFormatter helper — limit max length tanpa block paste.
 class MaxLengthFormatter {
   static List<TextInputFormatter> only(int max) => [

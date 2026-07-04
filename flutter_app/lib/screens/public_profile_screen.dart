@@ -1,13 +1,18 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../config/api_config.dart';
 import '../models/feed_post.dart';
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
 import '../services/follow_service.dart';
 import '../services/profile_service.dart';
+import '../services/report_service.dart';
 import '../state/feed_store.dart';
+import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../widgets/moderation_action_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import 'member_post_detail_screen.dart';
 import 'public_profile_follow_list_screen.dart';
@@ -239,6 +244,46 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     );
   }
 
+  /// Share link profil publik `/u/{username}` via native share sheet.
+  /// Konsisten dgn pola share feed (title + url). Kalau username null
+  /// (user lama belum set), fallback share link app base.
+  Future<void> _shareProfile() async {
+    final profile = _profile;
+    if (profile == null) return;
+    AppHaptics.tap();
+    try {
+      final username = profile.username;
+      final url = (username != null && username.isNotEmpty)
+          ? ApiConfig.uri('/u/$username').toString()
+          : ApiConfig.uri('/').toString();
+      final label = profile.isOfficial ? profile.name : profile.displayHandle;
+      await Share.share('Lihat profil $label di Natalo\n$url');
+    } catch (_) {
+      // Cancel / share fail — silent.
+    }
+  }
+
+  /// Buka sheet moderasi (Laporkan / Blokir) untuk profil ini. Wajib
+  /// Google Play UGC policy — reuse [showModerationActions] yang sama
+  /// dgn feed. Setelah block, keluar dari halaman profil (konten user
+  /// disembunyikan, tak masuk akal tetap lihat profilnya).
+  Future<void> _openModeration() async {
+    final profile = _profile;
+    if (profile == null) return;
+    AppHaptics.tap();
+    final result = await showModerationActions(
+      context,
+      targetKind: ReportTargetKind.user,
+      targetId: profile.id,
+      authorId: profile.id,
+      authorName: profile.name,
+    );
+    if (!mounted) return;
+    if (result?.didBlock == true) {
+      Navigator.maybePop(context);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -277,6 +322,23 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             height: 1.1,
           ),
         ),
+        actions: [
+          // Menu moderasi (Laporkan / Blokir) — wajib Google Play UGC.
+          // Hanya tampil untuk profil orang lain (bukan diri sendiri) dan
+          // bukan akun official (brand tak bisa dilaporkan/diblokir).
+          if (_profile != null &&
+              !(_profile!.isOwner) &&
+              !(_profile!.isOfficial))
+            IconButton(
+              onPressed: _openModeration,
+              icon: Icon(
+                Icons.more_vert_rounded,
+                color: cs.onSurface,
+                size: 24,
+              ),
+              tooltip: 'Opsi lainnya',
+            ),
+        ],
       ),
       body: _buildBody(),
     );
@@ -308,6 +370,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               onEditProfile: profile.isOwner
                   ? () => Navigator.pushNamed(context, '/member/profile')
                   : null,
+              onShareProfile: _shareProfile,
             ),
           ),
           const SliverToBoxAdapter(child: _ProfileTabs()),
@@ -372,6 +435,7 @@ class _Header extends StatelessWidget {
   final VoidCallback? onFollowersTap;
   final VoidCallback? onFollowingTap;
   final VoidCallback? onEditProfile;
+  final VoidCallback? onShareProfile;
 
   const _Header({
     required this.profile,
@@ -380,6 +444,7 @@ class _Header extends StatelessWidget {
     this.onFollowersTap,
     this.onFollowingTap,
     this.onEditProfile,
+    this.onShareProfile,
   });
 
   @override
@@ -392,145 +457,184 @@ class _Header extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Baris atas: avatar + statistik sejajar (IG-modern). Nama &
+          // @handle pindah ke bawah full-width.
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               _Avatar(profile: profile),
-              const SizedBox(width: 24),
+              const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              profile.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: cs.onSurface,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                                height: 1.1,
-                              ),
-                            ),
-                          ),
-                          // Badge centang biru untuk akun official Natalo.
-                          if (profile.isOfficial) ...[
-                            const SizedBox(width: 4),
-                            const Icon(
-                              Icons.verified_rounded,
-                              color: _brandBlue,
-                              size: 16,
-                            ),
-                          ],
-                        ],
-                      ),
+                    _StatColumn(
+                      value: profile.postCount,
+                      label: 'Postingan',
                     ),
-                    const SizedBox(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _StatColumn(
-                          value: profile.postCount,
-                          label: 'Postingan',
-                        ),
-                        _StatColumn(
-                          value: profile.followersCount,
-                          label: 'Pengikut',
-                          onTap: onFollowersTap,
-                        ),
-                        _StatColumn(
-                          value: profile.followingCount,
-                          label: 'Mengikuti',
-                          onTap: onFollowingTap,
-                        ),
-                      ],
+                    _StatColumn(
+                      value: profile.followersCount,
+                      label: 'Pengikut',
+                      onTap: onFollowersTap,
+                    ),
+                    _StatColumn(
+                      value: profile.followingCount,
+                      label: 'Mengikuti',
+                      onTap: onFollowingTap,
                     ),
                   ],
                 ),
               ),
             ],
           ),
-          if (profile.bio != null && profile.bio!.isNotEmpty) ...[
-            const SizedBox(height: 12),
+          const SizedBox(height: 14),
+          // Identity: nama tebal + badge official. @handle di baris muted
+          // bawahnya — kecuali akun official (username = nama asli pemilik,
+          // bocor). Konsisten dgn override AppBar official.
+          Row(
+            children: [
+              Flexible(
+                child: Text(
+                  profile.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: cs.onSurface,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    height: 1.15,
+                  ),
+                ),
+              ),
+              if (profile.isOfficial) ...[
+                const SizedBox(width: 4),
+                const Icon(
+                  Icons.verified_rounded,
+                  color: _brandBlue,
+                  size: 16,
+                ),
+              ],
+            ],
+          ),
+          if (!profile.isOfficial &&
+              profile.username != null &&
+              profile.username!.isNotEmpty) ...[
+            const SizedBox(height: 2),
             Text(
-              profile.bio!,
+              '@${profile.username}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: cs.onSurfaceVariant,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
+                height: 1.1,
+              ),
+            ),
+          ],
+          if (profile.bio != null && profile.bio!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              profile.bio!,
+              style: TextStyle(
+                color: cs.onSurface,
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
                 height: 1.4,
               ),
             ),
           ],
           const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            height: 40,
-            child: onEditProfile != null
-                ? OutlinedButton(
-                    onPressed: onEditProfile,
+          // Baris tombol: aksi utama (Edit/Follow/Mengikuti) + Bagikan.
+          // Tombol Bagikan = slot kedua ala IG, square icon di sampingnya.
+          Row(
+            children: [
+              Expanded(child: _buildPrimaryButton(cs)),
+              if (onShareProfile != null) ...[
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 34,
+                  width: 42,
+                  child: OutlinedButton(
+                    onPressed: onShareProfile,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: cs.onSurface,
                       side: BorderSide(color: cs.outlineVariant),
-                      textStyle: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                      ),
+                      padding: EdgeInsets.zero,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    child: const Text('Edit Profil'),
-                  )
-                : profile.isFollowing
-                    ? OutlinedButton(
-                        onPressed: onFollowToggle,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: cs.onSurface,
-                          disabledForegroundColor: cs.onSurface,
-                          side: BorderSide(color: cs.outlineVariant),
-                          textStyle: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: _FollowButtonContent(
-                          label: 'Mengikuti',
-                          busy: followBusy,
-                          spinnerColor: cs.onSurfaceVariant,
-                        ),
-                      )
-                    : FilledButton(
-                        onPressed: onFollowToggle,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _brandBlue,
-                          disabledBackgroundColor: _brandBlue,
-                          foregroundColor: Colors.white,
-                          disabledForegroundColor: Colors.white,
-                          textStyle: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: _FollowButtonContent(
-                          label: 'Follow',
-                          busy: followBusy,
-                          spinnerColor: Colors.white,
-                        ),
-                      ),
+                    child: const Icon(Icons.ios_share_rounded, size: 18),
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
+      ),
+    );
+  }
+
+  /// Tombol aksi utama: Edit Profil (owner) / Mengikuti (following) /
+  /// Follow (belum follow). Tinggi 34px ala IG.
+  Widget _buildPrimaryButton(ColorScheme cs) {
+    const textStyle = TextStyle(fontSize: 13, fontWeight: FontWeight.w800);
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(8),
+    );
+    if (onEditProfile != null) {
+      return SizedBox(
+        height: 34,
+        child: OutlinedButton(
+          onPressed: onEditProfile,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: cs.onSurface,
+            side: BorderSide(color: cs.outlineVariant),
+            textStyle: textStyle,
+            shape: shape,
+          ),
+          child: const Text('Edit Profil'),
+        ),
+      );
+    }
+    if (profile.isFollowing) {
+      return SizedBox(
+        height: 34,
+        child: OutlinedButton(
+          onPressed: onFollowToggle,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: cs.onSurface,
+            disabledForegroundColor: cs.onSurface,
+            side: BorderSide(color: cs.outlineVariant),
+            textStyle: textStyle,
+            shape: shape,
+          ),
+          child: _FollowButtonContent(
+            label: 'Mengikuti',
+            busy: followBusy,
+            spinnerColor: cs.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+    return SizedBox(
+      height: 34,
+      child: FilledButton(
+        onPressed: onFollowToggle,
+        style: FilledButton.styleFrom(
+          backgroundColor: _brandBlue,
+          disabledBackgroundColor: _brandBlue,
+          foregroundColor: Colors.white,
+          disabledForegroundColor: Colors.white,
+          textStyle: textStyle,
+          shape: shape,
+        ),
+        child: _FollowButtonContent(
+          label: 'Follow',
+          busy: followBusy,
+          spinnerColor: Colors.white,
+        ),
       ),
     );
   }
@@ -657,7 +761,7 @@ class _StatColumn extends StatelessWidget {
       child: Column(
         children: [
           Text(
-            '$value',
+            formatCountCompact(value),
             style: TextStyle(
               color: cs.onSurface,
               fontSize: 17,

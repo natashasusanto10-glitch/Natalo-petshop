@@ -36,6 +36,11 @@ class MemberProfile {
   /// "Tambahkan bio" di edit form.
   final String? bio;
 
+  /// Jumlah pengikut / mengikuti — denormalized di User row (server).
+  /// Dipakai di header profil Akun (IG-style Postingan/Pengikut/Mengikuti).
+  final int followersCount;
+  final int followingCount;
+
   const MemberProfile({
     required this.id,
     required this.name,
@@ -49,6 +54,8 @@ class MemberProfile {
     this.points = 0,
     this.profilePhotoUrl,
     this.bio,
+    this.followersCount = 0,
+    this.followingCount = 0,
   });
 
   /// True kalau birthDate sudah locked (user pernah dapat voucher ultah).
@@ -89,6 +96,8 @@ class MemberProfile {
             json['imageUrl'],
       ),
       bio: _nullableString(json['bio']),
+      followersCount: _asInt(json['followersCount']),
+      followingCount: _asInt(json['followingCount']),
     );
   }
 
@@ -112,6 +121,8 @@ class MemberProfile {
         'points': points,
         'profilePhotoUrl': profilePhotoUrl,
         'bio': bio,
+        'followersCount': followersCount,
+        'followingCount': followingCount,
       };
 
   MemberProfile copyWith({
@@ -129,6 +140,8 @@ class MemberProfile {
     bool clearProfilePhoto = false,
     String? bio,
     bool clearBio = false,
+    int? followersCount,
+    int? followingCount,
   }) {
     return MemberProfile(
       id: id,
@@ -144,6 +157,8 @@ class MemberProfile {
       profilePhotoUrl:
           clearProfilePhoto ? null : profilePhotoUrl ?? this.profilePhotoUrl,
       bio: clearBio ? null : bio ?? this.bio,
+      followersCount: followersCount ?? this.followersCount,
+      followingCount: followingCount ?? this.followingCount,
     );
   }
 }
