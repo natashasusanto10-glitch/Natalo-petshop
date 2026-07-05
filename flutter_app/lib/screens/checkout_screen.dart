@@ -4513,137 +4513,141 @@ class _CheckoutVoucherDetailsSheet extends StatelessWidget {
         otherAvailable.isNotEmpty ||
         unavailableClean.isNotEmpty;
 
-    return SafeArea(
-      top: false,
-      child: DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.72,
-        minChildSize: 0.46,
-        maxChildSize: 0.92,
-        builder: (context, controller) {
-          final cs = Theme.of(context).colorScheme;
-          return Container(
-            decoration: BoxDecoration(
-              color: cs.surface,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(28)),
-            ),
-            child: Column(
-              children: [
-                const SizedBox(height: 10),
-                Container(
-                  height: 5,
-                  width: 44,
-                  decoration: BoxDecoration(
-                    color: cs.onSurfaceVariant,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
+    // WAJIB: safe-area inset dipindah ke padding bawah ListView (di bawah),
+    // JANGAN bungkus SafeArea di sini. Kalau SafeArea(top:false) membungkus
+    // Container background putih ini, celah safe-area di bawah jadi
+    // transparan — menampakkan scrim gelap modal barrier di baliknya
+    // (strip abu-abu di tepi bawah sheet). Sama persis bug yang pernah
+    // ditemukan & diperbaiki di voucher sheet product_detail_screen.dart.
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.72,
+      minChildSize: 0.46,
+      maxChildSize: 0.92,
+      builder: (context, controller) {
+        final cs = Theme.of(context).colorScheme;
+        final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+        return Container(
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                height: 5,
+                width: 44,
+                decoration: BoxDecoration(
+                  color: cs.onSurfaceVariant,
+                  borderRadius: BorderRadius.circular(999),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Voucher Natalo',
-                              style: TextStyle(
-                                color: cs.onSurface,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w900,
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Voucher Natalo',
+                            style: TextStyle(
+                              color: cs.onSurface,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'Cek voucher yang dipakai otomatis dan voucher lain.',
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+              ),
+              if (loading) const LinearProgressIndicator(minHeight: 2),
+              Divider(
+                height: 1,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? cs.outlineVariant
+                    : const Color(0xFFE8EEF7),
+              ),
+              Expanded(
+                child: hasAny
+                    ? ListView(
+                        controller: controller,
+                        padding:
+                            EdgeInsets.fromLTRB(20, 16, 20, 28 + bottomInset),
+                        children: [
+                          if (selectedClean.isNotEmpty) ...[
+                            const _VoucherSheetSectionTitle(
+                              'Terpakai otomatis',
+                            ),
+                            const SizedBox(height: 10),
+                            _AppliedVoucherSummaryCard(
+                              vouchers: selectedClean,
+                              onRemove: (voucher) {
+                                Navigator.pop(context);
+                                onRemove(voucher);
+                              },
+                            ),
+                            const SizedBox(height: 20),
+                          ],
+                          if (otherAvailable.isNotEmpty) ...[
+                            const _VoucherSheetSectionTitle(
+                              'Voucher tersedia',
+                            ),
+                            const SizedBox(height: 10),
+                            ...otherAvailable.map(
+                              (voucher) => Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: _VoucherDetailTile(
+                                  voucher: voucher,
+                                  onApply: () {
+                                    Navigator.pop(context);
+                                    onApply(voucher);
+                                  },
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 3),
-                            Text(
-                              'Cek voucher yang dipakai otomatis dan voucher lain.',
-                              style: TextStyle(
-                                color: cs.onSurfaceVariant,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
+                            const SizedBox(height: 10),
+                          ],
+                          if (unavailableClean.isNotEmpty) ...[
+                            const _VoucherSheetSectionTitle(
+                              'Belum memenuhi syarat',
+                            ),
+                            const SizedBox(height: 10),
+                            ...unavailableClean.map(
+                              (voucher) => Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: _VoucherDetailTile(
+                                  voucher: voucher,
+                                  enabled: false,
+                                ),
                               ),
                             ),
                           ],
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
-                  ),
-                ),
-                if (loading) const LinearProgressIndicator(minHeight: 2),
-                Divider(
-                  height: 1,
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? cs.outlineVariant
-                      : const Color(0xFFE8EEF7),
-                ),
-                Expanded(
-                  child: hasAny
-                      ? ListView(
-                          controller: controller,
-                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-                          children: [
-                            if (selectedClean.isNotEmpty) ...[
-                              const _VoucherSheetSectionTitle(
-                                'Terpakai otomatis',
-                              ),
-                              const SizedBox(height: 10),
-                              _AppliedVoucherSummaryCard(
-                                vouchers: selectedClean,
-                                onRemove: (voucher) {
-                                  Navigator.pop(context);
-                                  onRemove(voucher);
-                                },
-                              ),
-                              const SizedBox(height: 20),
-                            ],
-                            if (otherAvailable.isNotEmpty) ...[
-                              const _VoucherSheetSectionTitle(
-                                'Voucher tersedia',
-                              ),
-                              const SizedBox(height: 10),
-                              ...otherAvailable.map(
-                                (voucher) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: _VoucherDetailTile(
-                                    voucher: voucher,
-                                    onApply: () {
-                                      Navigator.pop(context);
-                                      onApply(voucher);
-                                    },
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                            ],
-                            if (unavailableClean.isNotEmpty) ...[
-                              const _VoucherSheetSectionTitle(
-                                'Belum memenuhi syarat',
-                              ),
-                              const SizedBox(height: 10),
-                              ...unavailableClean.map(
-                                (voucher) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: _VoucherDetailTile(
-                                    voucher: voucher,
-                                    enabled: false,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        )
-                      : const _VoucherEmptyState(),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+                        ],
+                      )
+                    : const _VoucherEmptyState(),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
