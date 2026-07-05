@@ -32,9 +32,10 @@ import '../theme/natalo_colors.dart';
 enum BottomNavVariant { light, dark }
 
 const _navInactive = Color(0xFF6B7280);
-// Border nyaris tak kasat mata — cukup menangkap highlight tepi, tidak
-// membuat pill terlihat sebagai kotak solid.
-const _navLightBorder = Color(0x40FFFFFF); // white 25% alpha (highlight tepi)
+// Border super tipis (25%→10%) — Telegram/iOS glass hampir tak berbingkai;
+// border tebal bikin pill terbaca sebagai "kartu putih mengambang", bukan
+// lembaran kaca bening. Cukup highlight tepi samar.
+const _navLightBorder = Color(0x1AFFFFFF); // white 10% alpha (highlight tepi)
 // Dark glass tokens — untuk Feed over video. Alpha diturunkan lagi
 // 60%→40% (0x99→0x66): pada 60% video di belakang masih terlalu tertutup
 // (terlihat solid gelap, bukan kaca). 40% + saturation boost (lihat
@@ -262,11 +263,14 @@ class BottomNavBar extends StatelessWidget {
                 boxShadow: dark
                     ? null
                     : [
-                        // Bayangan halus bernuansa brand (bukan hitam pekat).
+                        // Bayangan sangat halus + tipis — cukup memisahkan
+                        // kaca dari konten putih tanpa membuatnya terlihat
+                        // seperti kartu solid mengambang (Telegram/iOS: nyaris
+                        // tanpa shadow). Diturunkan dari 0.12/blur20/offset8.
                         BoxShadow(
-                          color: NataloColors.primary.withValues(alpha: 0.12),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
+                          color: Colors.black.withValues(alpha: 0.06),
+                          blurRadius: 12,
+                          offset: const Offset(0, 3),
                         ),
                       ],
               ),
