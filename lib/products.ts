@@ -661,6 +661,7 @@ function buildOrderBy(
 export async function getProducts(opts?: {
   category?: string;
   brand?: string;
+  brands?: string[];
   search?: string;
   take?: number;
   skip?: number;
@@ -682,6 +683,7 @@ export async function getProducts(opts?: {
   const {
     category,
     brand,
+    brands,
     search,
     take,
     skip,
@@ -700,6 +702,7 @@ export async function getProducts(opts?: {
   const where = buildProductWhere({
     category,
     brand,
+    brands,
     search,
     createdAtCutoff,
     excludeIds,
@@ -759,6 +762,7 @@ export async function getProducts(opts?: {
       randomSeed &&
       !category &&
       !brand &&
+      !brands?.length &&
       !search &&
       !newFilter &&
       !popularFilter &&
@@ -821,6 +825,7 @@ export async function getProducts(opts?: {
 export async function getProductsCount(opts?: {
   category?: string;
   brand?: string;
+  brands?: string[];
   search?: string;
   newFilter?: NewProductFilter;
   popularFilter?: PopularFilter;
@@ -834,6 +839,7 @@ export async function getProductsCount(opts?: {
   const {
     category,
     brand,
+    brands,
     search,
     newFilter,
     popularFilter,
@@ -848,6 +854,7 @@ export async function getProductsCount(opts?: {
   const where = buildProductWhere({
     category,
     brand,
+    brands,
     search,
     createdAtCutoff,
     excludeIds,
@@ -890,6 +897,7 @@ export async function getProductsCount(opts?: {
 function buildProductWhere({
   category,
   brand,
+  brands,
   search,
   createdAtCutoff,
   excludeIds,
@@ -901,6 +909,13 @@ function buildProductWhere({
 }: {
   category?: string;
   brand?: string;
+  /** Multi-select brand names (exact match) — dari Filter sheet checkbox
+   *  Flutter. Beda dengan `brand` (tunggal, dari home card tap / deep
+   *  link, terima slug ATAU nama case-insensitive). Nilai `brands` selalu
+   *  berasal dari respons /api/brands kita sendiri, jadi exact-match by
+   *  name sudah cukup — tidak perlu slug/insensitive fallback. Menang
+   *  atas `brand` kalau dua-duanya di-set (kasus langka). */
+  brands?: string[];
   search?: string;
   createdAtCutoff?: Date | null;
   excludeIds?: string[];
@@ -1008,21 +1023,26 @@ function buildProductWhere({
           },
         }
       : {}),
-    // Brand filter — accept BOTH slug ("whiskas") and display name ("Whiskas")
-    // case-insensitive. Flutter customer app kirim brand.name dari home card
-    // sedangkan admin/seo URL pakai slug. Server normalize keduanya supaya
-    // tidak ada mismatch (lihat fix ini di komentar product_service.dart).
-    ...(brand
-      ? {
-          brand: {
-            isActive: true,
-            OR: [
-              { slug: brand },
-              { name: { equals: brand, mode: "insensitive" as const } },
-            ],
-          },
-        }
-      : {}),
+    // Multi-select brand (Filter sheet checkbox) — exact match by name,
+    // menang atas `brand` tunggal kalau dua-duanya di-set.
+    ...(brands && brands.length > 0
+      ? { brand: { name: { in: brands } } }
+      : brand
+        ? {
+            // Brand filter tunggal — accept BOTH slug ("whiskas") dan
+            // display name ("Whiskas") case-insensitive. Flutter customer
+            // app kirim brand.name dari home card sedangkan admin/seo URL
+            // pakai slug. Server normalize keduanya supaya tidak ada
+            // mismatch (lihat fix ini di komentar product_service.dart).
+            brand: {
+              isActive: true,
+              OR: [
+                { slug: brand },
+                { name: { equals: brand, mode: "insensitive" as const } },
+              ],
+            },
+          }
+        : {}),
     ...(createdAtCutoff
       ? { createdAt: { gte: createdAtCutoff, lte: new Date() } }
       : {}),

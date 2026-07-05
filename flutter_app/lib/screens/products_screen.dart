@@ -11,6 +11,7 @@ import '../theme/natalo_colors.dart';
 // error state pakai banner + pull-to-refresh.
 import '../models/product.dart';
 import '../models/home_category.dart';
+import '../models/brand.dart';
 import '../services/product_service.dart';
 import '../state/recently_viewed_store.dart';
 import '../state/search_history_store.dart';
@@ -129,6 +130,15 @@ class _ProductsScreenState extends State<ProductsScreen> {
   // jadi cuma muncul 2 kategori walau DB punya 20. Fallback ke derived
   // (_categories) kalau fetch master gagal.
   List<HomeCategory> _allCategories = const [];
+  // Daftar brand MASTER dari /api/brands, di-scope ke _filter.category
+  // kalau ada kategori aktif (brand yang tidak jual produk di kategori
+  // itu tidak muncul). Sebelumnya Filter sheet derive brand dari
+  // _result.products (produk yang KEBETULAN ter-load/hasil search) —
+  // search kata sempit ("happy dog") cuma nampilkan 2 brand walau
+  // katalog punya puluhan. Fetch ulang HANYA kalau kategori berubah
+  // (bukan tiap keystroke search) — lihat guard di _loadProducts.
+  List<PetBrand> _allBrands = const [];
+  String? _brandsFetchedForCategory;
   // ── Catalog rotation state — persisted via SharedPreferences ──
   //
   // Sebelumnya state in-memory only → reset tiap app restart, navigate
@@ -282,6 +292,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     _loadSearchHistory();
     _loadRotationState();
     _loadAllCategories();
+    _loadAllBrands();
     _loadProducts();
   }
 
@@ -295,6 +306,27 @@ class _ProductsScreenState extends State<ProductsScreen> {
       setState(() => _allCategories = cats);
     } catch (_) {
       // Diam — fallback derived categories tetap jalan.
+    }
+  }
+
+  /// Fetch daftar brand master (/api/brands), di-scope ke `_filter.category`
+  /// kalau ada. Dipanggil dari `_loadProducts()` HANYA kalau kategori
+  /// berubah sejak fetch terakhir (guard `_brandsFetchedForCategory`) —
+  /// supaya tidak refetch brand di setiap keystroke search (yang juga
+  /// men-trigger `_loadProducts`). Fire-and-forget — kalau gagal, Filter
+  /// sheet tampilkan "Belum ada brand di katalog." (guard `allBrands.isEmpty`
+  /// yang sudah ada di _FilterSheet).
+  Future<void> _loadAllBrands() async {
+    final category = _filter.category;
+    try {
+      final brands = await productService.fetchBrands(category: category);
+      if (!mounted) return;
+      setState(() {
+        _allBrands = brands;
+        _brandsFetchedForCategory = category;
+      });
+    } catch (_) {
+      // Diam — Filter sheet fallback ke "Belum ada brand di katalog."
     }
   }
 
@@ -371,6 +403,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
       // _filter.brand fallback (dari filter sheet single-brand picker).
       category: _filter.category,
       brand: widget.selectedBrand ?? _filter.brand,
+      brands: _filter.brands,
       newFilter: _filter.apiNewFilter,
       popularFilter: _filter.apiPopularFilter,
       inStock: _filter.inStockOnly,
@@ -419,6 +452,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
       category: _filter.category,
       // Brand server-side (sama logic dengan _loadMore — lihat komentar di sana).
       brand: widget.selectedBrand ?? _filter.brand,
+      brands: _filter.brands,
       newFilter: _filter.apiNewFilter,
       popularFilter: _filter.apiPopularFilter,
       inStock: _filter.inStockOnly,
@@ -435,6 +469,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
       _hasMore = result.nextCursor != null;
       _loading = false;
     });
+    // Refetch brand master list HANYA kalau kategori berubah sejak fetch
+    // terakhir — _loadProducts juga jalan tiap keystroke search, jangan
+    // refetch brand di setiap itu.
+    if (_filter.category != _brandsFetchedForCategory) {
+      _loadAllBrands();
+    }
   }
 
   /// Handle tap pada pinned filter bar pill. Mapping mode → filter flags:
@@ -756,14 +796,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
   /// Sheet computes live preview count saat user toggle.
   Future<void> _openFilterSheet() async {
     FocusScope.of(context).unfocus();
-    // Get all unique brands dari current loaded products untuk multi-
-    // select brand list. Sort alphabetically untuk UX consistent.
-    final allBrands = _result.products
-        .map((p) => p.brand.trim())
-        .where((b) => b.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
     // Compute price range bounds dari product data (max price untuk
     // RangeSlider upper bound). Round up ke nearest 100k untuk UX
     // smooth slider.
@@ -780,7 +812,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => _FilterSheet(
         currentFilter: _filter,
-        allBrands: allBrands,
+        // Master brand list (di-scope ke kategori aktif kalau ada) — lihat
+        // _loadAllBrands(). Bukan lagi derive dari _result.products
+        // (produk yang kebetulan ter-load/hasil search sempit).
+        allBrands: _allBrands,
         priceMaxBound: priceMaxBound,
         // Live preview count — closure ke parent state supaya tetap
         // hitung filter result terbaru tiap toggle di sheet.
@@ -3111,7 +3146,7 @@ class _SortBottomSheet extends StatelessWidget {
 /// internal, sticky apply button di bawah dengan live preview count.
 class _FilterSheet extends StatefulWidget {
   final ProductCatalogFilter currentFilter;
-  final List<String> allBrands;
+  final List<PetBrand> allBrands;
   final double priceMaxBound;
 
   /// Closure dari parent — compute count match untuk filter candidate.
@@ -3313,16 +3348,16 @@ class _FilterSheetState extends State<_FilterSheet> {
                       )
                     else
                       ...visibleBrands.map((brand) {
-                        final selected = _selectedBrands.contains(brand);
+                        final selected = _selectedBrands.contains(brand.name);
                         return _FilterCheckRow(
-                          label: brand,
+                          label: '${brand.name} (${brand.productCount})',
                           selected: selected,
                           onTap: () {
                             setState(() {
                               if (selected) {
-                                _selectedBrands.remove(brand);
+                                _selectedBrands.remove(brand.name);
                               } else {
-                                _selectedBrands.add(brand);
+                                _selectedBrands.add(brand.name);
                               }
                             });
                           },
