@@ -88,16 +88,18 @@ List<double> _saturationMatrix(double s) {
 }
 
 /// Backdrop filter kaca: blur + boost saturasi. Blur di-decouple per varian:
-/// - light (halaman umum): blur RENDAH 14 supaya kaca BENING/jernih ala
-///   Telegram — konten tembus tajam, tidak dirata-ratakan jadi abu.
+/// - light (halaman umum): blur RENDAH 8 (turun dari 14 — diukur via pixel
+///   sampling di emulator, 14 masih meratakan warna jadi ~RGB 237 flat,
+///   nyaris tak beda dari abu solid) supaya kaca BENING ala Telegram —
+///   detail warna konten di belakang tidak sempat merata jadi abu.
 ///   Saturasi +50% untuk melawan sisa keabu-abuan.
 /// - dark (Feed over video): blur 22 tetap — video sudah kaya warna, blur
 ///   lebih tinggi bikin frost lebih halus + jaga keterbacaan ikon putih.
 ///   Saturasi +15%.
 ImageFilter _glassFilter({required bool dark}) {
   final blur = ImageFilter.blur(
-    sigmaX: dark ? 22 : 14,
-    sigmaY: dark ? 22 : 14,
+    sigmaX: dark ? 22 : 8,
+    sigmaY: dark ? 22 : 8,
   );
   return ImageFilter.compose(
     outer: blur,
