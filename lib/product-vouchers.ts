@@ -90,6 +90,7 @@ function voucherTitle(voucher: {
 
 export async function loadVisibleProductVouchers(
   userId: string | null,
+  product: ProductVoucherProductInput | null = null,
   options: { take?: number } = {}
 ): Promise<ProductVoucherItem[]> {
   if (!userId) return [];
@@ -107,6 +108,8 @@ export async function loadVisibleProductVouchers(
         AND: [{ OR: [{ userId: null }, { userId }] }],
       },
       orderBy: [{ expiresAt: "asc" }, { createdAt: "desc" }],
+      // take*2 dulu (bukan take langsung) karena filter product-scope di
+      // bawah bisa buang sebagian baris — supaya hasil akhir tetap cukup.
       take: take * 2,
       select: {
         id: true,
@@ -125,6 +128,9 @@ export async function loadVisibleProductVouchers(
         newMemberRequireNoSuccessfulOrder: true,
         usageLimitPeriod: true,
         usageLimitPerUser: true,
+        eligibleProductIds: true,
+        eligibleCategoryIds: true,
+        eligibleBrandIds: true,
       },
     }),
     prisma.order.findMany({
@@ -178,6 +184,16 @@ export async function loadVisibleProductVouchers(
       }
       if (getNewMemberVoucherDisabledReason(voucher, userCtx, now))
         return false;
+      // Root cause fix: voucher scoped ke brand/kategori/produk tertentu
+      // (mis. "Happy Dog") HARUS tetap disaring per-produk yang sedang
+      // dilihat — sebelumnya fungsi ini list SEMUA voucher aktif member
+      // tanpa cek scope sama sekali, jadi voucher Happy Dog muncul juga
+      // di halaman produk brand lain (checkout tetap benar menolaknya,
+      // tapi user sudah kadung lihat voucher yang tidak relevan).
+      // `product: null` (dipanggil tanpa context produk, mis. halaman
+      // "Voucher Saya") tetap tampilkan semua — filter cuma aktif kalau
+      // ada produk spesifik yang sedang dilihat.
+      if (product && !voucherMatchesProduct(voucher, product)) return false;
       return true;
     })
     .slice(0, take)

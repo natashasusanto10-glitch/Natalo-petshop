@@ -21,6 +21,7 @@ export async function GET(
         id: true,
         price: true,
         categoryId: true,
+        brandId: true,
         category: { select: { slug: true } },
       },
     }));
@@ -29,6 +30,9 @@ export async function GET(
   }
 
   const session = await getSession("CUSTOMER");
+  // brandId WAJIB ikut — tanpa ini voucherMatchesProduct tidak pernah bisa
+  // cocokkan voucher scoped-brand (mis. "Happy Dog") lewat endpoint ini,
+  // beda dengan /api/products listing yang sudah include brandId.
   const previewInput = {
     id: product.id,
     price: product.price,
@@ -39,6 +43,7 @@ export async function GET(
         : "category" in product
         ? product.category?.slug ?? null
         : null,
+    brandId: product.brandId ?? null,
   };
   const [publicVoucher, shippingVoucher, memberVouchers] = await Promise.all([
     loadPublicProductVoucherPreview(previewInput, {
@@ -47,7 +52,12 @@ export async function GET(
     loadPublicShippingVoucherPreview(previewInput, {
       userId: session?.sub ?? null,
     }),
-    session ? loadVisibleProductVouchers(session.sub) : Promise.resolve([]),
+    // previewInput diteruskan supaya voucher scoped (brand/kategori/produk)
+    // difilter sesuai produk yang sedang dilihat — root cause fix voucher
+    // brand X muncul di halaman produk brand lain.
+    session
+      ? loadVisibleProductVouchers(session.sub, previewInput)
+      : Promise.resolve([]),
   ]);
 
   const vouchers = [
