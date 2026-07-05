@@ -4,6 +4,7 @@ import {
   type ProductVoucherPreview,
 } from "@/lib/product-vouchers";
 import { resolveActiveDiscount } from "@/lib/product-pricing";
+import { productSearchWhere } from "@/lib/search";
 import { sampleProducts } from "@/lib/sample-data";
 import type { OrderStatus, Prisma } from "@prisma/client";
 
@@ -968,6 +969,24 @@ function buildProductWhere({
     });
   }
 
+  // Token-based matching (Tahap 1 search fix) — reuse productSearchWhere()
+  // dari lib/search.ts (dipakai /api/search, sudah terbukti benar) supaya
+  // query multi-kata seperti "whiskas tuna" tetap ketemu "Whiskas Adult
+  // Tuna" (kata "adult" di tengah tidak lagi bikin gagal seperti substring
+  // `name.contains` sebelumnya). Tiap token harus match (AND) di name ATAU
+  // brand.name ATAU SKU/varian (OR per token).
+  //
+  // WAJIB push ke `and[]`, JANGAN spread sebagai key `AND` terpisah di
+  // object literal return — return di bawah sudah punya
+  // `...(and.length ? { AND: and } : {})` di baris terakhir; kalau
+  // productSearchWhere() (bentuknya `{ AND: [...] }`) di-spread sebagai
+  // key sendiri SEBELUM baris itu, key `AND`-nya akan tertimpa/hilang
+  // (object spread: key belakangan menang).
+  if (search) {
+    const searchWhere = productSearchWhere(search);
+    if (searchWhere) and.push(searchWhere);
+  }
+
   return {
     isActive: true,
     // Category param terima SLUG atau NAMA (case-insensitive). Flutter
@@ -999,7 +1018,6 @@ function buildProductWhere({
           },
         }
       : {}),
-    ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
     ...(createdAtCutoff
       ? { createdAt: { gte: createdAtCutoff, lte: new Date() } }
       : {}),

@@ -254,7 +254,7 @@ function productPriceWhere(opts: NormalizedSearchOptions): Prisma.ProductWhereIn
   };
 }
 
-function productSearchWhere(query: string): Prisma.ProductWhereInput | undefined {
+export function productSearchWhere(query: string): Prisma.ProductWhereInput | undefined {
   const q = query.trim();
   if (!q) return undefined;
   const tokens = tokenizeSearchQuery(q);
