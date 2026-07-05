@@ -2508,29 +2508,37 @@ class _FlashSaleGrid extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 12),
-          GridView.builder(
-            physics: const NeverScrollableScrollPhysics(),
-            shrinkWrap: true,
-            itemCount: visible.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              // 0.62 → 0.56 → 0.52: cell makin tinggi untuk muat text section
-              // (title + harga + strikethrough) di card diskon. Grid 3-kolom
-              // wajib tinggi seragam (bukan auto-height), jadi turunkan aspect
-              // ratio. Di 0.56 masih overflow ~5.7px saat ada strikethrough;
-              // 0.52 kasih ruang cukup.
-              childAspectRatio: 0.52,
+          // Row-loop manual (BUKAN GridView dengan childAspectRatio tetap).
+          // Alasan sama dengan grid "Rekomendasi Untuk Kamu" di bawah:
+          // childAspectRatio tetap memaksa tinggi sel seragam relatif lebar
+          // layar, menyisakan whitespace besar di bawah konten kartu yang
+          // lebih pendek. Auto-height: tinggi kartu murni ikut konten.
+          for (var i = 0; i < (visible.length + 2) ~/ 3; i++)
+            Padding(
+              padding: EdgeInsets.only(
+                bottom: i == ((visible.length + 2) ~/ 3) - 1 ? 0 : 10,
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var col = 0; col < 3; col++) ...[
+                    if (col > 0) const SizedBox(width: 10),
+                    Expanded(
+                      child: i * 3 + col < visible.length
+                          ? _FlashSaleCard(
+                              product: visible[i * 3 + col],
+                              onTap: () => onTap(visible[i * 3 + col]),
+                            )
+                          // Slot kosong di baris terakhir kalau jumlah
+                          // produk bukan kelipatan 3 — Expanded kosong
+                          // supaya kartu lain tetap lebar 1/3 kolom,
+                          // bukan melebar mengisi slot ini.
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
+                ],
+              ),
             ),
-            itemBuilder: (context, index) {
-              final product = visible[index];
-              return _FlashSaleCard(
-                product: product,
-                onTap: () => onTap(product),
-              );
-            },
-          ),
         ],
       ),
     );
