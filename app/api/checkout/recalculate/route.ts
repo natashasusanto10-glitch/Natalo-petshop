@@ -16,6 +16,7 @@ import {
   voucherSlotForKind,
   type VoucherSlotValue,
 } from "@/lib/voucher-kind";
+import { voucherMatchesProduct } from "@/lib/voucher-eligibility";
 
 /**
  * Aturan voucher checkout (lihat CLAUDE.md - Voucher business rules):
@@ -92,6 +93,7 @@ type VoucherRow = {
   eligibleUserIds: string[];
   eligibleProductIds: string[];
   eligibleCategoryIds: string[];
+  eligibleBrandIds: string[];
 };
 
 function describeDiscount(discount: number, kind?: VoucherKind) {
@@ -252,6 +254,7 @@ export async function POST(request: NextRequest) {
         flashSaleEndsAt: true,
         stock: true,
         categoryId: true,
+        brandId: true,
         weightGram: true,
         isActive: true,
         hasVariants: true,
@@ -371,18 +374,16 @@ export async function POST(request: NextRequest) {
   function eligibleProductSubtotal(voucher: {
     eligibleProductIds: string[];
     eligibleCategoryIds: string[];
+    eligibleBrandIds: string[];
   }) {
-    const voucherProductIds = new Set(voucher.eligibleProductIds ?? []);
-    const categoryIds = new Set(voucher.eligibleCategoryIds ?? []);
-    if (voucherProductIds.size === 0 && categoryIds.size === 0) return subtotal;
-
     return checkoutItems.reduce((sum, item) => {
       const product = productById.get(item.productId);
-      const productMatch = voucherProductIds.has(item.productId);
-      const categoryMatch = product?.categoryId
-        ? categoryIds.has(product.categoryId)
-        : false;
-      return productMatch || categoryMatch ? sum + item.price * item.quantity : sum;
+      const matches = voucherMatchesProduct(voucher, {
+        id: item.productId,
+        categoryId: product?.categoryId ?? null,
+        brandId: product?.brandId ?? null,
+      });
+      return matches ? sum + item.price * item.quantity : sum;
     }, 0);
   }
 

@@ -23,6 +23,7 @@ import {
   voucherTypeOf,
   type VoucherTypeCode,
 } from "@/lib/voucher-helpers";
+import { voucherMatchesProduct } from "@/lib/voucher-eligibility";
 
 class StockConflictError extends Error {
   status = 409;
@@ -140,6 +141,7 @@ export async function POST(request: Request) {
         stock: true,
         weightGram: true,
         categoryId: true,
+        brandId: true,
         isActive: true,
         hasVariants: true,
         // Active Promo Toko items — HARUS di-fetch supaya order creation
@@ -317,18 +319,16 @@ export async function POST(request: Request) {
     function eligibleProductSubtotal(voucher: {
       eligibleProductIds: string[];
       eligibleCategoryIds: string[];
+      eligibleBrandIds: string[];
     }) {
-      const productIds = new Set(voucher.eligibleProductIds ?? []);
-      const categoryIds = new Set(voucher.eligibleCategoryIds ?? []);
-      if (productIds.size === 0 && categoryIds.size === 0) return subtotal;
       return checkoutItems.reduce((sum, item) => {
         const product = productById.get(item.productId);
-        const productMatch = productIds.has(item.productId);
-        const categoryMatch =
-          !!product?.categoryId && categoryIds.has(product.categoryId);
-        return productMatch || categoryMatch
-          ? sum + item.price * item.quantity
-          : sum;
+        const matches = voucherMatchesProduct(voucher, {
+          id: item.productId,
+          categoryId: product?.categoryId ?? null,
+          brandId: product?.brandId ?? null,
+        });
+        return matches ? sum + item.price * item.quantity : sum;
       }, 0);
     }
 

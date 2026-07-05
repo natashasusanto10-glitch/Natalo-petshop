@@ -23,6 +23,7 @@
 
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { voucherMatchesProduct } from "@/lib/voucher-eligibility";
 
 // ─── Type definitions untuk calculation input ────────────────────────
 
@@ -34,6 +35,8 @@ export type RefundOrderItemInput = {
   quantity: number;
   /** categoryId dari product master (untuk scope check). */
   categoryId: string | null;
+  /** brandId dari product master (untuk scope check target brand). */
+  brandId: string | null;
 };
 
 export type RefundVoucherInput = {
@@ -50,6 +53,7 @@ export type RefundVoucherInput = {
   scope: "PRODUCT" | "SHIPPING";
   eligibleProductIds: string[];
   eligibleCategoryIds: string[];
+  eligibleBrandIds: string[];
 };
 
 export type RefundCalculationInput = {
@@ -123,27 +127,17 @@ export function calculateRefundForItem(
       continue;
     }
 
-    // Determine scope: kalau ada eligibleProductIds atau
-    // eligibleCategoryIds, voucher cuma berlaku untuk item yang
-    // match. Kalau kosong, voucher berlaku untuk semua item.
-    const hasProductScope = voucher.eligibleProductIds.length > 0;
-    const hasCategoryScope = voucher.eligibleCategoryIds.length > 0;
-    const hasAnyScope = hasProductScope || hasCategoryScope;
-
-    const isItemInScope = (item: RefundOrderItemInput): boolean => {
-      if (!hasAnyScope) return true;
-      if (hasProductScope && voucher.eligibleProductIds.includes(item.productId)) {
-        return true;
-      }
-      if (
-        hasCategoryScope &&
-        item.categoryId &&
-        voucher.eligibleCategoryIds.includes(item.categoryId)
-      ) {
-        return true;
-      }
-      return false;
-    };
+    // Determine scope: kalau ada eligibleProductIds/CategoryIds/BrandIds,
+    // voucher cuma berlaku untuk item yang match. Kalau semua kosong,
+    // voucher berlaku untuk semua item. Logic dipusatkan di
+    // voucherMatchesProduct (lib/voucher-eligibility.ts) — jangan
+    // duplikasi manual di sini lagi.
+    const isItemInScope = (item: RefundOrderItemInput): boolean =>
+      voucherMatchesProduct(voucher, {
+        id: item.productId,
+        categoryId: item.categoryId,
+        brandId: item.brandId,
+      });
 
     // Check target item dalam scope.
     if (!isItemInScope(targetItem)) {

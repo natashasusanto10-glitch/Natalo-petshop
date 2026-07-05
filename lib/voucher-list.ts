@@ -223,7 +223,9 @@ export function buildVoucherListItems(input: {
       disabledReason === null && (discount > 0 || isFreeShipping);
 
     const hasProductScope =
-      v.eligibleProductIds.length > 0 || v.eligibleCategoryIds.length > 0;
+      v.eligibleProductIds.length > 0 ||
+      v.eligibleCategoryIds.length > 0 ||
+      v.eligibleBrandIds.length > 0;
 
     items.push({
       id: v.id,

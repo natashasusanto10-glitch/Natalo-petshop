@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { VoucherType, VoucherUserUsageLimitPeriod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isLoyaltyClaimVoucher } from "@/lib/voucher-kind";
+import BrandTargetPicker from "../../BrandTargetPicker";
 
 export default async function AdminVoucherEditPage({
   params,
@@ -77,6 +78,10 @@ export default async function AdminVoucherEditPage({
     const eligibleCategoryIds = String(
       formData.get("eligibleCategoryIds") || ""
     )
+      .split(/[\s,]+/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const eligibleBrandIds = String(formData.get("eligibleBrandIds") || "")
       .split(/[\s,]+/)
       .map((value) => value.trim())
       .filter(Boolean);
@@ -166,6 +171,7 @@ export default async function AdminVoucherEditPage({
         eligibleUserIds,
         eligibleProductIds,
         eligibleCategoryIds,
+        eligibleBrandIds,
       },
     });
 
@@ -295,22 +301,29 @@ export default async function AdminVoucherEditPage({
           hint="Kosongkan jika private code boleh dipakai semua member login."
         />
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label="Target product IDs"
-            name="eligibleProductIds"
-            defaultValue={voucher.eligibleProductIds.join(", ")}
-            placeholder="product_123, product_456"
-            hint="Opsional. Untuk voucher produk tertentu. Kosong = berlaku semua produk."
-          />
-          <Field
-            label="Target kategori IDs / slug"
-            name="eligibleCategoryIds"
-            defaultValue={voucher.eligibleCategoryIds.join(", ")}
-            placeholder="cat-food, category_123"
-            hint="Opsional. Bisa isi ID kategori atau slug kategori."
-          />
-        </div>
+        <BrandTargetPicker defaultSelectedIds={voucher.eligibleBrandIds} />
+
+        <details className="rounded-2xl border border-zinc-200 bg-white px-4 py-3">
+          <summary className="cursor-pointer text-sm font-medium text-zinc-700">
+            Lanjutan — target produk / kategori spesifik
+          </summary>
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            <Field
+              label="Target product IDs"
+              name="eligibleProductIds"
+              defaultValue={voucher.eligibleProductIds.join(", ")}
+              placeholder="product_123, product_456"
+              hint="Untuk voucher SATU produk spesifik, bukan seluruh brand. Field Target brand di atas cukup untuk kebanyakan kasus."
+            />
+            <Field
+              label="Target kategori IDs / slug"
+              name="eligibleCategoryIds"
+              defaultValue={voucher.eligibleCategoryIds.join(", ")}
+              placeholder="cat-food, category_123"
+              hint="Opsional. Bisa isi ID kategori atau slug kategori."
+            />
+          </div>
+        </details>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field

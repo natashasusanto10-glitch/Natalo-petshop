@@ -4,6 +4,7 @@ import {
   isVoucherUsageLimitReached,
   type VoucherUsageLimitPeriodValue,
 } from "@/lib/voucher-helpers";
+import { voucherMatchesProduct } from "@/lib/voucher-eligibility";
 
 export type ProductVoucherPreview = {
   id: string;
@@ -29,6 +30,7 @@ type ProductVoucherProductInput = {
   price: number;
   categoryId?: string | null;
   categorySlug?: string | null;
+  brandId?: string | null;
 };
 
 type ProductVoucherPreviewOptions = {
@@ -227,6 +229,7 @@ type PublicProductVoucherRow = {
   eligibleUserIds: string[];
   eligibleProductIds: string[];
   eligibleCategoryIds: string[];
+  eligibleBrandIds: string[];
 };
 
 type ProductVoucherPreviewUserContext = {
@@ -304,20 +307,11 @@ async function loadProductVoucherPreviewUserContext(
 function voucherAppliesToProduct(
   voucher: Pick<
     PublicProductVoucherRow,
-    "eligibleProductIds" | "eligibleCategoryIds"
+    "eligibleProductIds" | "eligibleCategoryIds" | "eligibleBrandIds"
   >,
   product: ProductVoucherProductInput
 ) {
-  const productIds = new Set(voucher.eligibleProductIds ?? []);
-  const categoryIds = new Set(voucher.eligibleCategoryIds ?? []);
-
-  if (productIds.size === 0 && categoryIds.size === 0) return true;
-  if (productIds.has(product.id)) return true;
-  if (product.categoryId && categoryIds.has(product.categoryId)) return true;
-  // Safety untuk data lama/admin input manual yang mungkin memakai slug.
-  if (product.categorySlug && categoryIds.has(product.categorySlug))
-    return true;
-  return false;
+  return voucherMatchesProduct(voucher, product);
 }
 
 function previewSavingAmount(
@@ -442,6 +436,7 @@ async function loadPublicProductDiscountVouchers(
       eligibleUserIds: true,
       eligibleProductIds: true,
       eligibleCategoryIds: true,
+      eligibleBrandIds: true,
     },
     take: 40,
   });

@@ -688,6 +688,11 @@ model Voucher {
   eligibleUserIds                   String[]                    @default([])
   eligibleProductIds                String[]                    @default([])
   eligibleCategoryIds               String[]                    @default([])
+  // Target brand — dipilih via picker admin (bukan ketik manual). Cocok
+  // ke Product.brandId. Sama aturan kosong=berlaku-semua seperti
+  // eligibleProductIds/eligibleCategoryIds (lihat voucherMatchesProduct
+  // di lib/voucher-eligibility.ts).
+  eligibleBrandIds                  String[]                    @default([])
   usages                            VoucherUsage[]
   createdAt                         DateTime                    @default(now())
   updatedAt                         DateTime                    @updatedAt

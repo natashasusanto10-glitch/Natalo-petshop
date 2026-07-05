@@ -56,6 +56,9 @@ export type StoreProduct = {
    *  defensive client-side filter di Flutter buang semua produk karena
    *  product.brand kosong → 0 visible walau total > 0 (bug 1310acb). */
   brand?: string | null;
+  /** Brand ID (bukan nama) — dipakai voucherMatchesProduct untuk cocokkan
+   *  Voucher.eligibleBrandIds. Tidak dipakai UI langsung. */
+  brandId?: string | null;
   voucherPreview?: ProductVoucherPreview | null;
   shippingVoucherPreview?: ProductVoucherPreview | null;
   /** ISO timestamp — kalau di-set, admin explicit tag produk ini Flash
@@ -188,6 +191,7 @@ function mapProductListRecord(p: ProductListRecord): StoreProduct {
       categoryId: p.category?.id ?? null,
       categorySlug: p.category?.slug ?? null,
       brand: p.brand?.name ?? null,
+      brandId: p.brandId ?? null,
       voucherPreview: null,
       shippingVoucherPreview: null,
       flashSaleEndsAt: p.flashSaleEndsAt?.toISOString() ?? null,
@@ -235,6 +239,7 @@ function mapProductListRecord(p: ProductListRecord): StoreProduct {
     categoryId: p.category?.id ?? null,
     categorySlug: p.category?.slug ?? null,
     brand: p.brand?.name ?? null,
+    brandId: p.brandId ?? null,
     voucherPreview: null,
     shippingVoucherPreview: null,
     flashSaleEndsAt: effectiveFlashSaleEndsAt,
@@ -1118,6 +1123,7 @@ export async function getProductBySlug(
         reviewCount: p.reviewCount,
         categoryId: p.category?.id ?? null,
         categorySlug: p.category?.slug ?? null,
+        brandId: p.brandId ?? null,
         voucherPreview: null,
         shippingVoucherPreview: null,
         variantAttrs: p.variantAttrs as unknown as StoreVariantAttribute[],
