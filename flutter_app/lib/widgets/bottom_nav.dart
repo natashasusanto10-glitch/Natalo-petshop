@@ -35,10 +35,13 @@ const _navInactive = Color(0xFF6B7280);
 // Border nyaris tak kasat mata — cukup menangkap highlight tepi, tidak
 // membuat pill terlihat sebagai kotak solid.
 const _navLightBorder = Color(0x40FFFFFF); // white 25% alpha (highlight tepi)
-// Dark glass tokens — untuk Feed over video. Alpha diturunkan dari 80%→60%
-// (0xCC→0x99) supaya sepadan dengan light glass — 80% terlalu pekat,
-// video di belakang nyaris tidak tembus sama sekali.
-const _navDarkGlass = Color(0x990A0A0A); // black 60% alpha
+// Dark glass tokens — untuk Feed over video. Alpha diturunkan lagi
+// 60%→40% (0x99→0x66): pada 60% video di belakang masih terlalu tertutup
+// (terlihat solid gelap, bukan kaca). 40% + saturation boost (lihat
+// _glassFilter) membuat video benar-benar tembus jadi kaca berwarna —
+// persis frosted bar TikTok/IG di atas video. Kontras ikon putih tetap
+// aman karena video di area bawah biasanya lebih gelap + ada blur.
+const _navDarkGlass = Color(0x660A0A0A); // black 40% alpha
 const _navDarkTopBorder = Color(0x33FFFFFF); // white 20% alpha
 const _navDarkActive = Color(0xFFFFFFFF);
 const _navDarkInactive = Color(0xFF9CA3AF);
@@ -49,16 +52,15 @@ const _navDarkInactive = Color(0xFF9CA3AF);
 // diturunkan ke 30%, hasil tetap terlihat "susu keruh", bukan "kaca
 // bening". Nav IG asli pakai blur RENDAH supaya variasi warna asli (biru
 // langit, oranye sunset dll) tetap tembus jelas, cuma sedikit buram tepi
-// ikonnya. Makanya sekarang blur diturunkan 34→18 SEKALIGUS tint
-// diturunkan lagi 30%→15% (0x4D→0x26) — dua-duanya harus turun bareng,
-// bukan cuma salah satu.
-// FORMULA GLASS IG SEJATI = tint NETRAL super tipis + blur + saturasi boost.
-// IG pakai tint putih ~8% (bukan warna), lalu andalkan saturasi (lihat
-// _glassFilter) untuk mengembalikan warna konten yang tercuci blur. Di atas
-// konten berwarna (kartu produk) → kaca hidup berwarna. Di atas ruang putih
-// → pucat, PERSIS seperti bar IG kalau kebetulan melayang di atas area
-// terang. Inilah sifat asli kaca; tint tipis = paling dekat ke IG.
-const _navLightGlass = Color(0x14FFFFFF); // white ~8% alpha
+// ikonnya. Blur ditahan di kisaran rendah (22) — cukup untuk frost tapi
+// tidak meratakan warna jadi abu; dipasangkan dengan saturasi boost.
+// FORMULA GLASS = tint netral tipis + blur + saturasi boost. Tint putih
+// dinaikkan 8%→20% (0x14→0x33) supaya terasa sebagai PANEL KACA ala
+// Telegram/iOS (regular material), bukan nyaris tak terlihat. Masih cukup
+// tipis + saturasi boost supaya konten berwarna di belakang tetap tembus
+// (bukan susu keruh). Di atas ruang putih → frost lembut; di atas kartu
+// berwarna → kaca hidup.
+const _navLightGlass = Color(0x33FFFFFF); // white ~20% alpha
 
 /// Color matrix untuk menaikkan saturasi backdrop di belakang kaca.
 ///
@@ -82,15 +84,15 @@ List<double> _saturationMatrix(double s) {
   ];
 }
 
-/// Backdrop filter kaca: blur + boost saturasi. Untuk light glass, saturasi
-/// dinaikkan supaya warna tembus jelas (bukan abu). Dark glass (Feed over
-/// video) tetap blur murni — video sudah kaya warna, tak perlu di-boost.
+/// Backdrop filter kaca: blur + boost saturasi. Light glass saturasi +40%
+/// supaya warna tembus jelas (bukan abu). Dark glass (Feed over video) kini
+/// juga di-boost ringan (+15%) — setelah tint diturunkan ke 40%, video
+/// tembus lebih jelas dan boost tipis bikin warnanya lebih hidup di kaca.
 ImageFilter _glassFilter({required bool dark}) {
-  final blur = ImageFilter.blur(sigmaX: 18, sigmaY: 18);
-  if (dark) return blur;
+  final blur = ImageFilter.blur(sigmaX: 22, sigmaY: 22);
   return ImageFilter.compose(
     outer: blur,
-    inner: ColorFilter.matrix(_saturationMatrix(1.4)),
+    inner: ColorFilter.matrix(_saturationMatrix(dark ? 1.15 : 1.4)),
   );
 }
 
