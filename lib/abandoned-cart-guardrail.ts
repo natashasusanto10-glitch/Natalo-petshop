@@ -9,7 +9,9 @@ export function filterAvailableAbandonedCartItems<
   T extends { productId: string; variantId: string | null },
 >(items: T[], snapshots: CartStockSnapshot[]): T[] {
   const availableKeys = new Set(
-    snapshots.filter((snapshot) => snapshot.isAvailable).map((snapshot) => cartStockKey(snapshot)),
+    snapshots
+      .filter((snapshot) => snapshot.isAvailable && snapshot.availableStock > 0)
+      .map((snapshot) => cartStockKey(snapshot)),
   );
   return items.filter((item) => availableKeys.has(cartStockKey(item)));
 }

@@ -73,6 +73,22 @@ test("filterAvailableAbandonedCartItems drops items with no matching snapshot", 
   assert.equal(result.length, 0);
 });
 
+test("filterAvailableAbandonedCartItems drops items that are marked available but have zero stock", () => {
+  const items = [
+    { id: "item-1", productId: "prod-1", variantId: null },
+    { id: "item-2", productId: "prod-2", variantId: null },
+  ];
+  const snapshots = [
+    snapshot({ key: "prod-1:", productId: "prod-1", isAvailable: true, availableStock: 0 }),
+    snapshot({ key: "prod-2:", productId: "prod-2", isAvailable: true, availableStock: 5 }),
+  ];
+
+  const result = filterAvailableAbandonedCartItems(items, snapshots);
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, "item-2");
+});
+
 test("splitAbandonedCartCandidates marks first-time-eligible items as candidates, not ready to notify", () => {
   const items = [
     { id: "item-1", abandonedCandidateAt: null },
