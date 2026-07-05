@@ -21,6 +21,9 @@ import type { TrustItem } from "@/data/trustItems";
 import { ExternalLink } from "@/components/ExternalLink";
 import { AppStoreCTACard } from "@/components/AppStoreBadge";
 import { mapDbBrandsToCatalogItems } from "@/lib/brand-catalog";
+import { PageContainer } from "@/components/ui/PageContainer";
+import { ResponsiveGrid } from "@/components/ui/ResponsiveGrid";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -759,7 +762,7 @@ export default async function HomePage() {
       </section>
 
       {/* ── 4. HASHTAG CAMPAIGN + SHORTCUT GRID ── */}
-      <section className="mt-4 px-4">
+      <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
           {SHORTCUT_ITEMS.map((s) => {
             const content = (
@@ -798,11 +801,11 @@ export default async function HomePage() {
             );
           })}
         </div>
-      </section>
+      </PageContainer>
 
       {/* ── 5. FLASH SALE ── */}
       {flashSaleProducts.length > 0 && (
-        <section className="mt-5 px-4">
+        <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
           <div className="flex items-center justify-between gap-2">
             <div>
               <h2 className="text-lg font-black text-zinc-900">⚡ Flash Sale</h2>
@@ -814,7 +817,7 @@ export default async function HomePage() {
               </Link>
             )}
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-2.5">
+          <ResponsiveGrid cols={{ base: 2, sm: 3, lg: 5, xl: 6 }} className="mt-3">
             {flashSaleProducts.map((p) => {
               const finalPrice = p.discountPrice!;
               const off = discountPercent(p.price, p.discountPrice);
@@ -859,23 +862,18 @@ export default async function HomePage() {
                 </Link>
               );
             })}
-          </div>
-        </section>
+          </ResponsiveGrid>
+        </PageContainer>
       )}
 
-      <section className="mt-5 px-4">
+      <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
         <AppStoreCTACard />
-      </section>
+      </PageContainer>
 
       {/* ── 11. PRODUK TERLARIS ── */}
-      <section className="mt-5">
-        <div className="flex items-end justify-between px-4">
-          <h2 className="text-base font-black text-zinc-900 sm:text-lg">🏆 Produk Terlaris</h2>
-          <Link href="/products?popular=best-seller" className="text-xs font-bold text-blue-600">
-            Lihat semua
-          </Link>
-        </div>
-        <div className="mt-3 flex snap-x snap-mandatory gap-2.5 overflow-x-auto px-4 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
+        <SectionHeader title="🏆 Produk Terlaris" href="/products?popular=best-seller" ctaLabel="Lihat semua" />
+        <div className="mt-3 flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {bestSellers.map((p, i) => {
             const finalPrice = p.memberPrice ?? p.discountPrice ?? p.price;
             const hasMarkdown =
@@ -941,14 +939,14 @@ export default async function HomePage() {
             );
           })}
         </div>
-      </section>
+      </PageContainer>
 
       <BrandChoiceSection brands={featuredBrands} />
 
       {homeCategories.length > 0 && (
-        <section className="mt-5">
-          <h2 className="px-4 text-base font-black text-zinc-900 sm:text-lg">Kategori Populer</h2>
-          <div className="mt-2 flex snap-x snap-mandatory gap-2.5 overflow-x-auto px-4 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
+          <h2 className="text-base font-black text-zinc-900 sm:text-lg">Kategori Populer</h2>
+          <div className="mt-2 flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {homeCategories.map((cat) => (
               <Link
                 key={cat.slug}
@@ -982,10 +980,10 @@ export default async function HomePage() {
               </Link>
             ))}
           </div>
-        </section>
+        </PageContainer>
       )}
 
-      <section className="mt-6 px-4">
+      <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
         <div>
           <h2 className="text-base font-black text-zinc-900 sm:text-lg">
             Rekomendasi Untuk Kamu
@@ -996,7 +994,7 @@ export default async function HomePage() {
         </div>
 
         {recommendedProducts.length > 0 ? (
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          <ResponsiveGrid cols={{ base: 2, sm: 3, lg: 4, xl: 5, xxl: 6 }} className="mt-3">
             {recommendedProducts.map((product, index) => (
               <HomeProductCard
                 key={product.id}
@@ -1004,7 +1002,7 @@ export default async function HomePage() {
                 priority={index < 4}
               />
             ))}
-          </div>
+          </ResponsiveGrid>
         ) : (
           <div className="mt-3 rounded-[18px] border border-dashed border-zinc-200 bg-white px-6 py-10 text-center">
             <h3 className="text-base font-black text-zinc-900">Produk belum tersedia</h3>
@@ -1013,9 +1011,9 @@ export default async function HomePage() {
             </p>
           </div>
         )}
-      </section>
+      </PageContainer>
 
-      <section className="mt-7 px-4">
+      <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
         <div>
           <h2 className="text-base font-black text-zinc-900 sm:text-lg">
             Jelajahi Produk Natalo
@@ -1033,7 +1031,7 @@ export default async function HomePage() {
             excludeIds={exploreExcludeIds}
           />
         </div>
-      </section>
+      </PageContainer>
 
     </div>
   );

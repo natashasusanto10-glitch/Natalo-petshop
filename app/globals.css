@@ -5,6 +5,11 @@
 /* ── Custom breakpoint untuk HP kecil (iPhone SE 375px, dll) ── */
 @theme {
   --breakpoint-xs: 380px;
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1440px;
 }
 
 /* ── Default sans-serif: Nunito (loaded via next/font/google in app/layout.tsx).
@@ -30,6 +35,40 @@
   --color-natalo-800: #0f2d5c;
   --color-natalo-900: #0a1f40;
   --color-natalo-950: #050f20;
+}
+
+/* ── Layout / spacing / radius / elevation scale (design-system G1).
+   Dipakai via PageContainer, ResponsiveGrid, SectionHeader, Button, dan
+   ProductCard supaya nilai tidak tersebar hardcode. ── */
+:root {
+  /* Lebar konten desktop maksimum (spec: 1280px). */
+  --nat-container: 1280px;
+  /* Gutter horizontal responsif (padding kiri/kanan container). */
+  --nat-gutter: 1rem;
+  /* Jarak vertikal antar section homepage. */
+  --nat-section-y: 2.5rem;
+
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+
+  --shadow-card: 0 6px 18px rgba(15, 23, 42, 0.05);
+  --shadow-card-hover: 0 12px 28px rgba(15, 23, 42, 0.09);
+  --shadow-pop: 0 18px 42px rgba(15, 23, 42, 0.16);
+}
+
+@media (min-width: 768px) {
+  :root {
+    --nat-gutter: 1.5rem;
+    --nat-section-y: 3.5rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  :root {
+    --nat-gutter: 2rem;
+  }
 }
 
 :root {

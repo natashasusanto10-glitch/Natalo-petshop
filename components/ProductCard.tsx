@@ -5,11 +5,20 @@ import { formatRupiah } from "@/lib/format";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 import { ProductCardCta } from "./ProductCardCta";
 
+// Exported for unit testing + reuse. Guard price=0 → hindari Infinity%.
+export function computeDiscountPercent(price: number, displayPrice: number): number {
+  if (price <= 0 || displayPrice >= price) return 0;
+  return Math.max(1, Math.round(((price - displayPrice) / price) * 100));
+}
+
 type Props = {
   product: StoreProduct;
   priority?: boolean;
   isFavorited?: boolean;
   variant?: "default" | "compact";
+  badge?: "Baru" | "Original" | "Promo" | "Terlaris";
+  showCta?: boolean;
+  showRating?: boolean;
 };
 
 export function ProductCard({
@@ -17,6 +26,9 @@ export function ProductCard({
   priority = false,
   isFavorited: _isFavorited,
   variant = "default",
+  badge,
+  showCta = true,
+  showRating = false,
 }: Props) {
   const memberPrice = product.memberPrice ?? null;
   const discountPrice = product.discountPrice ?? null;
@@ -27,11 +39,7 @@ export function ProductCard({
   const isCompact = variant === "compact";
   const outOfStock = product.stock <= 0;
   const productHref = `/products/${product.slug}`;
-  // Guard price=0 → division by zero → Infinity%. Edge case: produk
-  // gratis / promo. Tetap render 0% supaya badge "diskon" tidak nyala.
-  const discountPercent = hasMarkdown && product.price > 0
-    ? Math.max(1, Math.round(((product.price - displayPrice) / product.price) * 100))
-    : 0;
+  const discountPercent = computeDiscountPercent(product.price, displayPrice);
 
   if (isCompact) {
     return (
@@ -119,7 +127,7 @@ export function ProductCard({
   }
 
   return (
-    <div className="group relative flex min-w-0 flex-col overflow-hidden rounded-[18px] border border-[#e8eef7] bg-white p-2.5 shadow-[0_6px_18px_rgba(15,23,42,0.05)] transition active:scale-[0.99] active:opacity-90 sm:p-3 sm:hover:-translate-y-0.5 sm:hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+    <div className="group relative flex min-w-0 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[#e8eef7] bg-white p-2.5 shadow-[var(--shadow-card)] transition active:scale-[0.99] active:opacity-90 sm:p-3 sm:hover:-translate-y-0.5 sm:hover:shadow-[var(--shadow-card-hover)]">
       <Link href={`/products/${product.slug}`} className="flex flex-1 flex-col">
         {/* Image area */}
         <div
@@ -145,6 +153,11 @@ export function ProductCard({
               Member
             </span>
           )}
+          {badge && (
+            <span className="absolute right-1.5 top-1.5 rounded-full border border-white/80 bg-white/95 px-2 py-0.5 text-[10px] font-black text-natalo-500 shadow-[var(--shadow-card)]">
+              {badge}
+            </span>
+          )}
         </div>
 
         {/* Info — TANPA deskripsi panjang. Deskripsi lengkap di halaman detail
@@ -164,22 +177,31 @@ export function ProductCard({
               </p>
             )}
           </div>
+
+          {showRating && (product.avgRating > 0 || product.reviewCount > 0) && (
+            <p className="mt-1.5 truncate text-[11px] font-semibold text-zinc-500">
+              {product.avgRating > 0 ? `Rating ${product.avgRating.toFixed(1)}` : "Baru"}
+              {product.reviewCount > 0 ? ` · ${product.reviewCount} ulasan` : ""}
+            </p>
+          )}
         </div>
       </Link>
 
       {/* CTA kecil — outside Link untuk hindari nested-interactive. */}
-      <div className="mt-3">
-        <ProductCardCta
-          productId={product.id}
-          slug={product.slug}
-          name={product.name}
-          price={displayPrice}
-          imageUrl={product.imageUrl}
-          weightGram={product.weightGram}
-          stock={product.stock}
-          hasVariants={product.hasVariants}
-        />
-      </div>
+      {showCta && (
+        <div className="mt-3">
+          <ProductCardCta
+            productId={product.id}
+            slug={product.slug}
+            name={product.name}
+            price={displayPrice}
+            imageUrl={product.imageUrl}
+            weightGram={product.weightGram}
+            stock={product.stock}
+            hasVariants={product.hasVariants}
+          />
+        </div>
+      )}
     </div>
   );
 }
