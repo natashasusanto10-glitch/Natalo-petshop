@@ -411,24 +411,34 @@ class _SmoothPageRoute extends PageRouteBuilder<void> {
   // pusing. Jadi durasi root = 0 (tanpa animasi).
   static bool _routeIsRoot(RouteSettings settings) => settings.name == '/';
 
+  // Android: navigasi drill-down (List->Detail dst) dibuat INSTAN juga,
+  // meniru pola Shopee/Tokopedia yang menekan durasi transisi di bawah
+  // ambang persepsi (~100ms) demi kecepatan yang dirasakan. iOS tetap
+  // pakai slide-dari-kanan (konvensi native Cupertino) tapi dipercepat.
+  static bool get _androidInstant =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
   _SmoothPageRoute({required RouteSettings settings, required this.child})
       : super(
           settings: settings,
-          // Beranda (tab) instan; halaman lain 280/240 (geser bersih).
-          transitionDuration: _routeIsRoot(settings)
+          // Beranda (tab) & Android drill-down: instan. iOS drill-down:
+          // 160/140ms (dipercepat dari 280/240 sebelumnya).
+          transitionDuration: _routeIsRoot(settings) || _androidInstant
               ? Duration.zero
-              : const Duration(milliseconds: 280),
-          reverseTransitionDuration: _routeIsRoot(settings)
+              : const Duration(milliseconds: 160),
+          reverseTransitionDuration: _routeIsRoot(settings) || _androidInstant
               ? Duration.zero
-              : const Duration(milliseconds: 240),
+              : const Duration(milliseconds: 140),
           pageBuilder: (context, animation, secondaryAnimation) => child,
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             final isRoot = settings.name == '/';
             final content = _SlideBackGesture(enabled: !isRoot, child: child);
 
-            // Beranda: INSTAN, tanpa animasi apa pun (no fade/slide/zoom).
-            // Ini menghilangkan cross-fade seluruh layar yang bikin pusing.
-            if (isRoot) {
+            // Beranda, atau Android non-root: INSTAN, tanpa animasi apa pun
+            // (no fade/slide/zoom). Ini menghilangkan cross-fade seluruh
+            // layar yang bikin pusing, dan menyamai kecepatan Shopee/
+            // Tokopedia di Android.
+            if (isRoot || _androidInstant) {
               return content;
             }
 
@@ -444,7 +454,7 @@ class _SmoothPageRoute extends PageRouteBuilder<void> {
               reverseCurve: Curves.easeInCubic,
             );
 
-            // Halaman lain: geser bersih dari kanan (native iOS feel) —
+            // iOS: geser bersih dari kanan (native Cupertino feel) —
             // TANPA fade-tumpuk & TANPA scale. Satu sumbu gerak saja.
             return SlideTransition(
               position: Tween<Offset>(
