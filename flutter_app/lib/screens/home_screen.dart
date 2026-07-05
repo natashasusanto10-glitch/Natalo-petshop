@@ -2685,7 +2685,12 @@ class _FlashSaleRatingSoldRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasRating = product.rating > 0;
     final hasSold = product.soldCount > 0;
-    if (!hasRating && !hasSold) return const SizedBox.shrink();
+    // Tinggi tetap (bukan shrink ke 0) supaya kartu tanpa rating/terjual
+    // tetap sama tinggi dengan tetangganya di baris yang sama — grid
+    // flash sale row-loop tidak pakai CrossAxisAlignment.stretch, jadi
+    // kerataan baris bergantung pada tiap bagian kartu punya tinggi
+    // konsisten. 18 = padding-top 6 + tinggi baris teks/ikon ~12.
+    if (!hasRating && !hasSold) return const SizedBox(height: 18);
 
     return Padding(
       padding: const EdgeInsets.only(top: 6),
