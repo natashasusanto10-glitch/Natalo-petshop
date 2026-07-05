@@ -73,6 +73,9 @@ export async function GET(request: NextRequest) {
       ? ""
       : rawCategory;
   const brand = (sp.get("brand") ?? "").trim();
+  // Multi-select brand dari Filter sheet checkbox — comma-separated,
+  // exact match by name (reuse parseIdList, sama pola dengan ids/exclude).
+  const brandsList = parseIdList(sp.get("brands"));
   const newFilter = asNewFilter(sp.get("new"));
   const popularFilter = asPopularFilter(sp.get("popular"));
   const seed = (sp.get("seed") ?? "").trim().slice(0, 80);
@@ -95,11 +98,14 @@ export async function GET(request: NextRequest) {
     getProducts({
       category: category || undefined,
       brand: brand || undefined,
+      brands: brandsList.length > 0 ? brandsList : undefined,
       search: search || undefined,
       newFilter,
       popularFilter,
       randomSeed:
-        seed && !category && !brand && !search && !newFilter && !popularFilter ? seed : undefined,
+        seed && !category && !brand && !brandsList.length && !search && !newFilter && !popularFilter
+          ? seed
+          : undefined,
       take: limit,
       skip: cursor,
       excludeIds,
@@ -115,6 +121,7 @@ export async function GET(request: NextRequest) {
     getProductsCount({
       category: category || undefined,
       brand: brand || undefined,
+      brands: brandsList.length > 0 ? brandsList : undefined,
       search: search || undefined,
       newFilter,
       popularFilter,
