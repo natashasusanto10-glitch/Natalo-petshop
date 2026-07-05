@@ -234,24 +234,30 @@ model UserFollow {
 }
 
 model CartItem {
-  id                  String    @id @default(cuid())
-  userId              String
-  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId           String
-  variantId           String?
-  variantLabel        String?
-  name                String
-  price               Int
-  quantity            Int
-  weightGram          Int       @default(500)
-  imageUrl            String?
-  stock               Int?
+  id                    String    @id @default(cuid())
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId             String
+  variantId             String?
+  variantLabel          String?
+  name                  String
+  price                 Int
+  quantity              Int
+  weightGram            Int       @default(500)
+  imageUrl              String?
+  stock                 Int?
   // Track last abandoned-cart push notification — supaya cron tidak
   // spam user yang sama tiap jam. Set timestamp setelah push terkirim,
   // clear (set null) saat user checkout atau update cart.
-  notifiedAbandonedAt DateTime?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  notifiedAbandonedAt   DateTime?
+  // Tanda "pertama kali dicurigai abandoned" oleh cron — dipakai untuk
+  // syarat 2-putaran-berturut sebelum benar-benar kirim notifikasi.
+  // Reset otomatis jadi null setiap kali row ini disinkron ulang (row
+  // lama di-delete, row baru dibuat oleh PUT /api/cart replace-total),
+  // sehingga tidak perlu invalidasi manual.
+  abandonedCandidateAt  DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   @@unique([userId, productId, variantId])
   @@index([userId])
