@@ -151,6 +151,11 @@ class ProductService {
 
   Future<ProductResult> fetchProducts({
     String? brand,
+
+    /// Multi-select brand names (dari Filter sheet checkbox) — dikirim
+    /// server-side, bukan lagi cuma filter lokal terhadap produk yang
+    /// sudah ter-load. Beda dengan `brand` (tunggal, dari home card tap).
+    Set<String>? brands,
     String? category,
     String? query,
     int limit = 30,
@@ -182,6 +187,7 @@ class ProductService {
         query: {
           if (keyword.isNotEmpty) 'search': keyword,
           if (brand != null && brand.trim().isNotEmpty) 'brand': brand.trim(),
+          if (brands != null && brands.isNotEmpty) 'brands': brands.join(','),
           if (category != null && category.trim().isNotEmpty)
             'category': category.trim(),
           'limit': '$limit',
@@ -397,9 +403,19 @@ class ProductService {
     }
   }
 
-  Future<List<PetBrand>> fetchBrands() async {
+  /// Fetch daftar brand. `category` opsional (slug) — scope brand ke
+  /// kategori itu (dipakai Filter sheet halaman Produk saat kategori
+  /// aktif). Tanpa `category`, return daftar brand global (perilaku
+  /// lama, dipakai all_brands_screen.dart & home "Brand Favorit").
+  Future<List<PetBrand>> fetchBrands({String? category}) async {
     try {
-      final data = await apiClient.getJson('/api/brands');
+      final data = await apiClient.getJson(
+        '/api/brands',
+        query: {
+          if (category != null && category.trim().isNotEmpty)
+            'category': category.trim(),
+        },
+      );
       final map = _asMap(data);
       final raw = map == null ? data : (map['brands'] ?? map['items']);
       if (raw is! List) return const [];
