@@ -54,13 +54,15 @@ const _navDarkInactive = Color(0xFF9CA3AF);
 // langit, oranye sunset dll) tetap tembus jelas, cuma sedikit buram tepi
 // ikonnya. Blur ditahan di kisaran rendah (22) — cukup untuk frost tapi
 // tidak meratakan warna jadi abu; dipasangkan dengan saturasi boost.
-// FORMULA GLASS = tint netral tipis + blur + saturasi boost. Tint putih
-// dinaikkan 8%→20% (0x14→0x33) supaya terasa sebagai PANEL KACA ala
-// Telegram/iOS (regular material), bukan nyaris tak terlihat. Masih cukup
-// tipis + saturasi boost supaya konten berwarna di belakang tetap tembus
-// (bukan susu keruh). Di atas ruang putih → frost lembut; di atas kartu
-// berwarna → kaca hidup.
-const _navLightGlass = Color(0x33FFFFFF); // white ~20% alpha
+// FORMULA GLASS BENING (bukan frosted abu, ala Telegram): tint putih
+// diturunkan drastis ke ~5% (0x0D) — nyaris tanpa lapisan susu — supaya
+// konten di belakang tembus JERNIH, bukan tertutup frost. Keabu-abuan
+// juga ditekan lewat blur rendah (14, lihat _glassFilter) + saturasi
+// tinggi (1.5). Konsekuensi fisika: di atas area putih polos (halaman
+// Produk/Transaksi) kaca tetap terlihat agak pucat karena memang tak ada
+// warna di belakang untuk ditembuskan — ini sifat asli kaca bening, bukan
+// bug. Di atas konten berwarna → tembus jernih berwarna.
+const _navLightGlass = Color(0x0DFFFFFF); // white ~5% alpha
 
 /// Color matrix untuk menaikkan saturasi backdrop di belakang kaca.
 ///
@@ -84,15 +86,21 @@ List<double> _saturationMatrix(double s) {
   ];
 }
 
-/// Backdrop filter kaca: blur + boost saturasi. Light glass saturasi +40%
-/// supaya warna tembus jelas (bukan abu). Dark glass (Feed over video) kini
-/// juga di-boost ringan (+15%) — setelah tint diturunkan ke 40%, video
-/// tembus lebih jelas dan boost tipis bikin warnanya lebih hidup di kaca.
+/// Backdrop filter kaca: blur + boost saturasi. Blur di-decouple per varian:
+/// - light (halaman umum): blur RENDAH 14 supaya kaca BENING/jernih ala
+///   Telegram — konten tembus tajam, tidak dirata-ratakan jadi abu.
+///   Saturasi +50% untuk melawan sisa keabu-abuan.
+/// - dark (Feed over video): blur 22 tetap — video sudah kaya warna, blur
+///   lebih tinggi bikin frost lebih halus + jaga keterbacaan ikon putih.
+///   Saturasi +15%.
 ImageFilter _glassFilter({required bool dark}) {
-  final blur = ImageFilter.blur(sigmaX: 22, sigmaY: 22);
+  final blur = ImageFilter.blur(
+    sigmaX: dark ? 22 : 14,
+    sigmaY: dark ? 22 : 14,
+  );
   return ImageFilter.compose(
     outer: blur,
-    inner: ColorFilter.matrix(_saturationMatrix(dark ? 1.15 : 1.4)),
+    inner: ColorFilter.matrix(_saturationMatrix(dark ? 1.15 : 1.5)),
   );
 }
 
