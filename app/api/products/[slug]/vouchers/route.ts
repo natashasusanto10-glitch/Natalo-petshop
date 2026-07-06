@@ -45,6 +45,28 @@ export async function GET(
         : null,
     brandId: product.brandId ?? null,
   };
+
+  // Brand produk ini sendiri -- dipakai untuk label "Khusus {brand}" di
+  // voucher manapun yang match lewat scope brand. Tidak perlu resolve
+  // SEMUA eligibleBrandIds voucher (voucher bisa multi-brand) karena di
+  // context halaman produk ini, brand yang relevan cuma satu: brand
+  // produk yang sedang dilihat.
+  const brandName = product.brandId
+    ? (
+        await prisma.brand.findUnique({
+          where: { id: product.brandId },
+          select: { name: true },
+        })
+      )?.name ?? null
+    : null;
+
+  const attachBrandName = <T extends { isBrandExclusive?: boolean }>(
+    voucher: T
+  ) => ({
+    ...voucher,
+    brandName: voucher.isBrandExclusive ? brandName : null,
+  });
+
   const [publicVoucher, shippingVoucher, memberVouchers] = await Promise.all([
     loadPublicProductVoucherPreview(previewInput, {
       userId: session?.sub ?? null,
@@ -61,14 +83,16 @@ export async function GET(
   ]);
 
   const vouchers = [
-    ...(publicVoucher ? [publicVoucher] : []),
+    ...(publicVoucher ? [attachBrandName(publicVoucher)] : []),
     ...(shippingVoucher && shippingVoucher.id !== publicVoucher?.id
-      ? [shippingVoucher]
+      ? [attachBrandName(shippingVoucher)]
       : []),
-    ...memberVouchers.filter(
-      (voucher) =>
-        voucher.id !== publicVoucher?.id && voucher.id !== shippingVoucher?.id
-    ),
+    ...memberVouchers
+      .filter(
+        (voucher) =>
+          voucher.id !== publicVoucher?.id && voucher.id !== shippingVoucher?.id
+      )
+      .map(attachBrandName),
   ];
 
   return NextResponse.json({ vouchers });
