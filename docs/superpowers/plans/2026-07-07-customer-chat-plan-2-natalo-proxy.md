@@ -16,7 +16,7 @@
 
 - **JANGAN** `firebase deploy` apa pun; proxy hanya menulis DATA lewat Admin SDK ke Firestore produksi `tokochat-a8879`. Rules/index = tanggung jawab Plan 1 (deploy terpisah, sesudah review).
 - **Tanpa migrasi DB baru.** Plan 2 hanya **membaca** Prisma (`User`, `Order`, `PushSubscription`). Kill-switch & idempotensi webhook disimpan di Firestore tokochat, bukan Postgres.
-- **Refinement kill-switch (butuh persetujuan):** spec §11b menaruh sumber kill-switch di tabel Prisma `AppConfig`. Plan ini memindahkannya ke doc Firestore `app_settings/chatConfig` di tokochat. Alasan: (a) toggle instan tanpa redeploy Next.js — penting untuk "emergency off"; (b) bisa di-flip owner langsung dari NLCATTER; (c) sumber tunggal, tak ada mirror; (d) nol migrasi. Bila di-veto, ganti Task 3 ke tabel `AppConfig` + migrasi. **Konfirmasi user sebelum eksekusi Task 3.**
+- **Kill-switch (DIPUTUSKAN):** sumber = doc Firestore `app_settings/chatConfig` di tokochat (bukan tabel Prisma `AppConfig` seperti spec §11b awal). Alasan: (a) toggle instan tanpa redeploy Next.js — penting untuk "emergency off"; (b) bisa di-flip owner langsung dari NLCATTER; (c) sumber tunggal, tak ada mirror; (d) nol migrasi. Keputusan final user 2026-07-07.
 - **Keamanan ditegakkan di proxy, bukan client.** Setiap handler customer: `getSession('CUSTOMER')` → 401 bila null; `assertSameOrigin` untuk mutasi (POST); cek kill-switch → 503 bila off; rate-limit; GET pakai **allowlist projection** (jangan bocorkan `internalNotes`, `staffOnly:true`, field internal room).
 - **Chat customer TIDAK boleh membaca** koleksi internal tokochat apa pun (`users`, `stock_products`, payroll/absensi, `internalChats`). Proxy hanya menyentuh path `customerChats/*` dan `app_settings/chatConfig`.
 - **Scope Plan 2 = permukaan CUSTOMER + webhook masuk (CF→FCM customer).** Endpoint NLCATTER-facing (`/api/catalog/search`, `/api/chat/staff-send-image` yang di-auth Firebase ID token) DITUNDA ke plan Cloud Functions/NLCATTER (butuh verifikasi ID token staff) — dicatat di §Deferred.
@@ -309,7 +309,7 @@ git commit -m "feat(chat): helper murni core (chatId, projeksi, HMAC, rate-limit
 
 ### Task 3: Kill-switch `GET /api/chat/config` (sumber Firestore tokochat)
 
-> ⚠️ **Butuh keputusan user** (lihat Global Constraints). Bila user memilih tabel Prisma `AppConfig`, ganti langkah ini: buat model `AppConfig` + migrasi + baca via prisma. Default plan: doc Firestore `app_settings/chatConfig`.
+> **Keputusan final (2026-07-07):** sumber kill-switch = doc Firestore `app_settings/chatConfig` di tokochat. Alternatif tabel Prisma `AppConfig` ditolak (butuh migrasi + redeploy untuk toggle). Lihat Global Constraints.
 
 **Files:**
 - Create: `app/api/chat/config/route.ts`
@@ -581,6 +581,6 @@ git commit -m "feat(chat): webhook staff->customer (HMAC + idempoten) kirim FCM 
 - **Grounding kode nyata:** pola handler (`assertSameOrigin`→`getSession`→body→`NextResponse.json`) mengikuti `app/api/feed/upload-photo/route.ts` & `app/api/cart/route.ts`; helper reuse `uploadToUT`/`validateImageMagicBytes`/`sendFcmToUser`/`prisma` yang terkonfirmasi ada; test mengikuti gaya `tests/*.test.ts` (`node:test`, helper murni). ✓
 - **Keamanan (constraint brief):** enforcement server-side (bukan client); room terkunci ke sesi (anti-IDOR); allowlist projection (no `internalNotes`/`staffOnly`); webhook HMAC; kill-switch. Tak menyentuh koleksi internal tokochat. ✓
 - **Isolasi kredensial:** app Admin SDK kedua bernama `tokochat`, tak mencampur dgn `natalo-fcm`. ✓
-- **Keputusan terbuka:** kill-switch dipindah ke Firestore doc (Task 3) — **butuh persetujuan user**; alternatif tabel `AppConfig` didokumentasikan.
+- **Keputusan terkunci:** kill-switch = Firestore doc `app_settings/chatConfig` (Task 3), disetujui user 2026-07-07; alternatif tabel `AppConfig` ditolak.
 - **Batas uji:** logika murni teruji penuh; efek I/O Firestore/FCM nyata diverifikasi saat integrasi manual dgn kredensial (di luar unit test, sesuai gaya repo yang tak nge-spin DB/emulator).
 - **Placeholder:** Task 4 & 8 menyebut "kode lengkap ditulis saat eksekusi mengikuti kontrak test" — sengaja, karena bentuk final `writeCustomerMessage` dikunci oleh test Step 1 (TDD), bukan ditebak di plan.
