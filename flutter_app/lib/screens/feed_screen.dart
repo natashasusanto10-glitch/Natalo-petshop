@@ -51,8 +51,11 @@ const _feedBlue = Color(0xFF0B7FEA);
 const _feedActionForegroundColor = Color(0xFFFFFFFF);
 const _feedActionShadowColor = Color(0x99000000);
 const _feedActionTextShadowColor = Color(0xB3000000);
-const _feedActionIconSize = 32.0;
-const _feedActionStrokeWidth = 2.2;
+// Ikon action rail — disetel setipis IG Reels: stroke 1.7 (dari 2.2) +
+// ukuran 30 (dari 32). Garis lebih halus/elegan, tidak lagi terlihat
+// "gemuk" di atas video.
+const _feedActionIconSize = 30.0;
+const _feedActionStrokeWidth = 1.7;
 const _feedActionCountFontSize = 12.0;
 const _feedActionItemSpacing = 18.0;
 const _feedActionBottomInset = 24.0;
@@ -3517,8 +3520,10 @@ class _FeedCreatorIdentity extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: author.isOfficialAccount ? _officialGold : Colors.white,
-              fontSize: 15.5,
-              fontWeight: FontWeight.w800,
+              // Setipis IG Reels: 13.5 + w600 (dari 15.5/w800) — nama lebih
+              // halus, tidak mendominasi over video.
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
               height: 1.1,
               shadows: const [
                 Shadow(
@@ -4438,7 +4443,9 @@ class _ReelsActionState extends State<_ReelsAction>
                         style: const TextStyle(
                           color: _feedActionForegroundColor,
                           fontSize: _feedActionCountFontSize,
-                          fontWeight: FontWeight.w900,
+                          // Ikut halus ala IG: w600 (dari w900). Shadow tetap
+                          // menjaga keterbacaan di atas video.
+                          fontWeight: FontWeight.w600,
                           height: 1,
                           shadows: [
                             Shadow(
@@ -4504,7 +4511,7 @@ class _HeartGlyphPainter extends CustomPainter {
       ..strokeWidth = _feedActionStrokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.8);
 
     canvas.drawPath(path.shift(const Offset(0, 1.2)), shadowPaint);
 
@@ -4618,7 +4625,7 @@ class _CommentGlyphPainter extends CustomPainter {
       ..strokeWidth = _feedActionStrokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.8);
     final paint = Paint()
       ..color = _feedActionForegroundColor
       ..style = PaintingStyle.stroke
@@ -4704,7 +4711,7 @@ class _ShareGlyphPainter extends CustomPainter {
       ..strokeWidth = _feedActionStrokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.8);
     final paint = Paint()
       ..color = _feedActionForegroundColor
       ..style = PaintingStyle.stroke
@@ -4770,7 +4777,7 @@ class _MoreGlyphPainter extends CustomPainter {
     final shadowPaint = Paint()
       ..color = _feedActionShadowColor
       ..style = PaintingStyle.fill
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.8);
     final paint = Paint()
       ..color = _feedActionForegroundColor
       ..style = PaintingStyle.fill;
