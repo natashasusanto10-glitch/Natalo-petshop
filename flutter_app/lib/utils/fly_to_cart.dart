@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../widgets/app_cart_button.dart';
@@ -20,8 +22,8 @@ import 'haptics.dart';
 /// Behavior:
 /// - Kalau source atau target render box tidak ditemukan (mis. cart
 ///   icon belum mount, screen tidak punya AppCartButton), no-op silently.
-/// - Animation duration 600ms total: 200ms ease-out fly + 200ms scale-down
-///   + 200ms fade-out di akhir.
+/// - Animation duration 900ms total: ease-out fly + scale-down + fade-out
+///   di akhir.
 /// - Image fly via curved path (parabolic arc) — bukan straight line.
 ///   Lebih natural daripada lerp linear.
 /// - Haptic light di pertengahan animation (saat image "land" di cart).
@@ -57,16 +59,24 @@ Future<void> flyImageToCart({
 
   // Insert overlay entry — listen ke flag completed dari stateful child
   // supaya self-remove.
+  // Completer supaya caller bisa await sampai animasi BENAR-BENAR selesai
+  // (bukan sekadar overlay ter-insert) — dipakai product detail untuk
+  // memunculkan sheet "Lengkapi belanjaanmu" tepat setelah animasi tuntas.
+  final completer = Completer<void>();
   late OverlayEntry entry;
   entry = OverlayEntry(
     builder: (_) => _FlyToCartOverlay(
       imageUrl: imageUrl,
       from: fromCenter,
       to: toCenter,
-      onComplete: () => entry.remove(),
+      onComplete: () {
+        entry.remove();
+        if (!completer.isCompleted) completer.complete();
+      },
     ),
   );
   overlay.insert(entry);
+  await completer.future;
 }
 
 class _FlyToCartOverlay extends StatefulWidget {
@@ -108,7 +118,7 @@ class _FlyToCartOverlayState extends State<_FlyToCartOverlay>
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 900),
     );
     _t = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutCubic);
     _ctrl.forward();
