@@ -36,28 +36,20 @@ const _navInactive = Color(0xFF6B7280);
 // border tebal bikin pill terbaca sebagai "kartu putih mengambang", bukan
 // lembaran kaca bening. Cukup highlight tepi samar.
 const _navLightBorder = Color(0x1AFFFFFF); // white 10% alpha (highlight tepi)
-// Dark glass tokens — untuk Feed over video. Alpha diturunkan lagi
-// 40%→22% (0x66→0x38): pada 40% black tint, di atas video terang (mis.
-// lantai kayu / dinding putih) hasil rata-ratanya jadi ABU FLAT solid —
-// terbaca sebagai "pill abu", bukan kaca. 22% membuat video benar-benar
-// tembus jernih (transparan seperti kaca sungguhan), dipasangkan dengan
-// blur lebih rendah (14, lihat _glassFilter) + saturasi lebih tinggi
-// (1.35) supaya warna video pop melewati kaca. Legibilitas ikon + label
-// putih dijaga shadow halus (lihat _navDarkGlyphShadow) untuk frame
-// terang, bukan lagi lewat tint tebal.
-const _navDarkGlass = Color(0x380A0A0A); // black ~22% alpha
-const _navDarkTopBorder = Color(0x33FFFFFF); // white 20% alpha
-const _navDarkActive = Color(0xFFFFFFFF);
-const _navDarkInactive = Color(0xFF9CA3AF);
+// Glass tokens Feed (varian "dark" = over video). Permintaan user: kaca
+// Feed harus PUTIH transparan seperti halaman lain, bukan tint hitam
+// (hitam transparan bercampur warna video jadi cokelat keruh).
+// Tint putih ~30% supaya ikon GELAP di atasnya tetap terbaca walau
+// frame video gelap — kaca putih + ikon gelap (pola iOS/IG untuk light
+// glass), bukan lagi ikon putih yang butuh halo shadow.
+const _navDarkGlass = Color(0x4DFFFFFF); // white ~30% alpha
+const _navDarkTopBorder = Color(0x4DFFFFFF); // white 30% alpha
+const _navDarkActive = Color(0xFF111827); // near-black, kontras di kaca putih
+const _navDarkInactive = Color(0xFF4B5563); // gray-600, tetap kebaca di video
 
-// Shadow halus di belakang ikon + label nav dark — pengganti tint tebal
-// untuk menjaga ikon & teks putih tetap kebaca di atas frame video terang,
-// tanpa mengorbankan transparansi kaca. Dipakai di keduanya supaya tidak
-// ada elemen yang "ketinggalan" proteksi (icon aman, label tidak).
-// Blur lebar + alpha rendah = "halo" gelap lembut, bukan garis tegas.
-const List<Shadow> _navDarkGlyphShadow = [
-  Shadow(color: Color(0x66000000), blurRadius: 6),
-];
+// Shadow glyph DIHAPUS (user: ikon terlihat "berbayang"). Keterbacaan
+// kini ditolong tint putih kaca + ikon gelap, bukan halo gelap.
+const List<Shadow>? _navDarkGlyphShadow = null;
 
 // INSIGHT KUNCI (setelah bandingkan langsung dengan nav IG terbaru): kesan
 // "abu"/keruh BUKAN cuma soal tint — blur sigma tinggi (34) meratakan
