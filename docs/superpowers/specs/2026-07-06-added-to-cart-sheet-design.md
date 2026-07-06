@@ -41,14 +41,25 @@ sendiri, tidak tersentuh).
 4. **Toast lama:** tidak dipakai lagi untuk add dari detail (sheet jadi
    konfirmasinya). Toast tetap dipakai untuk add dari dalam sheet.
 5. **Judul carousel:** "Cek keperluan anabulmu yang lain yuk".
+6. **Sumber data carousel:** berbasis **isi keranjang**. Saat sheet dibuka,
+   fetch ulang `fetchRecommendations(cartIds: <semua product.id di cart>,
+   excludeIds: <semua product.id di cart>, limit: 6)`. Untuk menghindari
+   carousel kosong sesaat, tampilkan `_related` yang sudah ter-load sebagai
+   isi awal (instan), lalu ganti dengan hasil cart-based begitu tiba.
 
 ## Arsitektur & file
 
 ### File baru
 `flutter_app/lib/widgets/added_to_cart_sheet.dart`
-- Helper publik: `Future<void> showAddedToCartSheet(BuildContext context, {required Product product, required List<Product> related})`.
-- Private widget `_AddedToCartSheet` (stateful bila perlu untuk state kartu
-  "sedang menambah").
+- Helper publik: `Future<void> showAddedToCartSheet(BuildContext context, {required Product product, List<Product> initialRelated = const []})`.
+- Private widget `_AddedToCartSheet` **stateful**:
+  - `initState`: state carousel diisi `initialRelated` (dari `_related` yang
+    sudah ter-load → tampil instan), lalu panggil
+    `fetchRecommendations(cartIds: <cart product ids>, excludeIds: <cart product ids>, limit: 6)`;
+    `setState` ganti list saat hasil tiba. `cartIds` diambil dari
+    `cartStore.items.map((i) => i.product.id)`.
+  - Kalau hasil fetch kosong (offline/gagal), pertahankan `initialRelated`
+    sebagai fallback; kalau keduanya kosong → section carousel disembunyikan.
 - Pakai `showModalBottomSheet` dengan `isScrollControlled: true`,
   `useSafeArea: true`, rounded top corners (radius 22–28 sesuai konvensi app),
   drag handle via [`SheetDragHandle`](../../../flutter_app/lib/widgets/sheet_drag_handle.dart)
@@ -61,7 +72,7 @@ sendiri, tidak tersentuh).
 1. `flutter_app/lib/screens/product_detail_screen.dart`
    - Di `_addToCart(...)`: hapus `AppToast.showCartAdded(...)` untuk kasus
      sukses normal; setelah animasi fly selesai, panggil
-     `showAddedToCartSheet(context, product: product, related: _related)`.
+     `showAddedToCartSheet(context, product: product, initialRelated: _related)`.
    - Toast info untuk kasus stok clamp / stok habis tetap dipertahankan.
    - Pastikan sheet dipanggil setelah `flyImageToCart` menandakan selesai
      (lihat perubahan `fly_to_cart.dart`).
@@ -87,13 +98,16 @@ sendiri, tidak tersentuh).
    (warna `NataloColors.successDark` `#16A34A`).
 4. **Divider** tipis.
 5. **Judul carousel:** "Cek keperluan anabulmu yang lain yuk".
-6. **Carousel horizontal** rekomendasi (reuse `_related`, limit 6):
+6. **Carousel horizontal** rekomendasi (berbasis isi keranjang, limit 6):
+   - Isi awal `initialRelated` (instan), lalu di-refresh dengan hasil
+     cart-based dari `fetchRecommendations(cartIds: ..., excludeIds: ...)`.
    - Tiap kartu: gaya kartu app (surface + border + shadow halus), gambar
      square object-contain, nama 2 baris, harga biru, badge hemat/voucher
      soft, rating + terjual.
    - **Pill biru "+ Keranjang"** full-width di bawah kartu.
-   - Kalau `_related` kosong → seluruh section carousel disembunyikan
-     (`SizedBox.shrink`), sheet tetap tampil (konfirmasi + Cek Keranjang).
+   - Kalau list kosong (awal & hasil fetch keduanya kosong) → seluruh
+     section carousel disembunyikan (`SizedBox.shrink`), sheet tetap tampil
+     (konfirmasi + Cek Keranjang).
 7. **Tombol sticky "Cek Keranjang"** (ElevatedButton, `#1E5FBF`, teks putih,
    full-width, radius 12–14, height ~46–50) → pop sheet lalu
    `Navigator.pushNamed(context, '/cart')`.
@@ -116,7 +130,12 @@ sendiri, tidak tersentuh).
   muncul seperti biasa. Tidak ada perubahan urutan varian.
 - **Stok habis / clamp:** tetap pakai toast info existing; sheet tetap boleh
   muncul untuk item yang berhasil masuk (mengikuti perilaku add sukses).
-- **`_related` belum ter-load / kosong:** sheet tanpa carousel.
+- **`_related` belum ter-load / kosong saat buka:** carousel kosong sesaat,
+  lalu terisi begitu fetch cart-based selesai. Kalau fetch juga kosong →
+  section carousel disembunyikan.
+- **Keranjang cuma berisi produk ini saja:** `excludeIds` = isi cart membuat
+  produk yang sama tidak muncul; backend tetap balikin produk lain yang
+  relevan. Kalau kosong → carousel hilang.
 - **Cart icon tidak ada di layar:** `flyImageToCart` sudah no-op aman; sheet
   tetap harus muncul (jangan gantungkan pemunculan sheet pada keberadaan
   cart icon — trigger sheet independen dari sukses animasi).
@@ -128,9 +147,12 @@ sendiri, tidak tersentuh).
 
 ## Reuse komponen existing
 
-- Data rekomendasi: `_related` dari
+- Data rekomendasi:
   [`productService.fetchRecommendations`](../../../flutter_app/lib/services/product_service.dart)
-  (sudah ter-load via `_loadRelated()`).
+  (endpoint `/api/cart/recommendations`) dipanggil dengan `cartIds` = isi
+  keranjang. `initialRelated` memakai `_related` yang sudah ter-load via
+  `_loadRelated()` sebagai placeholder instan.
+- Isi keranjang: `cartStore.items` (tiap `CartItem` punya `.product.id`).
 - Warna: [`NataloColors`](../../../flutter_app/lib/theme/natalo_colors.dart)
   (`primary #1E5FBF`, `successDark #16A34A`, `dangerSoft`, dst).
 - Toast mini: `AppToast.showCartAdded`.
