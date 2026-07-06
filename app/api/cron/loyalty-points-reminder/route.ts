@@ -21,27 +21,21 @@ import { prisma } from "@/lib/prisma";
 import { sendApnsToUser } from "@/lib/apns";
 import { sendFcmToUser } from "@/lib/fcm";
 import { sendPushToUser, type PushPayload } from "@/lib/push";
+import { LOYALTY_TIERS } from "@/lib/loyalty-tiers";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// Tier voucher tukar poin (mirror app/api/member/claim-voucher TIERS).
+// Tier voucher tukar poin — sumber tunggal di lib/loyalty-tiers.ts.
 // Dipakai untuk tentukan reward terbaik yang user bisa klaim → pesan
 // notif lebih menarik ("tukar jadi voucher Rp40rb").
-const TIERS = [
-  { points: 20, discountAmount: 10000 },
-  { points: 50, discountAmount: 25000 },
-  { points: 75, discountAmount: 40000 },
-  { points: 100, discountAmount: 60000 },
-  { points: 200, discountAmount: 150000 },
-] as const;
-const MIN_POINTS = TIERS[0].points;
+const MIN_POINTS = LOYALTY_TIERS[0].points;
 const REMINDER_COOLDOWN_DAYS = 14;
 const BATCH_LIMIT = 300;
 
 function bestReward(points: number): number {
   let reward = 0;
-  for (const t of TIERS) {
+  for (const t of LOYALTY_TIERS) {
     if (points >= t.points) reward = t.discountAmount;
   }
   return reward;
