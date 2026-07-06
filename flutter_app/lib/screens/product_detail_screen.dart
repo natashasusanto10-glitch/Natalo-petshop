@@ -313,12 +313,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     ).then((_) async {
       if (!mounted || _addedSheetVisible) return;
       _addedSheetVisible = true;
-      await showAddedToCartSheet(
-        context,
-        product: product,
-        initialRelated: _related,
-      );
-      if (mounted) _addedSheetVisible = false;
+      try {
+        await showAddedToCartSheet(
+          context,
+          product: product,
+          initialRelated: _related,
+        );
+      } finally {
+        if (mounted) _addedSheetVisible = false;
+      }
     });
   }
 
