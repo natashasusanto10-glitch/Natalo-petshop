@@ -5,6 +5,7 @@ import {
   type VoucherUsageLimitPeriodValue,
 } from "@/lib/voucher-helpers";
 import { voucherMatchesProduct } from "@/lib/voucher-eligibility";
+import { loyaltyPointsForDiscount } from "@/lib/loyalty-tiers";
 
 export type ProductVoucherPreview = {
   id: string;
@@ -64,6 +65,7 @@ export type ProductVoucherItem = {
   isActive: true;
   isExpired: false;
   isBrandExclusive: boolean;
+  loyaltyPoints: number | null;
 };
 
 function formatRupiahShort(n: number) {
@@ -224,10 +226,14 @@ export async function loadVisibleProductVouchers(
       isActive: true,
       isExpired: false,
       isBrandExclusive: voucher.eligibleBrandIds.length > 0,
+      loyaltyPoints:
+        voucher.kind === "LOYALTY_CLAIM"
+          ? loyaltyPointsForDiscount(voucher.discountAmount ?? 0)
+          : null,
     }));
 }
 
-type PublicProductVoucherRow = {
+export type PublicProductVoucherRow = {
   id: string;
   name: string | null;
   code: string;
@@ -478,6 +484,28 @@ async function loadPublicProductDiscountVouchers(
   });
 }
 
+function byBestSavingDesc(
+  a: ProductVoucherPreview,
+  b: ProductVoucherPreview
+): number {
+  const amountDelta = (b.savingAmount ?? 0) - (a.savingAmount ?? 0);
+  if (amountDelta !== 0) return amountDelta;
+  return (b.discountPercent ?? 0) - (a.discountPercent ?? 0);
+}
+
+// Semua preview voucher yang cocok untuk produk (bukan cuma yang terbaik).
+// Murni — tanpa DB — supaya bisa diuji.
+export function buildMatchingVoucherPreviews(
+  vouchers: PublicProductVoucherRow[],
+  product: ProductVoucherProductInput
+): ProductVoucherPreview[] {
+  return vouchers
+    .filter((voucher) => voucherAppliesToProduct(voucher, product))
+    .map((voucher) => buildProductVoucherPreview(voucher, product))
+    .filter((preview): preview is ProductVoucherPreview => Boolean(preview))
+    .sort(byBestSavingDesc);
+}
+
 export async function attachPublicProductVoucherPreviews<
   T extends ProductVoucherProductInput
 >(
@@ -509,24 +537,8 @@ export async function attachPublicProductVoucherPreviews<
     }
 
     return products.map((product) => {
-      const previews = productVouchers
-        .filter((voucher) => voucherAppliesToProduct(voucher, product))
-        .map((voucher) => buildProductVoucherPreview(voucher, product))
-        .filter((preview): preview is ProductVoucherPreview => Boolean(preview))
-        .sort((a, b) => {
-          const amountDelta = (b.savingAmount ?? 0) - (a.savingAmount ?? 0);
-          if (amountDelta !== 0) return amountDelta;
-          return (b.discountPercent ?? 0) - (a.discountPercent ?? 0);
-        });
-      const shippingPreviews = shippingVouchers
-        .filter((voucher) => voucherAppliesToProduct(voucher, product))
-        .map((voucher) => buildProductVoucherPreview(voucher, product))
-        .filter((preview): preview is ProductVoucherPreview => Boolean(preview))
-        .sort((a, b) => {
-          const amountDelta = (b.savingAmount ?? 0) - (a.savingAmount ?? 0);
-          if (amountDelta !== 0) return amountDelta;
-          return (b.discountPercent ?? 0) - (a.discountPercent ?? 0);
-        });
+      const previews = buildMatchingVoucherPreviews(productVouchers, product);
+      const shippingPreviews = buildMatchingVoucherPreviews(shippingVouchers, product);
 
       return {
         ...product,
@@ -563,4 +575,26 @@ export async function loadPublicShippingVoucherPreview(
     options
   );
   return withPreview?.shippingVoucherPreview ?? null;
+}
+
+// Versi plural untuk endpoint 1-produk (/api/products/[slug]/vouchers):
+// balikan SEMUA voucher publik yang cocok, bukan cuma terbaik — supaya
+// voucher brand tidak ter-drop kalah nominal dari voucher umum.
+export async function loadPublicProductVoucherPreviews(
+  product: ProductVoucherProductInput,
+  options: ProductVoucherPreviewOptions = {}
+): Promise<{ product: ProductVoucherPreview[]; shipping: ProductVoucherPreview[] }> {
+  try {
+    const userContext = await loadProductVoucherPreviewUserContext(options.userId);
+    const [productVouchers, shippingVouchers] = await Promise.all([
+      loadPublicProductDiscountVouchers("PRODUCT", userContext),
+      loadPublicProductDiscountVouchers("SHIPPING", userContext),
+    ]);
+    return {
+      product: buildMatchingVoucherPreviews(productVouchers, product),
+      shipping: buildMatchingVoucherPreviews(shippingVouchers, product),
+    };
+  } catch {
+    return { product: [], shipping: [] };
+  }
 }
