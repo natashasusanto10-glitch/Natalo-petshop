@@ -13,7 +13,12 @@ function product(overrides = {}) {
     brandId: "brand-1",
     brand: { slug: "royal-canin", name: "Royal Canin" },
     price: 120000,
+    // discount_price sekarang diturunkan dari Flash Sale / Promo Toko aktif
+    // (bukan lagi field flat discountPrice). Set flashSaleEndsAt jauh di masa
+    // depan supaya flash sale 99000 aktif dan discount_price = 99000 —
+    // menguji jalur diskon sesuai arsitektur baru, bukan sekadar assert null.
     discountPrice: 99000,
+    flashSaleEndsAt: new Date("2999-12-31T00:00:00.000Z"),
     stock: 5,
     weightGram: 500,
     avgRating: 4.5,

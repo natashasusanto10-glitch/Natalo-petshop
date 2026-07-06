@@ -54,6 +54,10 @@ test("order detail serialization exposes product metadata and review state", () 
         reviews: [{ id: "review-1" }],
       },
     ],
+    // serializeOrderDetail meng-iterate voucherUsages (detail diskon per
+    // voucher, ditambahkan setelah test ini ditulis) — fixture wajib punya
+    // array ini walau kosong supaya `.map()` tidak crash.
+    voucherUsages: [],
   } as any);
 
   assert.equal(order.items[0].productSlug, "produk");
