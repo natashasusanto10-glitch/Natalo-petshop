@@ -21,6 +21,7 @@ import '../widgets/app_cart_button.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/skeleton_product_card.dart';
+import '../widgets/brand_exclusive_badge.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 
@@ -270,7 +271,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
     // kalau dikirim literal). Bisa masuk lewat deep link (?kategori=Semua)
     // atau share link — tanpa guard ini, halaman Produk kosong walau
     // Beranda (yang tidak kena filter ini) tetap normal.
-    if (initialCategory.isNotEmpty && initialCategory.toLowerCase() != 'semua') {
+    if (initialCategory.isNotEmpty &&
+        initialCategory.toLowerCase() != 'semua') {
       _filter = _filter.copyWith(category: initialCategory);
     }
     if (widget.discountOnly) {
@@ -1483,9 +1485,8 @@ class _HeaderActionPill extends StatelessWidget {
             color: cs.surface,
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: badge != null
-                  ? const Color(0xFF2568C7)
-                  : cs.outlineVariant,
+              color:
+                  badge != null ? const Color(0xFF2568C7) : cs.outlineVariant,
               width: badge != null ? 1.4 : 1,
             ),
             boxShadow: [
@@ -1504,9 +1505,7 @@ class _HeaderActionPill extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w700,
-                  color: badge != null
-                      ? const Color(0xFF2568C7)
-                      : cs.onSurface,
+                  color: badge != null ? const Color(0xFF2568C7) : cs.onSurface,
                 ),
               ),
               const SizedBox(width: 6),
@@ -1578,92 +1577,93 @@ class _EmptyProductsState extends StatelessWidget {
     // hasScrollBody:false akan overflow tanpa ini).
     return SingleChildScrollView(
       child: Padding(
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 92,
-            height: 92,
-            decoration: BoxDecoration(
-              color: NataloColors.primaryLight,
-              borderRadius: BorderRadius.circular(28),
-            ),
-            child: const Icon(
-              Icons.search_off_rounded,
-              color: NataloColors.primary,
-              size: 42,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'Produk tidak ditemukan',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: cs.onSurface,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Coba kata kunci lain atau ubah filter pencarian.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: cs.onSurfaceVariant,
-              fontSize: 14,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 18),
-          ElevatedButton(
-            onPressed: onReset,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _brandBlue,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 92,
+              height: 92,
+              decoration: BoxDecoration(
+                color: NataloColors.primaryLight,
+                borderRadius: BorderRadius.circular(28),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              child: const Icon(
+                Icons.search_off_rounded,
+                color: NataloColors.primary,
+                size: 42,
+              ),
             ),
-            child: const Text(
-              'Reset Filter',
-              style: TextStyle(fontWeight: FontWeight.w900),
+            const SizedBox(height: 18),
+            Text(
+              'Produk tidak ditemukan',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: cs.onSurface,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
             ),
-          ),
-          if (recentProducts.isNotEmpty) ...[
-            const SizedBox(height: 32),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Terakhir kamu lihat',
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
+            const SizedBox(height: 8),
+            Text(
+              'Coba kata kunci lain atau ubah filter pencarian.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontSize: 14,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 18),
+            ElevatedButton(
+              onPressed: onReset,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _brandBlue,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              ),
+              child: const Text(
+                'Reset Filter',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+            if (recentProducts.isNotEmpty) ...[
+              const SizedBox(height: 32),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Terakhir kamu lihat',
+                  style: TextStyle(
+                    color: cs.onSurface,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 168,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: recentProducts.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 10),
-                itemBuilder: (context, index) {
-                  final product = recentProducts[index];
-                  return _RecentlyViewedMiniCard(
-                    product: product,
-                    onTap: () => onProductTap?.call(product),
-                  );
-                },
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 168,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: recentProducts.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) {
+                    final product = recentProducts[index];
+                    return _RecentlyViewedMiniCard(
+                      product: product,
+                      onTap: () => onProductTap?.call(product),
+                    );
+                  },
+                ),
               ),
-            ),
+            ],
           ],
-        ],
-      ),
+        ),
       ),
     );
   }
@@ -2082,6 +2082,18 @@ class _ProductsPageProductCard extends StatelessWidget {
                       child: _ProductDiscountBadge(
                         percent: discountPercent,
                       ),
+                    ),
+                  // Badge brand-exclusive: hanya kalau voucher preview produk
+                  // ini scoped ke brand. Nama brand diambil dari product.brand
+                  // (listing tidak kirim brandName voucher).
+                  if (productHasBrandExclusiveBadge(
+                    isBrandExclusive: product.voucherPreview?.isBrandExclusive,
+                    brand: product.brand,
+                  ))
+                    Positioned(
+                      left: 8,
+                      top: 8,
+                      child: BrandExclusiveBadge(brand: product.brand),
                     ),
                 ],
               ),
@@ -3027,9 +3039,7 @@ class _CategoryBottomSheetItem extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                    color: isSelected
-                        ? const Color(0xFF0D6FE8)
-                        : cs.onSurface,
+                    color: isSelected ? const Color(0xFF0D6FE8) : cs.onSurface,
                   ),
                 ),
               ),
@@ -3575,9 +3585,7 @@ class _FilterRadioRow extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: selected
-                      ? const Color(0xFF2568C7)
-                      : cs.outlineVariant,
+                  color: selected ? const Color(0xFF2568C7) : cs.outlineVariant,
                   width: 2,
                 ),
               ),

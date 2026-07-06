@@ -4,6 +4,7 @@ import '../models/product.dart';
 import '../utils/action_throttle.dart';
 import '../utils/formatters.dart';
 import 'app_product_image.dart';
+import 'brand_exclusive_badge.dart';
 
 const _cardBlue = Color(0xFF1565D8);
 const _discountRed = Color(0xFFE11D48);
@@ -156,6 +157,17 @@ class _ProductImage extends StatelessWidget {
               top: 0,
               right: 0,
               child: _DiscountBadge(percent: discountPercent!),
+            ),
+          // Icon-only: kartu ini sempit (grid cart/wishlist), nama brand
+          // penuh tidak muat tanpa overflow.
+          if (productHasBrandExclusiveBadge(
+            isBrandExclusive: product.voucherPreview?.isBrandExclusive,
+            brand: product.brand,
+          ))
+            Positioned(
+              top: 6,
+              left: 6,
+              child: BrandExclusiveBadge(brand: product.brand, full: false),
             ),
         ],
       ),
@@ -400,7 +412,8 @@ class _CartButtonState extends State<_CartButton> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: widget.enabled ? const Color(0xFFBFD5FF) : cs.outlineVariant,
+              color:
+                  widget.enabled ? const Color(0xFFBFD5FF) : cs.outlineVariant,
               width: 1.2,
             ),
           ),
