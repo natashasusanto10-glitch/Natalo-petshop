@@ -23,6 +23,7 @@ export type ProductVoucherPreview = {
   discountScope: "PRODUCT" | "SHIPPING";
   targetUser: "ALL_MEMBERS" | "NEW_MEMBER";
   loginRequired: true;
+  isBrandExclusive: boolean;
 };
 
 type ProductVoucherProductInput = {
@@ -62,6 +63,7 @@ export type ProductVoucherItem = {
   usedByCurrentUser: false;
   isActive: true;
   isExpired: false;
+  isBrandExclusive: boolean;
 };
 
 function formatRupiahShort(n: number) {
@@ -221,6 +223,7 @@ export async function loadVisibleProductVouchers(
       usedByCurrentUser: false,
       isActive: true,
       isExpired: false,
+      isBrandExclusive: voucher.eligibleBrandIds.length > 0,
     }));
 }
 
@@ -403,6 +406,7 @@ function buildProductVoucherPreview(
     discountScope: voucher.discountScope,
     targetUser: voucher.targetUser,
     loginRequired: true,
+    isBrandExclusive: voucher.eligibleBrandIds.length > 0,
   };
 }
 
