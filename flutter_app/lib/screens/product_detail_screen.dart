@@ -25,6 +25,7 @@ import 'member_post_detail_screen.dart';
 import '../utils/fly_to_cart.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../utils/voucher_promo.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/app_product_image.dart';
@@ -48,6 +49,10 @@ const _brandExclusiveAmber = Color(0xFFF7A100);
 const _brandExclusiveSoftBg = Color(0xFFFEF0DC);
 const _brandExclusiveSoftBorder = Color(0xFFFCD9A0);
 const _brandExclusiveDark = Color(0xFFB85C00);
+const _loyaltyPurple = Color(0xFF7C3AED);
+const _loyaltyDark = Color(0xFF6D28D9);
+const _loyaltySoftBg = Color(0xFFF5F1FE);
+const _loyaltySoftBorder = Color(0xFFE0D4FB);
 
 class ProductDetailScreen extends StatefulWidget {
   final Product product;
@@ -1279,27 +1284,30 @@ class _VoucherChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shipping = voucher.isShippingVoucher;
+    final loyalty = voucher.isLoyaltyVoucher;
     final brandExclusive = voucher.isBrandExclusive;
     final tone = shipping
         ? _successGreen
-        : brandExclusive
-            ? _brandExclusiveDark
-            : _discountRed;
+        : loyalty
+            ? _loyaltyDark
+            : brandExclusive
+                ? _brandExclusiveDark
+                : _discountRed;
     final icon = shipping
         ? Icons.local_shipping_rounded
+        : loyalty
+            ? Icons.loyalty_rounded
+            : brandExclusive
+                ? Icons.workspace_premium_rounded
+                : Icons.confirmation_number_rounded;
+    final fill = loyalty || brandExclusive || (hero && !shipping);
+    final bg = loyalty
+        ? _loyaltyPurple
         : brandExclusive
-            ? Icons.workspace_premium_rounded
-            : Icons.confirmation_number_rounded;
-    // Hero non-ongkir → fill solid + teks/ikon putih. Selain itu soft (bg
-    // pucat + teks tone). Voucher ongkir selalu hijau soft. Brand-exclusive
-    // selalu fill solid oranye (senada saturasi dgn merah hero, bukan
-    // muncul cuma saat hero) supaya langsung kebeda dari voucher biasa.
-    final fill = brandExclusive || (hero && !shipping);
-    final bg = brandExclusive
-        ? _brandExclusiveAmber
-        : fill
-            ? _discountRed
-            : (shipping ? const Color(0xFFEFFAF4) : _softDiscountBg);
+            ? _brandExclusiveAmber
+            : fill
+                ? _discountRed
+                : (shipping ? const Color(0xFFEFFAF4) : _softDiscountBg);
     final fg = fill ? Colors.white : tone;
     return Container(
       height: 30,
@@ -1322,7 +1330,7 @@ class _VoucherChip extends StatelessWidget {
           Icon(icon, size: 14, color: fg),
           const SizedBox(width: 5),
           Text(
-            _voucherChipText(voucher),
+            voucherChipText(voucher),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
@@ -1349,17 +1357,16 @@ class _PromoVoucherSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sorted = [...vouchers]
+      ..sort((a, b) => _voucherSortRank(a).compareTo(_voucherSortRank(b)));
     final shippingVouchers =
-        vouchers.where((v) => v.isShippingVoucher).toList();
-    final discountVouchers =
-        vouchers.where((v) => !v.isShippingVoucher).toList();
+        sorted.where((v) => v.isShippingVoucher).toList();
+    final estimate = computePromoEstimate(product.finalPrice, sorted);
     final discountProduct = product.price - product.finalPrice;
-    final bestVoucherDiscount = discountVouchers
-        .map((voucher) => _voucherDiscountEstimate(product, voucher))
-        .fold<double>(0, (best, value) => value > best ? value : best);
-    final showEstimate = discountProduct > 0 || bestVoucherDiscount > 0;
-    final estimatedPrice =
-        (product.finalPrice - bestVoucherDiscount).clamp(0, double.infinity);
+    final showEstimate =
+        discountProduct > 0 || estimate.totalVoucherDiscount > 0;
+    final estimatedPrice = (product.finalPrice - estimate.totalVoucherDiscount)
+        .clamp(0, double.infinity);
 
     final cs = Theme.of(context).colorScheme;
     // Inset home-indicator diterapkan sebagai padding bawah KONTEN, bukan
@@ -1409,7 +1416,8 @@ class _PromoVoucherSheet extends StatelessWidget {
                 _PromoEstimateCard(
                   priceBeforePromo: product.price,
                   productDiscount: discountProduct,
-                  voucherDiscount: bestVoucherDiscount,
+                  productVoucherDiscount: estimate.productVoucherDiscount,
+                  loyaltyVoucherDiscount: estimate.loyaltyVoucherDiscount,
                   estimatedPrice: estimatedPrice.toDouble(),
                 ),
               ],
@@ -1434,7 +1442,7 @@ class _PromoVoucherSheet extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              for (final voucher in vouchers) ...[
+              for (final voucher in sorted) ...[
                 _VoucherSheetCard(voucher: voucher),
                 const SizedBox(height: 10),
               ],
@@ -1459,13 +1467,15 @@ class _PromoVoucherSheet extends StatelessWidget {
 class _PromoEstimateCard extends StatelessWidget {
   final double priceBeforePromo;
   final double productDiscount;
-  final double voucherDiscount;
+  final double productVoucherDiscount;
+  final double loyaltyVoucherDiscount;
   final double estimatedPrice;
 
   const _PromoEstimateCard({
     required this.priceBeforePromo,
     required this.productDiscount,
-    required this.voucherDiscount,
+    required this.productVoucherDiscount,
+    required this.loyaltyVoucherDiscount,
     required this.estimatedPrice,
   });
 
@@ -1491,11 +1501,17 @@ class _PromoEstimateCard extends StatelessWidget {
               value: '-${formatRupiah(productDiscount)}',
               valueColor: _discountRed,
             ),
-          if (voucherDiscount > 0)
+          if (productVoucherDiscount > 0)
             _PromoEstimateRow(
-              label: 'Diskon voucher',
-              value: '-${formatRupiah(voucherDiscount)}',
+              label: 'Diskon voucher produk',
+              value: '-${formatRupiah(productVoucherDiscount)}',
               valueColor: _discountRed,
+            ),
+          if (loyaltyVoucherDiscount > 0)
+            _PromoEstimateRow(
+              label: 'Diskon poin loyalty',
+              value: '-${formatRupiah(loyaltyVoucherDiscount)}',
+              valueColor: _loyaltyPurple,
             ),
           const Divider(height: 24, color: Color(0xFFE5E7EB)),
           Row(
@@ -1576,23 +1592,30 @@ class _VoucherSheetCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shipping = voucher.isShippingVoucher;
+    final loyalty = voucher.isLoyaltyVoucher;
     final brandExclusive = voucher.isBrandExclusive;
     final tone = shipping
         ? _successGreen
-        : brandExclusive
-            ? _brandExclusiveDark
-            : _discountRed;
+        : loyalty
+            ? _loyaltyDark
+            : brandExclusive
+                ? _brandExclusiveDark
+                : _discountRed;
     final bg = shipping
         ? const Color(0xFFF0FDF4)
-        : brandExclusive
-            ? _brandExclusiveSoftBg
-            : _softDiscountBg;
+        : loyalty
+            ? _loyaltySoftBg
+            : brandExclusive
+                ? _brandExclusiveSoftBg
+                : _softDiscountBg;
     final border = shipping
         ? const Color(0xFFBBF7D0)
-        : brandExclusive
-            ? _brandExclusiveSoftBorder
-            : const Color(0xFFFFC9D0);
-    final subtitle = _voucherSheetSubtitle(voucher);
+        : loyalty
+            ? _loyaltySoftBorder
+            : brandExclusive
+                ? _brandExclusiveSoftBorder
+                : const Color(0xFFFFC9D0);
+    final subtitle = voucherSheetSubtitle(voucher);
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -1607,7 +1630,25 @@ class _VoucherSheetCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (brandExclusive) ...[
+                if (loyalty) ...[
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.loyalty_rounded, size: 13, color: tone),
+                      const SizedBox(width: 5),
+                      Text(
+                        'POIN LOYALTY',
+                        style: TextStyle(
+                          color: tone,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                ] else if (brandExclusive) ...[
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1628,7 +1669,7 @@ class _VoucherSheetCard extends StatelessWidget {
                   const SizedBox(height: 6),
                 ],
                 Text(
-                  _voucherDiscountText(voucher),
+                  voucherDiscountText(voucher),
                   style: TextStyle(
                     color: tone,
                     fontSize: 18,
@@ -1656,21 +1697,35 @@ class _VoucherSheetCard extends StatelessWidget {
                   color: tone,
                   size: 24,
                 )
-              : brandExclusive
+              : loyalty
                   ? Container(
                       width: 34,
                       height: 34,
                       decoration: BoxDecoration(
-                        color: _brandExclusiveAmber,
+                        color: _loyaltyPurple,
                         borderRadius: BorderRadius.circular(11),
                       ),
                       child: const Icon(
-                        Icons.workspace_premium_rounded,
+                        Icons.loyalty_rounded,
                         color: Colors.white,
                         size: 19,
                       ),
                     )
-                  : const _DiscountVoucherIcon(),
+                  : brandExclusive
+                      ? Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: _brandExclusiveAmber,
+                            borderRadius: BorderRadius.circular(11),
+                          ),
+                          child: const Icon(
+                            Icons.workspace_premium_rounded,
+                            color: Colors.white,
+                            size: 19,
+                          ),
+                        )
+                      : const _DiscountVoucherIcon(),
         ],
       ),
     );
@@ -1732,67 +1787,11 @@ class _DiscountVoucherIcon extends StatelessWidget {
   }
 }
 
-/// Teks compact untuk rail chip -- brand-exclusive tampil sebagai "Khusus
-/// {brand}" (menggantikan nominal diskon di ruang sempit chip).
-String _voucherChipText(ProductVoucherPreview voucher) {
-  if (voucher.isShippingVoucher) return 'Gratis Ongkir';
-  if (voucher.isBrandExclusive) return 'Khusus ${voucher.brandName}';
-  return _voucherDiscountText(voucher);
-}
-
-/// Teks nominal diskon murni ("Diskon 15%" / "Hemat Rp20rb") -- dipakai
-/// sebagai judul besar di sheet card. TIDAK di-override oleh brand-exclusive
-/// supaya tidak duplikat dengan badge "KHUSUS BRAND" di atasnya; nama brand
-/// tetap muncul lewat badge + subtitle "Berlaku untuk {brand}".
-String _voucherDiscountText(ProductVoucherPreview voucher) {
-  if (voucher.isShippingVoucher) return 'Gratis Ongkir';
-  final amount = voucher.discountAmount ?? voucher.savingAmount;
-  if (amount != null && amount > 0) {
-    return 'Hemat ${formatRupiahCompact(amount)}';
-  }
-  final percent = voucher.discountPercent;
-  if (percent != null && percent > 0) {
-    final cap =
-        voucher.maxDiscountAmount != null && voucher.maxDiscountAmount! > 0
-            ? ' s.d. ${formatRupiahCompact(voucher.maxDiscountAmount!)}'
-            : '';
-    return 'Diskon ${percent.toStringAsFixed(0)}%$cap';
-  }
-  final label = voucher.badgeLabel.trim();
-  return label.isEmpty ? 'Voucher hemat' : label;
-}
-
-String _voucherSheetSubtitle(ProductVoucherPreview voucher) {
-  if (voucher.isShippingVoucher) {
-    return 'Bisa digunakan saat checkout';
-  }
-  final minimum = voucher.minimumOrder;
-  final brandClause =
-      voucher.isBrandExclusive ? 'Berlaku untuk ${voucher.brandName}' : null;
-  if (brandClause != null && minimum > 0) {
-    return '$brandClause • Min. belanja ${formatRupiahCompact(minimum)}';
-  }
-  if (brandClause != null) return brandClause;
-  if (minimum > 0) {
-    return 'Potongan belanja saat checkout • Min. belanja ${formatRupiahCompact(minimum)}';
-  }
-  return 'Potongan belanja saat checkout';
-}
-
-double _voucherDiscountEstimate(
-  Product product,
-  ProductVoucherPreview voucher,
-) {
-  if (voucher.isShippingVoucher) return 0;
-  final direct = voucher.savingAmount ?? voucher.discountAmount;
-  if (direct != null && direct > 0) return direct;
-
-  final percent = voucher.discountPercent;
-  if (percent == null || percent <= 0) return 0;
-  final raw = product.finalPrice * (percent / 100);
-  final cap = voucher.maxDiscountAmount;
-  if (cap != null && cap > 0) return raw > cap ? cap : raw;
-  return raw;
+int _voucherSortRank(ProductVoucherPreview v) {
+  if (v.isShippingVoucher) return 2;
+  if (v.isLoyaltyVoucher) return 3;
+  if (v.isBrandExclusive) return 0;
+  return 1;
 }
 
 class _SectionShell extends StatelessWidget {
