@@ -248,10 +248,15 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
   Widget build(BuildContext context) {
     final visible = _overscroll > 0 || _isRefreshing;
     final progress = (_overscroll / widget.triggerOffset).clamp(0.0, 1.0);
+    // Pakai rampProgress yang sama dengan computePawVisual (selesai di
+    // pawRampFraction, bukan progress 1.0 penuh) — supaya geser konten
+    // (translateChild) dan kurva paw finish di titik tarikan yang sama,
+    // tidak "kurang sinkron" seperti sebelumnya.
+    final rampProgress = (progress / pawRampFraction).clamp(0.0, 1.0);
     final childOffset = widget.translateChild
         ? (_isRefreshing
             ? widget.maxChildOffset
-            : widget.maxChildOffset * Curves.easeOutCubic.transform(progress))
+            : widget.maxChildOffset * Curves.easeOutCubic.transform(rampProgress))
         : 0.0;
 
     return Stack(
@@ -368,6 +373,12 @@ class _NataloPawScrollBehavior extends ScrollBehavior {
   }
 }
 
+/// Fraksi `progress` di mana kurva paw (scale/opacity) sudah full —
+/// dipakai juga oleh [translateChild] (lihat `_NataloPawRefreshIndicatorState.
+/// build`) supaya kedua sinyal visual (paw + geser konten) selesai
+/// bersamaan, bukan di titik progress yang beda-beda.
+const double pawRampFraction = 0.65;
+
 /// Scale + opacity paw pada satu titik tarikan. Immutable, murni hasil
 /// [computePawVisual] — tidak menyentuh state widget.
 class PawVisual {
@@ -397,7 +408,7 @@ PawVisual computePawVisual({
   if (isRefreshing) {
     return PawVisual(1.0, fadeValue.clamp(0.0, 1.0));
   }
-  final rampProgress = (progress / 0.65).clamp(0.0, 1.0);
+  final rampProgress = (progress / pawRampFraction).clamp(0.0, 1.0);
   final scale = 0.62 + (rampProgress * 0.38);
   final opacity = (0.5 + (rampProgress * 0.5)).clamp(0.0, 1.0);
   return PawVisual(scale, opacity);

@@ -42,19 +42,20 @@ const _navLightBorder = Color(0x1AFFFFFF); // white 10% alpha (highlight tepi)
 // terbaca sebagai "pill abu", bukan kaca. 22% membuat video benar-benar
 // tembus jernih (transparan seperti kaca sungguhan), dipasangkan dengan
 // blur lebih rendah (14, lihat _glassFilter) + saturasi lebih tinggi
-// (1.35) supaya warna video pop melewati kaca. Legibilitas ikon putih
-// dijaga shadow halus per-ikon (lihat _navDarkIconShadow) untuk frame
+// (1.35) supaya warna video pop melewati kaca. Legibilitas ikon + label
+// putih dijaga shadow halus (lihat _navDarkGlyphShadow) untuk frame
 // terang, bukan lagi lewat tint tebal.
 const _navDarkGlass = Color(0x380A0A0A); // black ~22% alpha
 const _navDarkTopBorder = Color(0x33FFFFFF); // white 20% alpha
 const _navDarkActive = Color(0xFFFFFFFF);
 const _navDarkInactive = Color(0xFF9CA3AF);
 
-// Shadow halus di belakang ikon nav dark — pengganti tint tebal untuk
-// menjaga ikon putih tetap kebaca di atas frame video terang, tanpa
-// mengorbankan transparansi kaca. Blur lebar + alpha rendah = "halo"
-// gelap lembut, bukan garis tegas.
-const List<Shadow> _navDarkIconShadow = [
+// Shadow halus di belakang ikon + label nav dark — pengganti tint tebal
+// untuk menjaga ikon & teks putih tetap kebaca di atas frame video terang,
+// tanpa mengorbankan transparansi kaca. Dipakai di keduanya supaya tidak
+// ada elemen yang "ketinggalan" proteksi (icon aman, label tidak).
+// Blur lebar + alpha rendah = "halo" gelap lembut, bukan garis tegas.
+const List<Shadow> _navDarkGlyphShadow = [
   Shadow(color: Color(0x66000000), blurRadius: 6),
 ];
 
@@ -257,7 +258,7 @@ class BottomNavBar extends StatelessWidget {
                   collapsed: collapsed,
                   activeColor: activeColor,
                   inactiveColor: inactiveColor,
-                  iconShadows: dark ? _navDarkIconShadow : null,
+                  glyphShadows: dark ? _navDarkGlyphShadow : null,
                   onTap: () => _onTap(context, i),
                 ),
             ],
@@ -321,7 +322,7 @@ class _BottomNavItem extends StatelessWidget {
   final bool collapsed;
   final Color activeColor;
   final Color inactiveColor;
-  final List<Shadow>? iconShadows;
+  final List<Shadow>? glyphShadows;
   final VoidCallback onTap;
 
   const _BottomNavItem({
@@ -330,7 +331,7 @@ class _BottomNavItem extends StatelessWidget {
     required this.collapsed,
     required this.activeColor,
     required this.inactiveColor,
-    required this.iconShadows,
+    required this.glyphShadows,
     required this.onTap,
   });
 
@@ -358,7 +359,7 @@ class _BottomNavItem extends StatelessWidget {
               selected ? data.selectedIcon : data.icon,
               color: color,
               size: 25,
-              shadows: iconShadows,
+              shadows: glyphShadows,
             ),
           );
 
@@ -397,6 +398,12 @@ class _BottomNavItem extends StatelessWidget {
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                               height: 1,
+                              // Sama seperti ikon di sampingnya — label butuh
+                              // proteksi yang sama setelah tint dark diturunkan
+                              // (lihat _navDarkGlyphShadow), supaya tidak jadi
+                              // satu-satunya elemen yang kurang kebaca di frame
+                              // video terang.
+                              shadows: glyphShadows,
                             ),
                           ),
                         )
