@@ -1736,7 +1736,13 @@ class _DiscountVoucherIcon extends StatelessWidget {
 /// {brand}" (menggantikan nominal diskon di ruang sempit chip).
 String _voucherChipText(ProductVoucherPreview voucher) {
   if (voucher.isShippingVoucher) return 'Gratis Ongkir';
-  if (voucher.isBrandExclusive) return 'Khusus ${voucher.brandName}';
+  // Butuh brandName untuk teks — isBrandExclusive bisa true tanpa brandName
+  // (mis. produk tanpa brand yang match voucher via kategori). Kalau nama
+  // brand tidak ada, jatuh ke teks diskon; styling chip tetap emas.
+  final brand = voucher.brandName?.trim();
+  if (voucher.isBrandExclusive && brand != null && brand.isNotEmpty) {
+    return 'Khusus $brand';
+  }
   return _voucherDiscountText(voucher);
 }
 
@@ -1767,8 +1773,11 @@ String _voucherSheetSubtitle(ProductVoucherPreview voucher) {
     return 'Bisa digunakan saat checkout';
   }
   final minimum = voucher.minimumOrder;
+  final brand = voucher.brandName?.trim();
   final brandClause =
-      voucher.isBrandExclusive ? 'Berlaku untuk ${voucher.brandName}' : null;
+      (voucher.isBrandExclusive && brand != null && brand.isNotEmpty)
+          ? 'Berlaku untuk $brand'
+          : null;
   if (brandClause != null && minimum > 0) {
     return '$brandClause • Min. belanja ${formatRupiahCompact(minimum)}';
   }
