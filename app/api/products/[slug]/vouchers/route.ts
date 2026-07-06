@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getProductBySlug } from "@/lib/products";
 import {
-  loadPublicProductVoucherPreview,
-  loadPublicShippingVoucherPreview,
+  loadPublicProductVoucherPreviews,
   loadVisibleProductVouchers,
+  dedupeVouchersById,
 } from "@/lib/product-vouchers";
 import { prisma } from "@/lib/prisma";
 
@@ -67,11 +67,8 @@ export async function GET(
     brandName: voucher.isBrandExclusive ? brandName : null,
   });
 
-  const [publicVoucher, shippingVoucher, memberVouchers] = await Promise.all([
-    loadPublicProductVoucherPreview(previewInput, {
-      userId: session?.sub ?? null,
-    }),
-    loadPublicShippingVoucherPreview(previewInput, {
+  const [publicPreviews, memberVouchers] = await Promise.all([
+    loadPublicProductVoucherPreviews(previewInput, {
       userId: session?.sub ?? null,
     }),
     // previewInput diteruskan supaya voucher scoped (brand/kategori/produk)
@@ -82,18 +79,12 @@ export async function GET(
       : Promise.resolve([]),
   ]);
 
-  const vouchers = [
-    ...(publicVoucher ? [attachBrandName(publicVoucher)] : []),
-    ...(shippingVoucher && shippingVoucher.id !== publicVoucher?.id
-      ? [attachBrandName(shippingVoucher)]
-      : []),
-    ...memberVouchers
-      .filter(
-        (voucher) =>
-          voucher.id !== publicVoucher?.id && voucher.id !== shippingVoucher?.id
-      )
-      .map(attachBrandName),
-  ];
+  const deduped = dedupeVouchersById<{ id: string; isBrandExclusive?: boolean }>([
+    publicPreviews.product,
+    publicPreviews.shipping,
+    memberVouchers,
+  ]);
+  const vouchers = deduped.map(attachBrandName);
 
   return NextResponse.json({ vouchers });
 }

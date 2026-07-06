@@ -189,6 +189,8 @@ class ProductVoucherPreview {
   final String targetUser;
   final bool loginRequired;
   final String? brandName;
+  final String? kind;
+  final int? loyaltyPoints;
 
   /// True kalau voucher ini scoped ke brand tertentu.
   ///
@@ -218,6 +220,8 @@ class ProductVoucherPreview {
     this.targetUser = 'ALL_MEMBERS',
     required this.loginRequired,
     this.brandName,
+    this.kind,
+    this.loyaltyPoints,
     this.isBrandExclusive = false,
   });
 
@@ -235,6 +239,12 @@ class ProductVoucherPreview {
     return normalizedType == 'PUBLIC_FREE_SHIPPING' ||
         normalizedType == 'FREE_SHIPPING' ||
         normalizedScope == 'SHIPPING';
+  }
+
+  bool get isLoyaltyVoucher {
+    final k = (kind ?? '').trim().toUpperCase();
+    final t = type.trim().toUpperCase();
+    return k == 'LOYALTY_CLAIM' || t == 'LOYALTY_POINT_CLAIM';
   }
 
   factory ProductVoucherPreview.fromJson(Map<String, dynamic> json) {
@@ -302,6 +312,10 @@ class ProductVoucherPreview {
       ),
       loginRequired: json['loginRequired'] != false,
       brandName: _stringOrNull(json['brandName']),
+      kind: _stringOrNull(json['kind']),
+      loyaltyPoints:
+          _nullableDouble(json['loyaltyPoints'] ?? json['loyalty_points'])
+              ?.toInt(),
       // Flag eksplisit dari backend (listing) ATAU turunan dari brandName
       // (detail produk yang tidak selalu kirim flag). Salah satu cukup.
       isBrandExclusive: json['isBrandExclusive'] == true ||
@@ -326,6 +340,8 @@ class ProductVoucherPreview {
         'discountScope': discountScope,
         'targetUser': targetUser,
         'loginRequired': loginRequired,
+        'kind': kind,
+        'loyaltyPoints': loyaltyPoints,
       };
 }
 
