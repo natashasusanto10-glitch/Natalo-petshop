@@ -9,6 +9,7 @@ import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_product_image.dart';
+import '../widgets/brand_exclusive_badge.dart';
 
 /// Fullscreen search page yang dibuka dari search bar Beranda.
 ///
@@ -418,12 +419,29 @@ class _ViewedCard extends StatelessWidget {
           children: [
             AspectRatio(
               aspectRatio: 1,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: AppProductImage(
-                  imageUrl: product.imageUrl,
-                  fit: BoxFit.cover,
-                ),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: AppProductImage(
+                        imageUrl: product.imageUrl,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                  // Icon-only: kartu 138px, nama brand penuh tidak muat.
+                  if (productHasBrandExclusiveBadge(
+                    isBrandExclusive: product.voucherPreview?.isBrandExclusive,
+                    brand: product.brand,
+                  ))
+                    Positioned(
+                      top: 5,
+                      left: 5,
+                      child: BrandExclusiveBadge(
+                          brand: product.brand, full: false),
+                    ),
+                ],
               ),
             ),
             const SizedBox(height: 8),

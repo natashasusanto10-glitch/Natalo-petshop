@@ -10,6 +10,7 @@ import '../utils/haptics.dart';
 import 'app_product_image.dart';
 import 'app_toast.dart';
 import 'app_ui.dart';
+import 'brand_exclusive_badge.dart';
 import 'favorite_button.dart';
 import 'product_peek_dialog.dart';
 
@@ -179,6 +180,18 @@ class ProductCard extends StatelessWidget {
                             ),
                           ),
                         ),
+                      )
+                    // Member pill pakai slot kiri-atas yang sama — brand
+                    // badge cuma tampil kalau slot itu kosong.
+                    else if (productHasBrandExclusiveBadge(
+                      isBrandExclusive:
+                          product.voucherPreview?.isBrandExclusive,
+                      brand: product.brand,
+                    ))
+                      Positioned(
+                        left: AppSpacing.sm,
+                        top: AppSpacing.sm,
+                        child: BrandExclusiveBadge(brand: product.brand),
                       ),
                     if (discountPercent != null)
                       Positioned(

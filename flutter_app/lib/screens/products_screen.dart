@@ -21,6 +21,7 @@ import '../widgets/app_cart_button.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/skeleton_product_card.dart';
+import '../widgets/brand_exclusive_badge.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 
@@ -2085,12 +2086,14 @@ class _ProductsPageProductCard extends StatelessWidget {
                   // Badge brand-exclusive: hanya kalau voucher preview produk
                   // ini scoped ke brand. Nama brand diambil dari product.brand
                   // (listing tidak kirim brandName voucher).
-                  if (product.voucherPreview?.isBrandExclusive == true &&
-                      product.brand.trim().isNotEmpty)
+                  if (productHasBrandExclusiveBadge(
+                    isBrandExclusive: product.voucherPreview?.isBrandExclusive,
+                    brand: product.brand,
+                  ))
                     Positioned(
                       left: 8,
                       top: 8,
-                      child: _ProductBrandExclusiveBadge(brand: product.brand),
+                      child: BrandExclusiveBadge(brand: product.brand),
                     ),
                 ],
               ),
@@ -2457,55 +2460,6 @@ class _ProductDiscountBadge extends StatelessWidget {
           fontWeight: FontWeight.w900,
           height: 1,
         ),
-      ),
-    );
-  }
-}
-
-/// Badge kecil "Khusus {brand}" di pojok kiri-atas gambar kartu — penanda
-/// produk yang punya voucher brand-exclusive aktif. Emas solid #F7A100
-/// senada dengan styling voucher brand di detail/cart/checkout.
-class _ProductBrandExclusiveBadge extends StatelessWidget {
-  final String brand;
-
-  const _ProductBrandExclusiveBadge({required this.brand});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 130),
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7A100),
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x22000000),
-            blurRadius: 8,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.workspace_premium_rounded,
-              size: 12, color: Colors.white),
-          const SizedBox(width: 3),
-          Flexible(
-            child: Text(
-              'Khusus $brand',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                height: 1,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
