@@ -2,12 +2,18 @@ import 'package:flutter/material.dart';
 
 /// Badge "voucher brand-exclusive aktif" — dipakai di semua kartu produk
 /// (Beranda, Katalog, Wishlist, rekomendasi Cart, hasil pencarian, Feed)
-/// supaya konsisten satu sumber styling. Emas solid #F7A100, senada dengan
-/// styling voucher brand di detail produk/cart/checkout.
+/// supaya konsisten satu sumber styling. Chip amber lembut (bg #FEF0DC,
+/// border #FCD9A0, teks/ikon #B85C00) — senada dengan voucher brand "soft"
+/// di detail produk/cart/checkout, dan sengaja tidak menutupi foto seperti
+/// versi emas solid lama.
 ///
-/// [full] = label "Khusus {brand}" — untuk kartu lebar (>=150px).
+/// Label sekarang generik "Brand Eksklusif" — tidak mengulang nama brand
+/// supaya tidak redundan saat user sudah search/filter brand tsb. [brand]
+/// tetap diterima demi paritas API dengan call-site & eligibility gate.
+///
+/// [full]=true  = chip label "Brand Eksklusif" — untuk kartu lebar (>=150px).
 /// [full]=false = lingkaran icon-only — untuk kartu sempit (mis. Recently
-/// Viewed ~138px) supaya nama brand tidak overflow/terpotong.
+/// Viewed ~138px).
 class BrandExclusiveBadge extends StatelessWidget {
   final String brand;
   final bool full;
@@ -18,7 +24,11 @@ class BrandExclusiveBadge extends StatelessWidget {
     this.full = true,
   });
 
-  static const _amber = Color(0xFFF7A100);
+  // Palet brand-exclusive "soft" — sinkron dgn _brandExclusiveSoft* di
+  // product_detail_screen / cart_screen.
+  static const _softBg = Color(0xFFFEF0DC);
+  static const _softBorder = Color(0xFFFCD9A0);
+  static const _dark = Color(0xFFB85C00);
 
   @override
   Widget build(BuildContext context) {
@@ -26,14 +36,15 @@ class BrandExclusiveBadge extends StatelessWidget {
       return Container(
         width: 20,
         height: 20,
-        decoration: const BoxDecoration(
-          color: _amber,
+        decoration: BoxDecoration(
+          color: _softBg,
           shape: BoxShape.circle,
+          border: Border.all(color: _softBorder),
         ),
         child: const Icon(
           Icons.workspace_premium_rounded,
           size: 12,
-          color: Colors.white,
+          color: _dark,
         ),
       );
     }
@@ -42,31 +53,24 @@ class BrandExclusiveBadge extends StatelessWidget {
       constraints: const BoxConstraints(maxWidth: 130),
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(
-        color: _amber,
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x22000000),
-            blurRadius: 8,
-            offset: Offset(0, 3),
-          ),
-        ],
+        color: _softBg,
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: _softBorder),
       ),
-      child: Row(
+      child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.workspace_premium_rounded,
-              size: 12, color: Colors.white),
-          const SizedBox(width: 3),
+          Icon(Icons.workspace_premium_rounded, size: 12, color: _dark),
+          SizedBox(width: 3),
           Flexible(
             child: Text(
-              'Khusus $brand',
+              'Brand Eksklusif',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: _dark,
                 fontSize: 10,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 height: 1,
               ),
             ),

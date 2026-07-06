@@ -37,7 +37,9 @@ const _loyaltyPurpleSoft = Color(0xFFF3E8FF);
 const _loyaltyPurpleBorder = Color(0xFFD9C4F5);
 const _shippingGreenSoft = Color(0xFFECFDF3);
 const _shippingGreenBorder = Color(0xFFA6F4C5);
-const _brandExclusiveAmber = Color(0xFFF7A100);
+// Aksen brand-exclusive: amber gelap #B85C00 (kontras di atas bg soft
+// #FEF0DC) — konsisten dgn badge grid & chip detail "Brand Eksklusif".
+const _brandExclusiveAmber = Color(0xFFB85C00);
 const _brandExclusiveAmberSoft = Color(0xFFFEF0DC);
 const _brandExclusiveAmberBorder = Color(0xFFFCD9A0);
 const _voucherBarHeight = 50.0;
@@ -2830,7 +2832,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                         // pink. Differentiate icon supaya user paham type
                         // voucher langsung dari visual.
                         badge: voucher.isBrandExclusive
-                            ? 'Khusus ${voucher.brandName}'
+                            ? 'Brand Eksklusif'
                             : voucher.isLoyaltyClaim
                                 ? 'Reward Poin'
                                 : 'Diskon',
@@ -2915,7 +2917,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                           subtitle: voucher.disabledReason ??
                               'Voucher belum memenuhi syarat.',
                           badge: voucher.isBrandExclusive
-                              ? 'Khusus ${voucher.brandName}'
+                              ? 'Brand Eksklusif'
                               : voucher.isLoyaltyClaim
                                   ? 'Reward Poin'
                                   : 'Diskon',

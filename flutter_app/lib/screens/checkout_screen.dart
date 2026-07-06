@@ -4398,7 +4398,7 @@ String _voucherTypeLabel(MemberVoucher voucher) {
     return 'Voucher Gratis Ongkir';
   }
   if (voucher.isBrandExclusive) {
-    return 'Khusus ${voucher.brandName}';
+    return 'Voucher Brand Eksklusif';
   }
   if (voucher.isLoyaltyClaim) {
     return 'Voucher Reward Poin';
@@ -4446,7 +4446,7 @@ Color _voucherAccentColor(MemberVoucher voucher) {
   if (voucher.isFreeShipping || voucher.isShippingDiscount) {
     return const Color(0xFF12A66A);
   }
-  if (voucher.isBrandExclusive) return const Color(0xFFF7A100);
+  if (voucher.isBrandExclusive) return const Color(0xFFB85C00);
   if (voucher.isLoyaltyClaim) return const Color(0xFF7C3AED);
   return const Color(0xFFE91E63);
 }

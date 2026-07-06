@@ -415,11 +415,11 @@ class _VoucherCard extends StatelessWidget {
                                 color: const Color(0xFFFCD9A0),
                               ),
                             ),
-                            child: Text(
-                              'KHUSUS ${voucher.brandName!.toUpperCase()}',
+                            child: const Text(
+                              'BRAND EKSKLUSIF',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: Color(0xFFB85C00),
                                 fontSize: 10,
                                 fontWeight: FontWeight.w900,

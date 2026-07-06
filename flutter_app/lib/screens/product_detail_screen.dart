@@ -1292,11 +1292,12 @@ class _VoucherChip extends StatelessWidget {
             : Icons.confirmation_number_rounded;
     // Hero non-ongkir → fill solid + teks/ikon putih. Selain itu soft (bg
     // pucat + teks tone). Voucher ongkir selalu hijau soft. Brand-exclusive
-    // selalu fill solid oranye (senada saturasi dgn merah hero, bukan
-    // muncul cuma saat hero) supaya langsung kebeda dari voucher biasa.
-    final fill = brandExclusive || (hero && !shipping);
+    // kini soft amber (bg #FEF0DC + border #FCD9A0 + teks #B85C00) — konsisten
+    // dgn badge grid "Brand Eksklusif", tak lagi fill solid emas. Hero-fill
+    // hanya untuk voucher diskon.
+    final fill = !brandExclusive && hero && !shipping;
     final bg = brandExclusive
-        ? _brandExclusiveAmber
+        ? _brandExclusiveSoftBg
         : fill
             ? _discountRed
             : (shipping ? const Color(0xFFEFFAF4) : _softDiscountBg);
@@ -1311,9 +1312,11 @@ class _VoucherChip extends StatelessWidget {
         border: fill
             ? null
             : Border.all(
-                color: shipping
-                    ? const Color(0xFFC7F0D8)
-                    : const Color(0xFFFFC9D0),
+                color: brandExclusive
+                    ? _brandExclusiveSoftBorder
+                    : shipping
+                        ? const Color(0xFFC7F0D8)
+                        : const Color(0xFFFFC9D0),
               ),
       ),
       child: Row(
@@ -1615,7 +1618,7 @@ class _VoucherSheetCard extends StatelessWidget {
                           size: 13, color: tone),
                       const SizedBox(width: 5),
                       Text(
-                        'KHUSUS BRAND',
+                        'BRAND EKSKLUSIF',
                         style: TextStyle(
                           color: tone,
                           fontSize: 11,
@@ -1732,17 +1735,12 @@ class _DiscountVoucherIcon extends StatelessWidget {
   }
 }
 
-/// Teks compact untuk rail chip -- brand-exclusive tampil sebagai "Khusus
-/// {brand}" (menggantikan nominal diskon di ruang sempit chip).
+/// Teks compact untuk rail chip -- brand-exclusive tampil sebagai "Brand
+/// Eksklusif" (menggantikan nominal diskon di ruang sempit chip). Nama brand
+/// tetap muncul di sheet lewat subtitle "Berlaku untuk {brand}".
 String _voucherChipText(ProductVoucherPreview voucher) {
   if (voucher.isShippingVoucher) return 'Gratis Ongkir';
-  // Butuh brandName untuk teks — isBrandExclusive bisa true tanpa brandName
-  // (mis. produk tanpa brand yang match voucher via kategori). Kalau nama
-  // brand tidak ada, jatuh ke teks diskon; styling chip tetap emas.
-  final brand = voucher.brandName?.trim();
-  if (voucher.isBrandExclusive && brand != null && brand.isNotEmpty) {
-    return 'Khusus $brand';
-  }
+  if (voucher.isBrandExclusive) return 'Brand Eksklusif';
   return _voucherDiscountText(voucher);
 }
 
