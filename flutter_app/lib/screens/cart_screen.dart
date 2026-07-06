@@ -37,6 +37,9 @@ const _loyaltyPurpleSoft = Color(0xFFF3E8FF);
 const _loyaltyPurpleBorder = Color(0xFFD9C4F5);
 const _shippingGreenSoft = Color(0xFFECFDF3);
 const _shippingGreenBorder = Color(0xFFA6F4C5);
+const _brandExclusiveAmber = Color(0xFFF7A100);
+const _brandExclusiveAmberSoft = Color(0xFFFEF0DC);
+const _brandExclusiveAmberBorder = Color(0xFFFCD9A0);
 const _voucherBarHeight = 50.0;
 const _selectionRowHeight = 42.0;
 // Shared cart chrome auto-hide config — selection row atas + voucher bar
@@ -428,7 +431,10 @@ class _CartScreenState extends State<CartScreen> {
     if (subtotal != _lastVoucherSubtotal) {
       setState(() => _loadingVouchers = true);
       try {
-        final result = await memberService.fetchCartVouchers(subtotal);
+        final productIds =
+            _selectedItems.map((item) => item.productId).toSet().toList();
+        final result =
+            await memberService.fetchCartVouchers(subtotal, productIds);
         available = result.available;
         unavailable = result.unavailable;
       } catch (_) {
@@ -1366,8 +1372,7 @@ class _CartItemCard extends StatelessWidget {
               Checkbox(
                 value: outOfStock ? false : selected,
                 activeColor: _brandBlue,
-                onChanged:
-                    outOfStock ? null : (_) => onToggleSelected(),
+                onChanged: outOfStock ? null : (_) => onToggleSelected(),
                 visualDensity: VisualDensity.compact,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
@@ -1409,9 +1414,8 @@ class _CartItemCard extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: outOfStock
-                              ? cs.onSurfaceVariant
-                              : cs.onSurface,
+                          color:
+                              outOfStock ? cs.onSurfaceVariant : cs.onSurface,
                           fontSize: 14,
                           height: 1.3,
                           fontWeight: FontWeight.w800,
@@ -1520,7 +1524,8 @@ class _CartItemCard extends StatelessWidget {
                         else
                           _QtyStepper(
                             quantity: item.quantity,
-                            maxQty: reduced ? availableStock : item.effectiveStock,
+                            maxQty:
+                                reduced ? availableStock : item.effectiveStock,
                             onSetQuantity: (quantity) {
                               AppHaptics.tap();
                               cartStore.updateQuantity(item.key, quantity);
@@ -2818,25 +2823,38 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                       _CartVoucherCard(
                         title: voucher.title,
                         subtitle: voucher.description,
-                        // Loyalty voucher = "Reward Poin" badge + star purple
-                        // match styling checkout. Product discount = "Diskon"
-                        // tag pink. Differentiate icon supaya user paham
-                        // type voucher langsung dari visual.
-                        badge:
-                            voucher.isLoyaltyClaim ? 'Reward Poin' : 'Diskon',
+                        // Brand-exclusive selalu badge nama brand + oranye,
+                        // di atas prioritas loyalty/diskon biasa. Loyalty
+                        // voucher = "Reward Poin" badge + star purple match
+                        // styling checkout. Product discount = "Diskon" tag
+                        // pink. Differentiate icon supaya user paham type
+                        // voucher langsung dari visual.
+                        badge: voucher.isBrandExclusive
+                            ? 'Khusus ${voucher.brandName}'
+                            : voucher.isLoyaltyClaim
+                                ? 'Reward Poin'
+                                : 'Diskon',
                         trailing: formatRupiah(voucher.discount),
-                        icon: voucher.isLoyaltyClaim
-                            ? Icons.stars_rounded
-                            : Icons.local_offer_rounded,
-                        accent: voucher.isLoyaltyClaim
-                            ? _loyaltyPurple
-                            : _discountRed,
-                        background: voucher.isLoyaltyClaim
-                            ? _loyaltyPurpleSoft
-                            : _discountRedSoft,
-                        border: voucher.isLoyaltyClaim
-                            ? _loyaltyPurpleBorder
-                            : _discountRedBorder,
+                        icon: voucher.isBrandExclusive
+                            ? Icons.workspace_premium_rounded
+                            : voucher.isLoyaltyClaim
+                                ? Icons.stars_rounded
+                                : Icons.local_offer_rounded,
+                        accent: voucher.isBrandExclusive
+                            ? _brandExclusiveAmber
+                            : voucher.isLoyaltyClaim
+                                ? _loyaltyPurple
+                                : _discountRed,
+                        background: voucher.isBrandExclusive
+                            ? _brandExclusiveAmberSoft
+                            : voucher.isLoyaltyClaim
+                                ? _loyaltyPurpleSoft
+                                : _discountRedSoft,
+                        border: voucher.isBrandExclusive
+                            ? _brandExclusiveAmberBorder
+                            : voucher.isLoyaltyClaim
+                                ? _loyaltyPurpleBorder
+                                : _discountRedBorder,
                         selected: voucher.isLoyaltyClaim
                             ? _selectedLoyalty?.code == voucher.code
                             : _selectedProductDiscount?.code == voucher.code,
@@ -2896,17 +2914,24 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                           title: voucher.title,
                           subtitle: voucher.disabledReason ??
                               'Voucher belum memenuhi syarat.',
-                          badge:
-                              voucher.isLoyaltyClaim ? 'Reward Poin' : 'Diskon',
+                          badge: voucher.isBrandExclusive
+                              ? 'Khusus ${voucher.brandName}'
+                              : voucher.isLoyaltyClaim
+                                  ? 'Reward Poin'
+                                  : 'Diskon',
                           trailing: voucher.discount > 0
                               ? formatRupiah(voucher.discount)
                               : null,
-                          icon: voucher.isLoyaltyClaim
-                              ? Icons.stars_rounded
-                              : Icons.local_offer_outlined,
-                          accent: voucher.isLoyaltyClaim
-                              ? _loyaltyPurple
-                              : _discountRed,
+                          icon: voucher.isBrandExclusive
+                              ? Icons.workspace_premium_rounded
+                              : voucher.isLoyaltyClaim
+                                  ? Icons.stars_rounded
+                                  : Icons.local_offer_outlined,
+                          accent: voucher.isBrandExclusive
+                              ? _brandExclusiveAmber
+                              : voucher.isLoyaltyClaim
+                                  ? _loyaltyPurple
+                                  : _discountRed,
                           background: cs.surfaceContainerHighest,
                           border: cs.outlineVariant,
                           selected: false,
@@ -3176,8 +3201,7 @@ class _CartRecommendationsSection extends StatelessWidget {
               for (var row = 0; row < (products.length + 1) ~/ 2; row++)
                 Padding(
                   padding: EdgeInsets.only(
-                    bottom:
-                        row == (products.length + 1) ~/ 2 - 1 ? 0 : 12,
+                    bottom: row == (products.length + 1) ~/ 2 - 1 ? 0 : 12,
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,

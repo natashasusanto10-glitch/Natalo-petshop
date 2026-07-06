@@ -332,7 +332,10 @@ class MemberService {
   /// split via `.applicable` field kalau perlu render section terpisah.
   Future<List<MemberVoucher>> fetchVouchers() async {
     try {
-      final result = await fetchCartVouchers(cartStore.subtotal.round());
+      final productIds =
+          cartStore.items.map((item) => item.productId).toSet().toList();
+      final result =
+          await fetchCartVouchers(cartStore.subtotal.round(), productIds);
       return [...result.available, ...result.unavailable];
     } catch (e) {
       if (kDebugMode) debugPrint('[memberService.fetchVouchers] $e');
@@ -341,11 +344,11 @@ class MemberService {
   }
 
   Future<({List<MemberVoucher> available, List<MemberVoucher> unavailable})>
-      fetchCartVouchers(int subtotal) async {
+      fetchCartVouchers(int subtotal, List<String> productIds) async {
     try {
       final data = await apiClient.getJson(
         '/api/cart/vouchers',
-        query: {'subtotal': '$subtotal'},
+        query: {'subtotal': '$subtotal', 'productIds': productIds.join(',')},
       );
 
       List<MemberVoucher> parse(Object? raw) {

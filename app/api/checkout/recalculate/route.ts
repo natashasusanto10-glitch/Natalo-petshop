@@ -16,7 +16,11 @@ import {
   voucherSlotForKind,
   type VoucherSlotValue,
 } from "@/lib/voucher-kind";
-import { voucherMatchesProduct } from "@/lib/voucher-eligibility";
+import {
+  voucherMatchesProduct,
+  loadBrandNamesByIds,
+  formatVoucherBrandName,
+} from "@/lib/voucher-eligibility";
 
 /**
  * Aturan voucher checkout (lihat CLAUDE.md - Voucher business rules):
@@ -124,7 +128,11 @@ function effectiveKind(voucher: VoucherRow): VoucherKind {
   }
 }
 
-function normalizeVoucher(voucher: VoucherRow, discount: number) {
+function normalizeVoucher(
+  voucher: VoucherRow,
+  discount: number,
+  brandNamesById: Map<string, string> = new Map(),
+) {
   const kind = effectiveKind(voucher);
   return {
     code: voucher.code,
@@ -139,6 +147,7 @@ function normalizeVoucher(voucher: VoucherRow, discount: number) {
     discountScope: voucherScopeOf(voucher),
     targetUser: voucher.targetUser,
     status: "available" as const,
+    brandName: formatVoucherBrandName(voucher.eligibleBrandIds, brandNamesById),
   };
 }
 
@@ -146,6 +155,7 @@ function normalizeUnavailable(
   voucher: VoucherRow,
   reason: string,
   shortfall = 0,
+  brandNamesById: Map<string, string> = new Map(),
 ) {
   const kind = effectiveKind(voucher);
   return {
@@ -162,6 +172,7 @@ function normalizeUnavailable(
     discountScope: voucherScopeOf(voucher),
     targetUser: voucher.targetUser,
     status: "unavailable" as const,
+    brandName: formatVoucherBrandName(voucher.eligibleBrandIds, brandNamesById),
   };
 }
 
@@ -371,6 +382,10 @@ export async function POST(request: NextRequest) {
     successfulOrderCount,
   };
 
+  const brandNamesById = await loadBrandNamesByIds(
+    customerVouchers.flatMap((v) => v.eligibleBrandIds)
+  );
+
   function eligibleProductSubtotal(voucher: {
     eligibleProductIds: string[];
     eligibleCategoryIds: string[];
@@ -403,7 +418,7 @@ export async function POST(request: NextRequest) {
   for (const voucher of customerVouchers) {
     const disabledReason = getVoucherDisabledReason(voucher, subtotal, userCtx, now);
     if (disabledReason) {
-      unavailable.push(normalizeUnavailable(voucher, disabledReason, 0));
+      unavailable.push(normalizeUnavailable(voucher, disabledReason, 0, brandNamesById));
       continue;
     }
     if (subtotal < voucher.minimumOrder) {
@@ -413,19 +428,20 @@ export async function POST(request: NextRequest) {
           voucher,
           `Belanja kurang Rp${new Intl.NumberFormat("id-ID").format(shortfall)} lagi`,
           shortfall,
+          brandNamesById,
         ),
       );
       continue;
     }
     if (voucherScopeOf(voucher) === "SHIPPING" && shippingFee <= 0) {
       unavailable.push(
-        normalizeUnavailable(voucher, "Pilih pengiriman untuk menggunakan gratis ongkir", 0),
+        normalizeUnavailable(voucher, "Pilih pengiriman untuk menggunakan gratis ongkir", 0, brandNamesById),
       );
       continue;
     }
     if (voucherScopeOf(voucher) === "PRODUCT" && eligibleProductSubtotal(voucher) <= 0) {
       unavailable.push(
-        normalizeUnavailable(voucher, "Voucher tidak berlaku untuk produk ini", 0),
+        normalizeUnavailable(voucher, "Voucher tidak berlaku untuk produk ini", 0, brandNamesById),
       );
       continue;
     }
@@ -433,12 +449,12 @@ export async function POST(request: NextRequest) {
     const discount = checkoutVoucherDiscount(voucher);
     if (discount <= 0) {
       unavailable.push(
-        normalizeUnavailable(voucher, "Voucher tidak memiliki potongan untuk checkout ini", 0),
+        normalizeUnavailable(voucher, "Voucher tidak memiliki potongan untuk checkout ini", 0, brandNamesById),
       );
       continue;
     }
 
-    available.push(normalizeVoucher(voucher, discount));
+    available.push(normalizeVoucher(voucher, discount, brandNamesById));
   }
 
   available.sort((a, b) => b.discount - a.discount);

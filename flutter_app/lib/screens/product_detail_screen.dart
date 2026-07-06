@@ -44,6 +44,10 @@ const _discountRed = Color(0xFFE11D48);
 const _softDiscountBg = Color(0xFFFFEEF1);
 const _successGreen = Color(0xFF16A34A);
 const _starAmber = Color(0xFFF59E0B);
+const _brandExclusiveAmber = Color(0xFFF7A100);
+const _brandExclusiveSoftBg = Color(0xFFFEF0DC);
+const _brandExclusiveSoftBorder = Color(0xFFFCD9A0);
+const _brandExclusiveDark = Color(0xFFB85C00);
 
 class ProductDetailScreen extends StatefulWidget {
   final Product product;
@@ -263,8 +267,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     // meng-clamp ke stok (single source of truth), tapi di sini kita kasih
     // feedback eksplisit supaya user paham kenapa qty tidak nambah.
     final variantId = variant?.id;
-    final key =
-        variantId == null ? product.id : '${product.id}:$variantId';
+    final key = variantId == null ? product.id : '${product.id}:$variantId';
     final stock = variant?.stock ?? product.stock;
     final currentQty = cartStore.quantityFor(key);
     if (stock > 0 && currentQty >= stock) {
@@ -876,8 +879,7 @@ class _ProductInfo extends StatelessWidget {
               // %pill solid (putih di atas merah) — pengganti teks % polos,
               // satu aksen merah tegas yang mengikat ke harga.
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: _discountRed,
                   borderRadius: BorderRadius.circular(6),
@@ -1277,16 +1279,27 @@ class _VoucherChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shipping = voucher.isShippingVoucher;
-    final tone = shipping ? _successGreen : _discountRed;
+    final brandExclusive = voucher.isBrandExclusive;
+    final tone = shipping
+        ? _successGreen
+        : brandExclusive
+            ? _brandExclusiveDark
+            : _discountRed;
     final icon = shipping
         ? Icons.local_shipping_rounded
-        : Icons.confirmation_number_rounded;
+        : brandExclusive
+            ? Icons.workspace_premium_rounded
+            : Icons.confirmation_number_rounded;
     // Hero non-ongkir → fill solid + teks/ikon putih. Selain itu soft (bg
-    // pucat + teks tone). Voucher ongkir selalu hijau soft.
-    final fill = hero && !shipping;
-    final bg = fill
-        ? _discountRed
-        : (shipping ? const Color(0xFFEFFAF4) : _softDiscountBg);
+    // pucat + teks tone). Voucher ongkir selalu hijau soft. Brand-exclusive
+    // selalu fill solid oranye (senada saturasi dgn merah hero, bukan
+    // muncul cuma saat hero) supaya langsung kebeda dari voucher biasa.
+    final fill = brandExclusive || (hero && !shipping);
+    final bg = brandExclusive
+        ? _brandExclusiveAmber
+        : fill
+            ? _discountRed
+            : (shipping ? const Color(0xFFEFFAF4) : _softDiscountBg);
     final fg = fill ? Colors.white : tone;
     return Container(
       height: 30,
@@ -1370,76 +1383,76 @@ class _PromoVoucherSheet extends StatelessWidget {
           return ListView(
             controller: scrollController,
             padding: EdgeInsets.fromLTRB(18, 10, 18, 24 + bottomInset),
-              children: [
-                Center(
-                  child: Container(
-                    width: 72,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: cs.outlineVariant,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
+            children: [
+              Center(
+                child: Container(
+                  width: 72,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: cs.outlineVariant,
+                    borderRadius: BorderRadius.circular(999),
                   ),
                 ),
-                const SizedBox(height: 20),
-                Text(
-                  'Promo & voucher',
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Promo & voucher',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  height: 1.1,
+                ),
+              ),
+              if (showEstimate) ...[
+                const SizedBox(height: 16),
+                _PromoEstimateCard(
+                  priceBeforePromo: product.price,
+                  productDiscount: discountProduct,
+                  voucherDiscount: bestVoucherDiscount,
+                  estimatedPrice: estimatedPrice.toDouble(),
+                ),
+              ],
+              if (shippingVouchers.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                const Text(
+                  'Gratis ongkir tersedia di checkout',
                   style: TextStyle(
-                    color: cs.onSurface,
-                    fontSize: 22,
+                    color: _successGreen,
+                    fontSize: 14,
                     fontWeight: FontWeight.w900,
-                    height: 1.1,
-                  ),
-                ),
-                if (showEstimate) ...[
-                  const SizedBox(height: 16),
-                  _PromoEstimateCard(
-                    priceBeforePromo: product.price,
-                    productDiscount: discountProduct,
-                    voucherDiscount: bestVoucherDiscount,
-                    estimatedPrice: estimatedPrice.toDouble(),
-                  ),
-                ],
-                if (shippingVouchers.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  const Text(
-                    'Gratis ongkir tersedia di checkout',
-                    style: TextStyle(
-                      color: _successGreen,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 22),
-                Text(
-                  'Voucher tersedia',
-                  style: TextStyle(
-                    color: cs.onSurface,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                for (final voucher in vouchers) ...[
-                  _VoucherSheetCard(voucher: voucher),
-                  const SizedBox(height: 10),
-                ],
-                const SizedBox(height: 8),
-                Text(
-                  'Voucher final akan dihitung saat checkout.',
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    height: 1.25,
                   ),
                 ),
               ],
-            );
-          },
-        ),
-      );
+              const SizedBox(height: 22),
+              Text(
+                'Voucher tersedia',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 12),
+              for (final voucher in vouchers) ...[
+                _VoucherSheetCard(voucher: voucher),
+                const SizedBox(height: 10),
+              ],
+              const SizedBox(height: 8),
+              Text(
+                'Voucher final akan dihitung saat checkout.',
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.25,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 }
 
@@ -1563,9 +1576,22 @@ class _VoucherSheetCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shipping = voucher.isShippingVoucher;
-    final tone = shipping ? _successGreen : _discountRed;
-    final bg = shipping ? const Color(0xFFF0FDF4) : _softDiscountBg;
-    final border = shipping ? const Color(0xFFBBF7D0) : const Color(0xFFFFC9D0);
+    final brandExclusive = voucher.isBrandExclusive;
+    final tone = shipping
+        ? _successGreen
+        : brandExclusive
+            ? _brandExclusiveDark
+            : _discountRed;
+    final bg = shipping
+        ? const Color(0xFFF0FDF4)
+        : brandExclusive
+            ? _brandExclusiveSoftBg
+            : _softDiscountBg;
+    final border = shipping
+        ? const Color(0xFFBBF7D0)
+        : brandExclusive
+            ? _brandExclusiveSoftBorder
+            : const Color(0xFFFFC9D0);
     final subtitle = _voucherSheetSubtitle(voucher);
 
     return Container(
@@ -1581,8 +1607,28 @@ class _VoucherSheetCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (brandExclusive) ...[
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.workspace_premium_rounded,
+                          size: 13, color: tone),
+                      const SizedBox(width: 5),
+                      Text(
+                        'KHUSUS BRAND',
+                        style: TextStyle(
+                          color: tone,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                ],
                 Text(
-                  _voucherChipText(voucher),
+                  _voucherDiscountText(voucher),
                   style: TextStyle(
                     color: tone,
                     fontSize: 18,
@@ -1610,7 +1656,21 @@ class _VoucherSheetCard extends StatelessWidget {
                   color: tone,
                   size: 24,
                 )
-              : const _DiscountVoucherIcon(),
+              : brandExclusive
+                  ? Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: _brandExclusiveAmber,
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                      child: const Icon(
+                        Icons.workspace_premium_rounded,
+                        color: Colors.white,
+                        size: 19,
+                      ),
+                    )
+                  : const _DiscountVoucherIcon(),
         ],
       ),
     );
@@ -1672,7 +1732,19 @@ class _DiscountVoucherIcon extends StatelessWidget {
   }
 }
 
+/// Teks compact untuk rail chip -- brand-exclusive tampil sebagai "Khusus
+/// {brand}" (menggantikan nominal diskon di ruang sempit chip).
 String _voucherChipText(ProductVoucherPreview voucher) {
+  if (voucher.isShippingVoucher) return 'Gratis Ongkir';
+  if (voucher.isBrandExclusive) return 'Khusus ${voucher.brandName}';
+  return _voucherDiscountText(voucher);
+}
+
+/// Teks nominal diskon murni ("Diskon 15%" / "Hemat Rp20rb") -- dipakai
+/// sebagai judul besar di sheet card. TIDAK di-override oleh brand-exclusive
+/// supaya tidak duplikat dengan badge "KHUSUS BRAND" di atasnya; nama brand
+/// tetap muncul lewat badge + subtitle "Berlaku untuk {brand}".
+String _voucherDiscountText(ProductVoucherPreview voucher) {
   if (voucher.isShippingVoucher) return 'Gratis Ongkir';
   final amount = voucher.discountAmount ?? voucher.savingAmount;
   if (amount != null && amount > 0) {
@@ -1695,6 +1767,12 @@ String _voucherSheetSubtitle(ProductVoucherPreview voucher) {
     return 'Bisa digunakan saat checkout';
   }
   final minimum = voucher.minimumOrder;
+  final brandClause =
+      voucher.isBrandExclusive ? 'Berlaku untuk ${voucher.brandName}' : null;
+  if (brandClause != null && minimum > 0) {
+    return '$brandClause • Min. belanja ${formatRupiahCompact(minimum)}';
+  }
+  if (brandClause != null) return brandClause;
   if (minimum > 0) {
     return 'Potongan belanja saat checkout • Min. belanja ${formatRupiahCompact(minimum)}';
   }
@@ -2446,7 +2524,8 @@ class _DetailRecommendationCard extends StatelessWidget {
                     if (product.rating > 0 && product.soldCount > 0)
                       Text(
                         ' • ',
-                        style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11),
+                        style:
+                            TextStyle(color: cs.onSurfaceVariant, fontSize: 11),
                       ),
                     if (product.soldCount > 0)
                       Expanded(
@@ -3177,9 +3256,8 @@ class _FullReviewTile extends StatelessWidget {
                       Icon(
                         Icons.star_rounded,
                         size: 17,
-                        color: i < review.rating
-                            ? _starAmber
-                            : cs.outlineVariant,
+                        color:
+                            i < review.rating ? _starAmber : cs.outlineVariant,
                       ),
                     const SizedBox(width: 8),
                     Text(
@@ -3342,7 +3420,8 @@ class _ReviewsEmptyState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 54),
       child: Column(
         children: [
-          Icon(Icons.rate_review_outlined, color: cs.onSurfaceVariant, size: 42),
+          Icon(Icons.rate_review_outlined,
+              color: cs.onSurfaceVariant, size: 42),
           const SizedBox(height: 12),
           Text(
             'Ulasan tidak ditemukan',
@@ -3639,9 +3718,7 @@ class _ReviewPreviewTile extends StatelessWidget {
                     Icon(
                       Icons.star_rounded,
                       size: 15,
-                      color: i < review.rating
-                          ? _starAmber
-                          : cs.outlineVariant,
+                      color: i < review.rating ? _starAmber : cs.outlineVariant,
                     ),
                   const SizedBox(width: 8),
                   Text(

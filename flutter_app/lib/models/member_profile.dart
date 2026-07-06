@@ -185,6 +185,10 @@ class MemberVoucher {
   /// Alasan voucher disabled (untuk display di list inelibible). null kalau applicable.
   final String? disabledReason;
 
+  /// Nama brand kalau voucher ini scoped ke brand tertentu (backend kirim
+  /// null kalau voucher tidak scoped ke brand manapun).
+  final String? brandName;
+
   const MemberVoucher({
     required this.code,
     required this.title,
@@ -197,6 +201,7 @@ class MemberVoucher {
     this.minimumOrder = 0,
     this.applicable = true,
     this.disabledReason,
+    this.brandName,
   });
 
   factory MemberVoucher.fromApiJson(Map<String, dynamic> json) {
@@ -262,6 +267,7 @@ class MemberVoucher {
       minimumOrder: minimum,
       applicable: applicable,
       disabledReason: disabledReason?.isEmpty == true ? null : disabledReason,
+      brandName: _nullableString(json['brandName']),
     );
   }
 
@@ -271,6 +277,9 @@ class MemberVoucher {
   bool get isPrivateManual => type == 'PRIVATE_MANUAL_CODE';
   bool get isShippingDiscount => discountScope == 'SHIPPING';
   bool get isProductScope => discountScope != 'SHIPPING';
+
+  /// True kalau voucher ini scoped ke brand tertentu.
+  bool get isBrandExclusive => brandName != null && brandName!.trim().isNotEmpty;
 }
 
 class OrderSummary {
