@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { LOYALTY_TIERS } from "@/lib/loyalty-tiers";
 
 /// Thrown di dalam txn kalau poin tidak cukup saat re-check authoritative.
 /// Di-catch di luar untuk return 400 friendly (bukan 500).
@@ -12,47 +13,8 @@ class InsufficientPointsError extends Error {
   }
 }
 
-// Loyalty tier reward — earn rate 1 poin per Rp20.000 belanja
-// (lihat app/api/orders/route.ts: Math.floor(total / 20000)).
-//
-// Setiap tier voucher punya `minimumOrder` — voucher hanya berlaku saat
-// subtotal checkout >= angka tsb. Cegah "voucher Rp150.000 dipakai di
-// order Rp50.000" yang merugikan loyalty economy.
-const TIERS = [
-  {
-    points: 20,
-    discountAmount: 10000,
-    minimumOrder: 150000,
-    label: "20 poin -> voucher Rp10.000 (min belanja Rp150.000)",
-  },
-  {
-    points: 50,
-    discountAmount: 25000,
-    minimumOrder: 300000,
-    label: "50 poin -> voucher Rp25.000 (min belanja Rp300.000)",
-  },
-  {
-    points: 75,
-    discountAmount: 40000,
-    minimumOrder: 500000,
-    label: "75 poin -> voucher Rp40.000 (min belanja Rp500.000)",
-  },
-  {
-    points: 100,
-    discountAmount: 60000,
-    minimumOrder: 700000,
-    label: "100 poin -> voucher Rp60.000 (min belanja Rp700.000)",
-  },
-  {
-    points: 200,
-    discountAmount: 150000,
-    minimumOrder: 1500000,
-    label: "200 poin -> voucher Rp150.000 (min belanja Rp1.500.000)",
-  },
-] as const;
-
 export async function GET() {
-  return NextResponse.json({ tiers: TIERS });
+  return NextResponse.json({ tiers: LOYALTY_TIERS });
 }
 
 export async function POST(request: NextRequest) {
@@ -62,7 +24,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { points: requestedPoints } = await request.json();
-  const tier = TIERS.find((t) => t.points === requestedPoints);
+  const tier = LOYALTY_TIERS.find((t) => t.points === requestedPoints);
 
   if (!tier) {
     return NextResponse.json({ error: "Tier tidak valid." }, { status: 400 });

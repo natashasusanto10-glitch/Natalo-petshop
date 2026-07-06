@@ -5,19 +5,9 @@ import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { FiGift } from "react-icons/fi";
 import { natToast } from "@/components/Toast";
+import { LOYALTY_TIERS, type LoyaltyTier } from "@/lib/loyalty-tiers";
 
-// Tier loyalty — sinkron dengan TIERS di
-// app/api/member/claim-voucher/route.ts (server adalah source of truth).
-// Earn rate: 1 poin per Rp20.000 belanja.
-const VOUCHER_TIERS = [
-  { points: 20, discountAmount: 10000, minimumOrder: 150000 },
-  { points: 50, discountAmount: 25000, minimumOrder: 300000 },
-  { points: 75, discountAmount: 40000, minimumOrder: 500000 },
-  { points: 100, discountAmount: 60000, minimumOrder: 700000 },
-  { points: 200, discountAmount: 150000, minimumOrder: 1500000 },
-] as const;
-
-type VoucherTier = (typeof VOUCHER_TIERS)[number];
+type VoucherTier = LoyaltyTier;
 
 function formatVoucherAmount(amount: number) {
   return `Rp${new Intl.NumberFormat("id-ID").format(amount)}`;
@@ -152,7 +142,7 @@ export function RedeemPointsClient({ totalPoints }: { totalPoints: number }) {
       <section className="mt-5">
         <h2 className="px-1 text-lg font-black text-slate-950">Pilih Voucher</h2>
         <div className="mt-3 space-y-3">
-          {VOUCHER_TIERS.map((tier) => {
+          {LOYALTY_TIERS.map((tier) => {
             const canRedeem = availablePoints >= tier.points;
             return (
               <article
