@@ -188,6 +188,7 @@ class ProductVoucherPreview {
   final String discountScope;
   final String targetUser;
   final bool loginRequired;
+  final String? brandName;
 
   const ProductVoucherPreview({
     required this.id,
@@ -206,6 +207,7 @@ class ProductVoucherPreview {
     this.discountScope = 'PRODUCT',
     this.targetUser = 'ALL_MEMBERS',
     required this.loginRequired,
+    this.brandName,
   });
 
   bool get isNewMemberOnly {
@@ -223,6 +225,11 @@ class ProductVoucherPreview {
         normalizedType == 'FREE_SHIPPING' ||
         normalizedScope == 'SHIPPING';
   }
+
+  /// True kalau voucher ini scoped ke brand tertentu (backend kirim
+  /// brandName != null hanya kalau eligibleBrandIds voucher non-kosong DAN
+  /// cocok dengan brand produk yang sedang dilihat).
+  bool get isBrandExclusive => brandName != null && brandName!.trim().isNotEmpty;
 
   factory ProductVoucherPreview.fromJson(Map<String, dynamic> json) {
     // Endpoint /api/products/{slug}/vouchers mengembalikan campuran 2 shape:
@@ -288,6 +295,7 @@ class ProductVoucherPreview {
         fallback: 'ALL_MEMBERS',
       ),
       loginRequired: json['loginRequired'] != false,
+      brandName: _stringOrNull(json['brandName']),
     );
   }
 
