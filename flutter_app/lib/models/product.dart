@@ -192,6 +192,16 @@ class ProductVoucherPreview {
   final String? kind;
   final int? loyaltyPoints;
 
+  /// True kalau voucher ini scoped ke brand tertentu.
+  ///
+  /// Dua sumber, tergantung endpoint:
+  ///  - `/api/products/{slug}/vouchers` (detail produk) kirim `brandName`
+  ///    untuk label "Khusus {brand}".
+  ///  - `/api/products` (listing) kirim flag `isBrandExclusive` TANPA
+  ///    brandName (kartu pakai `product.brand` untuk label).
+  /// Field ini true kalau salah satu terpenuhi.
+  final bool isBrandExclusive;
+
   const ProductVoucherPreview({
     required this.id,
     required this.title,
@@ -212,6 +222,7 @@ class ProductVoucherPreview {
     this.brandName,
     this.kind,
     this.loyaltyPoints,
+    this.isBrandExclusive = false,
   });
 
   bool get isNewMemberOnly {
@@ -229,11 +240,6 @@ class ProductVoucherPreview {
         normalizedType == 'FREE_SHIPPING' ||
         normalizedScope == 'SHIPPING';
   }
-
-  /// True kalau voucher ini scoped ke brand tertentu (backend kirim
-  /// brandName != null hanya kalau eligibleBrandIds voucher non-kosong DAN
-  /// cocok dengan brand produk yang sedang dilihat).
-  bool get isBrandExclusive => brandName != null && brandName!.trim().isNotEmpty;
 
   bool get isLoyaltyVoucher {
     final k = (kind ?? '').trim().toUpperCase();
@@ -310,6 +316,10 @@ class ProductVoucherPreview {
       loyaltyPoints:
           _nullableDouble(json['loyaltyPoints'] ?? json['loyalty_points'])
               ?.toInt(),
+      // Flag eksplisit dari backend (listing) ATAU turunan dari brandName
+      // (detail produk yang tidak selalu kirim flag). Salah satu cukup.
+      isBrandExclusive: json['isBrandExclusive'] == true ||
+          _stringOrNull(json['brandName']) != null,
     );
   }
 

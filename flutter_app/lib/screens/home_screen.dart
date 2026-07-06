@@ -28,6 +28,7 @@ import '../utils/in_app_browser.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/app_notification_button.dart';
 import '../widgets/app_product_image.dart';
+import '../widgets/brand_exclusive_badge.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/flash_sale_countdown.dart';
@@ -751,8 +752,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             final product = _exploreProducts[index];
                             return _HomeProductCard(
                               product: product,
-                              onTap: () =>
-                                  _openProductDetail(context, product),
+                              onTap: () => _openProductDetail(context, product),
                             );
                           }
 
@@ -1110,8 +1110,9 @@ class _HomeHeader extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 12,
-                                color:
-                                    Theme.of(context).colorScheme.onSurfaceVariant,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
                                 height: 1.1,
                               ),
                             ),
@@ -1201,8 +1202,9 @@ class _HomeHeader extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.left,
                             style: TextStyle(
-                              color:
-                                  Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                               height: 1.2,
@@ -1374,8 +1376,9 @@ class _HomeSearchSheetState extends State<_HomeSearchSheet> {
                           Text(
                             'Produk, brand, kategori, dan kebutuhan pet kamu.',
                             style: TextStyle(
-                              color:
-                                  Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                             ),
@@ -2783,8 +2786,8 @@ class _HomeProductCard extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x08000000),
@@ -2816,6 +2819,21 @@ class _HomeProductCard extends StatelessWidget {
                         left: 8,
                         top: 8,
                         child: _HomeProductRankBadge(rank: rank!),
+                      )
+                    // Rank badge (Terlaris dsb) pakai slot kiri-atas yang sama
+                    // — brand badge cuma tampil kalau slot itu kosong.
+                    else if (productHasBrandExclusiveBadge(
+                      isBrandExclusive:
+                          product.voucherPreview?.isBrandExclusive,
+                      brand: product.brand,
+                    ))
+                      Positioned(
+                        left: 8,
+                        top: 8,
+                        child: BrandExclusiveBadge(
+                          brand: product.brand,
+                          full: !compact,
+                        ),
                       ),
                   ],
                 ),

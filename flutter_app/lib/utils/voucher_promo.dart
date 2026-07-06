@@ -89,8 +89,11 @@ String voucherSheetSubtitle(ProductVoucherPreview voucher) {
         ? '$base • Min. belanja ${formatRupiahCompact(minimum)}'
         : base;
   }
+  final brand = voucher.brandName?.trim();
   final brandClause =
-      voucher.isBrandExclusive ? 'Berlaku untuk ${voucher.brandName}' : null;
+      (voucher.isBrandExclusive && brand != null && brand.isNotEmpty)
+          ? 'Berlaku untuk $brand'
+          : null;
   if (brandClause != null && minimum > 0) {
     return '$brandClause • Min. belanja ${formatRupiahCompact(minimum)}';
   }
@@ -101,9 +104,11 @@ String voucherSheetSubtitle(ProductVoucherPreview voucher) {
   return 'Potongan belanja saat checkout';
 }
 
-// Teks compact untuk rail chip.
+// Teks compact untuk rail chip. Brand-exclusive tampil sebagai "Brand
+// Eksklusif" (konsisten dgn badge sheet + grid); nama brand tetap muncul di
+// subtitle sheet "Berlaku untuk {brand}".
 String voucherChipText(ProductVoucherPreview voucher) {
   if (voucher.isShippingVoucher) return 'Gratis Ongkir';
-  if (voucher.isBrandExclusive) return 'Khusus ${voucher.brandName}';
+  if (voucher.isBrandExclusive) return 'Brand Eksklusif';
   return voucherDiscountText(voucher);
 }

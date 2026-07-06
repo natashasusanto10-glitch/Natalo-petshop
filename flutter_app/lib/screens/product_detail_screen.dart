@@ -1300,11 +1300,14 @@ class _VoucherChip extends StatelessWidget {
             : brandExclusive
                 ? Icons.workspace_premium_rounded
                 : Icons.confirmation_number_rounded;
-    final fill = loyalty || brandExclusive || (hero && !shipping);
+    // Brand-exclusive & loyalty tampil SOFT (bg pucat + tone + border warna),
+    // konsisten dgn badge grid "Brand Eksklusif". Hero-fill solid hanya untuk
+    // voucher diskon (bukan brand/loyalty/ongkir).
+    final fill = !brandExclusive && !loyalty && hero && !shipping;
     final bg = loyalty
-        ? _loyaltyPurple
+        ? _loyaltySoftBg
         : brandExclusive
-            ? _brandExclusiveAmber
+            ? _brandExclusiveSoftBg
             : fill
                 ? _discountRed
                 : (shipping ? const Color(0xFFEFFAF4) : _softDiscountBg);
@@ -1319,9 +1322,13 @@ class _VoucherChip extends StatelessWidget {
         border: fill
             ? null
             : Border.all(
-                color: shipping
-                    ? const Color(0xFFC7F0D8)
-                    : const Color(0xFFFFC9D0),
+                color: loyalty
+                    ? _loyaltySoftBorder
+                    : brandExclusive
+                        ? _brandExclusiveSoftBorder
+                        : shipping
+                            ? const Color(0xFFC7F0D8)
+                            : const Color(0xFFFFC9D0),
               ),
       ),
       child: Row(
@@ -1656,7 +1663,7 @@ class _VoucherSheetCard extends StatelessWidget {
                           size: 13, color: tone),
                       const SizedBox(width: 5),
                       Text(
-                        'KHUSUS BRAND',
+                        'BRAND EKSKLUSIF',
                         style: TextStyle(
                           color: tone,
                           fontSize: 11,

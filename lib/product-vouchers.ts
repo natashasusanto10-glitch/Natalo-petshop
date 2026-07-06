@@ -100,7 +100,7 @@ export async function loadVisibleProductVouchers(
   if (!userId) return [];
 
   const now = new Date();
-  const take = options.take ?? 6;
+  const take = options.take ?? 12;
 
   const [rows, usedOrders, user, successfulOrderCount] = await Promise.all([
     prisma.voucher.findMany({
@@ -112,9 +112,13 @@ export async function loadVisibleProductVouchers(
         AND: [{ OR: [{ userId: null }, { userId }] }],
       },
       orderBy: [{ expiresAt: "asc" }, { createdAt: "desc" }],
-      // take*2 dulu (bukan take langsung) karena filter product-scope di
-      // bawah bisa buang sebagian baris — supaya hasil akhir tetap cukup.
-      take: take * 2,
+      // Scope filter (brand/kategori/produk) dilakukan di JS SETELAH fetch,
+      // jadi fetch TIDAK boleh sempit — sebelumnya `take*2` cuma ambil 12
+      // voucher expiry-terdekat, sehingga voucher brand-exclusive yang
+      // expiry-nya lebih jauh tidak pernah ke-fetch → tidak muncul di
+      // halaman produk brand-nya (padahal muncul di cart/checkout yang
+      // fetch semua). Ambil batas aman besar; toko kecil <100 voucher aktif.
+      take: 200,
       select: {
         id: true,
         code: true,
@@ -180,26 +184,39 @@ export async function loadVisibleProductVouchers(
     successfulOrderCount,
   };
 
-  return rows
-    .filter((voucher) => {
-      if (isVoucherUsageLimitReached(voucher, usedOrders, now)) return false;
-      if (voucher.maxUsage !== null && voucher.usedCount >= voucher.maxUsage) {
-        return false;
-      }
-      if (getNewMemberVoucherDisabledReason(voucher, userCtx, now))
-        return false;
-      // Root cause fix: voucher scoped ke brand/kategori/produk tertentu
-      // (mis. "Happy Dog") HARUS tetap disaring per-produk yang sedang
-      // dilihat — sebelumnya fungsi ini list SEMUA voucher aktif member
-      // tanpa cek scope sama sekali, jadi voucher Happy Dog muncul juga
-      // di halaman produk brand lain (checkout tetap benar menolaknya,
-      // tapi user sudah kadung lihat voucher yang tidak relevan).
-      // `product: null` (dipanggil tanpa context produk, mis. halaman
-      // "Voucher Saya") tetap tampilkan semua — filter cuma aktif kalau
-      // ada produk spesifik yang sedang dilihat.
-      if (product && !voucherMatchesProduct(voucher, product)) return false;
-      return true;
-    })
+  const eligible = rows.filter((voucher) => {
+    if (isVoucherUsageLimitReached(voucher, usedOrders, now)) return false;
+    if (voucher.maxUsage !== null && voucher.usedCount >= voucher.maxUsage) {
+      return false;
+    }
+    if (getNewMemberVoucherDisabledReason(voucher, userCtx, now)) return false;
+    // Root cause fix: voucher scoped ke brand/kategori/produk tertentu
+    // (mis. "Happy Dog") HARUS tetap disaring per-produk yang sedang
+    // dilihat — sebelumnya fungsi ini list SEMUA voucher aktif member
+    // tanpa cek scope sama sekali, jadi voucher Happy Dog muncul juga
+    // di halaman produk brand lain (checkout tetap benar menolaknya,
+    // tapi user sudah kadung lihat voucher yang tidak relevan).
+    // `product: null` (dipanggil tanpa context produk, mis. halaman
+    // "Voucher Saya") tetap tampilkan semua — filter cuma aktif kalau
+    // ada produk spesifik yang sedang dilihat.
+    if (product && !voucherMatchesProduct(voucher, product)) return false;
+    return true;
+  });
+
+  // Prioritaskan voucher scoped (brand/kategori/produk) SEBELUM display cap:
+  // voucher brand-exclusive yang cocok produk ini harus dijamin tampil,
+  // jangan kalah oleh voucher umum yang kebetulan expiry-nya lebih dekat.
+  // Dalam tiap grup, urutan Prisma (expiry terdekat dulu) dipertahankan.
+  const isScoped = (v: (typeof eligible)[number]) =>
+    v.eligibleBrandIds.length > 0 ||
+    v.eligibleProductIds.length > 0 ||
+    v.eligibleCategoryIds.length > 0;
+  const prioritized = [
+    ...eligible.filter(isScoped),
+    ...eligible.filter((v) => !isScoped(v)),
+  ];
+
+  return prioritized
     .slice(0, take)
     .map((voucher) => ({
       id: voucher.id,
