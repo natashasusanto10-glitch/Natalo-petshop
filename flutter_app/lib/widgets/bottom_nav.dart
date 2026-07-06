@@ -32,23 +32,32 @@ import '../theme/natalo_colors.dart';
 enum BottomNavVariant { light, dark }
 
 const _navInactive = Color(0xFF6B7280);
+// Foreground avatar fallback (inisial / ikon person tab Akun saat user tanpa
+// foto). Background fallback SELALU terang (biru/abu muda), jadi warnanya
+// fixed gelap-readable — TIDAK ikut inactiveColor nav, yang di varian dark
+// (Feed) kini PUTIH → kalau ikut, inisial putih di atas bg terang tak terbaca.
+const _avatarFallbackFg = Color(0xFF6B7280);
 // Border super tipis (25%→10%) — Telegram/iOS glass hampir tak berbingkai;
 // border tebal bikin pill terbaca sebagai "kartu putih mengambang", bukan
 // lembaran kaca bening. Cukup highlight tepi samar.
 const _navLightBorder = Color(0x1AFFFFFF); // white 10% alpha (highlight tepi)
-// Glass tokens Feed (varian "dark" = over video). Permintaan user: kaca
-// Feed harus PUTIH transparan seperti halaman lain, bukan tint hitam
-// (hitam transparan bercampur warna video jadi cokelat keruh).
-// Tint putih ~30% supaya ikon GELAP di atasnya tetap terbaca walau
-// frame video gelap — kaca putih + ikon gelap (pola iOS/IG untuk light
-// glass), bukan lagi ikon putih yang butuh halo shadow.
-const _navDarkGlass = Color(0x4DFFFFFF); // white ~30% alpha
-const _navDarkTopBorder = Color(0x4DFFFFFF); // white 30% alpha
-const _navDarkActive = Color(0xFF111827); // near-black, kontras di kaca putih
-const _navDarkInactive = Color(0xFF4B5563); // gray-600, tetap kebaca di video
+// Glass tokens Feed (varian "dark" = over video). Permintaan user (revisi):
+// nav Feed harus GELAP/HITAM tembus ala Reels/TikTok — pill hitam
+// semi-transparan + ikon PUTIH, video tetap tembus samar di baliknya.
+// (Sebelumnya sempat dibuat kaca PUTIH + ikon gelap; dibalik lagi karena
+// di atas video kaca putih terbaca kurang menyatu — user minta kembali
+// gelap, cuma dibuat glass/tembus.)
+// Tint hitam ~44% (0x70) — cukup pekat supaya pill jelas gelap & ikon putih
+// kontras di semua frame video, tapi masih tembus (bukan solid).
+const _navDarkGlass = Color(0x70111418); // near-black ~44% alpha
+const _navDarkTopBorder =
+    Color(0x24FFFFFF); // white ~14% (highlight tepi tipis)
+const _navDarkActive = Color(0xFFFFFFFF); // putih penuh — tab aktif
+const _navDarkInactive = Color(0xB8FFFFFF); // putih ~72% — tab non-aktif
 
-// Shadow glyph DIHAPUS (user: ikon terlihat "berbayang"). Keterbacaan
-// kini ditolong tint putih kaca + ikon gelap, bukan halo gelap.
+// Shadow glyph tidak diperlukan: ikon putih duduk DI ATAS pill hitam
+// (bukan langsung di atas video), jadi pill sendiri jadi backdrop kontras.
+// Halo shadow malah bikin ikon "berbayang" (feedback user lama) → tetap null.
 const List<Shadow>? _navDarkGlyphShadow = null;
 
 // INSIGHT KUNCI (setelah bandingkan langsung dengan nav IG terbaru): kesan
@@ -84,10 +93,26 @@ List<double> _saturationMatrix(double s) {
   const lumR = 0.213, lumG = 0.715, lumB = 0.072;
   final sr = (1 - s) * lumR, sg = (1 - s) * lumG, sb = (1 - s) * lumB;
   return <double>[
-    sr + s, sg, sb, 0, 0,
-    sr, sg + s, sb, 0, 0,
-    sr, sg, sb + s, 0, 0,
-    0, 0, 0, 1, 0,
+    sr + s,
+    sg,
+    sb,
+    0,
+    0,
+    sr,
+    sg + s,
+    sb,
+    0,
+    0,
+    sr,
+    sg,
+    sb + s,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
   ];
 }
 
@@ -237,7 +262,6 @@ class BottomNavBar extends StatelessWidget {
     return ValueListenableBuilder<bool>(
       valueListenable: bottomNavCollapsed,
       builder: (context, collapsed, _) {
-
         final row = SizedBox(
           height: 54,
           child: Row(
@@ -341,7 +365,6 @@ class _BottomNavItem extends StatelessWidget {
               builder: (context, _) => _AvatarIcon(
                 selected: selected,
                 activeColor: activeColor,
-                inactiveColor: color,
               ),
             ),
           )
@@ -484,12 +507,10 @@ class _NavBounceState extends State<_NavBounce>
 class _AvatarIcon extends StatelessWidget {
   final bool selected;
   final Color activeColor;
-  final Color inactiveColor;
 
   const _AvatarIcon({
     required this.selected,
     required this.activeColor,
-    required this.inactiveColor,
   });
 
   @override
@@ -520,16 +541,11 @@ class _AvatarIcon extends StatelessWidget {
                 ? CachedNetworkImage(
                     imageUrl: photoUrl,
                     fit: BoxFit.cover,
-                    placeholder: (_, __) => _AvatarFallback(
-                      initial: initial,
-                      color: inactiveColor,
-                    ),
-                    errorWidget: (_, __, ___) => _AvatarFallback(
-                      initial: initial,
-                      color: inactiveColor,
-                    ),
+                    placeholder: (_, __) => _AvatarFallback(initial: initial),
+                    errorWidget: (_, __, ___) =>
+                        _AvatarFallback(initial: initial),
                   )
-                : _AvatarFallback(initial: initial, color: inactiveColor),
+                : _AvatarFallback(initial: initial),
           ),
         ),
       ),
@@ -539,18 +555,17 @@ class _AvatarIcon extends StatelessWidget {
 
 class _AvatarFallback extends StatelessWidget {
   final String initial;
-  final Color color;
 
-  const _AvatarFallback({required this.initial, required this.color});
+  const _AvatarFallback({required this.initial});
 
   @override
   Widget build(BuildContext context) {
     if (initial.isEmpty) {
       return Container(
         color: const Color(0xFFE5E7EB),
-        child: Icon(
+        child: const Icon(
           Icons.person_rounded,
-          color: color,
+          color: _avatarFallbackFg,
           size: 16,
         ),
       );
@@ -560,8 +575,8 @@ class _AvatarFallback extends StatelessWidget {
       alignment: Alignment.center,
       child: Text(
         initial.toUpperCase(),
-        style: TextStyle(
-          color: color,
+        style: const TextStyle(
+          color: _avatarFallbackFg,
           fontSize: 11,
           fontWeight: FontWeight.w900,
           height: 1,
