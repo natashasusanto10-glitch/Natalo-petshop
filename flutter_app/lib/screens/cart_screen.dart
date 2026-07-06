@@ -17,6 +17,7 @@ import '../state/recently_viewed_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../utils/scroll_anchor.dart';
 import '../widgets/animated_counter.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_product_image.dart';
@@ -325,6 +326,11 @@ class _CartScreenState extends State<CartScreen> {
     // Prune selected IDs yang sudah tidak di cart (saat item di-remove).
     final cartKeys = cartStore.items.map((i) => i.key).toSet();
     final hasNewItem = cartKeys.any((key) => !_selectedIds.contains(key));
+    // Anti-jump: item baru dirender sebagai kartu DI ATAS grid rekomendasi.
+    // Tangkap metrik scroll SEBELUM rebuild, lalu geser offset (post-frame)
+    // supaya konten yang lagi dilihat tidak "loncat ke bawah". Detail di
+    // utils/scroll_anchor.dart.
+    if (hasNewItem) _anchorScrollAfterInsert();
     setState(() {
       // Add semua key yang belum di set (new items).
       for (final key in cartKeys) {
@@ -341,6 +347,33 @@ class _CartScreenState extends State<CartScreen> {
     // Re-validasi stok kalau ada item baru masuk cart (mis. dari "Beli
     // lagi" / rekomendasi) supaya badge stok langsung akurat.
     if (hasNewItem) _validateStock();
+  }
+
+  /// Pertahankan posisi visual konten saat kartu item baru nyelip di atas
+  /// (mis. add dari grid rekomendasi). Tanpa ini `ListView` biasa tidak
+  /// nge-anchor scroll → konten "loncat ke bawah". Tangkap metrik lama, lalu
+  /// post-frame geser offset menjaga jarak-dari-dasar konstan. Tidak jalan
+  /// saat user di puncak (anchoredOffsetAfterInsert → null).
+  void _anchorScrollAfterInsert() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (!position.hasContentDimensions) return;
+    final oldMaxExtent = position.maxScrollExtent;
+    final oldPixels = position.pixels;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final p = _scrollController.position;
+      if (!p.hasContentDimensions) return;
+      final target = anchoredOffsetAfterInsert(
+        oldMaxExtent: oldMaxExtent,
+        oldPixels: oldPixels,
+        newMaxExtent: p.maxScrollExtent,
+      );
+      if (target == null) return;
+      if ((p.pixels - target).abs() > 0.5) {
+        p.jumpTo(target);
+      }
+    });
   }
 
   void _onMemberChanged() {
@@ -895,37 +928,39 @@ class _CartScreenState extends State<CartScreen> {
                 ),
               ),
               // ── Auto-hide bottom: voucher bar ──
+              // Voucher bar auto-hide LAYOUT-NEUTRAL: dulu pakai
+              // AnimatedContainer height 50↔0 yang mengubah tinggi Expanded
+              // ListView di atasnya → saat show/hide, konten ke-nudge dan
+              // (dekat dasar) "loncat". Sekarang bar tetap setinggi
+              // _voucherBarHeight (footprint konstan di dalam ClipRect); hide
+              // cukup slide turun + fade. Konsisten dgn baris atas "…terpilih"
+              // yang sudah layout-neutral (commit 0a4b50f), dan bikin viewport
+              // konstan → anchor anti-jump jadi deterministik.
               if (showVoucherArea)
                 ClipRect(
-                  child: AnimatedContainer(
-                    height: _showCartChrome ? _voucherBarHeight : 0,
+                  child: AnimatedSlide(
+                    offset: _showCartChrome ? Offset.zero : const Offset(0, 1),
                     duration: _cartChromeAnimDuration,
                     curve: _cartChromeAnimCurve,
-                    child: AnimatedSlide(
-                      offset:
-                          _showCartChrome ? Offset.zero : const Offset(0, 1),
+                    child: AnimatedOpacity(
+                      opacity: _showCartChrome ? 1 : 0,
                       duration: _cartChromeAnimDuration,
                       curve: _cartChromeAnimCurve,
-                      child: AnimatedOpacity(
-                        opacity: _showCartChrome ? 1 : 0,
-                        duration: _cartChromeAnimDuration,
-                        curve: _cartChromeAnimCurve,
-                        child: IgnorePointer(
-                          ignoring: !_showCartChrome,
-                          child: _StickyVoucherBar(
-                            hasSelection: _selectedItems.isNotEmpty,
-                            loading: _loadingVouchers,
-                            discountVoucher: _appliedDiscountVoucher,
-                            discountAmount: _voucherDiscount,
-                            shippingSelected: _appliedShippingVoucher,
-                            shippingDiscount: _shippingDiscount,
-                            onTap: _selectedItems.isEmpty
-                                ? null
-                                : () {
-                                    AppHaptics.tap();
-                                    _openVoucherSheet();
-                                  },
-                          ),
+                      child: IgnorePointer(
+                        ignoring: !_showCartChrome,
+                        child: _StickyVoucherBar(
+                          hasSelection: _selectedItems.isNotEmpty,
+                          loading: _loadingVouchers,
+                          discountVoucher: _appliedDiscountVoucher,
+                          discountAmount: _voucherDiscount,
+                          shippingSelected: _appliedShippingVoucher,
+                          shippingDiscount: _shippingDiscount,
+                          onTap: _selectedItems.isEmpty
+                              ? null
+                              : () {
+                                  AppHaptics.tap();
+                                  _openVoucherSheet();
+                                },
                         ),
                       ),
                     ),
