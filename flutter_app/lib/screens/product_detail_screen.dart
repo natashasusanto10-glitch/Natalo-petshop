@@ -29,6 +29,7 @@ import '../utils/voucher_promo.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/app_product_image.dart';
+import '../widgets/added_to_cart_sheet.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/favorite_button.dart';
@@ -285,14 +286,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return;
     }
     AppHaptics.success();
-    // Fire fly-to-cart animation dulu (Overlay-based, tidak block UI).
-    // Mini product image fly dari posisi hero image → cart icon di AppBar
-    // dengan parabolic arc. Match Tokopedia / Shopee pattern.
-    flyImageToCart(
-      context: context,
-      imageUrl: product.imageUrl,
-      sourceKey: _heroImageKey,
-    );
+    // Tambah ke keranjang DULU supaya rekomendasi di sheet (berbasis isi
+    // keranjang) sudah termasuk produk yang barusan ditambahkan.
     cartStore.addProduct(
       product,
       variant: variant,
@@ -306,14 +301,30 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         'Stok tinggal $stock, jumlah disesuaikan.',
         kind: ToastKind.info,
       );
-    } else {
-      AppToast.showCartAdded(
-        context,
-        '${product.title} masuk keranjang',
-        onTap: () => Navigator.pushNamed(context, '/cart'),
-      );
     }
+    // Animasi fly-to-cart dulu (mini image fly dari hero image → cart icon
+    // dengan parabolic arc), lalu naikkan sheet "Lengkapi belanjaanmu"
+    // sebagai konfirmasi — menggantikan toast lama. Guard mencegah dua sheet
+    // menumpuk kalau user tap cepat dua kali.
+    flyImageToCart(
+      context: context,
+      imageUrl: product.imageUrl,
+      sourceKey: _heroImageKey,
+    ).then((_) async {
+      if (!mounted || _addedSheetVisible) return;
+      _addedSheetVisible = true;
+      await showAddedToCartSheet(
+        context,
+        product: product,
+        initialRelated: _related,
+      );
+      if (mounted) _addedSheetVisible = false;
+    });
   }
+
+  // Guard supaya tidak menumpuk dua sheet "Lengkapi belanjaanmu" kalau user
+  // tap "+ Keranjang" dua kali cepat (animasi fly ~900ms sebelum sheet naik).
+  bool _addedSheetVisible = false;
 
   bool _buyNowPushing = false;
 
