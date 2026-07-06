@@ -428,7 +428,10 @@ class _CartScreenState extends State<CartScreen> {
     if (subtotal != _lastVoucherSubtotal) {
       setState(() => _loadingVouchers = true);
       try {
-        final result = await memberService.fetchCartVouchers(subtotal);
+        final productIds =
+            _selectedItems.map((item) => item.productId).toSet().toList();
+        final result =
+            await memberService.fetchCartVouchers(subtotal, productIds);
         available = result.available;
         unavailable = result.unavailable;
       } catch (_) {
