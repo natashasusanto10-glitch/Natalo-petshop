@@ -166,4 +166,14 @@ void main() {
     expect(find.text('DETAIL SCREEN'), findsOneWidget);
     expect(cartStore.items.any((it) => it.product.id == 'recV'), isFalse);
   });
+
+  testWidgets('kartu stok habis tampil "Habis" & tidak bisa ditambah',
+      (tester) async {
+    await pumpSheet(tester,
+        initialRelated: [makeProduct('rHabis', name: 'Stok Habis', stock: 0)]);
+    expect(find.text('Habis'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('add-to-cart-rHabis')));
+    await tester.pump();
+    expect(cartStore.items.any((it) => it.product.id == 'rHabis'), isFalse);
+  });
 }

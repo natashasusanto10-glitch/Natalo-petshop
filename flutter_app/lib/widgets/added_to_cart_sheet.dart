@@ -13,6 +13,8 @@ import 'product_card.dart' show ProductSavingsBadge, ProductRatingSoldMeta;
 /// supaya sheet konsisten dengan tombol "+ Keranjang" di bottom bar.
 const _brandBlue = Color(0xFF1565D8);
 const _successGreen = Color(0xFF16A34A);
+const _disabledGrey = Color(0xFFD1D5DB);
+const _disabledText = Color(0xFF9CA3AF);
 
 /// Signature fetch rekomendasi — dibuat injectable supaya sheet bisa
 /// di-test tanpa memanggil network. Default: productService.fetchRecommendations.
@@ -373,6 +375,7 @@ class _SheetRecommendationCard extends StatelessWidget {
             _AddPill(
               key: ValueKey('add-to-cart-${product.id}'),
               onTap: onAddToCart,
+              outOfStock: product.stock <= 0,
             ),
           ],
         ),
@@ -383,32 +386,37 @@ class _SheetRecommendationCard extends StatelessWidget {
 
 class _AddPill extends StatelessWidget {
   final VoidCallback onTap;
+  final bool outOfStock;
 
-  const _AddPill({super.key, required this.onTap});
+  const _AddPill({super.key, required this.onTap, this.outOfStock = false});
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
+        onTap: outOfStock ? null : onTap,
         borderRadius: BorderRadius.circular(10),
         child: Ink(
           decoration: BoxDecoration(
-            color: _brandBlue,
+            color: outOfStock ? _disabledGrey : _brandBlue,
             borderRadius: BorderRadius.circular(10),
           ),
-          child: const SizedBox(
+          child: SizedBox(
             height: 32,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.add_rounded, size: 16, color: Colors.white),
-                SizedBox(width: 4),
+                Icon(
+                  outOfStock ? Icons.block_rounded : Icons.add_rounded,
+                  size: 16,
+                  color: outOfStock ? _disabledText : Colors.white,
+                ),
+                const SizedBox(width: 4),
                 Text(
-                  'Keranjang',
+                  outOfStock ? 'Habis' : 'Keranjang',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: outOfStock ? _disabledText : Colors.white,
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                   ),
