@@ -43,9 +43,17 @@ sendiri, tidak tersentuh).
 5. **Judul carousel:** "Cek keperluan anabulmu yang lain yuk".
 6. **Sumber data carousel:** berbasis **isi keranjang**. Saat sheet dibuka,
    fetch ulang `fetchRecommendations(cartIds: <semua product.id di cart>,
-   excludeIds: <semua product.id di cart>, limit: 6)`. Untuk menghindari
+   excludeIds: <semua product.id di cart>, limit: 10)`. Untuk menghindari
    carousel kosong sesaat, tampilkan `_related` yang sudah ter-load sebagai
    isi awal (instan), lalu ganti dengan hasil cart-based begitu tiba.
+7. **Bentuk & jumlah:** carousel **horizontal** (1 baris, scroll ke samping,
+   sesuai screenshot), **10 produk**.
+
+### Catatan: keranjang tidak pernah kosong di titik ini
+Sheet hanya muncul setelah `_addToCart` sukses, dan `cartStore.addProduct`
+dipanggil **sebelum** sheet naik — jadi produk yang barusan ditambahkan
+sudah ada di keranjang. `cartIds` minimal berisi 1 item. Pengaman: kalau
+`cartIds` ternyata kosong, fallback ke `viewedIds: [product.id]`.
 
 ## Arsitektur & file
 
@@ -55,9 +63,13 @@ sendiri, tidak tersentuh).
 - Private widget `_AddedToCartSheet` **stateful**:
   - `initState`: state carousel diisi `initialRelated` (dari `_related` yang
     sudah ter-load → tampil instan), lalu panggil
-    `fetchRecommendations(cartIds: <cart product ids>, excludeIds: <cart product ids>, limit: 6)`;
+    `fetchRecommendations(cartIds: <cart product ids>, excludeIds: <cart product ids>, limit: 10)`;
     `setState` ganti list saat hasil tiba. `cartIds` diambil dari
-    `cartStore.items.map((i) => i.product.id)`.
+    `cartStore.items.map((i) => i.product.id)`. Kalau `cartIds` kosong
+    (harusnya tidak terjadi), fallback ke `viewedIds: [product.id]`.
+  - `_loadRelated()` di halaman detail tetap `limit: 6` (section
+    "Rekomendasi Untukmu" tidak diubah); `initialRelated` = `_related`
+    hanya placeholder instan sebelum hasil 10 cart-based tiba.
   - Kalau hasil fetch kosong (offline/gagal), pertahankan `initialRelated`
     sebagai fallback; kalau keduanya kosong → section carousel disembunyikan.
 - Pakai `showModalBottomSheet` dengan `isScrollControlled: true`,
@@ -98,7 +110,8 @@ sendiri, tidak tersentuh).
    (warna `NataloColors.successDark` `#16A34A`).
 4. **Divider** tipis.
 5. **Judul carousel:** "Cek keperluan anabulmu yang lain yuk".
-6. **Carousel horizontal** rekomendasi (berbasis isi keranjang, limit 6):
+6. **Carousel horizontal** rekomendasi (berbasis isi keranjang, **10 produk**,
+   1 baris di-scroll ke samping):
    - Isi awal `initialRelated` (instan), lalu di-refresh dengan hasil
      cart-based dari `fetchRecommendations(cartIds: ..., excludeIds: ...)`.
    - Tiap kartu: gaya kartu app (surface + border + shadow halus), gambar
