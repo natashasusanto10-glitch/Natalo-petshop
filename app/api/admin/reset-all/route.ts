@@ -12,7 +12,6 @@
  *   - Orders: OrderItem, Order
  *   - Cart, Vouchers (customer), Points, Favorite, Pet, Address
  *   - Notifications: AnnouncementRead, Announcement, PushSubscription
- *   - Chat: ChatMessage, ChatThread
  *   - Tracking: UserProductView, SearchLog
  *   - Auth tokens: PasswordResetToken, RegistrationOtp
  *   - Customer users (role = CUSTOMER)
@@ -150,10 +149,6 @@ export async function POST(request: NextRequest) {
       deleted.pushSubscription = (
         await tx.pushSubscription.deleteMany({})
       ).count;
-
-      // --- Chat ---
-      deleted.chatMessage = (await tx.chatMessage.deleteMany({})).count;
-      deleted.chatThread = (await tx.chatThread.deleteMany({})).count;
 
       // --- Tracking & search ---
       deleted.userProductView = (

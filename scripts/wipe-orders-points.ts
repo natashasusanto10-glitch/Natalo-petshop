@@ -7,7 +7,7 @@
  *   2. CustomerPoint
  *
  * Tidak menyentuh: User, Address, Pet, Favorite, CartItem, Product,
- *                  Category, Brand, Voucher, ChatThread/Message.
+ *                  Category, Brand, Voucher.
  *
  * Cara pakai:
  *   CONFIRM_WIPE=YES npx dotenv -e .env -- tsx scripts/wipe-orders-points.ts

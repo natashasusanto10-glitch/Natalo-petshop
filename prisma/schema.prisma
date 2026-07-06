@@ -120,8 +120,6 @@ model User {
   addresses           Address[]
   favorites           Favorite[]
   pets                Pet[]
-  chatThreads         ChatThread[]         @relation("CustomerChatThreads")
-  chatMessages        ChatMessage[]        @relation("ChatSender")
   cartItems           CartItem[]
   stockNotifications  StockNotification[]
   productViews        UserProductView[]
@@ -733,34 +731,6 @@ model PushSubscription {
   auth      String
   userId    String?
   createdAt DateTime @default(now())
-}
-
-model ChatThread {
-  id        String        @id @default(cuid())
-  userId    String
-  user      User          @relation("CustomerChatThreads", fields: [userId], references: [id], onDelete: Cascade)
-  status    String        @default("OPEN")
-  messages  ChatMessage[]
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-
-  @@unique([userId])
-  @@index([updatedAt])
-}
-
-model ChatMessage {
-  id         String     @id @default(cuid())
-  threadId   String
-  thread     ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  senderId   String
-  sender     User       @relation("ChatSender", fields: [senderId], references: [id])
-  senderRole String
-  content    String
-  readAt     DateTime?
-  createdAt  DateTime   @default(now())
-
-  @@index([threadId, createdAt])
-  @@index([senderRole, readAt])
 }
 
 model CustomerPoint {
