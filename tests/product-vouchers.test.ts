@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildMatchingVoucherPreviews,
+  dedupeVouchersById,
   type PublicProductVoucherRow,
 } from "@/lib/product-vouchers";
 
@@ -67,4 +68,14 @@ test("buildMatchingVoucherPreviews: preview brand ditandai isBrandExclusive", ()
   const brand = makeRow({ id: "v-brand", eligibleBrandIds: ["brand-happydog"] });
   const [preview] = buildMatchingVoucherPreviews([brand], product);
   assert.equal(preview.isBrandExclusive, true);
+});
+
+test("dedupeVouchersById: buang id duplikat lintas-list, jaga urutan + instance pertama", () => {
+  const a = { id: "a" };
+  const b = { id: "b" };
+  const b2 = { id: "b" };
+  const c = { id: "c" };
+  const out = dedupeVouchersById([[a, b], [b2, c]]);
+  assert.deepEqual(out.map((v) => v.id), ["a", "b", "c"]);
+  assert.equal(out[1], b);
 });

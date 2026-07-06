@@ -506,6 +506,24 @@ export function buildMatchingVoucherPreviews(
     .sort(byBestSavingDesc);
 }
 
+// Gabung beberapa list voucher, buang id duplikat (instance pertama menang,
+// urutan dipertahankan). Voucher brand publik bisa muncul di jalur publik &
+// member sekaligus.
+export function dedupeVouchersById<T extends { id: string }>(
+  lists: T[][]
+): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const list of lists) {
+    for (const voucher of list) {
+      if (seen.has(voucher.id)) continue;
+      seen.add(voucher.id);
+      out.push(voucher);
+    }
+  }
+  return out;
+}
+
 export async function attachPublicProductVoucherPreviews<
   T extends ProductVoucherProductInput
 >(
