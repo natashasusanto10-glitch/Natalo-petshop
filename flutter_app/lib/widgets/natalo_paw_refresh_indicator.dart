@@ -282,23 +282,21 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
                 child: AnimatedBuilder(
                   animation: Listenable.merge([_spinCtrl, _fadeCtrl]),
                   builder: (context, _) {
-                    // Scale: 0.5 → 1.0 based on pull progress, lock 1.0 saat refresh.
-                    final scale = _isRefreshing ? 1.0 : 0.5 + (progress * 0.5);
+                    final visual = computePawVisual(
+                      progress: progress,
+                      isRefreshing: _isRefreshing,
+                      fadeValue: _fadeCtrl.value,
+                    );
                     // Rotation: 0 → π/2 saat pulling (turn-in feel),
                     // continuous spin saat refreshing.
                     final rotation = _isRefreshing
                         ? _spinCtrl.value * 2 * math.pi
                         : progress * math.pi * 0.5;
-                    // Opacity: fade-in saat pull, fade-out saat exit.
-                    final opacity = (_isRefreshing
-                            ? _fadeCtrl.value
-                            : progress.clamp(0.2, 1.0))
-                        .clamp(0.0, 1.0);
 
                     return Opacity(
-                      opacity: opacity,
+                      opacity: visual.opacity,
                       child: Transform.scale(
-                        scale: scale,
+                        scale: visual.scale,
                         child: Transform.rotate(
                           angle: rotation,
                           child: Container(
@@ -368,4 +366,39 @@ class _NataloPawScrollBehavior extends ScrollBehavior {
     // sendiri. Tidak butuh wrapping apapun.
     return child;
   }
+}
+
+/// Scale + opacity paw pada satu titik tarikan. Immutable, murni hasil
+/// [computePawVisual] — tidak menyentuh state widget.
+class PawVisual {
+  final double scale;
+  final double opacity;
+
+  const PawVisual(this.scale, this.opacity);
+}
+
+/// Kurva visual paw vs `progress` tarikan (0..1 = 0..triggerOffset).
+///
+/// Sebelumnya scale/opacity mulai dari floor rendah (0.5 / 0.2) dan ramp
+/// linear sampai progress 1.0 — di banyak halaman (tanpa `translateChild`,
+/// yaitu semua kecuali halaman Akun) ini jadi satu-satunya sinyal pull
+/// yang terlihat, dan floor rendah itu nyaris tak kelihatan. User pull,
+/// tidak sadar ada feedback, baru sadar paw "muncul" pas sudah dekat/di
+/// titik trigger — terasa seperti delay padahal sebenarnya progresif.
+///
+/// Fix: floor dinaikkan (paw jelas kelihatan sejak progress≈0) + ramp
+/// dipercepat supaya sudah full scale/opacity di progress 0.65, bukan
+/// nunggu sampai 1.0 — user dapat konfirmasi visual jauh sebelum rilis.
+PawVisual computePawVisual({
+  required double progress,
+  required bool isRefreshing,
+  required double fadeValue,
+}) {
+  if (isRefreshing) {
+    return PawVisual(1.0, fadeValue.clamp(0.0, 1.0));
+  }
+  final rampProgress = (progress / 0.65).clamp(0.0, 1.0);
+  final scale = 0.62 + (rampProgress * 0.38);
+  final opacity = (0.5 + (rampProgress * 0.5)).clamp(0.0, 1.0);
+  return PawVisual(scale, opacity);
 }
