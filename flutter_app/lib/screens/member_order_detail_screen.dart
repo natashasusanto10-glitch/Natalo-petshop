@@ -2469,6 +2469,20 @@ class _PaymentSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final subtotal = order.subtotal > 0 ? order.subtotal : order.total;
+    // Ongkir asli sebelum dipotong voucher gratis ongkir. shippingCost yang
+    // disimpan sudah NET (hasil akhir setelah potongan), jadi ongkir asli =
+    // net + shippingDiscount — dipakai untuk tampilan dicoret.
+    final originalShipping = order.shippingCost + order.shippingDiscount;
+    // Total Diskon = potongan scope PRODUK (termasuk loyalty). Diskon ongkir
+    // sengaja TIDAK dijumlahkan di sini karena sudah tercermin di baris Ongkir
+    // (dicoret) — kalau ikut, potongannya kehitung dobel. Fallback: order
+    // legacy tanpa split productDiscount → pakai aggregate `discount` dikurangi
+    // porsi ongkir.
+    final productDiscountTotal = order.productDiscount > 0
+        ? order.productDiscount
+        : (order.discount - order.shippingDiscount)
+            .clamp(0, double.infinity)
+            .toDouble();
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -2494,40 +2508,23 @@ class _PaymentSummary extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           _SummaryLine(label: 'Subtotal', value: formatRupiah(subtotal)),
-          _SummaryLine(
-            label: 'Ongkir',
-            value: formatRupiah(order.shippingCost),
+          // Ongkir — kalau ada potongan voucher gratis ongkir, tampilkan
+          // ongkir asli dicoret + hasil akhir ("GRATIS" bila 0, atau sisa yang
+          // tetap dibayar bila voucher punya batas maks).
+          _OngkirLine(
+            originalShipping: originalShipping,
+            shippingCost: order.shippingCost,
+            hasDiscount: order.shippingDiscount > 0,
           ),
-          // Granular discount breakdown — split per kategori untuk
-          // transparency. Customer langsung tau "voucher saya yang -Rp
-          // 20rb itu untuk produk atau ongkir?". Match Shopee/Tokopedia
-          // pattern.
-          //
-          // Fallback chain: kalau productDiscount/shippingDiscount tidak
-          // tersedia (legacy order pre-split), tampilkan aggregate
-          // `discount` untuk backward compat.
-          if (order.productDiscount > 0)
-            _DiscountLineWithVoucher(
-              label: 'Diskon Produk',
-              amount: order.productDiscount,
-              voucherCode:
-                  order.productVoucherCode ?? order.voucherCode,
-            )
-          else if (order.shippingDiscount > 0)
-            // No productDiscount tapi ada shippingDiscount — keep aggregate
-            // gak tampil supaya cleaner.
-            const SizedBox.shrink()
-          else if (order.discount > 0)
+          // Total Diskon — satu baris ringkas potongan produk (termasuk
+          // loyalty). Rincian per-voucher (produk, loyalty, gratis ongkir)
+          // ada di kotak "Voucher Digunakan" di bawah, jadi baris diskon
+          // per-kategori tidak diulang di sini (menghindari info dobel).
+          if (productDiscountTotal > 0)
             _SummaryLine(
-              label: 'Diskon',
-              value: '-${formatRupiah(order.discount)}',
-            ),
-          if (order.shippingDiscount > 0)
-            _DiscountLineWithVoucher(
-              label: 'Diskon Ongkir',
-              amount: order.shippingDiscount,
-              voucherCode: order.freeShippingVoucherCode ??
-                  order.shippingVoucherCode,
+              label: 'Total Diskon',
+              value: '-${formatRupiah(productDiscountTotal)}',
+              valueColor: const Color(0xFFDC2626),
             ),
           // Saldo Refund line — tampil hanya kalau order pakai saldo.
           // Tanpa line ini, math tidak nyambung: subtotal - diskon ≠ total
@@ -2579,12 +2576,14 @@ class _SummaryLine extends StatelessWidget {
   final String value;
   final bool strong;
   final double bottomPadding;
+  final Color? valueColor;
 
   const _SummaryLine({
     required this.label,
     required this.value,
     this.strong = false,
     this.bottomPadding = 8,
+    this.valueColor,
   });
 
   @override
@@ -2606,7 +2605,7 @@ class _SummaryLine extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              color: strong ? _brandBlue : cs.onSurface,
+              color: valueColor ?? (strong ? _brandBlue : cs.onSurface),
               fontWeight: FontWeight.w900,
               fontSize: strong ? 18 : 14,
             ),
@@ -2617,72 +2616,68 @@ class _SummaryLine extends StatelessWidget {
   }
 }
 
-/// Discount line dengan inline voucher code chip (kalau ada).
-/// Pattern: "Diskon Produk (NATA-DISC) -Rp 30.000" — kode voucher
-/// di-display sebagai monospace pill kecil supaya stand out dari teks
-/// regular. Kalau voucher code null (mis. legacy order tanpa code
-/// tracking), label-only.
-class _DiscountLineWithVoucher extends StatelessWidget {
-  final String label;
-  final double amount;
-  final String? voucherCode;
+/// Baris Ongkir dengan dukungan tampilan potongan voucher gratis ongkir.
+/// - Tanpa diskon ongkir: tampil nominal ongkir biasa.
+/// - Ada diskon + ongkir jadi 0: ongkir asli dicoret + label hijau "GRATIS".
+/// - Ada diskon tapi masih sisa (voucher punya batas maks): ongkir asli
+///   dicoret + nominal sisa yang tetap dibayar.
+class _OngkirLine extends StatelessWidget {
+  final double originalShipping;
+  final double shippingCost;
+  final bool hasDiscount;
 
-  const _DiscountLineWithVoucher({
-    required this.label,
-    required this.amount,
-    this.voucherCode,
+  const _OngkirLine({
+    required this.originalShipping,
+    required this.shippingCost,
+    required this.hasDiscount,
   });
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isFree = shippingCost <= 0;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
           Expanded(
-            child: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 6,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                if (voucherCode != null && voucherCode!.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 1,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEEF2FF),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      voucherCode!,
-                      style: const TextStyle(
-                        color: Color(0xFF4338CA),
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w800,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ),
-              ],
+            child: Text(
+              'Ongkir',
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
-          Text(
-            '-${formatRupiah(amount)}',
-            style: const TextStyle(
-              color: Color(0xFFDC2626),
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
+          if (!hasDiscount)
+            Text(
+              formatRupiah(shippingCost),
+              style: TextStyle(
+                color: cs.onSurface,
+                fontWeight: FontWeight.w900,
+                fontSize: 14,
+              ),
+            )
+          else ...[
+            Text(
+              formatRupiah(originalShipping),
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                decoration: TextDecoration.lineThrough,
+              ),
             ),
-          ),
+            const SizedBox(width: 8),
+            Text(
+              isFree ? 'GRATIS' : formatRupiah(shippingCost),
+              style: TextStyle(
+                color: isFree ? const Color(0xFF059669) : cs.onSurface,
+                fontWeight: FontWeight.w900,
+                fontSize: 14,
+              ),
+            ),
+          ],
         ],
       ),
     );
