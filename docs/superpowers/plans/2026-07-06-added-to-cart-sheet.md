@@ -65,13 +65,14 @@ void main() {
     // sourceKey tidak ter-attach + tidak ada AppCartButton di tree → path
     // no-op. Future harus tetap complete (tidak hang) supaya caller yang
     // await tidak menggantung.
+    var completed = false;
     await flyImageToCart(
       context: ctx,
       imageUrl: 'https://example.com/x.jpg',
       sourceKey: GlobalKey(),
-    ).timeout(const Duration(seconds: 2));
+    ).then((_) => completed = true).timeout(const Duration(seconds: 2));
 
-    expect(true, isTrue);
+    expect(completed, isTrue);
   });
 }
 ```
