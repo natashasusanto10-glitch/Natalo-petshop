@@ -11,6 +11,8 @@
  * cocok ke SALAH SATU dimensi yang diisi (OR antar dimensi).
  */
 
+import { prisma } from "@/lib/prisma";
+
 export type VoucherEligibilityScope = {
   eligibleProductIds: string[];
   eligibleCategoryIds: string[];
@@ -41,4 +43,39 @@ export function voucherMatchesProduct(
   if (product.categorySlug && categoryIds.has(product.categorySlug)) return true;
   if (product.brandId && brandIds.has(product.brandId)) return true;
   return false;
+}
+
+/**
+ * Batch-resolve brand id -> nama, untuk display voucher scoped ke brand
+ * (mis. "Khusus Wolly+"). Dipakai oleh lib/voucher-list.ts dan
+ * app/api/checkout/recalculate/route.ts -- satu tempat supaya query batch
+ * (bukan N+1 per voucher) konsisten di semua caller.
+ */
+export async function loadBrandNamesByIds(
+  brandIds: string[]
+): Promise<Map<string, string>> {
+  const uniqueIds = Array.from(new Set(brandIds));
+  if (uniqueIds.length === 0) return new Map();
+  const brands = await prisma.brand.findMany({
+    where: { id: { in: uniqueIds } },
+    select: { id: true, name: true },
+  });
+  return new Map(brands.map((b) => [b.id, b.name]));
+}
+
+/**
+ * Format label display dari eligibleBrandIds voucher. null kalau voucher
+ * tidak scoped ke brand manapun (termasuk kalau semua id-nya sudah tidak
+ * ketemu lagi di brandNamesById, mis. brand dihapus).
+ */
+export function formatVoucherBrandName(
+  eligibleBrandIds: string[],
+  brandNamesById: Map<string, string>
+): string | null {
+  const names = eligibleBrandIds
+    .map((id) => brandNamesById.get(id))
+    .filter((name): name is string => Boolean(name));
+  if (names.length === 0) return null;
+  if (names.length === 1) return names[0];
+  return `${names[0]} & ${names.length - 1} brand lain`;
 }
