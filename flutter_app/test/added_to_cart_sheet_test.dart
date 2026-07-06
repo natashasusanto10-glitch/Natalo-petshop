@@ -157,6 +157,20 @@ void main() {
     expect(find.text('Masuk ke keranjang!'), findsOneWidget);
   });
 
+  testWidgets('menambah rekomendasi menghilangkannya dari carousel',
+      (tester) async {
+    await pumpSheet(tester, initialRelated: [
+      makeProduct('rec1', name: 'Rekom Satu'),
+      makeProduct('rec2', name: 'Rekom Dua'),
+    ]);
+    expect(find.text('Rekom Satu'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('add-to-cart-rec1')));
+    await _settle(tester);
+    expect(cartStore.items.any((it) => it.product.id == 'rec1'), isTrue);
+    expect(find.text('Rekom Satu'), findsNothing);
+    expect(find.text('Rekom Dua'), findsOneWidget);
+  });
+
   testWidgets('+ Keranjang kartu varian membuka detail produk',
       (tester) async {
     await pumpSheet(tester,

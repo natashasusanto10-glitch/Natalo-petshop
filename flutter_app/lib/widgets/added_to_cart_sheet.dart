@@ -71,7 +71,8 @@ class _AddedToCartSheet extends StatefulWidget {
 }
 
 class _AddedToCartSheetState extends State<_AddedToCartSheet> {
-  late List<Product> _related = widget.initialRelated;
+  late List<Product> _related = List.of(widget.initialRelated);
+  bool _refreshed = false;
 
   @override
   void initState() {
@@ -90,7 +91,10 @@ class _AddedToCartSheetState extends State<_AddedToCartSheet> {
     );
     // Kalau gagal / kosong, pertahankan initialRelated (jangan dikosongkan).
     if (!mounted || result.isEmpty) return;
-    setState(() => _related = result);
+    setState(() {
+      _related = List.of(result);
+      _refreshed = true;
+    });
   }
 
   void _openDetail(Product product) {
@@ -120,6 +124,7 @@ class _AddedToCartSheetState extends State<_AddedToCartSheet> {
       context,
       '${product.title} masuk keranjang',
     );
+    setState(() => _related.removeWhere((p) => p.id == product.id));
   }
 
   void _goToCart() {
@@ -245,16 +250,20 @@ class _AddedToCartSheetState extends State<_AddedToCartSheet> {
               ),
             ),
             const SizedBox(height: 12),
-            SizedBox(
-              height: 296,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: _related.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
-                itemBuilder: (_, index) => _SheetRecommendationCard(
-                  product: _related[index],
-                  onOpenDetail: () => _openDetail(_related[index]),
-                  onAddToCart: () => _addRecommendation(_related[index]),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: SizedBox(
+                key: ValueKey(_refreshed),
+                height: 296,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _related.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 12),
+                  itemBuilder: (_, index) => _SheetRecommendationCard(
+                    product: _related[index],
+                    onOpenDetail: () => _openDetail(_related[index]),
+                    onAddToCart: () => _addRecommendation(_related[index]),
+                  ),
                 ),
               ),
             ),
