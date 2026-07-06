@@ -430,3 +430,112 @@ test("voucher publik admin yang lewat semua check → muncul dengan applicable=t
   assert.equal(items[0].discount, 10000); // 10% of 100k
   assert.equal(items[0].minimumOrder, 50000);
 });
+
+// ─── cartProducts scope gate (bug fix) ───────────────────────────────
+
+test("voucher brand-scoped + cartProducts TIDAK ada brand yang cocok -> unavailable", () => {
+  const items = buildVoucherListItems({
+    vouchers: [
+      voucher({
+        id: "v-happydog",
+        code: "HAPPYDOG15",
+        eligibleBrandIds: ["brand-happydog"],
+      }),
+    ],
+    userUsedOrders: [],
+    userCtx: userCtx(),
+    subtotal: 100000,
+    now: NOW,
+    cartProducts: [
+      { id: "prod-1", categoryId: null, categorySlug: null, brandId: "brand-wollyplus" },
+    ],
+  });
+  assert.equal(items.length, 1);
+  assert.equal(items[0].applicable, false);
+  assert.ok(
+    items[0].disabledReason?.includes("tidak berlaku"),
+    `expected scope-mismatch reason, got: ${items[0].disabledReason}`,
+  );
+});
+
+test("voucher brand-scoped + cartProducts ADA brand yang cocok -> applicable", () => {
+  const items = buildVoucherListItems({
+    vouchers: [
+      voucher({
+        id: "v-happydog",
+        code: "HAPPYDOG15",
+        eligibleBrandIds: ["brand-happydog"],
+      }),
+    ],
+    userUsedOrders: [],
+    userCtx: userCtx(),
+    subtotal: 100000,
+    now: NOW,
+    cartProducts: [
+      { id: "prod-1", categoryId: null, categorySlug: null, brandId: "brand-happydog" },
+    ],
+  });
+  assert.equal(items.length, 1);
+  assert.equal(items[0].applicable, true);
+});
+
+test("voucher brand-scoped + cartProducts TIDAK diberikan (undefined) -> permissive, tetap applicable (backward-compat)", () => {
+  const items = buildVoucherListItems({
+    vouchers: [
+      voucher({
+        id: "v-happydog",
+        code: "HAPPYDOG15",
+        eligibleBrandIds: ["brand-happydog"],
+      }),
+    ],
+    userUsedOrders: [],
+    userCtx: userCtx(),
+    subtotal: 100000,
+    now: NOW,
+    // cartProducts sengaja tidak di-pass -- simulasi app lama yang belum
+    // update, endpoint tidak boleh regress jadi mengunci voucher yang
+    // sebelumnya applicable.
+  });
+  assert.equal(items.length, 1);
+  assert.equal(items[0].applicable, true);
+});
+
+test("voucher tanpa scope apapun + cartProducts kosong -> tetap applicable (bukan false-positive)", () => {
+  const items = buildVoucherListItems({
+    vouchers: [voucher({ id: "v-all", code: "ALL10" })],
+    userUsedOrders: [],
+    userCtx: userCtx(),
+    subtotal: 100000,
+    now: NOW,
+    cartProducts: [],
+  });
+  assert.equal(items.length, 1);
+  assert.equal(items[0].applicable, true);
+});
+
+// ─── brandName field ──────────────────────────────────────────────────
+
+test("voucher dengan eligibleBrandIds + brandNamesById -> brandName terisi", () => {
+  const items = buildVoucherListItems({
+    vouchers: [
+      voucher({ id: "v-b", code: "B15", eligibleBrandIds: ["brand-1"] }),
+    ],
+    userUsedOrders: [],
+    userCtx: userCtx(),
+    subtotal: 100000,
+    now: NOW,
+    brandNamesById: new Map([["brand-1", "Wolly+"]]),
+  });
+  assert.equal(items[0].brandName, "Wolly+");
+});
+
+test("voucher tanpa eligibleBrandIds -> brandName null", () => {
+  const items = buildVoucherListItems({
+    vouchers: [voucher({ id: "v-noscope", code: "NOSCOPE" })],
+    userUsedOrders: [],
+    userCtx: userCtx(),
+    subtotal: 100000,
+    now: NOW,
+  });
+  assert.equal(items[0].brandName, null);
+});

@@ -46,6 +46,12 @@ import {
   type VoucherVisibilityCode,
 } from "@/lib/voucher-helpers";
 import { isFreeShippingVoucher } from "@/lib/voucher-kind";
+import {
+  voucherMatchesProduct,
+  formatVoucherBrandName,
+  loadBrandNamesByIds,
+  type EligibilityProductInput,
+} from "@/lib/voucher-eligibility";
 
 export type VoucherListItem = {
   id: string;
@@ -73,6 +79,8 @@ export type VoucherListItem = {
    * cek per-cart-item.
    */
   hasProductScope: boolean;
+  /** Nama brand untuk display ("Khusus {brand}") -- null kalau voucher tidak scoped ke brand manapun. */
+  brandName: string | null;
 };
 
 export type ListUserVouchersResult = {
@@ -84,6 +92,8 @@ export type ListUserVouchersParams = {
   userId: string;
   /** Cart subtotal saat ini. 0 untuk halaman member voucher tanpa cart context. */
   subtotal: number;
+  /** Product di cart untuk scope-gate voucher brand/kategori/produk. undefined = skip gate (lihat buildVoucherListItems). */
+  cartProducts?: EligibilityProductInput[];
   /** Override untuk testing. Default new Date(). */
   now?: Date;
 };
@@ -104,7 +114,7 @@ export type ListUserVouchersParams = {
 export async function listUserVouchers(
   params: ListUserVouchersParams,
 ): Promise<ListUserVouchersResult> {
-  const { userId, subtotal } = params;
+  const { userId, subtotal, cartProducts } = params;
   const now = params.now ?? new Date();
 
   // Fetch semua voucher CUSTOMER yg user-nya berhak (publik admin atau
@@ -167,6 +177,9 @@ export async function listUserVouchers(
     successfulOrderCount,
   };
 
+  const allBrandIds = vouchers.flatMap((v) => v.eligibleBrandIds);
+  const brandNamesById = await loadBrandNamesByIds(allBrandIds);
+
   return {
     items: buildVoucherListItems({
       vouchers,
@@ -174,6 +187,8 @@ export async function listUserVouchers(
       userCtx,
       subtotal,
       now,
+      cartProducts,
+      brandNamesById,
     }),
   };
 }
@@ -192,8 +207,11 @@ export function buildVoucherListItems(input: {
   userCtx: VoucherUserContext;
   subtotal: number;
   now: Date;
+  /** undefined = cart contents unknown, skip scope gate (backward-compat). Array (incl. []) = exact cart contents, gate scoped vouchers against it. */
+  cartProducts?: EligibilityProductInput[];
+  brandNamesById?: Map<string, string>;
 }): VoucherListItem[] {
-  const { vouchers, userUsedOrders, userCtx, subtotal, now } = input;
+  const { vouchers, userUsedOrders, userCtx, subtotal, now, cartProducts, brandNamesById = new Map() } = input;
   const userId = userCtx.userId;
   const items: VoucherListItem[] = [];
 
@@ -211,9 +229,29 @@ export function buildVoucherListItems(input: {
       continue;
     }
 
+    const hasProductScope =
+      v.eligibleProductIds.length > 0 ||
+      v.eligibleCategoryIds.length > 0 ||
+      v.eligibleBrandIds.length > 0;
+
+    // Bug fix: voucher scoped ke produk/kategori/brand tertentu HARUS
+    // dicek terhadap isi cart yang sesungguhnya -- sebelumnya listing ini
+    // cuma hitung dari subtotal, jadi voucher "Khusus Happy Dog" muncul
+    // "available" walau keranjang tidak ada produk Happy Dog sama sekali,
+    // baru gagal saat checkout/recalculate (yang sudah benar). cartProducts
+    // undefined (caller belum kirim, mis. app lama) tetap permissive supaya
+    // tidak regress voucher yang sebelumnya applicable.
+    const scopeUnmatched =
+      hasProductScope &&
+      cartProducts !== undefined &&
+      !cartProducts.some((p) => voucherMatchesProduct(v, p));
+
     // Transient disabled state: belum mulai / NEW_MEMBER mismatch /
-    // subtotal kurang. Voucher tetap tampil dengan reason.
-    const disabledReason = getVoucherDisabledReason(v, subtotal, userCtx, now);
+    // subtotal kurang / scope tidak cocok dengan isi cart. Voucher tetap
+    // tampil dengan reason.
+    const disabledReason =
+      getVoucherDisabledReason(v, subtotal, userCtx, now) ??
+      (scopeUnmatched ? "Voucher tidak berlaku untuk produk di keranjang" : null);
     const discount = disabledReason ? 0 : calcVoucherDiscount(subtotal, v);
     const isFreeShipping = isFreeShippingVoucher(v);
     // Free shipping voucher: applicable bahkan kalau discount=0 (karena
@@ -222,10 +260,7 @@ export function buildVoucherListItems(input: {
     const applicable =
       disabledReason === null && (discount > 0 || isFreeShipping);
 
-    const hasProductScope =
-      v.eligibleProductIds.length > 0 ||
-      v.eligibleCategoryIds.length > 0 ||
-      v.eligibleBrandIds.length > 0;
+    const brandName = formatVoucherBrandName(v.eligibleBrandIds, brandNamesById);
 
     items.push({
       id: v.id,
@@ -249,6 +284,7 @@ export function buildVoucherListItems(input: {
           ? "Voucher tidak memberikan potongan untuk pesanan ini"
           : null),
       hasProductScope,
+      brandName,
     });
   }
 
