@@ -189,6 +189,8 @@ class ProductVoucherPreview {
   final String targetUser;
   final bool loginRequired;
   final String? brandName;
+  final String? kind;
+  final int? loyaltyPoints;
 
   const ProductVoucherPreview({
     required this.id,
@@ -208,6 +210,8 @@ class ProductVoucherPreview {
     this.targetUser = 'ALL_MEMBERS',
     required this.loginRequired,
     this.brandName,
+    this.kind,
+    this.loyaltyPoints,
   });
 
   bool get isNewMemberOnly {
@@ -230,6 +234,12 @@ class ProductVoucherPreview {
   /// brandName != null hanya kalau eligibleBrandIds voucher non-kosong DAN
   /// cocok dengan brand produk yang sedang dilihat).
   bool get isBrandExclusive => brandName != null && brandName!.trim().isNotEmpty;
+
+  bool get isLoyaltyVoucher {
+    final k = (kind ?? '').trim().toUpperCase();
+    final t = type.trim().toUpperCase();
+    return k == 'LOYALTY_CLAIM' || t == 'LOYALTY_POINT_CLAIM';
+  }
 
   factory ProductVoucherPreview.fromJson(Map<String, dynamic> json) {
     // Endpoint /api/products/{slug}/vouchers mengembalikan campuran 2 shape:
@@ -296,6 +306,10 @@ class ProductVoucherPreview {
       ),
       loginRequired: json['loginRequired'] != false,
       brandName: _stringOrNull(json['brandName']),
+      kind: _stringOrNull(json['kind']),
+      loyaltyPoints:
+          _nullableDouble(json['loyaltyPoints'] ?? json['loyalty_points'])
+              ?.toInt(),
     );
   }
 
@@ -316,6 +330,8 @@ class ProductVoucherPreview {
         'discountScope': discountScope,
         'targetUser': targetUser,
         'loginRequired': loginRequired,
+        'kind': kind,
+        'loyaltyPoints': loyaltyPoints,
       };
 }
 
