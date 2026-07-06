@@ -37,15 +37,26 @@ const _navInactive = Color(0xFF6B7280);
 // lembaran kaca bening. Cukup highlight tepi samar.
 const _navLightBorder = Color(0x1AFFFFFF); // white 10% alpha (highlight tepi)
 // Dark glass tokens — untuk Feed over video. Alpha diturunkan lagi
-// 60%→40% (0x99→0x66): pada 60% video di belakang masih terlalu tertutup
-// (terlihat solid gelap, bukan kaca). 40% + saturation boost (lihat
-// _glassFilter) membuat video benar-benar tembus jadi kaca berwarna —
-// persis frosted bar TikTok/IG di atas video. Kontras ikon putih tetap
-// aman karena video di area bawah biasanya lebih gelap + ada blur.
-const _navDarkGlass = Color(0x660A0A0A); // black 40% alpha
+// 40%→22% (0x66→0x38): pada 40% black tint, di atas video terang (mis.
+// lantai kayu / dinding putih) hasil rata-ratanya jadi ABU FLAT solid —
+// terbaca sebagai "pill abu", bukan kaca. 22% membuat video benar-benar
+// tembus jernih (transparan seperti kaca sungguhan), dipasangkan dengan
+// blur lebih rendah (14, lihat _glassFilter) + saturasi lebih tinggi
+// (1.35) supaya warna video pop melewati kaca. Legibilitas ikon putih
+// dijaga shadow halus per-ikon (lihat _navDarkIconShadow) untuk frame
+// terang, bukan lagi lewat tint tebal.
+const _navDarkGlass = Color(0x380A0A0A); // black ~22% alpha
 const _navDarkTopBorder = Color(0x33FFFFFF); // white 20% alpha
 const _navDarkActive = Color(0xFFFFFFFF);
 const _navDarkInactive = Color(0xFF9CA3AF);
+
+// Shadow halus di belakang ikon nav dark — pengganti tint tebal untuk
+// menjaga ikon putih tetap kebaca di atas frame video terang, tanpa
+// mengorbankan transparansi kaca. Blur lebar + alpha rendah = "halo"
+// gelap lembut, bukan garis tegas.
+const List<Shadow> _navDarkIconShadow = [
+  Shadow(color: Color(0x66000000), blurRadius: 6),
+];
 
 // INSIGHT KUNCI (setelah bandingkan langsung dengan nav IG terbaru): kesan
 // "abu"/keruh BUKAN cuma soal tint — blur sigma tinggi (34) meratakan
@@ -93,17 +104,18 @@ List<double> _saturationMatrix(double s) {
 ///   nyaris tak beda dari abu solid) supaya kaca BENING ala Telegram —
 ///   detail warna konten di belakang tidak sempat merata jadi abu.
 ///   Saturasi +50% untuk melawan sisa keabu-abuan.
-/// - dark (Feed over video): blur 22 tetap — video sudah kaya warna, blur
-///   lebih tinggi bikin frost lebih halus + jaga keterbacaan ikon putih.
-///   Saturasi +15%.
+/// - dark (Feed over video): blur diturunkan 22→14 supaya video lebih
+///   TEMBUS (kaca bening, bukan frost tebal) — permintaan "transparan
+///   seperti kaca". Saturasi dinaikkan 1.15→1.35 supaya warna video pop
+///   melewati kaca, melawan sisa keabu-abuan dari blur.
 ImageFilter _glassFilter({required bool dark}) {
   final blur = ImageFilter.blur(
-    sigmaX: dark ? 22 : 8,
-    sigmaY: dark ? 22 : 8,
+    sigmaX: dark ? 14 : 8,
+    sigmaY: dark ? 14 : 8,
   );
   return ImageFilter.compose(
     outer: blur,
-    inner: ColorFilter.matrix(_saturationMatrix(dark ? 1.15 : 1.5)),
+    inner: ColorFilter.matrix(_saturationMatrix(dark ? 1.35 : 1.5)),
   );
 }
 
@@ -245,6 +257,7 @@ class BottomNavBar extends StatelessWidget {
                   collapsed: collapsed,
                   activeColor: activeColor,
                   inactiveColor: inactiveColor,
+                  iconShadows: dark ? _navDarkIconShadow : null,
                   onTap: () => _onTap(context, i),
                 ),
             ],
@@ -308,6 +321,7 @@ class _BottomNavItem extends StatelessWidget {
   final bool collapsed;
   final Color activeColor;
   final Color inactiveColor;
+  final List<Shadow>? iconShadows;
   final VoidCallback onTap;
 
   const _BottomNavItem({
@@ -316,6 +330,7 @@ class _BottomNavItem extends StatelessWidget {
     required this.collapsed,
     required this.activeColor,
     required this.inactiveColor,
+    required this.iconShadows,
     required this.onTap,
   });
 
@@ -343,6 +358,7 @@ class _BottomNavItem extends StatelessWidget {
               selected ? data.selectedIcon : data.icon,
               color: color,
               size: 25,
+              shadows: iconShadows,
             ),
           );
 
