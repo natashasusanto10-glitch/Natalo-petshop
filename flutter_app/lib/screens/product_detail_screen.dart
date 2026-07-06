@@ -1628,7 +1628,7 @@ class _VoucherSheetCard extends StatelessWidget {
                   const SizedBox(height: 6),
                 ],
                 Text(
-                  _voucherChipText(voucher),
+                  _voucherDiscountText(voucher),
                   style: TextStyle(
                     color: tone,
                     fontSize: 18,
@@ -1732,9 +1732,20 @@ class _DiscountVoucherIcon extends StatelessWidget {
   }
 }
 
+/// Teks compact untuk rail chip -- brand-exclusive tampil sebagai "Khusus
+/// {brand}" (menggantikan nominal diskon di ruang sempit chip).
 String _voucherChipText(ProductVoucherPreview voucher) {
   if (voucher.isShippingVoucher) return 'Gratis Ongkir';
   if (voucher.isBrandExclusive) return 'Khusus ${voucher.brandName}';
+  return _voucherDiscountText(voucher);
+}
+
+/// Teks nominal diskon murni ("Diskon 15%" / "Hemat Rp20rb") -- dipakai
+/// sebagai judul besar di sheet card. TIDAK di-override oleh brand-exclusive
+/// supaya tidak duplikat dengan badge "KHUSUS BRAND" di atasnya; nama brand
+/// tetap muncul lewat badge + subtitle "Berlaku untuk {brand}".
+String _voucherDiscountText(ProductVoucherPreview voucher) {
+  if (voucher.isShippingVoucher) return 'Gratis Ongkir';
   final amount = voucher.discountAmount ?? voucher.savingAmount;
   if (amount != null && amount > 0) {
     return 'Hemat ${formatRupiahCompact(amount)}';
