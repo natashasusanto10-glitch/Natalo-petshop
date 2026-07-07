@@ -16,8 +16,8 @@ import '../state/recently_viewed_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
-import '../utils/retainable_scroll_controller.dart';
 import '../widgets/animated_counter.dart';
+import '../widgets/cart_scroll_view.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/glass_surface.dart';
@@ -56,8 +56,12 @@ class CartScreen extends StatefulWidget {
 }
 
 class _CartScreenState extends State<CartScreen> {
-  final RetainableScrollController _scrollController =
-      RetainableScrollController();
+  // Center-sliver (CartScrollView) meng-anchor rekomendasi secara struktural,
+  // jadi cukup ScrollController biasa. initialScrollOffset sangat negatif →
+  // frame pertama ter-clamp ke minScrollExtent (= cart paling atas) tanpa
+  // kedip ke rekomendasi.
+  final ScrollController _scrollController =
+      ScrollController(initialScrollOffset: -100000);
   List<Product> _recentlyViewed = const [];
   List<Product> _bossProducts = const [];
   bool _loadingRecentlyViewed = false;
@@ -277,6 +281,11 @@ class _CartScreenState extends State<CartScreen> {
     }
     final position = _scrollController.position;
 
+    // Center-sliver: cart ada di sisi NEGATIF, rekomendasi di sisi positif.
+    // Kalau rekomendasi pendek, maxScrollExtent bisa <= 0 & pixels(negatif)
+    // >= max-520 → cegah load-more storm.
+    if (position.maxScrollExtent <= 0) return;
+
     if (_loadingBossProducts ||
         _loadingMoreBossProducts ||
         !_bossProductsHasMore) {
@@ -323,12 +332,9 @@ class _CartScreenState extends State<CartScreen> {
     // Prune selected IDs yang sudah tidak di cart (saat item di-remove).
     final cartKeys = cartStore.items.map((i) => i.key).toSet();
     final hasNewItem = cartKeys.any((key) => !_selectedIds.contains(key));
-    // Anti-jump: item baru dirender sebagai kartu DI ATAS grid rekomendasi.
-    // Arm koreksi IN-LAYOUT (di applyContentDimensions, SEBELUM paint, tanpa
-    // notify listener) supaya konten yang dilihat tidak "loncat" — tanpa
-    // kedip 1-frame & tanpa kaskade pagination/chrome dari post-frame jumpTo.
-    // Detail: utils/retainable_scroll_controller.dart.
-    if (hasNewItem) _scrollController.retainOffsetOnNextGrowth();
+    // Anti-loncat sekarang STRUKTURAL: item baru mendarat di sliver SEBELUM
+    // center (CartScrollView) → rekomendasi yang dilihat tak bergeser. Tak
+    // perlu arm/koreksi pixel lagi.
     setState(() {
       // Add semua key yang belum di set (new items).
       for (final key in cartKeys) {
@@ -751,91 +757,78 @@ class _CartScreenState extends State<CartScreen> {
 
           final showVoucherArea = memberStore.isLoggedIn;
 
-          // Main area pakai Stack supaya selection row atas tetap auto-hide
-          // secara visual, tapi tidak mengubah tinggi layout ListView.
-          // Sebelumnya height 42 → 0 membuat layar terasa terdorong dari
-          // atas ke bawah saat chrome muncul kembali.
+          final dividerColor = Theme.of(context).brightness == Brightness.dark
+              ? Theme.of(context).colorScheme.outlineVariant
+              : const Color(0xFFEEF2F6);
+          final hasOutOfStock =
+              _stockIssues.values.any((issue) => issue.isOutOfStock);
+
+          // CENTER-SLIVER (CartScrollView): blok cart-items di sliver SEBELUM
+          // center, rekomendasi DI center → menyisipkan item cart TIDAK
+          // menggeser rekomendasi yang sedang dilihat. Bebas loncat by-design
+          // (geometri native, bukan aritmetika maxScrollExtent yang rapuh thd
+          // estimasi lazy — biang gagal v165–v170). Baris "N terpilih" +
+          // voucher bar = sibling persisten (Tahap 2: collapsing auto-hide).
           return Column(
             children: [
+              _CartSelectedRow(
+                selectedCount: _selectedItems.length,
+                onDeleteSelected:
+                    _selectedItems.isEmpty ? null : _confirmRemoveSelected,
+              ),
               Expanded(
-                child: Stack(
-                  children: [
-                    // Chrome (selection row + voucher bar) PERSISTEN — auto-hide
-                    // dibuang total. Dulu keduanya slide/fade tiap scroll-pause
-                    // (bobbing "loncat-loncat") & voucher bar layout-neutral
-                    // menyisakan pita putih 50px (scaffold) saat hidden.
-                    // Footprint mereka konstan → persisten tak mengubah viewport
-                    // → RetainableScrollController & anti-jump tak tersentuh.
-                    // cacheExtent besar: tahan blok kartu cart tetap laid-out
-                    // saat lihat rekomendasi → delta maxScrollExtent saat insert
-                    // = tinggi kartu asli → koreksi in-layout tepat (bukan
-                    // estimasi lazy).
-                    ListView(
-                      controller: _scrollController,
-                      cacheExtent: 1200,
-                      padding: const EdgeInsets.fromLTRB(
-                        16,
-                        _selectionRowHeight + 12,
-                        16,
-                        12,
-                      ),
-                      // KEY STABIL per child ListView. Tanpa ini, saat
-                      // item baru masuk (add dari rekomendasi) jumlah
-                      // child berubah → Flutter re-asosiasi Element by
-                      // POSISI → subtree rekomendasi (AppProductImage +
-                      // TweenAnimationBuilder) rebuild fresh → gambar
-                      // re-shimmer & animasi masuk replay = "glitch".
-                      // Key bikin reconciliation match by identitas, jadi
-                      // subtree yang tak berubah tetap stabil saat insert.
-                      children: [
-                        // Banner ringkas kalau ada item stok habis —
-                        // jelaskan kenapa item tertentu tidak ikut total.
-                        if (_stockIssues.values
-                            .any((issue) => issue.isOutOfStock)) ...[
-                          _CartStockBanner(
-                            key: const ValueKey('cart-stock-banner'),
+                child: CartScrollView(
+                  controller: _scrollController,
+                  leadingSlivers: [
+                    const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                    if (hasOutOfStock)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                          child: _CartStockBanner(
                             count: _stockIssues.values
                                 .where((issue) => issue.isOutOfStock)
                                 .length,
                           ),
-                          const SizedBox(
-                            key: ValueKey('cart-stock-banner-gap'),
-                            height: 4,
-                          ),
-                        ],
-                        // Cart items dengan checkbox per item.
-                        for (var i = 0; i < items.length; i++) ...[
-                          _CartItemCard(
-                            key: ValueKey('cart-card-${items[i].key}'),
-                            item: items[i],
-                            index: i,
-                            selected: _selectedIds.contains(items[i].key),
-                            onToggleSelected: () => _toggleItem(items[i].key),
-                            stockIssue: _issueFor(items[i]),
-                            animateEntrance: animateCards,
-                          ),
-                          // Divider indented dari kiri checkbox — start setelah
-                          // checkbox area supaya garis tidak full-width.
-                          // Tokopedia style: divider sejajar dengan image kiri.
-                          if (i < items.length - 1)
+                        ),
+                      ),
+                  ],
+                  itemIds: [for (final item in items) item.key],
+                  itemBuilder: (context, dataIndex) {
+                    final item = items[dataIndex];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Divider di ATAS tiap kartu kecuali paling atas
+                          // (dataIndex 0) → garis antar kartu, indent 42.
+                          if (dataIndex > 0)
                             Padding(
-                              key: ValueKey('cart-div-${items[i].key}'),
                               padding: const EdgeInsets.only(left: 42),
                               child: Divider(
                                 height: 1,
                                 thickness: 1,
-                                color: Theme.of(context).brightness ==
-                                        Brightness.dark
-                                    ? cs.outlineVariant
-                                    : const Color(0xFFEEF2F6),
+                                color: dividerColor,
                               ),
-                            )
-                          else
-                            SizedBox(
-                              key: ValueKey('cart-gap-${items[i].key}'),
-                              height: 8,
                             ),
+                          _CartItemCard(
+                            item: item,
+                            index: dataIndex,
+                            selected: _selectedIds.contains(item.key),
+                            onToggleSelected: () => _toggleItem(item.key),
+                            stockIssue: _issueFor(item),
+                            animateEntrance: animateCards,
+                          ),
                         ],
+                      ),
+                    );
+                  },
+                  center: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         _CartRecommendationsSection(
                           key: const ValueKey('cart-rec-recently'),
                           title: 'Yuk dilihat lagi',
@@ -843,10 +836,7 @@ class _CartScreenState extends State<CartScreen> {
                           loading: _loadingRecentlyViewed,
                           showLoadingPlaceholder: false,
                         ),
-                        const SizedBox(
-                          key: ValueKey('cart-rec-gap'),
-                          height: 18,
-                        ),
+                        const SizedBox(height: 18),
                         _CartRecommendationsSection(
                           key: const ValueKey('cart-rec-boss'),
                           title: 'Ayoo diborong bossku',
@@ -857,26 +847,9 @@ class _CartScreenState extends State<CartScreen> {
                         ),
                       ],
                     ),
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      child: _CartSelectedRow(
-                        selectedCount: _selectedItems.length,
-                        onDeleteSelected: _selectedItems.isEmpty
-                            ? null
-                            : _confirmRemoveSelected,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
-              // Voucher bar PERSISTEN (tidak lagi auto-hide). Sebelumnya
-              // layout-neutral + slide/fade → saat hidden menyisakan PITA PUTIH
-              // 50px (scaffold) di atas checkout bar + ikut "bobbing" tiap
-              // scroll. Sekarang selalu tampil: 50px selalu terisi konten bar,
-              // tanpa pita putih & tanpa gerakan. Footprint sama → viewport
-              // konstan, anti-jump tak terganggu.
               if (showVoucherArea)
                 _StickyVoucherBar(
                   hasSelection: _selectedItems.isNotEmpty,
@@ -892,7 +865,6 @@ class _CartScreenState extends State<CartScreen> {
                           _openVoucherSheet();
                         },
                 ),
-              // ── Checkout bar SELALU visible (tidak ikut auto-hide) ──
               _CartSummaryBar(
                 grandTotal: _grandTotal,
                 totalSaving: _totalVoucherSaving,
@@ -1113,7 +1085,7 @@ class _CartDeleteConfirmDialog extends StatelessWidget {
 /// Banner ringkas di atas list cart saat ada item stok habis.
 class _CartStockBanner extends StatelessWidget {
   final int count;
-  const _CartStockBanner({super.key, required this.count});
+  const _CartStockBanner({required this.count});
 
   @override
   Widget build(BuildContext context) {
@@ -1208,7 +1180,6 @@ class _CartItemCard extends StatelessWidget {
   final bool animateEntrance;
 
   const _CartItemCard({
-    super.key,
     required this.item,
     required this.index,
     required this.selected,
