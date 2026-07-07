@@ -76,6 +76,11 @@ class _CartScreenState extends State<CartScreen> {
   // muncul bareng dengan same duration + curve.
   Timer? _cartChromeTimer;
   bool _showCartChrome = true;
+  // Entrance kartu item (fade+translate) dimainkan HANYA saat layar pertama
+  // menampilkan item. Setelah itu, kartu yang disisipkan (add dari
+  // rekomendasi / beli lagi) muncul TANPA motion supaya tidak ada animasi
+  // 220ms di tepi grid saat add — itu ikut terbaca sebagai "glitch".
+  bool _didInitialCardAnimation = false;
   List<MemberVoucher> _availableDiscountVouchers = const [];
   List<MemberVoucher> _unavailableDiscountVouchers = const [];
   // _appliedDiscountVoucher = slot product discount (PRODUCT_DISCOUNT only).
@@ -138,6 +143,11 @@ class _CartScreenState extends State<CartScreen> {
     for (final issue in result.issues) {
       map[issue.matchKey] = issue;
     }
+    // Validasi bisa menambah banner "stok habis" / badge DI ATAS grid
+    // rekomendasi ~300ms setelah add → reflow KEDUA yang, tanpa anchor,
+    // membuat konten loncat turun mendadak. Bingkai dengan capture/apply
+    // (no-op saat di puncak / tinggi tak berubah).
+    final anchorBefore = _captureScrollAnchor();
     setState(() {
       _stockIssues = map;
       // Auto-deselect item out-of-stock supaya keluar dari subtotal +
@@ -149,6 +159,7 @@ class _CartScreenState extends State<CartScreen> {
         }
       }
     });
+    _applyScrollAnchor(anchorBefore);
     _syncVouchersForSelection();
   }
 
@@ -355,18 +366,32 @@ class _CartScreenState extends State<CartScreen> {
   /// post-frame geser offset menjaga jarak-dari-dasar konstan. Tidak jalan
   /// saat user di puncak (anchoredOffsetAfterInsert → null).
   void _anchorScrollAfterInsert() {
-    if (!_scrollController.hasClients) return;
+    _applyScrollAnchor(_captureScrollAnchor());
+  }
+
+  /// Snapshot metrik scroll saat ini (SEBELUM konten berubah). Null kalau
+  /// belum ada viewport / dimensi belum siap. Dipakai berpasangan dengan
+  /// [_applyScrollAnchor] untuk membingkai mutasi yang menambah tinggi konten
+  /// di ATAS viewport (insert item, atau banner/badge dari validasi stok).
+  ({double maxExtent, double pixels})? _captureScrollAnchor() {
+    if (!_scrollController.hasClients) return null;
     final position = _scrollController.position;
-    if (!position.hasContentDimensions) return;
-    final oldMaxExtent = position.maxScrollExtent;
-    final oldPixels = position.pixels;
+    if (!position.hasContentDimensions) return null;
+    return (maxExtent: position.maxScrollExtent, pixels: position.pixels);
+  }
+
+  /// Post-frame, geser offset supaya jarak-dari-dasar tetap sama seperti saat
+  /// [before] ditangkap → konten yang dilihat tidak "loncat". No-op saat user
+  /// di puncak (anchoredOffsetAfterInsert → null) atau tinggi tak berubah.
+  void _applyScrollAnchor(({double maxExtent, double pixels})? before) {
+    if (before == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       final p = _scrollController.position;
       if (!p.hasContentDimensions) return;
       final target = anchoredOffsetAfterInsert(
-        oldMaxExtent: oldMaxExtent,
-        oldPixels: oldPixels,
+        oldMaxExtent: before.maxExtent,
+        oldPixels: before.pixels,
         newMaxExtent: p.maxScrollExtent,
       );
       if (target == null) return;
@@ -812,6 +837,16 @@ class _CartScreenState extends State<CartScreen> {
             );
           }
 
+          // Entrance kartu hanya pada mount pertama. Insert berikutnya →
+          // animateCards=false → kartu baru muncul instan tanpa motion di
+          // tepi grid (lihat _didInitialCardAnimation).
+          if (!_didInitialCardAnimation) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _didInitialCardAnimation = true;
+            });
+          }
+          final animateCards = !_didInitialCardAnimation;
+
           final showVoucherArea = memberStore.isLoggedIn;
 
           // Main area pakai Stack supaya selection row atas tetap auto-hide
@@ -824,7 +859,12 @@ class _CartScreenState extends State<CartScreen> {
                 child: Stack(
                   children: [
                     Listener(
-                      onPointerDown: (_) => _hideCartChrome(),
+                      // Sengaja TIDAK hide chrome di pointer-DOWN. Dulu tap
+                      // murni (mis. tombol +Keranjang di kartu rekomendasi)
+                      // ikut men-trigger onPointerDown → selection row +
+                      // voucher bar berkedip keluar-masuk ~400ms tiap add =
+                      // "glitch". Chrome cukup hide saat benar-benar scroll:
+                      // onPointerMove (drag) + ScrollStart/Update notification.
                       onPointerMove: (_) => _hideCartChrome(),
                       onPointerUp: (_) => _showCartChromeAfterStop(),
                       onPointerCancel: (_) => _showCartChromeAfterStop(),
@@ -872,6 +912,7 @@ class _CartScreenState extends State<CartScreen> {
                                 onToggleSelected: () =>
                                     _toggleItem(items[i].key),
                                 stockIssue: _issueFor(items[i]),
+                                animateEntrance: animateCards,
                               ),
                               // Divider indented dari kiri checkbox — start setelah
                               // checkbox area supaya garis tidak full-width.
@@ -1298,6 +1339,11 @@ class _CartItemCard extends StatelessWidget {
   /// tersisa < qty (badge "Sisa N").
   final CartValidationIssue? stockIssue;
 
+  /// Mainkan entrance (fade + translate) hanya saat kartu pertama muncul.
+  /// False untuk kartu yang disisipkan setelah mount (add dari rekomendasi)
+  /// supaya tidak ada motion 220ms di tepi grid.
+  final bool animateEntrance;
+
   const _CartItemCard({
     super.key,
     required this.item,
@@ -1305,6 +1351,7 @@ class _CartItemCard extends StatelessWidget {
     required this.selected,
     required this.onToggleSelected,
     this.stockIssue,
+    this.animateEntrance = true,
   });
 
   void _removeWithUndo(BuildContext context) {
@@ -1391,7 +1438,9 @@ class _CartItemCard extends StatelessWidget {
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.96, end: 1),
-      duration: Duration(milliseconds: 220 + (index * 35).clamp(0, 180)),
+      duration: animateEntrance
+          ? Duration(milliseconds: 220 + (index * 35).clamp(0, 180))
+          : Duration.zero,
       curve: Curves.easeOutCubic,
       builder: (context, value, child) {
         return Opacity(
@@ -1456,6 +1505,10 @@ class _CartItemCard extends StatelessWidget {
                     child: AppProductImage(
                       imageUrl: item.product.imageUrl,
                       fit: BoxFit.cover,
+                      // Kartu sudah di-fade oleh entrance (atau muncul instan
+                      // saat insert) → matikan cross-fade internal biar tidak
+                      // dobel-fade di tepi grid.
+                      fadeInDuration: Duration.zero,
                     ),
                   ),
                 ),
