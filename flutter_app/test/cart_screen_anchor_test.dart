@@ -52,11 +52,11 @@ void main() {
       await tester.fling(scrollable, const Offset(0, -3000), 3000);
       await _settle(tester);
 
-      final scrollableState =
-          tester.state<ScrollableState>(scrollable);
+      final scrollableState = tester.state<ScrollableState>(scrollable);
       final positionBefore = scrollableState.position;
       final pixelsBefore = positionBefore.pixels;
       final maxExtentBefore = positionBefore.maxScrollExtent;
+      final minExtentBefore = positionBefore.minScrollExtent;
 
       // Sanity: benar-benar di dasar (dalam toleransi) sebelum item baru masuk.
       expect(pixelsBefore, closeTo(maxExtentBefore, 1.0));
@@ -71,20 +71,27 @@ void main() {
       await _settle(tester, times: 5);
 
       final positionAfter = scrollableState.position;
-      final maxExtentAfter = positionAfter.maxScrollExtent;
 
-      // Konten baru harus benar-benar menambah tinggi (bukti item ke-render).
-      expect(maxExtentAfter, greaterThan(maxExtentBefore));
-
-      // Assertion inti anti-jump: user masih "menempel" di dasar konten yang
-      // BARU (bukan diam di offset lama yang sekarang berarti ada ~1 kartu
-      // konten baru di ATAS yang belum ke-scroll — itulah "loncat").
+      // CENTER-SLIVER (v171+): cart-items ada di sliver SEBELUM center (sisi
+      // NEGATIF), rekomendasi DI/sesudah center (sisi positif). Menambah item
+      // cart menumbuhkan sisi NEGATIF (minScrollExtent makin kecil), BUKAN
+      // sisi positif → rekomendasi yang dilihat user tidak tergeser. Bebas
+      // loncat by-design, bukan aritmetika maxScrollExtent yang rapuh.
+      expect(
+        positionAfter.minScrollExtent,
+        lessThan(minExtentBefore),
+        reason: 'blok cart tumbuh di sisi negatif → bukti item baru ke-render',
+      );
+      expect(
+        positionAfter.maxScrollExtent,
+        closeTo(maxExtentBefore, 1.0),
+        reason: 'sisi rekomendasi (positif) tidak tumbuh → tak ada yang '
+            'mendorong konten yang sedang dilihat',
+      );
       expect(
         positionAfter.pixels,
-        closeTo(maxExtentAfter, 1.0),
-        reason: 'Offset scroll harus ikut ter-anchor ke dasar baru; kalau '
-            'masih di offset lama berarti konten baru nyelip di atas '
-            'viewport tanpa kompensasi (bug "loncat ke bawah").',
+        closeTo(pixelsBefore, 1.0),
+        reason: 'offset TETAP → rekomendasi yang dilihat TIDAK loncat',
       );
 
       // Drain debounce timer CartStore._scheduleRemoteSync (800ms) sebelum
