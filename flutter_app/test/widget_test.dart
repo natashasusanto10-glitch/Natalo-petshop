@@ -10,9 +10,11 @@ void main() {
     // Gate membaca SharedPreferences (onboarding) — sediakan mock kosong.
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(const NataloPetshopApp());
-    // Drain kerja async gate (ensureAuthReady timeout 3s + settleDelay 900ms).
+    // Drain kerja async gate: worst case ensureAuthReady timeout 3s +
+    // settleDelay 2s = 5s (memberStore tidak pernah initialized di test ini).
+    // Pump 6s (120 x 50ms) supaya ada margin di atas 5s worst case.
     // User tidak login di test → popup tidak muncul; cukup pastikan tidak crash.
-    for (var i = 0; i < 90; i++) {
+    for (var i = 0; i < 120; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
     expect(find.byType(MaterialApp), findsOneWidget);

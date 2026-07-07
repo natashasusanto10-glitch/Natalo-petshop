@@ -51,7 +51,11 @@ class LaunchPromoGate extends StatefulWidget {
     this.showDialogFn,
     this.openHref,
     this.logEvent,
-    this.settleDelay = const Duration(milliseconds: 900),
+    // 2000ms: tunggu AppStartupSplash (opaque ~1400ms + fade ~360ms ≈ 1760ms)
+    // selesai dulu supaya popup muncul & beranimasi DI ATAS Beranda, bukan di
+    // balik splash; sekaligus memberi margin lebih untuk flag launchedFromColdPush
+    // (di-set setelah Firebase getInitialMessage) resolve sebelum keputusan.
+    this.settleDelay = const Duration(milliseconds: 2000),
   });
 
   @override
