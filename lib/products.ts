@@ -1189,6 +1189,7 @@ export async function getProductBySlug(
       reviewCount: p.reviewCount,
       categoryId: p.category?.id ?? null,
       categorySlug: p.category?.slug ?? null,
+      brandId: p.brandId ?? null,
       flashSaleEndsAt: effectiveFlashSaleEndsAt,
     };
     const [withPreview] = await withVoucherPreviews([product], viewerId);

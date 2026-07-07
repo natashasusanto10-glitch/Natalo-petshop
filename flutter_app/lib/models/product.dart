@@ -342,6 +342,11 @@ class ProductVoucherPreview {
         'loginRequired': loginRequired,
         'kind': kind,
         'loyaltyPoints': loyaltyPoints,
+        // brandName + isBrandExclusive WAJIB ikut: fromJson merekonstruksi
+        // isBrandExclusive dari kedua field ini. Tanpa ini, round-trip disk
+        // (cart / recently-viewed) meng-collapse flag ke false → badge hilang.
+        'brandName': brandName,
+        'isBrandExclusive': isBrandExclusive,
       };
 }
 

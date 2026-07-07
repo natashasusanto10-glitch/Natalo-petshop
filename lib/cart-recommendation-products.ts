@@ -143,6 +143,11 @@ export function serializeCartRecommendationProduct(product: CartRecommendationPr
     categorySlug: product.category?.slug ?? null,
     category: product.category?.name ?? null,
     brand: product.brand?.name ?? null,
+    // brandId WAJIB diteruskan — voucherMatchesProduct mencocokkan voucher
+    // brand-exclusive lewat product.brandId. Tanpa ini, badge "Brand Eksklusif"
+    // hilang di kartu rekomendasi / recently-viewed (bug class sama dgn
+    // getProductBySlug jalur non-varian).
+    brandId: product.brandId ?? null,
     variantAttrs: product.variantAttrs.map((attr) => ({
       id: attr.id,
       name: attr.name,
