@@ -17,7 +17,7 @@ import '../state/recently_viewed_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
-import '../utils/scroll_anchor.dart';
+import '../utils/retainable_scroll_controller.dart';
 import '../widgets/animated_counter.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_product_image.dart';
@@ -62,7 +62,8 @@ class CartScreen extends StatefulWidget {
 }
 
 class _CartScreenState extends State<CartScreen> {
-  final ScrollController _scrollController = ScrollController();
+  final RetainableScrollController _scrollController =
+      RetainableScrollController();
   List<Product> _recentlyViewed = const [];
   List<Product> _bossProducts = const [];
   bool _loadingRecentlyViewed = false;
@@ -341,10 +342,11 @@ class _CartScreenState extends State<CartScreen> {
     final cartKeys = cartStore.items.map((i) => i.key).toSet();
     final hasNewItem = cartKeys.any((key) => !_selectedIds.contains(key));
     // Anti-jump: item baru dirender sebagai kartu DI ATAS grid rekomendasi.
-    // Tangkap metrik scroll SEBELUM rebuild, lalu geser offset (post-frame)
-    // supaya konten yang lagi dilihat tidak "loncat ke bawah". Detail di
-    // utils/scroll_anchor.dart.
-    if (hasNewItem) _anchorScrollAfterInsert();
+    // Arm koreksi IN-LAYOUT (di applyContentDimensions, SEBELUM paint, tanpa
+    // notify listener) supaya konten yang dilihat tidak "loncat" — tanpa
+    // kedip 1-frame & tanpa kaskade pagination/chrome dari post-frame jumpTo.
+    // Detail: utils/retainable_scroll_controller.dart.
+    if (hasNewItem) _scrollController.retainOffsetOnNextGrowth();
     setState(() {
       // Add semua key yang belum di set (new items).
       for (final key in cartKeys) {
@@ -361,47 +363,6 @@ class _CartScreenState extends State<CartScreen> {
     // Re-validasi stok kalau ada item baru masuk cart (mis. dari "Beli
     // lagi" / rekomendasi) supaya badge stok langsung akurat.
     if (hasNewItem) _validateStock();
-  }
-
-  /// Pertahankan posisi visual konten saat kartu item baru nyelip di atas
-  /// (mis. add dari grid rekomendasi). Tanpa ini `ListView` biasa tidak
-  /// nge-anchor scroll → konten "loncat ke bawah". Tangkap metrik lama, lalu
-  /// post-frame geser offset menjaga jarak-dari-dasar konstan. Tidak jalan
-  /// saat user di puncak (anchoredOffsetAfterInsert → null).
-  void _anchorScrollAfterInsert() {
-    _applyScrollAnchor(_captureScrollAnchor());
-  }
-
-  /// Snapshot metrik scroll saat ini (SEBELUM konten berubah). Null kalau
-  /// belum ada viewport / dimensi belum siap. Dipakai berpasangan dengan
-  /// [_applyScrollAnchor] untuk membingkai mutasi yang menambah tinggi konten
-  /// di ATAS viewport (insert item, atau banner/badge dari validasi stok).
-  ({double maxExtent, double pixels})? _captureScrollAnchor() {
-    if (!_scrollController.hasClients) return null;
-    final position = _scrollController.position;
-    if (!position.hasContentDimensions) return null;
-    return (maxExtent: position.maxScrollExtent, pixels: position.pixels);
-  }
-
-  /// Post-frame, geser offset supaya jarak-dari-dasar tetap sama seperti saat
-  /// [before] ditangkap → konten yang dilihat tidak "loncat". No-op saat user
-  /// di puncak (anchoredOffsetAfterInsert → null) atau tinggi tak berubah.
-  void _applyScrollAnchor(({double maxExtent, double pixels})? before) {
-    if (before == null) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      final p = _scrollController.position;
-      if (!p.hasContentDimensions) return;
-      final target = anchoredOffsetAfterInsert(
-        oldMaxExtent: before.maxExtent,
-        oldPixels: before.pixels,
-        newMaxExtent: p.maxScrollExtent,
-      );
-      if (target == null) return;
-      if ((p.pixels - target).abs() > 0.5) {
-        p.jumpTo(target);
-      }
-    });
   }
 
   void _onMemberChanged() {
