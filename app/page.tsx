@@ -754,7 +754,13 @@ export default async function HomePage() {
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <TrustMarquee items={trustItems} />
+      {/* Desktop sudah punya AnnouncementBar (header) dengan pesan yang sama
+          (gratis ongkir, produk original, WA) — sembunyikan marquee ini di
+          md+ supaya tidak duplikat/menumpuk di bawah nav. Mobile tetap
+          seperti semula. */}
+      <div className="md:hidden">
+        <TrustMarquee items={trustItems} />
+      </div>
 
       {/* ── 2. BANNER CAROUSEL UTAMA ── */}
       <section className="pt-3">
