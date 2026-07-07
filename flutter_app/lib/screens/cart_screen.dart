@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -45,11 +44,6 @@ const _brandExclusiveAmberSoft = Color(0xFFFEF0DC);
 const _brandExclusiveAmberBorder = Color(0xFFFCD9A0);
 const _voucherBarHeight = 50.0;
 const _selectionRowHeight = 42.0;
-// Shared cart chrome auto-hide config — selection row atas + voucher bar
-// bawah pakai SAME duration + curve + state untuk gerakan 1:1 sinkron.
-const _cartChromeIdleDelay = Duration(milliseconds: 180);
-const _cartChromeAnimDuration = Duration(milliseconds: 220);
-const _cartChromeAnimCurve = Curves.easeOutCubic;
 const _cartBossOpenCountKey = 'natalo_cart_boss_open_count_v1';
 const _cartBossRefreshEvery = 3;
 const _shippingVoucherCode = '__shipping_free__';
@@ -71,12 +65,6 @@ class _CartScreenState extends State<CartScreen> {
   bool _loadingMoreBossProducts = false;
   bool _bossProductsHasMore = true;
   String? _bossProductsCursor;
-  // Shared "cart chrome" state — controls BOTH selection row (top) +
-  // voucher bar (bottom). Single state guarantees 1:1 synced animation:
-  // saat user scroll, keduanya hide bareng; saat scroll stop, keduanya
-  // muncul bareng dengan same duration + curve.
-  Timer? _cartChromeTimer;
-  bool _showCartChrome = true;
   // Entrance kartu item (fade+translate) dimainkan HANYA saat layar pertama
   // menampilkan item. Setelah itu, kartu yang disisipkan (add dari
   // rekomendasi / beli lagi) muncul TANPA motion supaya tidak ada animasi
@@ -199,7 +187,6 @@ class _CartScreenState extends State<CartScreen> {
 
   @override
   void dispose() {
-    _cartChromeTimer?.cancel();
     _scrollController.removeListener(_onCartScroll);
     _scrollController.dispose();
     cartStore.removeListener(_onCartChanged);
@@ -289,11 +276,6 @@ class _CartScreenState extends State<CartScreen> {
       return;
     }
     final position = _scrollController.position;
-
-    if (cartStore.items.isNotEmpty && memberStore.isLoggedIn) {
-      _hideCartChrome();
-      _showCartChromeAfterStop();
-    }
 
     if (_loadingBossProducts ||
         _loadingMoreBossProducts ||
@@ -565,50 +547,6 @@ class _CartScreenState extends State<CartScreen> {
     return null;
   }
 
-  void _hideCartChrome() {
-    _cartChromeTimer?.cancel();
-    if (!_showCartChrome) return;
-    setState(() => _showCartChrome = false);
-  }
-
-  void _showCartChromeAfterStop() {
-    _cartChromeTimer?.cancel();
-    _cartChromeTimer = Timer(_cartChromeIdleDelay, () {
-      if (!mounted || _showCartChrome) return;
-      setState(() => _showCartChrome = true);
-    });
-  }
-
-  bool _handleScrollNotification(ScrollNotification notification) {
-    if (notification is ScrollStartNotification) {
-      _hideCartChrome();
-      return false;
-    }
-
-    if (notification is ScrollUpdateNotification ||
-        notification is OverscrollNotification) {
-      _hideCartChrome();
-      // Tokopedia-like: reset timer setiap frame scroll. Bar muncul sendiri
-      // setelah list benar-benar idle, tanpa user perlu tap layar lagi.
-      _showCartChromeAfterStop();
-      return false;
-    }
-
-    if (notification is UserScrollNotification) {
-      if (notification.direction == ScrollDirection.idle) {
-        _showCartChromeAfterStop();
-      } else {
-        _hideCartChrome();
-      }
-      return false;
-    }
-
-    if (notification is ScrollEndNotification) {
-      _showCartChromeAfterStop();
-    }
-    return false;
-  }
-
   void _toggleItem(String key) {
     AppHaptics.tap();
     setState(() {
@@ -822,176 +760,137 @@ class _CartScreenState extends State<CartScreen> {
               Expanded(
                 child: Stack(
                   children: [
-                    Listener(
-                      // Sengaja TIDAK hide chrome di pointer-DOWN. Dulu tap
-                      // murni (mis. tombol +Keranjang di kartu rekomendasi)
-                      // ikut men-trigger onPointerDown → selection row +
-                      // voucher bar berkedip keluar-masuk ~400ms tiap add =
-                      // "glitch". Chrome cukup hide saat benar-benar scroll:
-                      // onPointerMove (drag) + ScrollStart/Update notification.
-                      onPointerMove: (_) => _hideCartChrome(),
-                      onPointerUp: (_) => _showCartChromeAfterStop(),
-                      onPointerCancel: (_) => _showCartChromeAfterStop(),
-                      child: NotificationListener<ScrollNotification>(
-                        onNotification: _handleScrollNotification,
-                        child: ListView(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.fromLTRB(
-                            16,
-                            _selectionRowHeight + 12,
-                            16,
-                            12,
-                          ),
-                          // KEY STABIL per child ListView. Tanpa ini, saat
-                          // item baru masuk (add dari rekomendasi) jumlah
-                          // child berubah → Flutter re-asosiasi Element by
-                          // POSISI → subtree rekomendasi (AppProductImage +
-                          // TweenAnimationBuilder) rebuild fresh → gambar
-                          // re-shimmer & animasi masuk replay = "glitch".
-                          // Key bikin reconciliation match by identitas, jadi
-                          // subtree yang tak berubah tetap stabil saat insert.
-                          children: [
-                            // Banner ringkas kalau ada item stok habis —
-                            // jelaskan kenapa item tertentu tidak ikut total.
-                            if (_stockIssues.values
-                                .any((issue) => issue.isOutOfStock)) ...[
-                              _CartStockBanner(
-                                key: const ValueKey('cart-stock-banner'),
-                                count: _stockIssues.values
-                                    .where((issue) => issue.isOutOfStock)
-                                    .length,
-                              ),
-                              const SizedBox(
-                                key: ValueKey('cart-stock-banner-gap'),
-                                height: 4,
-                              ),
-                            ],
-                            // Cart items dengan checkbox per item.
-                            for (var i = 0; i < items.length; i++) ...[
-                              _CartItemCard(
-                                key: ValueKey('cart-card-${items[i].key}'),
-                                item: items[i],
-                                index: i,
-                                selected: _selectedIds.contains(items[i].key),
-                                onToggleSelected: () =>
-                                    _toggleItem(items[i].key),
-                                stockIssue: _issueFor(items[i]),
-                                animateEntrance: animateCards,
-                              ),
-                              // Divider indented dari kiri checkbox — start setelah
-                              // checkbox area supaya garis tidak full-width.
-                              // Tokopedia style: divider sejajar dengan image kiri.
-                              if (i < items.length - 1)
-                                Padding(
-                                  key: ValueKey('cart-div-${items[i].key}'),
-                                  padding: const EdgeInsets.only(left: 42),
-                                  child: Divider(
-                                    height: 1,
-                                    thickness: 1,
-                                    color: Theme.of(context).brightness ==
-                                            Brightness.dark
-                                        ? cs.outlineVariant
-                                        : const Color(0xFFEEF2F6),
-                                  ),
-                                )
-                              else
-                                SizedBox(
-                                  key: ValueKey('cart-gap-${items[i].key}'),
-                                  height: 8,
-                                ),
-                            ],
-                            _CartRecommendationsSection(
-                              key: const ValueKey('cart-rec-recently'),
-                              title: 'Yuk dilihat lagi',
-                              products: _recentlyViewed,
-                              loading: _loadingRecentlyViewed,
-                              showLoadingPlaceholder: false,
-                            ),
-                            const SizedBox(
-                              key: ValueKey('cart-rec-gap'),
-                              height: 18,
-                            ),
-                            _CartRecommendationsSection(
-                              key: const ValueKey('cart-rec-boss'),
-                              title: 'Ayoo diborong bossku',
-                              products: _bossProducts,
-                              loading: _loadingBossProducts,
-                              loadingMore: _loadingMoreBossProducts,
-                              showLoadingPlaceholder: false,
-                            ),
-                          ],
-                        ),
+                    // Chrome (selection row + voucher bar) PERSISTEN — auto-hide
+                    // dibuang total. Dulu keduanya slide/fade tiap scroll-pause
+                    // (bobbing "loncat-loncat") & voucher bar layout-neutral
+                    // menyisakan pita putih 50px (scaffold) saat hidden.
+                    // Footprint mereka konstan → persisten tak mengubah viewport
+                    // → RetainableScrollController & anti-jump tak tersentuh.
+                    // cacheExtent besar: tahan blok kartu cart tetap laid-out
+                    // saat lihat rekomendasi → delta maxScrollExtent saat insert
+                    // = tinggi kartu asli → koreksi in-layout tepat (bukan
+                    // estimasi lazy).
+                    ListView(
+                      controller: _scrollController,
+                      cacheExtent: 1200,
+                      padding: const EdgeInsets.fromLTRB(
+                        16,
+                        _selectionRowHeight + 12,
+                        16,
+                        12,
                       ),
+                      // KEY STABIL per child ListView. Tanpa ini, saat
+                      // item baru masuk (add dari rekomendasi) jumlah
+                      // child berubah → Flutter re-asosiasi Element by
+                      // POSISI → subtree rekomendasi (AppProductImage +
+                      // TweenAnimationBuilder) rebuild fresh → gambar
+                      // re-shimmer & animasi masuk replay = "glitch".
+                      // Key bikin reconciliation match by identitas, jadi
+                      // subtree yang tak berubah tetap stabil saat insert.
+                      children: [
+                        // Banner ringkas kalau ada item stok habis —
+                        // jelaskan kenapa item tertentu tidak ikut total.
+                        if (_stockIssues.values
+                            .any((issue) => issue.isOutOfStock)) ...[
+                          _CartStockBanner(
+                            key: const ValueKey('cart-stock-banner'),
+                            count: _stockIssues.values
+                                .where((issue) => issue.isOutOfStock)
+                                .length,
+                          ),
+                          const SizedBox(
+                            key: ValueKey('cart-stock-banner-gap'),
+                            height: 4,
+                          ),
+                        ],
+                        // Cart items dengan checkbox per item.
+                        for (var i = 0; i < items.length; i++) ...[
+                          _CartItemCard(
+                            key: ValueKey('cart-card-${items[i].key}'),
+                            item: items[i],
+                            index: i,
+                            selected: _selectedIds.contains(items[i].key),
+                            onToggleSelected: () => _toggleItem(items[i].key),
+                            stockIssue: _issueFor(items[i]),
+                            animateEntrance: animateCards,
+                          ),
+                          // Divider indented dari kiri checkbox — start setelah
+                          // checkbox area supaya garis tidak full-width.
+                          // Tokopedia style: divider sejajar dengan image kiri.
+                          if (i < items.length - 1)
+                            Padding(
+                              key: ValueKey('cart-div-${items[i].key}'),
+                              padding: const EdgeInsets.only(left: 42),
+                              child: Divider(
+                                height: 1,
+                                thickness: 1,
+                                color: Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? cs.outlineVariant
+                                    : const Color(0xFFEEF2F6),
+                              ),
+                            )
+                          else
+                            SizedBox(
+                              key: ValueKey('cart-gap-${items[i].key}'),
+                              height: 8,
+                            ),
+                        ],
+                        _CartRecommendationsSection(
+                          key: const ValueKey('cart-rec-recently'),
+                          title: 'Yuk dilihat lagi',
+                          products: _recentlyViewed,
+                          loading: _loadingRecentlyViewed,
+                          showLoadingPlaceholder: false,
+                        ),
+                        const SizedBox(
+                          key: ValueKey('cart-rec-gap'),
+                          height: 18,
+                        ),
+                        _CartRecommendationsSection(
+                          key: const ValueKey('cart-rec-boss'),
+                          title: 'Ayoo diborong bossku',
+                          products: _bossProducts,
+                          loading: _loadingBossProducts,
+                          loadingMore: _loadingMoreBossProducts,
+                          showLoadingPlaceholder: false,
+                        ),
+                      ],
                     ),
                     Positioned(
                       top: 0,
                       left: 0,
                       right: 0,
-                      child: ClipRect(
-                        child: AnimatedSlide(
-                          offset: _showCartChrome
-                              ? Offset.zero
-                              : const Offset(0, -1),
-                          duration: _cartChromeAnimDuration,
-                          curve: _cartChromeAnimCurve,
-                          child: AnimatedOpacity(
-                            opacity: _showCartChrome ? 1 : 0,
-                            duration: _cartChromeAnimDuration,
-                            curve: _cartChromeAnimCurve,
-                            child: IgnorePointer(
-                              ignoring: !_showCartChrome,
-                              child: _CartSelectedRow(
-                                selectedCount: _selectedItems.length,
-                                onDeleteSelected: _selectedItems.isEmpty
-                                    ? null
-                                    : _confirmRemoveSelected,
-                              ),
-                            ),
-                          ),
-                        ),
+                      child: _CartSelectedRow(
+                        selectedCount: _selectedItems.length,
+                        onDeleteSelected: _selectedItems.isEmpty
+                            ? null
+                            : _confirmRemoveSelected,
                       ),
                     ),
                   ],
                 ),
               ),
-              // ── Auto-hide bottom: voucher bar ──
-              // Voucher bar auto-hide LAYOUT-NEUTRAL: dulu pakai
-              // AnimatedContainer height 50↔0 yang mengubah tinggi Expanded
-              // ListView di atasnya → saat show/hide, konten ke-nudge dan
-              // (dekat dasar) "loncat". Sekarang bar tetap setinggi
-              // _voucherBarHeight (footprint konstan di dalam ClipRect); hide
-              // cukup slide turun + fade. Konsisten dgn baris atas "…terpilih"
-              // yang sudah layout-neutral (commit 0a4b50f), dan bikin viewport
-              // konstan → anchor anti-jump jadi deterministik.
+              // Voucher bar PERSISTEN (tidak lagi auto-hide). Sebelumnya
+              // layout-neutral + slide/fade → saat hidden menyisakan PITA PUTIH
+              // 50px (scaffold) di atas checkout bar + ikut "bobbing" tiap
+              // scroll. Sekarang selalu tampil: 50px selalu terisi konten bar,
+              // tanpa pita putih & tanpa gerakan. Footprint sama → viewport
+              // konstan, anti-jump tak terganggu.
               if (showVoucherArea)
-                ClipRect(
-                  child: AnimatedSlide(
-                    offset: _showCartChrome ? Offset.zero : const Offset(0, 1),
-                    duration: _cartChromeAnimDuration,
-                    curve: _cartChromeAnimCurve,
-                    child: AnimatedOpacity(
-                      opacity: _showCartChrome ? 1 : 0,
-                      duration: _cartChromeAnimDuration,
-                      curve: _cartChromeAnimCurve,
-                      child: IgnorePointer(
-                        ignoring: !_showCartChrome,
-                        child: _StickyVoucherBar(
-                          hasSelection: _selectedItems.isNotEmpty,
-                          loading: _loadingVouchers,
-                          discountVoucher: _appliedDiscountVoucher,
-                          discountAmount: _voucherDiscount,
-                          shippingSelected: _appliedShippingVoucher,
-                          shippingDiscount: _shippingDiscount,
-                          onTap: _selectedItems.isEmpty
-                              ? null
-                              : () {
-                                  AppHaptics.tap();
-                                  _openVoucherSheet();
-                                },
-                        ),
-                      ),
-                    ),
-                  ),
+                _StickyVoucherBar(
+                  hasSelection: _selectedItems.isNotEmpty,
+                  loading: _loadingVouchers,
+                  discountVoucher: _appliedDiscountVoucher,
+                  discountAmount: _voucherDiscount,
+                  shippingSelected: _appliedShippingVoucher,
+                  shippingDiscount: _shippingDiscount,
+                  onTap: _selectedItems.isEmpty
+                      ? null
+                      : () {
+                          AppHaptics.tap();
+                          _openVoucherSheet();
+                        },
                 ),
               // ── Checkout bar SELALU visible (tidak ikut auto-hide) ──
               _CartSummaryBar(
