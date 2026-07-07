@@ -130,7 +130,7 @@ git -C C:/Users/USER/Desktop/NLCHAT commit -m "feat(customer-inbox): CustomerCha
 
 ### Task 4: Attach panel (tanpa PING) + Bagikan Produk + foto staff
 
-> **Dependency:** endpoint proxy ter-auth-Firebase (`GET /api/catalog/search`, `POST /api/chat/staff-send-image`) — DITUNDA di Plan 2 §Deferred. Buat dulu (verifikasi ID token staff + cek `canHandleCustomer`) sebelum task ini fungsional end-to-end.
+> **Dependency:** endpoint proxy ter-auth-Firebase (`GET /api/catalog/search`, `POST /api/chat/staff-send-image`) — **direncanakan di Plan 2.5** (`2026-07-07-customer-chat-plan-2.5-proxy-staff-endpoints.md`). Eksekusi Plan 2.5 sebelum task ini agar fungsional end-to-end.
 
 **Files:**
 - Modify: `lib/screens/customer_chat_screen.dart`; Create: `lib/widgets/customer/customer_product_card.dart`, product picker sheet.

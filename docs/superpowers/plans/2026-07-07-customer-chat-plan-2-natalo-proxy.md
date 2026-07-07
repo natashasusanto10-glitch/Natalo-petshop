@@ -564,7 +564,7 @@ git commit -m "feat(chat): webhook staff->customer (HMAC + idempoten) kirim FCM 
 
 ## Deferred (bukan Plan 2)
 
-- `GET /api/catalog/search` & `POST /api/chat/staff-send-image` — **auth Firebase ID token staff**, dipakai NLCATTER. Butuh verifikasi ID token via Admin SDK tokochat (`verifyIdToken`) + cek `canHandleCustomer`. Pindah ke plan Cloud Functions/NLCATTER.
+- `GET /api/catalog/search` & `POST /api/chat/staff-send-image` — **auth Firebase ID token staff**, dipakai NLCATTER. Butuh verifikasi ID token via Admin SDK tokochat (`verifyIdToken`) + cek `canHandleCustomer`. **Direncanakan penuh di Plan 2.5** (`2026-07-07-customer-chat-plan-2.5-proxy-staff-endpoints.md`).
 - Cloud Function pemicu webhook, auto-greeting/away by jam operasional, dan penulisan `unreadCount` per-staff sisi NLCATTER — plan berikutnya.
 - Deploy rules/index tokochat (Plan 1) & konfigurasi service account produksi — tahap rilis terpisah.
 
