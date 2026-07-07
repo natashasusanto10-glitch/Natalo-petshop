@@ -14,12 +14,13 @@
  * `app/api/feed/upload-photo/route.ts` (canonical pattern repo ini), size
  * limit lebih ketat (5 MB vs 8 MB feed) sesuai brief Task 6.
  *
- * SENGAJA TIDAK melakukan auto-reopen/auto-greeting-away (fix B1/B7) —
- * brief Task 6 (dan commit 7025952 yang menambahkan fix B1/B7) hanya
- * mengaitkan side-effect itu ke Task 5 (`/api/chat/send`), bukan endpoint
- * foto ini. Kalau customer HANYA kirim foto ke room `resolved`, room tetap
- * `resolved` sampai ada pesan teks — behavior ini sesuai desain plan, bukan
- * gap yang terlewat.
+ * Auto-reopen (fix B1) & auto-greeting/away (fix B7) IKUT disertakan di
+ * sini — pakai helper SHARED dari `lib/chat/auto-effects.ts` (sama persis
+ * yang dipakai `/api/chat/send`). Sebelumnya endpoint ini SENGAJA tidak
+ * memicu efek itu, tapi review konsistensi lintas endpoint menemukan gap:
+ * kalau customer HANYA kirim foto ke room `resolved`, room tak pernah
+ * reopen sampai ada pesan teks. Sekarang balasan foto-saja pun reopen room
+ * & (kalau room baru) memicu greeting/away, konsisten dgn endpoint teks.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/csrf";
@@ -31,6 +32,7 @@ import { uploadToUT } from "@/lib/uploadthing";
 import { validateImageMagicBytes } from "@/lib/upload/validate-image-bytes";
 import { chatIdForUser, isValidClientMsgId, slidingWindowAllow } from "@/lib/chat/core";
 import { writeCustomerMessage } from "@/lib/chat/rooms";
+import { autoReopenIfResolved, autoGreetingOrAwayIfNew } from "@/lib/chat/auto-effects";
 
 export const dynamic = "force-dynamic";
 
@@ -142,7 +144,19 @@ export async function POST(request: NextRequest) {
   });
   const senderName = user?.name || undefined;
 
-  // 8. Tulis pesan customer (idempoten via clientMsgId; room merge di dalamnya).
+  // 8. Baca doc room SEBELUM writeCustomerMessage — state "before" dipakai
+  // step 10 (auto-reopen & auto-greeting/away), sama pola dgn /api/chat/send
+  // (lihat komentar step 7 di sana). writeCustomerMessage sendiri tak
+  // menyentuh status/greetingSentAt (lihat lib/chat/rooms.ts).
+  const roomSnapBefore = await roomRef.get();
+  const roomDataBefore = roomSnapBefore.exists ? roomSnapBefore.data() : undefined;
+  const wasResolved = roomDataBefore?.status === "resolved";
+  const hadGreeting =
+    !!roomDataBefore &&
+    roomDataBefore.greetingSentAt !== undefined &&
+    roomDataBefore.greetingSentAt !== null;
+
+  // 9. Tulis pesan customer (idempoten via clientMsgId; room merge di dalamnya).
   const writeResult = await writeCustomerMessage(
     { firestore, now: Date.now },
     {
@@ -157,7 +171,24 @@ export async function POST(request: NextRequest) {
     },
   );
 
-  // 9. Response.
+  // 10. Efek samping (reopen/greeting/away) — SHARED dgn /api/chat/send
+  // (lib/chat/auto-effects.ts), HANYA untuk penulisan baru — retry pesan
+  // yang sama (deduped) tak boleh memicu ulang.
+  if (!writeResult.deduped) {
+    if (wasResolved) {
+      await autoReopenIfResolved(firestore, chatId);
+    }
+    if (!hadGreeting) {
+      const analyticsEvent = await autoGreetingOrAwayIfNew(firestore, chatId);
+      if (analyticsEvent) {
+        console.log(
+          JSON.stringify({ event: analyticsEvent, chatId, customerId: session.sub, at: Date.now() }),
+        );
+      }
+    }
+  }
+
+  // 11. Response.
   return NextResponse.json({
     ok: true,
     url,

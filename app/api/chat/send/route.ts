@@ -11,30 +11,22 @@
  *
  * Auto-reopen & auto-greeting/away sengaja PROXY-owned (bukan Cloud
  * Function tokochat) — lihat komentar di `lib/chat/rooms.ts` (writeCustomerMessage
- * SENGAJA tidak menyentuh `status`/`greetingSentAt`).
+ * SENGAJA tidak menyentuh `status`/`greetingSentAt`). Helper efek samping
+ * ini SHARED dengan `/api/chat/send-image` — lihat `lib/chat/auto-effects.ts`.
  */
 import { NextRequest, NextResponse } from "next/server";
-import type {
-  CollectionReference,
-  DocumentReference,
-  Firestore,
-} from "firebase-admin/firestore";
 import { assertSameOrigin } from "@/lib/csrf";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isChatEnabled } from "@/app/api/chat/config/route";
 import { getTokochatFirestore } from "@/lib/chat/firestore-admin";
-import {
-  chatIdForUser,
-  computeChatHoursStatus,
-  isValidClientMsgId,
-  slidingWindowAllow,
-} from "@/lib/chat/core";
+import { chatIdForUser, isValidClientMsgId, slidingWindowAllow } from "@/lib/chat/core";
 import {
   buildCustomerSnapshot,
   writeCustomerMessage,
   type OrderAggregate,
 } from "@/lib/chat/rooms";
+import { autoReopenIfResolved, autoGreetingOrAwayIfNew } from "@/lib/chat/auto-effects";
 
 export const dynamic = "force-dynamic";
 
@@ -51,14 +43,6 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 // terakhir (siapa pun pengirim), filter `senderRole === "customer"` di
 // memory — cukup akurat untuk sliding window & tak butuh deploy index.
 const RATE_LIMIT_LOOKBACK = 40;
-
-const REOPEN_TEXT = "Percakapan dibuka kembali.";
-const DEFAULT_GREETING_TEXT =
-  "Halo! Terima kasih sudah menghubungi Natalo Petshop. Tim kami akan segera membalas pesanmu.";
-// Fallback kalau app_settings/chatHours.awayMessage belum di-seed — sama
-// dengan default template di Plan 6 (chat-settings seedDefaults()).
-const DEFAULT_AWAY_TEMPLATE =
-  "Halo! Kami sedang di luar jam operasional ({jamBuka}–{jamTutup}). Pesanmu akan kami balas segera.";
 
 type ProductContext = {
   productId: string;
@@ -89,108 +73,6 @@ function parseContext(raw: unknown): ParsedContext {
     return { type: "order", orderNumber: c.orderNumber };
   }
   return null;
-}
-
-function formatAwayText(template: string, jamBuka: string | null, jamTutup: string | null): string {
-  return template
-    .replace(/\{jamBuka\}/g, jamBuka ?? "-")
-    .replace(/\{jamTutup\}/g, jamTutup ?? "-");
-}
-
-/**
- * Fix B1: room lama berstatus "resolved" + customer kirim pesan baru →
- * otomatis reopen (`waiting_staff`) + system message, supaya staff sadar
- * ada balasan baru. Tanpa ini room tetap "resolved" & tak muncul di
- * antrian aktif staff (gap yang ditemukan review konsistensi).
- *
- * Re-check status DI DALAM transaksi (bukan cuma pakai snapshot "before"
- * dari luar) untuk menutup race window antara baca-sebelum dan transaksi.
- */
-async function autoReopenIfResolved(
-  firestore: Firestore,
-  roomRef: DocumentReference,
-  messagesRef: CollectionReference,
-): Promise<void> {
-  const sysRef = messagesRef.doc();
-  await firestore.runTransaction(async (tx) => {
-    const snap = await tx.get(roomRef);
-    const data = snap.exists ? snap.data() : undefined;
-    if (!data || data.status !== "resolved") return; // sudah berubah (race) / bukan resolved lagi
-    const now = Date.now();
-    tx.set(
-      roomRef,
-      { status: "waiting_staff", statusChangedAt: now, statusChangedBy: "system" },
-      { merge: true },
-    );
-    tx.set(sysRef, {
-      senderRole: "system",
-      senderId: "system",
-      type: "system",
-      text: REOPEN_TEXT,
-      auto: true,
-      createdAt: now,
-      status: "sent",
-    });
-  });
-}
-
-/**
- * Fix B7 (PROXY-owned, bukan CF): kirim SATU pesan otomatis per room —
- * greeting (dalam jam operasional) atau away (di luar jam, template
- * `awayMessage` dari `app_settings/chatHours`, placeholder `{jamBuka}`/
- * `{jamTutup}`). `greetingSentAt` diset atomik di transaksi yang sama
- * (cegah dobel saat retry/race — re-check dilakukan di dalam transaksi,
- * bukan cuma dari snapshot "before" di luar).
- *
- * Return nama event analytics kalau benar-benar terkirim (bukan skip
- * akibat race), else `null`.
- */
-async function autoGreetingOrAwayIfNew(
-  firestore: Firestore,
-  roomRef: DocumentReference,
-  messagesRef: CollectionReference,
-): Promise<"auto_greeting_sent" | "auto_away_reply_sent" | null> {
-  let chatHoursDoc: Record<string, unknown> | undefined;
-  try {
-    const hoursSnap = await firestore.doc("app_settings/chatHours").get();
-    chatHoursDoc = hoursSnap.exists ? (hoursSnap.data() as Record<string, unknown>) : undefined;
-  } catch {
-    chatHoursDoc = undefined; // fail-open: computeChatHoursStatus(undefined, ...) → offline default
-  }
-
-  const hours = computeChatHoursStatus(chatHoursDoc, Date.now());
-  const isOnline = hours.online;
-  const awayTemplate =
-    typeof chatHoursDoc?.awayMessage === "string" && chatHoursDoc.awayMessage.length > 0
-      ? chatHoursDoc.awayMessage
-      : DEFAULT_AWAY_TEMPLATE;
-  const text = isOnline
-    ? DEFAULT_GREETING_TEXT
-    : formatAwayText(awayTemplate, hours.todayOpen, hours.todayClose);
-
-  const sysRef = messagesRef.doc();
-  const sent = await firestore.runTransaction(async (tx) => {
-    const snap = await tx.get(roomRef);
-    const data = snap.exists ? snap.data() : undefined;
-    if (data && data.greetingSentAt !== undefined && data.greetingSentAt !== null) {
-      return false; // sudah dikirim (race/retry) — jangan dobel
-    }
-    const now = Date.now();
-    tx.set(roomRef, { greetingSentAt: now }, { merge: true });
-    tx.set(sysRef, {
-      senderRole: "system",
-      senderId: "system",
-      type: "system",
-      text,
-      auto: true,
-      createdAt: now,
-      status: "sent",
-    });
-    return true;
-  });
-
-  if (!sent) return null;
-  return isOnline ? "auto_greeting_sent" : "auto_away_reply_sent";
 }
 
 export async function POST(request: NextRequest) {
@@ -375,10 +257,10 @@ export async function POST(request: NextRequest) {
       );
     }
     if (wasResolved) {
-      await autoReopenIfResolved(firestore, roomRef, messagesRef);
+      await autoReopenIfResolved(firestore, chatId);
     }
     if (!hadGreeting) {
-      const analyticsEvent = await autoGreetingOrAwayIfNew(firestore, roomRef, messagesRef);
+      const analyticsEvent = await autoGreetingOrAwayIfNew(firestore, chatId);
       if (analyticsEvent) {
         console.log(
           JSON.stringify({ event: analyticsEvent, chatId, customerId: session.sub, at: Date.now() }),
