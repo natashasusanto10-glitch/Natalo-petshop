@@ -417,7 +417,8 @@ Expected: `chat-rooms.test.ts` gagal impor.
 - [ ] **Step 3: Implementasi `lib/chat/rooms.ts`**
 
 Implementasikan `buildCustomerSnapshot` (murni) dan `writeCustomerMessage`:
-- `writeCustomerMessage` menerima `deps.firestore` (bertipe `Firestore` Admin SDK di produksi, fake di test), melakukan: (a) cek `messages where clientMsgId == input.clientMsgId` → bila ada, kembalikan `{ messageId, deduped: true }`; (b) transaksi: `set(merge:true)` doc room dgn `createdAt` hanya bila absen, update `lastMessage*`, `updatedAt`, increment `unreadCount` per staff / `unreadForCustomer` sesuai `senderRole`; (c) tulis doc pesan baru. Gunakan `FieldValue.serverTimestamp()`/`increment()` di produksi; di test, `deps.now()` menggantikan timestamp.
+- `writeCustomerMessage` menerima `deps.firestore` (bertipe `Firestore` Admin SDK di produksi, fake di test), melakukan: (a) cek `messages where clientMsgId == input.clientMsgId` → bila ada, kembalikan `{ messageId, deduped: true }`; (b) transaksi: `set(merge:true)` doc room dgn `createdAt` hanya bila absen, update `lastMessage*` + `updatedAt`; (c) tulis doc pesan baru. Gunakan `FieldValue.serverTimestamp()` di produksi; di test, `deps.now()` menggantikan timestamp.
+- **Unread BUKAN tanggung jawab proxy** (reconciliation dgn Plan 3): counter `unreadCount.{staffUid}` & `unreadForCustomer` di-increment oleh Cloud Function `notifyNewCustomerMessage` (CF punya akses daftar `users` tokochat; proxy tidak). Proxy hanya **mereset** `unreadForCustomer=0` saat customer buka room (Task 7). Jadi `writeCustomerMessage` TIDAK menyentuh field unread.
 - Bentuk dokumen pesan mengikuti spec §4.2 (field: `clientMsgId, senderRole, senderId, senderName, type, text, image?, product?, order?, auto?, staffOnly?, createdAt, status`).
 
 (Kode lengkap ditulis saat eksekusi mengikuti kontrak test Step 1; pertahankan handler tipis — semua percabangan idempotensi ada di sini, teruji.)
