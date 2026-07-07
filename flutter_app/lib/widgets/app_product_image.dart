@@ -16,6 +16,11 @@ class AppProductImage extends StatelessWidget {
   /// Diabaikan kalau borderRadius sudah dikasih.
   final dynamic radius;
 
+  /// Durasi cross-fade masuk gambar network. Default 220ms; set Duration.zero
+  /// untuk konteks yang sudah punya animasi masuk sendiri (mis. thumbnail
+  /// kartu keranjang yang di-fade entrance kartu) supaya tidak dobel-fade.
+  final Duration fadeInDuration;
+
   const AppProductImage({
     super.key,
     this.imageUrl,
@@ -24,6 +29,7 @@ class AppProductImage extends StatelessWidget {
     this.fit = BoxFit.cover,
     this.borderRadius,
     this.radius,
+    this.fadeInDuration = const Duration(milliseconds: 220),
   });
 
   BorderRadius _effectiveRadius() {
@@ -66,8 +72,9 @@ class AppProductImage extends StatelessWidget {
         height: height,
         fit: fit,
         // Premium polish: snappier fade-in (default 500ms terasa pelan).
-        // 220ms easeOut — kerasa instant tapi tidak harsh.
-        fadeInDuration: const Duration(milliseconds: 220),
+        // 220ms easeOut — kerasa instant tapi tidak harsh. Bisa di-override
+        // (mis. Duration.zero) via param fadeInDuration.
+        fadeInDuration: fadeInDuration,
         fadeOutDuration: const Duration(milliseconds: 120),
         fadeInCurve: Curves.easeOut,
         placeholder: (_, __) => Shimmer.fromColors(
