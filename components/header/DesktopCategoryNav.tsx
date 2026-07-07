@@ -18,6 +18,7 @@ const STATIC_LINKS = [
   { href: "/products?sort=promo", label: "Promo" },
   { href: "/products?sort=terlaris", label: "Terlaris" },
   { href: "/products?sort=baru", label: "Produk Baru" },
+  { href: "/feed", label: "Feed" },
 ];
 
 export function DesktopCategoryNav() {
