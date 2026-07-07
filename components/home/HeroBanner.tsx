@@ -98,7 +98,11 @@ export default function HeroBanner({
   }
 
   return (
-    <div className="px-4 pt-3">
+    // Desktop: batasi lebar hero (banner sumber 16:9). Tanpa batas, di layar
+    // lebar 16:9 bikin banner setinggi >1000px sampai produk tidak kelihatan
+    // di viewport pertama. Cap ~1024px → tinggi ~576px, tetap proporsional
+    // tanpa memotong gambar (aspect tetap 16:9). Mobile tidak berubah.
+    <div className="px-4 pt-3 md:mx-auto md:max-w-5xl">
       <div
         ref={containerRef}
         onClickCapture={handleClickCapture}
@@ -151,7 +155,7 @@ function SlideContent({ slide }: { slide: HeroSlide }) {
         alt={slide.imageAlt}
         fill
         className="object-cover"
-        sizes="(max-width: 768px) 100vw, 768px"
+        sizes="(max-width: 1024px) 100vw, 1024px"
         priority={slide.priority}
         placeholder="blur"
         blurDataURL={IMAGE_BLUR_GRAY}
