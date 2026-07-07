@@ -185,3 +185,31 @@ test("writeCustomerMessage: createdAt room hanya diset bila absen (tak ditimpa s
   const messageDocs = [...store.keys()].filter((k) => k.startsWith("customerChats/cust_u3/messages/"));
   assert.equal(messageDocs.length, 2);
 });
+
+test("writeCustomerMessage menulis dokumen pesan dgn bentuk benar", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  const fakeFirestore = makeFakeFirestore(store);
+  const deps = { firestore: fakeFirestore, now: () => 5000 };
+  const input = {
+    chatId: "cust_u4", customerId: "u4", senderRole: "customer" as const, senderId: "u4",
+    senderName: "Dedi", type: "text" as const, text: "halo min", clientMsgId: "shape-1",
+  };
+
+  const result = await writeCustomerMessage(deps, input);
+
+  const messageKey = [...store.keys()].find((k) => k.startsWith("customerChats/cust_u4/messages/"));
+  assert.ok(messageKey, "dokumen pesan harus dibuat");
+  const messageDoc = store.get(messageKey!);
+  assert.ok(messageDoc, "dokumen pesan harus terbaca dari store");
+
+  assert.equal(messageKey, `customerChats/cust_u4/messages/${result.messageId}`);
+  assert.equal(messageDoc?.clientMsgId, "shape-1");
+  assert.equal(messageDoc?.senderRole, "customer");
+  assert.equal(messageDoc?.senderId, "u4");
+  assert.equal(messageDoc?.senderName, "Dedi");
+  assert.equal(messageDoc?.type, "text");
+  assert.equal(messageDoc?.text, "halo min");
+  assert.equal(typeof messageDoc?.createdAt, "number");
+  assert.equal(messageDoc?.createdAt, 5000);
+  assert.equal(messageDoc?.status, "sent");
+});
