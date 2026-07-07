@@ -14,6 +14,7 @@ import '../state/cart_store.dart';
 import '../state/member_store.dart';
 import '../state/recently_viewed_store.dart';
 import '../theme/natalo_colors.dart';
+import '../utils/chrome_autohide.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/animated_counter.dart';
@@ -44,6 +45,8 @@ const _brandExclusiveAmberSoft = Color(0xFFFEF0DC);
 const _brandExclusiveAmberBorder = Color(0xFFFCD9A0);
 const _voucherBarHeight = 50.0;
 const _selectionRowHeight = 42.0;
+// Auto-hide chrome collapse — smooth (easeInOut) & sengaja tidak terlalu cepat.
+const _chromeAnimDuration = Duration(milliseconds: 340);
 const _cartBossOpenCountKey = 'natalo_cart_boss_open_count_v1';
 const _cartBossRefreshEvery = 3;
 const _shippingVoucherCode = '__shipping_free__';
@@ -55,13 +58,22 @@ class CartScreen extends StatefulWidget {
   State<CartScreen> createState() => _CartScreenState();
 }
 
-class _CartScreenState extends State<CartScreen> {
+class _CartScreenState extends State<CartScreen>
+    with SingleTickerProviderStateMixin {
   // Center-sliver (CartScrollView) meng-anchor rekomendasi secara struktural,
   // jadi cukup ScrollController biasa. initialScrollOffset sangat negatif →
   // frame pertama ter-clamp ke minScrollExtent (= cart paling atas) tanpa
   // kedip ke rekomendasi.
   final ScrollController _scrollController =
       ScrollController(initialScrollOffset: -100000);
+  // Auto-hide chrome (baris "N terpilih" + voucher bar): collapse height→0 saat
+  // scroll ke bawah, muncul lagi saat scroll ke atas / berhenti. Aman di
+  // center-sliver (perubahan tinggi viewport tak menggeser konten). Animasi
+  // smooth (easeInOut, 340ms), collapse penuh → TANPA pita putih.
+  late final AnimationController _chromeController;
+  late final Animation<double> _chromeAnim;
+  Timer? _chromeIdleTimer;
+  bool _chromeVisible = true;
   List<Product> _recentlyViewed = const [];
   List<Product> _bossProducts = const [];
   bool _loadingRecentlyViewed = false;
@@ -101,6 +113,15 @@ class _CartScreenState extends State<CartScreen> {
   @override
   void initState() {
     super.initState();
+    _chromeController = AnimationController(
+      vsync: this,
+      duration: _chromeAnimDuration,
+      value: 1,
+    );
+    _chromeAnim = CurvedAnimation(
+      parent: _chromeController,
+      curve: Curves.easeInOutCubic,
+    );
     _loadRecentlyViewed();
     _loadBossProducts();
     _scrollController.addListener(_onCartScroll);
@@ -193,6 +214,8 @@ class _CartScreenState extends State<CartScreen> {
   void dispose() {
     _scrollController.removeListener(_onCartScroll);
     _scrollController.dispose();
+    _chromeIdleTimer?.cancel();
+    _chromeController.dispose();
     cartStore.removeListener(_onCartChanged);
     memberStore.removeListener(_onMemberChanged);
     recentlyViewedStore.removeListener(_loadRecentlyViewed);
@@ -295,6 +318,48 @@ class _CartScreenState extends State<CartScreen> {
     if (position.pixels >= position.maxScrollExtent - 520) {
       _loadMoreBossProducts();
     }
+  }
+
+  // ── Auto-hide chrome (drag-driven) ──
+  bool _onChromeScroll(ScrollNotification notification) {
+    // Hanya bereaksi ke drag USER (dragDetails != null) — jumpTo anchor awal &
+    // scroll programatik lain tak boleh salah-sembunyikan chrome.
+    if (notification is ScrollUpdateNotification &&
+        notification.dragDetails != null) {
+      final metrics = notification.metrics;
+      final action = chromeActionForScroll(
+        scrollDelta: notification.scrollDelta ?? 0,
+        pixels: metrics.pixels,
+        minExtent: metrics.minScrollExtent,
+        maxExtent: metrics.maxScrollExtent,
+        currentlyVisible: _chromeVisible,
+      );
+      if (action == ChromeAction.hide) _setChromeVisible(false);
+      if (action == ChromeAction.show) _setChromeVisible(true);
+    }
+    if (notification is ScrollUpdateNotification ||
+        notification is ScrollEndNotification) {
+      _armIdleReveal();
+    }
+    return false;
+  }
+
+  void _setChromeVisible(bool visible) {
+    if (_chromeVisible == visible) return;
+    _chromeVisible = visible;
+    if (visible) {
+      _chromeController.forward();
+    } else {
+      _chromeController.reverse();
+    }
+  }
+
+  // Setelah scroll berhenti sejenak, chrome muncul lagi (pola Tokopedia).
+  void _armIdleReveal() {
+    _chromeIdleTimer?.cancel();
+    _chromeIdleTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) _setChromeVisible(true);
+    });
   }
 
   Future<void> _loadMoreBossProducts() async {
@@ -769,110 +834,123 @@ class _CartScreenState extends State<CartScreen> {
           // (geometri native, bukan aritmetika maxScrollExtent yang rapuh thd
           // estimasi lazy — biang gagal v165–v170). Baris "N terpilih" +
           // voucher bar = sibling persisten (Tahap 2: collapsing auto-hide).
-          return Column(
-            children: [
-              _CartSelectedRow(
-                selectedCount: _selectedItems.length,
-                onDeleteSelected:
-                    _selectedItems.isEmpty ? null : _confirmRemoveSelected,
-              ),
-              Expanded(
-                child: CartScrollView(
-                  controller: _scrollController,
-                  leadingSlivers: [
-                    const SliverToBoxAdapter(child: SizedBox(height: 12)),
-                    if (hasOutOfStock)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                          child: _CartStockBanner(
-                            count: _stockIssues.values
-                                .where((issue) => issue.isOutOfStock)
-                                .length,
+          return NotificationListener<ScrollNotification>(
+            onNotification: _onChromeScroll,
+            child: Column(
+              children: [
+                // Baris "N terpilih" — collapse (height→0) ke atas saat scroll.
+                SizeTransition(
+                  sizeFactor: _chromeAnim,
+                  axisAlignment: -1,
+                  child: _CartSelectedRow(
+                    selectedCount: _selectedItems.length,
+                    onDeleteSelected:
+                        _selectedItems.isEmpty ? null : _confirmRemoveSelected,
+                  ),
+                ),
+                Expanded(
+                  child: CartScrollView(
+                    controller: _scrollController,
+                    leadingSlivers: [
+                      const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                      if (hasOutOfStock)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                            child: _CartStockBanner(
+                              count: _stockIssues.values
+                                  .where((issue) => issue.isOutOfStock)
+                                  .length,
+                            ),
                           ),
                         ),
-                      ),
-                  ],
-                  itemIds: [for (final item in items) item.key],
-                  itemBuilder: (context, dataIndex) {
-                    final item = items[dataIndex];
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Divider di ATAS tiap kartu kecuali paling atas
-                          // (dataIndex 0) → garis antar kartu, indent 42.
-                          if (dataIndex > 0)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 42),
-                              child: Divider(
-                                height: 1,
-                                thickness: 1,
-                                color: dividerColor,
+                    ],
+                    itemIds: [for (final item in items) item.key],
+                    itemBuilder: (context, dataIndex) {
+                      final item = items[dataIndex];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Divider di ATAS tiap kartu kecuali paling atas
+                            // (dataIndex 0) → garis antar kartu, indent 42.
+                            if (dataIndex > 0)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 42),
+                                child: Divider(
+                                  height: 1,
+                                  thickness: 1,
+                                  color: dividerColor,
+                                ),
                               ),
+                            _CartItemCard(
+                              item: item,
+                              index: dataIndex,
+                              selected: _selectedIds.contains(item.key),
+                              onToggleSelected: () => _toggleItem(item.key),
+                              stockIssue: _issueFor(item),
+                              animateEntrance: animateCards,
                             ),
-                          _CartItemCard(
-                            item: item,
-                            index: dataIndex,
-                            selected: _selectedIds.contains(item.key),
-                            onToggleSelected: () => _toggleItem(item.key),
-                            stockIssue: _issueFor(item),
-                            animateEntrance: animateCards,
+                          ],
+                        ),
+                      );
+                    },
+                    center: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _CartRecommendationsSection(
+                            key: const ValueKey('cart-rec-recently'),
+                            title: 'Yuk dilihat lagi',
+                            products: _recentlyViewed,
+                            loading: _loadingRecentlyViewed,
+                            showLoadingPlaceholder: false,
+                          ),
+                          const SizedBox(height: 18),
+                          _CartRecommendationsSection(
+                            key: const ValueKey('cart-rec-boss'),
+                            title: 'Ayoo diborong bossku',
+                            products: _bossProducts,
+                            loading: _loadingBossProducts,
+                            loadingMore: _loadingMoreBossProducts,
+                            showLoadingPlaceholder: false,
                           ),
                         ],
                       ),
-                    );
-                  },
-                  center: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _CartRecommendationsSection(
-                          key: const ValueKey('cart-rec-recently'),
-                          title: 'Yuk dilihat lagi',
-                          products: _recentlyViewed,
-                          loading: _loadingRecentlyViewed,
-                          showLoadingPlaceholder: false,
-                        ),
-                        const SizedBox(height: 18),
-                        _CartRecommendationsSection(
-                          key: const ValueKey('cart-rec-boss'),
-                          title: 'Ayoo diborong bossku',
-                          products: _bossProducts,
-                          loading: _loadingBossProducts,
-                          loadingMore: _loadingMoreBossProducts,
-                          showLoadingPlaceholder: false,
-                        ),
-                      ],
                     ),
                   ),
                 ),
-              ),
-              if (showVoucherArea)
-                _StickyVoucherBar(
-                  hasSelection: _selectedItems.isNotEmpty,
-                  loading: _loadingVouchers,
-                  discountVoucher: _appliedDiscountVoucher,
-                  discountAmount: _voucherDiscount,
-                  shippingSelected: _appliedShippingVoucher,
-                  shippingDiscount: _shippingDiscount,
-                  onTap: _selectedItems.isEmpty
-                      ? null
-                      : () {
-                          AppHaptics.tap();
-                          _openVoucherSheet();
-                        },
+                // Voucher bar — collapse (height→0) ke arah checkout saat scroll.
+                if (showVoucherArea)
+                  SizeTransition(
+                    sizeFactor: _chromeAnim,
+                    axisAlignment: 1,
+                    child: _StickyVoucherBar(
+                      hasSelection: _selectedItems.isNotEmpty,
+                      loading: _loadingVouchers,
+                      discountVoucher: _appliedDiscountVoucher,
+                      discountAmount: _voucherDiscount,
+                      shippingSelected: _appliedShippingVoucher,
+                      shippingDiscount: _shippingDiscount,
+                      onTap: _selectedItems.isEmpty
+                          ? null
+                          : () {
+                              AppHaptics.tap();
+                              _openVoucherSheet();
+                            },
+                    ),
+                  ),
+                _CartSummaryBar(
+                  grandTotal: _grandTotal,
+                  totalSaving: _totalVoucherSaving,
+                  selectedQuantity: _selectedQuantity,
+                  disabled: _selectedItems.isEmpty,
+                  onCheckout: _goToCheckout,
                 ),
-              _CartSummaryBar(
-                grandTotal: _grandTotal,
-                totalSaving: _totalVoucherSaving,
-                selectedQuantity: _selectedQuantity,
-                disabled: _selectedItems.isEmpty,
-                onCheckout: _goToCheckout,
-              ),
-            ],
+              ],
+            ),
           );
         },
       ),
