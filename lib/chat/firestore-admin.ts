@@ -1,4 +1,5 @@
 import { cert, getApp, getApps, initializeApp, type App } from "firebase-admin/app";
+import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { normalizePemKey } from "../pem-utils";
 
@@ -55,4 +56,12 @@ export function getTokochatFirestore(): Firestore {
   if (cached) return cached;
   cached = getFirestore(getTokochatApp());
   return cached;
+}
+
+let cachedAuth: Auth | null = null;
+
+export function getTokochatAuth(): Auth {
+  if (cachedAuth) return cachedAuth;
+  cachedAuth = getAuth(getTokochatApp());
+  return cachedAuth;
 }
