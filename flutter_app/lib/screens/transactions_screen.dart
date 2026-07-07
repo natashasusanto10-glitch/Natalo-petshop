@@ -6,6 +6,7 @@ import '../models/member_profile.dart';
 import '../services/api_client.dart';
 import '../services/member_service.dart';
 import '../state/member_store.dart';
+import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/app_notification_button.dart';
@@ -222,14 +223,6 @@ class _TransactionAlertsState extends State<_TransactionAlerts> {
       ..sort((a, b) => a.expiresAt.compareTo(b.expiresAt));
   }
 
-  String _formatCountdown(Duration duration) {
-    if (duration.isNegative) return '00:00:00';
-    final hours = duration.inHours.toString().padLeft(2, '0');
-    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$hours:$minutes:$seconds';
-  }
-
   void _openUnpaid(List<OrderSummary> unpaid) {
     AppHaptics.tap();
     if (unpaid.isEmpty) return;
@@ -279,7 +272,7 @@ class _TransactionAlertsState extends State<_TransactionAlerts> {
                             icon: Icons.receipt_long_rounded,
                             title: '${unpaid.length} Pesanan belum dibayar',
                             subtitle:
-                                'Selesaikan pembayaran sebelum ${_formatCountdown(unpaid.first.createdAt.add(_paymentWindow).difference(DateTime.now()))}',
+                                'Selesaikan pembayaran sebelum ${formatCountdownHms(unpaid.first.createdAt.add(_paymentWindow).difference(DateTime.now()))}',
                             cta: 'Lanjut Bayar',
                             background: const Color(0xFFFFF5F5),
                             border: const Color(0xFFFECACA),
@@ -296,7 +289,7 @@ class _TransactionAlertsState extends State<_TransactionAlerts> {
                             title:
                                 '${vouchers.length} Voucher akan kedaluwarsa',
                             subtitle:
-                                'Gunakan sebelum ${_formatCountdown(vouchers.first.expiresAt.difference(DateTime.now()))}',
+                                'Gunakan sebelum ${formatCountdownHms(vouchers.first.expiresAt.difference(DateTime.now()))}',
                             cta: 'Lihat Voucher',
                             background: const Color(0xFFFFF7ED),
                             border: const Color(0xFFFED7AA),

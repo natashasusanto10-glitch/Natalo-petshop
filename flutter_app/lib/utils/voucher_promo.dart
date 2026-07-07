@@ -55,6 +55,24 @@ PromoEstimate computePromoEstimate(
   );
 }
 
+// Label "sisa waktu" untuk kartu voucher di sheet promo.
+//
+// - expiresAt null atau sudah lewat → null (tak ditampilkan).
+// - > 24 jam → "Sisa N hari" (statis, dibulatkan ke bawah).
+// - <= 24 jam → "Sisa HH:MM:SS" (dimaksudkan berdetak tiap detik di UI).
+//
+// `now` di-inject untuk testabilitas; default DateTime.now().
+String? voucherCountdownLabel(DateTime? expiresAt, {DateTime? now}) {
+  if (expiresAt == null) return null;
+  final current = now ?? DateTime.now();
+  final remaining = expiresAt.difference(current);
+  if (remaining.inSeconds <= 0) return null;
+  if (remaining.inHours >= 24) {
+    return 'Sisa ${remaining.inDays} hari';
+  }
+  return 'Sisa ${formatCountdownHms(remaining)}';
+}
+
 // Teks nominal diskon ("Hemat RpX" / "Diskon N%").
 String voucherDiscountText(ProductVoucherPreview voucher) {
   if (voucher.isShippingVoucher) return 'Gratis Ongkir';

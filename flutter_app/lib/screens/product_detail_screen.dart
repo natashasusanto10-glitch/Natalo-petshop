@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -1637,6 +1639,7 @@ class _VoucherSheetCard extends StatelessWidget {
                 ? _brandExclusiveSoftBorder
                 : const Color(0xFFFFC9D0);
     final subtitle = voucherSheetSubtitle(voucher);
+    final expiresAt = DateTime.tryParse(voucher.expiresAt ?? '')?.toLocal();
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -1708,6 +1711,8 @@ class _VoucherSheetCard extends StatelessWidget {
                     height: 1.25,
                   ),
                 ),
+                if (expiresAt != null)
+                  _VoucherCountdown(expiresAt: expiresAt),
               ],
             ),
           ),
@@ -1800,6 +1805,77 @@ class _DiscountVoucherIcon extends StatelessWidget {
                 height: 1,
                 fontWeight: FontWeight.w900,
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Baris "sisa waktu" senyap (Gaya 2) di kartu voucher sheet.
+///
+/// - > 24 jam  → teks abu statis "Sisa N hari" (tanpa timer).
+/// - <= 24 jam → "Sisa HH:MM:SS" merah, berdetak tiap detik.
+/// - sudah lewat / tak valid → tidak merender apa pun.
+///
+/// Timer 1 detik hanya hidup di fase berdetak (< 24 jam); di atas itu label
+/// statis sehingga tak ada rebuild sia-sia. Timer dibatalkan saat dispose /
+/// saat hitung mundur habis.
+class _VoucherCountdown extends StatefulWidget {
+  final DateTime expiresAt;
+
+  const _VoucherCountdown({required this.expiresAt});
+
+  @override
+  State<_VoucherCountdown> createState() => _VoucherCountdownState();
+}
+
+class _VoucherCountdownState extends State<_VoucherCountdown> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    final remaining = widget.expiresAt.difference(DateTime.now());
+    if (!remaining.isNegative && remaining.inHours < 24) {
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = voucherCountdownLabel(widget.expiresAt);
+    if (label == null) {
+      _timer?.cancel();
+      _timer = null;
+      return const SizedBox.shrink();
+    }
+    final urgent =
+        widget.expiresAt.difference(DateTime.now()).inHours < 24;
+    final color = urgent ? _discountRed : _textMedium;
+    return Padding(
+      padding: const EdgeInsets.only(top: 7),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.schedule_rounded, size: 13, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: urgent ? FontWeight.w800 : FontWeight.w600,
+              height: 1,
             ),
           ),
         ],

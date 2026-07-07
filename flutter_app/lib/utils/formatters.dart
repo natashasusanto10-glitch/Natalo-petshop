@@ -42,6 +42,16 @@ String formatRelativeTime(DateTime past) {
   return '${(diff.inDays / 365).floor()} tahun lalu';
 }
 
+/// Hitung mundur "HH:MM:SS" dari sebuah Duration. Negatif → "00:00:00".
+/// Dipakai untuk item yang mepet kedaluwarsa (mis. voucher < 24 jam).
+String formatCountdownHms(Duration duration) {
+  if (duration.isNegative) return '00:00:00';
+  final hours = duration.inHours.toString().padLeft(2, '0');
+  final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+  final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+  return '$hours:$minutes:$seconds';
+}
+
 /// Truncate string with ellipsis.
 String truncate(String text, int max) {
   if (text.length <= max) return text;
