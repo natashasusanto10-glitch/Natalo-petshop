@@ -769,16 +769,16 @@ export default async function HomePage() {
 
       {/* ── 4. HASHTAG CAMPAIGN + SHORTCUT GRID ── */}
       <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 md:gap-4">
           {SHORTCUT_ITEMS.map((s) => {
             const content = (
               <>
                 <div
-                  className={`flex h-14 w-14 items-center justify-center rounded-full ${s.bg} ${s.color} shadow-sm`}
+                  className={`flex h-14 w-14 items-center justify-center rounded-full ${s.bg} ${s.color} shadow-sm md:h-12 md:w-12`}
                 >
-                  <HomeIcon name={s.icon} className="h-7 w-7" />
+                  <HomeIcon name={s.icon} className="h-7 w-7 md:h-6 md:w-6" />
                 </div>
-                <span className="text-center text-[11px] font-medium leading-tight text-zinc-700">
+                <span className="text-center text-[11px] font-medium leading-tight text-zinc-700 md:text-sm md:font-semibold">
                   {s.label}
                 </span>
               </>
@@ -789,7 +789,7 @@ export default async function HomePage() {
                 <ExternalLink
                   key={s.label}
                   href={s.href}
-                  className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition active:opacity-90"
+                  className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition active:opacity-90 md:flex-row md:justify-center md:gap-3 md:rounded-2xl md:border md:border-[#eef3fb] md:bg-white md:p-4 md:shadow-sm md:hover:-translate-y-0.5 md:hover:shadow-md"
                 >
                   {content}
                 </ExternalLink>
@@ -800,7 +800,7 @@ export default async function HomePage() {
               <Link
                 key={s.label}
                 href={s.href}
-                className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition active:opacity-90"
+                className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition active:opacity-90 md:flex-row md:justify-center md:gap-3 md:rounded-2xl md:border md:border-[#eef3fb] md:bg-white md:p-4 md:shadow-sm md:hover:-translate-y-0.5 md:hover:shadow-md"
               >
                 {content}
               </Link>
