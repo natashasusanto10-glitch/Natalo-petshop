@@ -143,11 +143,15 @@ class _CartScreenState extends State<CartScreen> {
     for (final issue in result.issues) {
       map[issue.matchKey] = issue;
     }
-    // Validasi bisa menambah banner "stok habis" / badge DI ATAS grid
-    // rekomendasi ~300ms setelah add → reflow KEDUA yang, tanpa anchor,
-    // membuat konten loncat turun mendadak. Bingkai dengan capture/apply
-    // (no-op saat di puncak / tinggi tak berubah).
-    final anchorBefore = _captureScrollAnchor();
+    // REGRESI v1.0.167 (DIHAPUS): dulu di sini ada re-anchor scroll
+    // (_captureScrollAnchor/_applyScrollAnchor) untuk reflow badge stok.
+    // Validasi ini balas ~300ms setelah add → BERTABRAKAN dengan
+    // _loadMoreBossProducts yang ke-trigger jumpTo anchor-insert lewat
+    // _onCartScroll: maxScrollExtent tumbuh di antara capture & apply →
+    // jumpTo kedua meleset → "loncat" tertunda + over-scroll (gap kosong di
+    // bawah). Cukup SATU anchor pada frame insert (perilaku v1.0.166 yang
+    // terbukti tanpa loncat/gap). Solusi in-layout bebas-blip = Approach B
+    // (lihat memory cart-antijump-glitch-work), bukan menumpuk jumpTo.
     setState(() {
       _stockIssues = map;
       // Auto-deselect item out-of-stock supaya keluar dari subtotal +
@@ -159,7 +163,6 @@ class _CartScreenState extends State<CartScreen> {
         }
       }
     });
-    _applyScrollAnchor(anchorBefore);
     _syncVouchersForSelection();
   }
 
