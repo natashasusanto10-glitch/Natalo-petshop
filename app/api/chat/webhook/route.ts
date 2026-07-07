@@ -16,9 +16,12 @@
  *   { chatId, customerUserId, messageId, preview, senderName }
  *
  * Idempotensi: sebelum kirim FCM, coba `create()` doc penanda
- * `customerChats/{chatId}/webhookSeen/{messageId}`. `create()` gagal (doc
- * sudah ada) → request ini adalah retry/duplikat (CF Cloud Functions bisa
- * retry at-least-once) → balas 200 `{ deduped: true }` TANPA kirim FCM lagi.
+ * `customerChats/{chatId}/webhookSeen/{messageId}`. `create()` gagal dengan
+ * kode gRPC ALREADY_EXISTS (6) → request ini adalah retry/duplikat (CF Cloud
+ * Functions bisa retry at-least-once) → balas 200 `{ deduped: true }` TANPA
+ * kirim FCM lagi. Error LAIN (network, UNAVAILABLE, PERMISSION_DENIED, dst)
+ * BUKAN duplikat — di-log + balas 500 supaya CF retry lagi (self-heal saat
+ * kondisi transient hilang), TIDAK disalahartikan sebagai "sudah ada".
  */
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWebhookSignature } from "@/lib/chat/core";
@@ -88,28 +91,46 @@ export async function POST(request: NextRequest) {
   }
   const { chatId, customerUserId, messageId, preview, senderName } = payload;
 
-  // Idempotensi: `create()` gagal (doc sudah ada) -> ini retry/duplikat dari
-  // CF (at-least-once delivery) -> jangan kirim FCM dua kali untuk pesan yang sama.
-  const firestore = getTokochatFirestore();
-  const seenRef = firestore
-    .collection(ROOM_COLLECTION)
-    .doc(chatId)
-    .collection(SEEN_SUBCOLLECTION)
-    .doc(messageId);
-
+  // Idempotensi: `create()` gagal dengan ALREADY_EXISTS (doc sudah ada) -> ini
+  // retry/duplikat dari CF (at-least-once delivery) -> jangan kirim FCM dua
+  // kali untuk pesan yang sama. SEMUA error lain (network, UNAVAILABLE,
+  // PERMISSION_DENIED, kredensial TOKOCHAT_* kedaluwarsa, dst) BUKAN duplikat
+  // — harus dibedakan secara eksplisit lewat gRPC status code, supaya error
+  // transient tidak salah dibaca sebagai "sudah ada" (yang akan diam-diam
+  // membuang notifikasi customer karena retry CF berhenti setelah 200 OK).
   try {
-    await seenRef.create({ seenAt: Date.now() });
-  } catch {
-    return NextResponse.json({ deduped: true });
+    const firestore = getTokochatFirestore();
+    const seenRef = firestore
+      .collection(ROOM_COLLECTION)
+      .doc(chatId)
+      .collection(SEEN_SUBCOLLECTION)
+      .doc(messageId);
+
+    try {
+      await seenRef.create({ seenAt: Date.now() });
+    } catch (err) {
+      const code = (err as { code?: number } | null)?.code;
+      if (code === 6 /* ALREADY_EXISTS */) {
+        return NextResponse.json({ deduped: true });
+      }
+      console.error(
+        "chat-webhook: gagal tulis penanda dedupe (bukan already-exists)",
+        err,
+      );
+      return NextResponse.json({ error: "Internal error" }, { status: 500 });
+    }
+
+    await sendFcmToUser(customerUserId, {
+      title: senderName ?? "Natalo",
+      body: preview,
+      url: "/chat",
+      tag: `chat-${chatId}`,
+      data: { type: "customer_chat", chatId },
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("chat-webhook: gagal proses webhook (init/send)", err);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
-
-  await sendFcmToUser(customerUserId, {
-    title: senderName ?? "Natalo",
-    body: preview,
-    url: "/chat",
-    tag: `chat-${chatId}`,
-    data: { type: "customer_chat", chatId },
-  });
-
-  return NextResponse.json({ ok: true });
 }
