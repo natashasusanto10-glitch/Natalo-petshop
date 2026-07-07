@@ -72,6 +72,8 @@ class _CartScreenState extends State<CartScreen>
   // smooth (easeInOut, 340ms), collapse penuh → TANPA pita putih.
   late final AnimationController _chromeController;
   late final Animation<double> _chromeAnim;
+  // Slide untuk overlay baris atas: shown = Offset.zero, hidden = geser ke atas.
+  late final Animation<Offset> _chromeSlideAnim;
   Timer? _chromeIdleTimer;
   bool _chromeVisible = true;
   List<Product> _recentlyViewed = const [];
@@ -122,6 +124,10 @@ class _CartScreenState extends State<CartScreen>
       parent: _chromeController,
       curve: Curves.easeInOutCubic,
     );
+    _chromeSlideAnim = Tween<Offset>(
+      begin: const Offset(0, -1),
+      end: Offset.zero,
+    ).animate(_chromeAnim);
     _loadRecentlyViewed();
     _loadBossProducts();
     _scrollController.addListener(_onCartScroll);
@@ -838,88 +844,112 @@ class _CartScreenState extends State<CartScreen>
             onNotification: _onChromeScroll,
             child: Column(
               children: [
-                // Baris "N terpilih" — collapse (height→0) ke atas saat scroll.
-                SizeTransition(
-                  sizeFactor: _chromeAnim,
-                  axisAlignment: -1,
-                  child: _CartSelectedRow(
-                    selectedCount: _selectedItems.length,
-                    onDeleteSelected:
-                        _selectedItems.isEmpty ? null : _confirmRemoveSelected,
-                  ),
-                ),
+                // Baris "N terpilih" = OVERLAY (Positioned di Stack), BUKAN
+                // sibling Column. Sebagai sibling, muncul-lagi merebut 42px &
+                // mendorong isi turun; sebagai overlay dia slide+fade di ATAS
+                // konten → area scroll tak berubah ukuran → NOL dorongan.
+                // Daftar diberi padding atas supaya kartu pertama tak ketutup.
                 Expanded(
-                  child: CartScrollView(
-                    controller: _scrollController,
-                    leadingSlivers: [
-                      const SliverToBoxAdapter(child: SizedBox(height: 12)),
-                      if (hasOutOfStock)
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                            child: _CartStockBanner(
-                              count: _stockIssues.values
-                                  .where((issue) => issue.isOutOfStock)
-                                  .length,
-                            ),
+                  child: Stack(
+                    children: [
+                      CartScrollView(
+                        controller: _scrollController,
+                        leadingSlivers: [
+                          const SliverToBoxAdapter(
+                            child: SizedBox(height: _selectionRowHeight + 12),
                           ),
-                        ),
-                    ],
-                    itemIds: [for (final item in items) item.key],
-                    itemBuilder: (context, dataIndex) {
-                      final item = items[dataIndex];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // Divider di ATAS tiap kartu kecuali paling atas
-                            // (dataIndex 0) → garis antar kartu, indent 42.
-                            if (dataIndex > 0)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 42),
-                                child: Divider(
-                                  height: 1,
-                                  thickness: 1,
-                                  color: dividerColor,
+                          if (hasOutOfStock)
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                                child: _CartStockBanner(
+                                  count: _stockIssues.values
+                                      .where((issue) => issue.isOutOfStock)
+                                      .length,
                                 ),
                               ),
-                            _CartItemCard(
-                              item: item,
-                              index: dataIndex,
-                              selected: _selectedIds.contains(item.key),
-                              onToggleSelected: () => _toggleItem(item.key),
-                              stockIssue: _issueFor(item),
-                              animateEntrance: animateCards,
                             ),
-                          ],
-                        ),
-                      );
-                    },
-                    center: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _CartRecommendationsSection(
-                            key: const ValueKey('cart-rec-recently'),
-                            title: 'Yuk dilihat lagi',
-                            products: _recentlyViewed,
-                            loading: _loadingRecentlyViewed,
-                            showLoadingPlaceholder: false,
-                          ),
-                          const SizedBox(height: 18),
-                          _CartRecommendationsSection(
-                            key: const ValueKey('cart-rec-boss'),
-                            title: 'Ayoo diborong bossku',
-                            products: _bossProducts,
-                            loading: _loadingBossProducts,
-                            loadingMore: _loadingMoreBossProducts,
-                            showLoadingPlaceholder: false,
-                          ),
                         ],
+                        itemIds: [for (final item in items) item.key],
+                        itemBuilder: (context, dataIndex) {
+                          final item = items[dataIndex];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                // Divider di ATAS tiap kartu kecuali paling atas
+                                // (dataIndex 0) → garis antar kartu, indent 42.
+                                if (dataIndex > 0)
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 42),
+                                    child: Divider(
+                                      height: 1,
+                                      thickness: 1,
+                                      color: dividerColor,
+                                    ),
+                                  ),
+                                _CartItemCard(
+                                  item: item,
+                                  index: dataIndex,
+                                  selected: _selectedIds.contains(item.key),
+                                  onToggleSelected: () => _toggleItem(item.key),
+                                  stockIssue: _issueFor(item),
+                                  animateEntrance: animateCards,
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                        center: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _CartRecommendationsSection(
+                                key: const ValueKey('cart-rec-recently'),
+                                title: 'Yuk dilihat lagi',
+                                products: _recentlyViewed,
+                                loading: _loadingRecentlyViewed,
+                                showLoadingPlaceholder: false,
+                              ),
+                              const SizedBox(height: 18),
+                              _CartRecommendationsSection(
+                                key: const ValueKey('cart-rec-boss'),
+                                title: 'Ayoo diborong bossku',
+                                products: _bossProducts,
+                                loading: _loadingBossProducts,
+                                loadingMore: _loadingMoreBossProducts,
+                                showLoadingPlaceholder: false,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
+                      // Overlay baris "N terpilih" — melayang, slide+fade
+                      // (bukan collapse) → tak mendorong konten saat muncul.
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: SlideTransition(
+                          position: _chromeSlideAnim,
+                          child: FadeTransition(
+                            opacity: _chromeAnim,
+                            child: IgnorePointer(
+                              ignoring: !_chromeVisible,
+                              child: _CartSelectedRow(
+                                selectedCount: _selectedItems.length,
+                                onDeleteSelected: _selectedItems.isEmpty
+                                    ? null
+                                    : _confirmRemoveSelected,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 // Voucher bar — collapse (height→0) ke arah checkout saat scroll.
