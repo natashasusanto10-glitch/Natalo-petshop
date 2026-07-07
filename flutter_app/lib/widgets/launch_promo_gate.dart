@@ -152,7 +152,11 @@ class _LaunchPromoGateState extends State<LaunchPromoGate> {
     if (!mounted || !show) return;
 
     await _log('launch_popup_shown', {'campaign_id': campaign.id});
+    if (!mounted) return; // tree torn down selama await log → jangan tampilkan dialog
     final outcome = await _show(campaign);
+    // Tidak perlu cek mounted di sini: _log & _openHref pakai singleton
+    // global (AppAnalytics, deepLinkService), bukan context widget ini —
+    // aksi CTA yang user minta harus tetap jalan walau gate sudah dispose.
     if (outcome == LaunchPromoOutcome.cta && campaign.hasCta) {
       await _log('launch_popup_cta_click', {'campaign_id': campaign.id});
       await _openHref(campaign.ctaHref!);
