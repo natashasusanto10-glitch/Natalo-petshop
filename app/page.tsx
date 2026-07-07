@@ -962,12 +962,12 @@ export default async function HomePage() {
       {homeCategories.length > 0 && (
         <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
           <h2 className="text-base font-black text-zinc-900 sm:text-lg">Kategori Populer</h2>
-          <div className="mt-2 flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="mt-2 flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-3 md:gap-4 md:overflow-visible lg:grid-cols-6">
             {homeCategories.map((cat) => (
               <Link
                 key={cat.slug}
                 href={`/products?kategori=${cat.slug}`}
-                className="w-[31vw] min-w-[106px] max-w-[130px] shrink-0 snap-start overflow-hidden rounded-2xl border border-[#eef3fb] bg-white shadow-sm active:opacity-90"
+                className="w-[31vw] min-w-[106px] max-w-[130px] shrink-0 snap-start overflow-hidden rounded-2xl border border-[#eef3fb] bg-white shadow-sm active:opacity-90 md:w-auto md:min-w-0 md:max-w-none md:basis-auto"
               >
                 <div className="relative aspect-[4/3] w-full bg-white p-2">
                   {cat.products[0]?.imageUrl ? (
