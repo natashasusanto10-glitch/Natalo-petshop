@@ -158,7 +158,7 @@ export function ProductCard({
           )}
           {rankBadge != null && rankBadge >= 1 && (
             <span
-              className={`absolute left-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black shadow ${rankBadgeClass(rankBadge)}`}
+              className={`absolute left-1.5 ${memberPrice !== null ? 'top-9' : 'top-1.5'} z-10 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black shadow ${rankBadgeClass(rankBadge)}`}
               aria-label={`Peringkat ${rankBadge}`}
             >
               {rankBadge}
