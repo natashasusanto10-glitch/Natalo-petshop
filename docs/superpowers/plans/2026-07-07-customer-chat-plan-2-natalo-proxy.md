@@ -2,6 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **STATUS (2026-07-07): EXECUTED** di branch `feat/customer-chat-plan-2-proxy` (Natalo repo), 15 commit, **133/133 test hijau**, lolos review per-task + **whole-branch opus (nol blocker keamanan)**. **Belum di-deploy** (Vercel deploy = langkah gated terpisah). Semua 8 syarat keamanan terpenuhi (anti-IDOR 4 route, allowlist projection, gate order, webhook HMAC raw-body, isolasi kredensial `tokochat` vs `natalo-fcm`, proxy tak tulis unread, anti-spoof context, staging bersih). **Divergensi vs teks plan di bawah (hardening yang di-ship):**
+> - `projectMessageForCustomer`: field NESTED `product`/`order` ikut di-allowlist per-field (bukan cast objek) — cegah bocor cost/margin/supplier.
+> - `GET /api/chat/[chatId]`: paginasi `hasMore`/`nextCursor` berbasis **RAW doc count** (bukan array terprojeksi) — drop `staffOnly` tak lagi memotong riwayat.
+> - Agregat order (ringkasan customer, Task 5): difilter `status notIn [CANCELLED,REFUNDED,PENDING]`.
+> - `send-image` JUGA membangun snapshot customer (paritas `send`) — room yg pesan pertamanya foto tetap dapat nama/phone/summary.
+> - Auto-reopen + auto-greeting/away diekstrak ke **`lib/chat/auto-effects.ts`**, dipakai KEDUA route `send` + `send-image`.
+> - Webhook dedupe: bedakan `ALREADY_EXISTS`(6)→200 dedup vs error lain→**500** (CF retry self-heal).
+> - `lib/chat/firestore-admin.ts` reuse `normalizePemKey` dari `lib/pem-utils.ts`; helper `isChatEnabled`/`getHoursStatus` ada di `app/api/chat/config/route.ts`.
+> - **Catatan Plan 4 (WAJIB):** render pesan auto/system berdasarkan `type==='system'`, BUKAN `senderRole` (projeksi memetakan `system`→`customer`).
+> - **Ship-as-debt (fast-follow):** `clientMsgId` sbg doc-id deterministik (idempotensi anti-race); index DB `Order(userId)`; ekstrak konstanta nama-koleksi bersama.
+> - Blok kode di task-task bawah masih menampilkan versi awal; sumber kebenaran = kode yang di-ship + banner ini.
+
 **Goal:** Membangun lapisan **proxy** di Natalo Next.js (repo ini) yang menjadi satu-satunya jalan customer mengirim/membaca chat. Customer TAK pernah punya identitas Firebase di `tokochat-a8879` (Topologi A); proxy memakai **Firebase Admin SDK** (service account tokochat, app terpisah) untuk menulis `customerChats/*` di Firestore, dengan sesi Natalo (`getSession('CUSTOMER')`) sebagai otoritas identitas. Fondasi rules sudah ditegakkan di **Plan 1** (repo NLCHAT); plan ini adalah lapisan tulis/baca server-to-server-nya.
 
 **Architecture:**
