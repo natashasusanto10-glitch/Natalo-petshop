@@ -65,19 +65,26 @@ export async function GET(request: NextRequest, { params }: Params) {
   const markReadPromise = roomRef.update({ unreadForCustomer: 0 }).catch(() => undefined);
 
   const [snap] = await Promise.all([query.get(), markReadPromise]);
+  const rawDocs = snap.docs;
 
-  const messages = snap.docs
+  const messages = rawDocs
     .map((doc) => projectMessageForCustomer({ ...doc.data(), id: doc.id }))
     .filter((m): m is CustomerMessage => m !== null);
 
-  // Simplifikasi disengaja (brief Task 7): "halaman penuh" dicek dari
-  // panjang array TERPROYEKSI (bukan jumlah raw docs). Dokumen staffOnly/
-  // internal yang di-drop projectMessageForCustomer jarang jadi entri
-  // terakhir sebuah halaman; kalaupun terjadi, halaman berikutnya paling
-  // buruk cuma re-scan beberapa dokumen yang sudah di-drop — tak ada efek
-  // yang terlihat customer (tak ada duplikat/pesan hilang).
-  const nextCursor =
-    messages.length === PAGE_SIZE ? messages[messages.length - 1].createdAt : null;
+  // Fix (pagination correctness): "halaman penuh" & nilai cursor HARUS
+  // dihitung dari RAW docs, bukan array `messages` yang sudah terproyeksi.
+  // projectMessageForCustomer men-drop dokumen `staffOnly` (system message
+  // internal/status-transition yang hidup di subcollection `messages` yang
+  // sama). Kalau salah satu ke-drop dari sebuah halaman raw, panjang array
+  // terproyeksi < PAGE_SIZE walau raw docs penuh — sebelumnya ini bikin
+  // `nextCursor` keliru jadi null dan riwayat pesan customer terpotong diam-
+  // diam. Cursor value juga harus dari `createdAt` dokumen RAW terakhir
+  // (bukan pesan terproyeksi terakhir), supaya `startAfter` halaman
+  // berikutnya melewati SEMUA dokumen yang sudah diambil (termasuk yang
+  // di-drop), bukan cuma yang lolos allowlist — kalau tidak, halaman
+  // berikutnya akan re-fetch dokumen yang sama.
+  const hasMore = rawDocs.length === PAGE_SIZE;
+  const nextCursor = hasMore ? rawDocs[rawDocs.length - 1].data().createdAt : null;
 
   return NextResponse.json({ chatId: myChat, messages, nextCursor });
 }
