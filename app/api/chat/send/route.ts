@@ -264,12 +264,16 @@ export async function POST(request: NextRequest) {
       select: { name: true, phone: true },
     }),
     prisma.order.aggregate({
-      where: { userId: session.sub },
+      // Exclude order yang bukan riwayat belanja "nyata" (batal/refund/belum
+      // dibayar) supaya totalBelanja/orderCount yang dilihat staff tak
+      // overstate — konsisten dgn semangat filter status di tempat lain
+      // (mis. successfulOrderCount di app/api/orders/route.ts).
+      where: { userId: session.sub, status: { notIn: ["CANCELLED", "REFUNDED", "PENDING"] } },
       _sum: { total: true },
       _count: true,
     }),
     prisma.order.findFirst({
-      where: { userId: session.sub },
+      where: { userId: session.sub, status: { notIn: ["CANCELLED", "REFUNDED", "PENDING"] } },
       orderBy: { createdAt: "desc" },
       select: { orderNumber: true, status: true, total: true },
     }),
