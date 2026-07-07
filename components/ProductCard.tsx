@@ -3,6 +3,7 @@ import Link from "next/link";
 import { StoreProduct } from "@/lib/products";
 import { formatRupiah } from "@/lib/format";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
+import { rankBadgeClass } from "@/lib/rank-badge";
 import { ProductCardCta } from "./ProductCardCta";
 
 // Exported for unit testing + reuse. Guard price=0 → hindari Infinity%.
@@ -19,6 +20,7 @@ type Props = {
   badge?: "Baru" | "Original" | "Promo" | "Terlaris";
   showCta?: boolean;
   showRating?: boolean;
+  rankBadge?: number;
 };
 
 export function ProductCard({
@@ -29,6 +31,7 @@ export function ProductCard({
   badge,
   showCta = true,
   showRating = false,
+  rankBadge,
 }: Props) {
   const memberPrice = product.memberPrice ?? null;
   const discountPrice = product.discountPrice ?? null;
@@ -151,6 +154,14 @@ export function ProductCard({
           {memberPrice !== null && (
             <span className="absolute left-1.5 top-1.5 rounded-full border border-white/80 bg-blue-500 px-2 py-0.5 text-xs font-bold text-white shadow-sm">
               Member
+            </span>
+          )}
+          {rankBadge != null && rankBadge >= 1 && (
+            <span
+              className={`absolute left-1.5 ${memberPrice !== null ? 'top-9' : 'top-1.5'} z-10 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black shadow ${rankBadgeClass(rankBadge)}`}
+              aria-label={`Peringkat ${rankBadge}`}
+            >
+              {rankBadge}
             </span>
           )}
           {badge && (

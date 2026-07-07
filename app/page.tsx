@@ -754,10 +754,7 @@ export default async function HomePage() {
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      {/* Desktop sudah punya AnnouncementBar (header) dengan pesan yang sama
-          (gratis ongkir, produk original, WA) — sembunyikan marquee ini di
-          md+ supaya tidak duplikat/menumpuk di bawah nav. Mobile tetap
-          seperti semula. */}
+      {/* TrustMarquee hanya untuk mobile — di desktop bagian atas sengaja dibuat bersih (langsung header → hero), pesan gratis-ongkir/original/WA tersedia di footer. Jangan un-hide di desktop. */}
       <div className="md:hidden">
         <TrustMarquee items={trustItems} />
       </div>
@@ -769,16 +766,16 @@ export default async function HomePage() {
 
       {/* ── 4. HASHTAG CAMPAIGN + SHORTCUT GRID ── */}
       <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 md:gap-4">
           {SHORTCUT_ITEMS.map((s) => {
             const content = (
               <>
                 <div
-                  className={`flex h-14 w-14 items-center justify-center rounded-full ${s.bg} ${s.color} shadow-sm`}
+                  className={`flex h-14 w-14 items-center justify-center rounded-full ${s.bg} ${s.color} shadow-sm md:h-12 md:w-12`}
                 >
-                  <HomeIcon name={s.icon} className="h-7 w-7" />
+                  <HomeIcon name={s.icon} className="h-7 w-7 md:h-6 md:w-6" />
                 </div>
-                <span className="text-center text-[11px] font-medium leading-tight text-zinc-700">
+                <span className="text-center text-[11px] font-medium leading-tight text-zinc-700 md:text-sm md:font-semibold">
                   {s.label}
                 </span>
               </>
@@ -789,7 +786,7 @@ export default async function HomePage() {
                 <ExternalLink
                   key={s.label}
                   href={s.href}
-                  className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition active:opacity-90"
+                  className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition active:opacity-90 md:flex-row md:justify-center md:gap-3 md:rounded-2xl md:border md:border-[#eef3fb] md:bg-white md:p-4 md:shadow-sm md:hover:-translate-y-0.5 md:hover:shadow-md"
                 >
                   {content}
                 </ExternalLink>
@@ -800,7 +797,7 @@ export default async function HomePage() {
               <Link
                 key={s.label}
                 href={s.href}
-                className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition active:opacity-90"
+                className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition active:opacity-90 md:flex-row md:justify-center md:gap-3 md:rounded-2xl md:border md:border-[#eef3fb] md:bg-white md:p-4 md:shadow-sm md:hover:-translate-y-0.5 md:hover:shadow-md"
               >
                 {content}
               </Link>
@@ -879,6 +876,7 @@ export default async function HomePage() {
       {/* ── 11. PRODUK TERLARIS ── */}
       <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
         <SectionHeader title="🏆 Produk Terlaris" href="/products?popular=best-seller" ctaLabel="Lihat semua" />
+        <div className="md:hidden">
         <div className="mt-3 flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {bestSellers.map((p, i) => {
             const finalPrice = p.memberPrice ?? p.discountPrice ?? p.price;
@@ -945,6 +943,15 @@ export default async function HomePage() {
             );
           })}
         </div>
+        </div>
+
+        <div className="mt-3 hidden md:block">
+          <ResponsiveGrid cols={{ base: 2, sm: 3, lg: 6 }}>
+            {bestSellers.map((p, i) => (
+              <HomeProductCard key={p.id} product={p} rankBadge={i + 1} />
+            ))}
+          </ResponsiveGrid>
+        </div>
       </PageContainer>
 
       <BrandChoiceSection brands={featuredBrands} />
@@ -952,12 +959,12 @@ export default async function HomePage() {
       {homeCategories.length > 0 && (
         <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
           <h2 className="text-base font-black text-zinc-900 sm:text-lg">Kategori Populer</h2>
-          <div className="mt-2 flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="mt-2 flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-3 md:gap-4 md:overflow-visible lg:grid-cols-6">
             {homeCategories.map((cat) => (
               <Link
                 key={cat.slug}
                 href={`/products?kategori=${cat.slug}`}
-                className="w-[31vw] min-w-[106px] max-w-[130px] shrink-0 snap-start overflow-hidden rounded-2xl border border-[#eef3fb] bg-white shadow-sm active:opacity-90"
+                className="w-[31vw] min-w-[106px] max-w-[130px] shrink-0 snap-start overflow-hidden rounded-2xl border border-[#eef3fb] bg-white shadow-sm active:opacity-90 md:w-auto md:min-w-0 md:max-w-none md:basis-auto"
               >
                 <div className="relative aspect-[4/3] w-full bg-white p-2">
                   {cat.products[0]?.imageUrl ? (

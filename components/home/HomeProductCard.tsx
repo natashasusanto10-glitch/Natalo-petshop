@@ -5,9 +5,15 @@ type HomeProductCardProps = {
   product: StoreProduct;
   badge?: "Baru" | "Original" | "Promo" | "Terlaris";
   priority?: boolean;
+  rankBadge?: number;
 };
 
-export function HomeProductCard({ product, badge, priority = false }: HomeProductCardProps) {
+export function HomeProductCard({
+  product,
+  badge,
+  priority = false,
+  rankBadge,
+}: HomeProductCardProps) {
   return (
     <ProductCard
       product={product}
@@ -15,6 +21,7 @@ export function HomeProductCard({ product, badge, priority = false }: HomeProduc
       priority={priority}
       showCta={false}
       showRating
+      rankBadge={rankBadge}
     />
   );
 }
