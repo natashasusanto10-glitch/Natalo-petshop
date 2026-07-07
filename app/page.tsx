@@ -879,6 +879,7 @@ export default async function HomePage() {
       {/* ── 11. PRODUK TERLARIS ── */}
       <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
         <SectionHeader title="🏆 Produk Terlaris" href="/products?popular=best-seller" ctaLabel="Lihat semua" />
+        <div className="md:hidden">
         <div className="mt-3 flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {bestSellers.map((p, i) => {
             const finalPrice = p.memberPrice ?? p.discountPrice ?? p.price;
@@ -944,6 +945,15 @@ export default async function HomePage() {
               </Link>
             );
           })}
+        </div>
+        </div>
+
+        <div className="mt-3 hidden md:block">
+          <ResponsiveGrid cols={{ base: 2, sm: 3, lg: 6 }}>
+            {bestSellers.map((p, i) => (
+              <HomeProductCard key={p.id} product={p} rankBadge={i + 1} priority={i < 6} />
+            ))}
+          </ResponsiveGrid>
         </div>
       </PageContainer>
 
