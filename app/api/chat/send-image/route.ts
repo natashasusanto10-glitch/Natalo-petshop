@@ -31,7 +31,11 @@ import { getTokochatFirestore } from "@/lib/chat/firestore-admin";
 import { uploadToUT } from "@/lib/uploadthing";
 import { validateImageMagicBytes } from "@/lib/upload/validate-image-bytes";
 import { chatIdForUser, isValidClientMsgId, slidingWindowAllow } from "@/lib/chat/core";
-import { writeCustomerMessage } from "@/lib/chat/rooms";
+import {
+  buildCustomerSnapshot,
+  writeCustomerMessage,
+  type OrderAggregate,
+} from "@/lib/chat/rooms";
 import { autoReopenIfResolved, autoGreetingOrAwayIfNew } from "@/lib/chat/auto-effects";
 
 export const dynamic = "force-dynamic";
@@ -136,13 +140,38 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 7. Nama pengirim untuk tampilan staff — diambil dari Prisma (bukan
-  // client) sama seperti buildCustomerSnapshot di /api/chat/send.
-  const user = await prisma.user.findUnique({
-    where: { id: session.sub },
-    select: { name: true },
-  });
-  const senderName = user?.name || undefined;
+  // 7. Snapshot Prisma: user + agregat order ringan → buildCustomerSnapshot.
+  // SAMA PERSIS dgn /api/chat/send (step 6 di sana) — data-gap fix: kalau
+  // pesan PERTAMA customer di room adalah foto (bukan teks), room tetap
+  // harus dapat customerName/customerPhone/summary, bukan cuma senderName
+  // di message doc. Status filter (CANCELLED/REFUNDED/PENDING di-exclude)
+  // WAJIB sama dgn /api/chat/send supaya totalBelanja/orderCount yang
+  // dilihat staff konsisten terlepas dari jenis pesan pertama.
+  const [user, orderAgg, lastOrderRow] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: session.sub },
+      select: { name: true, phone: true },
+    }),
+    prisma.order.aggregate({
+      where: { userId: session.sub, status: { notIn: ["CANCELLED", "REFUNDED", "PENDING"] } },
+      _sum: { total: true },
+      _count: true,
+    }),
+    prisma.order.findFirst({
+      where: { userId: session.sub, status: { notIn: ["CANCELLED", "REFUNDED", "PENDING"] } },
+      orderBy: { createdAt: "desc" },
+      select: { orderNumber: true, status: true, total: true },
+    }),
+  ]);
+
+  const orderAggregate: OrderAggregate = {
+    totalBelanja: orderAgg._sum.total ?? 0,
+    orderCount: orderAgg._count ?? 0,
+    lastOrder: lastOrderRow
+      ? { inv: lastOrderRow.orderNumber, status: lastOrderRow.status, total: lastOrderRow.total }
+      : null,
+  };
+  const snapshot = buildCustomerSnapshot(user ?? {}, orderAggregate);
 
   // 8. Baca doc room SEBELUM writeCustomerMessage — state "before" dipakai
   // step 10 (auto-reopen & auto-greeting/away), sama pola dgn /api/chat/send
@@ -164,10 +193,14 @@ export async function POST(request: NextRequest) {
       customerId: session.sub,
       senderRole: "customer",
       senderId: session.sub,
-      senderName,
+      senderName: snapshot.customerName || undefined,
       type: "image",
       image: { url },
       clientMsgId,
+      customerName: snapshot.customerName,
+      customerPhone: snapshot.customerPhone,
+      summary: snapshot.summary,
+      summaryUpdatedAt: snapshot.summaryUpdatedAt,
     },
   );
 
