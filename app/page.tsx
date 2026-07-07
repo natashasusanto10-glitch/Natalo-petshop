@@ -754,10 +754,7 @@ export default async function HomePage() {
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      {/* Desktop sudah punya AnnouncementBar (header) dengan pesan yang sama
-          (gratis ongkir, produk original, WA) — sembunyikan marquee ini di
-          md+ supaya tidak duplikat/menumpuk di bawah nav. Mobile tetap
-          seperti semula. */}
+      {/* TrustMarquee hanya untuk mobile — di desktop bagian atas sengaja dibuat bersih (langsung header → hero), pesan gratis-ongkir/original/WA tersedia di footer. Jangan un-hide di desktop. */}
       <div className="md:hidden">
         <TrustMarquee items={trustItems} />
       </div>
@@ -951,7 +948,7 @@ export default async function HomePage() {
         <div className="mt-3 hidden md:block">
           <ResponsiveGrid cols={{ base: 2, sm: 3, lg: 6 }}>
             {bestSellers.map((p, i) => (
-              <HomeProductCard key={p.id} product={p} rankBadge={i + 1} priority={i < 6} />
+              <HomeProductCard key={p.id} product={p} rankBadge={i + 1} />
             ))}
           </ResponsiveGrid>
         </div>
