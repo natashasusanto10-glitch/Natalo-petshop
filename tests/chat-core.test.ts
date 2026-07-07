@@ -33,6 +33,54 @@ test("projeksi membuang staffOnly & internal", () => {
   assert.equal((ok as Record<string, unknown>).internalFlag, undefined);
 });
 
+test("projeksi product: hanya field allowlist yang ikut, cost/margin/supplier dibuang", () => {
+  const ok = projectMessageForCustomer({
+    type: "product",
+    senderRole: "staff",
+    createdAt: 3,
+    product: {
+      productId: "p1",
+      name: "RC",
+      price: 285000,
+      stock: 8,
+      // field internal yang TAK boleh bocor ke customer:
+      cost: 120000,
+      margin: 0.4,
+      supplier: "X",
+    },
+  } as Record<string, unknown>);
+  assert.equal(ok?.product?.productId, "p1");
+  assert.equal(ok?.product?.name, "RC");
+  assert.equal(ok?.product?.price, 285000);
+  assert.equal(ok?.product?.stock, 8);
+  assert.equal((ok?.product as Record<string, unknown> | undefined)?.cost, undefined);
+  assert.equal((ok?.product as Record<string, unknown> | undefined)?.margin, undefined);
+  assert.equal((ok?.product as Record<string, unknown> | undefined)?.supplier, undefined);
+});
+
+test("projeksi order: hanya field allowlist yang ikut, field internal dibuang", () => {
+  const ok = projectMessageForCustomer({
+    type: "order_context",
+    senderRole: "staff",
+    createdAt: 4,
+    order: {
+      orderNumber: "ORD-1",
+      status: "shipped",
+      total: 150000,
+      // field internal yang TAK boleh bocor ke customer:
+      cost: 90000,
+      margin: 0.4,
+      internalNotes: "customer complained",
+    },
+  } as Record<string, unknown>);
+  assert.equal(ok?.order?.orderNumber, "ORD-1");
+  assert.equal(ok?.order?.status, "shipped");
+  assert.equal(ok?.order?.total, 150000);
+  assert.equal((ok?.order as Record<string, unknown> | undefined)?.cost, undefined);
+  assert.equal((ok?.order as Record<string, unknown> | undefined)?.margin, undefined);
+  assert.equal((ok?.order as Record<string, unknown> | undefined)?.internalNotes, undefined);
+});
+
 test("isValidClientMsgId menolak sampah", () => {
   assert.equal(isValidClientMsgId("550e8400-e29b-41d4-a716-446655440000"), true);
   assert.equal(isValidClientMsgId(""), false);

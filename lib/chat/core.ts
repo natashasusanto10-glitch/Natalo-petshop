@@ -44,8 +44,27 @@ export function projectMessageForCustomer(raw: unknown): CustomerMessage | null 
   if (m.image && typeof (m.image as Record<string, unknown>).url === "string") {
     out.image = { url: (m.image as { url: string }).url };
   }
-  if (m.product && typeof m.product === "object") out.product = m.product as CustomerMessage["product"];
-  if (m.order && typeof m.order === "object") out.order = m.order as CustomerMessage["order"];
+  if (m.product && typeof m.product === "object") {
+    const p = m.product as Record<string, unknown>;
+    // Allowlist eksplisit per-field: JANGAN cast seluruh objek (bisa bocorkan cost/margin/supplier dll).
+    const product: Partial<NonNullable<CustomerMessage["product"]>> = {};
+    if (typeof p.productId === "string") product.productId = p.productId;
+    if (typeof p.slug === "string") product.slug = p.slug;
+    if (typeof p.name === "string") product.name = p.name;
+    if (typeof p.imageUrl === "string") product.imageUrl = p.imageUrl;
+    if (typeof p.price === "number") product.price = p.price;
+    if (typeof p.stock === "number") product.stock = p.stock;
+    out.product = product as CustomerMessage["product"];
+  }
+  if (m.order && typeof m.order === "object") {
+    const o = m.order as Record<string, unknown>;
+    // Allowlist eksplisit per-field: JANGAN cast seluruh objek (bisa bocorkan cost/margin internal dll).
+    const order: Partial<NonNullable<CustomerMessage["order"]>> = {};
+    if (typeof o.orderNumber === "string") order.orderNumber = o.orderNumber;
+    if (typeof o.status === "string") order.status = o.status;
+    if (typeof o.total === "number") order.total = o.total;
+    out.order = order as CustomerMessage["order"];
+  }
   if (m.auto === true) out.auto = true;
   if (typeof m.status === "string") out.status = m.status;
   if (typeof m.readByCustomerAt === "number") out.readByCustomerAt = m.readByCustomerAt;
