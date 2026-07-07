@@ -7,7 +7,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CartCount } from "./CartCount";
 import { NotificationBell } from "./NotificationBell";
 import { HomeSearchBar } from "@/components/home/HomeSearchBar";
-import { AnnouncementBar } from "@/components/header/AnnouncementBar";
 import { DesktopCategoryNav } from "@/components/header/DesktopCategoryNav";
 import { bootstrapCartSync, switchToGuestCart } from "@/lib/cart";
 import { prefetchCategories } from "@/lib/client-performance";
@@ -205,7 +204,7 @@ export function Header() {
   if (isAuthPage) {
     return (
       <header className="nat-site-header z-50 bg-white shadow-sm md:sticky">
-        <div className="nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-2 py-1.5 md:py-3">
+        <div className="nat-header-inner nat-safe-x mx-auto flex max-w-[var(--nat-container)] items-center justify-between gap-2 py-1.5 md:py-3">
           <button
             type="button"
             onClick={handleBack}
@@ -252,9 +251,8 @@ export function Header() {
           : "nat-site-header mobile-sticky-header md:sticky"
       }
     >
-      <AnnouncementBar />
       {isProductDetail && (
-        <div className="product-detail-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 md:hidden">
+        <div className="product-detail-header-inner nat-safe-x mx-auto flex max-w-[var(--nat-container)] items-center justify-between gap-1.5 md:hidden">
           <button
             type="button"
             onClick={handleBack}
@@ -325,8 +323,8 @@ export function Header() {
         <div
           className={
             isHome
-              ? "mobile-header-row mx-auto max-w-6xl gap-1.5 xs:gap-2"
-              : "nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 xs:gap-2 md:py-3"
+              ? "mobile-header-row mx-auto max-w-[var(--nat-container)] gap-1.5 xs:gap-2"
+              : "nat-header-inner nat-safe-x mx-auto flex max-w-[var(--nat-container)] items-center justify-between gap-1.5 py-1.5 xs:gap-2 md:py-3"
           }
         >
           {/* Back button — hanya tampil di mobile untuk halaman non-main-tab.
