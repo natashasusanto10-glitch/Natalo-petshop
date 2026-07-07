@@ -30,6 +30,10 @@ class DeepLinkService {
   bool _initialized = false;
   GlobalKey<NavigatorState>? _navigatorKey;
 
+  /// True bila app cold-start dipicu tap deep-link (bukan buka app biasa).
+  /// Dibaca LaunchPromoGate untuk skip popup agar tidak menutupi tujuan link.
+  bool launchedFromDeepLink = false;
+
   Future<void> initialize(GlobalKey<NavigatorState> navigatorKey) async {
     if (_initialized) return;
     _initialized = true;
@@ -37,7 +41,10 @@ class DeepLinkService {
     try {
       // Initial link — kalau app dibuka via tap link (cold start).
       final initial = await _appLinks.getInitialLink();
-      if (initial != null) _handle(initial);
+      if (initial != null) {
+        launchedFromDeepLink = true;
+        _handle(initial);
+      }
       // Subsequent links — saat app sudah running.
       _sub = _appLinks.uriLinkStream.listen(_handle);
     } catch (e) {

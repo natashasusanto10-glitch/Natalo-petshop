@@ -72,6 +72,7 @@ import 'theme/natalo_theme.dart';
 import 'widgets/app_error_widget.dart';
 import 'widgets/app_lock_gate.dart';
 import 'widgets/app_startup_splash.dart';
+import 'widgets/launch_promo_gate.dart';
 import 'widgets/offline_banner.dart';
 import 'widgets/read_only_welcome_gate.dart';
 
@@ -242,38 +243,43 @@ class NataloPetshopApp extends StatelessWidget {
             return AppStartupSplash(
               child: AppLockGate(
                 child: ReadOnlyWelcomeGate(
-                  // ColoredBox provides bg behind transparent Scaffolds —
-                  // dipakai theme dark, ganti otomatis via Theme.of context.
-                  child: ColoredBox(
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? NataloColors.feedBlack
-                        : NataloColors.background,
-                    // Listener global untuk collapse bottom nav (gaya IG):
-                    // menangkap scroll VERTIKAL dari layar mana pun (semua
-                    // route ada di subtree Navigator = `child`) → update
-                    // notifier yang dibaca semua BottomNavBar. Satu titik,
-                    // cover semua layar tanpa per-screen wiring. Carousel
-                    // horizontal diabaikan (cek axis).
-                    child: NotificationListener<ScrollUpdateNotification>(
-                      onNotification: (notification) {
-                        // Hysteresis + threshold ada di updateBottomNavScroll
-                        // (akumulasi jarak), bukan flip per-arah. Carousel
-                        // horizontal diabaikan di dalam fungsi (cek axis).
-                        updateBottomNavScroll(notification);
-                        return false;
-                      },
-                      child: Stack(
-                        children: [
-                          child ?? const SizedBox.shrink(),
-                          // Offline banner di top — auto slide-in/out berdasar
-                          // connectivity status. Z-index above semua screen.
-                          const Positioned(
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            child: OfflineBanner(),
-                          ),
-                        ],
+                  // LaunchPromoGate: cek sekali per cold start apakah popup
+                  // promo pembuka harus tampil (lihat widgets/launch_promo_gate.dart).
+                  child: LaunchPromoGate(
+                    navigatorKey: rootNavigatorKey,
+                    // ColoredBox provides bg behind transparent Scaffolds —
+                    // dipakai theme dark, ganti otomatis via Theme.of context.
+                    child: ColoredBox(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? NataloColors.feedBlack
+                          : NataloColors.background,
+                      // Listener global untuk collapse bottom nav (gaya IG):
+                      // menangkap scroll VERTIKAL dari layar mana pun (semua
+                      // route ada di subtree Navigator = `child`) → update
+                      // notifier yang dibaca semua BottomNavBar. Satu titik,
+                      // cover semua layar tanpa per-screen wiring. Carousel
+                      // horizontal diabaikan (cek axis).
+                      child: NotificationListener<ScrollUpdateNotification>(
+                        onNotification: (notification) {
+                          // Hysteresis + threshold ada di updateBottomNavScroll
+                          // (akumulasi jarak), bukan flip per-arah. Carousel
+                          // horizontal diabaikan di dalam fungsi (cek axis).
+                          updateBottomNavScroll(notification);
+                          return false;
+                        },
+                        child: Stack(
+                          children: [
+                            child ?? const SizedBox.shrink(),
+                            // Offline banner di top — auto slide-in/out berdasar
+                            // connectivity status. Z-index above semua screen.
+                            const Positioned(
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              child: OfflineBanner(),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

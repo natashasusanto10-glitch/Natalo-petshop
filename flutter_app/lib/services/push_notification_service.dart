@@ -74,6 +74,10 @@ class PushNotificationService {
   Timer? _registrationRetryTimer;
   int _registrationRetryAttempt = 0;
 
+  /// True bila app cold-start dipicu tap notifikasi (app tadinya terminated).
+  /// Dibaca LaunchPromoGate untuk skip popup agar tidak menutupi tujuan notif.
+  bool launchedFromColdPush = false;
+
   /// Initialize Firebase + register token handlers. Idempotent.
   /// Call ini di main() setelah memberStore + cartStore di-init.
   ///
@@ -191,6 +195,7 @@ class PushNotificationService {
       //    Cold start: getInitialMessage. Warm: onMessageOpenedApp.
       final initial = await messaging.getInitialMessage();
       if (initial != null) {
+        launchedFromColdPush = true;
         // Delay supaya navigator ready setelah app launch.
         Future.delayed(const Duration(milliseconds: 800), () {
           _handleMessage(initial);
