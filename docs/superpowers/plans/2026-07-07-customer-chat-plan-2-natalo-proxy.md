@@ -146,6 +146,7 @@ import {
   verifyWebhookSignature,
   slidingWindowAllow,
   parseChatEnabled,
+  computeChatHoursStatus,
 } from "@/lib/chat/core";
 
 test("chatIdForUser memprefix cust_", () => {
@@ -200,6 +201,17 @@ test("parseChatEnabled default true, hanya false eksplisit yang mematikan", () =
   assert.equal(parseChatEnabled({}), true);
   assert.equal(parseChatEnabled({ chatEnabled: false }), false);
   assert.equal(parseChatEnabled({ chatEnabled: true }), true);
+});
+
+test("computeChatHoursStatus: online/di-luar-jam berbasis WIB", () => {
+  const hours = { timezone: "Asia/Jakarta", days: {
+    mon: { open: "08:00", close: "21:00" }, sun: { open: null, close: null } } };
+  // 2024-01-01 = Senin. 05:00 UTC = 12:00 WIB -> online
+  assert.equal(computeChatHoursStatus(hours, Date.UTC(2024, 0, 1, 5, 0)).online, true);
+  // 15:00 UTC = 22:00 WIB -> tutup
+  assert.equal(computeChatHoursStatus(hours, Date.UTC(2024, 0, 1, 15, 0)).online, false);
+  // 2024-01-07 = Minggu (tutup seharian)
+  assert.equal(computeChatHoursStatus(hours, Date.UTC(2024, 0, 7, 5, 0)).online, false);
 });
 ```
 
@@ -291,6 +303,25 @@ export function parseChatEnabled(doc: unknown): boolean {
   if (!doc || typeof doc !== "object") return true;
   return (doc as Record<string, unknown>).chatEnabled !== false;
 }
+
+// Status jam operasional (WIB, UTC+7 tanpa DST) dari doc app_settings/chatHours.
+// Dipakai: (a) GET /api/chat/config → status "Online / Di luar jam" (fix B3);
+// (b) POST /api/chat/send → pilih auto-greeting vs auto-away (Task 5).
+const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
+const DOW = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+export function computeChatHoursStatus(
+  hoursDoc: unknown, nowUtcMs: number,
+): { online: boolean; timezone: string; todayOpen: string | null; todayClose: string | null } {
+  const doc = (hoursDoc && typeof hoursDoc === "object" ? hoursDoc : {}) as Record<string, any>;
+  const timezone = typeof doc.timezone === "string" ? doc.timezone : "Asia/Jakarta";
+  const wib = new Date(nowUtcMs + WIB_OFFSET_MS);
+  const today = (doc.days && doc.days[DOW[wib.getUTCDay()]]) || {};
+  const open = typeof today.open === "string" ? today.open : null;
+  const close = typeof today.close === "string" ? today.close : null;
+  if (!open || !close) return { online: false, timezone, todayOpen: open, todayClose: close };
+  const nowHhmm = `${String(wib.getUTCHours()).padStart(2, "0")}:${String(wib.getUTCMinutes()).padStart(2, "0")}`;
+  return { online: nowHhmm >= open && nowHhmm < close, timezone, todayOpen: open, todayClose: close };
+}
 ```
 
 - [ ] **Step 4: Jalankan test — pastikan LULUS**
@@ -323,7 +354,7 @@ git commit -m "feat(chat): helper murni core (chatId, projeksi, HMAC, rate-limit
 ```ts
 import { NextResponse } from "next/server";
 import { getTokochatFirestore } from "@/lib/chat/firestore-admin";
-import { parseChatEnabled } from "@/lib/chat/core";
+import { parseChatEnabled, computeChatHoursStatus } from "@/lib/chat/core";
 
 export const dynamic = "force-dynamic";
 
@@ -337,8 +368,20 @@ export async function isChatEnabled(): Promise<boolean> {
   }
 }
 
+// fix B3: status "Online / Di luar jam operasional" untuk header chat customer,
+// dihitung server-side dari app_settings/chatHours (WIB) — Plan 4 tinggal render.
+export async function getHoursStatus() {
+  try {
+    const snap = await getTokochatFirestore().doc("app_settings/chatHours").get();
+    return computeChatHoursStatus(snap.exists ? snap.data() : undefined, Date.now());
+  } catch {
+    return { online: true, timezone: "Asia/Jakarta", todayOpen: null, todayClose: null };
+  }
+}
+
 export async function GET() {
-  return NextResponse.json({ chatEnabled: await isChatEnabled() });
+  const [chatEnabled, hours] = await Promise.all([isChatEnabled(), getHoursStatus()]);
+  return NextResponse.json({ chatEnabled, online: hours.online, hours });
 }
 ```
 
@@ -393,9 +436,11 @@ test("writeCustomerMessage idempoten via clientMsgId", async () => {
   const fakeFirestore = makeFakeFirestore(store);
   const deps = { firestore: fakeFirestore, now: () => 1000 };
   const input = {
-    chatId: "cust_u1", senderRole: "customer" as const, senderId: "u1",
+    chatId: "cust_u1", customerId: "u1", senderRole: "customer" as const, senderId: "u1",
     senderName: "Andi", type: "text" as const, text: "halo", clientMsgId: "abcd1234",
   };
+  // room hasil merge harus punya customerId (fix B2)
+  // (assert bentuk room di fake store bila diinginkan)
   const first = await writeCustomerMessage(deps, input);
   const second = await writeCustomerMessage(deps, input); // retry sama
   assert.equal(second.deduped, true);
@@ -417,7 +462,7 @@ Expected: `chat-rooms.test.ts` gagal impor.
 - [ ] **Step 3: Implementasi `lib/chat/rooms.ts`**
 
 Implementasikan `buildCustomerSnapshot` (murni) dan `writeCustomerMessage`:
-- `writeCustomerMessage` menerima `deps.firestore` (bertipe `Firestore` Admin SDK di produksi, fake di test), melakukan: (a) cek `messages where clientMsgId == input.clientMsgId` → bila ada, kembalikan `{ messageId, deduped: true }`; (b) transaksi: `set(merge:true)` doc room dgn `createdAt` hanya bila absen, update `lastMessage*` + `updatedAt`; (c) tulis doc pesan baru. Gunakan `FieldValue.serverTimestamp()` di produksi; di test, `deps.now()` menggantikan timestamp.
+- `writeCustomerMessage` menerima `deps.firestore` (bertipe `Firestore` Admin SDK di produksi, fake di test), melakukan: (a) cek `messages where clientMsgId == input.clientMsgId` → bila ada, kembalikan `{ messageId, deduped: true }`; (b) transaksi: `set(merge:true)` doc room dgn `createdAt` hanya bila absen, **`customerId` = `input.customerId`** (fix B2 — CF/inbox mengandalkan field ini; jangan hanya derive dari chatId), snapshot customer (`customerName/customerPhone/summary/summaryUpdatedAt`), update `lastMessage*` + `updatedAt`; (c) tulis doc pesan baru. Gunakan `FieldValue.serverTimestamp()` di produksi; di test, `deps.now()` menggantikan timestamp. `input` menyertakan `customerId` (= id customer Natalo).
 - **Unread BUKAN tanggung jawab proxy** (reconciliation dgn Plan 3): counter `unreadCount.{staffUid}` & `unreadForCustomer` di-increment oleh Cloud Function `notifyNewCustomerMessage` (CF punya akses daftar `users` tokochat; proxy tidak). Proxy hanya **mereset** `unreadForCustomer=0` saat customer buka room (Task 7). Jadi `writeCustomerMessage` TIDAK menyentuh field unread.
 - Bentuk dokumen pesan mengikuti spec §4.2 (field: `clientMsgId, senderRole, senderId, senderName, type, text, image?, product?, order?, auto?, staffOnly?, createdAt, status`).
 
@@ -454,9 +499,13 @@ Urutan gate (WAJIB, urut):
 4. Parse body (`{ text, clientMsgId, context? }`) via try/catch → 400. Validasi `text` non-kosong ≤ 4000 char; `isValidClientMsgId(clientMsgId)` → 400.
 5. Rate-limit: `slidingWindowAllow(recentTimestamps, Date.now(), 20, 60_000)` (sumber timestamps: query N pesan customer terakhir di room via Firestore; fail-open bila query error) → 429 bila ditolak.
 6. Ambil snapshot: `prisma.user.findUnique({ where: { id: session.sub }, select: { name, phone } })` + agregat order ringan (`_sum.total`, `_count`, lastOrder). `buildCustomerSnapshot(...)`.
-7. `writeCustomerMessage({ firestore: getTokochatFirestore(), now: Date.now }, { chatId: chatIdForUser(session.sub), senderRole: "customer", senderId: session.sub, ... })`.
-8. (Opsional auto-greeting: hook ke Task berikutnya / CF — di MVP boleh no-op, catat TODO terkontrol di spec § auto-message).
-9. Return `NextResponse.json({ ok: true, messageId, deduped })`.
+7. Baca doc room dulu (`roomRef.get()`) → ambil `status` & `greetingSentAt` (dipakai step 9 & 10).
+8. `writeCustomerMessage({ firestore: getTokochatFirestore(), now: Date.now }, { chatId: chatIdForUser(session.sub), customerId: session.sub, senderRole: "customer", senderId: session.sub, ... })`.
+9. **Auto-reopen (fix B1 / spec §8):** bila room lama `status === "resolved"`, dalam transaksi set `status = "waiting_staff"` + tulis pesan `type:"system"` (`auto:true`) teks "Percakapan dibuka kembali." agar staff tahu ada balasan baru. (Tanpa langkah ini room tetap `resolved` & staff tak sadar — gap yang ditemukan review.)
+10. **Auto-greeting / away (fix B7 — PROXY-owned, bukan CF):** hanya bila room BARU (`greetingSentAt` belum ada). `computeChatHoursStatus(chatHours, Date.now())`: dalam jam → tulis pesan greeting; di luar jam → tulis pesan away (template `awayMessage` dari `chatHours`, isi `{jamBuka}/{jamTutup}`). `auto:true`, saling eksklusif, **set `greetingSentAt` atomik di transaksi yang sama** (cegah greeting dobel saat retry).
+11. Return `NextResponse.json({ ok: true, messageId, deduped })`.
+
+**Analitik (fix B8):** emit log terstruktur proxy `console.log(JSON.stringify({ event, chatId, ... }))` untuk `customer_chat_created` (room baru), `auto_greeting_sent`, `auto_away_reply_sent` → Vercel/Cloud Logging (spec §11 sisi proxy).
 
 - [ ] **Step 2: Lint + type-check**
 
@@ -510,9 +559,9 @@ git commit -m "feat(chat): POST /api/chat/send-image via UploadThing + magic-byt
 
 - [ ] **Step 1: Buat `[chatId]/route.ts` GET**
 - `session` → 401; hitung `myChat = chatIdForUser(session.sub)`; bila `params.chatId !== myChat` → 403.
-- Query `customerChats/{myChat}/messages orderBy createdAt asc` (limit + cursor `?after=`); map tiap doc lewat `projectMessageForCustomer`, buang `null`.
-- Tandai baca: set `unreadForCustomer = 0` + `readByCustomerAt` pada pesan staff belum terbaca (batch/transaksi, best-effort).
-- Return `{ chatId: myChat, messages }`.
+- Query `customerChats/{myChat}/messages orderBy createdAt asc`, `limit(N=50)`, cursor `?after=<createdAt terakhir>` (paginasi spec §12: 30–50/halaman). Map tiap doc lewat `projectMessageForCustomer`, buang `null`.
+- Tandai baca (fix C2): set room `unreadForCustomer = 0` (batch/transaksi, best-effort). **Tidak** memutasi `readByCustomerAt` per-pesan — tak diminta spec §4.2 maupun reconciliation Plan 3; disederhanakan.
+- Return `{ chatId: myChat, messages, nextCursor }` — `nextCursor` = `createdAt` pesan terakhir bila `messages.length === N`, else `null` (Plan 4 pakai untuk load-more).
 
 - [ ] **Step 2: Buat `unread/route.ts` GET**
 - `session` → 401; baca doc room `chatIdForUser(session.sub)`; return `{ unreadForCustomer: number }` (0 bila room belum ada).
@@ -565,7 +614,7 @@ git commit -m "feat(chat): webhook staff->customer (HMAC + idempoten) kirim FCM 
 ## Deferred (bukan Plan 2)
 
 - `GET /api/catalog/search` & `POST /api/chat/staff-send-image` — **auth Firebase ID token staff**, dipakai NLCATTER. Butuh verifikasi ID token via Admin SDK tokochat (`verifyIdToken`) + cek `canHandleCustomer`. **Direncanakan penuh di Plan 2.5** (`2026-07-07-customer-chat-plan-2.5-proxy-staff-endpoints.md`).
-- Cloud Function pemicu webhook, auto-greeting/away by jam operasional, dan penulisan `unreadCount` per-staff sisi NLCATTER — plan berikutnya.
+- Cloud Function pemicu webhook & penulisan `unreadCount` per-staff (Plan 3). **Auto-greeting/away kini PROXY-owned di Task 5** (bukan ditunda). Editor jam operasional & kill-switch toggle = Plan 6 (owner NLCATTER menulis `app_settings/*`).
 - Deploy rules/index tokochat (Plan 1) & konfigurasi service account produksi — tahap rilis terpisah.
 
 ## Definition of Done (Plan 2)
@@ -574,8 +623,12 @@ git commit -m "feat(chat): webhook staff->customer (HMAC + idempoten) kirim FCM 
 - [ ] `lib/chat/firestore-admin.ts`: app `tokochat` terpisah dari `natalo-fcm`; init lazy; kredensial dari `TOKOCHAT_*`.
 - [ ] Semua handler `/api/chat/*` customer: gate CSRF+session+kill-switch+rate-limit; GET pakai `projectMessageForCustomer`; room terkunci ke `chatIdForUser(session.sub)` (tak bisa baca room lain).
 - [ ] Webhook: verifikasi HMAC timing-safe + idempotensi `messageId`; tanpa session/CSRF.
+- [ ] Room menyimpan `customerId` (fix B2); auto-reopen room `resolved` saat customer kirim (fix B1); auto-greeting/away sekali per room dgn `greetingSentAt` atomik (fix B7).
+- [ ] `GET /api/chat/config` mengembalikan `{chatEnabled, online, hours}` (fix B3); `GET /api/chat/[chatId]` mengembalikan `nextCursor` untuk paginasi (spec §12).
 - [ ] Tak ada migrasi Prisma baru; tak ada `firebase deploy`.
 - [ ] `.env.example` mendokumentasikan `TOKOCHAT_*` + `CHAT_WEBHOOK_SECRET`.
+
+> **Prasyarat eksekusi (fix ordering):** Plan 2.5 (`catalog/search` + `staff-send-image`) adalah endpoint terpisah yang WAJIB selesai sebelum Plan 5 Task 4 (Bagikan Produk + foto staff) berfungsi. Menyelesaikan Plan 2 saja TIDAK cukup untuk Plan 5 Task 4.
 
 ## Self-Review (penulis plan)
 

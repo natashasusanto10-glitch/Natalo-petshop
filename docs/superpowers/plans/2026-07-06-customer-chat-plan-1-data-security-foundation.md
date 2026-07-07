@@ -12,7 +12,7 @@
 
 - Project (test): gunakan `demo-tokochat` (prefix `demo-` = emulator offline, tanpa kredensial). Project produksi tetap `tokochat-a8879`.
 - Rules diuji **hanya** lewat emulator; JANGAN `firebase deploy` di plan ini.
-- JANGAN mengubah rule internal apa pun selain menambah guard `canHandleCustomer` di blok `users` (satu penambahan di CREATE, satu di UPDATE). Semua match block lain di `firestore.rules` harus tetap identik.
+- JANGAN mengubah rule internal apa pun selain: (a) menambah guard `canHandleCustomer` di blok `users` (satu penambahan di CREATE, satu di UPDATE); (b) menambah blok BARU `match /customerChats/...` (Task 2); (c) menambah blok BARU `match /app_settings/...` (Task 7, owner-write/staff-read untuk kill-switch + jam operasional). Semua match block lain di `firestore.rules` harus tetap identik.
 - Role hanya `owner`/`karyawan`. `canHandleCustomer` = boolean di `users/{uid}`, default dianggap `false` bila absen (`.get('canHandleCustomer', false)`). Staff yang boleh akses Customer Inbox = `owner` atau `karyawan` ber-`canHandleCustomer`.
 - `chatId` = `cust_<nataloMemberId>` (string). Nilai `customerId` = id member Natalo (string), BUKAN uid Firebase.
 - Firebase CLI sudah tersedia di mesin dev (repo ini sudah dipakai deploy rules/functions).
@@ -657,10 +657,48 @@ git -C C:/Users/USER/Desktop/NLCHAT commit -m "feat(storage): rule customer_chat
 
 ---
 
+### Task 7: Rules `app_settings` (owner-write, staff-read) — TDD
+
+> Ditambah dari review konsistensi (fix B5): kill-switch `app_settings/chatConfig` & jam operasional `app_settings/chatHours` ditulis **owner dari NLCATTER** (keputusan user 2026-07-07, bukan mirror/Prisma). Proxy Natalo hanya membaca (Admin SDK, lewati rules). Baca = semua staff login (banner kill-switch di inbox).
+
+**Files:**
+- Test: `firestore-tests/app-settings.test.mjs`
+- Modify: `firestore.rules` (tambah blok `match /app_settings/{docId}`)
+
+**Interfaces:**
+- Consumes: `getTestEnv`, `seedUser`, `assertFails`, `assertSucceeds` dari `helpers.mjs`.
+
+- [ ] **Step 1: Tulis test yang gagal** (`firestore-tests/app-settings.test.mjs`): seed `owner1{role:owner}`, `kar1{role:karyawan}`. Uji: owner boleh `setDoc app_settings/chatConfig {chatEnabled:false}` (assertSucceeds) & `app_settings/chatHours` (assertSucceeds); `kar1` DITOLAK tulis (assertFails) tapi BOLEH baca (assertSucceeds); anon DITOLAK baca (assertFails).
+
+- [ ] **Step 2: Jalankan — GAGAL** (blok belum ada → default deny untuk owner write). `npm test`.
+
+- [ ] **Step 3: Tambah blok ke `firestore.rules`** (setelah blok `customerChats`, sebelum blok berikutnya):
+
+```
+    // app_settings: konfigurasi chat (chatConfig=kill-switch, chatHours=jam
+    // operasional). Ditulis OWNER dari NLCATTER; dibaca semua staff login
+    // (banner kill-switch inbox) + proxy Natalo (Admin SDK, lewati rules).
+    match /app_settings/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner();
+    }
+```
+
+- [ ] **Step 4: Jalankan — LULUS.** `npm test`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git -C C:/Users/USER/Desktop/NLCHAT add firestore.rules firestore-tests/app-settings.test.mjs
+git -C C:/Users/USER/Desktop/NLCHAT commit -m "feat(rules): app_settings owner-write, staff-read (kill-switch + jam operasional)"
+```
+
+---
+
 ## Definition of Done (Plan 1)
 
-- [ ] `npm test` di `firestore-tests/` hijau penuh (smoke + customerChats + messages/internalNotes + escalation + index-shape + storage).
-- [ ] `firestore.rules`: blok `customerChats` ada (canCS berbasis `owner || canHandleCustomer`); blok `users` menjaga `canHandleCustomer` di CREATE & UPDATE; blok lain tak berubah.
+- [ ] `npm test` di `firestore-tests/` hijau penuh (smoke + customerChats + messages/internalNotes + escalation + index-shape + storage + app-settings).
+- [ ] `firestore.rules`: blok `customerChats` ada (canCS berbasis `owner || canHandleCustomer`); blok `users` menjaga `canHandleCustomer` di CREATE & UPDATE; blok `app_settings` (owner-write, staff-read); blok lain tak berubah.
 - [ ] `firestore.indexes.json`: index `customerChats(status, lastMessageAt)` ada.
 - [ ] `storage.rules`: blok `customer_chat_images` ada.
 - [ ] `firebase.json`: blok `emulators` ada.

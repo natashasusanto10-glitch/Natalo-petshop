@@ -112,7 +112,7 @@ git commit -m "feat(chat): model ChatMessage + parsing toleran"
 
 **Interfaces:**
 - `chat_service.dart`: `newClientMsgId()` → string valid (8–64 `[A-Za-z0-9_-]`, cocok `isValidClientMsgId` Plan 2); `mapMessages(List)` → `List<ChatMessage>`; wrapper `sendText/sendImage/fetchMessages/fetchUnread/fetchConfig` memakai `apiClient` (di-inject untuk test).
-- `chat_store.dart`: `ChatStore extends ChangeNotifier` — `unreadCount`, `chatEnabled` (default true), `setUnread`, `applyConfig`, `fetchUnread()`, `fetchConfig()`; singleton `final chatStore = ChatStore()`.
+- `chat_store.dart`: `ChatStore extends ChangeNotifier` — `unreadCount`, `chatEnabled` (default true), **`online` (bool, dari config — fix B3)**, `setUnread`, `applyConfig`, `fetchUnread()`, `fetchConfig()`; singleton `final chatStore = ChatStore()`.
 
 - [ ] **Step 1: Test murni** — `newClientMsgId()` menghasilkan id valid & unik antar panggilan; `mapMessages` mengurutkan `createdAt` asc & buang entri tanpa id; `ChatStore.setUnread`/`applyConfig` memicu `notifyListeners` hanya saat nilai berubah; `fetchUnread`/`fetchConfig` dengan fake client mengisi state; error jaringan → state aman (unread tak berubah, chatEnabled tetap true = fail-open).
 
@@ -120,7 +120,7 @@ git commit -m "feat(chat): model ChatMessage + parsing toleran"
 
 - [ ] **Step 2: Jalankan — GAGAL.**
 
-- [ ] **Step 3: Implementasi** kedua file. `sendText` body `{text, clientMsgId, context?}`; `sendImage` via `apiClient.postMultipartFile('/api/chat/send-image', fieldName:'file', filePath:..., query:{clientMsgId})`; `fetchMessages(chatId, after)` → `GET /api/chat/$chatId?after=$after`; `fetchUnread` → `GET /api/chat/unread` (`{unreadForCustomer}`); `fetchConfig` → `GET /api/chat/config` (`{chatEnabled}`). Bungkus `ApiException` (isUnauthorized → propagasi ke UI untuk re-login).
+- [ ] **Step 3: Implementasi** kedua file. `sendText` body `{text, clientMsgId, context?}`; `sendImage` via `apiClient.postMultipartFile('/api/chat/send-image', fieldName:'file', filePath:..., query:{clientMsgId})`; `fetchMessages(chatId, after)` → `GET /api/chat/$chatId?after=$after` → **`{messages, nextCursor}`** (nextCursor untuk load-more, Plan 2 Task 7); `fetchUnread` → `GET /api/chat/unread` (`{unreadForCustomer}`); `fetchConfig` → `GET /api/chat/config` (`{chatEnabled, online, hours}`) → `chat_store.applyConfig` set `chatEnabled` **dan `online`** (fix B3). Bungkus `ApiException` (isUnauthorized → propagasi ke UI untuk re-login).
 
 - [ ] **Step 4: Jalankan — LULUS.**
 
@@ -168,7 +168,7 @@ git commit -m "feat(chat): AppChatButton header + entry points (5 layar + detail
 - Consumes: Task 1–2. Widget potongan agar teruji/ringan: `ChatBubble`, `ChatProductCard`, `ChatImageMessage`, `ChatSystemNote`, `ChatComposer`.
 
 - [ ] **Step 1: Layout dasar** (grounded ke tema & mockup):
-  - AppBar putih border bawah `#E5EAF2`: avatar inisial "N" `primarySoft`, judul "Natalo Petshop" (18/w800), status: dot hijau `#22C55E` "Online" (dalam jam) / ikon jam "Di luar jam operasional".
+  - AppBar putih border bawah `#E5EAF2`: avatar inisial "N" `primarySoft`, judul "Natalo Petshop" (18/w800), status (fix B3): dot hijau `#22C55E` "Online" bila `chatStore.online == true`, else ikon jam "Di luar jam operasional". **Status dihitung server** (Plan 2 `/api/chat/config` dari `chatHours` WIB) — klien TIDAK menebak dari timestamp/TZ.
   - Body `surface #F8FAFC`, `ListView` pesan (reverse atau auto-scroll ke bawah), padding `AppSpacing.lg`.
   - Gelembung **customer** kanan `primary #1E5FBF` teks putih, radius 14 (sudut kanan-atas 4); **staff** kiri putih border `#E2E8F0` teks `#0F172A`. Timestamp 10px `#94A3B8`; centang status (queued/sending=jam, sent=✓, dibaca=✓✓ `#1E5FBF`, failed=merah + tombol "Coba lagi").
   - `ChatSystemNote`: chip tengah "Balasan otomatis" (tag `primarySoft`/`primaryNavy`) untuk pesan `auto/system`.
@@ -208,6 +208,7 @@ git commit -m "feat(chat): ChatRoomScreen (gelembung, kartu produk, foto, compos
   - `Timer.periodic(4s)` saat layar tampak → `fetchMessages(chatId, after: lastCreatedAt)` → append pesan baru (dedupe by id/clientMsgId), auto-scroll bila di bawah.
   - `WidgetsBindingObserver`: `paused` → hentikan timer; `resumed` → fetch sekali + mulai lagi. Listener `notificationRefreshTick` → fetch sekali (wake FCM).
   - Pull-to-refresh (`natalo_paw_refresh_indicator`) → fetch penuh.
+  - **Load-more riwayat (paginasi spec §12):** scroll ke atas → fetch halaman lama pakai `nextCursor` dari `fetchMessages`; prepend, jaga posisi scroll. Berhenti bila `nextCursor == null`.
   - GET `[chatId]` juga menandai baca di server (Plan 2 Task 7) → setelah fetch, `chatStore.setUnread(0)`.
   - `dispose`: batalkan timer + lepas observer/listener.
 
@@ -222,9 +223,30 @@ git commit -m "feat(chat): kirim optimistic+retry, foto, polling 4s + lifecycle/
 
 ---
 
+### Task 6: Analitik chat sisi customer (Firebase Analytics)
+
+> Ditambah dari review (fix B8, keputusan user 2026-07-07 = kerjakan sekarang). Spec §11 mendaftar event MVP. Sisi customer → Firebase Analytics (Natalo sudah pakai Firebase untuk FCM/Analytics). Event sisi staff = Plan 5; event proxy (`customer_chat_created`, `auto_greeting_sent`, `auto_away_reply_sent`) = log terstruktur proxy (Plan 2).
+
+**Files:**
+- Modify: `lib/screens/chat_room_screen.dart`, `lib/screens/product_detail_screen.dart`, `lib/services/chat_service.dart`
+
+**Interfaces:**
+- Consumes: `firebase_analytics` (cek apakah sudah ada instance di app; reuse). Helper tipis `logChatEvent(name, params)`.
+
+- [ ] **Step 1: Emit event customer** (nama sesuai spec §11):
+  - `chat_opened_from_product` — saat buka chat dari detail produk (params: `product_id`).
+  - `customer_message_sent` — saat kirim teks/foto sukses (params: `type`).
+  - `product_card_opened` — saat customer tap "Lihat Produk" di kartu (params: `product_id`).
+  - `chat_reopened` (viewed) — saat menerima system "Percakapan dibuka kembali".
+- [ ] **Step 2: Verifikasi** — `flutter analyze` bersih; event muncul di DebugView (manual).
+- [ ] **Step 3: Commit** — `git commit -m "feat(chat): analitik Firebase event sisi customer (spec §11)"`.
+
+---
+
 ## Definition of Done (Plan 4)
 
 - [ ] Unit test hijau: `chat_message`, `chat_service`, `chat_store`.
+- [ ] Status "Online / Di luar jam" di header dibaca dari `chatStore.online` (server-computed, fix B3); load-more riwayat via `nextCursor` (spec §12); event analitik customer ter-emit (fix B8).
 - [ ] `flutter analyze` bersih untuk file baru/diubah (tanpa error baru).
 - [ ] `AppChatButton` ber-badge unread tampil di 5 layar (bukan Akun) + tombol chat di detail produk; sembunyi saat kill-switch off.
 - [ ] `ChatRoomScreen` merender semua jenis pesan (teks, foto, kartu produk, otomatis/system), composer teks+kamera, status kirim + retry, resolved & kill-switch.

@@ -146,6 +146,7 @@ git commit -m "feat(chat): verifikasi staff Firebase ID token + gating canHandle
 
 - [ ] **Step 3: Implementasi `lib/chat/catalog-card.ts`** (proyeksi allowlist) + **`app/api/catalog/search/route.ts`**:
   - `const auth = await verifyStaffRequest(request); if (auth instanceof NextResponse) return auth;`
+  - **Kill-switch (fix C1):** `if (!(await isChatEnabled())) return NextResponse.json({ error: "Chat sedang nonaktif." }, { status: 503 });` (impor `isChatEnabled` dari `app/api/chat/config/route.ts`) — simetris dgn endpoint customer Plan 2; jangan biarkan staff share produk saat chat mati.
   - Ambil `q`/paging dari query. **Gunakan kembali** jalur query produk yang ada (panggil fungsi listing yang dipakai `app/api/products/route.ts` / `lib/products.ts` `mapProductListRecord`) — JANGAN tulis ulang query harga/stok.
   - Map hasil → `toCatalogCard`. **Jangan** filter `stock<=0` di sini (picker perlu menampilkannya sebagai disabled) — cukup `isAvailable:false`.
   - `return NextResponse.json({ items })`.
@@ -172,6 +173,7 @@ git commit -m "feat(chat): GET /api/catalog/search (staff) kartu produk customer
 
 - [ ] **Step 1: Buat handler**
   - `const auth = await verifyStaffRequest(request); if (auth instanceof NextResponse) return auth;`
+  - **Kill-switch (fix C1):** `if (!(await isChatEnabled())) return NextResponse.json({ error: "Chat sedang nonaktif." }, { status: 503 });` (impor `isChatEnabled` dari `app/api/chat/config/route.ts`).
   - `const form = await request.formData(); const file = form.get("file") as File | null;` → 400 bila kosong.
   - MIME allowlist `image/jpeg|png|webp` → 400; ukuran > 8MB → 413; `validateImageMagicBytes(Buffer.from(await file.arrayBuffer()), file.type)` → 415.
   - `const { url } = await uploadToUT(file, `custchat-${auth.uid}`);`
@@ -196,6 +198,7 @@ git commit -m "feat(chat): POST /api/chat/staff-send-image (staff auth) jembatan
 - [ ] `verifyStaffRequest` menolak token invalid (401) & non-staff/tanpa flag (403); `isStaffAuthorized` = `owner||canHandleCustomer`.
 - [ ] `GET /api/catalog/search` (auth staff) → `{items}` kartu customer-safe; `stock<=0` tetap muncul dgn `isAvailable:false`; tak ada field internal.
 - [ ] `POST /api/chat/staff-send-image` (auth staff) → `{url}`; validasi MIME/size/magic-bytes; tanpa CSRF.
+- [ ] Kedua endpoint cek kill-switch `isChatEnabled` → 503 saat chat off (fix C1, simetris Plan 2).
 - [ ] Tak ada env baru; tak ada `firebase deploy`.
 
 ## Self-Review (penulis plan)

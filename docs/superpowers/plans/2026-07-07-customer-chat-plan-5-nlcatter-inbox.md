@@ -51,7 +51,7 @@
 
 - [ ] **Step 2: Jalankan — GAGAL.** `flutter test test/customer_chat_model_test.dart`.
 
-- [ ] **Step 3: Implementasi** model + service (stream pakai `FirebaseFirestore.instance.collection('customerChats')...`; query `where('status', whereIn: [...]).orderBy('lastMessageAt', descending:true)` — butuh index Plan 1 Task 5).
+- [ ] **Step 3: Implementasi** model + service (stream pakai `FirebaseFirestore.instance.collection('customerChats')...`; query `where('status', whereIn: [...]).orderBy('lastMessageAt', descending:true)` — butuh index Plan 1 Task 5). **Prasyarat (fix C4): composite index Plan 1 Task 5 harus SUDAH di-deploy ke produksi `tokochat-a8879` sebelum query ini live** — bila belum, query gagal/lambat. Jadikan gate rilis, bukan asumsi urutan numerik.
 
 - [ ] **Step 4: Jalankan — LULUS.**
 
@@ -161,9 +161,11 @@ git -C C:/Users/USER/Desktop/NLCHAT commit -m "feat(customer-inbox): attach (tan
 
 - [ ] **Step 1: Ubah status** (3-dot → Ubah status): Open → Menunggu customer → Menunggu staff → **Selesai (resolved)**. Transisi `waiting_*` = tulis pesan `staffOnly:true` (tak jadi bubble customer). `resolved` = tulis pesan `system` ramah-customer ("Percakapan ditandai selesai. Kirim pesan lagi kapan saja."). Update `status`, `statusChangedBy/At`.
 
-- [ ] **Step 2: Reopen otomatis** — (di sisi proxy/CF saat pesan customer masuk ke room resolved → set `waiting_staff` + bubble "Percakapan dibuka kembali"). Di UI: tampilkan status terkini; jika `resolved`, banner kecil di atas composer "Ditandai selesai — balas untuk membuka lagi".
+- [ ] **Step 2: Reopen otomatis** — reopen (customer kirim ke room `resolved` → `waiting_staff` + bubble "Percakapan dibuka kembali") **dimiliki PROXY** (Plan 2 Task 5 step 9, fix B1) — BUKAN Plan 5. Di UI Plan 5 cukup: tampilkan status terkini; jika `resolved`, banner kecil di atas composer "Ditandai selesai — balas untuk membuka lagi".
 
 - [ ] **Step 3: typingStaff banner** — bila `typingStaff` room diisi staff LAIN (uid ≠ myUid, umur <10s), tampilkan banner "Sedang dibalas oleh {name}" di atas composer (cegah dobel-balas). Composer lokal menulis `typingStaff` (Task 3 Step 3); auto-clear >10s.
+
+- [ ] **Step 3b: Analitik staff (fix B8, spec §11)** — emit via Firebase Analytics (NLCATTER pakai Firebase): `staff_message_sent`, `product_card_sent`, `internal_note_created`, `chat_status_changed`, `chat_resolved` (params minimal: `chatId`).
 
 - [ ] **Step 4: Verifikasi manual** — ubah ke Selesai → bubble system muncul di customer; customer balas → room reopen `waiting_staff`; dua staff buka room → yang satu lihat "Sedang dibalas oleh …".
 
@@ -183,7 +185,8 @@ git -C C:/Users/USER/Desktop/NLCHAT commit -m "feat(customer-inbox): status reso
 - [ ] Segmen "Customer" di daftar hanya untuk `owner||canHandleCustomer`; tile menampilkan tag "Natalo App" + unread `unreadCount.{myUid}`.
 - [ ] `CustomerChatScreen`: ringkasan customer, gelembung (staff `bubbleSent`/customer putih, ✓✓ `checkRead`), catatan internal kuning (hanya staff), composer (add/emoji/pill/send-camera morph), attach **tanpa PING**.
 - [ ] Bagikan produk hormati stok (dua lapis); foto staff via proxy; catatan internal tak pernah ke customer.
-- [ ] Status resolve/reopen + banner "Sedang dibalas oleh …"; buka room reset unread staff.
+- [ ] Status resolve/reopen + banner "Sedang dibalas oleh …"; buka room reset unread staff. (Reopen otomatis = PROXY, Plan 2 Task 5.)
+- [ ] Event analitik staff ter-emit (fix B8): staff_message_sent, product_card_sent, internal_note_created, chat_status_changed, chat_resolved.
 - [ ] Semua warna/spacing/radius/ikon/font dari token NLCATTER (Roboto, `#0284C7`, dst.) — nol hardcode, nol token Natalo.
 
 ## Self-Review (penulis plan)
@@ -193,4 +196,4 @@ git -C C:/Users/USER/Desktop/NLCHAT commit -m "feat(customer-inbox): status reso
 - **Keamanan:** gating `canHandleCustomer` (UI + rules Plan 1); tak mengekspos payroll/absensi/stok internal; guard stok share dua lapis. ✓
 - **Fidelity:** dilarang fork `chat_screen.dart`; `customer_chat_screen.dart` baru meniru gaya; token 100% NLCATTER, tak dicampur Natalo (memori `mockup-fidelity-per-app`). ✓
 - **Batas uji:** unit test model/service; interaksi Firestore/stream & UI diverifikasi manual (widget test dijaga caveat shimmer/golden flaky).
-- **Dependency terbuka:** endpoint proxy `catalog/search` + `staff-send-image` (Plan 2 §Deferred) harus dibuat sebelum Task 4 end-to-end — ditandai eksplisit.
+- **Dependency:** endpoint proxy `catalog/search` + `staff-send-image` = **Plan 2.5** (harus selesai sebelum Task 4 end-to-end); composite index **Plan 1 Task 5 harus live** sebelum query daftar (fix C4); kill-switch/jam operasional ditulis **Plan 6** (owner). Reopen otomatis = **Plan 2 Task 5** (fix B1).
