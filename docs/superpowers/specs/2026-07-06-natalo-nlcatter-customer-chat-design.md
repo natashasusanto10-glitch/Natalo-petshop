@@ -168,9 +168,19 @@ match /customerChats/{chatId} {
   function canCS() { return isSignedIn() && (isOwner()
     || get(/databases/$(database)/documents/users/$(request.auth.uid))
          .data.get('canHandleCustomer', false) == true); }
-  allow read, list, create, update: if canCS();
+  allow read, list: if canCS();
+  allow create: if false;   // room dibuat proxy (Admin SDK, lewati rules); staff tak pernah buat room
+  allow update: if canCS() && request.resource.data.diff(resource.data).affectedKeys()
+    .hasOnly(['status','statusChangedBy','statusChangedAt','typingStaff','unreadCount',
+              'lastMessageText','lastMessageType','lastMessageAt','lastMessageSender','updatedAt']);
   allow delete: if false;
-  match /messages/{m}      { allow read, create, update: if canCS(); allow delete: if false; }
+  match /messages/{m} {
+    allow read: if canCS();
+    allow create: if canCS() && request.resource.data.senderRole == 'staff'; // anti-forgery
+    allow update: if canCS() && request.resource.data.diff(resource.data).affectedKeys()
+      .hasOnly(['readByStaffAt','readByCustomerAt','status']);               // konten pesan immutable
+    allow delete: if false;
+  }
   match /internalNotes/{n} { allow read, create: if canCS(); allow update, delete: if false; }
 }
 ```

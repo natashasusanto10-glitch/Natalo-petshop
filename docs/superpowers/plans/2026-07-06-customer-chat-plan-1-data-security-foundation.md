@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **STATUS (2026-07-07): EXECUTED & MERGED ke NLCHAT `main`** (merge commit `6c384b4`; 34/34 uji emulator hijau; lolos review per-task + whole-branch opus). **Belum `firebase deploy`** (di-gate, menunggu persetujuan). Rules yang di-ship **lebih ketat** dari draf awal (hardening yang kamu setujui saat review): (a) `customerChats` root `update` dibatasi **field allowlist**; (b) root `create: if false` (room = proxy Admin SDK saja); (c) `messages` `create` wajib `senderRole=='staff'` + `update` dikunci ke penanda baca (anti-forgery, konten immutable). **Task 7 `app_settings`**: rule-nya ternyata **sudah ada** (dari attendance) → yang ditambah cuma test + komentar. Test runner di-serialkan (`--test-concurrency=1`). Blok rules di Task 2 & Task 7 di bawah sudah diperbarui agar cocok dengan yang di-ship.
+
 **Goal:** Menegakkan lapisan keamanan Firestore/Storage untuk fitur chat customer di project `tokochat-a8879` (repo `NLCHAT`), lengkap dengan harness uji emulator otomatis — sebelum ada proxy/CF/UI apa pun yang menyentuh data.
 
 **Architecture:** Koleksi baru `customerChats` (+ subkoleksi `messages`, `internalNotes`) hanya boleh diakses staff (`owner`, atau `karyawan` ber-`canHandleCustomer`). Customer tak pernah punya identitas Firebase di project ini (Topologi A) → tak ada rule customer; proxy Next.js (Admin SDK) yang melewati rules. Perubahan minimal ke rules internal: `canHandleCustomer` dijadikan **immutable-by-self** di `users` (cabang CREATE **dan** UPDATE) agar karyawan tak bisa self-grant. Semua ditegakkan lewat uji `@firebase/rules-unit-testing` di Firestore/Storage emulator. (Rev 5: model akses kembali ke flag `canHandleCustomer`; `role:'admin'` dibatalkan — merusak filter payroll/absensi.)
@@ -294,11 +296,22 @@ Di `firestore.rules`, TEPAT SEBELUM blok `// stock_products:` (baris komentar `/
                .data.get('canHandleCustomer', false) == true
         );
       }
-      allow read, create, update: if canCS();
+      allow read: if canCS();
+      allow create: if false; // room HANYA dibuat proxy (Admin SDK, lewati rules); staff tak pernah buat room
+      allow update: if canCS()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'statusChangedBy', 'statusChangedAt',
+                       'typingStaff', 'unreadCount',
+                       'lastMessageText', 'lastMessageType', 'lastMessageAt', 'lastMessageSender',
+                       'updatedAt']); // identitas/snapshot customer = proxy/CF-only
       allow delete: if false;
 
       match /messages/{messageId} {
-        allow read, create, update: if canCS();
+        allow read: if canCS();
+        allow create: if canCS() && request.resource.data.senderRole == 'staff'; // anti-forgery: pesan customer via proxy
+        allow update: if canCS()
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['readByStaffAt', 'readByCustomerAt', 'status']); // konten immutable, hanya penanda baca
         allow delete: if false;
       }
       match /internalNotes/{noteId} {
