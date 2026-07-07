@@ -3,8 +3,16 @@ import { verifyStaffRequest } from "@/lib/chat/staff-auth";
 import { isChatEnabled } from "@/app/api/chat/config/route";
 import { getProducts } from "@/lib/products";
 import { toCatalogCard } from "@/lib/chat/catalog-card";
+import { sampleProducts } from "@/lib/sample-data";
 
 export const dynamic = "force-dynamic";
+
+// getProducts() falls back to hardcoded demo products (sampleProducts) when
+// the catalog query is empty/blank or Prisma throws — fine for the customer
+// storefront, but this is the staff product-picker for sharing a card into
+// customer chat. A demo product's slug 404s, so staff must never be able to
+// pick and share one.
+const SAMPLE_PRODUCT_IDS = new Set(sampleProducts.map((p) => p.id));
 
 function parsePositiveInt(value: string | null, fallback: number) {
   const parsed = Number(value);
@@ -31,7 +39,10 @@ export async function GET(request: NextRequest) {
     take: limit,
     skip: cursor,
   });
-  const items = products.map(toCatalogCard);
+  // Filter out sample/demo products before mapping — see comment above.
+  const items = products
+    .filter((p) => !SAMPLE_PRODUCT_IDS.has(p.id))
+    .map(toCatalogCard);
 
   return NextResponse.json({ items });
 }
