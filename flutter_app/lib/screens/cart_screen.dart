@@ -838,21 +838,34 @@ class _CartScreenState extends State<CartScreen> {
                             16,
                             12,
                           ),
+                          // KEY STABIL per child ListView. Tanpa ini, saat
+                          // item baru masuk (add dari rekomendasi) jumlah
+                          // child berubah → Flutter re-asosiasi Element by
+                          // POSISI → subtree rekomendasi (AppProductImage +
+                          // TweenAnimationBuilder) rebuild fresh → gambar
+                          // re-shimmer & animasi masuk replay = "glitch".
+                          // Key bikin reconciliation match by identitas, jadi
+                          // subtree yang tak berubah tetap stabil saat insert.
                           children: [
                             // Banner ringkas kalau ada item stok habis —
                             // jelaskan kenapa item tertentu tidak ikut total.
                             if (_stockIssues.values
                                 .any((issue) => issue.isOutOfStock)) ...[
                               _CartStockBanner(
+                                key: const ValueKey('cart-stock-banner'),
                                 count: _stockIssues.values
                                     .where((issue) => issue.isOutOfStock)
                                     .length,
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(
+                                key: ValueKey('cart-stock-banner-gap'),
+                                height: 4,
+                              ),
                             ],
                             // Cart items dengan checkbox per item.
                             for (var i = 0; i < items.length; i++) ...[
                               _CartItemCard(
+                                key: ValueKey('cart-card-${items[i].key}'),
                                 item: items[i],
                                 index: i,
                                 selected: _selectedIds.contains(items[i].key),
@@ -865,6 +878,7 @@ class _CartScreenState extends State<CartScreen> {
                               // Tokopedia style: divider sejajar dengan image kiri.
                               if (i < items.length - 1)
                                 Padding(
+                                  key: ValueKey('cart-div-${items[i].key}'),
                                   padding: const EdgeInsets.only(left: 42),
                                   child: Divider(
                                     height: 1,
@@ -876,16 +890,24 @@ class _CartScreenState extends State<CartScreen> {
                                   ),
                                 )
                               else
-                                const SizedBox(height: 8),
+                                SizedBox(
+                                  key: ValueKey('cart-gap-${items[i].key}'),
+                                  height: 8,
+                                ),
                             ],
                             _CartRecommendationsSection(
+                              key: const ValueKey('cart-rec-recently'),
                               title: 'Yuk dilihat lagi',
                               products: _recentlyViewed,
                               loading: _loadingRecentlyViewed,
                               showLoadingPlaceholder: false,
                             ),
-                            const SizedBox(height: 18),
+                            const SizedBox(
+                              key: ValueKey('cart-rec-gap'),
+                              height: 18,
+                            ),
                             _CartRecommendationsSection(
+                              key: const ValueKey('cart-rec-boss'),
                               title: 'Ayoo diborong bossku',
                               products: _bossProducts,
                               loading: _loadingBossProducts,
@@ -1187,7 +1209,7 @@ class _CartDeleteConfirmDialog extends StatelessWidget {
 /// Banner ringkas di atas list cart saat ada item stok habis.
 class _CartStockBanner extends StatelessWidget {
   final int count;
-  const _CartStockBanner({required this.count});
+  const _CartStockBanner({super.key, required this.count});
 
   @override
   Widget build(BuildContext context) {
@@ -1277,6 +1299,7 @@ class _CartItemCard extends StatelessWidget {
   final CartValidationIssue? stockIssue;
 
   const _CartItemCard({
+    super.key,
     required this.item,
     required this.index,
     required this.selected,
@@ -3185,6 +3208,7 @@ class _CartRecommendationsSection extends StatelessWidget {
   final bool showLoadingPlaceholder;
 
   const _CartRecommendationsSection({
+    super.key,
     this.title = 'Yuk dilihat lagi',
     required this.products,
     required this.loading,
