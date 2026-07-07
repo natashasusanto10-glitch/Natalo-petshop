@@ -13,13 +13,6 @@ import { prefetchCategories } from "@/lib/client-performance";
 import { shareContent } from "@/lib/share";
 import { natToast } from "@/components/Toast";
 
-const NAV_LINKS = [
-  { href: "/", label: "Beranda" },
-  { href: "/products", label: "Produk" },
-  { href: "/feed", label: "Feed" },
-  { href: "/tentang-kami", label: "Tentang Kami" },
-];
-
 // Halaman auth (login / daftar / OTP / lupa-reset password) — header dirender
 // dalam variant minimal: back + title saja. Search/bell/profile/login button
 // di-hide untuk fokus pada auth flow.
@@ -346,20 +339,8 @@ export function Header() {
             />
           </Link>
 
-          {/* Desktop nav */}
-          <nav className="hidden items-center gap-8 text-sm font-medium text-gray-700 md:flex">
-            {NAV_LINKS.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`transition hover:text-blue-500 ${
-                  currentPath === link.href ? "font-semibold text-blue-500" : ""
-                }`}
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
+          {/* Desktop: wide search inline in the main row (native e-commerce pattern). */}
+          <HomeSearchBar className="hidden min-w-0 flex-1 md:mx-6 md:flex lg:mx-10" />
 
           {/* Right actions — contextual:
             - Guest: tombol "Masuk" saja (no bell, no profile chip).
@@ -372,6 +353,17 @@ export function Header() {
               isCheckoutAddressPicker ? "justify-end" : ""
             }`}
           >
+            {/* Wishlist — desktop header action. */}
+            <Link
+              href="/wishlist"
+              aria-label="Wishlist"
+              className="hidden h-10 w-10 items-center justify-center rounded-full text-gray-700 transition hover:bg-gray-100 md:inline-flex"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
+                <path d="M12 21s-7-4.35-9.5-8.5C1 9 2.5 5.5 6 5.5c2 0 3.2 1.2 4 2.3.8-1.1 2-2.3 4-2.3 3.5 0 5 3.5 3.5 7C19 16.65 12 21 12 21Z" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </Link>
+
             {/* Notifikasi — hanya untuk logged-in user. Guest tidak punya
               konteks notif (order, voucher, point) jadi bell dihide. */}
             {showBell && <NotificationBell compact />}
@@ -406,8 +398,6 @@ export function Header() {
           </div>
         </div>
         {isHome && <HomeSearchBar />}
-        {/* Desktop: search bar selalu tampil di header (semua halaman), center. */}
-        <HomeSearchBar className="mx-auto hidden w-full max-w-xl px-0 md:flex md:pb-2" />
       </div>
       {!isProductDetail && <DesktopCategoryNav />}
     </header>
