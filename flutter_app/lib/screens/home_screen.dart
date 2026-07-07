@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -61,6 +62,20 @@ class _HomeScreenState extends State<HomeScreen> {
   late final Future<ProductResult> _productsFuture;
   // ── Infinite scroll "Jelajahi Produk Natalo" — match PWA HomeExploreProducts ──
   final ScrollController _scrollController = ScrollController();
+  // Progress collapse header 0→1, digiring dari POSISI SCROLL (bukan
+  // shrinkOffset yang, pada pinned header, mentok di maxExtent−minExtent =
+  // ~8px). Disebar sepanjang _kHeaderCollapseDistance supaya animasi
+  // "besar-kecil" + fade subtitle tidak dijejalkan ke ~8px scroll — dulu
+  // itulah yang membuat transisi terasa "terlalu cepat" (user report).
+  // Header di-repaint TER-SCOPE via ValueListenableBuilder → hanya subtree
+  // header yang rebuild tiap frame scroll, bukan seluruh CustomScrollView.
+  final ValueNotifier<double> _headerCollapse = ValueNotifier<double>(0.0);
+
+  /// Jarak scroll (px) untuk menuntaskan animasi collapse header 0→1.
+  /// Naikkan = lebih lambat/kalem; turunkan = lebih cepat. 64 dipilih dari
+  /// mockup pembanding (terasa 1:1 dengan jari, tidak "lengket").
+  static const double _kHeaderCollapseDistance = 64.0;
+
   final List<Product> _exploreProducts = [];
   String? _exploreNextCursor;
   bool _exploreHasMore = true;
@@ -216,11 +231,23 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _headerCollapse.dispose();
     recentlyViewedStore.removeListener(_onRecentlyViewedChanged);
     super.dispose();
   }
 
   void _onScroll() {
+    // Update progress collapse header DULU — WAJIB sebelum guard paginasi di
+    // bawah. Kalau ditaruh setelahnya, header akan beku di tengah animasi
+    // selama load-more berjalan, dan macet PERMANEN saat produk habis
+    // (_exploreHasMore == false) karena guard early-return.
+    if (_scrollController.hasClients) {
+      _headerCollapse.value =
+          (_scrollController.position.pixels / _kHeaderCollapseDistance)
+              .clamp(0.0, 1.0)
+              .toDouble();
+    }
+
     if (_exploreLoading || !_exploreHasMore) return;
     // Trigger load saat 600px sebelum bottom — match PWA threshold.
     final position = _scrollController.position;
@@ -597,6 +624,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   SliverPersistentHeader(
                     pinned: true,
                     delegate: _HomeStickyHeaderDelegate(
+                      collapse: _headerCollapse,
                       onOpenProducts: () => _openProducts(context),
                       onOpenSearch: () => _openHomeSearch(context),
                     ),
@@ -916,41 +944,49 @@ class _ApiFallbackNotice extends StatelessWidget {
   }
 }
 
-/// Collapsible sticky header — top state (logo+subtitle+search) menyusut
-/// ke compact state (logo kecil, no subtitle, search) saat user scroll.
-/// Lerp via shrinkOffset progress 0→1.
+/// Sticky header Beranda — tinggi FISIK konstan 128px (pinned). Yang
+/// beranimasi hanya KONTEN-nya: logo 44→32, judul 18→16, subtitle
+/// fade+collapse, padding, border+shadow. Progress 0→1 datang dari posisi
+/// scroll via [collapse] (lihat `_HomeScreenState._headerCollapse`),
+/// disebar sepanjang `_kHeaderCollapseDistance` (~64px) lalu di-ease
+/// easeOutCubic — BUKAN dari shrinkOffset yang, pada pinned header, mentok
+/// di ~8px dan bikin transisi terasa "terlalu cepat".
 ///
-/// Top state: 128px (logo 44 + subtitle visible + search 42 + paddings)
-/// Compact state: 120px (logo 32 + no subtitle + search 42 + paddings)
-///
-/// Spec acceptance: search bar 42px konsisten di kedua state, breathing
-/// room cukup supaya tidak ke-clip oleh sliver boundary, smooth
-/// easeOutCubic transition. Trust marquee bukan bagian sticky (sudah
-/// dipindah ke SliverToBoxAdapter terpisah).
+/// Konten top: logo 44 + subtitle visible + search 42 + paddings = 120,
+/// selalu muat di extent 128 dengan 8px breathing room (shadow + radius
+/// search tidak ke-clip). Trust marquee bukan bagian sticky (sudah dipindah
+/// ke SliverToBoxAdapter terpisah).
 class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
+  /// Progress collapse 0→1 dari posisi scroll (lihat
+  /// `_HomeScreenState._headerCollapse`). Menggantikan shrinkOffset sebagai
+  /// pendorong animasi supaya timing bisa disebar melebihi ~8px.
+  final ValueListenable<double> collapse;
   final VoidCallback onOpenProducts;
   final VoidCallback onOpenSearch;
 
-  const _HomeStickyHeaderDelegate({
+  _HomeStickyHeaderDelegate({
+    required this.collapse,
     required this.onOpenProducts,
     required this.onOpenSearch,
   });
 
-  // Extent calc — Row di sticky di-dominasi IconButton (Bell + Cart) yang
-  // Material default min height 48px (touch target), BUKAN logo 32-44.
-  // Content compact: padTop 6 + Row 48 + gap 8 + search 42 + padBottom 10 = 114
-  // Content top:     padTop 8 + Row 48 + gap 10 + search 42 + padBottom 12 = 120
-  // Extent perlu ≥ content + breathing room supaya shadow + radius search
-  // tidak ke-clip oleh sliver boundary. Sebelumnya compact 100 → overflow
-  // 8px → search bar bottom kepotong saat scroll (user report).
-  static const double _topExtent = 128;
-  static const double _compactExtent = 120;
+  // Extent KONSTAN 128px — header tidak lagi menyusut tingginya secara
+  // fisik. Row didominasi IconButton Bell+Cart (min 48px touch target), jadi
+  // konten top = padTop 8 + Row 48 + gap 10 + search 42 + padBottom 12 = 120,
+  // selalu muat di 128 dengan 8px breathing room untuk shadow + radius
+  // search. Animasi collapse ("besar-kecil" + fade) SEKARANG digiring dari
+  // posisi scroll (_HomeScreenState._headerCollapse), bukan shrinkOffset.
+  // Dulu min 120 / max 128 → shrinkOffset mentok 8px → seluruh animasi
+  // dijejalkan ke ~8px scroll = "terlalu cepat". Extent konstan bikin resting
+  // look identik DAN membunuh seluruh kelas bug clipping (konten ≤120 selalu
+  // muat di 128).
+  static const double _extent = 128;
 
   @override
-  double get minExtent => _compactExtent;
+  double get minExtent => _extent;
 
   @override
-  double get maxExtent => _topExtent;
+  double get maxExtent => _extent;
 
   @override
   Widget build(
@@ -958,50 +994,61 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    final maxShrink = (maxExtent - minExtent).clamp(1, double.infinity);
-    final rawProgress = (shrinkOffset / maxShrink).clamp(0.0, 1.0).toDouble();
-    // easeOutCubic untuk natural deceleration — match spec.
-    final t = Curves.easeOutCubic.transform(rawProgress);
-
     final cs = Theme.of(context).colorScheme;
     final headerBorder = Theme.of(context).brightness == Brightness.dark
         ? cs.outlineVariant
         : const Color(0xFFEFF4FA);
-    return SizedBox.expand(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: cs.surface,
-          border: Border(
-            bottom: BorderSide(
-              color: Color.lerp(
-                headerBorder.withValues(alpha: 0),
-                headerBorder,
-                t,
-              )!,
-            ),
-          ),
-          boxShadow: t > 0.05
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04 + 0.04 * t),
-                    blurRadius: 12 * t,
-                    offset: Offset(0, 4 * t),
+
+    // shrinkOffset TIDAK dipakai lagi (extent konstan → selalu 0). Progress
+    // datang dari [collapse] (posisi scroll). RepaintBoundary +
+    // ValueListenableBuilder → hanya subtree header yang repaint tiap frame
+    // scroll, bukan seluruh CustomScrollView / grid produk.
+    return RepaintBoundary(
+      child: ValueListenableBuilder<double>(
+        valueListenable: collapse,
+        builder: (context, rawProgress, _) {
+          // easeOutCubic untuk natural deceleration — match spec lama.
+          final t = Curves.easeOutCubic.transform(rawProgress);
+          return SizedBox.expand(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: cs.surface,
+                border: Border(
+                  bottom: BorderSide(
+                    color: Color.lerp(
+                      headerBorder.withValues(alpha: 0),
+                      headerBorder,
+                      t,
+                    )!,
                   ),
-                ]
-              : const [],
-        ),
-        child: _HomeHeader(
-          onOpenProducts: onOpenProducts,
-          onOpenSearch: onOpenSearch,
-          progress: t,
-        ),
+                ),
+                boxShadow: t > 0.05
+                    ? [
+                        BoxShadow(
+                          color:
+                              Colors.black.withValues(alpha: 0.04 + 0.04 * t),
+                          blurRadius: 12 * t,
+                          offset: Offset(0, 4 * t),
+                        ),
+                      ]
+                    : const [],
+              ),
+              child: _HomeHeader(
+                onOpenProducts: onOpenProducts,
+                onOpenSearch: onOpenSearch,
+                progress: t,
+              ),
+            ),
+          );
+        },
       ),
     );
   }
 
   @override
   bool shouldRebuild(covariant _HomeStickyHeaderDelegate oldDelegate) {
-    return oldDelegate.onOpenProducts != onOpenProducts ||
+    return oldDelegate.collapse != collapse ||
+        oldDelegate.onOpenProducts != onOpenProducts ||
         oldDelegate.onOpenSearch != onOpenSearch;
   }
 }
@@ -1009,8 +1056,8 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
 /// Header Beranda dengan collapsible behavior.
 ///
 /// [progress] 0.0 = top state (full), 1.0 = compact (scrolled).
-/// Driven by parent `_HomeStickyHeaderDelegate` via shrinkOffset lerp
-/// dengan easeOutCubic.
+/// Digerakkan parent `_HomeStickyHeaderDelegate` dari progress posisi
+/// scroll (bukan shrinkOffset) lalu di-ease easeOutCubic.
 ///
 /// Visual changes saat scroll:
 /// - Logo box: 44 → 32 (lerp)
