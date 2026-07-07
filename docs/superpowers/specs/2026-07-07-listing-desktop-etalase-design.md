@@ -67,7 +67,7 @@ Semua item lain frontend-only. Dua ini **bukan** bawaan search:
 1. **Diskon-saja** — ada di `/api/products` (`discountOnly`), tak ada di search. Untuk memasangnya di search: tambah param `discount_only` + satu cabang `where` di DB-fallback `searchProductsFromDb`, **mereuse where-logic diskon yang sudah ada** (`lib/products.ts:964–990`). Kecil, read-only, tanpa reindex (path Meili menyusul terpisah bila Meili diaktifkan).
 2. **"Paling Populer" berbasis penjualan asli** — `best_seller` di search sekarang proksi jumlah-ulasan/rating (bukan penjualan). Penjualan asli ada di `/api/products` (`popular=best-seller`, agregasi `OrderItem`). Menyamakan butuh agregasi `OrderItem` di DB-fallback search (sedang, read-only) atau indeks `sold_count` (lebih besar).
 
-**Rekomendasi:** ship PR1–PR2 tanpa dua carve-out ini — pakai proksi `best_seller` yang ada untuk label "Paling Populer" (cukup layak untuk sort listing), dan **tunda "Diskon-saja"** ke follow-up backend kecil (§11). Bila owner ingin keduanya sekarang, jadikan **PR3 backend-read-only** (§9). Keputusan ini dikonfirmasi di review gate.
+**Keputusan owner (2026-07-07): DITUNDA.** PR1–PR2 dikerjakan tanpa dua carve-out ini — label "Paling Populer" sementara pakai proksi `best_seller` yang ada (semantik: rating/ulasan, bukan penjualan asli), dan "Diskon-saja" **tidak** dipasang di PR1–PR2. **PR3 di luar cakupan implementasi saat ini** (jadi follow-up bila owner meminta parity penuh).
 
 ## 5. Desain per halaman
 
@@ -128,7 +128,7 @@ Disadur (read-only) dari `flutter_app/lib/...`, diterjemahkan ke token web:
 ## 9. Sequencing (3 PR)
 - **PR1 (visual & container, risiko rendah)**: swap container 1280 (products/kategori/brands/search), `EtalaseBand`, kartu `LitShelf` hangat + token kartu ala app, ekstrak `FilterChip`, dropdown "Urutkan" (+ "Rating Tertinggi" di `/search`), lebarkan `/brands` & `/kategori`.
 - **PR2 (fungsional inti, frontend-only)**: alihkan `/products` ke stack search; reuse `SearchFilters` di `/products` (kategori/brand/stok/harga/rating); hook page-based; chip aktif + reset; suppress `ProductCatalogStickyHeader` search/chip di `md+`; bottom-sheet filter/sort mobile; empty/recently-viewed.
-- **PR3 (opsional, backend read-only)**: param `discount_only` + best-seller penjualan-asli di DB-fallback search; toggle Diskon-saja di `SearchFilters`. **Hanya bila owner minta parity penuh sekarang.**
+- **PR3 (DITUNDA — di luar cakupan sekarang)**: param `discount_only` + best-seller penjualan-asli di DB-fallback search; toggle Diskon-saja di `SearchFilters`. Follow-up bila owner minta parity penuh.
 
 ## 10. Risiko & mitigasi
 - Distinctiveness jangan hanya di `:hover` → lit-shelf **statis**. ✓
