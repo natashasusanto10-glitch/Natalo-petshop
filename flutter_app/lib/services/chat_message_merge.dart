@@ -8,9 +8,17 @@ import '../models/chat_message.dart';
 
 /// Gabungkan pesan SERVER ([incoming], hasil `ChatService.fetchMessages`)
 /// ke [existing] — list yang mungkin berisi campuran pesan optimistic
-/// (baru dikirim client sesi ini, `ChatMessage.status` non-null) dan pesan
-/// server (`status` null, proxy TIDAK PERNAH mengirim field itu — lihat
-/// docstring `ChatMessage.status`).
+/// (baru dikirim client sesi ini, `ChatMessage.isOptimistic == true`) dan
+/// pesan server (`isOptimistic == false`). Provenance dibedakan lewat flag
+/// [ChatMessage.isOptimistic], BUKAN `status` — proxy MENGIRIM
+/// `status: "sent"` untuk pesan customer (`lib/chat/rooms.ts:204` →
+/// `lib/chat/core.ts:69`), jadi `status` non-null tidak berarti "lokal".
+///
+/// Setelah sebuah pesan server dengan `clientMsgId` yang sama masuk, ia
+/// MENGGANTI bubble optimistic di slot itu (aturan 1) — hasil di slot itu
+/// jadi pesan server (`isOptimistic == false`), sehingga
+/// `ChatRoomScreen._afterCursor` bisa memajukan cursor melewatinya di poll
+/// berikutnya (tidak lagi terjebak re-drain tail tiap tick).
 ///
 /// Aturan (diterapkan PER pesan `s` di [incoming], urut):
 ///  1. Ada pesan di [existing]/hasil-sejauh-ini dengan `clientMsgId` SAMA

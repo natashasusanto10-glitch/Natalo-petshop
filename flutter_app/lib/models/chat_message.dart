@@ -23,9 +23,12 @@ enum ChatSender { customer, staff }
 /// salah asumsi sebagai teks biasa.
 enum ChatMsgType { text, image, product, productContext, orderContext, system }
 
-/// Status kirim pesan — status ini dikelola CLIENT (composer optimistic
-/// send), bukan field yang selalu dikirim proxy. `queued`/`sending`/`failed`
-/// hanya relevan untuk pesan yang baru saja dikirim user di sesi ini.
+/// Status kirim pesan (dipakai UI untuk tier centang). `queued`/`sending`/
+/// `failed` hanya relevan untuk pesan optimistic yang baru dikirim user di
+/// sesi ini. `sent` di sisi lain JUGA datang dari proxy: pesan customer di
+/// Firestore di-stamp `status: "sent"` (`lib/chat/rooms.ts:204`) dan
+/// diteruskan ke client (`lib/chat/core.ts:69`) — jadi `status` BUKAN
+/// penanda provenance (pakai [ChatMessage.isOptimistic] untuk itu).
 enum ChatSendStatus { queued, sending, sent, failed }
 
 ChatSender _parseSender(Object? raw) {
@@ -143,9 +146,26 @@ class ChatMessage {
   /// hanya ada pada pesan yang baru saja dikirim dari sesi ini.
   final String? clientMsgId;
 
-  /// Status kirim optimistic (lihat [ChatSendStatus]) — null kalau pesan
-  /// datang dari server (bukan hasil optimistic-send lokal).
+  /// Status kirim (lihat [ChatSendStatus]) — dipakai UI untuk tier centang
+  /// (jam `sending` → centang `sent` → error `failed`).
+  ///
+  /// **JANGAN dipakai untuk menyimpulkan provenance (server vs lokal).** Proxy
+  /// SESUNGGUHNYA MENGIRIM `status: "sent"` untuk setiap pesan customer
+  /// (`writeCustomerMessage` men-stamp `status: "sent"` di `lib/chat/rooms.ts:204`,
+  /// dan proyeksi customer meneruskannya ke client di `lib/chat/core.ts:69`),
+  /// jadi pesan customer hasil `fetchMessages` PUN parse ke
+  /// `ChatSendStatus.sent` (non-null). Untuk membedakan bubble optimistic
+  /// lokal dari pesan server, pakai [isOptimistic], BUKAN `status == null`.
   final ChatSendStatus? status;
+
+  /// True HANYA untuk bubble optimistic yang dibuat lokal di sesi ini (belum
+  /// dikonfirmasi/direkonsiliasi dgn baris server). Pesan yang datang dari
+  /// server ([ChatMessage.fromJson]) SELALU `false` — server tidak pernah
+  /// mengirim konsep "optimistic". Dipakai `ChatRoomScreen._afterCursor`
+  /// untuk memilih cursor polling HANYA dari pesan server (timestamp lokal
+  /// bubble optimistic tak sinkron dgn jam server) — menggantikan asumsi
+  /// LAMA yang salah bahwa `status == null` berarti "dari server".
+  final bool isOptimistic;
 
   /// True kalau pesan ini auto-generated (greeting/away message dsb.)
   final bool auto;
@@ -161,6 +181,7 @@ class ChatMessage {
     this.createdAt = 0,
     this.clientMsgId,
     this.status,
+    this.isOptimistic = false,
     this.auto = false,
   });
 

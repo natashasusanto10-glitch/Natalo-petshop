@@ -17,6 +17,9 @@ ChatMessage _optimistic({
     createdAt: createdAt,
     clientMsgId: clientMsgId,
     status: status,
+    // Bubble lokal — provenance-nya `isOptimistic: true` (BUKAN dari
+    // `status`, yang cuma penanda tier centang).
+    isOptimistic: true,
   );
 }
 
@@ -35,8 +38,11 @@ ChatMessage _server({
     text: text,
     createdAt: createdAt,
     clientMsgId: clientMsgId,
-    // status SENGAJA null — pesan hasil fetchMessages tidak pernah bawa
-    // field ini dari proxy (lihat docstring ChatMessage.status).
+    // Pesan customer dari proxy MEMBAWA `status: "sent"`
+    // (`lib/chat/rooms.ts:204` → `lib/chat/core.ts:69`) — jadi model pesan
+    // server realistis dgn status non-null. Provenance ditandai
+    // `isOptimistic: false` (default), BUKAN oleh status.
+    status: sender == ChatSender.customer ? ChatSendStatus.sent : null,
   );
 }
 
@@ -54,7 +60,10 @@ void main() {
 
       expect(result.length, 1);
       expect(result.single.id, 'srv-1');
-      expect(result.single.status, isNull);
+      // Setelah rekonsiliasi, slot jadi pesan SERVER — `isOptimistic` false
+      // (inilah yang bikin `_afterCursor` bisa maju melewatinya). `status`
+      // TIDAK diandalkan lagi utk provenance (proxy kirim status:sent).
+      expect(result.single.isOptimistic, isFalse);
       expect(result.single.createdAt, 500);
     });
 
@@ -145,7 +154,8 @@ void main() {
       expect(result.length, 1);
       expect(result.single.id, 'srv-img-1');
       expect(result.single.type, ChatMsgType.image);
-      expect(result.single.status, isNull);
+      // Foto server hasil rekonsiliasi juga `isOptimistic: false`.
+      expect(result.single.isOptimistic, isFalse);
     });
 
     test('existing/incoming kosong -> tidak throw, hasil sesuai', () {

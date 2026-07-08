@@ -98,6 +98,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// (lihat `_mergeIncoming`) — tidak pernah leak tak terbatas.
   final Map<String, String> _pendingImagePaths = {};
 
+  /// `clientMsgId` pesan pembawa `product_context` -> payload context-nya,
+  /// ditahan supaya `_onRetry` bisa MELAMPIRKAN ulang context saat mengirim
+  /// ulang pesan pertama yang gagal (tanpa ini, retry pesan konteks kehilangan
+  /// `product_context`-nya). Diisi HANYA untuk pesan yang benar-benar membawa
+  /// context, dibersihkan begitu kirim sukses ATAU versi server-nya
+  /// direkonsiliasi (`_mergeIncoming`).
+  final Map<String, Map<String, dynamic>> _pendingContext = {};
+
   /// Teks PERSIS pesan sistem auto-reopen — HARUS sama persis dgn
   /// `REOPEN_TEXT` di `lib/chat/auto-effects.ts` (repo proxy Natalo). Dipakai
   /// [_logReopenEvents] (analitik `chat_reopened`, spec §11).
@@ -266,11 +274,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   }
 
   /// Terapkan [mergeChatMessages] ke `_messages` + bersihkan
-  /// `_pendingImagePaths` untuk `clientMsgId` yang barusan direkonsiliasi
-  /// (versi server sudah datang → thumbnail lokal sementara tak perlu lagi,
-  /// [ChatImageMessage] otomatis pindah ke `imageUrl` network). No-op kalau
-  /// [incoming] kosong — hindari `setState` sia-sia tiap poll tick tanpa
-  /// pesan baru.
+  /// `_pendingImagePaths`/`_pendingContext` untuk `clientMsgId` yang barusan
+  /// direkonsiliasi (versi server sudah datang → thumbnail lokal &
+  /// context-tahan tak perlu lagi; [ChatImageMessage] otomatis pindah ke
+  /// `imageUrl` network). No-op kalau [incoming] kosong — hindari `setState`
+  /// sia-sia tiap poll tick tanpa pesan baru.
   void _mergeIncoming(List<ChatMessage> incoming) {
     if (incoming.isEmpty) return;
     _logReopenEvents(incoming);
@@ -282,7 +290,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     });
     for (final s in incoming) {
       final id = s.clientMsgId;
-      if (id != null) _pendingImagePaths.remove(id);
+      if (id != null) {
+        _pendingImagePaths.remove(id);
+        _pendingContext.remove(id);
+      }
     }
   }
 
@@ -324,18 +335,26 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     }
   }
 
-  /// Cursor untuk polling: `createdAt` TERBESAR di antara pesan yang
-  /// sumbernya SERVER (`status == null` — proxy TIDAK PERNAH mengirim
-  /// field `status`, jadi null artinya pesan ini hasil `fetchMessages`,
-  /// bukan bubble optimistic lokal). Bubble optimistic yang belum
-  /// direkonsiliasi (`status` sending/sent/failed) sengaja diabaikan —
-  /// `createdAt` mereka `DateTime.now()` LOKAL, tidak sinkron dgn jam
-  /// server, jadi tidak aman dipakai sbg cursor `after`. Null kalau belum
-  /// ada satupun pesan server (poll pertama efektif `after: null`).
+  /// Cursor untuk polling: `createdAt` TERBESAR di antara pesan SERVER
+  /// (`!m.isOptimistic`). Bubble optimistic yang belum direkonsiliasi
+  /// SENGAJA diabaikan — `createdAt` mereka `DateTime.now()` LOKAL, tidak
+  /// sinkron dgn jam server, jadi tidak aman dipakai sbg cursor `after`.
+  /// Null kalau belum ada satupun pesan server (poll pertama efektif
+  /// `after: null`).
+  ///
+  /// **Kenapa `isOptimistic` BUKAN `status == null`:** proxy MENGIRIM
+  /// `status: "sent"` untuk pesan customer (`lib/chat/rooms.ts:204` →
+  /// `lib/chat/core.ts:69`), jadi pesan customer dari `fetchMessages` pun
+  /// `status` non-null. Kalau cursor memakai `status == null`, ia akan
+  /// MELEWATKAN pesan customer terkonfirmasi (yang sering jadi pesan
+  /// terbaru tepat setelah user kirim) → cursor tak maju → tiap tick 4s
+  /// men-drain ulang ekor thread (idempoten tapi boros jaringan/baterai +
+  /// jank). Flag `isOptimistic` (hanya `true` utk bubble lokal, `fromJson`
+  /// selalu `false`) menandai provenance dengan benar.
   Object? get _afterCursor {
     int? maxCreatedAt;
     for (final m in _messages) {
-      if (m.status != null) continue;
+      if (m.isOptimistic) continue;
       if (maxCreatedAt == null || m.createdAt > maxCreatedAt) {
         maxCreatedAt = m.createdAt;
       }
@@ -499,6 +518,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       createdAt: DateTime.now().millisecondsSinceEpoch,
       clientMsgId: clientMsgId,
       status: ChatSendStatus.sending,
+      isOptimistic: true,
     );
 
     _composerController.clear();
@@ -506,15 +526,18 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     _scrollToBottom();
 
     // Konteks produk/pesanan (entry dari Detail Produk) HANYA nempel di
-    // pesan pertama yang benar-benar dicoba kirim sesi ini.
+    // pesan pertama yang benar-benar TERKIRIM sesi ini. `_contextSent`
+    // di-set true HANYA SETELAH sukses (bukan saat mencoba) — supaya kalau
+    // percobaan pertama gagal, context-nya belum "terpakai" & bisa
+    // dilampirkan ulang saat retry (disimpan di `_pendingContext`).
     final sendContext = _contextSent ? null : widget.productContext;
-    _contextSent = true;
+    if (sendContext != null) _pendingContext[clientMsgId] = sendContext;
 
     try {
       // Oper `clientMsgId` yang SAMA dgn bubble optimistic — supaya baris
       // server yang datang di poll berikutnya (proyeksi proxy MEMBAWA
-      // `clientMsgId`) bisa direkonsiliasi dgn bubble ini, dan retry (Task
-      // 5) mengirim ulang id yang sama → proxy dedupe idempoten (tanpa ini,
+      // `clientMsgId`) bisa direkonsiliasi dgn bubble ini, dan retry
+      // mengirim ulang id yang sama → proxy dedupe idempoten (tanpa ini,
       // ChatService akan generate id berbeda → optimistic & server row tak
       // pernah bisa di-match).
       await chatService.sendText(
@@ -524,12 +547,25 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       );
       if (!mounted) return;
       setState(() => _replaceStatus(clientMsgId, ChatSendStatus.sent));
+      // Context berhasil terpakai — baru sekarang "jatah"-nya habis &
+      // pending-nya dibersihkan.
+      if (sendContext != null) _contextSent = true;
+      _pendingContext.remove(clientMsgId);
       // Analitik — funnel MVP chat (spec §11): SUKSES kirim saja (bukan
       // optimistic add, bukan gagal) — fire-and-forget, tak pernah
       // menyentuh alur kirim/retry.
       AppAnalytics.logEvent('customer_message_sent', {'type': 'text'});
     } on ApiException catch (e) {
       if (kDebugMode) debugPrint('[ChatRoomScreen] sendText gagal: $e');
+      if (!mounted) return;
+      setState(() => _replaceStatus(clientMsgId, ChatSendStatus.failed));
+    } catch (e) {
+      // Non-ApiException (mis. error tak terduga di layer bawah) juga harus
+      // memindahkan bubble ke `failed`, bukan membiarkannya macet selamanya
+      // di `sending` / naik sbg unhandled async error.
+      if (kDebugMode) {
+        debugPrint('[ChatRoomScreen] sendText gagal (non-Api): $e');
+      }
       if (!mounted) return;
       setState(() => _replaceStatus(clientMsgId, ChatSendStatus.failed));
     }
@@ -550,6 +586,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       createdAt: m.createdAt,
       clientMsgId: m.clientMsgId,
       status: status,
+      // PRESERVE `isOptimistic` — ini masih bubble lokal (cuma ganti status
+      // sending↔sent/failed) sampai poll berikutnya menggantinya dgn baris
+      // server. Kalau di-drop jadi false, `_afterCursor` akan salah
+      // memakainya sbg cursor (timestamp lokalnya tak sinkron jam server).
+      isOptimistic: m.isOptimistic,
       auto: m.auto,
     );
   }
@@ -560,7 +601,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// percobaan pertama sebenarnya sudah sukses di server tapi client cuma
   /// gagal baca response. Foto: pakai path lokal yang masih tersimpan di
   /// `_pendingImagePaths` (foto tidak pernah dikompres ulang saat retry —
-  /// file terkompresi hasil percobaan pertama dipakai apa adanya).
+  /// file terkompresi hasil percobaan pertama dipakai apa adanya). Teks:
+  /// LAMPIRKAN ULANG `product_context` yang tertahan di `_pendingContext`
+  /// (kalau pesan ini pembawa context yg percobaan pertamanya gagal) —
+  /// kirim ulang context aman krn proxy dedupe seluruh pesan by clientMsgId.
   Future<void> _onRetry(ChatMessage message) async {
     final clientMsgId = message.clientMsgId;
     if (clientMsgId == null) return;
@@ -578,11 +622,17 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
         }
         await chatService.sendImage(path, clientMsgId: clientMsgId);
       } else {
-        await chatService.sendText(message.text ?? '',
-            clientMsgId: clientMsgId);
+        await chatService.sendText(
+          message.text ?? '',
+          clientMsgId: clientMsgId,
+          context: _pendingContext[clientMsgId],
+        );
       }
       if (!mounted) return;
       setState(() => _replaceStatus(clientMsgId, ChatSendStatus.sent));
+      // Kalau pesan ini pembawa context & retry-nya sukses, context-nya
+      // baru sekarang "terpakai" — habiskan jatah + bersihkan pending.
+      if (_pendingContext.remove(clientMsgId) != null) _contextSent = true;
       // Analitik — retry yang berhasil TETAP dihitung "kirim sukses" (pesan
       // memang benar-benar terkirim, percobaan pertama cuma gagal secara
       // network) — simetris dgn `_onSendText`/`_onAttachPhoto`.
@@ -591,6 +641,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       });
     } on ApiException catch (e) {
       if (kDebugMode) debugPrint('[ChatRoomScreen] retry gagal: $e');
+      if (!mounted) return;
+      setState(() => _replaceStatus(clientMsgId, ChatSendStatus.failed));
+    } catch (e) {
+      if (kDebugMode) debugPrint('[ChatRoomScreen] retry gagal (non-Api): $e');
       if (!mounted) return;
       setState(() => _replaceStatus(clientMsgId, ChatSendStatus.failed));
     }
@@ -630,6 +684,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       createdAt: DateTime.now().millisecondsSinceEpoch,
       clientMsgId: clientMsgId,
       status: ChatSendStatus.sending,
+      isOptimistic: true,
     );
     if (!mounted) return;
     setState(() => _messages.add(optimistic));
@@ -647,6 +702,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       setState(() => _replaceStatus(clientMsgId, ChatSendStatus.failed));
       // Path lokal SENGAJA dipertahankan di `_pendingImagePaths` (bukan
       // dihapus) — retry (`_onRetry`) butuh file itu lagi utk kirim ulang.
+    } catch (e) {
+      // Non-ApiException juga harus memindahkan bubble ke `failed` (path
+      // lokal tetap dipertahankan utk retry).
+      if (kDebugMode) {
+        debugPrint('[ChatRoomScreen] sendImage gagal (non-Api): $e');
+      }
+      if (!mounted) return;
+      setState(() => _replaceStatus(clientMsgId, ChatSendStatus.failed));
     }
   }
 
