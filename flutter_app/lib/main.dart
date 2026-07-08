@@ -148,6 +148,9 @@ Future<void> main() async {
   // Restore cart dari disk supaya item yang user tambah survive app restart.
   // Match offline-first pattern — cart tetap ada walau tutup app sebelum sync.
   cartStore.loadFromDisk();
+  // Daftarkan observer lifecycle cart supaya sync tertunda dicoba ulang
+  // saat app kembali ke foreground.
+  cartStore.init();
   // Recently viewed — load history dari disk supaya Home carousel
   // langsung populated saat user buka app.
   recentlyViewedStore.loadFromDisk();

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/cart_item.dart';
@@ -50,7 +51,7 @@ String? cartVariantOptionLabel(Product product, ProductVariant variant) {
 /// Debounce 800ms supaya tidak spam server saat user rapid-fire qty change.
 /// Local mutation langsung notifyListeners + persist disk — server sync
 /// fire-and-forget background, gagal silent (cart tetap consistent di lokal).
-class CartStore extends ChangeNotifier {
+class CartStore extends ChangeNotifier with WidgetsBindingObserver {
   CartStore._({CartService? service, bool Function()? isLoggedIn})
       : _service = service ?? cartService,
         _isLoggedIn = isLoggedIn ?? _defaultIsLoggedIn;
@@ -78,6 +79,7 @@ class CartStore extends ChangeNotifier {
   Timer? _remoteSyncTimer;
   Timer? _retryTimer;
   int _retryAttempt = 0;
+  bool _observerRegistered = false;
 
   /// Ada perubahan lokal yang belum dikonfirmasi sampai ke server.
   bool _pendingSync = false;
@@ -104,15 +106,23 @@ class CartStore extends ChangeNotifier {
   Future<void> loadFromDisk() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final pending = prefs.getBool(_pendingKey) ?? false;
       final raw = prefs.getString(_key);
-      if (raw == null) return;
-      final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
-      _items.clear();
-      for (final json in list) {
-        final item = CartItem.fromJson(json);
-        _items[item.key] = item;
+      if (raw != null) {
+        final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+        _items.clear();
+        for (final json in list) {
+          final item = CartItem.fromJson(json);
+          _items[item.key] = item;
+        }
+        notifyListeners();
       }
-      notifyListeners();
+      if (pending) {
+        // Sesi sebelumnya mati sebelum sync terkonfirmasi. syncToServer
+        // self-guard kalau belum login (flag tetap tersimpan untuk nanti).
+        _pendingSync = true;
+        unawaited(syncToServer());
+      }
     } catch (_) {
       // Disk corrupt / format lama — silent reset.
     }
@@ -351,10 +361,29 @@ class CartStore extends ChangeNotifier {
     _remoteSyncTimer = Timer(_remoteSyncDebounce, syncToServer);
   }
 
+  /// Daftarkan observer lifecycle — dipanggil sekali di main(). CartStore
+  /// singleton global (bukan widget), jadi ia mengurus observer-nya sendiri.
+  void init() {
+    if (_observerRegistered) return;
+    WidgetsBinding.instance.addObserver(this);
+    _observerRegistered = true;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _pendingSync) {
+      unawaited(syncToServer());
+    }
+  }
+
   @override
   void dispose() {
     _remoteSyncTimer?.cancel();
     _retryTimer?.cancel();
+    if (_observerRegistered) {
+      WidgetsBinding.instance.removeObserver(this);
+      _observerRegistered = false;
+    }
     super.dispose();
   }
 }

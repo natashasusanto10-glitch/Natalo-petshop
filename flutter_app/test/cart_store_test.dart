@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/cart_item.dart';
 import 'package:natalo_petshop_flutter/models/product.dart';
@@ -103,5 +104,42 @@ void main() {
     expect(store.pendingSync, true);
     expect(store.hasPendingRetry, false);
     expect(fake.replaceCallCount, 1);
+  });
+
+  test('loadFromDisk dengan flag pending tersimpan → memicu sync', () async {
+    // Seed: store pertama menambah item (persist item + flag true), lalu
+    // dispose sebelum debounce sync sempat jalan — meniru app di-kill.
+    final seeder = CartStore.forTest(
+      service: _FakeCartService(),
+      isLoggedIn: () => true,
+    );
+    await seeder.addItem(_item('A', quantity: 1));
+    expect(seeder.pendingSync, true);
+    seeder.dispose();
+
+    // Store kedua load dari disk yang sama (mock prefs persist in-memory).
+    final fake = _FakeCartService();
+    final store = CartStore.forTest(service: fake, isLoggedIn: () => true);
+    addTearDown(store.dispose);
+
+    await store.loadFromDisk();
+    expect(store.pendingSync, true); // flag ter-restore dari disk
+    await pumpEventQueue();
+    expect(fake.replaceCallCount, 1); // sync ter-trigger otomatis
+    expect(store.pendingSync, false);
+  });
+
+  test('resume dari background dengan flag pending → sync', () async {
+    final fake = _FakeCartService();
+    final store = CartStore.forTest(service: fake, isLoggedIn: () => true);
+    addTearDown(store.dispose);
+
+    await store.addItem(_item('A', quantity: 1));
+    expect(store.pendingSync, true);
+
+    store.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await pumpEventQueue();
+    expect(fake.replaceCallCount, greaterThanOrEqualTo(1));
+    expect(store.pendingSync, false);
   });
 }
