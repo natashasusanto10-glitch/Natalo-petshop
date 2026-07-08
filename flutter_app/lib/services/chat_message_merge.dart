@@ -70,3 +70,41 @@ int _compareForOrder(ChatMessage a, ChatMessage b) {
   final bKey = b.id.isNotEmpty ? b.id : (b.clientMsgId ?? '');
   return aKey.compareTo(bKey);
 }
+
+/// `createdAt` TERBESAR di antara [messages] yang BUKAN optimistic
+/// (`isOptimistic == false`) — helper murni bersama dipakai DUA tempat di
+/// `ChatRoomScreen`: cursor polling (`_afterCursor`, tak berubah) DAN guard
+/// clock-skew bubble optimistic baru ([nextOptimisticCreatedAt], F3).
+/// Bubble optimistic SENGAJA diabaikan — `createdAt` mereka `DateTime.now()`
+/// LOKAL, tidak sinkron dgn jam server, jadi tidak aman dipakai sbg
+/// referensi "waktu server terakhir yang diketahui". Null kalau belum ada
+/// satupun pesan server di [messages].
+int? maxServerCreatedAt(List<ChatMessage> messages) {
+  int? result;
+  for (final m in messages) {
+    if (m.isOptimistic) continue;
+    if (result == null || m.createdAt > result) result = m.createdAt;
+  }
+  return result;
+}
+
+/// `createdAt` deterministik untuk BUBBLE OPTIMISTIC BARU (F3, guard clock
+/// skew) — jam device lokal ([now], default
+/// `DateTime.now().millisecondsSinceEpoch`), TAPI di-clamp supaya tak
+/// pernah <= `createdAt` pesan SERVER terbaru yang sudah diketahui klien
+/// (dari [maxServerCreatedAt]). Tanpa clamp ini, device yang jamnya SKEW di
+/// BELAKANG jam server bisa membuat bubble optimistic baru sort SEBELUM
+/// pesan server yang sudah ada di list (mis. balasan staff yang baru saja
+/// masuk lewat poll) sampai rekonsiliasi menggantinya dgn timestamp server
+/// — tampak seperti dua bubble terbaru "bertukar posisi" sesaat lalu
+/// "melompat" balik. `+1` (bukan `>=`) memastikan urutan STRICT setelah
+/// pesan server terakhir, bukan cuma sama persis (yang bisa jatuh ke
+/// tiebreaker id/clientMsgId di [_compareForOrder] dan masih berisiko
+/// salah urutan untuk kasus ini).
+int nextOptimisticCreatedAt(List<ChatMessage> messages, {int? now}) {
+  final n = now ?? DateTime.now().millisecondsSinceEpoch;
+  final floor = maxServerCreatedAt(messages);
+  if (floor == null) return n;
+  final minAllowed = floor + 1;
+  return n > minAllowed ? n : minAllowed;
+}

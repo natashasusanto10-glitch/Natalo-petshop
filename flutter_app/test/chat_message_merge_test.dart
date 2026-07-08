@@ -218,4 +218,52 @@ void main() {
       expect(r3.map((m) => m.id).toList(), ['srv-a', 'srv-b']);
     });
   });
+
+  group('maxServerCreatedAt', () {
+    test('null kalau tak ada pesan server sama sekali', () {
+      expect(maxServerCreatedAt(const []), isNull);
+      final onlyOptimistic = [
+        _optimistic(clientMsgId: 'c1', createdAt: 500),
+      ];
+      expect(maxServerCreatedAt(onlyOptimistic), isNull);
+    });
+
+    test('abaikan bubble optimistic, ambil createdAt server terbesar', () {
+      final messages = [
+        _server(id: 's1', createdAt: 100),
+        _optimistic(clientMsgId: 'c1', createdAt: 9999),
+        _server(id: 's2', createdAt: 300),
+      ];
+      expect(maxServerCreatedAt(messages), 300);
+    });
+  });
+
+  group('nextOptimisticCreatedAt (F3 clock-skew guard)', () {
+    test('tak ada pesan server -> pakai now apa adanya', () {
+      expect(
+        nextOptimisticCreatedAt(const [], now: 1000),
+        1000,
+      );
+    });
+
+    test('now SUDAH lebih besar dari createdAt server terbesar -> pakai now',
+        () {
+      final messages = [_server(id: 's1', createdAt: 100)];
+      expect(nextOptimisticCreatedAt(messages, now: 5000), 5000);
+    });
+
+    test(
+        'jam device SKEW di belakang server -> clamp ke maxServerCreatedAt+1 '
+        '(bukan now mentah)', () {
+      final messages = [_server(id: 's1', createdAt: 10000)];
+      // now (device, skew di belakang) < createdAt server terbaru.
+      expect(nextOptimisticCreatedAt(messages, now: 100), 10001);
+    });
+
+    test('now PERSIS sama dgn createdAt server terbesar -> tetap clamp naik',
+        () {
+      final messages = [_server(id: 's1', createdAt: 5000)];
+      expect(nextOptimisticCreatedAt(messages, now: 5000), 5001);
+    });
+  });
 }

@@ -132,6 +132,17 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// dobel-hitung (lihat docstring [_logReopenEvents]).
   final Set<String> _loggedReopenMessageIds = {};
 
+  /// True setelah riwayat AWAL berhasil di-seed ke [_loggedReopenMessageIds]
+  /// TEPAT SEKALI — baik lewat `_loadMessages` sukses NORMAL, MAUPUN lewat
+  /// [_mergeIncoming] di jalur RECOVERY (F6, lihat docstring situ). Selama
+  /// masih `false`, [_mergeIncoming] memperlakukan batch pesan yang masuk
+  /// sebagai HISTORY (seed dedupe TANPA fire event), bukan pesan baru —
+  /// mencegah replay burst `chat_reopened` kalau initial load GAGAL (mis.
+  /// offline saat buka) lalu baru pulih lewat poll/wake/pull-to-refresh
+  /// berikutnya (jalur itu full-drain SELURUH riwayat krn `_afterCursor`
+  /// masih null selama `_messages` kosong).
+  bool _historySeeded = false;
+
   String? _chatId;
   bool _loading = true;
   Object? _loadError;
@@ -243,6 +254,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       // pull-to-refresh PERTAMA di sesi ini akan mem-fire ulang tiap reopen
       // historis (set masih kosong). Seed = guard replay itu.
       _seedLoggedReopenIds(_messages);
+      // Tandai riwayat sudah di-seed (F6) — jalur RECOVERY di
+      // [_mergeIncoming] (initial load ini GAGAL lalu poll/wake pulih
+      // duluan) tidak perlu seed ulang lagi begitu jalur normal ini
+      // akhirnya sukses juga (mis. user tap Retry setelah sempat pulih via
+      // poll) — `_seedLoggedReopenIds` sendiri idempoten (Set), tapi flag
+      // ini yang menentukan apakah [_mergeIncoming] berikutnya masih
+      // menganggap batch sbg history atau pesan baru.
+      _historySeeded = true;
       // GET yang barusan sukses sudah reset `unreadForCustomer` di server
       // (fix C2 Plan 2) — sinkronkan badge lokal.
       chatStore.setUnread(0);
@@ -322,9 +341,28 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// context-tahan tak perlu lagi; [ChatImageMessage] otomatis pindah ke
   /// `imageUrl` network). No-op kalau [incoming] kosong — hindari `setState`
   /// sia-sia tiap poll tick tanpa pesan baru.
+  ///
+  /// **Guard HISTORY-vs-BARU (F6):** kalau `_historySeeded` masih `false`
+  /// saat dipanggil, berarti `_loadMessages` (initial load) BELUM PERNAH
+  /// sukses — jalur ini dipanggil dari poll/wake/pull-to-refresh yang
+  /// PERTAMA kali berhasil pulih (mis. initial load gagal krn offline saat
+  /// buka, lalu resume/FCM/pull-to-refresh sukses full-drain SELURUH
+  /// riwayat karena `_afterCursor` masih null selagi `_messages` kosong).
+  /// Batch itu diperlakukan sbg HISTORY — di-seed ke [_loggedReopenMessageIds]
+  /// TANPA fire `chat_reopened` (persis seperti `_loadMessages` sukses
+  /// normal), bukan lewat [_logReopenEvents] — kalau tidak, tiap pesan
+  /// sistem reopen di SELURUH riwayat lama akan dihitung sbg reopen BARU
+  /// sekaligus (replay burst, overcount metrik spec §11). Batch BERIKUTNYA
+  /// (pesan yang benar-benar baru datang live) tetap lewat [_logReopenEvents]
+  /// seperti biasa begitu flag ini `true`.
   void _mergeIncoming(List<ChatMessage> incoming) {
     if (incoming.isEmpty) return;
-    _logReopenEvents(incoming);
+    if (_historySeeded) {
+      _logReopenEvents(incoming);
+    } else {
+      _seedLoggedReopenIds(incoming);
+      _historySeeded = true;
+    }
     final merged = mergeChatMessages(_messages, incoming);
     setState(() {
       _messages
@@ -335,6 +373,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       final id = s.clientMsgId;
       if (id != null) {
         _pendingImagePaths.remove(id);
+        // (F2) `_contextSent` tak perlu di-set di sini — kalau `id` ini
+        // punya entry di `_pendingContext`, ia HANYA bisa dari message yang
+        // sudah meng-klaim context SINKRON di titik pembuatannya
+        // (`_onSendText`/`_onRetry`), yang berarti `_contextSent` SUDAH
+        // true sejak saat itu. Baris server yang datang telat (mis. bekas
+        // timeout client yang ternyata sukses di server) cuma perlu
+        // membersihkan pending-nya di sini, bukan meng-klaim context lagi.
         _pendingContext.remove(id);
       }
     }
@@ -348,13 +393,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// `startsWith`/`contains` — teks itu konstanta stabil, exact match lebih
   /// aman dari false-positive dgn catatan sistem lain kelak).
   ///
-  /// Dipanggil HANYA dari [_mergeIncoming] (jalur poll/wake/pull-to-refresh)
-  /// — SENGAJA TIDAK dari `_loadMessages` (initial history load pas buka
-  /// room), supaya reopen LAMA yang sudah "diterima" sebelum sesi ini dibuka
-  /// tak menghasilkan event analitik palsu tiap kali user buka ulang room.
-  /// Guard [_loggedReopenMessageIds] per `id` server — cegah dobel-hitung
-  /// kalau pesan yang sama terlihat lagi (mis. pull-to-refresh drain ulang
-  /// dari awal thread, atau poll tick overlap) — "sekali per reopen".
+  /// Dipanggil HANYA dari [_mergeIncoming], DAN HANYA setelah `_historySeeded
+  /// == true` (F6) — SENGAJA TIDAK dari `_loadMessages` (initial history
+  /// load pas buka room) maupun dari batch RECOVERY pertama [_mergeIncoming]
+  /// (lihat docstring situ), supaya reopen LAMA yang sudah "diterima"
+  /// sebelum sesi ini dibuka tak menghasilkan event analitik palsu tiap
+  /// kali user buka/pulihkan room. Guard [_loggedReopenMessageIds] per `id`
+  /// server — cegah dobel-hitung kalau pesan yang sama terlihat lagi (mis.
+  /// pull-to-refresh drain ulang dari awal thread, atau poll tick overlap)
+  /// — "sekali per reopen".
   void _logReopenEvents(List<ChatMessage> incoming) {
     for (final m in incoming) {
       if (m.type != ChatMsgType.system) continue;
@@ -366,9 +413,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
 
   /// Tandai pesan reopen di riwayat AWAL sebagai "sudah dicatat" TANPA
   /// fire event (bedanya dgn [_logReopenEvents]: tak ada `logEvent`) —
-  /// dipanggil sekali dari `_loadMessages` supaya `_onPullToRefresh`
-  /// (full-redrain) tak mem-fire ulang reopen historis. Reopen BARU yang
-  /// datang live (poll/wake) tetap tak masuk set ini → tetap fire tepat
+  /// dipanggil dari DUA jalur history: `_loadMessages` sukses NORMAL, atau
+  /// [_mergeIncoming] jalur RECOVERY (F6, initial load sempat gagal) — baik
+  /// `_onPullToRefresh` (full-redrain) maupun batch recovery poll/wake
+  /// tak mem-fire ulang reopen historis. Reopen BARU yang datang live
+  /// SETELAH riwayat ter-seed tetap tak masuk set ini → tetap fire tepat
   /// sekali lewat [_logReopenEvents].
   void _seedLoggedReopenIds(List<ChatMessage> history) {
     for (final m in history) {
@@ -379,9 +428,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   }
 
   /// Cursor untuk polling: `createdAt` TERBESAR di antara pesan SERVER
-  /// (`!m.isOptimistic`). Bubble optimistic yang belum direkonsiliasi
-  /// SENGAJA diabaikan — `createdAt` mereka `DateTime.now()` LOKAL, tidak
-  /// sinkron dgn jam server, jadi tidak aman dipakai sbg cursor `after`.
+  /// (`!m.isOptimistic`) — delegasi ke [maxServerCreatedAt]
+  /// (`chat_message_merge.dart`, F3), helper murni yang SAMA dipakai
+  /// [_nextOptimisticCreatedAtNow] untuk clock-skew guard bubble baru,
+  /// supaya loop "cari createdAt server terbesar" cuma ada SATU tempat.
   /// Null kalau belum ada satupun pesan server (poll pertama efektif
   /// `after: null`).
   ///
@@ -394,16 +444,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// men-drain ulang ekor thread (idempoten tapi boros jaringan/baterai +
   /// jank). Flag `isOptimistic` (hanya `true` utk bubble lokal, `fromJson`
   /// selalu `false`) menandai provenance dengan benar.
-  Object? get _afterCursor {
-    int? maxCreatedAt;
-    for (final m in _messages) {
-      if (m.isOptimistic) continue;
-      if (maxCreatedAt == null || m.createdAt > maxCreatedAt) {
-        maxCreatedAt = m.createdAt;
-      }
-    }
-    return maxCreatedAt;
-  }
+  Object? get _afterCursor => maxServerCreatedAt(_messages);
+
+  /// `createdAt` untuk BUBBLE OPTIMISTIC BARU (F3, guard clock skew) —
+  /// tipis di atas [nextOptimisticCreatedAt] murni (`chat_message_merge.dart`)
+  /// supaya titik panggil (`_onSendText`/`_onAttachPhoto`) tidak perlu
+  /// mengoper `_messages` manual tiap kali. Lihat docstring
+  /// [nextOptimisticCreatedAt] untuk penjelasan lengkap skenario skew.
+  int _nextOptimisticCreatedAtNow() => nextOptimisticCreatedAt(_messages);
 
   /// True kalau posisi scroll user sudah dekat bawah (atau belum ada
   /// scrollable sama sekali, mis. list pendek yang tak butuh scroll) —
@@ -660,7 +708,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       sender: ChatSender.customer,
       type: ChatMsgType.text,
       text: text,
-      createdAt: DateTime.now().millisecondsSinceEpoch,
+      createdAt: _nextOptimisticCreatedAtNow(),
       clientMsgId: clientMsgId,
       status: ChatSendStatus.sending,
       isOptimistic: true,
@@ -671,12 +719,37 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     _scrollToBottom();
 
     // Konteks produk/pesanan (entry dari Detail Produk) HANYA nempel di
-    // pesan pertama yang benar-benar TERKIRIM sesi ini. `_contextSent`
-    // di-set true HANYA SETELAH sukses (bukan saat mencoba) — supaya kalau
-    // percobaan pertama gagal, context-nya belum "terpakai" & bisa
-    // dilampirkan ulang saat retry (disimpan di `_pendingContext`).
+    // pesan PERTAMA yang DIBUAT membawa context sesi ini — aturan CLAIM
+    // deterministik satu-kali (F2/F11). `_contextSent` di-set true DI SINI,
+    // SINKRON, SEBELUM await apa pun (bukan setelah sukses kirim seperti
+    // sebelumnya) — semua kode di atas titik ini (`newClientMsgId`,
+    // `setState` bubble, `_scrollToBottom`) juga sinkron, jadi klaim ini
+    // efektif terjadi di titik pembuatan bubble optimistic, sebelum Dart
+    // event loop sempat menjalankan `_onSendText` lain manapun. Ini
+    // menutup DUA celah dari perilaku lama (claim setelah await sukses):
+    //  (a) F11 — kirim kedua yang di-dispatch SEBELUM request pertama
+    //      selesai round-trip juga membaca `_contextSent == false` (belum
+    //      sempat di-set true) & ikut melampirkan context;
+    //  (b) F2 — kirim pertama TIMEOUT di client tapi sebenarnya SUKSES di
+    //      server; `_mergeIncoming` merekonsiliasi baris server itu &
+    //      membersihkan `_pendingContext`-nya TANPA pernah men-set
+    //      `_contextSent` (tak ada await sukses utk trigger-nya) — pesan
+    //      kedua yang user ketik sesudahnya masih membaca `_contextSent ==
+    //      false` & context terkirim DOBEL.
+    //
+    // `_pendingContext[clientMsgId]` tetap diisi HANYA untuk pesan
+    // pengklaim INI — dipakai `_onRetry` pesan ini sendiri (nothing else,
+    // lihat docstring situ) untuk melampirkan ulang context yang sama
+    // kalau percobaan pertamanya gagal. Edge case yang DISENGAJA: kalau
+    // pesan pengklaim ini gagal PERMANEN dan user tak pernah retry, context
+    // itu tetap "terpakai" (tak pernah bocor ke pesan lain) — deterministik
+    // & tetap bisa dipulihkan kapan pun via retry pesan ini, bukan pindah
+    // ke pesan berikutnya.
     final sendContext = _contextSent ? null : widget.productContext;
-    if (sendContext != null) _pendingContext[clientMsgId] = sendContext;
+    if (sendContext != null) {
+      _contextSent = true;
+      _pendingContext[clientMsgId] = sendContext;
+    }
 
     try {
       // Oper `clientMsgId` yang SAMA dgn bubble optimistic — supaya baris
@@ -692,9 +765,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       );
       if (!mounted) return;
       setState(() => _replaceStatus(clientMsgId, ChatSendStatus.sent));
-      // Context berhasil terpakai — baru sekarang "jatah"-nya habis &
-      // pending-nya dibersihkan.
-      if (sendContext != null) _contextSent = true;
+      // `_contextSent` SUDAH true sejak klaim sinkron di atas (bukan di
+      // sini lagi) — sukses kirim cuma perlu membersihkan `_pendingContext`
+      // (tak butuh lagi ditahan utk retry, pesan ini sudah confirmed).
       _pendingContext.remove(clientMsgId);
       // Analitik — funnel MVP chat (spec §11): SUKSES kirim saja (bukan
       // optimistic add, bukan gagal) — fire-and-forget, tak pernah
@@ -750,6 +823,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// LAMPIRKAN ULANG `product_context` yang tertahan di `_pendingContext`
   /// (kalau pesan ini pembawa context yg percobaan pertamanya gagal) —
   /// kirim ulang context aman krn proxy dedupe seluruh pesan by clientMsgId.
+  ///
+  /// **F2/F11 — hanya baca entry MILIK [message] SENDIRI:**
+  /// `_pendingContext[clientMsgId]` di sini SELALU `clientMsgId` = milik
+  /// [message] yang di-retry, tak pernah entry pesan lain — konsisten dgn
+  /// aturan CLAIM satu-kali di `_onSendText`: hanya pesan yang MENGKLAIM
+  /// context saat dibuat yang pernah punya entry di `_pendingContext` sama
+  /// sekali, jadi retry pesan LAIN (yang tak pernah mengklaim context)
+  /// otomatis membaca `null` di sini — tak ada jalur utk "mencuri" context
+  /// yang sudah terpakai pesan lain.
   Future<void> _onRetry(ChatMessage message) async {
     if (!_guardChatEnabled()) return;
     final clientMsgId = message.clientMsgId;
@@ -776,8 +858,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       }
       if (!mounted) return;
       setState(() => _replaceStatus(clientMsgId, ChatSendStatus.sent));
-      // Kalau pesan ini pembawa context & retry-nya sukses, context-nya
-      // baru sekarang "terpakai" — habiskan jatah + bersihkan pending.
+      // `_contextSent` SUDAH true kalau pesan ini pembawa context (di-set
+      // sinkron sejak pesan ini DIBUAT via `_onSendText`, aturan CLAIM
+      // F2/F11) — baris ini re-affirm (no-op logically kalau sudah true)
+      // + bersihkan `_pendingContext` (retry sukses, tak perlu ditahan lagi).
       if (_pendingContext.remove(clientMsgId) != null) _contextSent = true;
       // Analitik — retry yang berhasil TETAP dihitung "kirim sukses" (pesan
       // memang benar-benar terkirim, percobaan pertama cuma gagal secara
@@ -828,7 +912,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       id: clientMsgId,
       sender: ChatSender.customer,
       type: ChatMsgType.image,
-      createdAt: DateTime.now().millisecondsSinceEpoch,
+      // F3 — clock-skew guard sama seperti `_onSendText`, lihat docstring
+      // `_nextOptimisticCreatedAtNow`/`nextOptimisticCreatedAt`.
+      createdAt: _nextOptimisticCreatedAtNow(),
       clientMsgId: clientMsgId,
       status: ChatSendStatus.sending,
       isOptimistic: true,
