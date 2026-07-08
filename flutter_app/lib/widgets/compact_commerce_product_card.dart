@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/product.dart';
+import '../theme/app_radius.dart';
 import '../utils/action_throttle.dart';
 import '../utils/formatters.dart';
 import 'app_product_image.dart';
@@ -42,13 +43,15 @@ class CompactCommerceProductCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        // Radius 16 (AppRadius.large) — samakan dgn ProductCard di Products/
+        // Home; sebelumnya 20 → tile sama tampak beda sudut antar layar.
+        borderRadius: AppRadius.large,
         child: Container(
           width: width,
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: cs.surface,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: AppRadius.large,
             border: Border.all(color: cs.outlineVariant, width: 1),
             boxShadow: [
               BoxShadow(

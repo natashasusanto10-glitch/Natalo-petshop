@@ -1139,7 +1139,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               scrolledUnderElevation: 0,
               surfaceTintColor: cs.surface,
               automaticallyImplyLeading: false,
-              centerTitle: true,
+              // Judul rata kiri ikut theme default & sisa alur belanja
+              // (Keranjang/Detail Produk/Pesanan) — sebelumnya di-tengah
+              // sendirian, bikin judul loncat saat cart -> checkout.
               leading: IconButton(
                 tooltip: 'Kembali',
                 icon: Icon(
