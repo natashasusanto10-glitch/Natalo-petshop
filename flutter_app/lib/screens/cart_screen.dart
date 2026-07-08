@@ -174,15 +174,12 @@ class _CartScreenState extends State<CartScreen>
     for (final issue in result.issues) {
       map[issue.matchKey] = issue;
     }
-    // REGRESI v1.0.167 (DIHAPUS): dulu di sini ada re-anchor scroll
-    // (_captureScrollAnchor/_applyScrollAnchor) untuk reflow badge stok.
-    // Validasi ini balas ~300ms setelah add → BERTABRAKAN dengan
-    // _loadMoreBossProducts yang ke-trigger jumpTo anchor-insert lewat
-    // _onCartScroll: maxScrollExtent tumbuh di antara capture & apply →
-    // jumpTo kedua meleset → "loncat" tertunda + over-scroll (gap kosong di
-    // bawah). Cukup SATU anchor pada frame insert (perilaku v1.0.166 yang
-    // terbukti tanpa loncat/gap). Solusi in-layout bebas-blip = Approach B
-    // (lihat memory cart-antijump-glitch-work), bukan menumpuk jumpTo.
+    // JANGAN tambah re-anchor/koreksi scroll di sini. Dulu (v1.0.167) validasi
+    // ini mengoreksi offset untuk reflow badge stok & itu REGRESI: balas ~300ms
+    // setelah add, bertabrakan dgn pagination → "loncat" tertunda + gap kosong.
+    // Sejak center-sliver (v1.0.171, lihat widgets/cart_scroll_view.dart), kartu
+    // yang disisipkan ada di sisi NEGATIF sliver → rekomendasi tak bergeser
+    // secara struktural. Reflow badge stok aman tanpa koreksi scroll apa pun.
     setState(() {
       _stockIssues = map;
       // Auto-deselect item out-of-stock supaya keluar dari subtotal +
