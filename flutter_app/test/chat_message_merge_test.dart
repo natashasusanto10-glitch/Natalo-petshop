@@ -1,0 +1,190 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/models/chat_message.dart';
+import 'package:natalo_petshop_flutter/services/chat_message_merge.dart';
+
+ChatMessage _optimistic({
+  required String clientMsgId,
+  String? text,
+  int createdAt = 0,
+  ChatSendStatus status = ChatSendStatus.sending,
+  ChatMsgType type = ChatMsgType.text,
+}) {
+  return ChatMessage(
+    id: clientMsgId,
+    sender: ChatSender.customer,
+    type: type,
+    text: text,
+    createdAt: createdAt,
+    clientMsgId: clientMsgId,
+    status: status,
+  );
+}
+
+ChatMessage _server({
+  required String id,
+  String? clientMsgId,
+  String? text,
+  int createdAt = 0,
+  ChatSender sender = ChatSender.customer,
+  ChatMsgType type = ChatMsgType.text,
+}) {
+  return ChatMessage(
+    id: id,
+    sender: sender,
+    type: type,
+    text: text,
+    createdAt: createdAt,
+    clientMsgId: clientMsgId,
+    // status SENGAJA null — pesan hasil fetchMessages tidak pernah bawa
+    // field ini dari proxy (lihat docstring ChatMessage.status).
+  );
+}
+
+void main() {
+  group('mergeChatMessages', () {
+    test('replace pesan optimistic dgn versi server via clientMsgId sama', () {
+      final existing = [
+        _optimistic(clientMsgId: 'c1', text: 'halo', createdAt: 1000),
+      ];
+      final incoming = [
+        _server(id: 'srv-1', clientMsgId: 'c1', text: 'halo', createdAt: 500),
+      ];
+
+      final result = mergeChatMessages(existing, incoming);
+
+      expect(result.length, 1);
+      expect(result.single.id, 'srv-1');
+      expect(result.single.status, isNull);
+      expect(result.single.createdAt, 500);
+    });
+
+    test('skip duplikat by id server (bukan clientMsgId)', () {
+      final existing = [
+        _server(id: 'srv-1', text: 'dari staff', createdAt: 100),
+      ];
+      final incoming = [
+        _server(id: 'srv-1', text: 'dari staff', createdAt: 100),
+      ];
+
+      final result = mergeChatMessages(existing, incoming);
+
+      expect(result.length, 1);
+    });
+
+    test('append pesan baru yang belum pernah ada (id & clientMsgId beda)', () {
+      final existing = [
+        _server(id: 'srv-1', text: 'a', createdAt: 100),
+      ];
+      final incoming = [
+        _server(id: 'srv-2', text: 'b', createdAt: 200),
+      ];
+
+      final result = mergeChatMessages(existing, incoming);
+
+      expect(result.map((m) => m.id).toList(), ['srv-1', 'srv-2']);
+    });
+
+    test('hasil selalu terurut ASC by createdAt walau incoming tak urut', () {
+      final existing = [
+        _server(id: 'srv-2', text: 'kedua', createdAt: 200),
+      ];
+      final incoming = [
+        _server(id: 'srv-3', text: 'ketiga', createdAt: 300),
+        _server(id: 'srv-1', text: 'pertama', createdAt: 100),
+      ];
+
+      final result = mergeChatMessages(existing, incoming);
+
+      expect(result.map((m) => m.createdAt).toList(), [100, 200, 300]);
+      expect(result.map((m) => m.id).toList(), ['srv-1', 'srv-2', 'srv-3']);
+    });
+
+    test(
+        'pesan staff (tanpa clientMsgId) tidak pernah match optimistic '
+        'customer manapun — selalu lewat jalur id', () {
+      final existing = [
+        _optimistic(clientMsgId: 'c1', text: 'tanya produk', createdAt: 100),
+      ];
+      final incoming = [
+        _server(
+          id: 'srv-staff-1',
+          text: 'balasan staff',
+          createdAt: 150,
+          sender: ChatSender.staff,
+        ),
+      ];
+
+      final result = mergeChatMessages(existing, incoming);
+
+      expect(result.length, 2);
+      // Bubble optimistic customer TETAP ada (belum direkonsiliasi -
+      // clientMsgId beda), pesan staff baru ditambahkan terpisah.
+      expect(result.any((m) => m.clientMsgId == 'c1'), true);
+      expect(result.any((m) => m.id == 'srv-staff-1'), true);
+    });
+
+    test('foto optimistic direkonsiliasi sama seperti teks (type image)', () {
+      final existing = [
+        _optimistic(
+          clientMsgId: 'c-img',
+          createdAt: 900,
+          type: ChatMsgType.image,
+        ),
+      ];
+      final incoming = [
+        _server(
+          id: 'srv-img-1',
+          clientMsgId: 'c-img',
+          createdAt: 300,
+          type: ChatMsgType.image,
+        ),
+      ];
+
+      final result = mergeChatMessages(existing, incoming);
+
+      expect(result.length, 1);
+      expect(result.single.id, 'srv-img-1');
+      expect(result.single.type, ChatMsgType.image);
+      expect(result.single.status, isNull);
+    });
+
+    test('existing/incoming kosong -> tidak throw, hasil sesuai', () {
+      expect(mergeChatMessages(const [], const []), isEmpty);
+
+      final onlyExisting = [_server(id: 's1', createdAt: 1)];
+      expect(mergeChatMessages(onlyExisting, const []).length, 1);
+
+      final onlyIncoming = [_server(id: 's1', createdAt: 1)];
+      expect(mergeChatMessages(const [], onlyIncoming).length, 1);
+    });
+
+    test(
+        'retry: incoming server row kedua dgn clientMsgId sama -> replace '
+        'lagi, bukan dobel (resend idempoten proxy)', () {
+      final existing = [
+        _server(id: 'srv-1', clientMsgId: 'c1', text: 'halo', createdAt: 100),
+      ];
+      // Simulasi retry yang di-dedupe proxy -> baris server yang sama
+      // datang lagi lewat poll berikutnya dgn clientMsgId sama.
+      final incoming = [
+        _server(id: 'srv-1', clientMsgId: 'c1', text: 'halo', createdAt: 100),
+      ];
+
+      final result = mergeChatMessages(existing, incoming);
+
+      expect(result.length, 1);
+    });
+
+    test('tidak memutasi list existing/incoming yang dioper (pure)', () {
+      final existing = [_server(id: 's1', createdAt: 1)];
+      final incoming = [_server(id: 's2', createdAt: 2)];
+      final existingCopy = List<ChatMessage>.from(existing);
+      final incomingCopy = List<ChatMessage>.from(incoming);
+
+      mergeChatMessages(existing, incoming);
+
+      expect(existing.map((m) => m.id), existingCopy.map((m) => m.id));
+      expect(incoming.map((m) => m.id), incomingCopy.map((m) => m.id));
+    });
+  });
+}

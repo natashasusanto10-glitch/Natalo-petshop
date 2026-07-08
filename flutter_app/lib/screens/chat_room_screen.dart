@@ -1,28 +1,54 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../models/chat_message.dart';
 import '../services/api_client.dart';
+import '../services/chat_message_merge.dart';
 import '../services/chat_service.dart';
+import '../services/push_notification_service.dart';
 import '../state/chat_store.dart';
 import '../state/member_store.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/natalo_colors.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/chat/chat_bubble.dart';
 import '../widgets/chat/chat_composer.dart';
 import '../widgets/chat/chat_image_message.dart';
 import '../widgets/chat/chat_product_card.dart';
 import '../widgets/chat/chat_system_note.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 
 /// Layar chat customer <-> staff (satu room per customer, 1:1 dgn NLCATTER).
 ///
 /// Full UI (Task 4): header status jam operasional, daftar pesan (bubble
 /// teks, kartu produk, foto, catatan sistem/otomatis), composer teks dgn
-/// kirim optimistic dasar. Mesin runtime (retry sungguhan, kirim foto,
-/// polling, lifecycle, load-more, mark-read) menyusul di Task 5 — lihat
-/// TODO di `_loadMessages`.
+/// kirim optimistic dasar.
+///
+/// Mesin runtime (Task 5): retry sungguhan (`_onRetry`), kirim foto
+/// (`_onAttachPhoto`), polling `Timer.periodic` 4 detik + lifecycle
+/// (`WidgetsBindingObserver`) + wake FCM (`notificationRefreshTick`),
+/// pull-to-refresh (`NataloPawRefreshIndicator`), dan mark-read
+/// (`chatStore.setUnread(0)` setiap `fetchMessages` sukses — GET
+/// `[chatId]` sudah reset `unreadForCustomer` di server, Plan 2 fix C2).
+///
+/// **Load-more riwayat LAMA (scroll ke atas) SENGAJA TIDAK diimplementasikan**
+/// — backend `GET /api/chat/[chatId]` cuma paginate MAJU
+/// (`orderBy(createdAt ASC).startAfter(after)`; `after` = cursor → pesan
+/// LEBIH BARU, bukan lebih lama). Tidak ada endpoint/param untuk fetch
+/// pesan yang lebih lama dari halaman pertama, jadi "prepend saat scroll
+/// atas" mustahil dibangun di atas kontrak ini. Sebagai gantinya, initial
+/// load & pull-to-refresh men-drain SEMUA halaman MAJU (`_drainForward`)
+/// sampai `nextCursor == null` — untuk thread support 1:1 yang realistis
+/// kecil, ini efektif memuat seluruh riwayat sekali buka, jadi fitur
+/// load-more tidak dibutuhkan juga secara praktis.
 class ChatRoomScreen extends StatefulWidget {
   const ChatRoomScreen({super.key, this.chatId, this.productContext});
 
@@ -39,10 +65,37 @@ class ChatRoomScreen extends StatefulWidget {
   State<ChatRoomScreen> createState() => _ChatRoomScreenState();
 }
 
-class _ChatRoomScreenState extends State<ChatRoomScreen> {
+class _ChatRoomScreenState extends State<ChatRoomScreen>
+    with WidgetsBindingObserver {
   final List<ChatMessage> _messages = [];
   final TextEditingController _composerController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ImagePicker _imagePicker = ImagePicker();
+
+  /// Guard defensif forward-drain (`_drainForward`) — cap total halaman per
+  /// panggilan supaya tak pernah hang tak berujung kalau proxy suatu saat
+  /// mengirim cursor yang tidak pernah habis. Thread support 1:1 realistis
+  /// jauh di bawah ini (PAGE_SIZE proxy = 50/halaman).
+  static const int _kMaxDrainPages = 40;
+
+  /// Polling near-realtime — hidup HANYA saat layar tampak (start di
+  /// `_loadMessages` sukses & `resumed`, stop di `paused`/`inactive`/
+  /// `detached` & `dispose`).
+  Timer? _pollTimer;
+
+  /// Guard 1 poll in-flight dalam satu waktu — cegah tick baru numpuk kalau
+  /// tick sebelumnya (mis. forward-drain multi-halaman) belum selesai saat
+  /// timer 4 detik berikutnya sudah fire, ATAU 2 sumber sekaligus
+  /// (`Timer.periodic` + `notificationRefreshTick`) trigger bersamaan.
+  bool _pollInFlight = false;
+
+  /// `clientMsgId` foto yang sedang/baru dikirim -> path file lokal.
+  /// `ChatMessage` (Task 1, frozen) tidak punya field path lokal, cuma
+  /// `imageUrl` network — map transient ini yang menjembatani supaya
+  /// [ChatImageMessage] bisa render thumbnail SEBELUM upload selesai.
+  /// Entry dibersihkan begitu versi server pesan itu direkonsiliasi
+  /// (lihat `_mergeIncoming`) — tidak pernah leak tak terbatas.
+  final Map<String, String> _pendingImagePaths = {};
 
   String? _chatId;
   bool _loading = true;
@@ -70,6 +123,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Wake FCM (brief §9): push masuk foreground -> tick berubah -> fetch
+    // sekali tanpa nunggu polling 4 detik berikutnya. Listener dipasang
+    // terlepas dari status login/chatId — `_onFcmWakeTick` sendiri yang
+    // guard `_chatId == null`, konsisten dgn `dispose` yang selalu
+    // melepasnya lagi (simetris, tak perlu cabang kondisional di initState).
+    pushNotificationService.notificationRefreshTick.addListener(
+      _onFcmWakeTick,
+    );
+
     // Populate chatStore.online + chatEnabled — header & composer area
     // bereaksi lewat AnimatedBuilder(animation: chatStore) di build().
     chatStore.fetchConfig();
@@ -103,6 +166,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     return (id != null && id.isNotEmpty) ? 'cust_$id' : null;
   }
 
+  /// Initial load (dipanggil dari `initState`) — drain forward PENUH dari
+  /// awal thread, tampilkan spinner selama proses, lalu mulai polling.
   Future<void> _loadMessages() async {
     final chatId = _chatId;
     if (chatId == null) return;
@@ -113,15 +178,25 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       });
     }
     try {
-      final page = await chatService.fetchMessages(chatId);
+      final fetched = await _drainForward();
       if (!mounted) return;
       setState(() {
+        // Merge (bukan clear+replace mentah) — kalau user sempat kirim
+        // pesan SEBELUM initial load ini selesai (composer tidak
+        // digembok saat `_loading`), bubble optimistic itu tidak boleh
+        // hilang begitu saja.
+        final merged =
+            fetched.isEmpty ? _messages : mergeChatMessages(_messages, fetched);
         _messages
           ..clear()
-          ..addAll(page.messages);
+          ..addAll(merged);
         _loading = false;
       });
+      // GET yang barusan sukses sudah reset `unreadForCustomer` di server
+      // (fix C2 Plan 2) — sinkronkan badge lokal.
+      chatStore.setUnread(0);
       _scrollToBottom(animate: false);
+      _startPolling();
     } catch (e) {
       if (kDebugMode) debugPrint('[ChatRoomScreen] fetchMessages gagal: $e');
       if (!mounted) return;
@@ -130,13 +205,186 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         _loading = false;
       });
     }
-    // TODO(Task 5): Timer.periodic(4s) polling saat layar tampak (dedupe by
-    // id/clientMsgId) + WidgetsBindingObserver (stop di background, fetch
-    // sekali + resume di foreground) + listener
-    // pushNotificationService.notificationRefreshTick (wake FCM) +
-    // load-more riwayat lewat ChatMessagesPage.nextCursor saat scroll ke
-    // atas + reconciliation mark-read (chatStore.setUnread(0) setelah GET,
-    // yang di server sudah reset unreadForCustomer — lihat fix C2 Plan 2).
+  }
+
+  /// Fetch SEMUA pesan mulai dari [after] (null = dari awal thread) dengan
+  /// men-drain `nextCursor` MAJU terus-menerus. Backend `GET
+  /// /api/chat/[chatId]` HANYA paginate ke pesan yang LEBIH BARU dari
+  /// `after` (`orderBy(createdAt ASC).startAfter(after)`) — tidak ada
+  /// jalur untuk fetch pesan yang lebih LAMA dari halaman pertama, jadi
+  /// fungsi ini (dipakai initial load, pull-to-refresh, & tiap poll tick)
+  /// SELALU bergerak maju, tak pernah prepend riwayat lama (lihat
+  /// docstring kelas `ChatRoomScreen` di atas).
+  ///
+  /// Berhenti kalau: halaman kosong (0 pesan baru — tanda sudah mentok),
+  /// `nextCursor == null`, ATAU sudah [_kMaxDrainPages] halaman (guard
+  /// defensif terhadap loop tak berujung; harusnya tak pernah kena di
+  /// produksi untuk thread support 1:1 yang realistis kecil).
+  Future<List<ChatMessage>> _drainForward({Object? after}) async {
+    final chatId = _chatId;
+    if (chatId == null) return const [];
+    final collected = <ChatMessage>[];
+    Object? cursor = after;
+    var pageCount = 0;
+    while (true) {
+      final page = await chatService.fetchMessages(chatId, after: cursor);
+      if (page.messages.isEmpty) break;
+      collected.addAll(page.messages);
+      pageCount++;
+      if (page.nextCursor == null) break;
+      if (pageCount >= _kMaxDrainPages) {
+        if (kDebugMode) {
+          debugPrint(
+            '[ChatRoomScreen] forward-drain stop paksa @ '
+            '$_kMaxDrainPages halaman (cursor=${page.nextCursor}) — cek '
+            'proxy kalau ini kejadian nyata, harusnya tak pernah kena.',
+          );
+        }
+        break;
+      }
+      cursor = page.nextCursor;
+    }
+    return collected;
+  }
+
+  /// Terapkan [mergeChatMessages] ke `_messages` + bersihkan
+  /// `_pendingImagePaths` untuk `clientMsgId` yang barusan direkonsiliasi
+  /// (versi server sudah datang → thumbnail lokal sementara tak perlu lagi,
+  /// [ChatImageMessage] otomatis pindah ke `imageUrl` network). No-op kalau
+  /// [incoming] kosong — hindari `setState` sia-sia tiap poll tick tanpa
+  /// pesan baru.
+  void _mergeIncoming(List<ChatMessage> incoming) {
+    if (incoming.isEmpty) return;
+    final merged = mergeChatMessages(_messages, incoming);
+    setState(() {
+      _messages
+        ..clear()
+        ..addAll(merged);
+    });
+    for (final s in incoming) {
+      final id = s.clientMsgId;
+      if (id != null) _pendingImagePaths.remove(id);
+    }
+  }
+
+  /// Cursor untuk polling: `createdAt` TERBESAR di antara pesan yang
+  /// sumbernya SERVER (`status == null` — proxy TIDAK PERNAH mengirim
+  /// field `status`, jadi null artinya pesan ini hasil `fetchMessages`,
+  /// bukan bubble optimistic lokal). Bubble optimistic yang belum
+  /// direkonsiliasi (`status` sending/sent/failed) sengaja diabaikan —
+  /// `createdAt` mereka `DateTime.now()` LOKAL, tidak sinkron dgn jam
+  /// server, jadi tidak aman dipakai sbg cursor `after`. Null kalau belum
+  /// ada satupun pesan server (poll pertama efektif `after: null`).
+  Object? get _afterCursor {
+    int? maxCreatedAt;
+    for (final m in _messages) {
+      if (m.status != null) continue;
+      if (maxCreatedAt == null || m.createdAt > maxCreatedAt) {
+        maxCreatedAt = m.createdAt;
+      }
+    }
+    return maxCreatedAt;
+  }
+
+  /// True kalau posisi scroll user sudah dekat bawah (atau belum ada
+  /// scrollable sama sekali, mis. list pendek yang tak butuh scroll) —
+  /// dipakai polling supaya TIDAK menarik paksa pandangan user yang sedang
+  /// scroll ke atas baca riwayat lama saat pesan baru masuk.
+  bool _isNearBottom({double threshold = 96}) {
+    if (!_scrollController.hasClients) return true;
+    final position = _scrollController.position;
+    return (position.maxScrollExtent - position.pixels) <= threshold;
+  }
+
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      _pollTick();
+    });
+  }
+
+  void _stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  /// Satu siklus poll/wake: fetch pesan baru sejak [_afterCursor], gabung
+  /// ke `_messages`, tandai room "sudah dibaca" (server-side, via GET yang
+  /// sama), auto-scroll HANYA kalau user sudah dekat bawah SEBELUM merge.
+  /// Dipanggil dari 3 tempat: `Timer.periodic` 4 detik, lifecycle
+  /// `resumed` (sekali, langsung), dan `notificationRefreshTick` (wake
+  /// FCM, sekali).
+  ///
+  /// **Silent-fail** (swallow error, TIDAK ubah `_loadError`/tampilkan UI
+  /// error) — poll background gagal sesekali (network flaky) tak boleh
+  /// mengganti body chat yang sudah terisi jadi error state; beda dgn
+  /// `_loadMessages` (initial load) yang memang perlu tampilkan error
+  /// karena belum ada apa-apa untuk ditampilkan kalau gagal.
+  Future<void> _pollTick() async {
+    if (_chatId == null || !mounted || _pollInFlight) return;
+    _pollInFlight = true;
+    try {
+      final wasNearBottom = _isNearBottom();
+      final fetched = await _drainForward(after: _afterCursor);
+      if (!mounted) return;
+      _mergeIncoming(fetched);
+      chatStore.setUnread(0);
+      if (fetched.isNotEmpty && wasNearBottom) _scrollToBottom();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[ChatRoomScreen] poll gagal (diabaikan): $e');
+    } finally {
+      _pollInFlight = false;
+    }
+  }
+
+  void _onFcmWakeTick() {
+    if (_chatId != null) _pollTick();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        _stopPolling();
+        break;
+      case AppLifecycleState.resumed:
+        if (_chatId != null) {
+          _pollTick();
+          _startPolling();
+        }
+        break;
+    }
+  }
+
+  /// Pull-to-refresh (`NataloPawRefreshIndicator`) → forward-drain PENUH
+  /// dari awal thread (`after: null`), bukan cuma dari [_afterCursor] —
+  /// resync total untuk cover kasus polling/wake sempat miss sesuatu.
+  /// Pakai [_mergeIncoming] (BUKAN clear+replace mentah) supaya bubble
+  /// optimistic yang mungkin lagi `sending` (user kirim pesan PAS menarik
+  /// refresh) tidak hilang — untuk kasus normal (tak ada pesan optimistic
+  /// in-flight) hasilnya identik dgn full-replace karena semua baris
+  /// server yang sudah dimiliki di-skip via dedupe by id.
+  Future<void> _onPullToRefresh() async {
+    if (_chatId == null) return;
+    try {
+      final fetched = await _drainForward();
+      if (!mounted) return;
+      _mergeIncoming(fetched);
+      chatStore.setUnread(0);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ChatRoomScreen] pull-to-refresh gagal: $e');
+      }
+      if (!mounted) return;
+      AppToast.show(
+        context,
+        'Gagal memuat ulang percakapan',
+        kind: ToastKind.error,
+      );
+    }
   }
 
   void _scrollToBottom({bool animate = true}) {
@@ -220,26 +468,176 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     );
   }
 
-  void _onRetry(ChatMessage message) {
-    // TODO(Task 5): kirim ulang lewat `chatService.sendText(text,
-    // clientMsgId: message.clientMsgId)` — pakai `clientMsgId` YANG SAMA
-    // dgn bubble ini (sekarang bisa, karena `sendText` menerima param
-    // clientMsgId dan `_onSendText` sudah mengoper id bubble optimistic-nya)
-    // → proxy dedupe idempoten (`writeCustomerMessage` di `lib/chat/rooms.ts`)
-    // supaya retry tidak menggandakan pesan kalau percobaan pertama
-    // sebenarnya sudah sukses di server tapi client cuma gagal baca response.
-    // Sengaja no-op di Task 4 — brief eksplisit menaruh retry sungguhan di
-    // Task 5.
+  /// Kirim ulang pesan `failed` — pakai `clientMsgId` YANG SAMA dgn bubble
+  /// ini → proxy dedupe idempoten (`writeCustomerMessage` di
+  /// `lib/chat/rooms.ts`) supaya retry tidak menggandakan pesan kalau
+  /// percobaan pertama sebenarnya sudah sukses di server tapi client cuma
+  /// gagal baca response. Foto: pakai path lokal yang masih tersimpan di
+  /// `_pendingImagePaths` (foto tidak pernah dikompres ulang saat retry —
+  /// file terkompresi hasil percobaan pertama dipakai apa adanya).
+  Future<void> _onRetry(ChatMessage message) async {
+    final clientMsgId = message.clientMsgId;
+    if (clientMsgId == null) return;
+    setState(() => _replaceStatus(clientMsgId, ChatSendStatus.sending));
+    try {
+      if (message.type == ChatMsgType.image) {
+        final path = _pendingImagePaths[clientMsgId];
+        if (path == null) {
+          // Tak ada file lokal tersisa (mis. proses di-kill lalu dibuka
+          // lagi — `_pendingImagePaths` in-memory, tak persist) — tak ada
+          // apa pun untuk dikirim ulang, kembalikan ke `failed`.
+          if (!mounted) return;
+          setState(() => _replaceStatus(clientMsgId, ChatSendStatus.failed));
+          return;
+        }
+        await chatService.sendImage(path, clientMsgId: clientMsgId);
+      } else {
+        await chatService.sendText(message.text ?? '',
+            clientMsgId: clientMsgId);
+      }
+      if (!mounted) return;
+      setState(() => _replaceStatus(clientMsgId, ChatSendStatus.sent));
+    } on ApiException catch (e) {
+      if (kDebugMode) debugPrint('[ChatRoomScreen] retry gagal: $e');
+      if (!mounted) return;
+      setState(() => _replaceStatus(clientMsgId, ChatSendStatus.failed));
+    }
   }
 
-  void _onAttachPhoto() {
-    // TODO(Task 5): image_picker (kamera/galeri) + kompresi (pola
-    // feed_photo_service.dart) + thumbnail optimistic lokal +
-    // chatService.sendImage.
+  /// Tap ikon kamera composer — bottom sheet kamera/galeri, kompresi (pola
+  /// `feed_photo_service._compressForUpload`), lalu bubble optimistic
+  /// (thumbnail dari file LOKAL — lihat `_pendingImagePaths`) sebelum
+  /// upload selesai. Sukses/gagal update status sama seperti kirim teks;
+  /// versi server (`imageUrl` network) datang lewat poll berikutnya dan
+  /// direkonsiliasi via `clientMsgId` (`_mergeIncoming`).
+  Future<void> _onAttachPhoto() async {
+    final source = await _pickImageSource();
+    if (source == null || !mounted) return;
+
+    XFile? picked;
+    try {
+      picked = await _imagePicker.pickImage(source: source, imageQuality: 90);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[ChatRoomScreen] pickImage gagal: $e');
+      if (mounted) {
+        AppToast.show(context, 'Gagal membuka kamera/galeri',
+            kind: ToastKind.error);
+      }
+      return;
+    }
+    if (picked == null) return;
+
+    final clientMsgId = newClientMsgId();
+    final compressedPath = await _compressForChatUpload(File(picked.path));
+    _pendingImagePaths[clientMsgId] = compressedPath;
+
+    final optimistic = ChatMessage(
+      id: clientMsgId,
+      sender: ChatSender.customer,
+      type: ChatMsgType.image,
+      createdAt: DateTime.now().millisecondsSinceEpoch,
+      clientMsgId: clientMsgId,
+      status: ChatSendStatus.sending,
+    );
+    if (!mounted) return;
+    setState(() => _messages.add(optimistic));
+    _scrollToBottom();
+
+    try {
+      await chatService.sendImage(compressedPath, clientMsgId: clientMsgId);
+      if (!mounted) return;
+      setState(() => _replaceStatus(clientMsgId, ChatSendStatus.sent));
+    } on ApiException catch (e) {
+      if (kDebugMode) debugPrint('[ChatRoomScreen] sendImage gagal: $e');
+      if (!mounted) return;
+      setState(() => _replaceStatus(clientMsgId, ChatSendStatus.failed));
+      // Path lokal SENGAJA dipertahankan di `_pendingImagePaths` (bukan
+      // dihapus) — retry (`_onRetry`) butuh file itu lagi utk kirim ulang.
+    }
+  }
+
+  /// Bottom sheet 2 opsi (kamera/galeri) — pola sama dgn
+  /// `update_profile_photo_sheet.dart`, disederhanakan (tanpa opsi hapus,
+  /// tak relevan utk kirim foto chat) & pakai token warna chat
+  /// (`NataloColors`) konsisten dgn sisa layar ini.
+  Future<ImageSource?> _pickImageSource() {
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: NataloColors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: AppSpacing.sm),
+              Container(
+                width: 44,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: NataloColors.border,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined,
+                    color: NataloColors.primary),
+                title: const Text('Ambil Foto'),
+                onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined,
+                    color: NataloColors.primary),
+                title: const Text('Pilih dari Galeri'),
+                onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Kompres foto sebelum upload — mirror
+  /// `FeedPhotoService._compressForUpload`: skip kalau file sudah ≤1.5MB
+  /// (sudah aman di bawah limit body request Vercel), selain itu resize ke
+  /// max 1920×1920 quality 75 JPEG. Return path original kalau compress
+  /// gagal (graceful fallback, bukan throw — foto kecil tetap harus bisa
+  /// terkirim meski compressor error).
+  Future<String> _compressForChatUpload(File source) async {
+    try {
+      final originalBytes = await source.length();
+      if (originalBytes <= 1.5 * 1024 * 1024) return source.path;
+
+      final tempDir = await getTemporaryDirectory();
+      final outputPath = '${tempDir.path}/chat_compressed_'
+          '${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      final compressed = await FlutterImageCompress.compressAndGetFile(
+        source.path,
+        outputPath,
+        minWidth: 1920,
+        minHeight: 1920,
+        quality: 75,
+        format: CompressFormat.jpeg,
+      );
+      return compressed?.path ?? source.path;
+    } catch (_) {
+      return source.path;
+    }
   }
 
   @override
   void dispose() {
+    _stopPolling();
+    WidgetsBinding.instance.removeObserver(this);
+    pushNotificationService.notificationRefreshTick.removeListener(
+      _onFcmWakeTick,
+    );
     _composerController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -306,19 +704,27 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final showResolvedNote = _roomStatus == 'resolved';
     final itemCount = _messages.length + (showResolvedNote ? 1 : 0);
 
-    return ListView.builder(
-      controller: _scrollController,
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      itemCount: itemCount,
-      itemBuilder: (context, index) {
-        if (showResolvedNote && index == _messages.length) {
-          return const _ResolvedNote();
-        }
-        return Padding(
-          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-          child: _buildMessageItem(_messages[index]),
-        );
-      },
+    // NataloPawRefreshIndicator butuh child scrollable dgn
+    // AlwaysScrollableScrollPhysics supaya overscroll notification tetap
+    // fire (dan pull-to-refresh tetap bisa dipicu) walau konten pendek —
+    // pola sama dgn layar lain yang pakai widget ini (mis. wishlist_screen).
+    return NataloPawRefreshIndicator(
+      onRefresh: _onPullToRefresh,
+      child: ListView.builder(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        itemCount: itemCount,
+        itemBuilder: (context, index) {
+          if (showResolvedNote && index == _messages.length) {
+            return const _ResolvedNote();
+          }
+          return Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: _buildMessageItem(_messages[index]),
+          );
+        },
+      ),
     );
   }
 
@@ -343,7 +749,17 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             : ChatBubble(message: message, onRetry: () => _onRetry(message));
         break;
       case ChatMsgType.image:
-        content = ChatImageMessage(imageUrl: message.imageUrl);
+        // Thumbnail lokal (`_pendingImagePaths`) diprioritaskan otomatis
+        // oleh `ChatImageMessage` selama masih ada — begitu versi server
+        // direkonsiliasi (`_mergeIncoming` hapus entry-nya), fallback ke
+        // `imageUrl` network di render berikutnya.
+        final localPath = message.clientMsgId != null
+            ? _pendingImagePaths[message.clientMsgId]
+            : null;
+        content = ChatImageMessage(
+          imageUrl: message.imageUrl,
+          localFile: localPath != null ? File(localPath) : null,
+        );
         break;
       case ChatMsgType.productContext:
       case ChatMsgType.orderContext:

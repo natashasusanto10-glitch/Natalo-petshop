@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../screens/image_viewer_screen.dart';
@@ -16,7 +18,22 @@ import '../app_product_image.dart';
 class ChatImageMessage extends StatelessWidget {
   final String? imageUrl;
 
-  const ChatImageMessage({super.key, required this.imageUrl});
+  /// File lokal foto yang SEDANG/BARU SAJA dikirim (`status: sending` atau
+  /// `failed`) — `ChatMessage` (Task 1, frozen) cuma punya field network
+  /// `imageUrl`, tidak ada field path lokal, jadi `ChatRoomScreen` (Task 5)
+  /// mengoper file lokal terpisah lewat parameter ini supaya thumbnail
+  /// optimistic bisa tampil SEBELUM upload selesai (tanpa `imageUrl` sama
+  /// sekali di awal). Diprioritaskan di atas [imageUrl] kalau keduanya ada
+  /// (retry sukses tapi belum sempat direkonsiliasi oleh poll berikutnya) —
+  /// menghindari "flash" balik ke placeholder sebelum versi server benar2
+  /// dikonfirmasi datang.
+  final File? localFile;
+
+  const ChatImageMessage({
+    super.key,
+    required this.imageUrl,
+    this.localFile,
+  });
 
   static const double _thumbSize = 180;
 
@@ -26,8 +43,13 @@ class ChatImageMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final url = imageUrl;
+    final local = localFile;
+    final hasNetwork = url != null && url.isNotEmpty;
+    final hasLocal = local != null;
     return GestureDetector(
-      onTap: url == null || url.isEmpty
+      // Fullscreen viewer butuh URL network — foto yang masih lokal murni
+      // (belum ke-upload) sengaja tidak tappable dulu.
+      onTap: !hasNetwork
           ? null
           : () {
               Navigator.of(context).push(
@@ -45,22 +67,32 @@ class ChatImageMessage extends StatelessWidget {
           borderRadius: AppRadius.medium,
           border: Border.all(color: NataloColors.border),
         ),
-        child: url == null || url.isEmpty
-            ? const Center(
-                child: Icon(
-                  Icons.image_not_supported_outlined,
-                  color: NataloColors.textTertiary,
-                ),
-              )
-            : AppProductImage(
-                imageUrl: url,
-                width: _thumbSize - _framePad * 2,
-                height: _thumbSize - _framePad * 2,
-                fit: BoxFit.cover,
+        child: hasLocal
+            ? ClipRRect(
                 // Radius dalam = radius luar (md) minus padding bingkai, biar
                 // lengkung foto konsentris dgn kartu (= AppRadius.sm).
                 borderRadius: BorderRadius.circular(AppRadius.sm),
-              ),
+                child: Image.file(
+                  local,
+                  width: _thumbSize - _framePad * 2,
+                  height: _thumbSize - _framePad * 2,
+                  fit: BoxFit.cover,
+                ),
+              )
+            : hasNetwork
+                ? AppProductImage(
+                    imageUrl: url,
+                    width: _thumbSize - _framePad * 2,
+                    height: _thumbSize - _framePad * 2,
+                    fit: BoxFit.cover,
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  )
+                : const Center(
+                    child: Icon(
+                      Icons.image_not_supported_outlined,
+                      color: NataloColors.textTertiary,
+                    ),
+                  ),
       ),
     );
   }
