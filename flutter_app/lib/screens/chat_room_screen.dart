@@ -315,11 +315,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// `resumed` (sekali, langsung), dan `notificationRefreshTick` (wake
   /// FCM, sekali).
   ///
-  /// **Silent-fail** (swallow error, TIDAK ubah `_loadError`/tampilkan UI
-  /// error) — poll background gagal sesekali (network flaky) tak boleh
-  /// mengganti body chat yang sudah terisi jadi error state; beda dgn
-  /// `_loadMessages` (initial load) yang memang perlu tampilkan error
-  /// karena belum ada apa-apa untuk ditampilkan kalau gagal.
+  /// **Silent-fail pada GAGAL** (swallow error, TIDAK set `_loadError`) —
+  /// poll background gagal sesekali (network flaky) tak boleh mengganti body
+  /// chat yang sudah terisi jadi error state; beda dgn `_loadMessages`
+  /// (initial load) yang memang perlu tampilkan error karena belum ada
+  /// apa-apa untuk ditampilkan kalau gagal. **Pada SUKSES**, sebaliknya,
+  /// error stale DIBERSIHKAN (`_clearLoadErrorIfSet`) — kalau initial load
+  /// tadi gagal (offline saat buka) lalu poll/wake ini berhasil, user tak
+  /// boleh tetap terjebak di layar error padahal thread-nya sudah termuat.
   Future<void> _pollTick() async {
     if (_chatId == null || !mounted || _pollInFlight) return;
     _pollInFlight = true;
@@ -328,6 +331,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       final fetched = await _drainForward(after: _afterCursor);
       if (!mounted) return;
       _mergeIncoming(fetched);
+      _clearLoadErrorIfSet();
       chatStore.setUnread(0);
       if (fetched.isNotEmpty && wasNearBottom) _scrollToBottom();
     } catch (e) {
@@ -335,6 +339,17 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     } finally {
       _pollInFlight = false;
     }
+  }
+
+  /// Bersihkan error load stale setelah SUATU fetch sukses (poll/wake/
+  /// pull-to-refresh) — guarded `setState` yang HANYA rebuild kalau memang
+  /// sedang ada error (jalur pemulihan langka), jadi tak menambah rebuild di
+  /// steady-state normal. Dipanggil TERPISAH dari `_mergeIncoming` (yang
+  /// no-op kalau tak ada pesan baru) supaya error tetap kebersihan walau
+  /// fetch sukses mengembalikan 0 pesan baru.
+  void _clearLoadErrorIfSet() {
+    if (_loadError == null) return;
+    setState(() => _loadError = null);
   }
 
   void _onFcmWakeTick() {
@@ -367,12 +382,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// refresh) tidak hilang — untuk kasus normal (tak ada pesan optimistic
   /// in-flight) hasilnya identik dgn full-replace karena semua baris
   /// server yang sudah dimiliki di-skip via dedupe by id.
+  ///
+  /// Menghormati `_pollInFlight` (sama seperti `_pollTick`) — kalau sebuah
+  /// drain (poll tick) sudah jalan, skip: datanya sedang di-fetch toh, jadi
+  /// fetch kedua konkuren cuma mubazir (aman krn merge idempoten, tapi tak
+  /// perlu). Set flag selama drain-nya sendiri supaya poll tick tidak
+  /// menyelinap bersamaan.
   Future<void> _onPullToRefresh() async {
-    if (_chatId == null) return;
+    if (_chatId == null || _pollInFlight) return;
+    _pollInFlight = true;
     try {
       final fetched = await _drainForward();
       if (!mounted) return;
       _mergeIncoming(fetched);
+      _clearLoadErrorIfSet();
       chatStore.setUnread(0);
     } catch (e) {
       if (kDebugMode) {
@@ -384,6 +407,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
         'Gagal memuat ulang percakapan',
         kind: ToastKind.error,
       );
+    } finally {
+      _pollInFlight = false;
     }
   }
 

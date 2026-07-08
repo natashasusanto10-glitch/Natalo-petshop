@@ -186,5 +186,26 @@ void main() {
       expect(existing.map((m) => m.id), existingCopy.map((m) => m.id));
       expect(incoming.map((m) => m.id), incomingCopy.map((m) => m.id));
     });
+
+    test(
+        'dua pesan createdAt SAMA -> urutan deterministik (tiebreaker id) '
+        'apapun urutan input, tak ada jitter antar poll', () {
+      // createdAt identik (satu millisecond) — tanpa tiebreaker, List.sort
+      // yang tidak stabil bisa menukar urutan keduanya antar pemanggilan.
+      final a = _server(id: 'srv-a', text: 'A', createdAt: 500);
+      final b = _server(id: 'srv-b', text: 'B', createdAt: 500);
+
+      // Jalankan dgn incoming di KEDUA urutan — hasil harus identik.
+      final r1 = mergeChatMessages(const [], [a, b]);
+      final r2 = mergeChatMessages(const [], [b, a]);
+
+      expect(r1.map((m) => m.id).toList(), ['srv-a', 'srv-b']);
+      expect(r2.map((m) => m.id).toList(), ['srv-a', 'srv-b']);
+      // Idempoten & stabil: merge hasil sebelumnya dgn dirinya lagi tak
+      // mengubah urutan (skenario poll berulang yang mengembalikan baris
+      // yang sama).
+      final r3 = mergeChatMessages(r1, [b, a]);
+      expect(r3.map((m) => m.id).toList(), ['srv-a', 'srv-b']);
+    });
   });
 }

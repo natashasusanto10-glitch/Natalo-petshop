@@ -22,7 +22,8 @@ import '../models/chat_message.dart';
 ///     forward/poll/pull-to-refresh mengembalikan baris yang sama lagi).
 ///  3. Selain itu -> append `s` sebagai pesan baru.
 ///
-/// Hasil selalu diurutkan ASC by `createdAt` sebelum dikembalikan. Pure,
+/// Hasil selalu diurutkan ASC by `createdAt` (dengan tiebreaker
+/// DETERMINISTIK, lihat [_compareForOrder]) sebelum dikembalikan. Pure,
 /// tanpa I/O, tanpa mutasi [existing]/[incoming] (return list baru).
 List<ChatMessage> mergeChatMessages(
   List<ChatMessage> existing,
@@ -42,6 +43,22 @@ List<ChatMessage> mergeChatMessages(
     if (idIdx != -1) continue;
     result.add(s);
   }
-  result.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  result.sort(_compareForOrder);
   return result;
+}
+
+/// Urutan deterministik: `createdAt` ASC, lalu tiebreaker STABIL saat dua
+/// pesan berbagi millisecond yang sama. Tanpa tiebreaker, `List.sort`
+/// (TIDAK stabil di Dart) bisa menukar urutan dua pesan se-millisecond
+/// antar poll → jitter visual (bubble lompat-lompat). Tiebreaker: `id`
+/// server kalau non-kosong, else `clientMsgId` (fallback string kosong
+/// supaya perbandingan tak pernah throw pada null — `ChatMessage.id`
+/// sendiri sudah non-null tapi bisa string kosong utk bubble optimistic
+/// yang id-nya = clientMsgId, sementara `clientMsgId` nullable).
+int _compareForOrder(ChatMessage a, ChatMessage b) {
+  final byTime = a.createdAt.compareTo(b.createdAt);
+  if (byTime != 0) return byTime;
+  final aKey = a.id.isNotEmpty ? a.id : (a.clientMsgId ?? '');
+  final bKey = b.id.isNotEmpty ? b.id : (b.clientMsgId ?? '');
+  return aKey.compareTo(bKey);
 }

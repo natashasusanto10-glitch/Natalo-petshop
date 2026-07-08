@@ -77,6 +77,13 @@ class ChatImageMessage extends StatelessWidget {
                   width: _thumbSize - _framePad * 2,
                   height: _thumbSize - _framePad * 2,
                   fit: BoxFit.cover,
+                  // File temp bisa terhapus/tak terbaca (OS bersihkan cache,
+                  // atau kompresi tadi gagal tulis) — tanpa errorBuilder
+                  // Image.file THROW saat paint (kotak merah di debug, tile
+                  // rusak di release). Degradasi ke placeholder yang SAMA
+                  // dgn jalur gambar network rusak.
+                  errorBuilder: (context, error, stack) =>
+                      const _BrokenImagePlaceholder(),
                 ),
               )
             : hasNetwork
@@ -87,12 +94,26 @@ class ChatImageMessage extends StatelessWidget {
                     fit: BoxFit.cover,
                     borderRadius: BorderRadius.circular(AppRadius.sm),
                   )
-                : const Center(
-                    child: Icon(
-                      Icons.image_not_supported_outlined,
-                      color: NataloColors.textTertiary,
-                    ),
-                  ),
+                : const _BrokenImagePlaceholder(),
+      ),
+    );
+  }
+}
+
+/// Placeholder "gambar tak tersedia" — dipakai bersama oleh jalur
+/// gambar-tak-ada (`imageUrl` & `localFile` sama-sama kosong) dan jalur
+/// `Image.file` yang gagal render (`errorBuilder`), supaya kedua kegagalan
+/// tampil identik. (`AppProductImage` sendiri sudah punya fallback internal
+/// utk gambar network rusak — tak perlu diduplikasi di sini.)
+class _BrokenImagePlaceholder extends StatelessWidget {
+  const _BrokenImagePlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Icon(
+        Icons.image_not_supported_outlined,
+        color: NataloColors.textTertiary,
       ),
     );
   }
