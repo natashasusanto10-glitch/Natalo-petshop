@@ -874,7 +874,7 @@ class _ErrorState extends StatelessWidget {
                 ),
               ),
               child: const Text(
-                'Coba Lagi',
+                'Coba lagi',
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
             ),

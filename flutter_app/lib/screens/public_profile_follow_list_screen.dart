@@ -365,7 +365,7 @@ class _FollowListPaneState extends State<_FollowListPane>
       return _FollowListMessage(
         icon: Icons.error_outline_rounded,
         title: _errorText!,
-        actionLabel: 'Coba Lagi',
+        actionLabel: 'Coba lagi',
         onAction: _load,
       );
     }

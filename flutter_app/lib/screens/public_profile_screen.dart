@@ -13,6 +13,7 @@ import '../services/report_service.dart';
 import '../state/feed_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_ui.dart';
 import '../widgets/moderation_action_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import 'member_post_detail_screen.dart';
@@ -360,7 +361,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     }
     if (_notFound) return _NotFoundView(handle: widget.username);
     if (_errorText != null && _profile == null) {
-      return _ErrorView(message: _errorText!, onRetry: _load);
+      return AppErrorState(description: _errorText!, onRetry: _load);
     }
     final profile = _profile!;
     return NataloPawRefreshIndicator(
@@ -1057,41 +1058,3 @@ class _NotFoundView extends StatelessWidget {
   }
 }
 
-class _ErrorView extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-
-  const _ErrorView({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(36),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              message,
-              style: TextStyle(
-                color: cs.onSurface,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: onRetry,
-              style: FilledButton.styleFrom(
-                backgroundColor: _brandBlue,
-              ),
-              child: const Text('Coba Lagi'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

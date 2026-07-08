@@ -271,7 +271,7 @@ class _PostLikersSheetState extends State<PostLikersSheet> {
               FilledButton(
                 onPressed: _load,
                 style: FilledButton.styleFrom(backgroundColor: _brandBlue),
-                child: const Text('Coba Lagi'),
+                child: const Text('Coba lagi'),
               ),
             ],
           ),

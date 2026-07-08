@@ -157,7 +157,7 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
               lottiePath: AppLottiePaths.empty,
               title: 'Login untuk memberi review',
               body: 'Review hanya tersedia untuk member yang sudah belanja.',
-              buttonLabel: 'Login',
+              buttonLabel: 'Masuk Member',
               onPressed: () => Navigator.pushNamed(context, '/member/login'),
             )
           : NataloPawRefreshIndicator(
@@ -171,16 +171,17 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
                   }
 
                   if (snapshot.hasError) {
+                    // Error != empty: pakai AppErrorState (ikon danger +
+                    // "Coba lagi") supaya konsisten & tak tampak seperti
+                    // "belum ada ulasan". Tetap dalam ListView agar
+                    // pull-to-refresh (NataloPawRefreshIndicator) jalan.
                     return ListView(
-                      padding: const EdgeInsets.all(24),
+                      padding: const EdgeInsets.only(top: 60),
                       children: [
-                        AppEmptyState(
+                        AppErrorState(
+                          variant: appErrorVariantFromError(snapshot.error),
                           title: 'Ulasan belum bisa dimuat',
-                          body: snapshot.error is ApiException
-                              ? (snapshot.error as ApiException).message
-                              : 'Coba tarik layar untuk memuat ulang.',
-                          buttonLabel: 'Muat Ulang',
-                          onPressed: _refresh,
+                          onRetry: _refresh,
                         ),
                       ],
                     );

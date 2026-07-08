@@ -66,8 +66,8 @@ class _RefundDetailScreenState extends State<RefundDetailScreen> {
             return const AppSkeletonList(itemCount: 6);
           }
           if (snapshot.hasError || !snapshot.hasData) {
-            return _ErrorView(
-              message: snapshot.error is _RefundDetailException
+            return AppErrorState(
+              description: snapshot.error is _RefundDetailException
                   ? (snapshot.error as _RefundDetailException).message
                   : 'Gagal memuat detail refund.',
               onRetry: () => setState(() => _future = _fetch()),
@@ -663,47 +663,6 @@ class _TimelineEvent {
     required this.timestamp,
     required this.completed,
   });
-}
-
-class _ErrorView extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-
-  const _ErrorView({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.error_outline_rounded,
-              color: _danger,
-              size: 48,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: onRetry,
-              child: const Text('Coba Lagi'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // ─── Models ──────────────────────────────────────────────────────────
