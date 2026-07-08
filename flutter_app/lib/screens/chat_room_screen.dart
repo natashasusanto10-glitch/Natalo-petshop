@@ -202,6 +202,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
           ..addAll(merged);
         _loading = false;
       });
+      // Seed dedupe reopen: tandai SEMUA pesan reopen yang sudah ada di
+      // riwayat awal sebagai "sudah dicatat" TANPA fire `chat_reopened`.
+      // Initial load memang tak lewat `_logReopenEvents`, tapi
+      // `_onPullToRefresh` melakukan full-redrain (`after: null`) yang
+      // MELEWATI `_mergeIncoming` → `_logReopenEvents`; tanpa seed ini,
+      // pull-to-refresh PERTAMA di sesi ini akan mem-fire ulang tiap reopen
+      // historis (set masih kosong). Seed = guard replay itu.
+      _seedLoggedReopenIds(_messages);
       // GET yang barusan sukses sudah reset `unreadForCustomer` di server
       // (fix C2 Plan 2) — sinkronkan badge lokal.
       chatStore.setUnread(0);
@@ -299,6 +307,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       if (m.text != _reopenSystemText) continue;
       if (!_loggedReopenMessageIds.add(m.id)) continue;
       AppAnalytics.logEvent('chat_reopened');
+    }
+  }
+
+  /// Tandai pesan reopen di riwayat AWAL sebagai "sudah dicatat" TANPA
+  /// fire event (bedanya dgn [_logReopenEvents]: tak ada `logEvent`) —
+  /// dipanggil sekali dari `_loadMessages` supaya `_onPullToRefresh`
+  /// (full-redrain) tak mem-fire ulang reopen historis. Reopen BARU yang
+  /// datang live (poll/wake) tetap tak masuk set ini → tetap fire tepat
+  /// sekali lewat [_logReopenEvents].
+  void _seedLoggedReopenIds(List<ChatMessage> history) {
+    for (final m in history) {
+      if (m.type != ChatMsgType.system) continue;
+      if (m.text != _reopenSystemText) continue;
+      _loggedReopenMessageIds.add(m.id);
     }
   }
 
