@@ -73,15 +73,25 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _imagePicker = ImagePicker();
 
+  /// `viewInsets.bottom` terakhir yang teramati (`didChangeMetrics`) — dipakai
+  /// mendeteksi transisi keyboard TERTUTUP->TERBUKA (0 -> positif) supaya
+  /// auto-scroll (F10) hanya fire sekali saat keyboard baru muncul, bukan
+  /// tiap kali `didChangeMetrics` fire (bisa >1x selama animasi keyboard di
+  /// sebagian device/OS).
+  double _lastViewInsetBottom = 0;
+
   /// Guard defensif forward-drain (`_drainForward`) — cap total halaman per
   /// panggilan supaya tak pernah hang tak berujung kalau proxy suatu saat
   /// mengirim cursor yang tidak pernah habis. Thread support 1:1 realistis
   /// jauh di bawah ini (PAGE_SIZE proxy = 50/halaman).
   static const int _kMaxDrainPages = 40;
 
-  /// Polling near-realtime — hidup HANYA saat layar tampak (start di
-  /// `_loadMessages` sukses & `resumed`, stop di `paused`/`inactive`/
-  /// `detached` & `dispose`).
+  /// Polling near-realtime — hidup HANYA saat layar tampak: `Timer` sendiri
+  /// start di `_loadMessages` sukses & `resumed`, stop di `paused`/
+  /// `inactive`/`detached`/`dispose`, DAN tiap tick individual di-skip
+  /// (no fetch/mark-read/setUnread) selama route layar ini TERTUTUP route
+  /// lain yang di-push di atasnya (`ModalRoute.isCurrent == false`, F1) —
+  /// lihat `_pollTick`.
   Timer? _pollTimer;
 
   /// Guard 1 poll in-flight dalam satu waktu — cegah tick baru numpuk kalau
@@ -89,6 +99,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// timer 4 detik berikutnya sudah fire, ATAU 2 sumber sekaligus
   /// (`Timer.periodic` + `notificationRefreshTick`) trigger bersamaan.
   bool _pollInFlight = false;
+
+  /// Hitungan tick poll yang BENAR-BENAR diproses (lolos guard visibilitas
+  /// route & `_authError`) — dipakai me-refresh `chatStore.fetchConfig()`
+  /// (kill-switch + status online, F7) tiap [_kConfigRefreshEveryNTicks]
+  /// tick (~20 detik) supaya keduanya tak membeku selama room terbuka lama.
+  int _pollTickCount = 0;
+  static const int _kConfigRefreshEveryNTicks = 5;
 
   /// `clientMsgId` foto yang sedang/baru dikirim -> path file lokal.
   /// `ChatMessage` (Task 1, frozen) tidak punya field path lokal, cuma
@@ -118,6 +135,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   String? _chatId;
   bool _loading = true;
   Object? _loadError;
+
+  /// True kalau fetch chat (initial load/poll/pull-to-refresh) balas 401/403
+  /// — chatId asing (bukan milik akun ini) atau sesi sudah habis (F8).
+  /// BEDA dari `_loadError` biasa: kondisi ini PERMANEN sampai user
+  /// login ulang/keluar layar, jadi begitu true, polling DIHENTIKAN
+  /// permanen (lihat `_pollTick`/`didChangeAppLifecycleState`) — retry
+  /// otomatis tak akan pernah berhasil, cuma menghajar endpoint terus.
+  bool _authError = false;
 
   /// Guard "konteks hanya nempel di pesan pertama sesi ini" — sekali
   /// terkirim (sukses ATAU gagal, karena keduanya sudah "mencoba" memakai
@@ -226,12 +251,30 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     } catch (e) {
       if (kDebugMode) debugPrint('[ChatRoomScreen] fetchMessages gagal: $e');
       if (!mounted) return;
+      if (_isAuthError(e)) {
+        // chatId asing/sesi habis (F8) — hentikan polling permanen & pakai
+        // state khusus (BUKAN AppErrorState generic+retry, retry-nya tak
+        // akan pernah berhasil).
+        _stopPolling();
+        setState(() {
+          _authError = true;
+          _loading = false;
+        });
+        return;
+      }
       setState(() {
         _loadError = e;
         _loading = false;
       });
     }
   }
+
+  /// True kalau [e] adalah `ApiException` 401/403 — dipakai `_loadMessages`/
+  /// `_pollTick`/`_onPullToRefresh` (F8) membedakan error auth PERMANEN
+  /// (chatId asing/sesi habis, tak akan pernah sukses lewat retry biasa)
+  /// dari error transient lain (network/5xx) yang tetap boleh di-retry.
+  bool _isAuthError(Object e) =>
+      e is ApiException && (e.isUnauthorized || e.isForbidden);
 
   /// Fetch SEMUA pesan mulai dari [after] (null = dari awal thread) dengan
   /// men-drain `nextCursor` MAJU terus-menerus. Backend `GET
@@ -366,10 +409,22 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// scrollable sama sekali, mis. list pendek yang tak butuh scroll) —
   /// dipakai polling supaya TIDAK menarik paksa pandangan user yang sedang
   /// scroll ke atas baca riwayat lama saat pesan baru masuk.
+  ///
+  /// **Threshold include `viewInsets.bottom` (F10):** keyboard terbuka
+  /// menyusutkan viewport ~300px (`resizeToAvoidBottomInset`) tanpa
+  /// menggeser `pixels` — `maxScrollExtent - pixels` jadi membesar sebesar
+  /// tinggi keyboard walau posisi user relatif TAK berubah. Threshold dasar
+  /// 96px jauh di bawah itu, jadi tanpa kompensasi ini, poll berhenti
+  /// auto-scroll pesan masuk begitu keyboard dibuka meski user sebenarnya
+  /// masih persis di bawah. Menambah `viewInsets.bottom` ke threshold
+  /// menetralkan pergeseran itu (matematis setara dgn cek "dekat bawah"
+  /// versi SEBELUM keyboard terbuka, karena `pixels` tak berubah).
   bool _isNearBottom({double threshold = 96}) {
     if (!_scrollController.hasClients) return true;
     final position = _scrollController.position;
-    return (position.maxScrollExtent - position.pixels) <= threshold;
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    return (position.maxScrollExtent - position.pixels) <=
+        threshold + keyboardInset;
   }
 
   void _startPolling() {
@@ -399,8 +454,27 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// error stale DIBERSIHKAN (`_clearLoadErrorIfSet`) — kalau initial load
   /// tadi gagal (offline saat buka) lalu poll/wake ini berhasil, user tak
   /// boleh tetap terjebak di layar error padahal thread-nya sudah termuat.
+  /// **Pengecualian 401/403** — lihat `_isAuthError`, bukan silent-fail.
+  ///
+  /// **Guard visibilitas route (F1):** kalau layar ini TERTUTUP route lain
+  /// yang di-push di atasnya (mis. tap chip produk -> ProductDetailScreen),
+  /// `ModalRoute.of(context)!.isCurrent` jadi false — tick SKIP TOTAL (tak
+  /// fetch, tak mark-read, tak `setUnread`). Bukan RouteAware/stop timer;
+  /// timer tetap jalan tiap 4 detik tapi no-op selama tertutup, dan begitu
+  /// route penutup di-pop, tick berikutnya (<=4 detik) otomatis resume.
   Future<void> _pollTick() async {
-    if (_chatId == null || !mounted || _pollInFlight) return;
+    if (_chatId == null || !mounted || _pollInFlight || _authError) return;
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return;
+
+    // Refresh kill-switch + status online (F7) tiap N tick (~20 detik) —
+    // TERPISAH dari fetch pesan di bawah supaya gagalnya salah satu tak
+    // menghalangi yang lain (`chatStore.fetchConfig()` fail-open sendiri).
+    _pollTickCount++;
+    if (_pollTickCount % _kConfigRefreshEveryNTicks == 0) {
+      chatStore.fetchConfig();
+    }
+
     _pollInFlight = true;
     try {
       final wasNearBottom = _isNearBottom();
@@ -411,7 +485,18 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       chatStore.setUnread(0);
       if (fetched.isNotEmpty && wasNearBottom) _scrollToBottom();
     } catch (e) {
-      if (kDebugMode) debugPrint('[ChatRoomScreen] poll gagal (diabaikan): $e');
+      if (_isAuthError(e)) {
+        // chatId asing/sesi habis (F8) — hentikan polling permanen, JANGAN
+        // silent-fail seperti error lain (bakal menghajar endpoint 401/403
+        // tiap 4 detik selamanya kalau dibiarkan).
+        if (kDebugMode) {
+          debugPrint('[ChatRoomScreen] poll 401/403 — stop polling: $e');
+        }
+        _stopPolling();
+        if (mounted) setState(() => _authError = true);
+      } else if (kDebugMode) {
+        debugPrint('[ChatRoomScreen] poll gagal (diabaikan): $e');
+      }
     } finally {
       _pollInFlight = false;
     }
@@ -443,10 +528,42 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
         break;
       case AppLifecycleState.resumed:
         if (_chatId != null) {
-          _pollTick();
-          _startPolling();
+          // Refresh kill-switch + status online (F7) tiap kali app kembali
+          // ke foreground — jangan sampai user balik dari background lalu
+          // masih lihat status stale berjam-jam.
+          chatStore.fetchConfig();
+          // JANGAN restart polling kalau sudah kena 401/403 permanen (F8) —
+          // begitu `_authError` true, endpoint ini tak akan pernah sukses
+          // lagi sampai user login ulang/keluar layar.
+          if (!_authError) {
+            _pollTick();
+            _startPolling();
+          }
         }
         break;
+    }
+  }
+
+  /// Deteksi keyboard buka/tutup (F10) — `WidgetsBindingObserver` sudah
+  /// dipasang untuk lifecycle app, jadi tinggal override hook ini juga.
+  /// Defer ke post-frame callback: pas `didChangeMetrics` fire, layout baru
+  /// MULAI menyesuaikan inset baru — `MediaQuery`/`ScrollPosition` belum
+  /// pasti reflect nilai final sampai frame berikutnya selesai.
+  @override
+  void didChangeMetrics() {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onMetricsSettled());
+  }
+
+  void _onMetricsSettled() {
+    if (!mounted) return;
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final keyboardJustOpened = bottomInset > 0 && _lastViewInsetBottom <= 0;
+    _lastViewInsetBottom = bottomInset;
+    // Keyboard baru saja terbuka DAN user sudah dekat bawah (dihitung pakai
+    // `_isNearBottom` yang sudah include inset baru, lihat docstring-nya) —
+    // auto-scroll supaya bubble terbaru tidak tersembunyi di balik keyboard.
+    if (keyboardJustOpened && _isNearBottom()) {
+      _scrollToBottom();
     }
   }
 
@@ -465,7 +582,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// perlu). Set flag selama drain-nya sendiri supaya poll tick tidak
   /// menyelinap bersamaan.
   Future<void> _onPullToRefresh() async {
-    if (_chatId == null || _pollInFlight) return;
+    if (_chatId == null || _pollInFlight || _authError) return;
     _pollInFlight = true;
     try {
       final fetched = await _drainForward();
@@ -478,6 +595,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
         debugPrint('[ChatRoomScreen] pull-to-refresh gagal: $e');
       }
       if (!mounted) return;
+      if (_isAuthError(e)) {
+        // Sesi habis/chatId asing (F8) baru ketahuan pas pull-to-refresh —
+        // sama seperti `_loadMessages`/`_pollTick`: hentikan polling &
+        // pindah ke state khusus, bukan toast generic yang bisa diulang.
+        _stopPolling();
+        setState(() => _authError = true);
+        return;
+      }
       AppToast.show(
         context,
         'Gagal memuat ulang percakapan',
@@ -504,11 +629,31 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     });
   }
 
+  /// Guard kill-switch di titik kirim (F7) — `_buildFooter` sudah
+  /// menggantikan composer dgn `_ChatMaintenanceBanner` saat
+  /// `!chatStore.chatEnabled`, tapi `chatStore` bisa berubah status DI
+  /// ANTARA render terakhir dan tap kirim (composer sempat kefokus, config
+  /// refresh 20-detikan mematikan kill-switch tepat sebelum tap). Tanpa
+  /// guard ini, request tetap terkirim ke server (yang JUGA menolak, urutan
+  /// guard proxy: CSRF -> session -> kill-switch) lalu bubble jadi `failed`
+  /// tanpa penjelasan & retry yang selamanya gagal. Return false = jangan
+  /// lanjut kirim.
+  bool _guardChatEnabled() {
+    if (chatStore.chatEnabled) return true;
+    AppToast.show(
+      context,
+      'Chat sedang dalam pemeliharaan',
+      kind: ToastKind.warning,
+    );
+    return false;
+  }
+
   /// Kirim teks optimistic dasar — tampilkan bubble `sending` segera, lalu
   /// update jadi `sent`/`failed` sesuai hasil `chatService.sendText`.
   /// Rekonsiliasi penuh dgn versi server (via poll + `clientMsgId` dedupe)
   /// serta retry yang benar-benar mengirim ulang = Task 5.
   Future<void> _onSendText(String text) async {
+    if (!_guardChatEnabled()) return;
     final clientMsgId = newClientMsgId();
     final optimistic = ChatMessage(
       id: clientMsgId,
@@ -606,6 +751,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// (kalau pesan ini pembawa context yg percobaan pertamanya gagal) —
   /// kirim ulang context aman krn proxy dedupe seluruh pesan by clientMsgId.
   Future<void> _onRetry(ChatMessage message) async {
+    if (!_guardChatEnabled()) return;
     final clientMsgId = message.clientMsgId;
     if (clientMsgId == null) return;
     setState(() => _replaceStatus(clientMsgId, ChatSendStatus.sending));
@@ -657,6 +803,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// versi server (`imageUrl` network) datang lewat poll berikutnya dan
   /// direkonsiliasi via `clientMsgId` (`_mergeIncoming`).
   Future<void> _onAttachPhoto() async {
+    if (!_guardChatEnabled()) return;
     final source = await _pickImageSource();
     if (source == null || !mounted) return;
 
@@ -803,7 +950,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   @override
   Widget build(BuildContext context) {
     if (!_loading && _chatId == null) {
-      return const _ChatLoginRequiredScaffold();
+      // Teruskan `productContext` (F9) — supaya prompt login bisa redirect
+      // balik ke `/chat` DENGAN context produk utuh setelah login sukses,
+      // bukan cuma ke `/member` generic (lihat `_ChatLoginRequiredScaffold`).
+      return _ChatLoginRequiredScaffold(productContext: widget.productContext);
     }
 
     return Scaffold(
@@ -828,6 +978,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   }
 
   Widget _buildFooter() {
+    // Room 401/403 (F8) — sembunyikan composer/banner sepenuhnya. Tanpa ini,
+    // user bisa mengetik & "kirim" ke room yang tak akan pernah menampilkan
+    // hasilnya (`_buildBody` sudah berhenti merender `_messages` begitu
+    // `_authError` true) — kirim yang seolah menghilang ke ruang hampa.
+    if (_authError) return const SizedBox.shrink();
     if (!chatStore.chatEnabled) {
       return const _ChatMaintenanceBanner();
     }
@@ -843,6 +998,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       return const Center(
         child: CircularProgressIndicator(color: NataloColors.primary),
       );
+    }
+    if (_authError) {
+      return _buildAuthErrorState();
     }
     if (_loadError != null) {
       return AppErrorState(
@@ -881,6 +1039,27 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
             child: _buildMessageItem(_messages[index]),
           );
         },
+      ),
+    );
+  }
+
+  /// State dead-end KHUSUS untuk chatId asing/sesi habis (F8) — beda dari
+  /// `AppErrorState` generic bawaan `_loadError` (yang default nawarin
+  /// "Coba lagi" ke fetch yang PASTI gagal lagi selama sesi belum diganti).
+  /// Dua jalan keluar: "Login ulang" (redirect ke `/member/login`, biar
+  /// user sadar sesinya sudah tak valid) atau "Kembali" (pop layar ini).
+  Widget _buildAuthErrorState() {
+    return AppErrorState(
+      variant: AppErrorVariant.generic,
+      title: 'Percakapan tidak tersedia',
+      description:
+          'Percakapan ini tidak tersedia untuk akun ini. Coba login ulang '
+          'atau kembali.',
+      retryLabel: 'Login ulang',
+      onRetry: () => Navigator.pushNamed(context, '/member/login'),
+      secondaryAction: TextButton(
+        onPressed: () => Navigator.of(context).maybePop(),
+        child: const Text('Kembali'),
       ),
     );
   }
@@ -1149,8 +1328,33 @@ class _ResolvedNote extends StatelessWidget {
 /// argumen rute eksplisit DAN `memberStore.profile` kosong). `AppChatButton`
 /// dipasang di beberapa layar publik (mis. Beranda) yang tak mensyaratkan
 /// login, jadi entry point ini harus tetap aman diakses guest.
+///
+/// **Redirect-back setelah login (F9):** pakai konvensi `arguments:
+/// {'redirect': ..., 'arguments': ...}` yang sudah dipakai `cart_screen.dart`
+/// ({'redirect': '/checkout'}) — `LoginScreen._login` (login_screen.dart)
+/// sukses login SELALU memanggil `Navigator.pushNamedAndRemoveUntil(
+/// redirectRoute ?? '/member', (route) => false, arguments:
+/// redirectArguments)`. Predicate `(route) => false` membuang SELURUH
+/// route di bawahnya (termasuk `ChatRoomScreen`/layar ini sendiri) —
+/// route itu DIHAPUS, bukan di-pop, jadi `Future` dari
+/// `Navigator.pushNamed('/member/login')` TIDAK PERNAH complete (tak ada
+/// `didComplete` yang dipanggil untuk route yang dihapus, bukan di-pop).
+/// Pola "await push lalu re-init screen yang sama" karena itu TIDAK
+/// applicable di sini — solusi yang robust & minimal justru memakai
+/// redirect argument yang sudah ada: `/member/login` diberi
+/// `{'redirect': '/chat', 'arguments': productContext}`, sehingga
+/// `LoginScreen` sendiri yang mem-push `/chat` (route baru, main.dart sudah
+/// tolerant `arguments is Map<String, dynamic>` -> `ChatRoomScreen(
+/// productContext: ...)`) begitu login sukses — chat TERBUKA LANGSUNG
+/// dengan context produk utuh, tanpa perlu listener/`AnimatedBuilder`
+/// tambahan ke `memberStore`.
 class _ChatLoginRequiredScaffold extends StatelessWidget {
-  const _ChatLoginRequiredScaffold();
+  const _ChatLoginRequiredScaffold({this.productContext});
+
+  /// Diteruskan dari `ChatRoomScreen.widget.productContext` — ikut dibawa
+  /// sebagai redirect argument supaya tak hilang kalau guest masuk dari
+  /// "Tanya Produk Ini" (product_detail_screen.dart).
+  final Map<String, dynamic>? productContext;
 
   @override
   Widget build(BuildContext context) {
@@ -1199,7 +1403,14 @@ class _ChatLoginRequiredScaffold extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.lg),
               ElevatedButton(
-                onPressed: () => Navigator.pushNamed(context, '/member/login'),
+                onPressed: () => Navigator.pushNamed(
+                  context,
+                  '/member/login',
+                  arguments: {
+                    'redirect': '/chat',
+                    if (productContext != null) 'arguments': productContext,
+                  },
+                ),
                 child: const Text('Masuk Member'),
               ),
             ],
