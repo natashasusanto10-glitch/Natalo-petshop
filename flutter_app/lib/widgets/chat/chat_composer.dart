@@ -115,7 +115,8 @@ class _ChatComposerState extends State<ChatComposer> {
                       ),
                       border: InputBorder.none,
                       isDense: true,
-                      contentPadding: EdgeInsets.symmetric(vertical: 10),
+                      contentPadding:
+                          EdgeInsets.symmetric(vertical: AppSpacing.sm),
                     ),
                     onSubmitted: (_) => _submit(),
                   ),

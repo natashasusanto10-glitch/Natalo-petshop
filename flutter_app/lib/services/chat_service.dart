@@ -196,17 +196,26 @@ class ChatService {
   /// productId|orderNumber: ...}` (proxy re-fetch data tampilan dari Prisma,
   /// bukan percaya field lain dari client — lihat `app/api/chat/send/route.ts`).
   ///
+  /// `clientMsgId` opsional — kalau caller sudah membangun bubble optimistic
+  /// lokal (composer di `ChatRoomScreen`), ia MEMILIKI id-nya sendiri dan
+  /// mengopernya ke sini supaya bubble optimistic & baris server yang datang
+  /// di poll berikutnya (proyeksi proxy MEMBAWA `clientMsgId`) berbagi id
+  /// yang sama → bisa dedupe/rekonsiliasi, dan retry mengirim ulang id YANG
+  /// SAMA (proxy dedupe idempoten, lihat `writeCustomerMessage` di
+  /// `lib/chat/rooms.ts`). Kalau null (call one-shot tanpa optimistic
+  /// bubble), generate id baru sendiri.
+  ///
   /// Tak ada parameter `chatId` di sini SENGAJA: proxy SELALU derive room
   /// dari sesi (`chatIdForUser(session.sub)`), tak pernah dari input client
   /// (anti-IDOR) — menambah parameter `chatId` yang tak pernah dipakai
   /// hanya akan menyesatkan pemanggil.
   Future<ChatSendResult> sendText(String text,
-      {Map<String, dynamic>? context}) async {
+      {Map<String, dynamic>? context, String? clientMsgId}) async {
     final data = await _client.postJson(
       '/api/chat/send',
       body: {
         'text': text,
-        'clientMsgId': newClientMsgId(),
+        'clientMsgId': clientMsgId ?? newClientMsgId(),
         if (context != null) 'context': context,
       },
     );
@@ -220,12 +229,17 @@ class ChatService {
   /// `isValidClientMsgId(null)` gagal → 400 di setiap kirim foto. Karena itu
   /// dikirim via param `fields` (field form non-file, lihat
   /// `ApiClient.postMultipartFile`).
-  Future<ChatSendResult> sendImage(String filePath) async {
+  ///
+  /// `clientMsgId` opsional — sama seperti [sendText]: caller yang punya
+  /// thumbnail optimistic mengoper id-nya sendiri supaya bisa direkonsiliasi
+  /// dgn baris server + retry mengirim ulang id yang sama (dedupe proxy).
+  Future<ChatSendResult> sendImage(String filePath,
+      {String? clientMsgId}) async {
     final data = await _client.postMultipartFile(
       '/api/chat/send-image',
       fieldName: 'file',
       filePath: filePath,
-      fields: {'clientMsgId': newClientMsgId()},
+      fields: {'clientMsgId': clientMsgId ?? newClientMsgId()},
     );
     return _parseSendResult(data);
   }

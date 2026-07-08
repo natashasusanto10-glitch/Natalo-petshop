@@ -181,7 +181,17 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     _contextSent = true;
 
     try {
-      await chatService.sendText(text, context: sendContext);
+      // Oper `clientMsgId` yang SAMA dgn bubble optimistic — supaya baris
+      // server yang datang di poll berikutnya (proyeksi proxy MEMBAWA
+      // `clientMsgId`) bisa direkonsiliasi dgn bubble ini, dan retry (Task
+      // 5) mengirim ulang id yang sama → proxy dedupe idempoten (tanpa ini,
+      // ChatService akan generate id berbeda → optimistic & server row tak
+      // pernah bisa di-match).
+      await chatService.sendText(
+        text,
+        context: sendContext,
+        clientMsgId: clientMsgId,
+      );
       if (!mounted) return;
       setState(() => _replaceStatus(clientMsgId, ChatSendStatus.sent));
     } on ApiException catch (e) {
@@ -211,13 +221,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 
   void _onRetry(ChatMessage message) {
-    // TODO(Task 5): kirim ulang dgn `clientMsgId` YANG SAMA (proxy dedupe
-    // via `isValidClientMsgId`/idempotent write — lihat `lib/chat/rooms.ts`
-    // `writeCustomerMessage`) supaya retry tidak menggandakan pesan kalau
-    // percobaan pertama sebenarnya sudah sukses di server tapi client cuma
-    // gagal baca response. Sengaja no-op di Task 4 (bukan resend dgn
-    // clientMsgId baru) — resend naif berisiko duplikat, dan brief Task 4
-    // eksplisit menaruh retry sungguhan di Task 5.
+    // TODO(Task 5): kirim ulang lewat `chatService.sendText(text,
+    // clientMsgId: message.clientMsgId)` — pakai `clientMsgId` YANG SAMA
+    // dgn bubble ini (sekarang bisa, karena `sendText` menerima param
+    // clientMsgId dan `_onSendText` sudah mengoper id bubble optimistic-nya)
+    // → proxy dedupe idempoten (`writeCustomerMessage` di `lib/chat/rooms.ts`)
+    // supaya retry tidak menggandakan pesan kalau percobaan pertama
+    // sebenarnya sudah sukses di server tapi client cuma gagal baca response.
+    // Sengaja no-op di Task 4 — brief eksplisit menaruh retry sungguhan di
+    // Task 5.
   }
 
   void _onAttachPhoto() {

@@ -135,6 +135,38 @@ void main() {
 
       expect(result.deduped, true);
     });
+
+    test(
+        'clientMsgId eksplisit dari caller dipakai apa adanya (bukan generate '
+        'baru) — kontrak rekonsiliasi optimistic + retry dedupe', () async {
+      Map<String, dynamic>? capturedBody;
+      final fake = _FakeApiClient(postJsonHandler: (path, body) {
+        capturedBody = body as Map<String, dynamic>;
+        return {'ok': true, 'messageId': 'm9', 'deduped': false};
+      });
+      final service = ChatService(client: fake);
+
+      await service.sendText('halo', clientMsgId: 'caller-owned-id-123');
+
+      // NILAI PERSIS milik caller yang keluar — supaya bubble optimistic &
+      // baris server (proyeksi proxy membawa clientMsgId) bisa di-match, dan
+      // retry mengirim ulang id yang SAMA (proxy dedupe idempoten).
+      expect(capturedBody!['clientMsgId'], 'caller-owned-id-123');
+    });
+
+    test('tanpa clientMsgId eksplisit -> generate id valid sendiri', () async {
+      Map<String, dynamic>? capturedBody;
+      final fake = _FakeApiClient(postJsonHandler: (path, body) {
+        capturedBody = body as Map<String, dynamic>;
+        return {'ok': true, 'messageId': 'm10', 'deduped': false};
+      });
+      final service = ChatService(client: fake);
+
+      await service.sendText('halo');
+
+      final id = capturedBody!['clientMsgId'] as String;
+      expect(RegExp(r'^[A-Za-z0-9_-]{8,64}$').hasMatch(id), true, reason: id);
+    });
   });
 
   group('ChatService.sendImage', () {
@@ -173,6 +205,30 @@ void main() {
           reason: 'clientMsgId TIDAK boleh dikirim via query: $capturedQuery');
       expect(result.ok, true);
       expect(result.imageUrl, 'https://x/y.jpg');
+    });
+
+    test(
+        'clientMsgId eksplisit dari caller keluar sbg FIELD multipart (bukan '
+        'query, bukan generate baru)', () async {
+      Map<String, dynamic>? capturedQuery;
+      Map<String, String>? capturedFields;
+      final fake = _FakeApiClient(postMultipartHandler: (path, query, fields) {
+        capturedQuery = query;
+        capturedFields = fields;
+        return {'ok': true, 'messageId': 'm11', 'deduped': false};
+      });
+      final service = ChatService(client: fake);
+
+      await service.sendImage('/tmp/foo.jpg', clientMsgId: 'caller-img-id-77');
+
+      // Nilai persis milik caller, lewat FIELD (bukan query) — gabungan
+      // kontrak: rekonsiliasi/retry (caller-owned id) + regression guard
+      // (field, bukan query, supaya formData.get server tak null).
+      expect(capturedFields?['clientMsgId'], 'caller-img-id-77');
+      expect(
+          capturedQuery == null || !capturedQuery!.containsKey('clientMsgId'),
+          true,
+          reason: 'clientMsgId TIDAK boleh via query: $capturedQuery');
     });
   });
 

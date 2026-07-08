@@ -89,7 +89,10 @@ class _ChatProductCardState extends State<ChatProductCard> {
     final discount = product.discountPrice;
     final hasDiscount =
         discount != null && rawPrice != null && discount < rawPrice;
-    final displayPrice = hasDiscount ? discount : (rawPrice ?? 0);
+    // Nullable SENGAJA — `price` mestinya selalu ada per allowlist proxy,
+    // tapi kalau ternyata null (data rusak/produk tanpa harga), SEMBUNYIKAN
+    // baris harga daripada menampilkan "Rp0" yang menyesatkan.
+    final int? displayPrice = hasDiscount ? discount : rawPrice;
     final outOfStock = product.stock <= 0;
 
     return Container(
@@ -123,32 +126,33 @@ class _ChatProductCardState extends State<ChatProductCard> {
             ),
           ),
           const SizedBox(height: AppSpacing.xs),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                formatRupiah(displayPrice),
-                style: const TextStyle(
-                  color: NataloColors.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              if (hasDiscount) ...[
-                const SizedBox(width: AppSpacing.xs),
+          if (displayPrice != null)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
                 Text(
-                  formatRupiah(rawPrice),
+                  formatRupiah(displayPrice),
                   style: const TextStyle(
-                    color: NataloColors.oldPriceText,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    decoration: TextDecoration.lineThrough,
+                    color: NataloColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
+                if (hasDiscount) ...[
+                  const SizedBox(width: AppSpacing.xs),
+                  Text(
+                    formatRupiah(rawPrice),
+                    style: const TextStyle(
+                      color: NataloColors.oldPriceText,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      decoration: TextDecoration.lineThrough,
+                    ),
+                  ),
+                ],
               ],
-            ],
-          ),
+            ),
           const SizedBox(height: 2),
           Text(
             outOfStock ? 'Stok habis' : 'Stok: ${product.stock}',

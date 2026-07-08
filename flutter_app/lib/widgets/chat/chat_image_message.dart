@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../screens/image_viewer_screen.dart';
 import '../../theme/app_radius.dart';
+import '../../theme/app_spacing.dart';
 import '../../theme/natalo_colors.dart';
 import '../app_product_image.dart';
 
@@ -19,6 +20,9 @@ class ChatImageMessage extends StatelessWidget {
 
   static const double _thumbSize = 180;
 
+  /// Padding bingkai putih di sekeliling thumbnail (kartu → foto).
+  static const double _framePad = AppSpacing.xs;
+
   @override
   Widget build(BuildContext context) {
     final url = imageUrl;
@@ -35,7 +39,7 @@ class ChatImageMessage extends StatelessWidget {
       child: Container(
         width: _thumbSize,
         height: _thumbSize,
-        padding: const EdgeInsets.all(3),
+        padding: const EdgeInsets.all(_framePad),
         decoration: BoxDecoration(
           color: NataloColors.white,
           borderRadius: AppRadius.medium,
@@ -50,10 +54,12 @@ class ChatImageMessage extends StatelessWidget {
               )
             : AppProductImage(
                 imageUrl: url,
-                width: _thumbSize - 6,
-                height: _thumbSize - 6,
+                width: _thumbSize - _framePad * 2,
+                height: _thumbSize - _framePad * 2,
                 fit: BoxFit.cover,
-                borderRadius: BorderRadius.circular(AppRadius.md - 2),
+                // Radius dalam = radius luar (md) minus padding bingkai, biar
+                // lengkung foto konsentris dgn kartu (= AppRadius.sm).
+                borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
       ),
     );
