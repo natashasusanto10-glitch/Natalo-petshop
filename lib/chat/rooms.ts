@@ -10,8 +10,15 @@
  * (collection/doc/where/get/runTransaction — API Admin SDK asli), jadi bisa
  * dioper langsung tanpa adapter.
  *
- * Kepemilikan tulis (spec §4.2) — SENGAJA TIDAK menulis:
- * - `status` / `statusChangedBy` / `statusChangedAt` (auto-reopen = Task 5)
+ * Kepemilikan tulis (spec §4.2):
+ * - `status` / `statusChangedBy` / `statusChangedAt` — HANYA distempel nilai
+ *   awal (`waiting_staff`) bila room BENAR-BENAR BARU / field `status` belum
+ *   pernah ada (fix F4: tanpa ini, room baru tak pernah match query inbox
+ *   staf `where('status', whereIn: [...])` — Firestore whereIn tak match
+ *   dokumen yang tak punya field tsb sama sekali, jadi customer baru tak
+ *   pernah muncul di inbox). Transisi status SESUDAHNYA (mis. resolved ->
+ *   reopen) TETAP bukan tanggung jawab fungsi ini — itu milik auto-reopen
+ *   (Task 5, lib/chat/auto-effects.ts) / staff.
  * - `greetingSentAt` (auto-greeting/away = Task 5)
  * - `unreadCount.{staffUid}` / `unreadForCustomer` (increment = Cloud Function
  *   `notifyNewCustomerMessage`, Plan 3 — proxy tak punya akses daftar staff)
@@ -190,6 +197,17 @@ export async function writeCustomerMessage(
     if (input.summaryUpdatedAt !== undefined) roomUpdate.summaryUpdatedAt = input.summaryUpdatedAt;
     if (!roomData || roomData.createdAt === undefined) {
       roomUpdate.createdAt = nowMs; // hanya bila absen — cegah double-init
+    }
+    if (!roomData || roomData.status === undefined) {
+      // Fix F4: room baru wajib punya `status` sejak lahir, else whereIn
+      // query inbox staf tak pernah menemukannya. `waiting_staff` sama
+      // dengan nilai yang dipakai autoReopenIfResolved — customer baru saja
+      // menulis, staff yang harus merespons. Guard `undefined`-only berarti
+      // status yang SUDAH ada (open/waiting_customer/resolved) tak pernah
+      // ditimpa di sini — transisi tetap milik auto-effects/staff.
+      roomUpdate.status = "waiting_staff";
+      roomUpdate.statusChangedAt = nowMs;
+      roomUpdate.statusChangedBy = "system";
     }
 
     tx.set(roomRef, roomUpdate, { merge: true });

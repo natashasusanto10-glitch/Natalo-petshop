@@ -213,3 +213,76 @@ test("writeCustomerMessage menulis dokumen pesan dgn bentuk benar", async () => 
   assert.equal(messageDoc?.createdAt, 5000);
   assert.equal(messageDoc?.status, "sent");
 });
+
+// ---------------------------------------------------------------------------
+// F4 fix: room BARU harus distempel `status` awal, else Firestore whereIn
+// query inbox staf (`where('status', whereIn: [...])`) tak pernah match
+// dokumen tanpa field `status` — room customer baru invisible di inbox.
+// ---------------------------------------------------------------------------
+
+test("writeCustomerMessage: room BARU distempel status waiting_staff (F4 — tanpa ini room invisible di inbox staf)", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  const fakeFirestore = makeFakeFirestore(store);
+  const deps = { firestore: fakeFirestore, now: () => 6000 };
+  const input = {
+    chatId: "cust_u5", customerId: "u5", senderRole: "customer" as const, senderId: "u5",
+    senderName: "Eka", type: "text" as const, text: "halo min", clientMsgId: "status-1",
+  };
+
+  await writeCustomerMessage(deps, input);
+
+  const room = store.get("customerChats/cust_u5");
+  assert.equal(room?.status, "waiting_staff");
+  assert.equal(room?.statusChangedAt, 6000);
+  assert.equal(room?.statusChangedBy, "system");
+});
+
+test("writeCustomerMessage: room existing berstatus resolved TIDAK ditimpa (transisi tetap milik auto-reopen)", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  store.set("customerChats/cust_u6", {
+    customerId: "u6",
+    status: "resolved",
+    statusChangedAt: 1000,
+    statusChangedBy: "staff-1",
+    createdAt: 1000,
+    updatedAt: 1000,
+  });
+  const fakeFirestore = makeFakeFirestore(store);
+  const deps = { firestore: fakeFirestore, now: () => 7000 };
+  const input = {
+    chatId: "cust_u6", customerId: "u6", senderRole: "customer" as const, senderId: "u6",
+    senderName: "Fajar", type: "text" as const, text: "masih ada?", clientMsgId: "status-2",
+  };
+
+  await writeCustomerMessage(deps, input);
+
+  const room = store.get("customerChats/cust_u6");
+  assert.equal(room?.status, "resolved"); // tak ditimpa — reopen adalah tanggung jawab auto-effects
+  assert.equal(room?.statusChangedAt, 1000);
+  assert.equal(room?.statusChangedBy, "staff-1");
+});
+
+test("writeCustomerMessage: room existing berstatus waiting_customer TIDAK ditimpa", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  store.set("customerChats/cust_u7", {
+    customerId: "u7",
+    status: "waiting_customer",
+    statusChangedAt: 2000,
+    statusChangedBy: "staff-2",
+    createdAt: 2000,
+    updatedAt: 2000,
+  });
+  const fakeFirestore = makeFakeFirestore(store);
+  const deps = { firestore: fakeFirestore, now: () => 8000 };
+  const input = {
+    chatId: "cust_u7", customerId: "u7", senderRole: "customer" as const, senderId: "u7",
+    senderName: "Gita", type: "text" as const, text: "oke siap", clientMsgId: "status-3",
+  };
+
+  await writeCustomerMessage(deps, input);
+
+  const room = store.get("customerChats/cust_u7");
+  assert.equal(room?.status, "waiting_customer"); // tak berubah
+  assert.equal(room?.statusChangedAt, 2000);
+  assert.equal(room?.statusChangedBy, "staff-2");
+});
