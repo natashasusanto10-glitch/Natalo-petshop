@@ -104,8 +104,10 @@ class _AppChatButtonState extends State<AppChatButton>
               tooltip: 'Chat',
               onPressed: () => Navigator.pushNamed(context, '/chat'),
               child: const Icon(
+                // Tanpa `size:` — ikut ambient IconTheme spt AppNotificationButton/
+                // AppCartButton: 24 di header custom (Beranda/Transaksi), 25 di
+                // AppBar (actionsIconTheme). Seragam dgn tetangganya tiap layar.
                 Icons.chat_bubble_outline_rounded,
-                size: 26,
               ),
             ),
             if (count > 0)
