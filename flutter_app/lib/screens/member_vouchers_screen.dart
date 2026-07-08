@@ -28,17 +28,19 @@ class _MemberVouchersScreenState extends State<MemberVouchersScreen> {
 
   Future<List<MemberVoucher>> _loadVouchers() async {
     if (!memberStore.isLoggedIn) return [];
-    try {
-      final vouchers = await memberService.fetchVouchers();
-      return vouchers;
-    } catch (_) {
-      return [];
-    }
+    // Jangan telan error jadi list kosong — biarkan FutureBuilder lihat
+    // snapshot.hasError supaya render AppErrorState + retry, bukan
+    // "Belum ada voucher" palsu saat gagal-muat.
+    return memberService.fetchVouchers();
   }
 
   Future<void> _refresh() async {
     setState(() => _vouchersFuture = _loadVouchers());
-    await _vouchersFuture;
+    // Error ditangani FutureBuilder (snapshot.hasError → AppErrorState);
+    // telan di sini supaya spinner refresh tidak lempar unhandled.
+    try {
+      await _vouchersFuture;
+    } catch (_) {}
   }
 
   @override
@@ -55,6 +57,14 @@ class _MemberVouchersScreenState extends State<MemberVouchersScreen> {
           if (snapshot.connectionState == ConnectionState.waiting &&
               !snapshot.hasData) {
             return const AppSkeletonList(itemCount: 4);
+          }
+          // Gagal-muat → error state + retry (bukan empty state palsu).
+          if (snapshot.hasError) {
+            return AppErrorState(
+              variant: appErrorVariantFromError(snapshot.error),
+              onRetry: () =>
+                  setState(() => _vouchersFuture = _loadVouchers()),
+            );
           }
           final vouchers = snapshot.data ?? [];
           // Empty state — match Capacitor pattern: illustration center + title

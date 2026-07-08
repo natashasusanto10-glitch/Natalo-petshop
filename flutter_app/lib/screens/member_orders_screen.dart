@@ -11,7 +11,9 @@ import '../state/cart_store.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_cart_button.dart';
 import '../widgets/app_chat_button.dart';
+import '../widgets/app_notification_button.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
@@ -133,18 +135,13 @@ class _MemberOrdersScreenState extends State<MemberOrdersScreen> {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Pesanan Saya'),
-        actions: [
-          IconButton(
-            onPressed: () => Navigator.pushNamed(context, '/notifications'),
-            icon: const Icon(Icons.notifications_none_rounded),
-            tooltip: 'Notifikasi',
-          ),
-          const AppChatButton(),
-          IconButton(
-            onPressed: () => Navigator.pushNamed(context, '/cart'),
-            icon: const Icon(Icons.shopping_cart_outlined),
-            tooltip: 'Keranjang',
-          ),
+        actions: const [
+          // Pakai komponen ber-badge yang sama dgn Beranda/Transaksi supaya
+          // badge unread notifikasi & jumlah keranjang muncul konsisten
+          // (sebelumnya IconButton mentah → badge hilang di layar ini).
+          AppNotificationButton(),
+          AppChatButton(),
+          AppCartButton(),
         ],
       ),
       body: FutureBuilder<List<OrderSummary>>(

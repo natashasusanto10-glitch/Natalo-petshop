@@ -603,6 +603,7 @@ class _BalancePointsCard extends StatefulWidget {
 
 class _BalancePointsCardState extends State<_BalancePointsCard> {
   int? _refundBalance; // null = loading, int = loaded
+  bool _balanceError = false; // true = fetch gagal (jangan tampil Rp0 palsu)
 
   @override
   void initState() {
@@ -630,11 +631,15 @@ class _BalancePointsCardState extends State<_BalancePointsCard> {
           balance = (wallet['availableBalance'] as num?)?.toInt() ?? 0;
         }
       }
-      setState(() => _refundBalance = balance);
+      setState(() {
+        _refundBalance = balance;
+        _balanceError = false;
+      });
     } catch (_) {
-      // Defensive: kalau API error (network / 500), tampilkan Rp0
-      // bukan crash. User tetap bisa tap menu untuk masuk detail screen.
-      if (mounted) setState(() => _refundBalance = 0);
+      // Gagal-muat (network/500): JANGAN tampil Rp0 palsu — tandai error
+      // supaya UI tampilkan "Gagal muat" + cue retry. Bedakan dari saldo
+      // yang memang benar-benar 0 (tampil "Rp0").
+      if (mounted) setState(() => _balanceError = true);
     }
   }
 
@@ -642,11 +647,13 @@ class _BalancePointsCardState extends State<_BalancePointsCard> {
   Widget build(BuildContext context) {
     final points = memberStore.profile?.points ?? 0;
     final balance = _refundBalance;
-    final balanceText = balance == null
-        ? '...' // Loading placeholder (singkat, tidak intrusive)
-        : balance == 0
-            ? 'Rp0'
-            : _formatRupiahShort(balance);
+    final balanceText = _balanceError
+        ? 'Gagal muat'
+        : balance == null
+            ? '...' // Loading placeholder (singkat, tidak intrusive)
+            : balance == 0
+                ? 'Rp0'
+                : _formatRupiahShort(balance);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
       child: _PremiumCard(
@@ -667,14 +674,20 @@ class _BalancePointsCardState extends State<_BalancePointsCard> {
                       iconBg: const Color(0xFFEAF2FF),
                       title: 'Saldo Refund',
                       value: balanceText,
-                      trailing: _refundBalanceEnabled
-                          ? null
-                          : const _SmallChip(
+                      valueColor: _balanceError ? _danger : null,
+                      trailing: !_refundBalanceEnabled
+                          ? const _SmallChip(
                               text: 'Segera hadir',
                               color: _brandBlue,
                               background: Color(0xFFEFF6FF),
-                            ),
-                      onTap: () => _openRefundBalance(context),
+                            )
+                          : (_balanceError
+                              ? const Icon(Icons.refresh_rounded,
+                                  size: 18, color: _danger)
+                              : null),
+                      onTap: _balanceError
+                          ? () => _fetchRefundBalance()
+                          : () => _openRefundBalance(context),
                     ),
                   ),
                   VerticalDivider(
@@ -729,6 +742,7 @@ class _BalanceItem extends StatelessWidget {
   final Color iconBg;
   final String title;
   final String value;
+  final Color? valueColor;
   final Widget? trailing;
   final VoidCallback onTap;
 
@@ -739,6 +753,7 @@ class _BalanceItem extends StatelessWidget {
     required this.title,
     required this.value,
     required this.onTap,
+    this.valueColor,
     this.trailing,
   });
 
@@ -782,7 +797,7 @@ class _BalanceItem extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: cs.onSurface,
+                      color: valueColor ?? cs.onSurface,
                       fontSize: 15,
                       fontWeight: FontWeight.w900,
                     ),
