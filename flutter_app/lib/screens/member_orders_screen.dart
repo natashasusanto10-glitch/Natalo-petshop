@@ -11,6 +11,7 @@ import '../state/cart_store.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_chat_button.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
@@ -138,6 +139,7 @@ class _MemberOrdersScreenState extends State<MemberOrdersScreen> {
             icon: const Icon(Icons.notifications_none_rounded),
             tooltip: 'Notifikasi',
           ),
+          const AppChatButton(),
           IconButton(
             onPressed: () => Navigator.pushNamed(context, '/cart'),
             icon: const Icon(Icons.shopping_cart_outlined),

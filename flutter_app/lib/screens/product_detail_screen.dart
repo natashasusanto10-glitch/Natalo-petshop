@@ -515,6 +515,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             // jauh lebih tebal dari ikon Material di sebelahnya.
             child: const Icon(Icons.ios_share_rounded, size: 24),
           ),
+          AppHeaderIconButton(
+            tooltip: 'Tanya Produk Ini',
+            onPressed: () => Navigator.pushNamed(
+              context,
+              '/chat',
+              arguments: {
+                'type': 'product',
+                'productId': product.id,
+                'slug': product.slug,
+              },
+            ),
+            child: const Icon(Icons.chat_bubble_outline_rounded, size: 24),
+          ),
           const AppCartButton(),
         ],
       ),

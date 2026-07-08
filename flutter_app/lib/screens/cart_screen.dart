@@ -18,6 +18,7 @@ import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/animated_counter.dart';
+import '../widgets/app_chat_button.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/glass_surface.dart';
@@ -761,6 +762,7 @@ class _CartScreenState extends State<CartScreen> {
             onPressed: () => Navigator.pushNamed(context, '/wishlist'),
             icon: const Icon(Icons.favorite_border_rounded),
           ),
+          const AppChatButton(),
         ],
       ),
       body: AnimatedBuilder(
