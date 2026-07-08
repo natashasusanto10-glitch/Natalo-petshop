@@ -14,6 +14,7 @@ import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/app_chat_button.dart';
+import '../widgets/app_login_gate.dart';
 import '../widgets/app_notification_button.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
@@ -129,7 +130,10 @@ class _MemberOrdersScreenState extends State<MemberOrdersScreen> {
   @override
   Widget build(BuildContext context) {
     if (!memberStore.isLoggedIn) {
-      return const _LoginRequiredScaffold(title: 'Pesanan Saya');
+      return const AppLoginRequiredScaffold(
+        title: 'Pesanan Saya',
+        message: 'Masuk untuk melihat data terbaru dari akun Natalo kamu.',
+      );
     }
 
     return Scaffold(
@@ -288,70 +292,6 @@ class _OrderFilterTabs extends StatelessWidget {
                 ),
               );
             },
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LoginRequiredScaffold extends StatelessWidget {
-  final String title;
-
-  const _LoginRequiredScaffold({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                height: 76,
-                width: 76,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
-                      : const Color(0xFFEAF5FF),
-                  borderRadius: BorderRadius.circular(26),
-                ),
-                child: const Icon(
-                  Icons.lock_outline_rounded,
-                  color: _brandBlue,
-                  size: 36,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Login member diperlukan',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Masuk untuk melihat data terbaru dari akun Natalo kamu.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 18),
-              ElevatedButton(
-                onPressed: () => Navigator.pushNamed(context, '/member/login'),
-                child: const Text('Masuk Member'),
-              ),
-            ],
           ),
         ),
       ),

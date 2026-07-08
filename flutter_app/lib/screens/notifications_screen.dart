@@ -12,6 +12,7 @@ import '../services/product_service.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_login_gate.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import 'announcement_detail_screen.dart';
@@ -430,7 +431,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       animation: memberStore,
       builder: (context, _) {
         if (!memberStore.isLoggedIn) {
-          return const _NotifLoginRequiredScaffold();
+          return const AppLoginRequiredScaffold(
+            title: 'Notifikasi',
+            message:
+                'Masuk member untuk lihat notifikasi pesanan, voucher, dan update lainnya.',
+          );
         }
         return _buildAuthenticatedContent(context);
       },
@@ -1233,105 +1238,3 @@ String _errorMessage(Object error) {
   return 'Koneksi notifikasi sedang tidak stabil. Coba lagi sebentar.';
 }
 
-/// Login prompt yang tampil saat guest user masuk /notifications.
-/// Pattern sama dengan _LoginRequiredScaffold di transactions_screen
-/// — consistent UX cross-screen. Tap "Masuk Member" → pushNamed
-/// /member/login, lalu AnimatedBuilder di parent screen auto-refresh
-/// begitu login sukses.
-class _NotifLoginRequiredScaffold extends StatelessWidget {
-  const _NotifLoginRequiredScaffold();
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: isDark ? cs.surface : const Color(0xFFF6F9FF),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          color: cs.onSurface,
-          onPressed: () => Navigator.maybePop(context),
-        ),
-        title: Text(
-          'Notifikasi',
-          style: TextStyle(
-            color: cs.onSurface,
-            fontSize: 17,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        centerTitle: false,
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: _brandBlue.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: const Icon(
-                  Icons.notifications_none_rounded,
-                  color: _brandBlue,
-                  size: 40,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Login dulu yuk',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Masuk member untuk lihat notifikasi pesanan, voucher, dan update lainnya.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () =>
-                      Navigator.pushNamed(context, '/member/login'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _brandBlue,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: const Text(
-                    'Masuk Member',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

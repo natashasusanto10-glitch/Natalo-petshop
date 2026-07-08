@@ -18,6 +18,7 @@ import '../state/member_store.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/natalo_colors.dart';
+import '../widgets/app_login_gate.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/chat/chat_bubble.dart';
@@ -1039,7 +1040,18 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       // Teruskan `productContext` (F9) — supaya prompt login bisa redirect
       // balik ke `/chat` DENGAN context produk utuh setelah login sukses,
       // bukan cuma ke `/member` generic (lihat `_ChatLoginRequiredScaffold`).
-      return _ChatLoginRequiredScaffold(productContext: widget.productContext);
+      return AppLoginRequiredScaffold(
+        title: 'Natalo Petshop',
+        message: 'Masuk untuk mulai chat dengan tim Natalo Petshop.',
+        onLogin: () => Navigator.pushNamed(
+          context,
+          '/member/login',
+          arguments: {
+            'redirect': '/chat',
+            if (widget.productContext != null) 'arguments': widget.productContext,
+          },
+        ),
+      );
     }
 
     return Scaffold(
@@ -1434,75 +1446,3 @@ class _ResolvedNote extends StatelessWidget {
 /// productContext: ...)`) begitu login sukses — chat TERBUKA LANGSUNG
 /// dengan context produk utuh, tanpa perlu listener/`AnimatedBuilder`
 /// tambahan ke `memberStore`.
-class _ChatLoginRequiredScaffold extends StatelessWidget {
-  const _ChatLoginRequiredScaffold({this.productContext});
-
-  /// Diteruskan dari `ChatRoomScreen.widget.productContext` — ikut dibawa
-  /// sebagai redirect argument supaya tak hilang kalau guest masuk dari
-  /// "Tanya Produk Ini" (product_detail_screen.dart).
-  final Map<String, dynamic>? productContext;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: NataloColors.surface,
-      appBar: AppBar(title: const Text('Natalo Petshop')),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xxl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                height: 76,
-                width: 76,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: NataloColors.primarySoft,
-                  borderRadius: BorderRadius.circular(AppRadius.xl),
-                ),
-                child: const Icon(
-                  Icons.lock_outline_rounded,
-                  color: NataloColors.primary,
-                  size: 36,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              const Text(
-                'Login member diperlukan',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: NataloColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              const Text(
-                'Masuk untuk mulai chat dengan tim Natalo Petshop.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: NataloColors.textSecondary,
-                  fontWeight: FontWeight.w600,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              ElevatedButton(
-                onPressed: () => Navigator.pushNamed(
-                  context,
-                  '/member/login',
-                  arguments: {
-                    'redirect': '/chat',
-                    if (productContext != null) 'arguments': productContext,
-                  },
-                ),
-                child: const Text('Masuk Member'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

@@ -11,6 +11,7 @@ import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/app_chat_button.dart';
+import '../widgets/app_login_gate.dart';
 import '../widgets/app_notification_button.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
@@ -32,7 +33,11 @@ class TransactionsScreen extends StatelessWidget {
       animation: memberStore,
       builder: (context, _) {
         if (!memberStore.isLoggedIn) {
-          return const _LoginRequiredScaffold();
+          return const AppLoginRequiredScaffold(
+            message:
+                'Masuk untuk lihat pesanan, voucher, dan menu transaksi lainnya.',
+            bottomNavigationBar: BottomNavBar(currentIndex: 3),
+          );
         }
 
         return Scaffold(
@@ -1080,79 +1085,6 @@ class _HelpCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _LoginRequiredScaffold extends StatelessWidget {
-  const _LoginRequiredScaffold();
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      backgroundColor: cs.surface,
-      extendBody: true,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.receipt_long_outlined,
-                color: _brandBlue,
-                size: 64,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Login dulu yuk',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Masuk untuk lihat pesanan, voucher, dan menu transaksi lainnya.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () =>
-                      Navigator.pushNamed(context, '/member/login'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _brandBlue,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: const Text(
-                    'Masuk Member',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      bottomNavigationBar: const BottomNavBar(currentIndex: 3),
     );
   }
 }
