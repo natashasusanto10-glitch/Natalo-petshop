@@ -1,13 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/utils/chrome_autohide.dart';
 
-// Keputusan auto-hide chrome keranjang (baris "N terpilih" + voucher bar).
-// Drag-driven: hide saat scroll ke bawah di tengah, show saat scroll ke atas.
-// No-op di dekat puncak (biar chrome tetap tampil saat lihat cart paling atas)
-// & tepat di dasar (hindari clamp menarik konten saat bar collapse).
+// Semantik condense-pill: chrome melipat saat drag ARAH APA PUN di tengah
+// list; TIDAK pernah show dari gerakan drag — reveal ditangani idle timer
+// (ScrollEnd = jari lepas). Satu-satunya show dari gerakan: mentok puncak.
 void main() {
-  group('chromeActionForScroll', () {
-    test('scroll ke bawah di tengah + chrome tampil → hide', () {
+  group('chromeActionForScroll (condense-pill)', () {
+    test('drag ke bawah di tengah + chrome tampil → hide', () {
       expect(
         chromeActionForScroll(
           scrollDelta: 20,
@@ -20,23 +19,25 @@ void main() {
       );
     });
 
-    test('scroll ke atas saat chrome hidden → show', () {
+    test('drag ke ATAS di tengah + chrome tampil → hide (dua arah)', () {
       expect(
         chromeActionForScroll(
           scrollDelta: -20,
           pixels: 100,
           minExtent: -500,
           maxExtent: 500,
-          currentlyVisible: false,
+          currentlyVisible: true,
         ),
-        ChromeAction.show,
+        ChromeAction.hide,
       );
     });
 
-    test('scroll ke bawah tapi chrome sudah hidden → none', () {
+    test(
+        'drag ke atas saat chrome hidden → none (reveal = idle timer, '
+        'bukan gerakan)', () {
       expect(
         chromeActionForScroll(
-          scrollDelta: 20,
+          scrollDelta: -20,
           pixels: 100,
           minExtent: -500,
           maxExtent: 500,
@@ -46,7 +47,20 @@ void main() {
       );
     });
 
-    test('dekat puncak (cart paling atas) → jangan hide', () {
+    test('mentok puncak + chrome hidden → show instan', () {
+      expect(
+        chromeActionForScroll(
+          scrollDelta: -20,
+          pixels: -490,
+          minExtent: -500,
+          maxExtent: 500,
+          currentlyVisible: false,
+        ),
+        ChromeAction.show,
+      );
+    });
+
+    test('di puncak + chrome sudah tampil → none (tak retrigger)', () {
       expect(
         chromeActionForScroll(
           scrollDelta: 20,
@@ -72,20 +86,25 @@ void main() {
       );
     });
 
-    test('gerakan mikro (< threshold) → none (tak thrash)', () {
+    test('gerakan mikro (|delta| < threshold) → none, dua arah', () {
+      for (final delta in [2.0, -2.0]) {
+        expect(
+          chromeActionForScroll(
+            scrollDelta: delta,
+            pixels: 100,
+            minExtent: -500,
+            maxExtent: 500,
+            currentlyVisible: true,
+          ),
+          ChromeAction.none,
+        );
+      }
+    });
+
+    test('drag saat sudah hidden di tengah → none', () {
       expect(
         chromeActionForScroll(
-          scrollDelta: 2,
-          pixels: 100,
-          minExtent: -500,
-          maxExtent: 500,
-          currentlyVisible: true,
-        ),
-        ChromeAction.none,
-      );
-      expect(
-        chromeActionForScroll(
-          scrollDelta: -2,
+          scrollDelta: 20,
           pixels: 100,
           minExtent: -500,
           maxExtent: 500,

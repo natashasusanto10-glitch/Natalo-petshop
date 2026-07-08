@@ -18,6 +18,7 @@ import '../utils/chrome_autohide.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/animated_counter.dart';
+import '../widgets/cart_checkout_pill.dart';
 import '../widgets/cart_scroll_view.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_product_image.dart';
@@ -74,6 +75,10 @@ class _CartScreenState extends State<CartScreen>
   late final Animation<double> _chromeAnim;
   // Slide untuk overlay baris atas: shown = Offset.zero, hidden = geser ke atas.
   late final Animation<Offset> _chromeSlideAnim;
+  // Pil checkout = kebalikan chrome: muncul saat chrome terlipat. Satu
+  // controller yang sama → morph serempak satu napas, tanpa animasi liar.
+  late final Animation<double> _pillAnim;
+  late final Animation<Offset> _pillSlideAnim;
   Timer? _chromeIdleTimer;
   bool _chromeVisible = true;
   List<Product> _recentlyViewed = const [];
@@ -128,6 +133,12 @@ class _CartScreenState extends State<CartScreen>
       begin: const Offset(0, -1),
       end: Offset.zero,
     ).animate(_chromeAnim);
+    _pillAnim = ReverseAnimation(_chromeAnim);
+    // Slide halus dari bawah TANPA overshoot (easeInOutCubic dari parent).
+    _pillSlideAnim = Tween<Offset>(
+      begin: const Offset(0, 0.35),
+      end: Offset.zero,
+    ).animate(_pillAnim);
     _loadRecentlyViewed();
     _loadBossProducts();
     _scrollController.addListener(_onCartScroll);
@@ -331,12 +342,15 @@ class _CartScreenState extends State<CartScreen>
     }
   }
 
-  // ── Auto-hide chrome (drag-driven) ──
+  // ── Auto-hide chrome (drag-driven, condense-pill) ──
   bool _onChromeScroll(ScrollNotification notification) {
     // Hanya bereaksi ke drag USER (dragDetails != null) — jumpTo anchor awal &
     // scroll programatik lain tak boleh salah-sembunyikan chrome.
     if (notification is ScrollUpdateNotification &&
         notification.dragDetails != null) {
+      // Jari masih gerak → batalkan reveal yang mungkin ter-arm; chrome tidak
+      // boleh mengembang selama jari di layar (aturan finger-up).
+      _chromeIdleTimer?.cancel();
       final metrics = notification.metrics;
       final action = chromeActionForScroll(
         scrollDelta: notification.scrollDelta ?? 0,
@@ -348,10 +362,10 @@ class _CartScreenState extends State<CartScreen>
       if (action == ChromeAction.hide) _setChromeVisible(false);
       if (action == ChromeAction.show) _setChromeVisible(true);
     }
-    if (notification is ScrollUpdateNotification ||
-        notification is ScrollEndNotification) {
-      _armIdleReveal();
-    }
+    // Reveal TIDAK di-arm dari sini. ScrollEndNotification juga ter-fire saat
+    // fling di-"tangkap" jari (transisi Ballistic→Hold memanggil didEndScroll)
+    // PADAHAL jari masih nempel → akan salah-mengembang chrome. Reveal murni
+    // pointer-up (Listener onPointerUp di build) supaya benar "jari lepas".
     return false;
   }
 
@@ -845,146 +859,214 @@ class _CartScreenState extends State<CartScreen>
           // (geometri native, bukan aritmetika maxScrollExtent yang rapuh thd
           // estimasi lazy — biang gagal v165–v170). Baris "N terpilih" +
           // voucher bar = sibling persisten (Tahap 2: collapsing auto-hide).
-          return NotificationListener<ScrollNotification>(
-            onNotification: _onChromeScroll,
-            child: Column(
-              children: [
-                // Baris "N terpilih" = OVERLAY (Positioned di Stack), BUKAN
-                // sibling Column. Sebagai sibling, muncul-lagi merebut 42px &
-                // mendorong isi turun; sebagai overlay dia slide+fade di ATAS
-                // konten → area scroll tak berubah ukuran → NOL dorongan.
-                // Daftar diberi padding atas supaya kartu pertama tak ketutup.
-                Expanded(
-                  child: Stack(
-                    children: [
-                      CartScrollView(
-                        controller: _scrollController,
-                        leadingSlivers: [
-                          const SliverToBoxAdapter(
-                            child: SizedBox(height: _selectionRowHeight + 12),
-                          ),
-                          if (hasOutOfStock)
-                            SliverToBoxAdapter(
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                                child: _CartStockBanner(
-                                  count: _stockIssues.values
-                                      .where((issue) => issue.isOutOfStock)
-                                      .length,
+          return Listener(
+            // Reveal chrome HANYA saat jari benar-benar diangkat (onPointerUp).
+            // onPointerDown membatalkan reveal tertunda supaya menyentuh layar
+            // lagi tak memicu mengembang. Memulihkan perilaku lama onPointerUp —
+            // beda dari ScrollEnd yang bisa fire saat jari masih nempel (mis.
+            // menangkap fling), yang akan langgar aturan "jari di layar = diam".
+            onPointerDown: (_) => _chromeIdleTimer?.cancel(),
+            onPointerUp: (_) => _armIdleReveal(),
+            onPointerCancel: (_) => _armIdleReveal(),
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _onChromeScroll,
+              child: Column(
+                children: [
+                  // Baris "N terpilih" = OVERLAY (Positioned di Stack), BUKAN
+                  // sibling Column. Sebagai sibling, muncul-lagi merebut 42px &
+                  // mendorong isi turun; sebagai overlay dia slide+fade di ATAS
+                  // konten → area scroll tak berubah ukuran → NOL dorongan.
+                  // Daftar diberi padding atas supaya kartu pertama tak ketutup.
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        CartScrollView(
+                          controller: _scrollController,
+                          leadingSlivers: [
+                            const SliverToBoxAdapter(
+                              child: SizedBox(height: _selectionRowHeight + 12),
+                            ),
+                            if (hasOutOfStock)
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                                  child: _CartStockBanner(
+                                    count: _stockIssues.values
+                                        .where((issue) => issue.isOutOfStock)
+                                        .length,
+                                  ),
                                 ),
                               ),
-                            ),
-                        ],
-                        itemIds: [for (final item in items) item.key],
-                        itemBuilder: (context, dataIndex) {
-                          final item = items[dataIndex];
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                // Divider di ATAS tiap kartu kecuali paling atas
-                                // (dataIndex 0) → garis antar kartu, indent 42.
-                                if (dataIndex > 0)
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 42),
-                                    child: Divider(
-                                      height: 1,
-                                      thickness: 1,
-                                      color: dividerColor,
+                          ],
+                          itemIds: [for (final item in items) item.key],
+                          itemBuilder: (context, dataIndex) {
+                            final item = items[dataIndex];
+                            return Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  // Divider di ATAS tiap kartu kecuali paling atas
+                                  // (dataIndex 0) → garis antar kartu, indent 42.
+                                  if (dataIndex > 0)
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 42),
+                                      child: Divider(
+                                        height: 1,
+                                        thickness: 1,
+                                        color: dividerColor,
+                                      ),
                                     ),
+                                  _CartItemCard(
+                                    item: item,
+                                    index: dataIndex,
+                                    selected: _selectedIds.contains(item.key),
+                                    onToggleSelected: () =>
+                                        _toggleItem(item.key),
+                                    stockIssue: _issueFor(item),
+                                    animateEntrance: animateCards,
                                   ),
-                                _CartItemCard(
-                                  item: item,
-                                  index: dataIndex,
-                                  selected: _selectedIds.contains(item.key),
-                                  onToggleSelected: () => _toggleItem(item.key),
-                                  stockIssue: _issueFor(item),
-                                  animateEntrance: animateCards,
+                                ],
+                              ),
+                            );
+                          },
+                          center: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _CartRecommendationsSection(
+                                  key: const ValueKey('cart-rec-recently'),
+                                  title: 'Yuk dilihat lagi',
+                                  products: _recentlyViewed,
+                                  loading: _loadingRecentlyViewed,
+                                  showLoadingPlaceholder: false,
+                                ),
+                                const SizedBox(height: 18),
+                                _CartRecommendationsSection(
+                                  key: const ValueKey('cart-rec-boss'),
+                                  title: 'Ayoo diborong bossku',
+                                  products: _bossProducts,
+                                  loading: _loadingBossProducts,
+                                  loadingMore: _loadingMoreBossProducts,
+                                  showLoadingPlaceholder: false,
                                 ),
                               ],
                             ),
-                          );
-                        },
-                        center: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _CartRecommendationsSection(
-                                key: const ValueKey('cart-rec-recently'),
-                                title: 'Yuk dilihat lagi',
-                                products: _recentlyViewed,
-                                loading: _loadingRecentlyViewed,
-                                showLoadingPlaceholder: false,
-                              ),
-                              const SizedBox(height: 18),
-                              _CartRecommendationsSection(
-                                key: const ValueKey('cart-rec-boss'),
-                                title: 'Ayoo diborong bossku',
-                                products: _bossProducts,
-                                loading: _loadingBossProducts,
-                                loadingMore: _loadingMoreBossProducts,
-                                showLoadingPlaceholder: false,
-                              ),
-                            ],
                           ),
                         ),
-                      ),
-                      // Overlay baris "N terpilih" — melayang, slide+fade
-                      // (bukan collapse) → tak mendorong konten saat muncul.
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: SlideTransition(
-                          position: _chromeSlideAnim,
-                          child: FadeTransition(
-                            opacity: _chromeAnim,
-                            child: IgnorePointer(
-                              ignoring: !_chromeVisible,
-                              child: _CartSelectedRow(
-                                selectedCount: _selectedItems.length,
-                                onDeleteSelected: _selectedItems.isEmpty
-                                    ? null
-                                    : _confirmRemoveSelected,
+                        // Overlay baris "N terpilih" — melayang, slide+fade
+                        // (bukan collapse) → tak mendorong konten saat muncul.
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: SlideTransition(
+                            position: _chromeSlideAnim,
+                            child: FadeTransition(
+                              opacity: _chromeAnim,
+                              // Gate pointer ikut animasi (bukan _chromeVisible yg
+                              // tak memicu rebuild) → saat chrome nyaris hilang,
+                              // baris non-interaktif; saat tampil, tombol hapus
+                              // langsung responsif.
+                              child: AnimatedBuilder(
+                                animation: _chromeController,
+                                builder: (context, child) => IgnorePointer(
+                                  ignoring: _chromeController.value < 0.5,
+                                  child: child,
+                                ),
+                                child: _CartSelectedRow(
+                                  selectedCount: _selectedItems.length,
+                                  onDeleteSelected: _selectedItems.isEmpty
+                                      ? null
+                                      : _confirmRemoveSelected,
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                        // Pil checkout melayang — muncul saat chrome terlipat
+                        // (ReverseAnimation). CTA + total + hemat tidak pernah
+                        // hilang dari layar. Tap seluruh pil = checkout.
+                        if (_selectedItems.isNotEmpty)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            // Offset aman dari home-indicator saat bar terlipat
+                            // (area scroll memanjang ke dasar layar).
+                            bottom: 12 + MediaQuery.paddingOf(context).bottom,
+                            // Gate pointer ikut animasi: pil interaktif hanya saat
+                            // chrome (nyaris) terlipat. _chromeVisible tak memicu
+                            // rebuild → tanpa ini tap pil tembus ke grid di
+                            // belakang / pil pudar malah menelan tap.
+                            child: AnimatedBuilder(
+                              animation: _chromeController,
+                              builder: (context, child) => IgnorePointer(
+                                ignoring: _chromeController.value > 0.5,
+                                child: child,
+                              ),
+                              child: SlideTransition(
+                                position: _pillSlideAnim,
+                                child: FadeTransition(
+                                  opacity: _pillAnim,
+                                  child: Center(
+                                    child: CartCheckoutPill(
+                                      quantity: _selectedQuantity,
+                                      totalText: formatRupiah(_grandTotal),
+                                      savingText: _totalVoucherSaving > 0
+                                          ? 'Hemat ${formatRupiah(_totalVoucherSaving)}'
+                                          : null,
+                                      voucherActive:
+                                          _appliedDiscountVoucher != null ||
+                                              _appliedLoyaltyVoucher != null ||
+                                              _appliedShippingVoucher,
+                                      onTap: _goToCheckout,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-                // Voucher bar — collapse (height→0) ke arah checkout saat scroll.
-                if (showVoucherArea)
+                  // Voucher bar — collapse (height→0) ke arah checkout saat scroll.
+                  if (showVoucherArea)
+                    SizeTransition(
+                      sizeFactor: _chromeAnim,
+                      axisAlignment: 1,
+                      child: _StickyVoucherBar(
+                        hasSelection: _selectedItems.isNotEmpty,
+                        loading: _loadingVouchers,
+                        discountVoucher: _appliedDiscountVoucher,
+                        discountAmount: _voucherDiscount,
+                        shippingSelected: _appliedShippingVoucher,
+                        shippingDiscount: _shippingDiscount,
+                        onTap: _selectedItems.isEmpty
+                            ? null
+                            : () {
+                                AppHaptics.tap();
+                                _openVoucherSheet();
+                              },
+                      ),
+                    ),
+                  // Summary bar ikut melipat bersama voucher bar — CTA checkout
+                  // pindah ke pil melayang selama scroll (pola condense).
                   SizeTransition(
                     sizeFactor: _chromeAnim,
                     axisAlignment: 1,
-                    child: _StickyVoucherBar(
-                      hasSelection: _selectedItems.isNotEmpty,
-                      loading: _loadingVouchers,
-                      discountVoucher: _appliedDiscountVoucher,
-                      discountAmount: _voucherDiscount,
-                      shippingSelected: _appliedShippingVoucher,
-                      shippingDiscount: _shippingDiscount,
-                      onTap: _selectedItems.isEmpty
-                          ? null
-                          : () {
-                              AppHaptics.tap();
-                              _openVoucherSheet();
-                            },
+                    child: _CartSummaryBar(
+                      grandTotal: _grandTotal,
+                      totalSaving: _totalVoucherSaving,
+                      selectedQuantity: _selectedQuantity,
+                      disabled: _selectedItems.isEmpty,
+                      onCheckout: _goToCheckout,
                     ),
                   ),
-                _CartSummaryBar(
-                  grandTotal: _grandTotal,
-                  totalSaving: _totalVoucherSaving,
-                  selectedQuantity: _selectedQuantity,
-                  disabled: _selectedItems.isEmpty,
-                  onCheckout: _goToCheckout,
-                ),
-              ],
+                ],
+              ),
             ),
           );
         },
