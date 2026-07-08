@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 
 import '../services/auth_service.dart';
 import '../utils/haptics.dart';
 import '../widgets/loading_button.dart';
 
 // ── Design tokens (match login_screen.dart Natalo visual family) ──
-const _nataloBlue = Color(0xFF0787F5);
+const _nataloBlue = NataloColors.primary;
 const _nataloBlueDark = Color(0xFF075FCC);
 const _heroGradientTop = Color(0xFFE6F2FF);
 const _heroGradientBottom = Color(0xFFF1F7FF);

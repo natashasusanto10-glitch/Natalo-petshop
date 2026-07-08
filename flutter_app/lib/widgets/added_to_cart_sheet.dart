@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 
 import '../models/product.dart';
 import '../services/product_service.dart';
@@ -11,7 +12,7 @@ import 'product_card.dart' show ProductSavingsBadge, ProductRatingSoldMeta;
 
 /// Warna disamakan dengan halaman detail produk (product_detail_screen.dart)
 /// supaya sheet konsisten dengan tombol "+ Keranjang" di bottom bar.
-const _brandBlue = Color(0xFF1565D8);
+const _brandBlue = NataloColors.primary;
 const _successGreen = Color(0xFF16A34A);
 const _disabledGrey = Color(0xFFD1D5DB);
 const _disabledText = Color(0xFF9CA3AF);

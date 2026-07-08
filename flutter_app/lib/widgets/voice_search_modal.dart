@@ -2,11 +2,12 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 
 import '../services/voice_search_service.dart';
 import '../utils/haptics.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 
 /// Tampilkan modal voice search. Resolves dengan transcript akhir (string),
 /// atau `null` kalau user cancel / error.

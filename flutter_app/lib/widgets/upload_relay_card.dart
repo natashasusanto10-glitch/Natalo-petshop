@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 
 import '../state/feed_upload_store.dart';
 
@@ -71,7 +72,7 @@ class _RelayCardBody extends StatefulWidget {
 }
 
 class _RelayCardBodyState extends State<_RelayCardBody> {
-  static const _nataloBlue = Color(0xFF1E5BFF);
+  static const _nataloBlue = NataloColors.primary;
   static const _errorRed = Color(0xFFEF4444);
 
   // ── Smooth progress (2-layer display) ──

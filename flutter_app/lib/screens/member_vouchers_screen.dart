@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 import 'package:flutter/services.dart';
 
 import '../models/member_profile.dart';
@@ -8,7 +9,7 @@ import '../utils/haptics.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 
 class MemberVouchersScreen extends StatefulWidget {
   const MemberVouchersScreen({super.key});

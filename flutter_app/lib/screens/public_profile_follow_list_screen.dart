@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
@@ -8,7 +9,7 @@ import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 
 enum FollowListKind {
   followers,

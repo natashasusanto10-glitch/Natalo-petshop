@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 
 import '../models/member_profile.dart';
 import '../services/api_client.dart';
@@ -14,7 +15,7 @@ import '../widgets/app_notification_button.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
 
-const _brandBlue = Color(0xFF2563EB);
+const _brandBlue = NataloColors.primary;
 const _danger = Color(0xFFEF4444);
 const _warning = Color(0xFFF97316);
 // Feature flag — Saldo Refund sekarang AKTIF (backend phase 1+2 ready).

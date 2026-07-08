@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 
 import '../config/api_config.dart';
 import '../models/app_notification.dart';
@@ -17,7 +18,7 @@ import 'announcement_detail_screen.dart';
 import 'in_app_browser_screen.dart';
 import 'member_post_detail_screen.dart';
 
-const _brandBlue = Color(0xFF1677FF);
+const _brandBlue = NataloColors.primary;
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});

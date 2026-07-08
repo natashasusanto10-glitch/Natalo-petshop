@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 
 import '../models/feed_post.dart';
 import '../models/public_profile.dart';
@@ -32,7 +33,7 @@ import 'public_profile_follow_list_screen.dart';
 /// SUDAH DIPINDAH ke halaman /transactions. Halaman ini fokus jadi
 /// profile sosial.
 // Brand accent — bright blue, kontras OK di light & dark, dipertahankan.
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 // Catatan dark mode: warna page bg / text TIDAK lagi const — di-resolve
 // via Theme.of(context).colorScheme di tiap build supaya adaptif gelap.
 

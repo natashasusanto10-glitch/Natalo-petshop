@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
@@ -40,7 +41,7 @@ import '../widgets/flash_sale_countdown.dart';
 import '../widgets/moderation_action_sheet.dart';
 import 'image_viewer_screen.dart';
 
-const _brandBlue = Color(0xFF1565D8);
+const _brandBlue = NataloColors.primary;
 const _textDark = Color(0xFF111827);
 const _textMedium = Color(0xFF374151);
 const _textGray = Color(0xFF6B7280);

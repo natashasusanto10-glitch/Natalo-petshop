@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 
 import '../services/member_service.dart';
 import '../state/member_store.dart';
@@ -8,7 +9,7 @@ import '../widgets/animated_counter.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/glass_surface.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 
 /// Tier penukaran poin → voucher. Match PWA `app/api/member/claim-voucher/route.ts`
 /// TIERS constant. Server adalah source of truth — kalau berubah di backend,

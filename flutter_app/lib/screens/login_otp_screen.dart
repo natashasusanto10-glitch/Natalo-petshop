@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 import 'package:flutter/services.dart';
 
 import '../services/api_client.dart';
@@ -15,7 +16,7 @@ import '../utils/haptics.dart';
 import '../widgets/loading_button.dart';
 
 // ── Design tokens — match login_screen.dart Natalo visual family ──
-const _nataloBlue = Color(0xFF0787F5);
+const _nataloBlue = NataloColors.primary;
 const _nataloBlueDark = Color(0xFF075FCC);
 const _whatsappGreen = Color(0xFF22C55E);
 

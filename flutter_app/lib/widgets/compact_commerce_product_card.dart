@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 
 import '../models/product.dart';
 import '../theme/app_radius.dart';
@@ -7,7 +8,7 @@ import '../utils/formatters.dart';
 import 'app_product_image.dart';
 import 'brand_exclusive_badge.dart';
 
-const _cardBlue = Color(0xFF1565D8);
+const _cardBlue = NataloColors.primary;
 const _discountRed = Color(0xFFE11D48);
 const _discountSoft = Color(0xFFFFF1F2);
 const _shippingGreen = Color(0xFF16A34A);

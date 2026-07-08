@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../config/api_config.dart';
@@ -17,7 +18,7 @@ import '../widgets/natalo_paw_refresh_indicator.dart';
 import 'member_post_detail_screen.dart';
 import 'public_profile_follow_list_screen.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 
 /// Public profile screen — `/u/{username}` deep link target +
 /// destination saat user tap @username di feed/komentar.

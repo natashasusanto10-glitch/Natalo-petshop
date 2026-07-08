@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../services/api_client.dart';
@@ -13,7 +14,7 @@ import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/loading_button.dart';
 
-const _brandBlue = Color(0xFF0787F5);
+const _brandBlue = NataloColors.primary;
 const _brandBlueDark = Color(0xFF075FCC);
 
 /// Login member visual shell. Auth flow tetap memakai service existing.
