@@ -48,6 +48,11 @@ const _voucherBarHeight = 50.0;
 const _selectionRowHeight = 42.0;
 // Auto-hide chrome collapse — smooth (easeInOut) & sengaja tidak terlalu cepat.
 const _chromeAnimDuration = Duration(milliseconds: 340);
+// Jeda setelah konten benar-benar BERHENTI sebelum chrome/pil mengembang lagi
+// (debounce reveal). Bukan durasi animasi — ini "diam berapa lama dulu". Cukup
+// > 1 frame (~16ms) supaya update ballistic beruntun tetap me-reset & tak
+// mengembang mid-fling. 300ms terasa responsif tanpa mengembang prematur.
+const _chromeRevealDelay = Duration(milliseconds: 300);
 const _cartBossOpenCountKey = 'natalo_cart_boss_open_count_v1';
 const _cartBossRefreshEvery = 3;
 const _shippingVoucherCode = '__shipping_free__';
@@ -381,7 +386,7 @@ class _CartScreenState extends State<CartScreen>
   // event (mis. tangkap-fling), sekaligus jaga "jari di layar = diam".
   void _armIdleReveal() {
     _chromeIdleTimer?.cancel();
-    _chromeIdleTimer = Timer(const Duration(milliseconds: 400), () {
+    _chromeIdleTimer = Timer(_chromeRevealDelay, () {
       if (mounted && !_pointerDown) _setChromeVisible(true);
     });
   }
