@@ -37,6 +37,7 @@ abstract class ApiClientLike {
     required String filePath,
     String? filename,
     String? contentType,
+    Map<String, String>? fields,
     Duration timeout = const Duration(seconds: 30),
   });
 }
@@ -70,6 +71,7 @@ class _RealApiClient implements ApiClientLike {
     required String filePath,
     String? filename,
     String? contentType,
+    Map<String, String>? fields,
     Duration timeout = const Duration(seconds: 30),
   }) {
     return apiClient.postMultipartFile(
@@ -79,6 +81,7 @@ class _RealApiClient implements ApiClientLike {
       filePath: filePath,
       filename: filename,
       contentType: contentType,
+      fields: fields,
       timeout: timeout,
     );
   }
@@ -210,17 +213,19 @@ class ChatService {
     return _parseSendResult(data);
   }
 
-  /// Kirim foto. `clientMsgId` dikirim lewat query string (bukan body —
-  /// endpoint ini multipart/form-data, `clientMsgId` dibaca proxy dari
-  /// `formData()` field terpisah, lihat `app/api/chat/send-image/route.ts`
-  /// yang generic terhadap sumber field vs query — kontrak `ChatService` di
-  /// sini pakai query per brief Task 2).
+  /// Kirim foto. `clientMsgId` dikirim sebagai FIELD multipart/form-data
+  /// (bukan query string): server (`app/api/chat/send-image/route.ts:75`)
+  /// membacanya HANYA via `formData.get('clientMsgId')` — tidak ada fallback
+  /// `searchParams`. Kirim lewat query akan bikin `formData.get` = null →
+  /// `isValidClientMsgId(null)` gagal → 400 di setiap kirim foto. Karena itu
+  /// dikirim via param `fields` (field form non-file, lihat
+  /// `ApiClient.postMultipartFile`).
   Future<ChatSendResult> sendImage(String filePath) async {
     final data = await _client.postMultipartFile(
       '/api/chat/send-image',
       fieldName: 'file',
       filePath: filePath,
-      query: {'clientMsgId': newClientMsgId()},
+      fields: {'clientMsgId': newClientMsgId()},
     );
     return _parseSendResult(data);
   }

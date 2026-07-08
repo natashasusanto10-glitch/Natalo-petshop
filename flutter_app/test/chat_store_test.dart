@@ -40,6 +40,7 @@ class _FakeApiClient implements ApiClientLike {
     required String filePath,
     String? filename,
     String? contentType,
+    Map<String, String>? fields,
     Duration timeout = const Duration(seconds: 30),
   }) async {
     throw UnimplementedError('postMultipartFile tak dipakai ChatStore');

@@ -153,6 +153,12 @@ class ApiClient {
     required String filePath,
     String? filename,
     String? contentType,
+    // Field form tambahan (non-file) yang ikut di multipart body. Opsional &
+    // aditif — caller lama (upload foto feed/review) tak mengisi ini dan tak
+    // terpengaruh. Dipakai chat send-image untuk `clientMsgId`: server
+    // (app/api/chat/send-image) membacanya via `formData.get('clientMsgId')`,
+    // BUKAN dari query string — jadi harus dikirim sebagai field body.
+    Map<String, String>? fields,
     Duration timeout = const Duration(seconds: 30),
   }) async {
     final uri = ApiConfig.uri(path, query);
@@ -168,6 +174,7 @@ class ApiClient {
               contentType == null ? null : MediaType.parse(contentType),
         ),
       );
+      if (fields != null) request.fields.addAll(fields);
       final streamed = await request.send().timeout(timeout);
       final response = await http.Response.fromStream(streamed);
       return _decode(response);

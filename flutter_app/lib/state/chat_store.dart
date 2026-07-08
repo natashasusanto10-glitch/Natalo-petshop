@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../services/api_client.dart';
 import '../services/chat_service.dart';
 
 /// State chat customer app-wide (unread badge + kill-switch config) —
@@ -55,7 +56,9 @@ class ChatStore extends ChangeNotifier {
     try {
       final value = await _service.fetchUnread();
       setUnread(value);
-    } catch (e) {
+    } on ApiException catch (e) {
+      // SENGAJA hanya menyerap ApiException (network/HTTP) — bug program lain
+      // (mis. parsing TypeError) tetap dibiarkan naik supaya gagal loud.
       if (kDebugMode) {
         debugPrint('[chatStore.fetchUnread] gagal (diabaikan): $e');
       }
@@ -70,7 +73,9 @@ class ChatStore extends ChangeNotifier {
     try {
       final config = await _service.fetchConfig();
       applyConfig(chatEnabled: config.chatEnabled, online: config.online);
-    } catch (e) {
+    } on ApiException catch (e) {
+      // SENGAJA hanya menyerap ApiException (network/HTTP) — bug program lain
+      // tetap dibiarkan naik. Fail-open: chatEnabled tetap nilai sebelumnya.
       if (kDebugMode) {
         debugPrint('[chatStore.fetchConfig] gagal (diabaikan): $e');
       }

@@ -3,8 +3,8 @@ import 'package:natalo_petshop_flutter/services/api_client.dart';
 import 'package:natalo_petshop_flutter/services/chat_service.dart';
 
 /// Fake `ApiClientLike` — tanpa jaringan sama sekali. `postJsonHandler`/
-/// `postMultipartHandler` opsional supaya tiap test bisa assert body/query
-/// yang dikirim sekaligus balas payload custom.
+/// `postMultipartHandler` opsional supaya tiap test bisa assert body/query/
+/// fields yang dikirim sekaligus balas payload custom.
 class _FakeApiClient implements ApiClientLike {
   _FakeApiClient({
     this.getResponses = const {},
@@ -14,8 +14,13 @@ class _FakeApiClient implements ApiClientLike {
 
   final Map<String, dynamic> getResponses;
   final dynamic Function(String path, Object? body)? postJsonHandler;
-  final dynamic Function(String path, Map<String, dynamic>? query)?
-      postMultipartHandler;
+  // Terima query DAN fields — bug yang di-fix: clientMsgId harus datang
+  // sebagai multipart FIELD (dibaca server via formData.get), bukan query.
+  final dynamic Function(
+    String path,
+    Map<String, dynamic>? query,
+    Map<String, String>? fields,
+  )? postMultipartHandler;
 
   final List<Map<String, dynamic>> getCalls = [];
   Object? throwOnGet;
@@ -48,9 +53,10 @@ class _FakeApiClient implements ApiClientLike {
     required String filePath,
     String? filename,
     String? contentType,
+    Map<String, String>? fields,
     Duration timeout = const Duration(seconds: 30),
   }) async {
-    return postMultipartHandler?.call(path, query);
+    return postMultipartHandler?.call(path, query, fields);
   }
 }
 
@@ -132,13 +138,16 @@ void main() {
   });
 
   group('ChatService.sendImage', () {
-    test('panggil postMultipartFile dgn field file & clientMsgId di query',
-        () async {
+    test(
+        'clientMsgId dikirim sebagai FIELD multipart (bukan query) & valid '
+        'per isValidClientMsgId', () async {
       String? capturedPath;
       Map<String, dynamic>? capturedQuery;
-      final fake = _FakeApiClient(postMultipartHandler: (path, query) {
+      Map<String, String>? capturedFields;
+      final fake = _FakeApiClient(postMultipartHandler: (path, query, fields) {
         capturedPath = path;
         capturedQuery = query;
+        capturedFields = fields;
         return {
           'ok': true,
           'messageId': 'm3',
@@ -151,7 +160,17 @@ void main() {
       final result = await service.sendImage('/tmp/foo.jpg');
 
       expect(capturedPath, '/api/chat/send-image');
-      expect(capturedQuery?['clientMsgId'], isNotEmpty);
+      // REGRESSION GUARD (confirmed bug): server hanya baca
+      // formData.get('clientMsgId') — jadi HARUS lewat field, TIDAK boleh
+      // lewat query (query -> formData null -> 400 di setiap kirim foto).
+      final clientMsgId = capturedFields?['clientMsgId'];
+      expect(clientMsgId, isNotNull);
+      expect(RegExp(r'^[A-Za-z0-9_-]{8,64}$').hasMatch(clientMsgId!), true,
+          reason: 'clientMsgId=$clientMsgId');
+      expect(
+          capturedQuery == null || !capturedQuery!.containsKey('clientMsgId'),
+          true,
+          reason: 'clientMsgId TIDAK boleh dikirim via query: $capturedQuery');
       expect(result.ok, true);
       expect(result.imageUrl, 'https://x/y.jpg');
     });
