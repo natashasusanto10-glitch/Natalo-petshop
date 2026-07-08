@@ -81,6 +81,11 @@ class CartStore extends ChangeNotifier with WidgetsBindingObserver {
   int _retryAttempt = 0;
   bool _observerRegistered = false;
 
+  bool _mergedThisSession = false;
+
+  @visibleForTesting
+  bool get mergedThisSession => _mergedThisSession;
+
   /// Ada perubahan lokal yang belum dikonfirmasi sampai ke server.
   bool _pendingSync = false;
 
@@ -128,30 +133,52 @@ class CartStore extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Pull cart dari server lalu replace local state. Dipanggil saat user
-  /// login (memberStore.setSession callback) supaya cart dari device lain
-  /// muncul. Local state di-overwrite oleh server (server = source of truth
-  /// untuk multi-device sync).
+  /// Merge cart server ke local state saat login (union + jumlah qty).
+  /// Barang yang ditambahkan sebagai guest TIDAK hilang; item server dari
+  /// device lain ikut masuk. Hanya merge SEKALI per sesi login (guard
+  /// [_mergedThisSession]) karena setSession juga dipanggil saat update
+  /// profil. Hasil union di-push balik ke server supaya konsisten.
   Future<void> loadFromServer() async {
-    if (!memberStore.isLoggedIn) return;
+    if (!_isLoggedIn()) return;
+    if (_mergedThisSession) return;
     try {
-      final remoteItems = await cartService.fetchCart();
-      _items.clear();
-      for (final item in remoteItems) {
-        _items[item.key] = item;
-      }
+      final remoteItems = await _service.fetchCart();
+      _mergeServerCart(remoteItems);
+      _mergedThisSession = true;
       notifyListeners();
       await _persist();
+      _markDirtyAndSync();
       if (kDebugMode) {
         debugPrint(
-            '[CartStore.loadFromServer] OK — ${remoteItems.length} items');
+            '[CartStore.loadFromServer] merged ${remoteItems.length} server items');
       }
     } catch (e) {
-      // Server unreachable atau auth fail → tetap pakai local state.
+      // Server unreachable / auth fail → tetap pakai local state.
       if (kDebugMode) {
         debugPrint('[CartStore.loadFromServer] failed: $e');
       }
     }
+  }
+
+  void _mergeServerCart(List<CartItem> remoteItems) {
+    for (final remote in remoteItems) {
+      final existing = _items[remote.key];
+      if (existing == null) {
+        _items[remote.key] = remote;
+      } else {
+        final combined = existing.quantity + remote.quantity;
+        final stock = remote.effectiveStock;
+        final qty = stock > 0 ? combined.clamp(1, stock) : combined;
+        // Metadata dari server (lebih fresh), qty gabungan.
+        _items[remote.key] = remote.copyWith(quantity: qty);
+      }
+    }
+  }
+
+  /// Reset guard merge — dipanggil dari MemberStore.logout() supaya login
+  /// berikutnya (bisa akun berbeda) melakukan merge lagi.
+  void resetLoginMergeGuard() {
+    _mergedThisSession = false;
   }
 
   Future<void> _persist() async {

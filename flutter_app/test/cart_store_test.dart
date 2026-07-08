@@ -142,4 +142,36 @@ void main() {
     expect(fake.replaceCallCount, greaterThanOrEqualTo(1));
     expect(store.pendingSync, false);
   });
+
+  test('loadFromServer merge union: qty dijumlahkan, item server-only masuk', () async {
+    final fake = _FakeCartService()
+      ..remote = [
+        _item('A', quantity: 3, stock: 10),
+        _item('B', quantity: 1, stock: 10),
+      ];
+    final store = CartStore.forTest(service: fake, isLoggedIn: () => true);
+    addTearDown(store.dispose);
+
+    await store.addItem(_item('A', quantity: 2, stock: 10)); // lokal A=2
+
+    await store.loadFromServer();
+
+    expect(store.quantityFor('A'), 5); // 2 lokal + 3 server
+    expect(store.quantityFor('B'), 1); // server-only ikut masuk
+  });
+
+  test('loadFromServer idempoten dalam satu sesi: panggil 2x tidak menggandakan', () async {
+    final fake = _FakeCartService()
+      ..remote = [_item('A', quantity: 3, stock: 10)];
+    final store = CartStore.forTest(service: fake, isLoggedIn: () => true);
+    addTearDown(store.dispose);
+
+    await store.addItem(_item('A', quantity: 2, stock: 10));
+
+    await store.loadFromServer();
+    await store.loadFromServer(); // panggilan ke-2 harus di-skip
+
+    expect(store.quantityFor('A'), 5); // bukan 8
+    expect(store.mergedThisSession, true);
+  });
 }
