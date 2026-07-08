@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/chat_message.dart';
 import '../services/api_client.dart';
+import '../services/app_analytics.dart';
 import '../services/chat_message_merge.dart';
 import '../services/chat_service.dart';
 import '../services/push_notification_service.dart';
@@ -96,6 +97,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// Entry dibersihkan begitu versi server pesan itu direkonsiliasi
   /// (lihat `_mergeIncoming`) — tidak pernah leak tak terbatas.
   final Map<String, String> _pendingImagePaths = {};
+
+  /// Teks PERSIS pesan sistem auto-reopen — HARUS sama persis dgn
+  /// `REOPEN_TEXT` di `lib/chat/auto-effects.ts` (repo proxy Natalo). Dipakai
+  /// [_logReopenEvents] (analitik `chat_reopened`, spec §11).
+  static const String _reopenSystemText = 'Percakapan dibuka kembali.';
+
+  /// Id server pesan reopen yang analitiknya SUDAH dicatat sesi ini — cegah
+  /// dobel-hitung (lihat docstring [_logReopenEvents]).
+  final Set<String> _loggedReopenMessageIds = {};
 
   String? _chatId;
   bool _loading = true;
@@ -255,6 +265,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// pesan baru.
   void _mergeIncoming(List<ChatMessage> incoming) {
     if (incoming.isEmpty) return;
+    _logReopenEvents(incoming);
     final merged = mergeChatMessages(_messages, incoming);
     setState(() {
       _messages
@@ -264,6 +275,30 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     for (final s in incoming) {
       final id = s.clientMsgId;
       if (id != null) _pendingImagePaths.remove(id);
+    }
+  }
+
+  /// Analitik `chat_reopened` (spec §11) — fire saat customer MENERIMA pesan
+  /// sistem auto-reopen. Marker = teks PERSIS `REOPEN_TEXT` di
+  /// `lib/chat/auto-effects.ts` (repo Natalo proxy, `autoReopenIfResolved`):
+  /// `senderRole: 'system', type: 'system', text: 'Percakapan dibuka
+  /// kembali.', auto: true`. Cocokkan `type == system` + teks persis (bukan
+  /// `startsWith`/`contains` — teks itu konstanta stabil, exact match lebih
+  /// aman dari false-positive dgn catatan sistem lain kelak).
+  ///
+  /// Dipanggil HANYA dari [_mergeIncoming] (jalur poll/wake/pull-to-refresh)
+  /// — SENGAJA TIDAK dari `_loadMessages` (initial history load pas buka
+  /// room), supaya reopen LAMA yang sudah "diterima" sebelum sesi ini dibuka
+  /// tak menghasilkan event analitik palsu tiap kali user buka ulang room.
+  /// Guard [_loggedReopenMessageIds] per `id` server — cegah dobel-hitung
+  /// kalau pesan yang sama terlihat lagi (mis. pull-to-refresh drain ulang
+  /// dari awal thread, atau poll tick overlap) — "sekali per reopen".
+  void _logReopenEvents(List<ChatMessage> incoming) {
+    for (final m in incoming) {
+      if (m.type != ChatMsgType.system) continue;
+      if (m.text != _reopenSystemText) continue;
+      if (!_loggedReopenMessageIds.add(m.id)) continue;
+      AppAnalytics.logEvent('chat_reopened');
     }
   }
 
@@ -467,6 +502,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       );
       if (!mounted) return;
       setState(() => _replaceStatus(clientMsgId, ChatSendStatus.sent));
+      // Analitik — funnel MVP chat (spec §11): SUKSES kirim saja (bukan
+      // optimistic add, bukan gagal) — fire-and-forget, tak pernah
+      // menyentuh alur kirim/retry.
+      AppAnalytics.logEvent('customer_message_sent', {'type': 'text'});
     } on ApiException catch (e) {
       if (kDebugMode) debugPrint('[ChatRoomScreen] sendText gagal: $e');
       if (!mounted) return;
@@ -522,6 +561,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       }
       if (!mounted) return;
       setState(() => _replaceStatus(clientMsgId, ChatSendStatus.sent));
+      // Analitik — retry yang berhasil TETAP dihitung "kirim sukses" (pesan
+      // memang benar-benar terkirim, percobaan pertama cuma gagal secara
+      // network) — simetris dgn `_onSendText`/`_onAttachPhoto`.
+      AppAnalytics.logEvent('customer_message_sent', {
+        'type': message.type == ChatMsgType.image ? 'image' : 'text',
+      });
     } on ApiException catch (e) {
       if (kDebugMode) debugPrint('[ChatRoomScreen] retry gagal: $e');
       if (!mounted) return;
@@ -572,6 +617,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       await chatService.sendImage(compressedPath, clientMsgId: clientMsgId);
       if (!mounted) return;
       setState(() => _replaceStatus(clientMsgId, ChatSendStatus.sent));
+      // Analitik — funnel MVP chat (spec §11): SUKSES kirim saja.
+      AppAnalytics.logEvent('customer_message_sent', {'type': 'image'});
     } on ApiException catch (e) {
       if (kDebugMode) debugPrint('[ChatRoomScreen] sendImage gagal: $e');
       if (!mounted) return;

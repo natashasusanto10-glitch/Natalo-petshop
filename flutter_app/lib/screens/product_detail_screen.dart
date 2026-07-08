@@ -517,15 +517,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ),
           AppHeaderIconButton(
             tooltip: 'Tanya Produk Ini',
-            onPressed: () => Navigator.pushNamed(
-              context,
-              '/chat',
-              arguments: {
-                'type': 'product',
-                'productId': product.id,
-                'slug': product.slug,
-              },
-            ),
+            onPressed: () {
+              // Analitik — funnel MVP chat (spec §11): entry chat DARI
+              // halaman produk (beda dgn tombol chat generik di header lain
+              // yg tak punya productContext). Fire-and-forget, tak pernah
+              // block navigasi (idiom sama dgn `home_screen.dart._submit`).
+              AppAnalytics.logEvent('chat_opened_from_product', {
+                'product_id': product.id,
+              });
+              Navigator.pushNamed(
+                context,
+                '/chat',
+                arguments: {
+                  'type': 'product',
+                  'productId': product.id,
+                  'slug': product.slug,
+                },
+              );
+            },
             child: const Icon(Icons.chat_bubble_outline_rounded, size: 24),
           ),
           const AppCartButton(),

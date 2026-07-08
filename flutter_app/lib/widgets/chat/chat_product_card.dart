@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/chat_message.dart';
+import '../../services/app_analytics.dart';
 import '../../services/product_service.dart';
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
@@ -68,6 +69,15 @@ class _ChatProductCardState extends State<ChatProductCard> {
 
   Future<void> _openDetail() async {
     if (_loading) return;
+    // Analitik — funnel MVP chat (spec §11): tap "Lihat Produk" DI KARTU
+    // PRODUK yg dibagikan staff. Fire di sini (bukan di `openChatProductDetail`
+    // yg juga dipakai `ChatContextChip`/`chat_bubble.dart`) supaya tap chip
+    // konteks produk (UI beda) tak ikut kehitung sbg event kartu ini.
+    // Fire on tap (bukan nunggu fetch produk sukses) — event ini melacak
+    // intent klik, bukan hasil navigasi.
+    AppAnalytics.logEvent('product_card_opened', {
+      'product_id': widget.product.productId,
+    });
     setState(() => _loading = true);
     await openChatProductDetail(
       context,
