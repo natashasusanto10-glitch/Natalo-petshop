@@ -18,6 +18,7 @@ import '../utils/chrome_autohide.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/animated_counter.dart';
+import '../widgets/cart_checkout_pill.dart';
 import '../widgets/cart_scroll_view.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_product_image.dart';
@@ -74,6 +75,10 @@ class _CartScreenState extends State<CartScreen>
   late final Animation<double> _chromeAnim;
   // Slide untuk overlay baris atas: shown = Offset.zero, hidden = geser ke atas.
   late final Animation<Offset> _chromeSlideAnim;
+  // Pil checkout = kebalikan chrome: muncul saat chrome terlipat. Satu
+  // controller yang sama → morph serempak satu napas, tanpa animasi liar.
+  late final Animation<double> _pillAnim;
+  late final Animation<Offset> _pillSlideAnim;
   Timer? _chromeIdleTimer;
   bool _chromeVisible = true;
   List<Product> _recentlyViewed = const [];
@@ -128,6 +133,12 @@ class _CartScreenState extends State<CartScreen>
       begin: const Offset(0, -1),
       end: Offset.zero,
     ).animate(_chromeAnim);
+    _pillAnim = ReverseAnimation(_chromeAnim);
+    // Slide halus dari bawah TANPA overshoot (easeInOutCubic dari parent).
+    _pillSlideAnim = Tween<Offset>(
+      begin: const Offset(0, 0.35),
+      end: Offset.zero,
+    ).animate(_pillAnim);
     _loadRecentlyViewed();
     _loadBossProducts();
     _scrollController.addListener(_onCartScroll);
@@ -326,12 +337,15 @@ class _CartScreenState extends State<CartScreen>
     }
   }
 
-  // ── Auto-hide chrome (drag-driven) ──
+  // ── Auto-hide chrome (drag-driven, condense-pill) ──
   bool _onChromeScroll(ScrollNotification notification) {
     // Hanya bereaksi ke drag USER (dragDetails != null) — jumpTo anchor awal &
     // scroll programatik lain tak boleh salah-sembunyikan chrome.
     if (notification is ScrollUpdateNotification &&
         notification.dragDetails != null) {
+      // Jari masih gerak → batalkan reveal yang mungkin ter-arm; chrome tidak
+      // boleh mengembang selama jari di layar (aturan finger-up).
+      _chromeIdleTimer?.cancel();
       final metrics = notification.metrics;
       final action = chromeActionForScroll(
         scrollDelta: notification.scrollDelta ?? 0,
@@ -343,8 +357,10 @@ class _CartScreenState extends State<CartScreen>
       if (action == ChromeAction.hide) _setChromeVisible(false);
       if (action == ChromeAction.show) _setChromeVisible(true);
     }
-    if (notification is ScrollUpdateNotification ||
-        notification is ScrollEndNotification) {
+    // ScrollEnd = drag dilepas / ballistic selesai → jari SUDAH diangkat.
+    // Drag yang ditahan diam TIDAK memicu End → chrome tetap terlipat
+    // selama jari nempel, persis aturan lama onPointerUp.
+    if (notification is ScrollEndNotification) {
       _armIdleReveal();
     }
     return false;
@@ -949,6 +965,38 @@ class _CartScreenState extends State<CartScreen>
                           ),
                         ),
                       ),
+                      // Pil checkout melayang — muncul saat chrome terlipat
+                      // (ReverseAnimation). CTA + total + hemat tidak pernah
+                      // hilang dari layar. Tap seluruh pil = checkout.
+                      if (_selectedItems.isNotEmpty)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 12,
+                          child: IgnorePointer(
+                            ignoring: _chromeVisible,
+                            child: SlideTransition(
+                              position: _pillSlideAnim,
+                              child: FadeTransition(
+                                opacity: _pillAnim,
+                                child: Center(
+                                  child: CartCheckoutPill(
+                                    quantity: _selectedQuantity,
+                                    totalText: formatRupiah(_grandTotal),
+                                    savingText: _totalVoucherSaving > 0
+                                        ? 'Hemat ${formatRupiah(_totalVoucherSaving)}'
+                                        : null,
+                                    voucherActive:
+                                        _appliedDiscountVoucher != null ||
+                                            _appliedLoyaltyVoucher != null ||
+                                            _appliedShippingVoucher,
+                                    onTap: _goToCheckout,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -972,12 +1020,18 @@ class _CartScreenState extends State<CartScreen>
                             },
                     ),
                   ),
-                _CartSummaryBar(
-                  grandTotal: _grandTotal,
-                  totalSaving: _totalVoucherSaving,
-                  selectedQuantity: _selectedQuantity,
-                  disabled: _selectedItems.isEmpty,
-                  onCheckout: _goToCheckout,
+                // Summary bar ikut melipat bersama voucher bar — CTA checkout
+                // pindah ke pil melayang selama scroll (pola condense).
+                SizeTransition(
+                  sizeFactor: _chromeAnim,
+                  axisAlignment: 1,
+                  child: _CartSummaryBar(
+                    grandTotal: _grandTotal,
+                    totalSaving: _totalVoucherSaving,
+                    selectedQuantity: _selectedQuantity,
+                    disabled: _selectedItems.isEmpty,
+                    onCheckout: _goToCheckout,
+                  ),
                 ),
               ],
             ),
