@@ -22,6 +22,7 @@ import 'product_service.dart';
 ///   /cart, /keranjang      → /cart
 ///   /wishlist              → /wishlist
 ///   /u/<username>          → public profile (PublicProfileScreen)
+///   /chat, /chat/<chatId>  → /chat (room spesifik kalau ada chatId)
 class DeepLinkService {
   DeepLinkService._();
 
@@ -76,6 +77,16 @@ class DeepLinkService {
         break;
       case 'wishlist':
         nav.pushNamed('/wishlist');
+        break;
+      case 'chat':
+        // /chat/<chatId> → buka room spesifik (dipakai push notif chat
+        // "balasan baru dari staff"). /chat saja → resolve room milik
+        // sesi login di server (chatId null).
+        if (segments.length > 1 && segments[1].isNotEmpty) {
+          nav.pushNamed('/chat', arguments: segments[1]);
+        } else {
+          nav.pushNamed('/chat');
+        }
         break;
       case 'akun':
         if (segments.length > 1 && segments[1] == 'pesanan') {

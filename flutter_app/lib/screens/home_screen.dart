@@ -27,6 +27,7 @@ import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../utils/in_app_browser.dart';
 import '../widgets/app_cart_button.dart';
+import '../widgets/app_chat_button.dart';
 import '../widgets/app_notification_button.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/brand_exclusive_badge.dart';
@@ -1171,6 +1172,7 @@ class _HomeHeader extends StatelessWidget {
                 ),
               ),
               const AppNotificationButton(),
+              const AppChatButton(),
               const AppCartButton(),
             ],
           ),

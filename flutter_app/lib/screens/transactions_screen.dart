@@ -9,6 +9,7 @@ import '../state/member_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_cart_button.dart';
+import '../widgets/app_chat_button.dart';
 import '../widgets/app_notification_button.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
@@ -122,6 +123,8 @@ class _TransactionsHeader extends StatelessWidget {
             ),
           ),
           const AppNotificationButton(),
+          const SizedBox(width: 2),
+          const AppChatButton(),
           const SizedBox(width: 2),
           const AppCartButton(),
         ],

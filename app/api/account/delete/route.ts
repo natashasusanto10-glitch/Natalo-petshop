@@ -49,8 +49,8 @@ export async function POST(request: Request) {
       await tx.voucher.deleteMany({ where: { userId } });
       await tx.passwordResetToken.deleteMany({ where: { userId } });
 
-      // The user delete cascades to: addresses, favorites, pets, cartItems, chatThreads,
-      // chatMessages (via thread), reviewReplies of reviews already removed above.
+      // The user delete cascades to: addresses, favorites, pets, cartItems,
+      // reviewReplies of reviews already removed above.
       await tx.user.delete({ where: { id: userId } });
     });
   } catch (error) {

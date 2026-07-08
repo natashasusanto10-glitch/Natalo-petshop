@@ -20,6 +20,7 @@ import '../services/report_service.dart';
 import '../services/review_service.dart';
 import '../services/stock_notification_service.dart';
 import '../state/cart_store.dart';
+import '../state/chat_store.dart';
 import '../state/member_store.dart';
 import '../state/recently_viewed_store.dart';
 import 'checkout_screen.dart';
@@ -535,6 +536,52 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             // (aslinya untuk baris aksi Feed) dengan stroke 2.3 → tampil
             // jauh lebih tebal dari ikon Material di sebelahnya.
             child: const Icon(Icons.ios_share_rounded, size: 24),
+          ),
+          // F12 — gate entry ini dgn kill-switch chat, sama seperti
+          // `AppChatButton` (widgets/app_chat_button.dart) di header layar
+          // lain: sembunyikan sepenuhnya (`SizedBox.shrink()`) saat
+          // `!chatStore.chatEnabled`, bukan tetap tampil lalu membawa user
+          // ke room chat mati (banner pemeliharaan). `AnimatedBuilder`
+          // dibungkus di sini (bukan extract widget terpisah) krn ini
+          // satu-satunya konsumen kill-switch di layar ini. Analitik
+          // `chat_opened_from_product` cuma pernah fire dari `onPressed` di
+          // bawah — begitu tombol hilang saat maintenance, event ini
+          // otomatis tak pernah fire lagi utk kondisi itu (tak perlu guard
+          // tambahan di dalam `onPressed`).
+          AnimatedBuilder(
+            animation: chatStore,
+            builder: (context, _) {
+              if (!chatStore.chatEnabled) return const SizedBox.shrink();
+              return AppHeaderIconButton(
+                tooltip: 'Tanya Produk Ini',
+                onPressed: () {
+                  // Analitik — funnel MVP chat (spec §11): entry chat DARI
+                  // halaman produk (beda dgn tombol chat generik di header
+                  // lain yg tak punya productContext). Fire-and-forget, tak
+                  // pernah block navigasi (idiom sama dgn
+                  // `home_screen.dart._submit`). Guest (belum login) TETAP
+                  // dihitung di sini walau ujungnya mendarat di prompt
+                  // login (bukan room chat) — tap ini tetap intent "buka
+                  // chat dari produk" yang genuine, beda dgn kondisi
+                  // maintenance yang sudah digate di atas (tombol tak
+                  // pernah muncul, jadi tak pernah bisa di-tap).
+                  AppAnalytics.logEvent('chat_opened_from_product', {
+                    'product_id': product.id,
+                  });
+                  Navigator.pushNamed(
+                    context,
+                    '/chat',
+                    arguments: {
+                      'type': 'product',
+                      'productId': product.id,
+                      'slug': product.slug,
+                    },
+                  );
+                },
+                child:
+                    const Icon(Icons.chat_bubble_outline_rounded, size: 24),
+              );
+            },
           ),
           const AppCartButton(),
         ],

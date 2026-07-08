@@ -17,6 +17,7 @@ import 'screens/all_brands_screen.dart';
 import 'screens/announcement_detail_screen.dart';
 import 'screens/cart_screen.dart';
 import 'screens/checkout_screen.dart';
+import 'screens/chat_room_screen.dart';
 import 'screens/feed_screen.dart';
 import 'screens/help_center_screen.dart';
 import 'screens/home_screen.dart';
@@ -324,6 +325,19 @@ class NataloPetshopApp extends StatelessWidget {
               '/checkout' when settings.arguments is List<CartItem> =>
                 CheckoutScreen(items: settings.arguments as List<CartItem>),
               '/checkout' => const CheckoutScreen(),
+              // Rute chat customer<->staff. Arguments tolerant: null (resolve
+              // room milik sesi login di server), String (chatId — deep link
+              // FCM ke room spesifik), atau Map (productContext dari tombol
+              // chat di detail produk).
+              '/chat' when settings.arguments is String => ChatRoomScreen(
+                  chatId: settings.arguments as String,
+                ),
+              '/chat' when settings.arguments is Map<String, dynamic> =>
+                ChatRoomScreen(
+                  productContext:
+                      settings.arguments as Map<String, dynamic>,
+                ),
+              '/chat' => const ChatRoomScreen(),
               '/notifications' => const NotificationsScreen(),
               '/announcement-detail'
                   when settings.arguments is AppNotification =>

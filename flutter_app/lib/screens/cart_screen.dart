@@ -18,6 +18,7 @@ import '../utils/chrome_autohide.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/animated_counter.dart';
+import '../widgets/app_chat_button.dart';
 import '../widgets/cart_checkout_pill.dart';
 import '../widgets/cart_scroll_view.dart';
 import '../widgets/app_toast.dart';
@@ -828,6 +829,7 @@ class _CartScreenState extends State<CartScreen>
             onPressed: () => Navigator.pushNamed(context, '/wishlist'),
             icon: const Icon(Icons.favorite_border_rounded),
           ),
+          const AppChatButton(),
         ],
       ),
       body: AnimatedBuilder(

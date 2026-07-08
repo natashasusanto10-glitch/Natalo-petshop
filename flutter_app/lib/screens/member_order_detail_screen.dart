@@ -13,6 +13,7 @@ import '../services/product_service.dart';
 import '../state/cart_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_chat_button.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
@@ -414,6 +415,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
         return Scaffold(
           appBar: AppBar(
             title: const Text('Detail Pesanan'),
+            actions: const [AppChatButton()],
           ),
           body: NataloPawRefreshIndicator(
             onRefresh: _refreshOrder,
