@@ -36,4 +36,31 @@ void main() {
     expect(m.imageUrl, 'https://x/y.jpg');
     expect(m.sender, ChatSender.customer);
   });
+
+  // Regression: wire pakai snake_case (product_context/order_context — cek
+  // lib/chat/core.ts), enum Dart camelCase. Mapping ini logika paling
+  // berisiko di task ini.
+  test('tipe context snake_case -> enum camelCase', () {
+    final pc = ChatMessage.fromJson({
+      'id': 'm5', 'senderRole': 'staff', 'type': 'product_context',
+      'createdAt': 5,
+    });
+    expect(pc.type, ChatMsgType.productContext);
+
+    final oc = ChatMessage.fromJson({
+      'id': 'm6', 'senderRole': 'staff', 'type': 'order_context',
+      'createdAt': 6,
+    });
+    expect(oc.type, ChatMsgType.orderContext);
+  });
+
+  // Defensif (FIX 1): image.url ada tapi bukan String (payload rusak) ->
+  // null, BUKAN throw.
+  test('image url bukan string -> null (tanpa throw)', () {
+    final m = ChatMessage.fromJson({
+      'id': 'm7', 'senderRole': 'staff', 'type': 'image',
+      'image': {'url': 123}, 'createdAt': 7,
+    });
+    expect(m.imageUrl, isNull);
+  });
 }

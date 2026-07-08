@@ -165,8 +165,13 @@ class ChatMessage {
   });
 
   /// URL gambar dari sub-objek `image.url`. Null kalau bukan pesan gambar
-  /// atau `image`/`image.url` hilang.
-  String? get imageUrl => image?['url'] as String?;
+  /// atau `image`/`image.url` hilang. Baca toleran: `url` yang ada tapi
+  /// bukan String (mis. number/objek dari payload rusak) -> null, JANGAN
+  /// throw (konsisten dgn filosofi parse toleran file ini).
+  String? get imageUrl {
+    final u = image?['url'];
+    return u is String ? u : null;
+  }
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     final productRaw = json['product'];
