@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/member_profile.dart';
 import '../services/api_client.dart';
 import '../services/member_service.dart';
+import 'cart_store.dart';
 
 /// Member auth + profile store. Setelah login success, cache profile +
 /// session token ke disk. Saat app start, load + verify dengan server di
@@ -164,6 +165,10 @@ class MemberStore extends ChangeNotifier {
       }
     } catch (_) {}
     hydrateFromApi();
+    // Merge cart server (device lain) ke local + push balik hasil union.
+    // Guard idempotensi di dalam loadFromServer (aman dipanggil tiap
+    // setSession, termasuk update profil).
+    cartStore.loadFromServer();
   }
 
   Future<void> logout() async {
@@ -171,6 +176,7 @@ class MemberStore extends ChangeNotifier {
     _sessionToken = null;
     _addresses = const [];
     _orders = const [];
+    cartStore.resetLoginMergeGuard();
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
