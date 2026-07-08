@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
 import '../services/cart_service.dart';
+import 'dart:math' as math;
+import '../utils/read_only_mode.dart';
 import 'member_store.dart';
 
 int effectiveCartVariantPrice(Product product, ProductVariant variant) {
@@ -49,14 +51,42 @@ String? cartVariantOptionLabel(Product product, ProductVariant variant) {
 /// Local mutation langsung notifyListeners + persist disk — server sync
 /// fire-and-forget background, gagal silent (cart tetap consistent di lokal).
 class CartStore extends ChangeNotifier {
-  CartStore._();
+  CartStore._({CartService? service, bool Function()? isLoggedIn})
+      : _service = service ?? cartService,
+        _isLoggedIn = isLoggedIn ?? _defaultIsLoggedIn;
+
+  /// Constructor test-only — inject fake CartService + seam isLoggedIn
+  /// supaya logika sync/merge dapat diuji tanpa jaringan / global state.
+  @visibleForTesting
+  factory CartStore.forTest({
+    CartService? service,
+    bool Function()? isLoggedIn,
+  }) =>
+      CartStore._(service: service, isLoggedIn: isLoggedIn);
+
+  static bool _defaultIsLoggedIn() => memberStore.isLoggedIn;
+
+  final CartService _service;
+  final bool Function() _isLoggedIn;
 
   static const _key = 'cart_items_v2';
   static const Duration _remoteSyncDebounce = Duration(milliseconds: 800);
+  static const _pendingKey = 'cart_pending_sync_v1';
 
   final Map<String, CartItem> _items = {};
 
   Timer? _remoteSyncTimer;
+  Timer? _retryTimer;
+  int _retryAttempt = 0;
+
+  /// Ada perubahan lokal yang belum dikonfirmasi sampai ke server.
+  bool _pendingSync = false;
+
+  @visibleForTesting
+  bool get pendingSync => _pendingSync;
+
+  @visibleForTesting
+  bool get hasPendingRetry => _retryTimer?.isActive ?? false;
 
   List<CartItem> get items => _items.values.toList(growable: false);
   int get count => _items.values.fold(0, (sum, it) => sum + it.quantity);
@@ -189,7 +219,7 @@ class CartStore extends ChangeNotifier {
     _items[item.key] = base.copyWith(quantity: capped);
     notifyListeners();
     await _persist();
-    _scheduleRemoteSync();
+    _markDirtyAndSync();
     return clamped;
   }
 
@@ -201,7 +231,7 @@ class CartStore extends ChangeNotifier {
       _items.remove(key);
       notifyListeners();
       await _persist();
-      _scheduleRemoteSync();
+      _markDirtyAndSync();
       return false;
     }
     final stock = item.effectiveStock;
@@ -210,7 +240,7 @@ class CartStore extends ChangeNotifier {
     _items[key] = item.copyWith(quantity: capped);
     notifyListeners();
     await _persist();
-    _scheduleRemoteSync();
+    _markDirtyAndSync();
     return clamped;
   }
 
@@ -218,7 +248,7 @@ class CartStore extends ChangeNotifier {
     if (_items.remove(key) != null) {
       notifyListeners();
       await _persist();
-      _scheduleRemoteSync();
+      _markDirtyAndSync();
     }
   }
 
@@ -240,7 +270,7 @@ class CartStore extends ChangeNotifier {
     }
     notifyListeners();
     await _persist();
-    _scheduleRemoteSync();
+    _markDirtyAndSync();
   }
 
   Future<void> clear() async {
@@ -248,7 +278,7 @@ class CartStore extends ChangeNotifier {
     _items.clear();
     notifyListeners();
     await _persist();
-    _scheduleRemoteSync();
+    _markDirtyAndSync();
   }
 
   /// Sync local cart ke server lewat `PUT /api/cart`.
@@ -260,23 +290,57 @@ class CartStore extends ChangeNotifier {
   /// Untuk batch mutation rapid (mis. user tap +/- qty cepat), pakai
   /// [_scheduleRemoteSync] yang debounce 800ms instead of langsung call ini.
   Future<void> syncToServer() async {
-    if (!memberStore.isLoggedIn) {
+    if (!_isLoggedIn()) {
       if (kDebugMode) {
         debugPrint('[CartStore.syncToServer] skip — not logged in');
       }
       return;
     }
     try {
-      await cartService.replaceCart(_items.values.toList(growable: false));
+      await _service.replaceCart(_items.values.toList(growable: false));
+      _pendingSync = false;
+      _retryAttempt = 0;
+      _retryTimer?.cancel();
+      await _persistPendingFlag();
       if (kDebugMode) {
         debugPrint('[CartStore.syncToServer] OK — ${_items.length} items');
       }
-    } catch (e) {
-      // Network / 500 — silent. Local state tetap valid, retry next mutation.
+    } on ReadOnlyModeException catch (e) {
+      // Read-only bukan kegagalan sementara — jangan retry loop. Flag tetap
+      // true supaya pemicu lifecycle/mutation berikutnya coba lagi.
       if (kDebugMode) {
-        debugPrint('[CartStore.syncToServer] failed: $e');
+        debugPrint('[CartStore.syncToServer] read-only, skip retry: $e');
       }
+    } catch (e) {
+      // Network / 5xx — flag tetap true, jadwalkan retry backoff.
+      if (kDebugMode) {
+        debugPrint('[CartStore.syncToServer] failed, will retry: $e');
+      }
+      _scheduleRetry();
     }
+  }
+
+  Future<void> _persistPendingFlag() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_pendingKey, _pendingSync);
+    } catch (_) {}
+  }
+
+  /// Set flag dirty + persist, lalu debounce sync (menggantikan panggilan
+  /// langsung ke [_scheduleRemoteSync] dari mutation).
+  void _markDirtyAndSync() {
+    _pendingSync = true;
+    _persistPendingFlag();
+    _scheduleRemoteSync();
+  }
+
+  /// Retry backoff: 5s → 10s → 20s → 40s → 60s (cap 60s), reset saat sukses.
+  void _scheduleRetry() {
+    _retryTimer?.cancel();
+    final delaySeconds = math.min(60, 5 * math.pow(2, _retryAttempt)).toInt();
+    _retryAttempt++;
+    _retryTimer = Timer(Duration(seconds: delaySeconds), syncToServer);
   }
 
   /// Schedule debounced remote sync — dipanggil setelah tiap mutation.
@@ -290,6 +354,7 @@ class CartStore extends ChangeNotifier {
   @override
   void dispose() {
     _remoteSyncTimer?.cancel();
+    _retryTimer?.cancel();
     super.dispose();
   }
 }
