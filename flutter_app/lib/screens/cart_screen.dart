@@ -81,6 +81,10 @@ class _CartScreenState extends State<CartScreen>
   late final Animation<Offset> _pillSlideAnim;
   Timer? _chromeIdleTimer;
   bool _chromeVisible = true;
+  // Jari sedang menyentuh layar? Reveal chrome digate ini: mengembang HANYA
+  // saat konten berhenti DAN jari lepas — jadi fling (jari lepas tapi konten
+  // masih meluncur) tak memicu mengembang di tengah luncuran.
+  bool _pointerDown = false;
   List<Product> _recentlyViewed = const [];
   List<Product> _bossProducts = const [];
   bool _loadingRecentlyViewed = false;
@@ -341,28 +345,28 @@ class _CartScreenState extends State<CartScreen>
 
   // ── Auto-hide chrome (drag-driven, condense-pill) ──
   bool _onChromeScroll(ScrollNotification notification) {
-    // Hanya bereaksi ke drag USER (dragDetails != null) — jumpTo anchor awal &
-    // scroll programatik lain tak boleh salah-sembunyikan chrome.
-    if (notification is ScrollUpdateNotification &&
-        notification.dragDetails != null) {
-      // Jari masih gerak → batalkan reveal yang mungkin ter-arm; chrome tidak
-      // boleh mengembang selama jari di layar (aturan finger-up).
-      _chromeIdleTimer?.cancel();
-      final metrics = notification.metrics;
-      final action = chromeActionForScroll(
-        scrollDelta: notification.scrollDelta ?? 0,
-        pixels: metrics.pixels,
-        minExtent: metrics.minScrollExtent,
-        maxExtent: metrics.maxScrollExtent,
-        currentlyVisible: _chromeVisible,
-      );
-      if (action == ChromeAction.hide) _setChromeVisible(false);
-      if (action == ChromeAction.show) _setChromeVisible(true);
+    if (notification is ScrollUpdateNotification) {
+      // Keputusan HIDE/SHOW hanya dari drag USER (dragDetails != null) — jumpTo
+      // anchor awal & scroll programatik lain tak boleh salah-sembunyikan.
+      if (notification.dragDetails != null) {
+        final metrics = notification.metrics;
+        final action = chromeActionForScroll(
+          scrollDelta: notification.scrollDelta ?? 0,
+          pixels: metrics.pixels,
+          minExtent: metrics.minScrollExtent,
+          maxExtent: metrics.maxScrollExtent,
+          currentlyVisible: _chromeVisible,
+        );
+        if (action == ChromeAction.hide) _setChromeVisible(false);
+        if (action == ChromeAction.show) _setChromeVisible(true);
+      }
+      // Debounce reveal ke "konten BERHENTI": tiap update scroll (drag MAUPUN
+      // ballistic/fling) me-reset timer. Selama konten masih meluncur, update
+      // terus masuk → timer tak pernah fire di tengah luncuran. Baru setelah
+      // konten benar-benar diam → 400ms → mengembang. Callback tetap digate
+      // !_pointerDown (lihat _armIdleReveal) → tetap patuh aturan "jari lepas".
+      _armIdleReveal();
     }
-    // Reveal TIDAK di-arm dari sini. ScrollEndNotification juga ter-fire saat
-    // fling di-"tangkap" jari (transisi Ballistic→Hold memanggil didEndScroll)
-    // PADAHAL jari masih nempel → akan salah-mengembang chrome. Reveal murni
-    // pointer-up (Listener onPointerUp di build) supaya benar "jari lepas".
     return false;
   }
 
@@ -376,11 +380,14 @@ class _CartScreenState extends State<CartScreen>
     }
   }
 
-  // Setelah scroll berhenti sejenak, chrome muncul lagi (pola Tokopedia).
+  // Setelah scroll benar-benar berhenti (tak ada update lagi) selama 400ms,
+  // chrome muncul lagi — TAPI hanya kalau jari sudah lepas (!_pointerDown).
+  // Dicek saat timer fire (bukan saat event) → bebas dari masalah urutan
+  // event (mis. tangkap-fling), sekaligus jaga "jari di layar = diam".
   void _armIdleReveal() {
     _chromeIdleTimer?.cancel();
     _chromeIdleTimer = Timer(const Duration(milliseconds: 400), () {
-      if (mounted) _setChromeVisible(true);
+      if (mounted && !_pointerDown) _setChromeVisible(true);
     });
   }
 
@@ -857,14 +864,24 @@ class _CartScreenState extends State<CartScreen>
           // estimasi lazy — biang gagal v165–v170). Baris "N terpilih" +
           // voucher bar = sibling persisten (Tahap 2: collapsing auto-hide).
           return Listener(
-            // Reveal chrome HANYA saat jari benar-benar diangkat (onPointerUp).
-            // onPointerDown membatalkan reveal tertunda supaya menyentuh layar
-            // lagi tak memicu mengembang. Memulihkan perilaku lama onPointerUp —
-            // beda dari ScrollEnd yang bisa fire saat jari masih nempel (mis.
-            // menangkap fling), yang akan langgar aturan "jari di layar = diam".
-            onPointerDown: (_) => _chromeIdleTimer?.cancel(),
-            onPointerUp: (_) => _armIdleReveal(),
-            onPointerCancel: (_) => _armIdleReveal(),
+            // Lacak status jari untuk gate reveal. onPointerDown menandai jari
+            // nempel + batalkan reveal tertunda (sentuh lagi tak memicu
+            // mengembang). onPointerUp/Cancel menandai jari lepas + arm reveal.
+            // Reveal aktual (di _armIdleReveal) baru jalan kalau konten sudah
+            // berhenti (debounce di _onChromeScroll) DAN jari lepas → fling yang
+            // masih meluncur tak mengembang, & jari nempel-diam juga tak.
+            onPointerDown: (_) {
+              _pointerDown = true;
+              _chromeIdleTimer?.cancel();
+            },
+            onPointerUp: (_) {
+              _pointerDown = false;
+              _armIdleReveal();
+            },
+            onPointerCancel: (_) {
+              _pointerDown = false;
+              _armIdleReveal();
+            },
             child: NotificationListener<ScrollNotification>(
               onNotification: _onChromeScroll,
               child: Column(
