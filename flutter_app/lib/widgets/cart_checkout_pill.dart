@@ -46,31 +46,39 @@ class CartCheckoutPill extends StatelessWidget {
                 const _VoucherDotIcon(),
                 const SizedBox(width: 10),
               ],
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '$quantity item • $totalText',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  if (savingText != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 1),
-                      child: Text(
-                        savingText!,
-                        style: const TextStyle(
-                          color: _pillSavingPink,
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w800,
-                        ),
+              // Flexible + ellipsis: total Rupiah bisa jutaan & font OS bisa
+              // di-scale besar → tanpa ini Row overflow (garis kuning-hitam).
+              Flexible(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$quantity item • $totalText',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
-                ],
+                    if (savingText != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 1),
+                        child: Text(
+                          savingText!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: _pillSavingPink,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
               const SizedBox(width: 11),
               Container(

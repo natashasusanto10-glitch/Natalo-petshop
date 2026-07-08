@@ -41,6 +41,28 @@ void main() {
     );
   });
 
+  testWidgets('total panjang + lebar sempit → ellipsis, TIDAK overflow',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: SizedBox(
+            width: 220,
+            child: CartCheckoutPill(
+              quantity: 99,
+              totalText: 'Rp 12.999.000',
+              savingText: 'Hemat Rp 3.450.000',
+              voucherActive: true,
+              onTap: () {},
+            ),
+          ),
+        ),
+      ),
+    ));
+    // Overflow RenderFlex akan tercatat sebagai error test → pump sukses = aman.
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('tap seluruh pil memanggil onTap', (tester) async {
     var tapped = 0;
     await tester.pumpWidget(_wrap(CartCheckoutPill(
