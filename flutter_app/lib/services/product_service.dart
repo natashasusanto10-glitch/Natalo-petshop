@@ -323,6 +323,7 @@ class ProductService {
     List<String> viewedIds = const [],
     List<String> excludeIds = const [],
     int limit = 10,
+    String? seed,
   }) async {
     try {
       final data = await apiClient.getJson(
@@ -331,6 +332,7 @@ class ProductService {
           'limit': '$limit',
           if (viewedIds.isNotEmpty) 'viewed': viewedIds.join(','),
           if (excludeIds.isNotEmpty) 'exclude': excludeIds.join(','),
+          if (seed != null && seed.isNotEmpty) 'seed': seed,
         },
       );
       final map = _asMap(data);

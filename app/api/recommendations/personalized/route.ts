@@ -41,6 +41,7 @@ import {
 } from "@/lib/cart-recommendation-products";
 import { attachPublicProductVoucherPreviews } from "@/lib/product-vouchers";
 import { getPurchaseSignals } from "@/lib/purchase-affinity";
+import { orderScoredCandidates, seededShuffle } from "@/lib/recommendation-rotation";
 
 function parseIds(value: string | null) {
   return (value ?? "")
@@ -72,6 +73,8 @@ export async function GET(request: NextRequest) {
   );
   const clientViewIds = parseIds(searchParams.get("viewed"));
   const callerExcludeIds = parseIds(searchParams.get("exclude"));
+  // Seed rotasi per-kunjungan (dari client). Kosong → perilaku deterministik lama.
+  const seed = (searchParams.get("seed") ?? "").trim().slice(0, 64);
   const session = await getSession("CUSTOMER").catch(() => null);
   const userId = session?.sub ?? null;
 
@@ -224,15 +227,23 @@ export async function GET(request: NextRequest) {
     score += Math.min(product.reviewCount, 500) / 500;
     return { product, score };
   });
-  scored.sort((a, b) => b.score - a.score);
+  // Anchor repurchase (time-sensitive "saatnya beli ulang") di depan; sisanya
+  // dirotasi ber-seed dalam tier skor supaya tidak itu-itu saja tiap buka.
+  const ordered = orderScoredCandidates(scored, {
+    seed,
+    isAnchor: (product) => purchaseSignals.repurchaseSignals.has(product.id),
+  });
 
-  const ranked: CartRecommendationProductRow[] = scored
+  const ranked: CartRecommendationProductRow[] = ordered
     .slice(0, limit)
     .map((s) => s.product);
 
   // ─── 7. Cold-start / top-up fallback (popular by reviewCount) ────────
   if (ranked.length < limit) {
+    const need = limit - ranked.length;
     const usedIds = new Set([...excludeArr, ...ranked.map((p) => p.id)]);
+    // Cold-start/top-up: jalur UTAMA untuk katalog kecil. Ambil pool populer
+    // yang lebih lebar lalu shuffle ber-seed → filler pun berputar antar-buka.
     const fallback = await prisma.product.findMany({
       where: cartRecommendationWhere([...usedIds]),
       orderBy: [
@@ -240,10 +251,10 @@ export async function GET(request: NextRequest) {
         { avgRating: "desc" },
         { createdAt: "desc" },
       ],
-      take: limit - ranked.length,
+      take: seed ? Math.max(need * 5, need) : need,
       include: cartRecommendationProductInclude(),
     });
-    ranked.push(...fallback);
+    ranked.push(...seededShuffle(fallback, seed).slice(0, need));
   }
 
   // ─── 8. Serialize + attach repurchase metadata per produk ────────────

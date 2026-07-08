@@ -48,7 +48,7 @@ const _selectionRowHeight = 42.0;
 // Auto-hide chrome collapse — smooth (easeInOut) & sengaja tidak terlalu cepat.
 const _chromeAnimDuration = Duration(milliseconds: 340);
 const _cartBossOpenCountKey = 'natalo_cart_boss_open_count_v1';
-const _cartBossRefreshEvery = 3;
+const _cartBossWindowCount = 6;
 const _shippingVoucherCode = '__shipping_free__';
 
 class CartScreen extends StatefulWidget {
@@ -239,9 +239,13 @@ class _CartScreenState extends State<CartScreen>
       openCount = 1;
     }
 
-    final rotation = (openCount - 1) ~/ _cartBossRefreshEvery;
+    // Katalog: majukan window 8 item tiap buka, siklis (bungkus balik ke 0
+    // setelah _cartBossWindowCount putaran) supaya ekor berputar tanpa offset
+    // tumbuh tak terbatas. Seed di bawah merotasi bagian personalisasi (top).
+    final rotation = (openCount - 1) % _cartBossWindowCount;
     final startOffset = rotation * 8;
     final startCursor = startOffset > 0 ? '$startOffset' : null;
+    final bossSeed = 'boss-$openCount';
     // Layer 1 + Layer 2 paralel — personalized (purchase × view signal) +
     // rotation catalog browse. Tidak ada dependency antara keduanya, jadi
     // bisa di-fire bersamaan. Hemat ~300ms vs sequential await.
@@ -259,6 +263,7 @@ class _CartScreenState extends State<CartScreen>
           viewedIds: viewedIds,
           excludeIds: cartProductIds,
           limit: 8,
+          seed: bossSeed,
         ),
         productService.fetchProductsPage(
           cursor: startCursor,
