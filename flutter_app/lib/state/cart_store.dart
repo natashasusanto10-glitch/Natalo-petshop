@@ -160,6 +160,14 @@ class CartStore extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  // Merge ini UNION murni: TIDAK punya semantik hapus/tombstone.
+  // Konsekuensi: kalau ada penghapusan item lokal yang BELUM sempat ter-sync
+  // ke server (mis. user offline), lalu setSession memicu loadFromServer,
+  // item yang masih ada di server bisa "hidup lagi" (resurrected) ke lokal.
+  // Ini edge sempit — B1 (retry) biasanya sudah menuntaskan penghapusan
+  // sebelum event login, dan union memang perilaku yang diinginkan untuk
+  // multi-device. Didokumentasikan supaya pembaca berikutnya tidak salah
+  // mengira ini bug.
   void _mergeServerCart(List<CartItem> remoteItems) {
     for (final remote in remoteItems) {
       final existing = _items[remote.key];

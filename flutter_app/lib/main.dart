@@ -147,6 +147,10 @@ Future<void> main() async {
   appSettingsStore.initialize();
   // Restore cart dari disk supaya item yang user tambah survive app restart.
   // Match offline-first pattern — cart tetap ada walau tutup app sebelum sync.
+  // PENTING: memberStore.initialize() HARUS dipanggil sebelum baris ini
+  // supaya trigger sync cold-start (kalau flag pending tersimpan) melihat
+  // isLoggedIn == true. Kalau urutan di main() diubah, sync cold-start bisa
+  // diam-diam jadi no-op sampai resume/mutation berikutnya.
   cartStore.loadFromDisk();
   // Daftarkan observer lifecycle cart supaya sync tertunda dicoba ulang
   // saat app kembali ke foreground.
