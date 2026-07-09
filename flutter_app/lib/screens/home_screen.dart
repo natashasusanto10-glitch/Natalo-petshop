@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 import 'package:url_launcher/url_launcher.dart';
@@ -26,6 +25,7 @@ import '../state/trending_placeholder_controller.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../utils/header_collapse.dart';
 import '../utils/in_app_browser.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/app_chat_button.dart';
@@ -72,23 +72,31 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   late final Future<ProductResult> _productsFuture;
   // ── Infinite scroll "Jelajahi Produk Natalo" — match PWA HomeExploreProducts ──
   final ScrollController _scrollController = ScrollController();
-  // Progress collapse header 0→1, digiring dari POSISI SCROLL (bukan
-  // shrinkOffset yang, pada pinned header, mentok di maxExtent−minExtent =
-  // ~8px). Disebar sepanjang _kHeaderCollapseDistance supaya animasi
-  // "besar-kecil" + fade subtitle tidak dijejalkan ke ~8px scroll — dulu
-  // itulah yang membuat transisi terasa "terlalu cepat" (user report).
-  // Header di-repaint TER-SCOPE via ValueListenableBuilder → hanya subtree
-  // header yang rebuild tiap frame scroll, bukan seluruh CustomScrollView.
-  final ValueNotifier<double> _headerCollapse = ValueNotifier<double>(0.0);
+  // ── Collapse header BINER + histeresis (spec collapsing-header Jul 2026) ──
+  // Header expanded (brand row + search 46 + trust marquee) ⇄ collapsed
+  // (SATU baris: search 42 + dock chat+cart). State bool dengan DUA ambang
+  // berbeda supaya tidak flicker saat scroll bolak-balik tipis / bounce iOS:
+  // collapse baru terpicu >72px, expand baru <28px. Bounce iOS (pixels
+  // negatif) tidak pernah menyentuh ambang collapse; Android modern pakai
+  // stretch (pixels berhenti di 0) — dua-duanya aman tanpa cabang platform.
+  //
+  // Snap 260ms jalan sendiri via _headerAnim — listener scroll HANYA toggle
+  // bool, bukan setState/notifier per pixel. Ini menggantikan model progress
+  // kontinu 1:1-jari yang lama (dibalik secara sadar oleh spec baru).
+  late final AnimationController _headerAnim;
+  late final CurvedAnimation _headerCurve;
+  bool _headerCollapsed = false;
 
-  /// Jarak scroll (px) untuk menuntaskan animasi collapse header 0→1.
-  /// Naikkan = lebih lambat/kalem; turunkan = lebih cepat. 64 dipilih dari
-  /// mockup pembanding (terasa 1:1 dengan jari, tidak "lengket").
-  static const double _kHeaderCollapseDistance = 64.0;
+  static const double _kHeaderCollapseAt = 72.0;
+  static const double _kHeaderExpandAt = 28.0;
+  static const Duration _kHeaderSnapDuration = Duration(milliseconds: 260);
+  // Ease-out lembut — match referensi natalo-header-mockup.html.
+  static const Curve _kHeaderSnapCurve = Cubic(0.33, 0.90, 0.25, 1.0);
 
   final List<Product> _exploreProducts = [];
   String? _exploreNextCursor;
@@ -153,6 +161,15 @@ class _HomeScreenState extends State<HomeScreen> {
           _globalNextRegenerateThreshold == 2 ? 3 : 2;
     }
     _exploreGeneration = _globalExploreGeneration;
+
+    _headerAnim = AnimationController(
+      vsync: this,
+      duration: _kHeaderSnapDuration,
+    );
+    _headerCurve = CurvedAnimation(
+      parent: _headerAnim,
+      curve: _kHeaderSnapCurve,
+    );
 
     _productsFuture = productService.fetchProducts(limit: 48);
     _scrollController.addListener(_onScroll);
@@ -235,31 +252,35 @@ class _HomeScreenState extends State<HomeScreen> {
     // personalized/explore. _initializeRecsAndExplore sequential
     // internal (personalized DULU baru explore — mencegah race
     // duplikat IDs).
-    await Future.wait([
-      _loadDynamicSections(),
-      _initializeRecsAndExplore(),
-    ]);
+    await Future.wait([_loadDynamicSections(), _initializeRecsAndExplore()]);
   }
 
   @override
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    _headerCollapse.dispose();
+    _headerCurve.dispose();
+    _headerAnim.dispose();
     recentlyViewedStore.removeListener(_onRecentlyViewedChanged);
     super.dispose();
   }
 
   void _onScroll() {
-    // Update progress collapse header DULU — WAJIB sebelum guard paginasi di
-    // bawah. Kalau ditaruh setelahnya, header akan beku di tengah animasi
-    // selama load-more berjalan, dan macet PERMANEN saat produk habis
+    // Cek ambang collapse DULU — WAJIB sebelum guard paginasi di bawah.
+    // Kalau ditaruh setelahnya, header berhenti merespons scroll selama
+    // load-more berjalan, dan macet PERMANEN saat produk habis
     // (_exploreHasMore == false) karena guard early-return.
     if (_scrollController.hasClients) {
-      _headerCollapse.value =
-          (_scrollController.position.pixels / _kHeaderCollapseDistance)
-              .clamp(0.0, 1.0)
-              .toDouble();
+      final next = headerCollapsedFor(
+        pixels: _scrollController.position.pixels,
+        currentlyCollapsed: _headerCollapsed,
+        collapseAt: _kHeaderCollapseAt,
+        expandAt: _kHeaderExpandAt,
+      );
+      if (next != _headerCollapsed) {
+        _headerCollapsed = next;
+        _snapHeader();
+      }
     }
 
     if (_exploreLoading || !_exploreHasMore) return;
@@ -267,6 +288,22 @@ class _HomeScreenState extends State<HomeScreen> {
     final position = _scrollController.position;
     if (position.pixels >= position.maxScrollExtent - 600) {
       _loadMoreExplore();
+    }
+  }
+
+  /// Jalankan snap header ke state [_headerCollapsed]. Reduce motion
+  /// ("Remove animations" Android / "Reduce Motion" iOS via
+  /// MediaQuery.disableAnimations): lompat langsung ke state akhir —
+  /// transisi mati tapi state akhir tetap benar.
+  void _snapHeader() {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduceMotion) {
+      _headerAnim.value = _headerCollapsed ? 1.0 : 0.0;
+    } else if (_headerCollapsed) {
+      _headerAnim.forward();
+    } else {
+      _headerAnim.reverse();
     }
   }
 
@@ -353,13 +390,13 @@ class _HomeScreenState extends State<HomeScreen> {
       precacheImage(CachedNetworkImageProvider(product.imageUrl), context);
     }
     if (product.gallery.isNotEmpty) {
-      precacheImage(
-        CachedNetworkImageProvider(product.gallery.first),
-        context,
-      );
+      precacheImage(CachedNetworkImageProvider(product.gallery.first), context);
     }
-    Navigator.pushNamed(context, '/product-detail', arguments: product)
-        .whenComplete(_maybeRegenerateExploreAfterReturn);
+    Navigator.pushNamed(
+      context,
+      '/product-detail',
+      arguments: product,
+    ).whenComplete(_maybeRegenerateExploreAfterReturn);
   }
 
   /// Trigger setelah product detail close (`.whenComplete`). User
@@ -479,18 +516,22 @@ class _HomeScreenState extends State<HomeScreen> {
         .toList()
       ..sort((a, b) => score(b).compareTo(score(a)));
     final personalized = candidates.where((product) => score(product) > 0);
-    return _uniqueById([...personalized, ...fallback, ...products])
-        .take(10)
-        .toList();
+    return _uniqueById([
+      ...personalized,
+      ...fallback,
+      ...products,
+    ]).take(10).toList();
   }
 
   List<Product> _fallbackRecommendations(List<Product> products) {
     final promoProducts = products.where((product) => product.hasDiscount);
     final popularProducts = [...products]
       ..sort((a, b) => b.reviewCount.compareTo(a.reviewCount));
-    return _uniqueById([...promoProducts, ...popularProducts, ...products])
-        .take(10)
-        .toList();
+    return _uniqueById([
+      ...promoProducts,
+      ...popularProducts,
+      ...products,
+    ]).take(10).toList();
   }
 
   List<Product> _generateExploreProducts(List<Product> products) {
@@ -512,10 +553,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final generated = [...products]..sort((a, b) {
-        final scoreCompare =
-            _exploreScore(b, brandScores, categoryScores).compareTo(
-          _exploreScore(a, brandScores, categoryScores),
-        );
+        final scoreCompare = _exploreScore(
+          b,
+          brandScores,
+          categoryScores,
+        ).compareTo(_exploreScore(a, brandScores, categoryScores));
         if (scoreCompare != 0) return scoreCompare;
         return _stableExploreHash(a.id).compareTo(_stableExploreHash(b.id));
       });
@@ -558,9 +600,7 @@ class _HomeScreenState extends State<HomeScreen> {
     AppHaptics.tap();
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const HomeSearchPage(),
-      ),
+      MaterialPageRoute(builder: (_) => const HomeSearchPage()),
     );
   }
 
@@ -652,19 +692,29 @@ class _HomeScreenState extends State<HomeScreen> {
                     // header (celah putih "terbelah") + translateChild menggeser
                     // seluruh hero turun. Paw = satu-satunya yang bergerak.
                     pinContent: true,
-                    // Paw muncul tepat di bawah sticky header (extent 128, sudah
-                    // di dalam SafeArea) — bukan mengambang di area status bar.
-                    topPadding: 134,
+                    // Paw muncul tepat di bawah sticky header expanded (extent
+                    // 166, sudah di dalam SafeArea) — bukan mengambang di area
+                    // status bar. Refresh hanya mungkin di scroll ≈ 0 = header
+                    // pasti expanded, jadi cukup satu angka.
+                    topPadding: 172,
                     child: CustomScrollView(
                       controller: _scrollController,
                       physics: const AlwaysScrollableScrollPhysics(),
                       slivers: [
-                        SliverPersistentHeader(
-                          pinned: true,
-                          delegate: _HomeStickyHeaderDelegate(
-                            collapse: _headerCollapse,
-                            onOpenProducts: () => _openProducts(context),
-                            onOpenSearch: () => _openHomeSearch(context),
+                        // Header pinned dengan extent DINAMIS: 166 (expanded)
+                        // → 66 (collapsed). ListenableBuilder hanya menyala
+                        // selama snap 260ms; saat scroll biasa (controller
+                        // idle) header TIDAK rebuild sama sekali — lebih hemat
+                        // dari model lama yang rebuild tiap pixel scroll.
+                        ListenableBuilder(
+                          listenable: _headerAnim,
+                          builder: (context, _) => SliverPersistentHeader(
+                            pinned: true,
+                            delegate: _HomeStickyHeaderDelegate(
+                              progress: _headerCurve.value,
+                              onOpenProducts: () => _openProducts(context),
+                              onOpenSearch: () => _openHomeSearch(context),
+                            ),
                           ),
                         ),
                         // Background upload relay card — visible HANYA saat ada
@@ -673,39 +723,20 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SliverToBoxAdapter(child: UploadRelayCard()),
                         if (result?.fromApi == false)
                           const SliverToBoxAdapter(child: _ApiFallbackNotice()),
-                        // Trust marquee — TIDAK sticky. Ikut scroll bersama content
-                        // di bawah sticky header (search bar). Saat user scroll
-                        // ke bawah, trust strip hilang dari viewport, hanya search
-                        // bar yang tetap visible.
-                        //
-                        // Visual: full-width meneruskan gradasi hero biru dari
-                        // sticky header di atasnya (satu blok hero); sudut bawah
-                        // membulat = penutup blok. Saat scroll, strip ini menyelip
-                        // ke belakang header biru → terlihat "menyatu lalu hilang".
-                        const SliverToBoxAdapter(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: NataloColors.heroGradientContinue,
-                              borderRadius: BorderRadius.vertical(
-                                bottom: Radius.circular(18),
-                              ),
-                            ),
-                            child: Padding(
-                              padding: EdgeInsets.only(bottom: 6),
-                              child: _TrustMarquee(
-                                key: ValueKey('home-trust-marquee'),
-                                height: 36,
-                              ),
-                            ),
-                          ),
-                        ),
+                        // Trust marquee SEKARANG bagian sticky header (ikut
+                        // terlipat saat collapse) — lihat _HomeHeader. Sliver
+                        // terpisah yang dulu di sini dihapus (spec collapsing
+                        // header "Cara 1", membalikkan keputusan PR #54 dengan
+                        // persetujuan user setelah demo perbandingan).
                         // API banner carousel kalau ada banner aktif dari admin.
                         // Section auto-hide kalau _banners kosong (di _HeroBanner).
                         SliverToBoxAdapter(
-                            child: _HeroBanner(banners: _banners)),
+                          child: _HeroBanner(banners: _banners),
+                        ),
                         SliverToBoxAdapter(
                           child: _ShortcutGrid(
-                              onOpenProducts: () => _openProducts(context)),
+                            onOpenProducts: () => _openProducts(context),
+                          ),
                         ),
                         // Flash sale section — sembunyikan kalau tidak ada produk
                         // diskon dari API (bukan fallback ke mock). Single source of
@@ -843,7 +874,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
                                 return Padding(
                                   padding: EdgeInsets.only(
-                                      bottom: isLastRow ? 0 : 12),
+                                    bottom: isLastRow ? 0 : 12,
+                                  ),
                                   child: Row(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
@@ -1007,49 +1039,33 @@ class _ApiFallbackNotice extends StatelessWidget {
   }
 }
 
-/// Sticky header Beranda — tinggi FISIK konstan 128px (pinned). Yang
-/// beranimasi hanya KONTEN-nya: logo 44→32, judul 18→16, subtitle
-/// fade+collapse, padding, border+shadow. Progress 0→1 datang dari posisi
-/// scroll via [collapse] (lihat `_HomeScreenState._headerCollapse`),
-/// disebar sepanjang `_kHeaderCollapseDistance` (~64px) lalu di-ease
-/// easeOutCubic — BUKAN dari shrinkOffset yang, pada pinned header, mentok
-/// di ~8px dan bikin transisi terasa "terlalu cepat".
+/// Sticky header Beranda — pinned dengan tinggi DINAMIS: 166px expanded
+/// (brand row + search 46 + trust marquee) → 66px collapsed (satu baris
+/// search 42 + dock chat+cart). [progress] 0→1 sudah di-ease oleh
+/// `_HomeScreenState._headerCurve` (snap 260ms) dan BINER dengan histeresis
+/// — bukan interpolasi kontinu mengikuti jari.
 ///
-/// Konten top: logo 44 + subtitle visible + search 42 + paddings = 120,
-/// selalu muat di extent 128 dengan 8px breathing room (shadow + radius
-/// search tidak ke-clip). Trust marquee bukan bagian sticky (sudah dipindah
-/// ke SliverToBoxAdapter terpisah).
+/// Extent dihitung dari formula tinggi konten yang PERSIS sama dengan
+/// layout `_HomeHeader` (`_HomeHeader.extentFor`) — tidak ada frame di mana
+/// konten melebihi extent, jadi seluruh kelas bug clipping/overflow yang
+/// dulu memaksa extent konstan tetap mati.
 class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
-  /// Progress collapse 0→1 dari posisi scroll (lihat
-  /// `_HomeScreenState._headerCollapse`). Menggantikan shrinkOffset sebagai
-  /// pendorong animasi supaya timing bisa disebar melebihi ~8px.
-  final ValueListenable<double> collapse;
+  /// Progress collapse 0 (expanded) → 1 (collapsed), sudah di-ease.
+  final double progress;
   final VoidCallback onOpenProducts;
   final VoidCallback onOpenSearch;
 
   _HomeStickyHeaderDelegate({
-    required this.collapse,
+    required this.progress,
     required this.onOpenProducts,
     required this.onOpenSearch,
   });
 
-  // Extent KONSTAN 128px — header tidak lagi menyusut tingginya secara
-  // fisik. Row didominasi IconButton Bell+Cart (min 48px touch target), jadi
-  // konten top = padTop 8 + Row 48 + gap 10 + search 42 + padBottom 12 = 120,
-  // selalu muat di 128 dengan 8px breathing room untuk shadow + radius
-  // search. Animasi collapse ("besar-kecil" + fade) SEKARANG digiring dari
-  // posisi scroll (_HomeScreenState._headerCollapse), bukan shrinkOffset.
-  // Dulu min 120 / max 128 → shrinkOffset mentok 8px → seluruh animasi
-  // dijejalkan ke ~8px scroll = "terlalu cepat". Extent konstan bikin resting
-  // look identik DAN membunuh seluruh kelas bug clipping (konten ≤120 selalu
-  // muat di 128).
-  static const double _extent = 128;
+  @override
+  double get minExtent => _HomeHeader.extentFor(progress);
 
   @override
-  double get minExtent => _extent;
-
-  @override
-  double get maxExtent => _extent;
+  double get maxExtent => _HomeHeader.extentFor(progress);
 
   @override
   Widget build(
@@ -1057,71 +1073,48 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    // shrinkOffset TIDAK dipakai lagi (extent konstan → selalu 0). Progress
-    // datang dari [collapse] (posisi scroll). RepaintBoundary +
-    // ValueListenableBuilder → hanya subtree header yang repaint tiap frame
-    // scroll, bukan seluruh CustomScrollView / grid produk.
+    // shrinkOffset tidak dipakai (min == max → selalu 0). RepaintBoundary →
+    // repaint selama snap tidak merambat ke grid produk. Gradient + shadow
+    // dicat di _HomeHeader (bukan di sini) karena strip marquee butuh latar
+    // non-gradient di belakang sudut membulatnya.
     return RepaintBoundary(
-      child: ValueListenableBuilder<double>(
-        valueListenable: collapse,
-        builder: (context, rawProgress, _) {
-          // easeOutCubic untuk natural deceleration — match spec lama.
-          final t = Curves.easeOutCubic.transform(rawProgress);
-          return SizedBox.expand(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                // Hero biru — gradasi navy→brand blue, sama di light & dark
-                // (header berwarna brand tidak ikut theme surface). Border
-                // bawah lama dihapus: transisi ke marquee strip biru harus
-                // seamless (satu blok hero).
-                gradient: NataloColors.heroGradient,
-                boxShadow: t > 0.05
-                    ? [
-                        BoxShadow(
-                          color:
-                              Colors.black.withValues(alpha: 0.04 + 0.04 * t),
-                          blurRadius: 12 * t,
-                          offset: Offset(0, 4 * t),
-                        ),
-                      ]
-                    : const [],
-              ),
-              child: _HomeHeader(
-                onOpenProducts: onOpenProducts,
-                onOpenSearch: onOpenSearch,
-                progress: t,
-              ),
-            ),
-          );
-        },
+      child: _HomeHeader(
+        onOpenProducts: onOpenProducts,
+        onOpenSearch: onOpenSearch,
+        progress: progress,
       ),
     );
   }
 
   @override
   bool shouldRebuild(covariant _HomeStickyHeaderDelegate oldDelegate) {
-    return oldDelegate.collapse != collapse ||
+    return oldDelegate.progress != progress ||
         oldDelegate.onOpenProducts != onOpenProducts ||
         oldDelegate.onOpenSearch != onOpenSearch;
   }
 }
 
-/// Header Beranda dengan collapsible behavior.
+/// Header Beranda dengan collapse BINER (snap 260ms) + histeresis.
 ///
-/// [progress] 0.0 = top state (full), 1.0 = compact (scrolled).
-/// Digerakkan parent `_HomeStickyHeaderDelegate` dari progress posisi
-/// scroll (bukan shrinkOffset) lalu di-ease easeOutCubic.
+/// [progress] 0.0 = expanded, 1.0 = collapsed — sudah di-ease parent.
 ///
-/// Visual changes saat scroll:
-/// - Logo box: 44 → 32 (lerp)
-/// - Title font: 18 → 16
-/// - Subtitle: opacity 1 → 0, height 18 → 0 (fully collapses)
-/// - Search bar: TETAP 42px (was 38 — terlalu rapat, ke-clip di compact)
-/// - Outer padding: top 8 → 6, bottom 12 → 10 (was 8, ke-clip)
+/// Expanded : brand row (logo + nama + bell/chat/cart) + search 46 +
+///            trust marquee (ikut terlipat — "Cara 1", membalikkan
+///            keputusan PR #54 dengan persetujuan user).
+/// Collapsed: SATU baris — search 42 + dock chat+cart meluncur dari kanan
+///            (translateX 14→0, scale .85→1, fade in). Bell ikut hilang
+///            bersama brand row, TIDAK dipindah (spec: cart = konversi,
+///            chat = jalur tanya produk; bell paling tidak mendesak).
 ///
-/// Catatan: trust marquee TIDAK lagi bagian sticky header. Trust strip
-/// di-render sebagai SliverToBoxAdapter terpisah di bawah sticky header
-/// sehingga ikut scroll bersama content (user request).
+/// Efek "besar-kecil" logo+nama DIPERTAHANKAN (user request) tapi sebagai
+/// bagian dari lipatan: seluruh brand row menyusut scale 1→.85 dari kiri
+/// sambil barisnya menutup — bukan lagi lerp ukuran per elemen mengikuti
+/// jari.
+///
+/// Aturan performa (spec): per elemen hanya transform + opacity; perubahan
+/// tinggi/lebar di-animate SEKALI per container baris (ClipRect + Align
+/// height/widthFactor). Semua tinggi linear terhadap t dan [extentFor]
+/// memakai formula yang sama — konten tidak pernah melebihi extent.
 class _HomeHeader extends StatelessWidget {
   final VoidCallback onOpenProducts;
   final VoidCallback onOpenSearch;
@@ -1133,92 +1126,276 @@ class _HomeHeader extends StatelessWidget {
     this.progress = 0.0,
   });
 
+  /// Row brand 48 + gap bawah 10.
+  static const double _brandBlockHeight = 58;
+
+  /// Strip marquee 36 + padding bawah 6.
+  static const double _marqueeBlockHeight = 42;
+
+  /// Tinggi ikon header (AppHeaderIconButton minHeight 44 — tap target).
+  static const double _dockHeight = 44;
+
+  /// Tinggi total header pada progress [t] — SATU-SATUNYA sumber untuk
+  /// extent delegate. t=0 → 8 + 58 + 46 + 12 + 42 = 166;
+  /// t=1 → 10 + 0 + max(42, 44) + 12 + 0 = 66. Baris search di-max dengan
+  /// [_dockHeight] karena ikon dock 44px lebih tinggi dari search 42px.
+  static double extentFor(double t) {
+    final paddingTop = ui.lerpDouble(8, 10, t)!;
+    final searchHeight = ui.lerpDouble(46, 42, t)!;
+    final rowHeight = searchHeight > _dockHeight ? searchHeight : _dockHeight;
+    return paddingTop +
+        _brandBlockHeight * (1 - t) +
+        rowHeight +
+        12 +
+        _marqueeBlockHeight * (1 - t);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final logoSize = ui.lerpDouble(44, 32, progress)!;
-    final logoRadius = ui.lerpDouble(13, 10, progress)!;
-    final titleSize = ui.lerpDouble(18, 16, progress)!;
-    final subtitleOpacity = (1 - progress * 1.6).clamp(0.0, 1.0);
-    final subtitleHeight = ui.lerpDouble(18, 0, progress)!;
-    final paddingTop = ui.lerpDouble(8, 6, progress)!;
-    // Padding bottom: spec minta 10-12px supaya search bar tidak nempel
-    // ke border bawah sticky (sebelumnya 8 di compact = terlalu rapat,
-    // shadow + radius search ke-clip).
-    final paddingBottom = ui.lerpDouble(12, 10, progress)!;
-    final gapAfterRow = ui.lerpDouble(10, 8, progress)!;
+    final t = progress.clamp(0.0, 1.0);
+    // Fade konten sedikit lebih cepat dari lipatan container (spec: icon
+    // fade 200-220ms vs collapse 260ms) — habis di t≈0.62.
+    final blockOpacity = (1 - t * 1.6).clamp(0.0, 1.0);
+    final brandScale = ui.lerpDouble(1.0, 0.85, t)!;
+    final searchHeight = ui.lerpDouble(46, 42, t)!;
+    final searchRadius = ui.lerpDouble(14, 12, t)!;
+    final paddingTop = ui.lerpDouble(8, 10, t)!;
+    // Dock chat+cart: lebar terbuka linear bersama lipatan; opacity nyusul
+    // (mulai t=.2) supaya ikon terasa "meluncur masuk", bukan cuma muncul.
+    final dockOpacity = ((t - 0.2) / 0.8).clamp(0.0, 1.0);
+    final dockSlide = 14.0 * (1 - t);
+    final dockScale = ui.lerpDouble(0.85, 1.0, t)!;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, paddingTop, 16, paddingBottom),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // ── Row 1: Logo + Title (+ Subtitle saat top) + Bell + Cart ──
-          Row(
-            children: [
-              // Logo di CHIP PUTIH — logo Natalo dominan biru; ditempel
-              // telanjang di header biru dia tenggelam. Chip putih memberi
-              // panggung kontras (pola Tokopedia/Shopee saat logo di atas
-              // header brand pekat). Logo asli tetap utuh di dalamnya.
-              Container(
-                width: logoSize,
-                height: logoSize,
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(logoRadius),
-                ),
-                alignment: Alignment.center,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(
-                    (logoRadius - 3).clamp(0, 24),
-                  ),
-                  // Logo asset square — match Capacitor. Fallback "NL" text.
-                  child: Image.asset(
-                    'assets/native/icon-only.png',
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Text(
-                      'NL',
-                      style: TextStyle(
-                        color: _heroMid,
-                        fontWeight: FontWeight.w900,
-                        fontSize: logoSize * 0.4,
-                      ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            // Hero biru — token premium (NataloColors.heroGradient), sama di
+            // light & dark; seragam dengan halaman biru lain.
+            gradient: NataloColors.heroGradient,
+            // Shadow bawah = pemisah dari konten, hanya saat collapsed
+            // (expanded: marquee di bawahnya yang jadi penutup blok).
+            boxShadow: t > 0.05
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04 + 0.04 * t),
+                      blurRadius: 12 * t,
+                      offset: Offset(0, 4 * t),
                     ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Natalo Petshop',
-                      style: TextStyle(
-                        fontSize: titleSize,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                        height: 1.15,
-                      ),
-                    ),
-                    // Subtitle — fade + collapse saat scroll.
-                    // ClipRect supaya overflow tidak bocor saat height 0.
-                    ClipRect(
-                      child: SizedBox(
-                        height: subtitleHeight,
+                  ]
+                : const [],
+          ),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16, paddingTop, 16, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Baris brand: logo + nama + bell/chat/cart. Terlipat
+                // UTUH (height→0 + fade) sambil menyusut scale 1→.85 dari
+                // kiri. Tinggi di-animate SEKALI via Align.heightFactor.
+                ClipRect(
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    heightFactor: 1 - t,
+                    child: SizedBox(
+                      height: _brandBlockHeight,
+                      child: IgnorePointer(
+                        // Saat terlipat, bell/chat/cart atas tidak ketap.
+                        ignoring: t > 0.5,
                         child: Opacity(
-                          opacity: subtitleOpacity,
-                          child: const Padding(
-                            padding: EdgeInsets.only(top: 2),
-                            child: Text(
-                              'Kebutuhan hewan kesayanganmu',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: _onHeroSubtle,
-                                height: 1.1,
+                          opacity: blockOpacity,
+                          child: Transform.scale(
+                            scale: brandScale,
+                            alignment: Alignment.centerLeft,
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Row(
+                                children: [
+                                  // Logo di CHIP PUTIH — kontras di atas hero.
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    padding: const EdgeInsets.all(3),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(13),
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Image.asset(
+                                        'assets/native/icon-only.png',
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) =>
+                                            const Text(
+                                          'NL',
+                                          style: TextStyle(
+                                            color: _heroMid,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 18,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  const Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          'Natalo Petshop',
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w900,
+                                            color: Colors.white,
+                                            height: 1.15,
+                                          ),
+                                        ),
+                                        Padding(
+                                          padding: EdgeInsets.only(top: 2),
+                                          child: Text(
+                                            'Kebutuhan hewan kesayanganmu',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: _onHeroSubtle,
+                                              height: 1.1,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const AppNotificationButton(
+                                    iconColor: Colors.white,
+                                  ),
+                                  const AppChatButton(iconColor: Colors.white),
+                                  const AppCartButton(iconColor: Colors.white),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // ── Baris search + dock chat/cart ──
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: onOpenSearch,
+                        behavior: HitTestBehavior.opaque,
+                        child: Container(
+                          height: searchHeight,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(searchRadius),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.search_rounded,
+                                size: 18,
+                                color: Color(0xFF64748B),
+                              ),
+                              const SizedBox(width: 10),
+                              // Dynamic placeholder — rotates dari trending
+                              // search API. Hanya Text ini yang rebuild.
+                              Expanded(
+                                child: AnimatedBuilder(
+                                  animation: trendingPlaceholderController,
+                                  builder: (context, _) {
+                                    final text = trendingPlaceholderController
+                                        .currentPlaceholder;
+                                    return AnimatedSwitcher(
+                                      duration: const Duration(
+                                        milliseconds: 300,
+                                      ),
+                                      switchInCurve: Curves.easeOutCubic,
+                                      switchOutCurve: Curves.easeInCubic,
+                                      layoutBuilder:
+                                          (currentChild, previousChildren) {
+                                        return Stack(
+                                          alignment: Alignment.centerLeft,
+                                          children: <Widget>[
+                                            ...previousChildren,
+                                            if (currentChild != null)
+                                              currentChild,
+                                          ],
+                                        );
+                                      },
+                                      transitionBuilder: (child, animation) {
+                                        final slide = Tween<Offset>(
+                                          begin: const Offset(0, 0.3),
+                                          end: Offset.zero,
+                                        ).animate(animation);
+                                        return FadeTransition(
+                                          opacity: animation,
+                                          child: SlideTransition(
+                                            position: slide,
+                                            child: child,
+                                          ),
+                                        );
+                                      },
+                                      child: Text(
+                                        text,
+                                        key: ValueKey(text),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: TextAlign.left,
+                                        style: const TextStyle(
+                                          color: Color(0xFF64748B),
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          height: 1.2,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    // ── Dock chat + cart: DUPLIKAT yang di-reveal (bukan
+                    // shared element yang terbang — spec #3). Lebar dibuka
+                    // SEKALI via Align.widthFactor; ikon hanya transform
+                    // (slide 14→0 + scale .85→1) + opacity. Kill-switch chat
+                    // aman: AppChatButton SizedBox.shrink() → dock cart saja.
+                    ClipRect(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: t,
+                        child: IgnorePointer(
+                          // Tap aktif hanya saat dock terlihat.
+                          ignoring: t < 0.5,
+                          child: Opacity(
+                            opacity: dockOpacity,
+                            child: Transform.translate(
+                              offset: Offset(dockSlide, 0),
+                              child: Transform.scale(
+                                scale: dockScale,
+                                alignment: Alignment.center,
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    // Gap ≥10 dari search — badge tidak
+                                    // menabrak search di layar ≤360px.
+                                    SizedBox(width: 10),
+                                    AppChatButton(iconColor: Colors.white),
+                                    AppCartButton(iconColor: Colors.white),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -1227,112 +1404,48 @@ class _HomeHeader extends StatelessWidget {
                     ),
                   ],
                 ),
-              ),
-              // Ikon header PUTIH di atas hero biru — hanya beranda; layar
-              // lain tetap default onSurface (hitam).
-              const AppNotificationButton(iconColor: Colors.white),
-              const AppChatButton(iconColor: Colors.white),
-              const AppCartButton(iconColor: Colors.white),
-            ],
+              ],
+            ),
           ),
-          SizedBox(height: gapAfterRow),
-          // ── Search bar 42px (spec: 42-44 untuk ruang vertikal cukup
-          // termasuk border + radius + shadow). Sebelumnya 38 → kurang
-          // ruang di compact state, bagian bawah ke-clip saat scroll.
-          GestureDetector(
-            onTap: onOpenSearch,
-            behavior: HitTestBehavior.opaque,
-            child: Container(
-              height: 42,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                // Putih SOLID di kedua mode — satu-satunya elemen terang
-                // besar di hero biru = mata langsung ke search (aksi #1
-                // beranda). Border dihapus: kontras dgn latar biru sudah
-                // lebih dari cukup.
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  // Fixed gray — fill putih di kedua mode (lihat placeholder).
-                  const Icon(
-                    Icons.search_rounded,
-                    size: 18,
-                    color: Color(0xFF64748B),
-                  ),
-                  const SizedBox(width: 10),
-                  // Dynamic placeholder — rotates dari trending search API +
-                  // fallback static. Hanya widget Text ini yang rebuild
-                  // (via AnimatedBuilder listen trendingPlaceholderController),
-                  // banner/kategori/produk sections TIDAK ke-rebuild saat
-                  // placeholder ganti setiap 4 detik.
-                  Expanded(
-                    child: AnimatedBuilder(
-                      animation: trendingPlaceholderController,
-                      builder: (context, _) {
-                        final text =
-                            trendingPlaceholderController.currentPlaceholder;
-                        return AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          switchInCurve: Curves.easeOutCubic,
-                          switchOutCurve: Curves.easeInCubic,
-                          // Override default Stack(alignment: center) — supaya
-                          // text placeholder rata KIRI (sebelah kanan icon),
-                          // bukan center di Expanded space. Pattern marketplace
-                          // standard: icon + text mengalir dari kiri.
-                          layoutBuilder: (currentChild, previousChildren) {
-                            return Stack(
-                              alignment: Alignment.centerLeft,
-                              children: <Widget>[
-                                ...previousChildren,
-                                if (currentChild != null) currentChild,
-                              ],
-                            );
-                          },
-                          transitionBuilder: (child, animation) {
-                            final slide = Tween<Offset>(
-                              begin: const Offset(0, 0.3),
-                              end: Offset.zero,
-                            ).animate(animation);
-                            return FadeTransition(
-                              opacity: animation,
-                              child: SlideTransition(
-                                position: slide,
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: Text(
-                            text,
-                            key: ValueKey(text),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.left,
-                            // Warna FIXED (bukan onSurfaceVariant) — fill
-                            // search sekarang selalu putih di kedua mode,
-                            // onSurfaceVariant dark mode = abu terang di
-                            // atas putih (tak terbaca).
-                            style: const TextStyle(
-                              color: Color(0xFF64748B),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              height: 1.2,
-                            ),
-                          ),
-                        );
-                      },
+        ),
+        // ── Trust marquee — bagian header, ikut terlipat (Cara 1). Latar
+        // ColoredBox = scaffold bg supaya sudut membulat strip tidak "bocor"
+        // memperlihatkan konten yang lewat di belakang header pinned.
+        //
+        // TickerMode: matikan ticker marquee (repeat 34s) saat header
+        // collapsed — marquee tetap mounted (state & posisi scroll marquee
+        // awet) tapi tidak membakar frame untuk strip yang ter-clip 0px.
+        ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            heightFactor: 1 - t,
+            child: TickerMode(
+              enabled: t < 0.99,
+              child: Opacity(
+                opacity: blockOpacity,
+                child: ColoredBox(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  child: const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: NataloColors.heroGradientContinue,
+                      borderRadius: BorderRadius.vertical(
+                        bottom: Radius.circular(18),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: 6),
+                      child: _TrustMarquee(
+                        key: ValueKey('home-trust-marquee'),
+                        height: 36,
+                      ),
                     ),
                   ),
-                ],
+                ),
               ),
             ),
           ),
-          // Trust marquee dipindah keluar sticky header — sekarang berada
-          // di SliverToBoxAdapter terpisah di bawah ini (ikut scroll, bukan
-          // pinned). Bentuknya tetap _TrustMarquee dengan ValueKey stabil.
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -1486,9 +1599,9 @@ class _HomeSearchSheetState extends State<_HomeSearchSheet> {
                           Text(
                             'Produk, brand, kategori, dan kebutuhan pet kamu.',
                             style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                             ),
@@ -1688,8 +1801,11 @@ class _PopularSearchSeeds extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              const Icon(Icons.local_fire_department_rounded,
-                  color: Color(0xFFEF4444), size: 18),
+              const Icon(
+                Icons.local_fire_department_rounded,
+                color: Color(0xFFEF4444),
+                size: 18,
+              ),
               const SizedBox(width: 6),
               Text(
                 'Trending sekarang',
@@ -1706,8 +1822,11 @@ class _PopularSearchSeeds extends StatelessWidget {
             runSpacing: 8,
             children: trending.map((term) {
               return ActionChip(
-                avatar: const Icon(Icons.trending_up_rounded,
-                    size: 16, color: Color(0xFFEF4444)),
+                avatar: const Icon(
+                  Icons.trending_up_rounded,
+                  size: 16,
+                  color: Color(0xFFEF4444),
+                ),
                 label: Text(term),
                 onPressed: () => onTap(term),
               );
@@ -1774,10 +1893,7 @@ class _HomeProductSuggestionRow extends StatelessWidget {
   final ProductSuggestion item;
   final VoidCallback onTap;
 
-  const _HomeProductSuggestionRow({
-    required this.item,
-    required this.onTap,
-  });
+  const _HomeProductSuggestionRow({required this.item, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1789,11 +1905,7 @@ class _HomeProductSuggestionRow extends StatelessWidget {
       contentPadding: EdgeInsets.zero,
       leading: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: AppProductImage(
-          imageUrl: item.imageUrl,
-          height: 44,
-          width: 44,
-        ),
+        child: AppProductImage(imageUrl: item.imageUrl, height: 44, width: 44),
       ),
       title: Text(
         item.name,
@@ -1949,10 +2061,7 @@ class _TrustMarqueeGroup extends StatelessWidget {
   final List<_TrustMarqueeItemData> items;
   final bool duplicate;
 
-  const _TrustMarqueeGroup({
-    required this.items,
-    this.duplicate = false,
-  });
+  const _TrustMarqueeGroup({required this.items, this.duplicate = false});
 
   @override
   Widget build(BuildContext context) {
@@ -2068,15 +2177,21 @@ class _HeroBannerState extends State<_HeroBanner> {
   /// Match heroSlides.ts di PWA secara konseptual (image-only).
   static const _fallbackBanners = [
     _LocalBanner(
-        image: 'assets/banners/happy-dog.jpg',
-        href: '/products?kategori=anjing'),
+      image: 'assets/banners/happy-dog.jpg',
+      href: '/products?kategori=anjing',
+    ),
     _LocalBanner(
-        image: 'assets/banners/bersinar-aquarium.jpeg',
-        href: '/products?kategori=ikan'),
+      image: 'assets/banners/bersinar-aquarium.jpeg',
+      href: '/products?kategori=ikan',
+    ),
     _LocalBanner(
-        image: 'assets/banners/instant-max-3-jam.jpg', href: '/products'),
+      image: 'assets/banners/instant-max-3-jam.jpg',
+      href: '/products',
+    ),
     _LocalBanner(
-        image: 'assets/banners/member-benefit.png', href: '/member/register'),
+      image: 'assets/banners/member-benefit.png',
+      href: '/member/register',
+    ),
   ];
 
   late final PageController _controller;
@@ -2290,9 +2405,7 @@ class _BannerSlide extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFFEAF5FF),
-          ),
+          decoration: const BoxDecoration(color: Color(0xFFEAF5FF)),
           child: isNetwork
               ? CachedNetworkImage(
                   imageUrl: imageUrl,
@@ -2370,8 +2483,9 @@ class _ShortcutGrid extends StatelessWidget {
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
           '/products',
-          arguments:
-              const ProductCatalogArgs(initialCategory: 'makanan-kucing'),
+          arguments: const ProductCatalogArgs(
+            initialCategory: 'makanan-kucing',
+          ),
         ),
       ),
       _ShortcutItem(
@@ -2382,8 +2496,9 @@ class _ShortcutGrid extends StatelessWidget {
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
           '/products',
-          arguments:
-              const ProductCatalogArgs(initialCategory: 'makanan-anjing'),
+          arguments: const ProductCatalogArgs(
+            initialCategory: 'makanan-anjing',
+          ),
         ),
       ),
       _ShortcutItem(
@@ -2692,10 +2807,7 @@ class _FlashSaleCard extends StatelessWidget {
             children: [
               Stack(
                 children: [
-                  _HomeProductImage(
-                    imageUrl: product.imageUrl,
-                    height: 92,
-                  ),
+                  _HomeProductImage(imageUrl: product.imageUrl, height: 92),
                   if (discountPercent != null)
                     Positioned(
                       right: 6,
@@ -2868,11 +2980,7 @@ class _FlashSaleRatingSoldRow extends StatelessWidget {
       child: Row(
         children: [
           if (hasRating) ...[
-            const Icon(
-              Icons.star_rounded,
-              size: 12,
-              color: Color(0xFFFACC15),
-            ),
+            const Icon(Icons.star_rounded, size: 12, color: Color(0xFFFACC15)),
             const SizedBox(width: 3),
             Text(
               product.rating.toStringAsFixed(1),
@@ -3047,10 +3155,7 @@ class _HomeProductImage extends StatelessWidget {
   final String imageUrl;
   final double height;
 
-  const _HomeProductImage({
-    required this.imageUrl,
-    required this.height,
-  });
+  const _HomeProductImage({required this.imageUrl, required this.height});
 
   @override
   Widget build(BuildContext context) {
@@ -3067,9 +3172,8 @@ class _HomeProductImage extends StatelessWidget {
         width: double.infinity,
         fit: BoxFit.contain,
         placeholder: (_, __) => _HomeProductImagePlaceholder(height: height),
-        errorWidget: (_, __, ___) => _HomeProductImagePlaceholder(
-          height: height,
-        ),
+        errorWidget: (_, __, ___) =>
+            _HomeProductImagePlaceholder(height: height),
       ),
     );
   }
@@ -3093,11 +3197,7 @@ class _HomeProductImagePlaceholder extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
       ),
       child: Center(
-        child: Icon(
-          Icons.pets_rounded,
-          size: 34,
-          color: cs.onSurfaceVariant,
-        ),
+        child: Icon(Icons.pets_rounded, size: 34, color: cs.onSurfaceVariant),
       ),
     );
   }
@@ -3202,10 +3302,7 @@ class _HomeProductSavingBadge extends StatelessWidget {
   final Product product;
   final bool compact;
 
-  const _HomeProductSavingBadge({
-    required this.product,
-    required this.compact,
-  });
+  const _HomeProductSavingBadge({required this.product, required this.compact});
 
   @override
   Widget build(BuildContext context) {
@@ -3236,11 +3333,7 @@ class _HomeProductSavingBadge extends StatelessWidget {
 
     return Padding(
       padding: EdgeInsets.only(top: compact ? 5 : 6),
-      child: Wrap(
-        spacing: compact ? 4 : 6,
-        runSpacing: 4,
-        children: badges,
-      ),
+      child: Wrap(spacing: compact ? 4 : 6, runSpacing: 4, children: badges),
     );
   }
 }
@@ -3278,11 +3371,7 @@ class _HomeProductPromoBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: compact ? 11 : 13,
-            color: color,
-          ),
+          Icon(icon, size: compact ? 11 : 13, color: color),
           const SizedBox(width: 4),
           Flexible(
             child: Text(
@@ -3944,10 +4033,7 @@ class _CategorySection extends StatelessWidget {
   final List<HomeCategory> categories;
   final ValueChanged<String> onTap;
 
-  const _CategorySection({
-    required this.categories,
-    required this.onTap,
-  });
+  const _CategorySection({required this.categories, required this.onTap});
 
   // Map nama kategori → icon yang relevan. Fallback ke generic store icon.
   static IconData _iconFor(String name) {
@@ -4085,11 +4171,7 @@ class _PopularCategoryCard extends StatelessWidget {
                       : const Color(0xFFEAF5FF),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(
-                  icon,
-                  color: const Color(0xFF0B7FEA),
-                  size: 23,
-                ),
+                child: Icon(icon, color: const Color(0xFF0B7FEA), size: 23),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -4120,10 +4202,7 @@ class _RecommendationGrid extends StatelessWidget {
   final List<Product> products;
   final ValueChanged<Product> onTap;
 
-  const _RecommendationGrid({
-    required this.products,
-    required this.onTap,
-  });
+  const _RecommendationGrid({required this.products, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
