@@ -25,6 +25,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/emoji_picker_panel.dart';
 import '../widgets/mention_picker.dart';
 import '../widgets/moderation_action_sheet.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/post_likers_sheet.dart';
 import '../widgets/profile_avatar.dart';
 import '../shared/widgets/natalo_post_action_icon.dart';
@@ -409,6 +410,30 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     }
   }
 
+  /// Pull-to-refresh: re-fetch tiap post by id supaya like/comment count,
+  /// status review, dan caption fresh dari server. Post yang gagal fetch
+  /// (network / sudah dihapus) tetap pakai data lama.
+  Future<void> _refreshPosts() async {
+    final results = await Future.wait(
+      _posts.map((p) => feedService.fetchPostById(p.id).catchError((_) {
+            return null;
+          })),
+    );
+    if (!mounted) return;
+    var anyChanged = false;
+    for (var i = 0; i < _posts.length; i++) {
+      final fresh = results[i];
+      if (fresh == null) continue;
+      _posts[i] = fresh;
+      _likedCache[fresh.id] = fresh.viewerLiked || fresh.isLiked;
+      anyChanged = true;
+    }
+    if (anyChanged) {
+      feedStore.seed(_posts);
+      setState(() {});
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -470,40 +495,44 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
                 ),
               ),
             )
-          : ListView.separated(
-              controller: _scrollController,
-              cacheExtent: _estimatedPostExtent(context) * 2,
-              // Bottom padding extra space supaya post terakhir bisa di-
-              // scroll lega ke atas viewport (gak mepet ke home indicator).
-              padding: const EdgeInsets.only(top: 0, bottom: 48),
-              physics: const AlwaysScrollableScrollPhysics(),
-              itemCount: _posts.length,
-              // Whitespace pemisah antar post tetap ada, tapi lebih compact
-              // supaya detail terasa seperti feed/post Instagram.
-              separatorBuilder: (_, __) => const SizedBox(height: 24),
-              itemBuilder: (context, index) {
-                final post = _posts[index];
-                return _PostFeedItem(
-                  // GlobalKey untuk Scrollable.ensureVisible jump akurat
-                  // ke post target saat initial open dari grid.
-                  key: _postKeys[index],
-                  post: post,
-                  memberName: _memberName,
-                  memberInitial: _memberInitial,
-                  memberPhotoUrl: _memberPhotoUrl,
-                  liked: _likedCache[post.id] ?? false,
-                  // Hide ... menu ketika viewing post user lain — tidak ada
-                  // edit/delete option untuk non-owner. (Bisa ekspansi nanti
-                  // ke Report/Block via tombol terpisah kalau perlu.)
-                  showMenu: widget.isOwner,
-                  // Status badge owner-only (Menunggu review/Ditolak).
-                  showStatusBadge: widget.isOwner,
-                  onLike: () => _toggleLike(index),
-                  onComment: () => _openComments(index),
-                  onShare: () => _shareNative(index),
-                  onMenuTap: widget.isOwner ? () => _openPostMenu(index) : null,
-                );
-              },
+          : NataloPawRefreshIndicator(
+              onRefresh: _refreshPosts,
+              child: ListView.separated(
+                controller: _scrollController,
+                cacheExtent: _estimatedPostExtent(context) * 2,
+                // Bottom padding extra space supaya post terakhir bisa di-
+                // scroll lega ke atas viewport (gak mepet ke home indicator).
+                padding: const EdgeInsets.only(top: 0, bottom: 48),
+                physics: const AlwaysScrollableScrollPhysics(),
+                itemCount: _posts.length,
+                // Whitespace pemisah antar post tetap ada, tapi lebih compact
+                // supaya detail terasa seperti feed/post Instagram.
+                separatorBuilder: (_, __) => const SizedBox(height: 24),
+                itemBuilder: (context, index) {
+                  final post = _posts[index];
+                  return _PostFeedItem(
+                    // GlobalKey untuk Scrollable.ensureVisible jump akurat
+                    // ke post target saat initial open dari grid.
+                    key: _postKeys[index],
+                    post: post,
+                    memberName: _memberName,
+                    memberInitial: _memberInitial,
+                    memberPhotoUrl: _memberPhotoUrl,
+                    liked: _likedCache[post.id] ?? false,
+                    // Hide ... menu ketika viewing post user lain — tidak ada
+                    // edit/delete option untuk non-owner. (Bisa ekspansi nanti
+                    // ke Report/Block via tombol terpisah kalau perlu.)
+                    showMenu: widget.isOwner,
+                    // Status badge owner-only (Menunggu review/Ditolak).
+                    showStatusBadge: widget.isOwner,
+                    onLike: () => _toggleLike(index),
+                    onComment: () => _openComments(index),
+                    onShare: () => _shareNative(index),
+                    onMenuTap:
+                        widget.isOwner ? () => _openPostMenu(index) : null,
+                  );
+                },
+              ),
             ),
     );
   }
@@ -2730,7 +2759,8 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 child: Text(
                   'Komentar',
                   style: TextStyle(
@@ -3177,9 +3207,7 @@ class _CommentTile extends StatelessWidget {
                       ? Icons.favorite_rounded
                       : Icons.favorite_outline_rounded,
                   size: isReply ? 14 : 16,
-                  color: liked
-                      ? const Color(0xFFE53935)
-                      : cs.onSurfaceVariant,
+                  color: liked ? const Color(0xFFE53935) : cs.onSurfaceVariant,
                 ),
               ),
             ),

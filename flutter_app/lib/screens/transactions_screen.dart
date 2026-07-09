@@ -15,6 +15,7 @@ import '../widgets/app_login_gate.dart';
 import '../widgets/app_notification_button.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 
 const _brandBlue = NataloColors.primary;
 const _danger = Color(0xFFEF4444);
@@ -55,37 +56,64 @@ class TransactionsScreen extends StatelessWidget {
   }
 }
 
-class _TransactionsBody extends StatelessWidget {
+class _TransactionsBody extends StatefulWidget {
   const _TransactionsBody();
+
+  @override
+  State<_TransactionsBody> createState() => _TransactionsBodyState();
+}
+
+class _TransactionsBodyState extends State<_TransactionsBody> {
+  /// Bump setiap pull-to-refresh — dipakai sebagai ValueKey kartu data
+  /// (alerts, pesanan, saldo/poin) supaya remount + re-fetch dari server.
+  int _refreshTick = 0;
+
+  Future<void> _refresh() async {
+    // Await fetch orders dulu supaya memberStore.orders (initialData
+    // kartu-kartu) sudah fresh saat remount — indikator paw juga jadi
+    // spin selama request jalan, bukan langsung hilang.
+    try {
+      await memberService.fetchOrders();
+    } catch (_) {
+      // Silent — kartu handle fallback ke memberStore.orders sendiri.
+    }
+    if (mounted) setState(() => _refreshTick++);
+  }
 
   @override
   Widget build(BuildContext context) {
     final bottomGap = MediaQuery.of(context).padding.bottom + 96;
-    return SafeArea(
-      bottom: false,
-      child: CustomScrollView(
-        physics: Theme.of(context).platform == TargetPlatform.iOS
-            ? const BouncingScrollPhysics()
-            : const ClampingScrollPhysics(),
-        slivers: [
-          const SliverToBoxAdapter(child: _TransactionsHeader()),
-          const SliverToBoxAdapter(child: _TransactionAlerts()),
-          const SliverToBoxAdapter(child: _OrderStatusCard()),
-          const SliverToBoxAdapter(child: _BalancePointsCard()),
-          const SliverToBoxAdapter(child: _TransactionMenuList()),
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20, bottomGap),
-              child: const Column(
-                children: [
-                  Spacer(),
-                  _HelpCard(),
-                ],
+    return NataloPawRefreshIndicator(
+      onRefresh: _refresh,
+      child: SafeArea(
+        bottom: false,
+        child: CustomScrollView(
+          slivers: [
+            const SliverToBoxAdapter(child: _TransactionsHeader()),
+            SliverToBoxAdapter(
+              child: _TransactionAlerts(key: ValueKey('alerts-$_refreshTick')),
+            ),
+            SliverToBoxAdapter(
+              child: _OrderStatusCard(key: ValueKey('orders-$_refreshTick')),
+            ),
+            SliverToBoxAdapter(
+              child: _BalancePointsCard(key: ValueKey('balance-$_refreshTick')),
+            ),
+            const SliverToBoxAdapter(child: _TransactionMenuList()),
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(20, 0, 20, bottomGap),
+                child: const Column(
+                  children: [
+                    Spacer(),
+                    _HelpCard(),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -138,7 +166,7 @@ class _TransactionsHeader extends StatelessWidget {
 }
 
 class _TransactionAlerts extends StatefulWidget {
-  const _TransactionAlerts();
+  const _TransactionAlerts({super.key});
 
   @override
   State<_TransactionAlerts> createState() => _TransactionAlertsState();
@@ -454,7 +482,7 @@ class _TransactionAlertCard extends StatelessWidget {
 }
 
 class _OrderStatusCard extends StatefulWidget {
-  const _OrderStatusCard();
+  const _OrderStatusCard({super.key});
 
   @override
   State<_OrderStatusCard> createState() => _OrderStatusCardState();
@@ -601,7 +629,7 @@ class _OrderStatusCardState extends State<_OrderStatusCard> {
 ///  - Tidak ada pull-to-refresh di card ini — user bisa pull seluruh
 ///    halaman Transaksi untuk refresh.
 class _BalancePointsCard extends StatefulWidget {
-  const _BalancePointsCard();
+  const _BalancePointsCard({super.key});
 
   @override
   State<_BalancePointsCard> createState() => _BalancePointsCardState();

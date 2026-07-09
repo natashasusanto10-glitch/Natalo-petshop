@@ -62,8 +62,8 @@ class NataloPawRefreshIndicator extends StatefulWidget {
   final double topPadding;
 
   /// IG-style pull behavior: child ikut turun sedikit saat user menarik
-  /// dari top. Default false supaya halaman lain yang sudah pakai widget ini
-  /// tidak berubah rasa/interaksinya.
+  /// dari top. Default true supaya semua halaman terasa "ikut jari"
+  /// konsisten dengan halaman Akun.
   final bool translateChild;
 
   /// Maksimal jarak child turun saat pull. Dipakai hanya jika
@@ -76,7 +76,7 @@ class NataloPawRefreshIndicator extends StatefulWidget {
     required this.onRefresh,
     this.triggerOffset = 48,
     this.topPadding = 8,
-    this.translateChild = false,
+    this.translateChild = true,
     this.maxChildOffset = 34,
   });
 
@@ -256,7 +256,8 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
     final childOffset = widget.translateChild
         ? (_isRefreshing
             ? widget.maxChildOffset
-            : widget.maxChildOffset * Curves.easeOutCubic.transform(rampProgress))
+            : widget.maxChildOffset *
+                Curves.easeOutCubic.transform(rampProgress))
         : 0.0;
 
     return Stack(

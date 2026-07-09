@@ -5,6 +5,7 @@ import '../models/member_profile.dart';
 import '../services/api_client.dart';
 import '../utils/formatters.dart';
 import '../widgets/app_ui.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 
 const _brandBlue = NataloColors.primary;
 const _success = Color(0xFF059669);
@@ -55,6 +56,18 @@ class _RefundDetailScreenState extends State<RefundDetailScreen> {
     }
   }
 
+  /// Pull-to-refresh: re-fetch case detail — status refund bisa berubah
+  /// (pending → approved → credited) tanpa user keluar-masuk halaman.
+  Future<void> _refresh() async {
+    final next = _fetch();
+    try {
+      await next;
+    } catch (_) {
+      // Error di-handle oleh FutureBuilder (AppErrorState + retry).
+    }
+    if (mounted) setState(() => _future = next);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -74,67 +87,70 @@ class _RefundDetailScreenState extends State<RefundDetailScreen> {
             );
           }
           final d = snapshot.data!;
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-            children: [
-              _StatusHeader(detail: d),
-              const SizedBox(height: 16),
-              _Section(
-                title: 'Alasan',
-                child: Text(
-                  _reasonLabel(d.case_.reason),
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
+          return NataloPawRefreshIndicator(
+            onRefresh: _refresh,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+              children: [
+                _StatusHeader(detail: d),
+                const SizedBox(height: 16),
+                _Section(
+                  title: 'Alasan',
+                  child: Text(
+                    _reasonLabel(d.case_.reason),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-              ),
-              if (d.item != null) ...[
-                const SizedBox(height: 12),
-                _Section(
-                  title: 'Item yang di-refund',
-                  child: _ItemCard(item: d.item!),
-                ),
-              ],
-              // Perhitungan refund — OPSI A: hanya tampil kalau ada
-              // voucherAllocations data. Saat ini admin manual entry
-              // tanpa breakdown, jadi section ini biasanya hidden.
-              // Future (auto-calc): akan muncul lengkap.
-              if (d.case_.voucherAllocations != null &&
-                  d.case_.voucherAllocations!.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _Section(
-                  title: 'Perhitungan Refund',
-                  child: _CalcBreakdown(
-                    itemGrossPrice: d.item?.lineTotal ?? d.case_.amount,
-                    voucherAllocations: d.case_.voucherAllocations!,
-                    refundAmount: d.case_.amount,
+                if (d.item != null) ...[
+                  const SizedBox(height: 12),
+                  _Section(
+                    title: 'Item yang di-refund',
+                    child: _ItemCard(item: d.item!),
                   ),
-                ),
-              ],
-              if (d.case_.adminNote != null &&
-                  d.case_.adminNote!.isNotEmpty) ...[
+                ],
+                // Perhitungan refund — OPSI A: hanya tampil kalau ada
+                // voucherAllocations data. Saat ini admin manual entry
+                // tanpa breakdown, jadi section ini biasanya hidden.
+                // Future (auto-calc): akan muncul lengkap.
+                if (d.case_.voucherAllocations != null &&
+                    d.case_.voucherAllocations!.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _Section(
+                    title: 'Perhitungan Refund',
+                    child: _CalcBreakdown(
+                      itemGrossPrice: d.item?.lineTotal ?? d.case_.amount,
+                      voucherAllocations: d.case_.voucherAllocations!,
+                      refundAmount: d.case_.amount,
+                    ),
+                  ),
+                ],
+                if (d.case_.adminNote != null &&
+                    d.case_.adminNote!.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _Section(
+                    title: 'Catatan Admin',
+                    child: _AdminNote(
+                      note: d.case_.adminNote!,
+                      adminName: d.admin?.name,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 _Section(
-                  title: 'Catatan Admin',
-                  child: _AdminNote(
-                    note: d.case_.adminNote!,
-                    adminName: d.admin?.name,
-                  ),
+                  title: 'Pesanan Asal',
+                  child: _OrderSummary(order: d.order),
+                ),
+                const SizedBox(height: 12),
+                _Section(
+                  title: 'Timeline',
+                  child: _Timeline(case_: d.case_),
                 ),
               ],
-              const SizedBox(height: 12),
-              _Section(
-                title: 'Pesanan Asal',
-                child: _OrderSummary(order: d.order),
-              ),
-              const SizedBox(height: 12),
-              _Section(
-                title: 'Timeline',
-                child: _Timeline(case_: d.case_),
-              ),
-            ],
+            ),
           );
         },
       ),
@@ -176,8 +192,18 @@ String _statusLabel(String status) {
 
 String _formatDateTime(DateTime dt) {
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-    'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'Mei',
+    'Jun',
+    'Jul',
+    'Agu',
+    'Sep',
+    'Okt',
+    'Nov',
+    'Des',
   ];
   final h = dt.hour.toString().padLeft(2, '0');
   final m = dt.minute.toString().padLeft(2, '0');
@@ -731,9 +757,9 @@ class _RefundCase {
       voucherAllocations: json['voucherAllocations'] is Map<String, dynamic>
           ? json['voucherAllocations'] as Map<String, dynamic>
           : null,
-      createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString())
-              ?.toLocal() ??
-          DateTime.now(),
+      createdAt:
+          DateTime.tryParse((json['createdAt'] ?? '').toString())?.toLocal() ??
+              DateTime.now(),
       approvedAt: json['approvedAt'] != null
           ? DateTime.tryParse(json['approvedAt'].toString())?.toLocal()
           : null,
@@ -777,9 +803,9 @@ class _RefundOrderRef {
       productDiscount: (json['productDiscount'] as num?)?.toInt() ?? 0,
       shippingDiscount: (json['shippingDiscount'] as num?)?.toInt() ?? 0,
       refundBalanceUsed: (json['refundBalanceUsed'] as num?)?.toInt() ?? 0,
-      createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString())
-              ?.toLocal() ??
-          DateTime.now(),
+      createdAt:
+          DateTime.tryParse((json['createdAt'] ?? '').toString())?.toLocal() ??
+              DateTime.now(),
     );
   }
 }

@@ -8,6 +8,7 @@ import '../utils/haptics.dart';
 import '../widgets/animated_counter.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/glass_surface.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 
 const _brandBlue = NataloColors.primary;
 
@@ -190,6 +191,17 @@ class _MemberLoyaltyScreenState extends State<MemberLoyaltyScreen> {
     }
   }
 
+  /// Pull-to-refresh: re-fetch profile dari server supaya balance poin
+  /// selalu fresh (poin bisa berubah dari order lain / device lain).
+  Future<void> _refresh() async {
+    try {
+      final profile = await memberService.fetchProfile();
+      if (profile != null) memberStore.setProfile(profile);
+    } catch (_) {
+      // Silent — balance lama tetap tampil, tidak perlu error state.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -197,40 +209,43 @@ class _MemberLoyaltyScreenState extends State<MemberLoyaltyScreen> {
       body: AnimatedBuilder(
         animation: memberStore,
         builder: (context, _) {
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-            children: [
-              _BalanceCard(points: _availablePoints),
-              const SizedBox(height: 14),
-              // Progress bar visual ke next tier — animated, kasih
-              // user motivasi belanja lagi untuk dapat reward lebih
-              // besar. Pure client-side calculation dari _redeemTiers.
-              _TierProgressCard(points: _availablePoints),
-              const SizedBox(height: 18),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Text(
-                  'Pilih Voucher',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
+          return NataloPawRefreshIndicator(
+            onRefresh: _refresh,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+              children: [
+                _BalanceCard(points: _availablePoints),
+                const SizedBox(height: 14),
+                // Progress bar visual ke next tier — animated, kasih
+                // user motivasi belanja lagi untuk dapat reward lebih
+                // besar. Pure client-side calculation dari _redeemTiers.
+                _TierProgressCard(points: _availablePoints),
+                const SizedBox(height: 18),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    'Pilih Voucher',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              for (final tier in _redeemTiers) ...[
-                _TierCard(
-                  tier: tier,
-                  availablePoints: _availablePoints,
-                  loading: _claimingTierPoints == tier.points,
-                  onClaim: () => _confirmAndClaim(tier),
-                ),
                 const SizedBox(height: 10),
+                for (final tier in _redeemTiers) ...[
+                  _TierCard(
+                    tier: tier,
+                    availablePoints: _availablePoints,
+                    loading: _claimingTierPoints == tier.points,
+                    onClaim: () => _confirmAndClaim(tier),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                const SizedBox(height: 8),
+                const _HowItWorksCard(),
               ],
-              const SizedBox(height: 8),
-              const _HowItWorksCard(),
-            ],
+            ),
           );
         },
       ),
@@ -553,8 +568,7 @@ class _TierCard extends StatelessWidget {
                     : Text(
                         canClaim ? 'Tukar' : 'Poin belum cukup',
                         style: TextStyle(
-                          color:
-                              canClaim ? Colors.white : cs.onSurfaceVariant,
+                          color: canClaim ? Colors.white : cs.onSurfaceVariant,
                           fontWeight: FontWeight.w900,
                           fontSize: 12,
                         ),
