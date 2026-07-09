@@ -43,7 +43,8 @@ export type WebhookPayload = {
 };
 
 // Helper MURNI (bisa diuji tanpa I/O) — parse raw JSON body webhook +
-// validasi field wajib. `senderName` opsional (route fallback ke "Natalo").
+// validasi field wajib. `senderName` opsional & kini TIDAK dipakai untuk
+// judul notifikasi (selalu "Natalo Petshop") — tetap diparse demi kontrak.
 // Return `null` bila raw bukan JSON valid, bukan object, atau field wajib
 // (chatId/customerUserId/messageId/preview) hilang/bukan string.
 export function parseWebhookPayload(raw: string): WebhookPayload | null {
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest) {
   if (!payload) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
-  const { chatId, customerUserId, messageId, preview, senderName } = payload;
+  const { chatId, customerUserId, messageId, preview } = payload;
 
   // Idempotensi: `create()` gagal dengan ALREADY_EXISTS (doc sudah ada) -> ini
   // retry/duplikat dari CF (at-least-once delivery) -> jangan kirim FCM dua
@@ -120,8 +121,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Internal error" }, { status: 500 });
     }
 
+    // Judul SELALU nama toko — `senderName` dari CF adalah nama profil staff
+    // internal NLCATTER (mis. "owner") yang tidak boleh bocor ke customer.
+    // Field-nya tetap diterima (kontrak webhook tak berubah), hanya tidak
+    // dipakai sebagai judul notifikasi.
     await sendFcmToUser(customerUserId, {
-      title: senderName ?? "Natalo",
+      title: "Natalo Petshop",
       body: preview,
       url: "/chat",
       tag: `chat-${chatId}`,

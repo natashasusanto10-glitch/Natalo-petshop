@@ -113,7 +113,13 @@ class _ChatComposerState extends State<ChatComposer> {
                         color: NataloColors.textTertiary,
                         fontSize: 14,
                       ),
+                      // `border: none` saja TIDAK cukup — theme global punya
+                      // `enabledBorder`/`focusedBorder` (OutlineInputBorder
+                      // biru saat fokus) yang fallback-nya terpisah dari
+                      // `border`, jadi harus di-none-kan satu-satu.
                       border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
                       isDense: true,
                       contentPadding:
                           EdgeInsets.symmetric(vertical: AppSpacing.sm),
