@@ -25,12 +25,12 @@ import '../state/trending_placeholder_controller.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
-import '../utils/header_collapse.dart';
 import '../utils/in_app_browser.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/app_chat_button.dart';
 import '../widgets/app_notification_button.dart';
 import '../widgets/app_product_image.dart';
+import '../widgets/collapsing_header_delegate.dart';
 import '../widgets/brand_exclusive_badge.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
@@ -72,31 +72,16 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late final Future<ProductResult> _productsFuture;
   // ── Infinite scroll "Jelajahi Produk Natalo" — match PWA HomeExploreProducts ──
   final ScrollController _scrollController = ScrollController();
-  // ── Collapse header BINER + histeresis (spec collapsing-header Jul 2026) ──
-  // Header expanded (brand row + search 46 + trust marquee) ⇄ collapsed
-  // (SATU baris: search 42 + dock chat+cart). State bool dengan DUA ambang
-  // berbeda supaya tidak flicker saat scroll bolak-balik tipis / bounce iOS:
-  // collapse baru terpicu >72px, expand baru <28px. Bounce iOS (pixels
-  // negatif) tidak pernah menyentuh ambang collapse; Android modern pakai
-  // stretch (pixels berhenti di 0) — dua-duanya aman tanpa cabang platform.
-  //
-  // Snap 260ms jalan sendiri via _headerAnim — listener scroll HANYA toggle
-  // bool, bukan setState/notifier per pixel. Ini menggantikan model progress
-  // kontinu 1:1-jari yang lama (dibalik secara sadar oleh spec baru).
-  late final AnimationController _headerAnim;
-  late final CurvedAnimation _headerCurve;
-  bool _headerCollapsed = false;
-
-  static const double _kHeaderCollapseAt = 72.0;
-  static const double _kHeaderExpandAt = 28.0;
-  static const Duration _kHeaderSnapDuration = Duration(milliseconds: 260);
-  // Ease-out lembut — match referensi natalo-header-mockup.html.
-  static const Curve _kHeaderSnapCurve = Cubic(0.33, 0.90, 0.25, 1.0);
+  // ── Collapse header: engine 1:1 mengikuti jari (SAMA dengan halaman
+  // Produk) — lihat CollapsingHeaderDelegate (pinned+floating+snap).
+  // Lipatan digerakkan shrinkOffset native, jadi TIDAK ADA state/animation
+  // controller header di sini lagi (model biner+histeresis lama dibalik atas
+  // permintaan user setelah demo mockup). Listener scroll hanya untuk
+  // paginasi explore.
 
   final List<Product> _exploreProducts = [];
   String? _exploreNextCursor;
@@ -161,15 +146,6 @@ class _HomeScreenState extends State<HomeScreen>
           _globalNextRegenerateThreshold == 2 ? 3 : 2;
     }
     _exploreGeneration = _globalExploreGeneration;
-
-    _headerAnim = AnimationController(
-      vsync: this,
-      duration: _kHeaderSnapDuration,
-    );
-    _headerCurve = CurvedAnimation(
-      parent: _headerAnim,
-      curve: _kHeaderSnapCurve,
-    );
 
     _productsFuture = productService.fetchProducts(limit: 48);
     _scrollController.addListener(_onScroll);
@@ -259,51 +235,19 @@ class _HomeScreenState extends State<HomeScreen>
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    _headerCurve.dispose();
-    _headerAnim.dispose();
     recentlyViewedStore.removeListener(_onRecentlyViewedChanged);
     super.dispose();
   }
 
   void _onScroll() {
-    // Cek ambang collapse DULU — WAJIB sebelum guard paginasi di bawah.
-    // Kalau ditaruh setelahnya, header berhenti merespons scroll selama
-    // load-more berjalan, dan macet PERMANEN saat produk habis
-    // (_exploreHasMore == false) karena guard early-return.
-    if (_scrollController.hasClients) {
-      final next = headerCollapsedFor(
-        pixels: _scrollController.position.pixels,
-        currentlyCollapsed: _headerCollapsed,
-        collapseAt: _kHeaderCollapseAt,
-        expandAt: _kHeaderExpandAt,
-      );
-      if (next != _headerCollapsed) {
-        _headerCollapsed = next;
-        _snapHeader();
-      }
-    }
-
+    // Collapse header di-handle NATIVE oleh sliver (pinned+floating) —
+    // listener ini murni untuk paginasi explore.
     if (_exploreLoading || !_exploreHasMore) return;
     // Trigger load saat 600px sebelum bottom — match PWA threshold.
+    if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
     if (position.pixels >= position.maxScrollExtent - 600) {
       _loadMoreExplore();
-    }
-  }
-
-  /// Jalankan snap header ke state [_headerCollapsed]. Reduce motion
-  /// ("Remove animations" Android / "Reduce Motion" iOS via
-  /// MediaQuery.disableAnimations): lompat langsung ke state akhir —
-  /// transisi mati tapi state akhir tetap benar.
-  void _snapHeader() {
-    final reduceMotion =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    if (reduceMotion) {
-      _headerAnim.value = _headerCollapsed ? 1.0 : 0.0;
-    } else if (_headerCollapsed) {
-      _headerAnim.forward();
-    } else {
-      _headerAnim.reverse();
     }
   }
 
@@ -692,26 +636,32 @@ class _HomeScreenState extends State<HomeScreen>
                     // header (celah putih "terbelah") + translateChild menggeser
                     // seluruh hero turun. Paw = satu-satunya yang bergerak.
                     pinContent: true,
-                    // Paw muncul tepat di bawah sticky header expanded (extent
-                    // 166, sudah di dalam SafeArea) — bukan mengambang di area
-                    // status bar. Refresh hanya mungkin di scroll ≈ 0 = header
-                    // pasti expanded, jadi cukup satu angka.
-                    topPadding: 172,
+                    // Paw muncul tepat di bawah header expanded (extent 164,
+                    // sudah di dalam SafeArea). Refresh hanya mungkin di
+                    // scroll ≈ 0 = header pasti expanded (floating fully
+                    // revealed), jadi cukup satu angka.
+                    topPadding: 170,
                     child: CustomScrollView(
                       controller: _scrollController,
                       physics: const AlwaysScrollableScrollPhysics(),
                       slivers: [
-                        // Header pinned dengan extent DINAMIS: 166 (expanded)
-                        // → 66 (collapsed). ListenableBuilder hanya menyala
-                        // selama snap 260ms; saat scroll biasa (controller
-                        // idle) header TIDAK rebuild sama sekali — lebih hemat
-                        // dari model lama yang rebuild tiap pixel scroll.
-                        ListenableBuilder(
-                          listenable: _headerAnim,
-                          builder: (context, _) => SliverPersistentHeader(
-                            pinned: true,
-                            delegate: _HomeStickyHeaderDelegate(
-                              progress: _headerCurve.value,
+                        // Header collapsing 1:1 (pinned+floating) — extent
+                        // 164 (expanded) → 66 (collapsed). Lipatan digerakkan
+                        // shrinkOffset native mengikuti jari; header kembali
+                        // saat scroll naik mid-list; snap saat gesture selesai.
+                        // Engine SAMA dengan halaman Produk (delegate bersama).
+                        SliverPersistentHeader(
+                          pinned: true,
+                          floating: true,
+                          delegate: CollapsingHeaderDelegate(
+                            minHeight: _HomeHeader.collapsedExtent,
+                            maxHeight: _HomeHeader.expandedExtent,
+                            vsync: this,
+                            reduceMotion:
+                                MediaQuery.maybeDisableAnimationsOf(context) ??
+                                    false,
+                            builder: (context, t) => _HomeHeader(
+                              progress: t,
                               onOpenProducts: () => _openProducts(context),
                               onOpenSearch: () => _openHomeSearch(context),
                             ),
@@ -1039,82 +989,26 @@ class _ApiFallbackNotice extends StatelessWidget {
   }
 }
 
-/// Sticky header Beranda — pinned dengan tinggi DINAMIS: 166px expanded
-/// (brand row + search 46 + trust marquee) → 66px collapsed (satu baris
-/// search 42 + dock chat+cart). [progress] 0→1 sudah di-ease oleh
-/// `_HomeScreenState._headerCurve` (snap 260ms) dan BINER dengan histeresis
-/// — bukan interpolasi kontinu mengikuti jari.
+/// Header Beranda dengan collapse 1:1 (digerakkan shrinkOffset via
+/// [CollapsingHeaderDelegate] — pinned+floating+snap, SAMA dengan Produk).
 ///
-/// Extent dihitung dari formula tinggi konten yang PERSIS sama dengan
-/// layout `_HomeHeader` (`_HomeHeader.extentFor`) — tidak ada frame di mana
-/// konten melebihi extent, jadi seluruh kelas bug clipping/overflow yang
-/// dulu memaksa extent konstan tetap mati.
-class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
-  /// Progress collapse 0 (expanded) → 1 (collapsed), sudah di-ease.
-  final double progress;
-  final VoidCallback onOpenProducts;
-  final VoidCallback onOpenSearch;
-
-  _HomeStickyHeaderDelegate({
-    required this.progress,
-    required this.onOpenProducts,
-    required this.onOpenSearch,
-  });
-
-  @override
-  double get minExtent => _HomeHeader.extentFor(progress);
-
-  @override
-  double get maxExtent => _HomeHeader.extentFor(progress);
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    // shrinkOffset tidak dipakai (min == max → selalu 0). RepaintBoundary →
-    // repaint selama snap tidak merambat ke grid produk. Gradient + shadow
-    // dicat di _HomeHeader (bukan di sini) karena strip marquee butuh latar
-    // non-gradient di belakang sudut membulatnya.
-    return RepaintBoundary(
-      child: _HomeHeader(
-        onOpenProducts: onOpenProducts,
-        onOpenSearch: onOpenSearch,
-        progress: progress,
-      ),
-    );
-  }
-
-  @override
-  bool shouldRebuild(covariant _HomeStickyHeaderDelegate oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.onOpenProducts != onOpenProducts ||
-        oldDelegate.onOpenSearch != onOpenSearch;
-  }
-}
-
-/// Header Beranda dengan collapse BINER (snap 260ms) + histeresis.
+/// [progress] 0.0 = expanded, 1.0 = collapsed — diturunkan dari shrinkOffset.
 ///
-/// [progress] 0.0 = expanded, 1.0 = collapsed — sudah di-ease parent.
-///
-/// Expanded : brand row (logo + nama + bell/chat/cart) + search 46 +
-///            trust marquee (ikut terlipat — "Cara 1", membalikkan
-///            keputusan PR #54 dengan persetujuan user).
-/// Collapsed: SATU baris — search 42 + dock chat+cart meluncur dari kanan
+/// Expanded : brand row (logo + nama + bell/chat/cart) + search 44 +
+///            trust marquee (ikut terlipat — "Cara 1").
+/// Collapsed: SATU baris — search 40 + dock chat+cart meluncur dari kanan
 ///            (translateX 14→0, scale .85→1, fade in). Bell ikut hilang
-///            bersama brand row, TIDAK dipindah (spec: cart = konversi,
-///            chat = jalur tanya produk; bell paling tidak mendesak).
+///            bersama brand row, TIDAK dipindah.
 ///
-/// Efek "besar-kecil" logo+nama DIPERTAHANKAN (user request) tapi sebagai
-/// bagian dari lipatan: seluruh brand row menyusut scale 1→.85 dari kiri
-/// sambil barisnya menutup — bukan lagi lerp ukuran per elemen mengikuti
-/// jari.
+/// Efek "besar-kecil" logo+nama DIPERTAHANKAN: seluruh brand row menyusut
+/// scale 1→.85 dari kiri sambil barisnya menutup.
 ///
-/// Aturan performa (spec): per elemen hanya transform + opacity; perubahan
-/// tinggi/lebar di-animate SEKALI per container baris (ClipRect + Align
-/// height/widthFactor). Semua tinggi linear terhadap t dan [extentFor]
-/// memakai formula yang sama — konten tidak pernah melebihi extent.
+/// SYARAT ENGINE 1:1: tinggi konten HARUS linear terhadap t (lihat
+/// [expandedExtent]/[collapsedExtent]). Kunci: search 44→40 selalu ≤
+/// [_dockHeight] 44, jadi `max(search, 44)` = 44 KONSTAN → tidak ada "kink"
+/// di tengah range → extent linear, tidak ada celah/clip di frame mana pun.
+/// (Search 46 lama > 44 akan membuat baris 46 di t=0 lalu 44 di t≥0.5 =
+/// kink; itu sebab search diramping ke 44/40.)
 class _HomeHeader extends StatelessWidget {
   final VoidCallback onOpenProducts;
   final VoidCallback onOpenSearch;
@@ -1126,38 +1020,32 @@ class _HomeHeader extends StatelessWidget {
     this.progress = 0.0,
   });
 
-  /// Row brand 48 + gap bawah 10.
+  /// Row brand 48 + gap bawah 10 — di-fold penuh saat collapsed.
   static const double _brandBlockHeight = 58;
 
-  /// Strip marquee 36 + padding bawah 6.
-  static const double _marqueeBlockHeight = 42;
-
-  /// Tinggi ikon header (AppHeaderIconButton minHeight 44 — tap target).
+  /// Tinggi ikon dock (AppHeaderIconButton minHeight 44 — tap target). Baris
+  /// search selalu setinggi ini (search ≤44), jadi rowHeight konstan → extent
+  /// linear. Marquee (36 + pad 6 = 42) di-fold; nilainya sudah masuk
+  /// [expandedExtent].
   static const double _dockHeight = 44;
 
-  /// Tinggi total header pada progress [t] — SATU-SATUNYA sumber untuk
-  /// extent delegate. t=0 → 8 + 58 + 46 + 12 + 42 = 166;
-  /// t=1 → 10 + 0 + max(42, 44) + 12 + 0 = 66. Baris search di-max dengan
-  /// [_dockHeight] karena ikon dock 44px lebih tinggi dari search 42px.
-  static double extentFor(double t) {
-    final paddingTop = ui.lerpDouble(8, 10, t)!;
-    final searchHeight = ui.lerpDouble(46, 42, t)!;
-    final rowHeight = searchHeight > _dockHeight ? searchHeight : _dockHeight;
-    return paddingTop +
-        _brandBlockHeight * (1 - t) +
-        rowHeight +
-        12 +
-        _marqueeBlockHeight * (1 - t);
-  }
+  /// Extent expanded (t=0): padTop 8 + brand 58 + row 44 + padBottom 12 +
+  /// marquee 42 = 164.
+  static const double expandedExtent = 164;
+
+  /// Extent collapsed (t=1): padTop 10 + brand 0 + row 44 + padBottom 12 +
+  /// marquee 0 = 66.
+  static const double collapsedExtent = 66;
 
   @override
   Widget build(BuildContext context) {
     final t = progress.clamp(0.0, 1.0);
-    // Fade konten sedikit lebih cepat dari lipatan container (spec: icon
-    // fade 200-220ms vs collapse 260ms) — habis di t≈0.62.
+    // Fade konten sedikit lebih cepat dari lipatan container — habis t≈0.62.
     final blockOpacity = (1 - t * 1.6).clamp(0.0, 1.0);
     final brandScale = ui.lerpDouble(1.0, 0.85, t)!;
-    final searchHeight = ui.lerpDouble(46, 42, t)!;
+    // Search compact 44→40 (≤ _dockHeight 44 → rowHeight konstan → extent
+    // linear). Radius 14→12.
+    final searchHeight = ui.lerpDouble(44, 40, t)!;
     final searchRadius = ui.lerpDouble(14, 12, t)!;
     final paddingTop = ui.lerpDouble(8, 10, t)!;
     // Dock chat+cart: lebar terbuka linear bersama lipatan; opacity nyusul
@@ -1286,123 +1174,129 @@ class _HomeHeader extends StatelessWidget {
                   ),
                 ),
                 // ── Baris search + dock chat/cart ──
-                Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: onOpenSearch,
-                        behavior: HitTestBehavior.opaque,
-                        child: Container(
-                          height: searchHeight,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(searchRadius),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.search_rounded,
-                                size: 18,
-                                color: Color(0xFF64748B),
-                              ),
-                              const SizedBox(width: 10),
-                              // Dynamic placeholder — rotates dari trending
-                              // search API. Hanya Text ini yang rebuild.
-                              Expanded(
-                                child: AnimatedBuilder(
-                                  animation: trendingPlaceholderController,
-                                  builder: (context, _) {
-                                    final text = trendingPlaceholderController
-                                        .currentPlaceholder;
-                                    return AnimatedSwitcher(
-                                      duration: const Duration(
-                                        milliseconds: 300,
-                                      ),
-                                      switchInCurve: Curves.easeOutCubic,
-                                      switchOutCurve: Curves.easeInCubic,
-                                      layoutBuilder:
-                                          (currentChild, previousChildren) {
-                                        return Stack(
-                                          alignment: Alignment.centerLeft,
-                                          children: <Widget>[
-                                            ...previousChildren,
-                                            if (currentChild != null)
-                                              currentChild,
-                                          ],
-                                        );
-                                      },
-                                      transitionBuilder: (child, animation) {
-                                        final slide = Tween<Offset>(
-                                          begin: const Offset(0, 0.3),
-                                          end: Offset.zero,
-                                        ).animate(animation);
-                                        return FadeTransition(
-                                          opacity: animation,
-                                          child: SlideTransition(
-                                            position: slide,
-                                            child: child,
-                                          ),
-                                        );
-                                      },
-                                      child: Text(
-                                        text,
-                                        key: ValueKey(text),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        textAlign: TextAlign.left,
-                                        style: const TextStyle(
-                                          color: Color(0xFF64748B),
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          height: 1.2,
-                                        ),
-                                      ),
-                                    );
-                                  },
+                // Tinggi baris DIPAKU _dockHeight (44) supaya extent tetap
+                // linear (kontrak engine 1:1) apa pun tinggi visual search
+                // (44→40, di-center dalam 44). Search center vertikal.
+                SizedBox(
+                  height: _dockHeight,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: onOpenSearch,
+                          behavior: HitTestBehavior.opaque,
+                          child: Container(
+                            height: searchHeight,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(searchRadius),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.search_rounded,
+                                  size: 18,
+                                  color: Color(0xFF64748B),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 10),
+                                // Dynamic placeholder — rotates dari trending
+                                // search API. Hanya Text ini yang rebuild.
+                                Expanded(
+                                  child: AnimatedBuilder(
+                                    animation: trendingPlaceholderController,
+                                    builder: (context, _) {
+                                      final text = trendingPlaceholderController
+                                          .currentPlaceholder;
+                                      return AnimatedSwitcher(
+                                        duration: const Duration(
+                                          milliseconds: 300,
+                                        ),
+                                        switchInCurve: Curves.easeOutCubic,
+                                        switchOutCurve: Curves.easeInCubic,
+                                        layoutBuilder:
+                                            (currentChild, previousChildren) {
+                                          return Stack(
+                                            alignment: Alignment.centerLeft,
+                                            children: <Widget>[
+                                              ...previousChildren,
+                                              if (currentChild != null)
+                                                currentChild,
+                                            ],
+                                          );
+                                        },
+                                        transitionBuilder: (child, animation) {
+                                          final slide = Tween<Offset>(
+                                            begin: const Offset(0, 0.3),
+                                            end: Offset.zero,
+                                          ).animate(animation);
+                                          return FadeTransition(
+                                            opacity: animation,
+                                            child: SlideTransition(
+                                              position: slide,
+                                              child: child,
+                                            ),
+                                          );
+                                        },
+                                        child: Text(
+                                          text,
+                                          key: ValueKey(text),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.left,
+                                          style: const TextStyle(
+                                            color: Color(0xFF64748B),
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            height: 1.2,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    // ── Dock chat + cart: DUPLIKAT yang di-reveal (bukan
-                    // shared element yang terbang — spec #3). Lebar dibuka
-                    // SEKALI via Align.widthFactor; ikon hanya transform
-                    // (slide 14→0 + scale .85→1) + opacity. Kill-switch chat
-                    // aman: AppChatButton SizedBox.shrink() → dock cart saja.
-                    ClipRect(
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: t,
-                        child: IgnorePointer(
-                          // Tap aktif hanya saat dock terlihat.
-                          ignoring: t < 0.5,
-                          child: Opacity(
-                            opacity: dockOpacity,
-                            child: Transform.translate(
-                              offset: Offset(dockSlide, 0),
-                              child: Transform.scale(
-                                scale: dockScale,
-                                alignment: Alignment.center,
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    // Gap ≥10 dari search — badge tidak
-                                    // menabrak search di layar ≤360px.
-                                    SizedBox(width: 10),
-                                    AppChatButton(iconColor: Colors.white),
-                                    AppCartButton(iconColor: Colors.white),
-                                  ],
+                      // ── Dock chat + cart: DUPLIKAT yang di-reveal (bukan
+                      // shared element yang terbang — spec #3). Lebar dibuka
+                      // SEKALI via Align.widthFactor; ikon hanya transform
+                      // (slide 14→0 + scale .85→1) + opacity. Kill-switch chat
+                      // aman: AppChatButton SizedBox.shrink() → dock cart saja.
+                      ClipRect(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: t,
+                          child: IgnorePointer(
+                            // Tap aktif hanya saat dock terlihat.
+                            ignoring: t < 0.5,
+                            child: Opacity(
+                              opacity: dockOpacity,
+                              child: Transform.translate(
+                                offset: Offset(dockSlide, 0),
+                                child: Transform.scale(
+                                  scale: dockScale,
+                                  alignment: Alignment.center,
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      // Gap ≥10 dari search — badge tidak
+                                      // menabrak search di layar ≤360px.
+                                      SizedBox(width: 10),
+                                      AppChatButton(iconColor: Colors.white),
+                                      AppCartButton(iconColor: Colors.white),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),

@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show FloatingHeaderSnapConfiguration;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -22,6 +21,7 @@ import '../utils/search_synonyms.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_ui.dart';
+import '../widgets/collapsing_header_delegate.dart';
 import '../widgets/skeleton_product_card.dart';
 import '../widgets/brand_exclusive_badge.dart';
 import '../widgets/bottom_nav.dart';
@@ -1078,38 +1078,38 @@ class _ProductsScreenState extends State<ProductsScreen>
                     SliverPersistentHeader(
                       pinned: true,
                       floating: true,
-                      delegate: _CollapsingCatalogHeaderDelegate(
+                      // Engine collapsing BERSAMA (sama dengan Beranda) —
+                      // lihat CollapsingHeaderDelegate. Catatan framework:
+                      // duration snap di-latch controller internal saat snap
+                      // pertama — toggle reduce-motion mid-session baru efektif
+                      // setelah halaman dibangun ulang (fresh start benar).
+                      delegate: CollapsingHeaderDelegate(
+                        minHeight: _CatalogHeader.collapsedExtent,
+                        maxHeight: _CatalogHeader.expandedExtent,
                         vsync: this,
-                        // Reduce motion: snap instan (reveal 1:1 tetap jalan
-                        // — itu direct manipulation dari jari, bukan
-                        // animasi). Aspect-scoped (maybeDisableAnimationsOf,
-                        // BUKAN maybeOf) — maybeOf mendaftarkan dependensi ke
-                        // SEMUA perubahan MediaQuery termasuk viewInsets per
-                        // frame saat keyboard buka/tutup di search field →
-                        // seluruh build berat halaman ini ikut re-run.
-                        // Catatan framework: duration snap di-latch controller
-                        // internal saat snap pertama — toggle reduce-motion
-                        // mid-session baru efektif setelah halaman dibangun
-                        // ulang (fresh start benar; batasan SDK, diterima).
+                        // Aspect-scoped (maybeDisableAnimationsOf) — BUKAN
+                        // maybeOf yang mendaftarkan dependensi ke SEMUA
+                        // perubahan MediaQuery (viewInsets keyboard per-frame).
                         reduceMotion:
                             MediaQuery.maybeDisableAnimationsOf(context) ??
                                 false,
-                        controller: _searchController,
-                        query: _query,
-                        activeMode: _activeMode,
-                        selectedCategory: _filter.category,
-                        visibleCount: products.length,
-                        // Total dari API (jumlah produk sesuai filter di DB),
-                        // bukan jumlah yang kebetulan ter-load. Tanpa ini
-                        // header selalu tampil "24" walau DB punya ribuan →
-                        // "dari N" tidak pernah muncul.
-                        totalCount: _result.total ?? _result.products.length,
-                        onQueryChanged: _onQueryChanged,
-                        onSubmitQuery: _commitSearch,
-                        onFilterModeChanged: _onFilterModeChanged,
-                        onOpenSort: _openSortSheet,
-                        onOpenFilterSheet: _openFilterSheet,
-                        activeAdvancedFilterCount: _filter.activeCount,
+                        builder: (context, t) => _CatalogHeader(
+                          progress: t,
+                          controller: _searchController,
+                          query: _query,
+                          activeMode: _activeMode,
+                          selectedCategory: _filter.category,
+                          visibleCount: products.length,
+                          // Total dari API (jumlah produk sesuai filter di DB),
+                          // bukan jumlah yang kebetulan ter-load.
+                          totalCount: _result.total ?? _result.products.length,
+                          onQueryChanged: _onQueryChanged,
+                          onSubmitQuery: _commitSearch,
+                          onFilterModeChanged: _onFilterModeChanged,
+                          onOpenSort: _openSortSheet,
+                          onOpenFilterSheet: _openFilterSheet,
+                          activeAdvancedFilterCount: _filter.activeCount,
+                        ),
                       ),
                     ),
                     SliverToBoxAdapter(
@@ -1306,7 +1306,7 @@ class _ProductsScreenState extends State<ProductsScreen>
 }
 
 /// Header katalog dengan collapse 1:1 (digerakkan shrinkOffset via
-/// [_CollapsingCatalogHeaderDelegate]).
+/// [CollapsingHeaderDelegate], engine bersama dengan Beranda).
 ///
 /// [progress] 0.0 = expanded, 1.0 = collapsed.
 ///
@@ -2693,121 +2693,6 @@ class _ProductDiscountBadge extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-/// Delegate collapsing header katalog — pinned + floating.
-///
-/// Lipatan digerakkan `shrinkOffset` NATIVE dari protokol sliver: scroll
-/// pertama (maxExtent−minExtent = 98px) dikonsumsi 1:1 oleh lipatan judul +
-/// baris count, dan karena scrollExtent sliver konstan, konten di bawah
-/// TIDAK PERNAH lompat — ini alasan mesin ini dipilih menggantikan
-/// pseudocode toggle biner arah-scroll di spec (yang terbukti glitchy di
-/// mockup: konten tergeser mendadak + buka-tutup beruntun).
-///
-/// floating: true → header kembali saat scroll naik di TENGAH daftar
-/// (reveal overlay, konten tidak tergeser). [snapConfiguration] merapikan
-/// header ke buka/tutup penuh saat gesture selesai — snap TIDAK pernah
-/// menyela jari yang masih menempel (framework menunggu scroll end asli).
-class _CollapsingCatalogHeaderDelegate extends SliverPersistentHeaderDelegate {
-  final TickerProvider _vsync;
-
-  /// Reduce motion ("Remove animations" Android / "Reduce Motion" iOS):
-  /// snap instan. Reveal 1:1-nya sendiri tetap jalan — itu direct
-  /// manipulation dari jari user, bukan animasi yang bergerak sendiri.
-  final bool reduceMotion;
-
-  final TextEditingController controller;
-  final String query;
-  final _ProductFilterMode activeMode;
-  final String? selectedCategory;
-  final int visibleCount;
-  final int totalCount;
-  final ValueChanged<String> onQueryChanged;
-  final ValueChanged<String> onSubmitQuery;
-  final ValueChanged<_ProductFilterMode> onFilterModeChanged;
-  final VoidCallback onOpenSort;
-  final VoidCallback onOpenFilterSheet;
-  final int activeAdvancedFilterCount;
-
-  const _CollapsingCatalogHeaderDelegate({
-    required TickerProvider vsync,
-    required this.reduceMotion,
-    required this.controller,
-    required this.query,
-    required this.activeMode,
-    required this.selectedCategory,
-    required this.visibleCount,
-    required this.totalCount,
-    required this.onQueryChanged,
-    required this.onSubmitQuery,
-    required this.onFilterModeChanged,
-    required this.onOpenSort,
-    required this.onOpenFilterSheet,
-    required this.activeAdvancedFilterCount,
-  }) : _vsync = vsync;
-
-  @override
-  double get minExtent => _CatalogHeader.collapsedExtent;
-
-  @override
-  double get maxExtent => _CatalogHeader.expandedExtent;
-
-  @override
-  TickerProvider get vsync => _vsync;
-
-  @override
-  FloatingHeaderSnapConfiguration get snapConfiguration =>
-      FloatingHeaderSnapConfiguration(
-        curve: Curves.easeOut,
-        duration:
-            reduceMotion ? Duration.zero : const Duration(milliseconds: 200),
-      );
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    final range = maxExtent - minExtent;
-    final t = range > 0 ? (shrinkOffset / range).clamp(0.0, 1.0) : 0.0;
-    // RepaintBoundary: repaint per-frame selama lipatan tidak merambat ke
-    // grid produk di bawahnya.
-    return RepaintBoundary(
-      child: _CatalogHeader(
-        progress: t,
-        controller: controller,
-        query: query,
-        activeMode: activeMode,
-        selectedCategory: selectedCategory,
-        visibleCount: visibleCount,
-        totalCount: totalCount,
-        onQueryChanged: onQueryChanged,
-        onSubmitQuery: onSubmitQuery,
-        onFilterModeChanged: onFilterModeChanged,
-        onOpenSort: onOpenSort,
-        onOpenFilterSheet: onOpenFilterSheet,
-        activeAdvancedFilterCount: activeAdvancedFilterCount,
-      ),
-    );
-  }
-
-  @override
-  bool shouldRebuild(covariant _CollapsingCatalogHeaderDelegate oldDelegate) {
-    return oldDelegate.reduceMotion != reduceMotion ||
-        oldDelegate.controller != controller ||
-        oldDelegate.query != query ||
-        oldDelegate.activeMode != activeMode ||
-        oldDelegate.selectedCategory != selectedCategory ||
-        oldDelegate.visibleCount != visibleCount ||
-        oldDelegate.totalCount != totalCount ||
-        oldDelegate.onQueryChanged != onQueryChanged ||
-        oldDelegate.onSubmitQuery != onSubmitQuery ||
-        oldDelegate.onFilterModeChanged != onFilterModeChanged ||
-        oldDelegate.onOpenSort != onOpenSort ||
-        oldDelegate.onOpenFilterSheet != onOpenFilterSheet ||
-        oldDelegate.activeAdvancedFilterCount != activeAdvancedFilterCount;
   }
 }
 
