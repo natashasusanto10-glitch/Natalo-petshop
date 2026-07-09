@@ -148,12 +148,14 @@ class _TransactionsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Hero biru — gradasi sama dengan header Beranda/Belanja, sudut bawah
-    // membulat sebagai penutup blok (pola marquee strip Beranda). Teks dan
-    // ikon putih via param iconColor (opt-in, sama seperti Beranda).
+    // Hero biru — gradasi VERTIKAL (heroGradientV) supaya tepi atas header
+    // rata heroTop dan menyatu mulus dengan strip status bar heroTop di
+    // belakang notch. Diagonal heroGradient membuat tepi atas kiri gelap /
+    // kanan terang → seam miring dengan strip flat = "biru tidak menyatu".
+    // Sudut bawah membulat sebagai penutup blok. Teks + ikon putih.
     return const DecoratedBox(
       decoration: BoxDecoration(
-        gradient: NataloColors.heroGradient,
+        gradient: NataloColors.heroGradientV,
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
       ),
       child: Padding(

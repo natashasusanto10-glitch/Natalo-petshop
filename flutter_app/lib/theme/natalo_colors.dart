@@ -73,6 +73,36 @@ class NataloColors {
     colors: [heroMid, heroBottom],
   );
 
+  // ── Varian VERTIKAL murni (tanpa diagonal) ──
+  // Diagonal [heroGradient] memakai Alignment pecahan yang RELATIF ke tinggi
+  // tiap kotak → sudut gradasi berubah drastis antar blok yang tingginya beda.
+  // Contoh: top bar Akun (56px, sangat lebar-pendek) jadi gradasi ~horizontal,
+  // sedangkan blok profil di bawahnya (~300px) jadi ~vertikal → arah gradasi
+  // patah di batas = seam "biru tidak menyatu". Vertikal murni (dx=0) adalah
+  // satu-satunya arah yang tetap "atas→bawah" di semua tinggi kotak, sehingga
+  // blok yang bertumpuk pasti menyatu. Dipakai di Akun & Transaksi; halaman
+  // hero lain tetap pakai [heroGradient] diagonal.
+  static const Alignment heroVBegin = Alignment(0, -1);
+  static const Alignment heroVEnd = Alignment(0, 1);
+
+  /// Gradasi hero vertikal untuk blok atas (status bar + top bar): heroTop→
+  /// heroMid. Batas bawah = heroMid supaya sambung mulus dengan
+  /// [heroGradientVContinue].
+  static const LinearGradient heroGradientV = LinearGradient(
+    begin: heroVBegin,
+    end: heroVEnd,
+    colors: [heroTop, heroMid],
+  );
+
+  /// Lanjutan vertikal (heroMid→heroBottom) untuk blok konten hero di bawah
+  /// top bar (mis. blok profil Akun). Batas atas = heroMid → menyatu dengan
+  /// [heroGradientV].
+  static const LinearGradient heroGradientVContinue = LinearGradient(
+    begin: heroVBegin,
+    end: heroVEnd,
+    colors: [heroMid, heroBottom],
+  );
+
   // ── Neutral scale ──
   static const Color grey50 = Color(0xFFFAFAFA);
   static const Color grey100 = Color(0xFFF5F5F5);

@@ -286,12 +286,21 @@ class _ProfilePageState extends State<_ProfilePage>
         value: SystemUiOverlayStyle.light,
         child: Stack(
           children: [
+            // Satu kotak gradasi VERTIKAL menutup status bar + baris ikon
+            // sebagai satu sapuan heroTop→heroMid. Dulu: strip flat heroTop +
+            // _ProfileTopBar bergradien sendiri (diagonal) — di kotak 56px yang
+            // lebar-pendek, diagonal jadi ~horizontal sehingga arah gradasi
+            // patah di batas ke blok profil = seam "biru tidak menyatu".
+            // _ProfileTopBar sekarang transparan; gradasi tunggal ini yang
+            // tembus di belakangnya.
             Positioned(
               top: 0,
               left: 0,
               right: 0,
-              height: MediaQuery.paddingOf(context).top,
-              child: const ColoredBox(color: NataloColors.heroTop),
+              height: MediaQuery.paddingOf(context).top + kToolbarHeight,
+              child: const DecoratedBox(
+                decoration: BoxDecoration(gradient: NataloColors.heroGradientV),
+              ),
             ),
             SafeArea(
               bottom: false,
@@ -413,41 +422,41 @@ class _ProfileTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const ink = Colors.white;
-    return DecoratedBox(
-      decoration: const BoxDecoration(gradient: NataloColors.heroGradient),
-      child: SizedBox(
-        height: kToolbarHeight,
-        child: Row(
-          children: [
-            const SizedBox(width: 4),
-            // Plus icon kiri — buka create-post flow existing.
-            IconButton(
-              onPressed: onCreatePost,
-              tooltip: 'Buat postingan',
-              style: IconButton.styleFrom(
-                minimumSize: const Size(52, 52),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              icon: const Icon(Icons.add_rounded, size: 36, color: ink),
+    // Latar TRANSPARAN — gradasi hero dicat oleh kotak vertikal tunggal di
+    // belakang (lihat _ProfilePageState.build). Sebelumnya baris ini punya
+    // DecoratedBox(heroGradient) sendiri; di kotak 56px yang lebar-pendek,
+    // diagonal jadi ~horizontal → seam dengan blok profil. Kini satu sapuan.
+    return SizedBox(
+      height: kToolbarHeight,
+      child: Row(
+        children: [
+          const SizedBox(width: 4),
+          // Plus icon kiri — buka create-post flow existing.
+          IconButton(
+            onPressed: onCreatePost,
+            tooltip: 'Buat postingan',
+            style: IconButton.styleFrom(
+              minimumSize: const Size(52, 52),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            const Spacer(),
-            const IconTheme(
-              data: IconThemeData(color: ink, size: 28),
-              child: AppNotificationButton(iconColor: ink),
+            icon: const Icon(Icons.add_rounded, size: 36, color: ink),
+          ),
+          const Spacer(),
+          const IconTheme(
+            data: IconThemeData(color: ink, size: 28),
+            child: AppNotificationButton(iconColor: ink),
+          ),
+          IconButton(
+            onPressed: () => Navigator.pushNamed(context, '/account/settings'),
+            tooltip: 'Pengaturan akun',
+            style: IconButton.styleFrom(
+              minimumSize: const Size(48, 48),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            IconButton(
-              onPressed: () =>
-                  Navigator.pushNamed(context, '/account/settings'),
-              tooltip: 'Pengaturan akun',
-              style: IconButton.styleFrom(
-                minimumSize: const Size(48, 48),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              icon: const Icon(Icons.settings_outlined, color: ink, size: 28),
-            ),
-            const SizedBox(width: 8),
-          ],
-        ),
+            icon: const Icon(Icons.settings_outlined, color: ink, size: 28),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
     );
   }
@@ -479,12 +488,13 @@ class _ProfileSection extends StatelessWidget {
     const ink = Colors.white;
     final username = profile.username as String?;
     final hasUsername = username != null && username.isNotEmpty;
-    // Blok profil di atas hero biru — meneruskan gradasi app bar
-    // (heroMid→heroBottom), sudut bawah membulat sebagai penutup hero
-    // sebelum area tab/grid putih.
+    // Blok profil meneruskan sapuan hero VERTIKAL (heroMid→heroBottom) dari
+    // kotak status+ikon di atasnya. Batas atas = heroMid identik dengan batas
+    // bawah heroGradientV → menyatu tanpa seam. Sudut bawah membulat sebagai
+    // penutup hero sebelum area tab/grid putih.
     return Container(
       decoration: const BoxDecoration(
-        gradient: NataloColors.heroGradientContinue,
+        gradient: NataloColors.heroGradientVContinue,
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
       ),
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
