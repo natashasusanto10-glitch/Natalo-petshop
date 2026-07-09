@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show FloatingHeaderSnapConfiguration;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -84,7 +85,8 @@ class ProductsScreen extends StatefulWidget {
   State<ProductsScreen> createState() => _ProductsScreenState();
 }
 
-class _ProductsScreenState extends State<ProductsScreen> {
+class _ProductsScreenState extends State<ProductsScreen>
+    with TickerProviderStateMixin {
   static const _historyKey = 'natalo_search_history';
 
   final _searchController = TextEditingController();
@@ -1048,43 +1050,57 @@ class _ProductsScreenState extends State<ProductsScreen> {
             NataloPawRefreshIndicator(
               onRefresh: _refreshAll,
               // Selaras Beranda (PR #56): konten diam saat pull supaya hero biru
-              // tidak "terbelah"; paw muncul di bawah search bar (52 header judul
-              // + 12 pad + 42 search + 12 gap, diukur dari bawah status bar).
+              // tidak "terbelah"; paw muncul di bawah search bar (48 baris judul
+              // + 12 pad + 44 baris search + 10 gap, diukur dari bawah status
+              // bar — judul kini bagian pinned header). Refresh hanya mungkin
+              // di scroll ≈ 0 = header pasti expanded.
               pinContent: true,
-              topPadding: 118,
+              topPadding: 114,
               child: SafeArea(
                 bottom: false,
                 child: CustomScrollView(
                   controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
                   slivers: [
-                    const SliverToBoxAdapter(child: _ProductPageHeader()),
+                    // ── Collapsing header katalog (spec Jul 2026) ──
+                    // Judul "Produk Natalo"+cart PINDAH ke dalam pinned
+                    // header (dulu SliverToBoxAdapter terpisah) dan terlipat
+                    // bersama baris count saat scroll — search + chips tidak
+                    // pernah hilang. Mesin: pinned+floating — lipatan
+                    // digerakkan shrinkOffset 1:1 dengan jari (protokol
+                    // sliver: scrollExtent konstan → konten TIDAK pernah
+                    // lompat), floating = header kembali saat scroll naik di
+                    // TENGAH daftar (pola Instagram/Tokopedia, reveal overlay
+                    // tanpa menggeser grid), snapConfiguration = merapikan
+                    // diri ke buka/tutup penuh saat gesture selesai. BUKAN
+                    // toggle biner arah scroll (pseudocode spec) — terbukti
+                    // glitchy di mockup: konten lompat + buka-tutup beruntun.
                     SliverPersistentHeader(
                       pinned: true,
-                      delegate: _PinnedHeaderDelegate(
-                        // Extent disesuaikan: search 44 + gap 10 + count row 40 +
-                        // gap 10 + chip 46 + bottom gap 12 + top padding 12 = ~174
-                        minExtent: 174,
-                        maxExtent: 174,
-                        child: _CatalogHeader(
-                          controller: _searchController,
-                          query: _query,
-                          activeMode: _activeMode,
-                          selectedCategory: _filter.category,
-                          visibleCount: products.length,
-                          // Total dari API (jumlah produk sesuai filter di DB),
-                          // bukan jumlah yang kebetulan ter-load. Tanpa ini header
-                          // selalu tampil "24" walau DB punya ribuan → "dari N"
-                          // tidak pernah muncul. Fallback ke loaded length kalau
-                          // API tidak kirim total.
-                          totalCount: _result.total ?? _result.products.length,
-                          onQueryChanged: _onQueryChanged,
-                          onSubmitQuery: _commitSearch,
-                          onFilterModeChanged: _onFilterModeChanged,
-                          onOpenSort: _openSortSheet,
-                          onOpenFilterSheet: _openFilterSheet,
-                          activeAdvancedFilterCount: _filter.activeCount,
-                        ),
+                      floating: true,
+                      delegate: _CollapsingCatalogHeaderDelegate(
+                        vsync: this,
+                        // Reduce motion: snap instan (reveal 1:1 tetap jalan
+                        // — itu direct manipulation dari jari, bukan animasi).
+                        reduceMotion:
+                            MediaQuery.maybeOf(context)?.disableAnimations ??
+                                false,
+                        controller: _searchController,
+                        query: _query,
+                        activeMode: _activeMode,
+                        selectedCategory: _filter.category,
+                        visibleCount: products.length,
+                        // Total dari API (jumlah produk sesuai filter di DB),
+                        // bukan jumlah yang kebetulan ter-load. Tanpa ini
+                        // header selalu tampil "24" walau DB punya ribuan →
+                        // "dari N" tidak pernah muncul.
+                        totalCount: _result.total ?? _result.products.length,
+                        onQueryChanged: _onQueryChanged,
+                        onSubmitQuery: _commitSearch,
+                        onFilterModeChanged: _onFilterModeChanged,
+                        onOpenSort: _openSortSheet,
+                        onOpenFilterSheet: _openFilterSheet,
+                        activeAdvancedFilterCount: _filter.activeCount,
                       ),
                     ),
                     SliverToBoxAdapter(
@@ -1280,46 +1296,26 @@ class _ProductsScreenState extends State<ProductsScreen> {
   }
 }
 
-class _ProductPageHeader extends StatelessWidget {
-  const _ProductPageHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    // Hero biru — meneruskan strip status bar heroTop di atasnya; gradasi
-    // dilanjutkan _CatalogHeader (heroTop→heroMid) di bawahnya = satu blok.
-    return const ColoredBox(
-      color: NataloColors.heroTop,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(16, 4, 8, 0),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Produk Natalo',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  height: 1.2,
-                ),
-              ),
-            ),
-            // Cart icon — match dengan home & wishlist header (single
-            // source of truth via AppCartButton: shopping_cart_outlined
-            // 24px, red badge live sync via cartStore).
-            AppCartButton(iconColor: Colors.white),
-            // Jarak tepi kanan — ikon shrinkWrap mepet tepi tanpa ini.
-            SizedBox(width: 12),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
+/// Header katalog dengan collapse 1:1 (digerakkan shrinkOffset via
+/// [_CollapsingCatalogHeaderDelegate]).
+///
+/// [progress] 0.0 = expanded, 1.0 = collapsed.
+///
+/// Expanded : judul "Produk Natalo"+cart, search 42, baris count + pill
+///            Filter/Urutkan, chips kategori.
+/// Collapsed: judul & baris count terlipat (height→0 + fade); Filter +
+///            Urutkan menyusut jadi ikon kotak putih di kanan search bar
+///            (badge count filter aktif ikut); search + chips TIDAK PERNAH
+///            hilang (aturan inti spec).
+///
+/// Search bar TIDAK menipis (mockup 44→38 dibatalkan sadar): tombol ikon di
+/// sampingnya butuh tap target ≥44 — quality floor spec sendiri menang atas
+/// kosmetik 4-6px.
+///
+/// Aturan performa: tinggi di-animate SEKALI per container baris (ClipRect
+/// + Align heightFactor, linear terhadap t); isi baris hanya fade/transform.
 class _CatalogHeader extends StatelessWidget {
+  final double progress;
   final TextEditingController controller;
   final String query;
   final _ProductFilterMode activeMode;
@@ -1331,13 +1327,14 @@ class _CatalogHeader extends StatelessWidget {
   final ValueChanged<_ProductFilterMode> onFilterModeChanged;
   final VoidCallback onOpenSort;
 
-  /// NEW — buka advanced filter sheet (price, multi-brand, rating).
+  /// Buka advanced filter sheet (price, multi-brand, rating).
   final VoidCallback onOpenFilterSheet;
 
-  /// NEW — badge count untuk Filter button icon.
+  /// Badge count untuk Filter button icon.
   final int activeAdvancedFilterCount;
 
   const _CatalogHeader({
+    required this.progress,
     required this.controller,
     required this.query,
     required this.activeMode,
@@ -1352,45 +1349,258 @@ class _CatalogHeader extends StatelessWidget {
     required this.activeAdvancedFilterCount,
   });
 
+  /// Baris judul "Produk Natalo" + cart — terlipat penuh saat collapsed.
+  static const double _titleBlockHeight = 48;
+
+  /// Baris count + pill Filter/Urutkan (40) + gap bawah (10) — terlipat.
+  static const double _countBlockHeight = 50;
+
+  /// Baris search: field 42, tapi ikon dock di sampingnya 44 (tap target)
+  /// → tinggi baris efektif 44 konstan di semua state.
+  static const double _searchRowHeight = 44;
+
+  /// Extent collapsed: pad 12 + baris search 44 + gap 10 + chips 46 +
+  /// bottom 12 = 124.
+  static const double collapsedExtent = 124;
+
+  /// Extent expanded: collapsed + judul 48 + blok count 50 = 222.
+  static const double expandedExtent =
+      collapsedExtent + _titleBlockHeight + _countBlockHeight;
+
   @override
   Widget build(BuildContext context) {
+    final t = progress.clamp(0.0, 1.0);
+    // Fade isi baris yang terlipat sedikit lebih cepat dari lipatannya —
+    // teks tidak pernah terbaca "terpotong".
+    final foldOpacity = (1 - t * 1.6).clamp(0.0, 1.0);
+    // Dock ikon Filter/Urutkan: lebar terbuka linear bersama lipatan;
+    // opacity nyusul supaya terasa "meluncur masuk".
+    final dockOpacity = ((t - 0.2) / 0.8).clamp(0.0, 1.0);
+    final dockSlide = 12.0 * (1 - t);
+
     // Hero biru pinned — gradasi heroTop→heroMid sama dengan sticky header
-    // Beranda; saat scroll, blok ini menempel sendiri dan tetap terlihat
-    // sebagai hero utuh. Border bawah dihapus (transisi biru→surface).
-    return DecoratedBox(
-      decoration: const BoxDecoration(gradient: NataloColors.heroGradient),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: _ProductSearchBar(
-              controller: controller,
-              query: query,
-              onChanged: onQueryChanged,
-              onClear: () {
-                controller.clear();
-                onQueryChanged('');
-              },
-              onSubmitted: onSubmitQuery,
+    // Beranda. ClipRect terluar: saat floating menganimasi extent, konten
+    // yang belum terlipat tidak boleh bocor keluar paint bounds.
+    return ClipRect(
+      child: DecoratedBox(
+        decoration: const BoxDecoration(gradient: NataloColors.heroGradient),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Baris judul + cart — terlipat UTUH (dipindah dari
+            // SliverToBoxAdapter supaya bisa KEMBALI di tengah daftar saat
+            // scroll naik, tidak harus mentok atas dulu).
+            ClipRect(
+              child: Align(
+                alignment: Alignment.topCenter,
+                heightFactor: 1 - t,
+                child: SizedBox(
+                  height: _titleBlockHeight,
+                  child: IgnorePointer(
+                    ignoring: t > 0.5,
+                    child: Opacity(
+                      opacity: foldOpacity,
+                      child: const Padding(
+                        padding: EdgeInsets.fromLTRB(16, 4, 8, 0),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Produk Natalo',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.2,
+                                ),
+                              ),
+                            ),
+                            // Cart icon — match home & wishlist (single
+                            // source of truth via AppCartButton, badge live).
+                            AppCartButton(iconColor: Colors.white),
+                            SizedBox(width: 12),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
+            // ── Baris search + dock ikon Filter/Urutkan ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: SizedBox(
+                height: _searchRowHeight,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: _ProductSearchBar(
+                        controller: controller,
+                        query: query,
+                        onChanged: onQueryChanged,
+                        onClear: () {
+                          controller.clear();
+                          onQueryChanged('');
+                        },
+                        onSubmitted: onSubmitQuery,
+                      ),
+                    ),
+                    // Dock: duplikat Filter+Urutkan sebagai ikon kotak putih
+                    // — di-reveal saat baris pill-nya terlipat. Lebar dibuka
+                    // SEKALI via Align.widthFactor; ikon hanya
+                    // transform+opacity. Badge count filter aktif ikut
+                    // supaya user tidak lupa ada filter saat barisnya
+                    // tersembunyi.
+                    ClipRect(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: t,
+                        child: IgnorePointer(
+                          ignoring: t < 0.5,
+                          child: Opacity(
+                            opacity: dockOpacity,
+                            child: Transform.translate(
+                              offset: Offset(dockSlide, 0),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const SizedBox(width: 8),
+                                  _DockIconButton(
+                                    icon: Icons.tune_rounded,
+                                    tooltip: 'Filter',
+                                    badge: activeAdvancedFilterCount > 0
+                                        ? activeAdvancedFilterCount
+                                        : null,
+                                    onTap: onOpenFilterSheet,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  _DockIconButton(
+                                    icon: Icons.swap_vert_rounded,
+                                    tooltip: 'Urutkan',
+                                    onTap: onOpenSort,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            // ── Baris count + pill Filter/Urutkan — terlipat (gap bawah 10
+            // ikut di dalam blok supaya lipatannya linear).
+            ClipRect(
+              child: Align(
+                alignment: Alignment.topCenter,
+                heightFactor: 1 - t,
+                child: SizedBox(
+                  height: _countBlockHeight,
+                  child: IgnorePointer(
+                    ignoring: t > 0.5,
+                    child: Opacity(
+                      opacity: foldOpacity,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _ProductCountAndSortRow(
+                          visibleCount: visibleCount,
+                          totalCount: totalCount,
+                          onOpenSort: onOpenSort,
+                          onOpenFilterSheet: onOpenFilterSheet,
+                          activeFilterCount: activeAdvancedFilterCount,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Chips kategori — SELALU sticky (aturan inti spec).
+            _HorizontalProductFilterChips(
+              selectedMode: activeMode,
+              selectedCategory: selectedCategory,
+              onChanged: onFilterModeChanged,
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Tombol ikon kotak putih di dock samping search bar (Filter/Urutkan saat
+/// collapsed). Visual 42x42 radius 14 (match search field), tap target
+/// dijamin 44 via constraints. Ikon navy [NataloColors.heroMid] di atas
+/// putih. Badge merah count opsional (indikator filter aktif).
+class _DockIconButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final int? badge;
+  final VoidCallback onTap;
+
+  const _DockIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.badge,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final button = Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: const SizedBox(width: 42, height: 44),
+      ),
+    );
+    return Tooltip(
+      message: tooltip,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          button,
+          // Ikon di atas InkWell — IgnorePointer supaya ripple tetap kena.
+          IgnorePointer(
+            child: Icon(icon, size: 20, color: NataloColors.heroMid),
           ),
-          const SizedBox(height: 10),
-          // Product count + filter + sort button row — di atas filter chips.
-          _ProductCountAndSortRow(
-            visibleCount: visibleCount,
-            totalCount: totalCount,
-            onOpenSort: onOpenSort,
-            onOpenFilterSheet: onOpenFilterSheet,
-            activeFilterCount: activeAdvancedFilterCount,
-          ),
-          const SizedBox(height: 10),
-          _HorizontalProductFilterChips(
-            selectedMode: activeMode,
-            selectedCategory: selectedCategory,
-            onChanged: onFilterModeChanged,
-          ),
-          const SizedBox(height: 12),
+          if (badge != null)
+            Positioned(
+              top: -4,
+              right: -4,
+              child: IgnorePointer(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: NataloColors.danger,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  constraints: const BoxConstraints(minWidth: 16),
+                  child: Text(
+                    badge! > 9 ? '9+' : '$badge',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      height: 1,
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -2475,19 +2685,73 @@ class _ProductDiscountBadge extends StatelessWidget {
   }
 }
 
-/// Pinned header delegate untuk sliver yang stick di top scroll.
-class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
-  @override
-  final double minExtent;
-  @override
-  final double maxExtent;
-  final Widget child;
+/// Delegate collapsing header katalog — pinned + floating.
+///
+/// Lipatan digerakkan `shrinkOffset` NATIVE dari protokol sliver: scroll
+/// pertama (maxExtent−minExtent = 98px) dikonsumsi 1:1 oleh lipatan judul +
+/// baris count, dan karena scrollExtent sliver konstan, konten di bawah
+/// TIDAK PERNAH lompat — ini alasan mesin ini dipilih menggantikan
+/// pseudocode toggle biner arah-scroll di spec (yang terbukti glitchy di
+/// mockup: konten tergeser mendadak + buka-tutup beruntun).
+///
+/// floating: true → header kembali saat scroll naik di TENGAH daftar
+/// (reveal overlay, konten tidak tergeser). [snapConfiguration] merapikan
+/// header ke buka/tutup penuh saat gesture selesai — snap TIDAK pernah
+/// menyela jari yang masih menempel (framework menunggu scroll end asli).
+class _CollapsingCatalogHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final TickerProvider _vsync;
 
-  const _PinnedHeaderDelegate({
-    required this.minExtent,
-    required this.maxExtent,
-    required this.child,
-  });
+  /// Reduce motion ("Remove animations" Android / "Reduce Motion" iOS):
+  /// snap instan. Reveal 1:1-nya sendiri tetap jalan — itu direct
+  /// manipulation dari jari user, bukan animasi yang bergerak sendiri.
+  final bool reduceMotion;
+
+  final TextEditingController controller;
+  final String query;
+  final _ProductFilterMode activeMode;
+  final String? selectedCategory;
+  final int visibleCount;
+  final int totalCount;
+  final ValueChanged<String> onQueryChanged;
+  final ValueChanged<String> onSubmitQuery;
+  final ValueChanged<_ProductFilterMode> onFilterModeChanged;
+  final VoidCallback onOpenSort;
+  final VoidCallback onOpenFilterSheet;
+  final int activeAdvancedFilterCount;
+
+  const _CollapsingCatalogHeaderDelegate({
+    required TickerProvider vsync,
+    required this.reduceMotion,
+    required this.controller,
+    required this.query,
+    required this.activeMode,
+    required this.selectedCategory,
+    required this.visibleCount,
+    required this.totalCount,
+    required this.onQueryChanged,
+    required this.onSubmitQuery,
+    required this.onFilterModeChanged,
+    required this.onOpenSort,
+    required this.onOpenFilterSheet,
+    required this.activeAdvancedFilterCount,
+  }) : _vsync = vsync;
+
+  @override
+  double get minExtent => _CatalogHeader.collapsedExtent;
+
+  @override
+  double get maxExtent => _CatalogHeader.expandedExtent;
+
+  @override
+  TickerProvider get vsync => _vsync;
+
+  @override
+  FloatingHeaderSnapConfiguration get snapConfiguration =>
+      FloatingHeaderSnapConfiguration(
+        curve: Curves.easeOut,
+        duration:
+            reduceMotion ? Duration.zero : const Duration(milliseconds: 200),
+      );
 
   @override
   Widget build(
@@ -2495,14 +2759,44 @@ class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    return child;
+    final range = maxExtent - minExtent;
+    final t = range > 0 ? (shrinkOffset / range).clamp(0.0, 1.0) : 0.0;
+    // RepaintBoundary: repaint per-frame selama lipatan tidak merambat ke
+    // grid produk di bawahnya.
+    return RepaintBoundary(
+      child: _CatalogHeader(
+        progress: t,
+        controller: controller,
+        query: query,
+        activeMode: activeMode,
+        selectedCategory: selectedCategory,
+        visibleCount: visibleCount,
+        totalCount: totalCount,
+        onQueryChanged: onQueryChanged,
+        onSubmitQuery: onSubmitQuery,
+        onFilterModeChanged: onFilterModeChanged,
+        onOpenSort: onOpenSort,
+        onOpenFilterSheet: onOpenFilterSheet,
+        activeAdvancedFilterCount: activeAdvancedFilterCount,
+      ),
+    );
   }
 
   @override
-  bool shouldRebuild(covariant _PinnedHeaderDelegate oldDelegate) {
-    return oldDelegate.child != child ||
-        oldDelegate.minExtent != minExtent ||
-        oldDelegate.maxExtent != maxExtent;
+  bool shouldRebuild(covariant _CollapsingCatalogHeaderDelegate oldDelegate) {
+    return oldDelegate.reduceMotion != reduceMotion ||
+        oldDelegate.controller != controller ||
+        oldDelegate.query != query ||
+        oldDelegate.activeMode != activeMode ||
+        oldDelegate.selectedCategory != selectedCategory ||
+        oldDelegate.visibleCount != visibleCount ||
+        oldDelegate.totalCount != totalCount ||
+        oldDelegate.onQueryChanged != onQueryChanged ||
+        oldDelegate.onSubmitQuery != onSubmitQuery ||
+        oldDelegate.onFilterModeChanged != onFilterModeChanged ||
+        oldDelegate.onOpenSort != onOpenSort ||
+        oldDelegate.onOpenFilterSheet != onOpenFilterSheet ||
+        oldDelegate.activeAdvancedFilterCount != activeAdvancedFilterCount;
   }
 }
 
