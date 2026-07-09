@@ -539,53 +539,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             // jauh lebih tebal dari ikon Material di sebelahnya.
             child: const Icon(Icons.ios_share_rounded, size: 24),
           ),
-          // F12 — gate entry ini dgn kill-switch chat, sama seperti
-          // `AppChatButton` (widgets/app_chat_button.dart) di header layar
-          // lain: sembunyikan sepenuhnya (`SizedBox.shrink()`) saat
-          // `!chatStore.chatEnabled`, bukan tetap tampil lalu membawa user
-          // ke room chat mati (banner pemeliharaan). `AnimatedBuilder`
-          // dibungkus di sini (bukan extract widget terpisah) krn ini
-          // satu-satunya konsumen kill-switch di layar ini. Analitik
-          // `chat_opened_from_product` cuma pernah fire dari `onPressed` di
-          // bawah — begitu tombol hilang saat maintenance, event ini
-          // otomatis tak pernah fire lagi utk kondisi itu (tak perlu guard
-          // tambahan di dalam `onPressed`).
-          AnimatedBuilder(
-            animation: chatStore,
-            builder: (context, _) {
-              if (!chatStore.chatEnabled) return const SizedBox.shrink();
-              return AppHeaderIconButton(
-                tooltip: 'Tanya Produk Ini',
-                onPressed: () {
-                  // Analitik — funnel MVP chat (spec §11): entry chat DARI
-                  // halaman produk (beda dgn tombol chat generik di header
-                  // lain yg tak punya productContext). Fire-and-forget, tak
-                  // pernah block navigasi (idiom sama dgn
-                  // `home_screen.dart._submit`). Guest (belum login) TETAP
-                  // dihitung di sini walau ujungnya mendarat di prompt
-                  // login (bukan room chat) — tap ini tetap intent "buka
-                  // chat dari produk" yang genuine, beda dgn kondisi
-                  // maintenance yang sudah digate di atas (tombol tak
-                  // pernah muncul, jadi tak pernah bisa di-tap).
-                  AppAnalytics.logEvent('chat_opened_from_product', {
-                    'product_id': product.id,
-                  });
-                  Navigator.pushNamed(
-                    context,
-                    '/chat',
-                    arguments: {
-                      'type': 'product',
-                      'productId': product.id,
-                      'slug': product.slug,
-                    },
-                  );
-                },
-                // Ikon chat bulat yang sama dgn AppChatButton di header lain
-                // (gelembung + 3 titik). size 24 = samakan dgn share di kiri.
-                child: const ChatDotsBubbleIcon(size: 24),
-              );
-            },
-          ),
+          // Entry chat produk pindah ke tombol kiri sticky bar bawah
+          // (_StickyChatButton) — header cukup share + keranjang supaya
+          // tidak dobel entry point di satu layar.
           const AppCartButton(),
         ],
       ),
@@ -679,7 +635,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 116)),
+          // Spacer bawah ikut backdrop abu supaya area di balik sticky bar
+          // tidak balik ke putih (kartu terakhir tetap "duduk" di abu).
+          const SliverToBoxAdapter(
+            child: ColoredBox(
+              color: _sectionBackdrop,
+              child: SizedBox(height: 116, width: double.infinity),
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: _StickyPurchaseBar(
@@ -927,26 +890,28 @@ class _ProductInfo extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          formatRupiah(product.finalPrice),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            // Merah saat ADA diskon harga (ala Tokopedia); hitam saat tidak
-            // — jangan bikin "merah = hemat" kalau harga normal.
-            color: hasDiscount ? _discountRed : cs.onSurface,
-            fontSize: 32,
-            fontWeight: FontWeight.w900,
-            height: 1,
-          ),
-        ),
-        if (hasDiscount) ...[
-          const SizedBox(height: 10),
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 8,
-            runSpacing: 8,
-            children: [
+        // Harga + pill % + harga coret dalam SATU baris rapat (Wrap turun
+        // baris hanya kalau harga sangat panjang) — hierarki lebih tegas
+        // daripada pill yang jatuh sendirian di baris kedua.
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            Text(
+              formatRupiah(product.finalPrice),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                // Merah saat ADA diskon harga (ala Tokopedia); hitam saat
+                // tidak — jangan bikin "merah = hemat" kalau harga normal.
+                color: hasDiscount ? _discountRed : cs.onSurface,
+                fontSize: 32,
+                fontWeight: FontWeight.w900,
+                height: 1,
+              ),
+            ),
+            if (hasDiscount) ...[
               // %pill solid (putih di atas merah) — pengganti teks % polos,
               // satu aksen merah tegas yang mengikat ke harga.
               Container(
@@ -977,8 +942,8 @@ class _ProductInfo extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-        ],
+          ],
+        ),
         if (_VoucherAndTrust.shouldShow(product, vouchers)) ...[
           const SizedBox(height: 12),
           _VoucherAndTrust(
@@ -988,74 +953,77 @@ class _ProductInfo extends StatelessWidget {
           const SizedBox(height: 16),
         ] else
           const SizedBox(height: 18),
+        // Judul full-width; favorit pindah ke baris meta di bawah supaya
+        // judul panjang tidak berebut ruang dengan tombol hati.
+        Text(
+          product.title,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: cs.onSurface,
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+            height: 1.22,
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Baris meta padat: rating • ulasan • terjual di kiri, favorit
+        // sejajar di kanan. Baris SELALU render (favorit butuh rumah)
+        // walau meta kosong.
         Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
-              child: Text(
-                product.title,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  height: 1.22,
-                ),
-              ),
+              child: (hasRating || hasReviews || hasSold)
+                  ? Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (hasRating) ...[
+                          const Icon(Icons.star_rounded,
+                              size: 18, color: _starAmber),
+                          const SizedBox(width: 4),
+                          Text(
+                            product.rating.toStringAsFixed(1),
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                        if (hasReviews) ...[
+                          if (hasRating) const _InfoDot(),
+                          Text(
+                            '${product.reviewCount} ulasan',
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                        if (hasSold) ...[
+                          if (hasRating || hasReviews) const _InfoDot(),
+                          Text(
+                            '${_formatCompactCount(product.soldCount)} terjual',
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ],
+                    )
+                  : const SizedBox.shrink(),
             ),
             const SizedBox(width: 10),
-            Padding(
-              padding: const EdgeInsets.only(top: 1),
-              child: FavoriteButton(
-                product: product,
-                size: 36,
-              ),
+            FavoriteButton(
+              product: product,
+              size: 36,
             ),
           ],
         ),
-        if (hasRating || hasReviews || hasSold) ...[
-          const SizedBox(height: 12),
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              if (hasRating) ...[
-                const Icon(Icons.star_rounded, size: 18, color: _starAmber),
-                const SizedBox(width: 4),
-                Text(
-                  product.rating.toStringAsFixed(1),
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-              if (hasReviews) ...[
-                if (hasRating) const _InfoDot(),
-                Text(
-                  '${product.reviewCount} ulasan',
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-              if (hasSold) ...[
-                if (hasRating || hasReviews) const _InfoDot(),
-                Text(
-                  '${_formatCompactCount(product.soldCount)} terjual',
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ],
       ],
     );
   }
@@ -1237,11 +1205,11 @@ class _VoucherAndTrust extends StatelessWidget {
               percent: product.discountPercent,
               savings: savings,
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
           ],
           for (var i = 0; i < resolved.length; i++) ...[
             _VoucherChip(voucher: resolved[i], hero: i == heroVoucherIndex),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
           ],
         ],
       ),
@@ -1310,24 +1278,26 @@ class _DiscountChip extends StatelessWidget {
     final label = (percent != null && percent! > 0)
         ? 'Diskon $percent% (${formatRupiahCompact(savings)})'
         : 'Hemat ${formatRupiahCompact(savings)}';
+    // Rail voucher lebih tipis (26px, font 12) — redesign detail produk:
+    // chip promo terasa ringan menempel harga, bukan baris tombol.
     return Container(
-      height: 30,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      height: 26,
+      padding: const EdgeInsets.symmetric(horizontal: 9),
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: _discountRed,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.bolt_rounded, size: 15, color: Colors.white),
-          const SizedBox(width: 5),
+          const Icon(Icons.bolt_rounded, size: 13, color: Colors.white),
+          const SizedBox(width: 4),
           Text(
             label,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: FontWeight.w900,
               height: 1,
             ),
@@ -1378,13 +1348,14 @@ class _VoucherChip extends StatelessWidget {
                 ? _discountRed
                 : (shipping ? const Color(0xFFEFFAF4) : _softDiscountBg);
     final fg = fill ? Colors.white : tone;
+    // Tipis 26px + radius 8, seragam dengan _DiscountChip di rail.
     return Container(
-      height: 30,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      height: 26,
+      padding: const EdgeInsets.symmetric(horizontal: 9),
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(8),
         border: fill
             ? null
             : Border.all(
@@ -1400,15 +1371,15 @@ class _VoucherChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: fg),
-          const SizedBox(width: 5),
+          Icon(icon, size: 13, color: fg),
+          const SizedBox(width: 4),
           Text(
             voucherChipText(voucher),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: fg,
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: FontWeight.w900,
               height: 1,
             ),
@@ -1941,6 +1912,12 @@ int _voucherSortRank(ProductVoucherPreview v) {
   return 1;
 }
 
+/// Backdrop abu lembut untuk area di bawah sticky tab — tiap section jadi
+/// kartu putih ber-border tipis di atasnya (kesan berlapis premium ala
+/// marketplace). Sama dengan NataloColors.surface; di-const-kan lokal agar
+/// seragam dengan konstanta warna lain di file ini.
+const _sectionBackdrop = Color(0xFFF8FAFC);
+
 class _SectionShell extends StatelessWidget {
   final Widget child;
 
@@ -1948,9 +1925,23 @@ class _SectionShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: child,
+    // ColoredBox full-width supaya backdrop abu menyambung mulus antar
+    // sliver (tiap section adalah sliver terpisah, tanpa gap).
+    return ColoredBox(
+      color: _sectionBackdrop,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _borderGray),
+          ),
+          child: child,
+        ),
+      ),
     );
   }
 }
@@ -4762,6 +4753,84 @@ class _VariantChip extends StatelessWidget {
   }
 }
 
+/// Tombol chat di kiri sticky bar — entry point utama "tanya produk ini"
+/// setelah icon chat di header AppBar dihapus (redesign detail produk).
+///
+/// - Chat aktif → ikon gelembung+3 titik biru brand (ChatDotsBubbleIcon,
+///   sama dgn AppChatButton di header layar lain), buka room chat in-app
+///   `/chat` dengan konteks produk. Analitik `chat_opened_from_product`
+///   (funnel MVP chat spec §11) fire dari sini — dulu dari icon header.
+///   Guest tetap dihitung walau mendarat di prompt login (intent genuine).
+/// - Kill-switch OFF (maintenance) → fallback ke tombol WA hijau lama,
+///   BUKAN disembunyikan: customer harus selalu punya jalur bertanya dari
+///   halaman produk. Beda dgn AppChatButton header yang hide total — di
+///   sana ada alternatif lain, di sini tombol ini satu-satunya.
+class _StickyChatButton extends StatelessWidget {
+  final Product product;
+
+  const _StickyChatButton({required this.product});
+
+  void _openChat(BuildContext context) {
+    AppHaptics.tap();
+    AppAnalytics.logEvent('chat_opened_from_product', {
+      'product_id': product.id,
+    });
+    Navigator.pushNamed(
+      context,
+      '/chat',
+      arguments: {
+        'type': 'product',
+        'productId': product.id,
+        'slug': product.slug,
+      },
+    );
+  }
+
+  void _openWa(BuildContext context) {
+    AppHaptics.tap();
+    final uri = NataloStoreConfig.whatsappUri(
+      message:
+          'Halo Admin Natalo, saya ingin tanya tentang produk ${product.title}. Apakah ready?',
+    );
+    // Best-effort — di mobile ini akan trigger WhatsApp intent.
+    launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: chatStore,
+      builder: (context, _) {
+        final chatEnabled = chatStore.chatEnabled;
+        return Tooltip(
+          message: chatEnabled ? 'Chat Toko' : 'Chat WhatsApp',
+          child: SizedBox(
+            width: 56,
+            height: 50,
+            child: OutlinedButton(
+              onPressed: () =>
+                  chatEnabled ? _openChat(context) : _openWa(context),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _brandBlue,
+                minimumSize: const Size(56, 50),
+                // Border abu netral, seragam dgn "Beli Sekarang" (Opsi B).
+                side: const BorderSide(color: _borderGray),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                padding: EdgeInsets.zero,
+              ),
+              child: chatEnabled
+                  ? const ChatDotsBubbleIcon(size: 26, color: _brandBlue)
+                  : const _WhatsAppIcon(),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _StickyPurchaseBar extends StatelessWidget {
   final Product product;
   final ProductVariant? selectedVariant;
@@ -4780,16 +4849,6 @@ class _StickyPurchaseBar extends StatelessWidget {
     required this.onAddToCart,
     required this.onBuyNow,
   });
-
-  void _onChatWa(BuildContext context) {
-    AppHaptics.tap();
-    final uri = NataloStoreConfig.whatsappUri(
-      message:
-          'Halo Admin Natalo, saya ingin tanya tentang produk ${product.title}. Apakah ready?',
-    );
-    // Best-effort — di mobile ini akan trigger WhatsApp intent.
-    launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
 
   void _onAddToCart(BuildContext context) {
     if (needsVariantSelection) {
@@ -4812,29 +4871,13 @@ class _StickyPurchaseBar extends StatelessWidget {
     final outOfStock = displayStock <= 0;
     // Saat out-of-stock, ganti tombol Beli + Keranjang dengan "Beri tahu
     // saya saat tersedia" — pre-order notification subscription. User
-    // tetap bisa chat WA admin via tombol kiri.
+    // tetap bisa tanya via tombol chat toko di kiri.
     if (outOfStock) {
       return AppGlassBottomBar(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
         child: Row(
           children: [
-            SizedBox(
-              width: 56,
-              height: 50,
-              child: OutlinedButton(
-                onPressed: () => _onChatWa(context),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _brandBlue,
-                  minimumSize: const Size(56, 50),
-                  side: const BorderSide(color: _brandBlue, width: 1.2),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  padding: EdgeInsets.zero,
-                ),
-                child: const _WhatsAppIcon(),
-              ),
-            ),
+            _StickyChatButton(product: product),
             const SizedBox(width: 12),
             Expanded(
               flex: 4,
@@ -4852,23 +4895,7 @@ class _StickyPurchaseBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: Row(
         children: [
-          SizedBox(
-            width: 56,
-            height: 50,
-            child: OutlinedButton(
-              onPressed: () => _onChatWa(context),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _brandBlue,
-                minimumSize: const Size(56, 50),
-                side: const BorderSide(color: _brandBlue, width: 1.2),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                padding: EdgeInsets.zero,
-              ),
-              child: const _WhatsAppIcon(),
-            ),
-          ),
+          _StickyChatButton(product: product),
           const SizedBox(width: 12),
           Expanded(
             flex: 2,
@@ -4877,7 +4904,9 @@ class _StickyPurchaseBar extends StatelessWidget {
               style: OutlinedButton.styleFrom(
                 foregroundColor: _brandBlue,
                 minimumSize: const Size.fromHeight(50),
-                side: const BorderSide(color: _brandBlue, width: 1.2),
+                // Border abu netral (bukan outline biru) — teks tetap biru
+                // brand; satu-satunya blok biru solid di bar = "+ Keranjang".
+                side: const BorderSide(color: _borderGray),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
