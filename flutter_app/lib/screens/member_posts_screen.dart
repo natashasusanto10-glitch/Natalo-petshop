@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
@@ -18,7 +19,7 @@ import '../widgets/profile_avatar.dart';
 import 'feed_new_post_screen.dart';
 import 'member_post_detail_screen.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 const _draftPendingUploadKey = 'natalo-feed-upload-pending';
 
 class MemberPostsScreen extends StatefulWidget {

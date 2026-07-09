@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -16,7 +17,7 @@ const _searchFill = Color(0xFF242A30);
 const _divider = Color(0xFF141A22);
 const _muted = Color(0xFF8D96A3);
 const _text = Color(0xFFF8FAFC);
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 const _recentStorageKey = 'feed_user_search_recent_v1';
 const _maxRecentUsers = 12;
 

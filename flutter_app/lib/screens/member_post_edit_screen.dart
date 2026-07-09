@@ -726,7 +726,7 @@ class _TaggedProductPickerSheetState extends State<_TaggedProductPickerSheet> {
               const SizedBox(height: 12),
               OutlinedButton(
                 onPressed: _retry,
-                child: const Text('Coba Lagi'),
+                child: const Text('Coba lagi'),
               ),
             ],
           ),

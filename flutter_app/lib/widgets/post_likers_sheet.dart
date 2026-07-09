@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 
 import '../screens/public_profile_screen.dart';
 import '../services/api_client.dart';
@@ -7,7 +8,7 @@ import '../services/follow_service.dart';
 import '../services/post_likers_service.dart';
 import '../utils/haptics.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 
 /// IG-style "Disukai oleh" bottom sheet — list user yang like sebuah
 /// post, dengan tombol Follow/Mengikuti per row + tap baris untuk buka
@@ -270,7 +271,7 @@ class _PostLikersSheetState extends State<PostLikersSheet> {
               FilledButton(
                 onPressed: _load,
                 style: FilledButton.styleFrom(backgroundColor: _brandBlue),
-                child: const Text('Coba Lagi'),
+                child: const Text('Coba lagi'),
               ),
             ],
           ),

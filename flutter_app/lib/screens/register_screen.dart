@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -21,7 +22,7 @@ import '../utils/phone_formatter.dart';
 /// - Stale (deadline sudah lewat saat dibaca).
 const _kRegisterOtpCooldownKey = 'register_otp_resend_until_ms';
 
-const _brandBlue = Color(0xFF0787F5);
+const _brandBlue = NataloColors.primary;
 const _brandBlueDark = Color(0xFF075FCC);
 const _softBlueCard = Color(0xFFEAF5FF);
 

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 
 import '../models/app_notification.dart';
 import '../services/notification_service.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 
-const _brandBlue = Color(0xFF1677FF);
+const _brandBlue = NataloColors.primary;
 const _announcementGreen = Color(0xFF20B26B);
 const _promoRed = Color(0xFFE11D48);
 

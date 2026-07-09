@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/api_client.dart';
@@ -8,7 +9,7 @@ import '../utils/haptics.dart';
 import '../utils/read_only_mode.dart';
 import 'app_toast.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 const _dangerRed = Color(0xFFEF4444);
 
 /// Bottom sheet "Ubah Foto Profil".

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_compress/video_compress.dart';
@@ -15,7 +16,7 @@ import '../widgets/app_ui.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 const _starGold = Color(0xFFF6B73C);
 const _successGreen = Color(0xFF16A34A);
 
@@ -156,7 +157,7 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
               lottiePath: AppLottiePaths.empty,
               title: 'Login untuk memberi review',
               body: 'Review hanya tersedia untuk member yang sudah belanja.',
-              buttonLabel: 'Login',
+              buttonLabel: 'Masuk Member',
               onPressed: () => Navigator.pushNamed(context, '/member/login'),
             )
           : NataloPawRefreshIndicator(
@@ -170,16 +171,17 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
                   }
 
                   if (snapshot.hasError) {
+                    // Error != empty: pakai AppErrorState (ikon danger +
+                    // "Coba lagi") supaya konsisten & tak tampak seperti
+                    // "belum ada ulasan". Tetap dalam ListView agar
+                    // pull-to-refresh (NataloPawRefreshIndicator) jalan.
                     return ListView(
-                      padding: const EdgeInsets.all(24),
+                      padding: const EdgeInsets.only(top: 60),
                       children: [
-                        AppEmptyState(
+                        AppErrorState(
+                          variant: appErrorVariantFromError(snapshot.error),
                           title: 'Ulasan belum bisa dimuat',
-                          body: snapshot.error is ApiException
-                              ? (snapshot.error as ApiException).message
-                              : 'Coba tarik layar untuk memuat ulang.',
-                          buttonLabel: 'Muat Ulang',
-                          onPressed: _refresh,
+                          onRetry: _refresh,
                         ),
                       ],
                     );

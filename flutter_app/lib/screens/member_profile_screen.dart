@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../config/natalo_store_config.dart';
@@ -9,7 +10,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/profile_avatar.dart';
 import '../widgets/update_profile_photo_sheet.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 
 /// Focused EditProfile form.
 ///

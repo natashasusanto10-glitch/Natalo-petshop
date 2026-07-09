@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
@@ -9,7 +10,7 @@ import '../state/settings_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/loading_button.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 const _dangerRed = Color(0xFFEF4444);
 const _warningOrange = Color(0xFFEA580C);
 

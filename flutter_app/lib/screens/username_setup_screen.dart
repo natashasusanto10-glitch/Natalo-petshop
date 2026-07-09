@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 import 'package:flutter/services.dart';
 
 import '../services/api_client.dart';
@@ -9,7 +10,7 @@ import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 const _successGreen = Color(0xFF10B981);
 const _dangerRed = Color(0xFFEF4444);
 

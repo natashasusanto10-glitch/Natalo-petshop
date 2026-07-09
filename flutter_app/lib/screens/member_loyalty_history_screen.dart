@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 
 import '../services/member_service.dart';
 import '../state/member_store.dart';
@@ -6,7 +7,7 @@ import '../utils/formatters.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 const _primaryDark = Color(0xFF075CB5);
 const _success = Color(0xFF16A34A);
 const _danger = Color(0xFFEF4444);

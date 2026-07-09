@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 
 import '../models/product.dart';
+import '../theme/app_radius.dart';
 import '../utils/action_throttle.dart';
 import '../utils/formatters.dart';
 import 'app_product_image.dart';
 import 'brand_exclusive_badge.dart';
 
-const _cardBlue = Color(0xFF1565D8);
+const _cardBlue = NataloColors.primary;
 const _discountRed = Color(0xFFE11D48);
 const _discountSoft = Color(0xFFFFF1F2);
 const _shippingGreen = Color(0xFF16A34A);
@@ -42,13 +44,15 @@ class CompactCommerceProductCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        // Radius 16 (AppRadius.large) — samakan dgn ProductCard di Products/
+        // Home; sebelumnya 20 → tile sama tampak beda sudut antar layar.
+        borderRadius: AppRadius.large,
         child: Container(
           width: width,
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: cs.surface,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: AppRadius.large,
             border: Border.all(color: cs.outlineVariant, width: 1),
             boxShadow: [
               BoxShadow(

@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 import 'package:flutter/services.dart';
 
 import '../models/member_profile.dart';
 import '../services/member_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_login_gate.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 
 class MemberVouchersScreen extends StatefulWidget {
   const MemberVouchersScreen({super.key});
@@ -28,23 +30,28 @@ class _MemberVouchersScreenState extends State<MemberVouchersScreen> {
 
   Future<List<MemberVoucher>> _loadVouchers() async {
     if (!memberStore.isLoggedIn) return [];
-    try {
-      final vouchers = await memberService.fetchVouchers();
-      return vouchers;
-    } catch (_) {
-      return [];
-    }
+    // Jangan telan error jadi list kosong — biarkan FutureBuilder lihat
+    // snapshot.hasError supaya render AppErrorState + retry, bukan
+    // "Belum ada voucher" palsu saat gagal-muat.
+    return memberService.fetchVouchers();
   }
 
   Future<void> _refresh() async {
     setState(() => _vouchersFuture = _loadVouchers());
-    await _vouchersFuture;
+    // Error ditangani FutureBuilder (snapshot.hasError → AppErrorState);
+    // telan di sini supaya spinner refresh tidak lempar unhandled.
+    try {
+      await _vouchersFuture;
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
     if (!memberStore.isLoggedIn) {
-      return const _LoginRequiredScaffold(title: 'Voucher Member');
+      return const AppLoginRequiredScaffold(
+        title: 'Voucher Member',
+        message: 'Masuk untuk melihat voucher yang aktif di akun kamu.',
+      );
     }
 
     return Scaffold(
@@ -55,6 +62,14 @@ class _MemberVouchersScreenState extends State<MemberVouchersScreen> {
           if (snapshot.connectionState == ConnectionState.waiting &&
               !snapshot.hasData) {
             return const AppSkeletonList(itemCount: 4);
+          }
+          // Gagal-muat → error state + retry (bukan empty state palsu).
+          if (snapshot.hasError) {
+            return AppErrorState(
+              variant: appErrorVariantFromError(snapshot.error),
+              onRetry: () =>
+                  setState(() => _vouchersFuture = _loadVouchers()),
+            );
           }
           final vouchers = snapshot.data ?? [];
           // Empty state — match Capacitor pattern: illustration center + title
@@ -193,71 +208,6 @@ class _VoucherEmptyState extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LoginRequiredScaffold extends StatelessWidget {
-  final String title;
-
-  const _LoginRequiredScaffold({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(title: Text(title)),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                height: 76,
-                width: 76,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
-                      : const Color(0xFFEAF5FF),
-                  borderRadius: BorderRadius.circular(26),
-                ),
-                child: const Icon(
-                  Icons.lock_outline_rounded,
-                  color: _brandBlue,
-                  size: 36,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Login member diperlukan',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Masuk untuk melihat voucher yang aktif di akun kamu.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 18),
-              ElevatedButton(
-                onPressed: () => Navigator.pushNamed(context, '/member/login'),
-                child: const Text('Masuk Member'),
-              ),
-            ],
-          ),
         ),
       ),
     );

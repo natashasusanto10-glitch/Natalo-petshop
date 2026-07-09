@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/haptics.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = NataloColors.primary;
 
 /// In-app browser untuk halaman static Natalo (Blog, Help, Kebijakan, dll).
 /// Match feel native: header dengan title + URL bar mini, loading bar

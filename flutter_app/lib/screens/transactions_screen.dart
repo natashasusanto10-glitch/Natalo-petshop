@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../theme/natalo_colors.dart';
 
 import '../models/member_profile.dart';
 import '../services/api_client.dart';
@@ -10,11 +11,12 @@ import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/app_chat_button.dart';
+import '../widgets/app_login_gate.dart';
 import '../widgets/app_notification_button.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
 
-const _brandBlue = Color(0xFF2563EB);
+const _brandBlue = NataloColors.primary;
 const _danger = Color(0xFFEF4444);
 const _warning = Color(0xFFF97316);
 // Feature flag — Saldo Refund sekarang AKTIF (backend phase 1+2 ready).
@@ -31,7 +33,11 @@ class TransactionsScreen extends StatelessWidget {
       animation: memberStore,
       builder: (context, _) {
         if (!memberStore.isLoggedIn) {
-          return const _LoginRequiredScaffold();
+          return const AppLoginRequiredScaffold(
+            message:
+                'Masuk untuk lihat pesanan, voucher, dan menu transaksi lainnya.',
+            bottomNavigationBar: BottomNavBar(currentIndex: 3),
+          );
         }
 
         return Scaffold(
@@ -603,6 +609,7 @@ class _BalancePointsCard extends StatefulWidget {
 
 class _BalancePointsCardState extends State<_BalancePointsCard> {
   int? _refundBalance; // null = loading, int = loaded
+  bool _balanceError = false; // true = fetch gagal (jangan tampil Rp0 palsu)
 
   @override
   void initState() {
@@ -630,11 +637,15 @@ class _BalancePointsCardState extends State<_BalancePointsCard> {
           balance = (wallet['availableBalance'] as num?)?.toInt() ?? 0;
         }
       }
-      setState(() => _refundBalance = balance);
+      setState(() {
+        _refundBalance = balance;
+        _balanceError = false;
+      });
     } catch (_) {
-      // Defensive: kalau API error (network / 500), tampilkan Rp0
-      // bukan crash. User tetap bisa tap menu untuk masuk detail screen.
-      if (mounted) setState(() => _refundBalance = 0);
+      // Gagal-muat (network/500): JANGAN tampil Rp0 palsu — tandai error
+      // supaya UI tampilkan "Gagal muat" + cue retry. Bedakan dari saldo
+      // yang memang benar-benar 0 (tampil "Rp0").
+      if (mounted) setState(() => _balanceError = true);
     }
   }
 
@@ -642,11 +653,13 @@ class _BalancePointsCardState extends State<_BalancePointsCard> {
   Widget build(BuildContext context) {
     final points = memberStore.profile?.points ?? 0;
     final balance = _refundBalance;
-    final balanceText = balance == null
-        ? '...' // Loading placeholder (singkat, tidak intrusive)
-        : balance == 0
-            ? 'Rp0'
-            : _formatRupiahShort(balance);
+    final balanceText = _balanceError
+        ? 'Gagal muat'
+        : balance == null
+            ? '...' // Loading placeholder (singkat, tidak intrusive)
+            : balance == 0
+                ? 'Rp0'
+                : _formatRupiahShort(balance);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
       child: _PremiumCard(
@@ -667,14 +680,20 @@ class _BalancePointsCardState extends State<_BalancePointsCard> {
                       iconBg: const Color(0xFFEAF2FF),
                       title: 'Saldo Refund',
                       value: balanceText,
-                      trailing: _refundBalanceEnabled
-                          ? null
-                          : const _SmallChip(
+                      valueColor: _balanceError ? _danger : null,
+                      trailing: !_refundBalanceEnabled
+                          ? const _SmallChip(
                               text: 'Segera hadir',
                               color: _brandBlue,
                               background: Color(0xFFEFF6FF),
-                            ),
-                      onTap: () => _openRefundBalance(context),
+                            )
+                          : (_balanceError
+                              ? const Icon(Icons.refresh_rounded,
+                                  size: 18, color: _danger)
+                              : null),
+                      onTap: _balanceError
+                          ? () => _fetchRefundBalance()
+                          : () => _openRefundBalance(context),
                     ),
                   ),
                   VerticalDivider(
@@ -729,6 +748,7 @@ class _BalanceItem extends StatelessWidget {
   final Color iconBg;
   final String title;
   final String value;
+  final Color? valueColor;
   final Widget? trailing;
   final VoidCallback onTap;
 
@@ -739,6 +759,7 @@ class _BalanceItem extends StatelessWidget {
     required this.title,
     required this.value,
     required this.onTap,
+    this.valueColor,
     this.trailing,
   });
 
@@ -782,7 +803,7 @@ class _BalanceItem extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: cs.onSurface,
+                      color: valueColor ?? cs.onSurface,
                       fontSize: 15,
                       fontWeight: FontWeight.w900,
                     ),
@@ -1064,79 +1085,6 @@ class _HelpCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _LoginRequiredScaffold extends StatelessWidget {
-  const _LoginRequiredScaffold();
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      backgroundColor: cs.surface,
-      extendBody: true,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.receipt_long_outlined,
-                color: _brandBlue,
-                size: 64,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Login dulu yuk',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Masuk untuk lihat pesanan, voucher, dan menu transaksi lainnya.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () =>
-                      Navigator.pushNamed(context, '/member/login'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _brandBlue,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: const Text(
-                    'Masuk Member',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      bottomNavigationBar: const BottomNavBar(currentIndex: 3),
     );
   }
 }
