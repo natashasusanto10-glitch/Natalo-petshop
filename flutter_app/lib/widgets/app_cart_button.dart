@@ -120,6 +120,10 @@ class _AppCartButtonState extends State<AppCartButton>
           children: [
             IconButton(
               tooltip: 'Keranjang',
+              // Chrome rapat samakan dgn AppHeaderIconButton (notif/chat) →
+              // jarak antar-ikon header konsisten.
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              constraints: const BoxConstraints(minWidth: 34, minHeight: 44),
               onPressed: () => _tapThrottle.run(
                 widget.onPressed ?? () => Navigator.pushNamed(context, '/cart'),
               ),
