@@ -416,7 +416,8 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
         return Scaffold(
           appBar: AppBar(
             title: const Text('Detail Pesanan'),
-            actions: const [AppChatButton()],
+            // SizedBox 12: jarak tepi kanan (ikon shrinkWrap mepet tepi).
+            actions: const [AppChatButton(), SizedBox(width: 12)],
           ),
           body: NataloPawRefreshIndicator(
             onRefresh: _refreshOrder,

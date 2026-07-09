@@ -1283,6 +1283,8 @@ class _ProductPageHeader extends StatelessWidget {
             // source of truth via AppCartButton: shopping_cart_outlined
             // 24px, red badge live sync via cartStore).
             const AppCartButton(),
+            // Jarak tepi kanan — ikon shrinkWrap mepet tepi tanpa ini.
+            const SizedBox(width: 12),
           ],
         ),
       ),

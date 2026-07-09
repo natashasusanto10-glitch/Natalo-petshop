@@ -841,6 +841,9 @@ class _CartScreenState extends State<CartScreen>
             icon: const Icon(Icons.favorite_border_rounded),
           ),
           const AppChatButton(),
+          // Jarak tepi kanan — ikon shrinkWrap (34px) cuma nyisa 4px dari
+          // tepi layar → tampak condong kanan vs header Beranda (margin 16).
+          const SizedBox(width: 12),
         ],
       ),
       body: AnimatedBuilder(

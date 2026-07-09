@@ -291,7 +291,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
         extendBody: true,
         appBar: AppBar(
           title: const Text('Wishlist'),
-          actions: const [AppCartButton()],
+          // SizedBox 12: jarak tepi kanan (ikon shrinkWrap mepet tepi).
+          actions: const [AppCartButton(), SizedBox(width: 12)],
         ),
         body: AppEmptyState(
           lottiePath: AppLottiePaths.paw,
@@ -333,8 +334,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
         // Cart icon di kanan atas — match home AppCartButton 1:1
         // (shopping_cart_outlined, 24px, badge merah live sync via
         // cartStore). Konsisten visual antar home, wishlist, dan
-        // halaman lain yang punya header.
-        actions: const [AppCartButton()],
+        // halaman lain yang punya header. SizedBox 12 = jarak tepi kanan.
+        actions: const [AppCartButton(), SizedBox(width: 12)],
         // Title — "Wishlist" saja saat kosong; tambah subtitle hanya
         // kalau ada item (per user request, hilangkan "0 produk disimpan"
         // yang redundant di empty state — placeholder hero card sudah
