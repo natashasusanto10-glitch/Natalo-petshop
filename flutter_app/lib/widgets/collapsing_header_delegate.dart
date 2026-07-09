@@ -36,12 +36,21 @@ class CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
   /// sudah di-clamp). t diturunkan dari `shrinkOffset / (maxHeight-minHeight)`.
   final Widget Function(BuildContext context, double t) builder;
 
+  /// Durasi + kurva snap "settle" saat gesture selesai (BUKAN reveal 1:1 yang
+  /// mengikuti jari — itu tak terpengaruh). Bisa beda per-halaman: Beranda
+  /// dibuat lebih pelan/halus atas permintaan user. Default = 280ms
+  /// easeOutCubic (dipakai Produk).
+  final Duration snapDuration;
+  final Curve snapCurve;
+
   const CollapsingHeaderDelegate({
     required this.minHeight,
     required this.maxHeight,
     required TickerProvider vsync,
     required this.reduceMotion,
     required this.builder,
+    this.snapDuration = const Duration(milliseconds: 280),
+    this.snapCurve = Curves.easeOutCubic,
   }) : _vsync = vsync;
 
   @override
@@ -56,12 +65,11 @@ class CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   FloatingHeaderSnapConfiguration get snapConfiguration =>
       FloatingHeaderSnapConfiguration(
-        // Snap "lebih kalem" (user request): 280ms + easeOutCubic — settle
-        // saat jari lepas terasa halus, tidak "meloncat". Reveal 1:1-nya
+        // Snap settle saat jari lepas — halus, tidak "meloncat". Durasi/kurva
+        // dari [snapDuration]/[snapCurve] (per-halaman). Reveal 1:1-nya
         // sendiri tetap mengikuti jari (tak terpengaruh ini).
-        curve: Curves.easeOutCubic,
-        duration:
-            reduceMotion ? Duration.zero : const Duration(milliseconds: 280),
+        curve: snapCurve,
+        duration: reduceMotion ? Duration.zero : snapDuration,
       );
 
   @override
@@ -88,6 +96,8 @@ class CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
     return oldDelegate.minHeight != minHeight ||
         oldDelegate.maxHeight != maxHeight ||
         oldDelegate.reduceMotion != reduceMotion ||
+        oldDelegate.snapDuration != snapDuration ||
+        oldDelegate.snapCurve != snapCurve ||
         true;
   }
 }
