@@ -62,7 +62,24 @@ export async function GET(request: NextRequest, { params }: Params) {
   // `customerId` (invariant fix B2 — lihat komentar lib/chat/rooms.ts).
   // Tidak memutasi `readByCustomerAt` per-pesan — disederhanakan sesuai
   // brief Task 7 (tak diminta spec §4.2 maupun reconciliation Plan 3).
-  const markReadPromise = roomRef.update({ unreadForCustomer: 0 }).catch(() => undefined);
+  // Perf/biaya: HANYA tulis kalau unread masih > 0. Poll customer memanggil
+  // GET ini tiap ~4 dtk; sebelumnya `unreadForCustomer:0` ditulis TANPA SYARAT
+  // tiap tick → 1 write/4dtk/chat walau sudah 0 & idle (ratusan write/jam).
+  // Baca dulu (1 read << 1 write) lalu skip write bila tak perlu. Tetap
+  // best-effort & TAK membuat room stub (hanya .update saat room ADA & unread>0).
+  const markReadPromise = (async () => {
+    try {
+      const roomSnap = await roomRef.get();
+      const unread = roomSnap.exists
+        ? ((roomSnap.data()?.unreadForCustomer as number | undefined) ?? 0)
+        : 0;
+      if (unread > 0) {
+        await roomRef.update({ unreadForCustomer: 0 });
+      }
+    } catch {
+      // best-effort — jangan gagalkan GET hanya karena mark-read.
+    }
+  })();
 
   const [snap] = await Promise.all([query.get(), markReadPromise]);
   const rawDocs = snap.docs;
