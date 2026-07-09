@@ -579,11 +579,14 @@ class _NotificationHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Hero biru ringkas — gradasi + sudut bawah membulat, pola sama dengan
-    // header hero Beranda/Belanja/Transaksi. Warna fixed (bukan theme).
+    // Hero biru ringkas — gradasi VERTIKAL (heroGradientV) supaya tepi atas
+    // header rata heroTop dan menyatu mulus dengan strip status bar heroTop di
+    // belakang notch. Diagonal heroGradient bikin tepi atas kiri gelap / kanan
+    // terang → seam miring dengan strip flat = "biru tidak menyatu". Sudut
+    // bawah membulat sebagai penutup blok. Warna fixed (bukan theme).
     return Container(
       decoration: const BoxDecoration(
-        gradient: NataloColors.heroGradient,
+        gradient: NataloColors.heroGradientV,
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
       ),
       padding: const EdgeInsets.fromLTRB(6, 10, 12, 14),
