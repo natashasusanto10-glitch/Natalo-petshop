@@ -205,32 +205,31 @@ class _ChatDotsBubblePainter extends CustomPainter {
       ..isAntiAlias = true
       ..color = color;
 
-    // Gelembung BULAT (lingkaran) + ekor kecil bawah, gaya Tokopedia — satu
-    // outline kontinu. Busur lingkaran hampir penuh (sisakan celah ~46° di
-    // bawah), lalu ekor runcing menutup celahnya. Pakai arcTo dgn sudut
-    // eksplisit (y-ke-bawah: 90° = titik bawah lingkaran) supaya arah busur
-    // deterministik; tanpa Path.combine/PathOperation.
+    // Gelembung BULAT + ekor lancip di KIRI-BAWAH (referensi user: lingkaran
+    // dengan spike runcing arah jam 7-8, menyatu dgn outline) — satu path
+    // kontinu. Busur lingkaran menyisakan celah 98°–146° (y-ke-bawah: 90° =
+    // titik bawah), ekor menutupnya: sisi bawah nyaris datar ke ujung runcing,
+    // sisi kiri nyaris vertikal naik kembali ke lingkaran. Sudut eksplisit
+    // via arcTo supaya arah busur deterministik; tanpa Path.combine.
     const cx = 12.0, cyc = 11.0, r = 8.5; // pusat & radius (ruang 24x24)
-    const gapStart = 72 * math.pi / 180; // ujung kanan celah (bawah-kanan)
-    const gapEnd = 118 * math.pi / 180; // ujung kiri celah (bawah-kiri)
+    const gapStart = 98 * math.pi / 180; // ujung celah dekat titik bawah
+    const gapEnd = 146 * math.pi / 180; // ujung celah sisi kiri
+    const tipX = 4.4, tipY = 20.9; // ujung runcing ekor (kiri-bawah)
     final rect =
         Rect.fromCircle(center: Offset(cx * k, cyc * k), radius: r * k);
     final bubble = Path()
-      // moveTo persis ke titik awal busur (sudut gapEnd) lalu busur 314°
-      // sampai gapStart — celah bawah tersisa utk ekor.
       ..moveTo(
         (cx + r * math.cos(gapEnd)) * k,
         (cyc + r * math.sin(gapEnd)) * k,
       )
       ..arcTo(rect, gapEnd, 2 * math.pi - (gapEnd - gapStart), false)
-      // Ekor: dari ujung kanan celah turun runcing, balik ke ujung kiri celah.
-      ..lineTo((cx - 1.2) * k, (cyc + r + 3.2) * k)
+      ..lineTo(tipX * k, tipY * k)
       ..close();
     canvas.drawPath(bubble, stroke);
 
-    // 3 titik horizontal di tengah lingkaran.
-    for (final dx in const [-3.6, 0.0, 3.6]) {
-      canvas.drawCircle(Offset((cx + dx) * k, cyc * k), 1.35 * k, fill);
+    // 3 titik horizontal di tengah lingkaran — chunky seperti referensi.
+    for (final dx in const [-3.9, 0.0, 3.9]) {
+      canvas.drawCircle(Offset((cx + dx) * k, cyc * k), 1.5 * k, fill);
     }
   }
 
