@@ -147,10 +147,7 @@ class _ProfilePageState extends State<_ProfilePage>
       if (!mounted) return;
       // Seed FeedStore — cross-screen sync (Reels/Detail toggle ke-reflect
       // di Postingan Saya preview kalau di masa depan tile tampil count).
-      feedStore.mergeFromServer(
-        page.items,
-        fetchedAt: fetchedAt,
-      );
+      feedStore.mergeFromServer(page.items, fetchedAt: fetchedAt);
       setState(() {
         _allPosts = page.items;
         _loadingPosts = false;
@@ -181,10 +178,7 @@ class _ProfilePageState extends State<_ProfilePage>
     // Segarkan posts + profil (follower/following count di /api/auth/me)
     // paralel. hydrateFromApi notify listeners → AnimatedBuilder luar
     // rebuild dgn count terbaru.
-    await Future.wait([
-      _loadAll(),
-      memberStore.hydrateFromApi(),
-    ]);
+    await Future.wait([_loadAll(), memberStore.hydrateFromApi()]);
   }
 
   Future<void> _openCreatePost() async {
@@ -240,10 +234,8 @@ class _ProfilePageState extends State<_ProfilePage>
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => PublicProfileFollowListScreen(
-          profile: pub,
-          initialKind: kind,
-        ),
+        builder: (_) =>
+            PublicProfileFollowListScreen(profile: pub, initialKind: kind),
       ),
     );
     if (mounted) await memberStore.hydrateFromApi();
@@ -284,80 +276,119 @@ class _ProfilePageState extends State<_ProfilePage>
       backgroundColor: Theme.of(context).colorScheme.surface,
       // extendBody: konten tembus di belakang floating glass nav.
       extendBody: true,
-      appBar: _ProfileAppBar(onCreatePost: _openCreatePost),
-      body: NataloPawRefreshIndicator(
-        onRefresh: _refresh,
-        // Selaras Beranda (PR #56): app bar + blok profil kini satu hero
-        // biru — konten diam saat pull supaya tidak muncul celah putih di
-        // bawah hero; paw muncul tepat di bawah app bar.
-        topPadding: 60,
-        pinContent: true,
-        child: NestedScrollView(
-          headerSliverBuilder: (context, innerScrolled) => [
-            // Blok profil = hero biru (avatar + statistik + nama di atas
-            // gradasi). Meneruskan gradasi app bar → satu hero.
-            SliverToBoxAdapter(
-              child: _ProfileSection(
-                profile: profile,
-                postsCount: _allPosts.length,
-                onAvatarTap: _openProfilePhotoSheet,
-                onEditProfile: _openEditProfile,
-                onShareProfile: _shareProfile,
-                onFollowersTap: () => _openFollowList(FollowListKind.followers),
-                onFollowingTap: () => _openFollowList(FollowListKind.following),
+      // Status bar biru + ikon header IN-BODY — pola hero biru seragam
+      // dengan Beranda/Belanja/Transaksi/Notifikasi. Sebelumnya Akun
+      // sendirian pakai Scaffold.appBar + flexibleSpace yang menyisakan
+      // status bar PUTIH (celah putih di atas hero). AnnotatedRegion +
+      // strip heroTop di belakang status bar menjamin area notch ikut biru
+      // dan ikon status bar putih — sama persis mekanisme 4 halaman lain.
+      body: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.light,
+        child: Stack(
+          children: [
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: MediaQuery.paddingOf(context).top,
+              child: const ColoredBox(color: NataloColors.heroTop),
+            ),
+            SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  // Ikon header (+ / notifikasi / pengaturan) — dulu di
+                  // Scaffold.appBar, kini in-body supaya gradasi mengalir
+                  // mulus status bar → ikon → blok profil (satu hero).
+                  _ProfileTopBar(onCreatePost: _openCreatePost),
+                  Expanded(
+                    child: NataloPawRefreshIndicator(
+                      onRefresh: _refresh,
+                      // Konten diam saat pull (pinContent) supaya hero tidak
+                      // "terbelah"; paw muncul di bawah baris ikon header.
+                      topPadding: 60,
+                      pinContent: true,
+                      child: NestedScrollView(
+                        headerSliverBuilder: (context, innerScrolled) => [
+                          // Blok profil = hero biru (avatar + statistik + nama di atas
+                          // gradasi). Meneruskan gradasi app bar → satu hero.
+                          SliverToBoxAdapter(
+                            child: _ProfileSection(
+                              profile: profile,
+                              postsCount: _allPosts.length,
+                              onAvatarTap: _openProfilePhotoSheet,
+                              onEditProfile: _openEditProfile,
+                              onShareProfile: _shareProfile,
+                              onFollowersTap: () =>
+                                  _openFollowList(FollowListKind.followers),
+                              onFollowingTap: () =>
+                                  _openFollowList(FollowListKind.following),
+                            ),
+                          ),
+                          // Banner reminder pilih @username — dipindah ke bawah hero
+                          // (area putih) supaya tidak memotong blok biru. Auto-hide kalau
+                          // user sudah set / pernah snooze 7 hari.
+                          const SliverToBoxAdapter(
+                            child: UsernamePromptBanner(),
+                          ),
+                          SliverPersistentHeader(
+                            pinned: true,
+                            delegate: _TabBarDelegate(
+                              controller: _tabController,
+                            ),
+                          ),
+                        ],
+                        body: TabBarView(
+                          controller: _tabController,
+                          children: [
+                            _PostGrid(
+                              posts: _allPosts,
+                              loading: _loadingPosts,
+                              errorText: _postsError,
+                              emptyText: 'Belum ada postingan',
+                              emptySubtext:
+                                  'Bagikan momen lucu hewan kesayanganmu di Feed Natalo.',
+                              showCreateCta: true,
+                              onCreateCta: _openCreatePost,
+                              onRetry: _loadAll,
+                              onTapPost: (idx) =>
+                                  _openPostDetail(_allPosts, idx),
+                            ),
+                            _PostGrid(
+                              posts: _videoPosts,
+                              loading: _loadingPosts,
+                              errorText: _postsError,
+                              emptyText: 'Belum ada video',
+                              emptySubtext:
+                                  'Video yang kamu unggah akan muncul di sini.',
+                              showCreateCta: false,
+                              onCreateCta: _openCreatePost,
+                              onRetry: _loadAll,
+                              onTapPost: (idx) =>
+                                  _openPostDetail(_videoPosts, idx),
+                            ),
+                            _PostGrid(
+                              posts: _taggedPosts,
+                              loading: _loadingPosts,
+                              errorText: _postsError,
+                              emptyText: 'Belum ada produk ditag',
+                              emptySubtext:
+                                  'Postingan dengan produk Natalo yang ditag akan muncul di sini.',
+                              showCreateCta: false,
+                              onCreateCta: _openCreatePost,
+                              onRetry: _loadAll,
+                              onTapPost: (idx) =>
+                                  _openPostDetail(_taggedPosts, idx),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            // Banner reminder pilih @username — dipindah ke bawah hero
-            // (area putih) supaya tidak memotong blok biru. Auto-hide kalau
-            // user sudah set / pernah snooze 7 hari.
-            const SliverToBoxAdapter(
-              child: UsernamePromptBanner(),
-            ),
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _TabBarDelegate(controller: _tabController),
             ),
           ],
-          body: TabBarView(
-            controller: _tabController,
-            children: [
-              _PostGrid(
-                posts: _allPosts,
-                loading: _loadingPosts,
-                errorText: _postsError,
-                emptyText: 'Belum ada postingan',
-                emptySubtext:
-                    'Bagikan momen lucu hewan kesayanganmu di Feed Natalo.',
-                showCreateCta: true,
-                onCreateCta: _openCreatePost,
-                onRetry: _loadAll,
-                onTapPost: (idx) => _openPostDetail(_allPosts, idx),
-              ),
-              _PostGrid(
-                posts: _videoPosts,
-                loading: _loadingPosts,
-                errorText: _postsError,
-                emptyText: 'Belum ada video',
-                emptySubtext: 'Video yang kamu unggah akan muncul di sini.',
-                showCreateCta: false,
-                onCreateCta: _openCreatePost,
-                onRetry: _loadAll,
-                onTapPost: (idx) => _openPostDetail(_videoPosts, idx),
-              ),
-              _PostGrid(
-                posts: _taggedPosts,
-                loading: _loadingPosts,
-                errorText: _postsError,
-                emptyText: 'Belum ada produk ditag',
-                emptySubtext:
-                    'Postingan dengan produk Natalo yang ditag akan muncul di sini.',
-                showCreateCta: false,
-                onCreateCta: _openCreatePost,
-                onRetry: _loadAll,
-                onTapPost: (idx) => _openPostDetail(_taggedPosts, idx),
-              ),
-            ],
-          ),
         ),
       ),
       bottomNavigationBar: const BottomNavBar(currentIndex: 4),
@@ -365,73 +396,59 @@ class _ProfilePageState extends State<_ProfilePage>
   }
 }
 
-// ─── AppBar ────────────────────────────────────────────────────────
+// ─── Header top bar (in-body, di atas hero biru) ───────────────────
 
-class _ProfileAppBar extends StatelessWidget implements PreferredSizeWidget {
+/// Baris ikon header (+ / notifikasi / pengaturan) di atas hero biru.
+///
+/// Dulu `_ProfileAppBar` (Scaffold.appBar + flexibleSpace). Diganti widget
+/// IN-BODY supaya gradasi hero mengalir mulus dari strip status bar → baris
+/// ikon → blok profil, seragam dengan Beranda/Belanja/Transaksi/Notifikasi.
+/// Mekanisme appBar+flexibleSpace lama menyisakan status bar putih (celah
+/// putih di atas hero). Ikon putih di atas gradasi biru.
+class _ProfileTopBar extends StatelessWidget {
   final VoidCallback onCreatePost;
 
-  const _ProfileAppBar({required this.onCreatePost});
-
-  @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  const _ProfileTopBar({required this.onCreatePost});
 
   @override
   Widget build(BuildContext context) {
-    // Hero biru — flexibleSpace mengecat gradasi (termasuk area status bar);
-    // blok profil di bawahnya meneruskan gradasi = satu hero. Ikon putih.
     const ink = Colors.white;
-    return AppBar(
-      backgroundColor: Colors.transparent,
-      surfaceTintColor: Colors.transparent,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      systemOverlayStyle: SystemUiOverlayStyle.light,
-      flexibleSpace: const DecoratedBox(
-        decoration: BoxDecoration(gradient: NataloColors.heroGradient),
-      ),
-      automaticallyImplyLeading: false,
-      titleSpacing: 12,
-      title: Row(
-        children: [
-          // Plus icon kiri — buka create-post flow existing.
-          IconButton(
-            onPressed: onCreatePost,
-            tooltip: 'Buat postingan',
-            style: IconButton.styleFrom(
-              minimumSize: const Size(52, 52),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    return DecoratedBox(
+      decoration: const BoxDecoration(gradient: NataloColors.heroGradient),
+      child: SizedBox(
+        height: kToolbarHeight,
+        child: Row(
+          children: [
+            const SizedBox(width: 4),
+            // Plus icon kiri — buka create-post flow existing.
+            IconButton(
+              onPressed: onCreatePost,
+              tooltip: 'Buat postingan',
+              style: IconButton.styleFrom(
+                minimumSize: const Size(52, 52),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              icon: const Icon(Icons.add_rounded, size: 36, color: ink),
             ),
-            icon: const Icon(
-              Icons.add_rounded,
-              size: 36,
-              color: ink,
+            const Spacer(),
+            const IconTheme(
+              data: IconThemeData(color: ink, size: 28),
+              child: AppNotificationButton(iconColor: ink),
             ),
-          ),
-        ],
+            IconButton(
+              onPressed: () =>
+                  Navigator.pushNamed(context, '/account/settings'),
+              tooltip: 'Pengaturan akun',
+              style: IconButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              icon: const Icon(Icons.settings_outlined, color: ink, size: 28),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
       ),
-      actions: [
-        const IconTheme(
-          data: IconThemeData(
-            color: ink,
-            size: 28,
-          ),
-          child: AppNotificationButton(iconColor: ink),
-        ),
-        IconButton(
-          onPressed: () => Navigator.pushNamed(context, '/account/settings'),
-          tooltip: 'Pengaturan akun',
-          style: IconButton.styleFrom(
-            minimumSize: const Size(48, 48),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          icon: const Icon(
-            Icons.settings_outlined,
-            color: ink,
-            size: 28,
-          ),
-        ),
-        const SizedBox(width: 8),
-      ],
     );
   }
 }
@@ -600,10 +617,7 @@ class _ProfileActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const textStyle = TextStyle(
-      fontSize: 13,
-      fontWeight: FontWeight.w800,
-    );
+    const textStyle = TextStyle(fontSize: 13, fontWeight: FontWeight.w800);
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(8),
     );
@@ -627,9 +641,7 @@ class _ProfileActionButton extends StatelessWidget {
               onPressed: onTap,
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.white,
-                side: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.55),
-                ),
+                side: BorderSide(color: Colors.white.withValues(alpha: 0.55)),
                 padding: EdgeInsets.zero,
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -740,10 +752,7 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
         // splash bulat material yang clash dengan custom indicator.
         splashFactory: NoSplash.splashFactory,
         overlayColor: WidgetStateProperty.all<Color>(Colors.transparent),
-        labelStyle: const TextStyle(
-          fontSize: 0,
-          fontWeight: FontWeight.w600,
-        ),
+        labelStyle: const TextStyle(fontSize: 0, fontWeight: FontWeight.w600),
         unselectedLabelStyle: const TextStyle(
           fontSize: 0,
           fontWeight: FontWeight.w500,
@@ -815,18 +824,12 @@ class _PostGrid extends StatelessWidget {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(40),
-          child: CircularProgressIndicator(
-            strokeWidth: 2.4,
-            color: _brandBlue,
-          ),
+          child: CircularProgressIndicator(strokeWidth: 2.4, color: _brandBlue),
         ),
       );
     }
     if ((errorText ?? '').isNotEmpty && posts.isEmpty) {
-      return _ErrorState(
-        text: errorText!,
-        onRetry: onRetry,
-      );
+      return _ErrorState(text: errorText!, onRetry: onRetry);
     }
     if (posts.isEmpty) {
       return _EmptyState(
@@ -863,10 +866,7 @@ class _ErrorState extends StatelessWidget {
   final String text;
   final VoidCallback onRetry;
 
-  const _ErrorState({
-    required this.text,
-    required this.onRetry,
-  });
+  const _ErrorState({required this.text, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -936,7 +936,8 @@ class _PostThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mediaUrl = (post.thumbnailUrl?.trim().isNotEmpty == true
+    final mediaUrl =
+        (post.thumbnailUrl?.trim().isNotEmpty == true
             ? post.thumbnailUrl
             : null) ??
         (post.previewMediaUrl.trim().isNotEmpty ? post.previewMediaUrl : null);
@@ -1012,11 +1013,7 @@ class _ThumbnailIcon extends StatelessWidget {
         color: Colors.black.withValues(alpha: 0.50),
         shape: BoxShape.circle,
       ),
-      child: Icon(
-        icon,
-        size: 14,
-        color: Colors.white,
-      ),
+      child: Icon(icon, size: 14, color: Colors.white),
     );
   }
 }
