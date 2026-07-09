@@ -1059,9 +1059,12 @@ class _HomeHeader extends StatelessWidget {
       children: [
         DecoratedBox(
           decoration: BoxDecoration(
-            // Hero biru — token premium (NataloColors.heroGradient), sama di
-            // light & dark; seragam dengan halaman biru lain.
-            gradient: NataloColors.heroGradient,
+            // Hero biru VERTIKAL murni (heroGradientV) — bukan diagonal.
+            // Diagonal bikin garis tipis "seam" di sambungan blok hero
+            // (status strip → header → marquee) karena tepi tiap blok punya
+            // sebaran warna miring yang tidak sejajar antar kotak. Vertikal =
+            // warna seragam tiap baris → sambungan menyatu mulus.
+            gradient: NataloColors.heroGradientV,
             // Shadow bawah = pemisah dari konten, hanya saat collapsed
             // (expanded: marquee di bawahnya yang jadi penutup blok).
             boxShadow: t > 0.05
@@ -1321,7 +1324,9 @@ class _HomeHeader extends StatelessWidget {
                   color: Theme.of(context).scaffoldBackgroundColor,
                   child: const DecoratedBox(
                     decoration: BoxDecoration(
-                      gradient: NataloColors.heroGradientContinue,
+                      // Vertikal murni — menyambung mulus dgn heroGradientV
+                      // header di atasnya (batas atas = heroMid keduanya).
+                      gradient: NataloColors.heroGradientVContinue,
                       borderRadius: BorderRadius.vertical(
                         bottom: Radius.circular(18),
                       ),
