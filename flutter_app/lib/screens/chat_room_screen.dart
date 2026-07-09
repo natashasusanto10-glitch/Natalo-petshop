@@ -936,6 +936,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       setState(() => _replaceStatus(clientMsgId, ChatSendStatus.failed));
       // Path lokal SENGAJA dipertahankan di `_pendingImagePaths` (bukan
       // dihapus) — retry (`_onRetry`) butuh file itu lagi utk kirim ulang.
+      // Jangan diam-diam: user harus tahu foto gagal + alasannya (bug report
+      // "kirim gambar hilang tanpa error"). Bubble failed + toast detail.
+      AppToast.show(
+        context,
+        'Foto gagal terkirim'
+        '${e.statusCode != null ? ' (${e.statusCode})' : ''} — '
+        'tap bubble untuk coba lagi',
+        kind: ToastKind.error,
+      );
     } catch (e) {
       // Non-ApiException juga harus memindahkan bubble ke `failed` (path
       // lokal tetap dipertahankan utk retry).
@@ -944,6 +953,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       }
       if (!mounted) return;
       setState(() => _replaceStatus(clientMsgId, ChatSendStatus.failed));
+      AppToast.show(
+        context,
+        'Foto gagal terkirim — tap bubble untuk coba lagi',
+        kind: ToastKind.error,
+      );
     }
   }
 
