@@ -29,6 +29,11 @@ class AppHeaderIconButton extends StatelessWidget {
     final button = IconButton(
       onPressed: onPressed,
       icon: child,
+      // Warna ikon header EKSPLISIT onSurface. Default M3 IconButton =
+      // colorScheme.onSurfaceVariant (#6B7280 abu) & tema tak punya
+      // iconButtonTheme yang menimpanya → tanpa ini ikon header tampil ABU,
+      // bukan hitam. onSurface = textPrimary (light) / textPrimaryDark (dark).
+      color: Theme.of(context).colorScheme.onSurface,
       // Rapatkan jarak antar-ikon header — default IconButton (48px) bikin gap
       // lebar. Padding horizontal kecil + minWidth 38; tap-target vertikal
       // tetap 44. Berlaku seragam utk semua ikon header (notif/chat/dll).

@@ -172,7 +172,11 @@ class ChatDotsBubbleIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final iconTheme = IconTheme.of(context);
     final s = size ?? iconTheme.size ?? 24.0;
-    final c = color ?? iconTheme.color ?? NataloColors.textPrimary;
+    // Fallback ke onSurface (bukan textPrimary hardcoded) supaya benar di dark
+    // mode juga. Di dalam IconButton, iconTheme.color sudah = onSurface.
+    final c = color ??
+        iconTheme.color ??
+        Theme.of(context).colorScheme.onSurface;
     return SizedBox(
       width: s,
       height: s,

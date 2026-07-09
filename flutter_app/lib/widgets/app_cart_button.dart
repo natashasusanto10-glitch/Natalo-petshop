@@ -120,8 +120,10 @@ class _AppCartButtonState extends State<AppCartButton>
           children: [
             IconButton(
               tooltip: 'Keranjang',
-              // Chrome rapat samakan dgn AppHeaderIconButton (notif/chat) →
-              // jarak antar-ikon header konsisten.
+              // Warna onSurface eksplisit (default M3 IconButton = abu
+              // onSurfaceVariant) + chrome rapat samakan dgn AppHeaderIconButton
+              // → ikon header hitam & jaraknya konsisten.
+              color: Theme.of(context).colorScheme.onSurface,
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
               constraints: const BoxConstraints(minWidth: 34, minHeight: 44),
               onPressed: () => _tapThrottle.run(
