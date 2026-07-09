@@ -138,6 +138,8 @@ export type WriteCustomerMessageInput = {
   image?: { url: string };
   product?: { productId: string; slug?: string; name: string; imageUrl?: string; price?: number; stock?: number };
   order?: { orderNumber: string; status?: string; total?: number };
+  // Kutipan balasan — sudah di-derive-ulang server (route) dari pesan asli.
+  replyTo?: { id: string; senderName?: string; type?: string; text?: string };
   auto?: boolean;
   staffOnly?: boolean;
   clientMsgId: string;
@@ -226,6 +228,7 @@ export async function writeCustomerMessage(
     if (input.image !== undefined) messageDoc.image = input.image;
     if (input.product !== undefined) messageDoc.product = input.product;
     if (input.order !== undefined) messageDoc.order = input.order;
+    if (input.replyTo !== undefined) messageDoc.replyTo = input.replyTo;
     if (input.auto !== undefined) messageDoc.auto = input.auto;
     if (input.staffOnly !== undefined) messageDoc.staffOnly = input.staffOnly;
 

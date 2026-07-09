@@ -103,9 +103,13 @@ class _Bubble extends StatelessWidget {
           border: isCustomer ? null : Border.all(color: NataloColors.border),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (message.replyTo != null) ...[
+              _ReplyQuote(reply: message.replyTo!, isCustomer: isCustomer),
+              const SizedBox(height: 5),
+            ],
             if (text.isNotEmpty)
               Text(
                 text,
@@ -118,10 +122,74 @@ class _Bubble extends StatelessWidget {
                 ),
               ),
             const SizedBox(height: 2),
-            _MetaRow(
-                message: message, isCustomer: isCustomer, onRetry: onRetry),
+            Align(
+              alignment: Alignment.centerRight,
+              child: _MetaRow(
+                  message: message, isCustomer: isCustomer, onRetry: onRetry),
+            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Blok kutipan "pesan yang dibalas" di dalam bubble (di atas teks). Bentuk
+/// data = [ChatReplyRef] {senderName, type, text-preview}. Warna beradaptasi:
+/// di bubble customer (latar primary) teks harus terang; di bubble staff
+/// (putih) pakai warna body/primary normal.
+class _ReplyQuote extends StatelessWidget {
+  final ChatReplyRef reply;
+  final bool isCustomer;
+
+  const _ReplyQuote({required this.reply, required this.isCustomer});
+
+  @override
+  Widget build(BuildContext context) {
+    final who = reply.senderName?.trim();
+    final rtext = reply.text?.trim() ?? '';
+    final preview = switch (reply.type) {
+      'image' => rtext.isNotEmpty ? rtext : '📷 Foto',
+      'product' || 'product_context' => rtext.isNotEmpty ? rtext : '🛍️ Produk',
+      _ => rtext.isNotEmpty ? rtext : 'Pesan',
+    };
+    final barColor =
+        isCustomer ? NataloColors.white : NataloColors.primary;
+    final labelColor =
+        isCustomer ? NataloColors.white : NataloColors.primary;
+    final textColor = isCustomer
+        ? NataloColors.white.withValues(alpha: 0.85)
+        : NataloColors.textSecondary;
+    final tileBg = isCustomer
+        ? NataloColors.white.withValues(alpha: 0.15)
+        : NataloColors.primarySoft;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+      decoration: BoxDecoration(
+        color: tileBg,
+        border: Border(left: BorderSide(color: barColor, width: 3)),
+        borderRadius:
+            const BorderRadius.horizontal(right: Radius.circular(6)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (who != null && who.isNotEmpty)
+            Text(who,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    color: labelColor)),
+          Text(preview,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12.5, color: textColor)),
+        ],
       ),
     );
   }

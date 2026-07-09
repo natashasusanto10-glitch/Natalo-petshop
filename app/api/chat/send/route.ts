@@ -75,6 +75,33 @@ function parseContext(raw: unknown): ParsedContext {
   return null;
 }
 
+type ReplyTo = { id: string; senderName?: string; type?: string; text?: string };
+
+// Client HANYA boleh menunjuk id pesan yang dibalas — teks/senderName kutipan
+// SELALU di-derive ulang dari pesan asli di Firestore (anti-spoof), sama
+// disiplin dgn `context`. Kembalikan id mentah; derivasi di POST setelah
+// snapshot siap (butuh customerName utk pesan customer sendiri).
+function parseReplyToId(raw: unknown): string | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const id = typeof r.id === "string" ? r.id.trim() : "";
+  return id.length > 0 && id.length <= 200 ? id : null;
+}
+
+// Preview singkat pesan yang dikutip — foto/produk diberi label, teks
+// dipangkas. Dihitung SERVER dari doc pesan asli, bukan dari client.
+function buildReplyPreview(msgData: Record<string, unknown>): string {
+  const t = typeof msgData.type === "string" ? msgData.type : "text";
+  if (t === "image") return "📷 Foto";
+  if (t === "product" || t === "product_context") {
+    const p = msgData.product as Record<string, unknown> | undefined;
+    const name = p && typeof p.name === "string" ? p.name : "Produk";
+    return `🛍️ ${name}`;
+  }
+  const text = typeof msgData.text === "string" ? msgData.text : "";
+  return text.length > 200 ? `${text.slice(0, 200)}…` : text;
+}
+
 export async function POST(request: NextRequest) {
   // 1. CSRF — defense-in-depth di atas sameSite cookie.
   const csrf = assertSameOrigin(request);
@@ -113,6 +140,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "clientMsgId tidak valid." }, { status: 400 });
   }
   const context = parseContext(b.context);
+  const replyToId = parseReplyToId(b.replyTo);
 
   const firestore = getTokochatFirestore();
   const chatId = chatIdForUser(session.sub);
@@ -210,6 +238,34 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // 6b. Re-derive kutipan balasan dari pesan asli DI ROOM INI (anti-spoof +
+  // anti-IDOR: baca `messagesRef.doc(id)` yang sudah di-scope ke chat customer
+  // sendiri, jadi ia tak bisa mengutip pesan chat orang lain). senderName &
+  // text preview dihitung server; bila pesan tak ada, kutipan di-drop diam2.
+  let replyTo: ReplyTo | undefined;
+  if (replyToId) {
+    const refSnap = await messagesRef.doc(replyToId).get();
+    if (refSnap.exists) {
+      const rd = refSnap.data() as Record<string, unknown>;
+      // staffOnly (catatan internal) TAK BOLEH dikutip ke pesan customer.
+      if (rd.staffOnly !== true) {
+        const rtype = typeof rd.type === "string" ? rd.type : "text";
+        const who =
+          rd.senderRole === "staff"
+            ? (typeof rd.senderName === "string" && rd.senderName.trim()
+                ? rd.senderName.trim()
+                : "Admin")
+            : snapshot.customerName || "Kamu";
+        replyTo = {
+          id: replyToId,
+          senderName: who,
+          type: rtype,
+          text: buildReplyPreview(rd),
+        };
+      }
+    }
+  }
+
   // 7. Baca doc room SEBELUM writeCustomerMessage — state "before" dipakai
   // step 9 (auto-reopen) & step 10 (auto-greeting/away). writeCustomerMessage
   // sendiri tak menyentuh status/greetingSentAt (lihat lib/chat/rooms.ts).
@@ -236,6 +292,7 @@ export async function POST(request: NextRequest) {
       clientMsgId,
       ...(productContext ? { product: productContext } : {}),
       ...(orderContext ? { order: orderContext } : {}),
+      ...(replyTo ? { replyTo } : {}),
       customerName: snapshot.customerName,
       customerPhone: snapshot.customerPhone,
       summary: snapshot.summary,

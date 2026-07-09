@@ -15,6 +15,9 @@ export type CustomerMessage = {
   image?: { url: string };
   product?: { productId: string; slug?: string; name: string; imageUrl?: string; price?: number; stock?: number };
   order?: { orderNumber: string; status?: string; total?: number };
+  // Kutipan balasan — hanya field aman (id/senderName/type/text preview).
+  // TAK ADA data internal; text sudah di-preview server saat penulisan.
+  replyTo?: { id?: string; senderName?: string; type?: string; text?: string };
   auto?: boolean;
   createdAt: number;
   status?: string;
@@ -64,6 +67,16 @@ export function projectMessageForCustomer(raw: unknown): CustomerMessage | null 
     if (typeof o.status === "string") order.status = o.status;
     if (typeof o.total === "number") order.total = o.total;
     out.order = order as CustomerMessage["order"];
+  }
+  if (m.replyTo && typeof m.replyTo === "object") {
+    const r = m.replyTo as Record<string, unknown>;
+    // Allowlist per-field — sama disiplin dgn product/order (jangan cast objek utuh).
+    const replyTo: NonNullable<CustomerMessage["replyTo"]> = {};
+    if (typeof r.id === "string") replyTo.id = r.id;
+    if (typeof r.senderName === "string") replyTo.senderName = r.senderName;
+    if (typeof r.type === "string") replyTo.type = r.type;
+    if (typeof r.text === "string") replyTo.text = r.text;
+    out.replyTo = replyTo;
   }
   if (m.auto === true) out.auto = true;
   if (typeof m.status === "string") out.status = m.status;
