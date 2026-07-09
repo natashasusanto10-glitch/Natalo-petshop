@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 import 'package:url_launcher/url_launcher.dart';
 
 // sample_brands + sample_products dihapus dari import — Home screen sekarang
@@ -42,6 +43,15 @@ import '../widgets/skeleton_product_card.dart';
 
 const _brandBlue = NataloColors.nataloBlue;
 const _surface = Colors.transparent;
+
+// ── Hero biru beranda (redesign Jul 2026) ──
+// Gradasi header: navy pekat → brand blue. Marquee strip meneruskan
+// gradasi ke bawah supaya header+marquee terbaca sebagai SATU blok hero.
+const _heroTop = Color(0xFF153E7E);
+const _heroMid = Color(0xFF1E5FBF);
+const _heroBottom = Color(0xFF2F6FD0);
+// Teks sekunder di atas biru (tagline, marquee) — biru muda lembut.
+const _onHeroSubtle = Color(0xFFBFD5F5);
 
 List<Product> _uniqueById(Iterable<Product> products) {
   final seen = <String>{};
@@ -563,10 +573,26 @@ class _HomeScreenState extends State<HomeScreen> {
       // camera punch-hole (Android). Bottom inset di-handle Scaffold
       // bottomNavigationBar slot, BUKAN SafeArea internal — supaya tidak
       // double padding di iPhone X+ (home indicator) atau Android gesture.
-      body: SafeArea(
-        top: true,
-        bottom: false,
-        child: FutureBuilder<ProductResult>(
+      //
+      // Hero biru: strip setinggi status bar dicat _heroTop di BELAKANG
+      // SafeArea (Stack layer bawah) supaya area notch menyatu dengan header
+      // biru, bukan strip putih. AnnotatedRegion → ikon status bar putih
+      // (hanya berlaku saat tab Beranda yang ter-paint di IndexedStack).
+      body: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.light,
+        child: Stack(
+          children: [
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: MediaQuery.paddingOf(context).top,
+              child: const ColoredBox(color: _heroTop),
+            ),
+            SafeArea(
+              top: true,
+              bottom: false,
+              child: FutureBuilder<ProductResult>(
           future: _productsFuture,
           // Initial data empty supaya skeleton/loading UI muncul first paint
           // — bukan flash sampleProducts mock. Capacitor admin dashboard
@@ -640,12 +666,29 @@ class _HomeScreenState extends State<HomeScreen> {
                   // di bawah sticky header (search bar). Saat user scroll
                   // ke bawah, trust strip hilang dari viewport, hanya search
                   // bar yang tetap visible.
+                  //
+                  // Visual: full-width meneruskan gradasi hero biru dari
+                  // sticky header di atasnya (satu blok hero); sudut bawah
+                  // membulat = penutup blok. Saat scroll, strip ini menyelip
+                  // ke belakang header biru → terlihat "menyatu lalu hilang".
                   const SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
-                      child: _TrustMarquee(
-                        key: ValueKey('home-trust-marquee'),
-                        height: 36,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [_heroMid, _heroBottom],
+                        ),
+                        borderRadius: BorderRadius.vertical(
+                          bottom: Radius.circular(18),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: 6),
+                        child: _TrustMarquee(
+                          key: ValueKey('home-trust-marquee'),
+                          height: 36,
+                        ),
                       ),
                     ),
                   ),
@@ -827,6 +870,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             );
           },
+              ),
+            ),
+          ],
         ),
       ),
       bottomNavigationBar: const BottomNavBar(currentIndex: 0),
@@ -995,11 +1041,6 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    final cs = Theme.of(context).colorScheme;
-    final headerBorder = Theme.of(context).brightness == Brightness.dark
-        ? cs.outlineVariant
-        : const Color(0xFFEFF4FA);
-
     // shrinkOffset TIDAK dipakai lagi (extent konstan → selalu 0). Progress
     // datang dari [collapse] (posisi scroll). RepaintBoundary +
     // ValueListenableBuilder → hanya subtree header yang repaint tiap frame
@@ -1013,15 +1054,14 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
           return SizedBox.expand(
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: cs.surface,
-                border: Border(
-                  bottom: BorderSide(
-                    color: Color.lerp(
-                      headerBorder.withValues(alpha: 0),
-                      headerBorder,
-                      t,
-                    )!,
-                  ),
+                // Hero biru — gradasi navy→brand blue, sama di light & dark
+                // (header berwarna brand tidak ikut theme surface). Border
+                // bawah lama dihapus: transisi ke marquee strip biru harus
+                // seamless (satu blok hero).
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [_heroTop, _heroMid],
                 ),
                 boxShadow: t > 0.05
                     ? [
@@ -1103,27 +1143,34 @@ class _HomeHeader extends StatelessWidget {
           // ── Row 1: Logo + Title (+ Subtitle saat top) + Bell + Cart ──
           Row(
             children: [
+              // Logo di CHIP PUTIH — logo Natalo dominan biru; ditempel
+              // telanjang di header biru dia tenggelam. Chip putih memberi
+              // panggung kontras (pola Tokopedia/Shopee saat logo di atas
+              // header brand pekat). Logo asli tetap utuh di dalamnya.
               Container(
                 width: logoSize,
                 height: logoSize,
+                padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0B7FEA),
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(logoRadius),
                 ),
-                clipBehavior: Clip.antiAlias,
                 alignment: Alignment.center,
-                // Logo asset square — match Capacitor. Fallback "NL" text.
-                child: Image.asset(
-                  'assets/native/icon-only.png',
-                  width: logoSize,
-                  height: logoSize,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Text(
-                    'NL',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: logoSize * 0.4,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(
+                    (logoRadius - 3).clamp(0, 24),
+                  ),
+                  // Logo asset square — match Capacitor. Fallback "NL" text.
+                  child: Image.asset(
+                    'assets/native/icon-only.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Text(
+                      'NL',
+                      style: TextStyle(
+                        color: _heroMid,
+                        fontWeight: FontWeight.w900,
+                        fontSize: logoSize * 0.4,
+                      ),
                     ),
                   ),
                 ),
@@ -1139,7 +1186,7 @@ class _HomeHeader extends StatelessWidget {
                       style: TextStyle(
                         fontSize: titleSize,
                         fontWeight: FontWeight.w900,
-                        color: Theme.of(context).colorScheme.onSurface,
+                        color: Colors.white,
                         height: 1.15,
                       ),
                     ),
@@ -1150,17 +1197,15 @@ class _HomeHeader extends StatelessWidget {
                         height: subtitleHeight,
                         child: Opacity(
                           opacity: subtitleOpacity,
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 2),
+                          child: const Padding(
+                            padding: EdgeInsets.only(top: 2),
                             child: Text(
                               'Kebutuhan hewan kesayanganmu',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
+                                color: _onHeroSubtle,
                                 height: 1.1,
                               ),
                             ),
@@ -1171,9 +1216,11 @@ class _HomeHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              const AppNotificationButton(),
-              const AppChatButton(),
-              const AppCartButton(),
+              // Ikon header PUTIH di atas hero biru — hanya beranda; layar
+              // lain tetap default onSurface (hitam).
+              const AppNotificationButton(iconColor: Colors.white),
+              const AppChatButton(iconColor: Colors.white),
+              const AppCartButton(iconColor: Colors.white),
             ],
           ),
           SizedBox(height: gapAfterRow),
@@ -1187,20 +1234,20 @@ class _HomeHeader extends StatelessWidget {
               height: 42,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Theme.of(context).colorScheme.surfaceContainerHighest
-                    : const Color(0xFFF8FAFC),
+                // Putih SOLID di kedua mode — satu-satunya elemen terang
+                // besar di hero biru = mata langsung ke search (aksi #1
+                // beranda). Border dihapus: kontras dgn latar biru sudah
+                // lebih dari cukup.
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Theme.of(context).colorScheme.outlineVariant,
-                ),
               ),
               child: Row(
                 children: [
-                  Icon(
+                  // Fixed gray — fill putih di kedua mode (lihat placeholder).
+                  const Icon(
                     Icons.search_rounded,
                     size: 18,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    color: Color(0xFF64748B),
                   ),
                   const SizedBox(width: 10),
                   // Dynamic placeholder — rotates dari trending search API +
@@ -1250,10 +1297,12 @@ class _HomeHeader extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.left,
-                            style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
+                            // Warna FIXED (bukan onSurfaceVariant) — fill
+                            // search sekarang selalu putih di kedua mode,
+                            // onSurfaceVariant dark mode = abu terang di
+                            // atas putih (tak terbaca).
+                            style: const TextStyle(
+                              color: Color(0xFF64748B),
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                               height: 1.2,
@@ -1762,8 +1811,11 @@ class _TrustMarqueeState extends State<_TrustMarquee>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
+  // Teks di ATAS HERO BIRU — biru muda lembut (bukan slate gelap lama).
+  // Kontras sengaja rendah: marquee = tekstur pendukung, tidak boleh
+  // berebut perhatian dengan search bar putih di atasnya.
   static const _textStyle = TextStyle(
-    color: Color(0xFF334155),
+    color: _onHeroSubtle,
     fontSize: 11.5,
     fontWeight: FontWeight.w800,
   );
@@ -1784,20 +1836,23 @@ class _TrustMarqueeState extends State<_TrustMarquee>
   }
 
   List<_TrustMarqueeItemData> _items(BuildContext context) {
+    // Ikon di atas hero biru: putih-kebiruan seragam, kecuali dua aksen
+    // lembut (hijau mint utk "Original", amber muda utk "Promo") supaya
+    // strip tetap hidup tanpa norak.
     return [
       const _TrustMarqueeItemData(
         icon: Icons.local_shipping_outlined,
-        iconColor: Color(0xFF143E7E),
+        iconColor: _onHeroSubtle,
         text: 'Gratis Ongkir Area Medan',
       ),
       const _TrustMarqueeItemData(
         icon: Icons.shield_outlined,
-        iconColor: Color(0xFF16A34A),
+        iconColor: Color(0xFF8FE3B0),
         text: 'Produk Original 100%',
       ),
       _TrustMarqueeItemData(
         icon: Icons.chat_bubble_outline_rounded,
-        iconColor: const Color(0xFF143E7E),
+        iconColor: _onHeroSubtle,
         text: 'Konsultasi via WhatsApp',
         showLinkIcon: true,
         onTap: () {
@@ -1812,13 +1867,13 @@ class _TrustMarqueeState extends State<_TrustMarquee>
       ),
       _TrustMarqueeItemData(
         icon: Icons.pets_rounded,
-        iconColor: const Color(0xFF143E7E),
+        iconColor: _onHeroSubtle,
         text: 'Petshop Medan Terpercaya',
         onTap: () => AppInAppBrowser.openTentangNatalo(context),
       ),
       const _TrustMarqueeItemData(
         icon: Icons.card_giftcard_rounded,
-        iconColor: Color(0xFFF59E0B),
+        iconColor: Color(0xFFFFD9A0),
         text: 'Banyak Promo Setiap Hari',
       ),
     ];
@@ -1828,24 +1883,13 @@ class _TrustMarqueeState extends State<_TrustMarquee>
   Widget build(BuildContext context) {
     final items = _items(context);
     final groupWidth = _estimateGroupWidth(items);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Latar & border DIHAPUS — strip sekarang duduk di atas gradasi hero
+    // biru yang dicat parent (SliverToBoxAdapter di build utama), sama di
+    // light & dark mode. ClipRect tetap perlu utk crop konten marquee.
     return Container(
       height: widget.height,
-      decoration: BoxDecoration(
-        // Strip gradient terang (biru→putih→krem) di light; di dark
-        // pakai tone gelap supaya tidak "nyala" di scaffold gelap.
-        gradient: LinearGradient(
-          colors: isDark
-              ? const [Color(0xFF141A29), Color(0xFF1B2233), Color(0xFF181F2D)]
-              : const [Color(0xFFEAF5FF), Colors.white, Color(0xFFFFFBEB)],
-        ),
-        border: Border.symmetric(
-          horizontal: BorderSide(
-            color: isDark ? const Color(0xFF2A3142) : const Color(0xFFE6F1FF),
-          ),
-        ),
-      ),
       clipBehavior: Clip.antiAlias,
+      decoration: const BoxDecoration(),
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, child) {
@@ -1922,23 +1966,18 @@ class _TrustMarqueeItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    // Icon navy (#143E7E) terlalu gelap di strip dark → lift ke biru terang.
-    final iconColor = isDark && item.iconColor == const Color(0xFF143E7E)
-        ? const Color(0xFF60A5FA)
-        : item.iconColor;
+    // Tanpa cabang dark mode — strip selalu di atas hero biru (warna fixed).
     final content = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(item.icon, color: iconColor, size: 15),
+        Icon(item.icon, color: item.iconColor, size: 15),
         const SizedBox(width: 6),
         Text(
           item.text,
           maxLines: 1,
           style: _TrustMarqueeState._textStyle.copyWith(
-            color: isDark ? Theme.of(context).colorScheme.onSurface : null,
             decoration: item.onTap == null ? null : TextDecoration.underline,
-            decorationColor: const Color(0xFF9CA3AF),
+            decorationColor: const Color(0xFF7FA6E0),
             decorationStyle: TextDecorationStyle.dotted,
           ),
         ),
@@ -1946,7 +1985,7 @@ class _TrustMarqueeItem extends StatelessWidget {
           const SizedBox(width: 4),
           const Icon(
             Icons.open_in_new_rounded,
-            color: Color(0xFF9CA3AF),
+            color: Color(0xFF7FA6E0),
             size: 12,
           ),
         ],
@@ -1991,7 +2030,8 @@ class _TrustDot extends StatelessWidget {
       width: 3,
       height: 3,
       decoration: const BoxDecoration(
-        color: Color(0xFFE5E7EB),
+        // Dot pemisah di atas hero biru — biru pucat, bukan abu (tenggelam).
+        color: Color(0xFF7FA6E0),
         shape: BoxShape.circle,
       ),
     );
