@@ -121,8 +121,13 @@ Kontrak baru (backward-compatible): field cart items **opsional**. Kalau tidak d
 **b. Private — `app/api/cart/vouchers/validate-private/route.ts`**
 - `bodySchema` (line 22-25): tambah `productIds: z.array(z.string()).optional()` (atau CSV, samakan dgn cart/vouchers).
 - Setelah cek `minimumOrder` (line 124-129), sebelum hitung `discount`: kalau scoped & tak cocok → `{ ok: false, message: "Voucher tidak berlaku untuk produk di keranjang" }`.
-- Client Flutter: [`cart_service.dart:120-128`](../../../flutter_app/lib/services/cart_service.dart) `validatePrivateVoucher` — kirim `productIds`.
-- Client web: [`components/cart/CartVoucherSheet.tsx`](../../../components/cart/CartVoucherSheet.tsx) — sertakan product ids saat POST validate-private.
+- Client Flutter: [`cart_service.dart:120-128`](../../../flutter_app/lib/services/cart_service.dart) `validatePrivateVoucher` — tambah param opsional `productIds`.
+
+> **Temuan implementasi (verified):** kedua method service Flutter (`voucherService.validate`, `cartService.validatePrivateVoucher`) **belum punya pemanggil UI aktif** (hanya contoh di `CAPACITOR_PARITY.md`), dan `components/cart/CartVoucherSheet.tsx` **tidak** benar-benar POST ke `validate-private` (cuma di komentar). Jadi gate backend di kedua endpoint = **defense-in-depth** (aman untuk pemanggil langsung/future); param `productIds` di service Flutter ditambahkan **aditif** (backward-compatible), tak ada wiring UI yang perlu diubah sekarang. Jalur uang voucher manual/private di checkout **sudah** lewat `recalculate` (cabang 554) + `orders` (393) yang diperbaiki di §3.2–3.3.
+
+### 3.7 Parity listing web (`CartVoucherSheet.tsx`)
+
+Flutter [`member_service.dart:347-351`](../../../flutter_app/lib/services/member_service.dart) **sudah** kirim `productIds` ke `GET /api/cart/vouchers` (makanya listing Flutter benar). Web [`CartVoucherSheet.tsx:162`](../../../components/cart/CartVoucherSheet.tsx) masih `?subtotal=${subtotal}` **tanpa** `productIds` → di web voucher brand-eksklusif tampil "Bisa dipakai" keliru (display-only, tak memotong total). Fix: sertakan `productIds` cart di URL fetch (perlu prop daftar id produk keranjang dari pemanggil `CartVoucherSheet`).
 
 ### 3.6 Parity `categorySlug` (item tambahan)
 
@@ -192,10 +197,9 @@ Validate endpoints:
 - `app/api/cart/vouchers/validate-private/route.ts` — terima productIds + gate
 
 **Client:**
-- `flutter_app/lib/services/voucher_service.dart` — kirim productIds ke `validate`
-- `flutter_app/lib/services/cart_service.dart` — kirim productIds ke `validatePrivateVoucher`
-- `components/cart/CartVoucherSheet.tsx` — kirim product ids ke validate-private
-- (pemanggil UI yang meneruskan isi keranjang ke service di atas)
+- `flutter_app/lib/services/voucher_service.dart` — param opsional `productIds` di `validate` (aditif, dormant-safe)
+- `flutter_app/lib/services/cart_service.dart` — param opsional `productIds` di `validatePrivateVoucher` (aditif, dormant-safe)
+- `components/cart/CartVoucherSheet.tsx` — kirim `productIds` ke `GET /api/cart/vouchers` (parity listing web, §3.7) + prop id produk keranjang dari pemanggil
 
 **Test:** `tests/voucher-eligibility.test.ts`, `tests/voucher-list.test.ts` (+ charge-layer bila memungkinkan)
 
