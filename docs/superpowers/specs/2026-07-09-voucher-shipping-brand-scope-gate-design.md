@@ -168,13 +168,7 @@ Validate endpoints:
 
 ---
 
-## 6. Remediasi data (item tambahan)
-
-Query one-off (dokumentasi, bukan bagian fix runtime): hitung order yang sudah terlanjur memakai voucher `discountScope = SHIPPING` dengan `eligibleBrandIds`/`eligibleCategoryIds` non-empty **tanpa** line item yang cocok — untuk kuantifikasi kebocoran & keputusan backfill. Sertakan sebagai skrip/laporan terpisah; keputusan koreksi finansial di luar spec ini.
-
----
-
-## 7. Risiko & mitigasi
+## 6. Risiko & mitigasi
 
 | Risiko | Mitigasi |
 |---|---|
@@ -187,7 +181,7 @@ Query one-off (dokumentasi, bukan bagian fix runtime): hitung order yang sudah t
 
 ---
 
-## 8. Ringkasan file tersentuh
+## 7. Ringkasan file tersentuh
 
 **Backend (inti):**
 - `lib/voucher-eligibility.ts` — helper baru
@@ -205,12 +199,10 @@ Query one-off (dokumentasi, bukan bagian fix runtime): hitung order yang sudah t
 
 **Test:** `tests/voucher-eligibility.test.ts`, `tests/voucher-list.test.ts` (+ charge-layer bila memungkinkan)
 
-**Terpisah (dokumentasi):** skrip audit remediasi data.
-
 ---
 
-## 9. Out of scope
+## 8. Out of scope
 
 - Selisih nominal "9k vs 15k" (perilaku persen ongkir yang benar).
-- Koreksi finansial order yang sudah terlanjur (hanya kuantifikasi via query audit).
+- **Order lama yang sudah terlanjur bocor — TIDAK ditangani sama sekali** (tidak dihitung, tidak dikoreksi, tidak ditagih). Fix hanya menutup kebocoran ke depan.
 - Guard di sisi admin/creation voucher (semantik "SHIPPING + brand butuh produk cocok") — bisa follow-up.
