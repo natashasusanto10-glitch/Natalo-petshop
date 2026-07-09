@@ -40,6 +40,7 @@ import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/upload_relay_card.dart';
 import 'home_search_page.dart';
 import '../widgets/skeleton_product_card.dart';
+import 'package:shimmer/shimmer.dart';
 
 const _brandBlue = NataloColors.nataloBlue;
 const _surface = Colors.transparent;
@@ -2286,14 +2287,14 @@ class _BannerSlide extends StatelessWidget {
                   width: double.infinity,
                   height: double.infinity,
                   fadeInDuration: const Duration(milliseconds: 220),
-                  placeholder: (context, url) => Container(
-                    color: const Color(0xFFEAF5FF),
-                    alignment: Alignment.center,
-                    child: const SizedBox(
-                      height: 24,
-                      width: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
+                  // Shimmer (bukan spinner) — spinner di area 16:7 terbaca
+                  // sebagai "lubang loading"; shimmer terbaca sebagai
+                  // "konten sedang datang". Fix keluhan ruang-kosong besar
+                  // saat gambar banner lambat termuat.
+                  placeholder: (context, url) => Shimmer.fromColors(
+                    baseColor: const Color(0xFFE8EFF9),
+                    highlightColor: const Color(0xFFF7FAFE),
+                    child: Container(color: const Color(0xFFE8EFF9)),
                   ),
                   errorWidget: (_, __, ___) => Container(
                     color: const Color(0xFFEAF5FF),
@@ -2459,21 +2460,17 @@ class _ShortcutGrid extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                // Kotak rounded-16 48px (redesign: dulu lingkaran 50 +
+                // shadow) — squircle soft-tint tanpa shadow, lebih tenang
+                // & premium; tap target tetap ≥48.
                 Container(
-                  height: 50,
-                  width: 50,
+                  height: 48,
+                  width: 48,
                   decoration: BoxDecoration(
                     color: item.background,
-                    borderRadius: BorderRadius.circular(999),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Icon(item.icon, color: item.color, size: 26),
+                  child: Icon(item.icon, color: item.color, size: 24),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -2503,7 +2500,9 @@ class _FlashSaleGrid extends StatelessWidget {
   final VoidCallback onSeeAll;
   final VoidCallback? onCountdownExpired;
 
-  static const _maxVisible = 6;
+  // Rail horizontal muat lebih banyak tanpa makan tinggi layar (dulu grid
+  // 3 kolom × 2 baris = 6; rail 1 baris scroll → 8).
+  static const _maxVisible = 8;
 
   const _FlashSaleGrid({
     required this.products,
@@ -2528,6 +2527,15 @@ class _FlashSaleGrid extends StatelessWidget {
     return earliest;
   }
 
+  // ── Redesign Jul 2026: PITA merah-tipis full-width + RAIL horizontal ──
+  // Pita (bukan card di tengah) supaya saat section auto-hide tidak ada
+  // "bekas lubang"; rail horizontal supaya 2 produk pun tidak menyisakan
+  // kolom kanan kosong (kartu ke-3 mengintip → memancing scroll).
+  static const _bandLight = Color(0xFFFFF7F7);
+  static const _bandDark = Color(0xFF2B1719);
+  static const _titleLight = Color(0xFF8F2727);
+  static const _titleDark = Color(0xFFF3B4B4);
+
   @override
   Widget build(BuildContext context) {
     if (products.isEmpty) return const SizedBox.shrink();
@@ -2535,102 +2543,94 @@ class _FlashSaleGrid extends StatelessWidget {
     final visible = products.take(_maxVisible).toList();
     final hasMore = products.length > _maxVisible;
     final endsAt = _earliestEndsAt;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDark ? _titleDark : _titleLight;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+    return Container(
+      margin: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.fromLTRB(0, 12, 0, 14),
+      color: isDark ? _bandDark : _bandLight,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '⚡ Flash Sale',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Diskon Spesial dari Natalo Petshop',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Icon(Icons.bolt_rounded, size: 19, color: titleColor),
+                const SizedBox(width: 3),
+                Text(
+                  'Flash Sale',
+                  style: TextStyle(
+                    color: titleColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
-              ),
-              if (hasMore)
-                GestureDetector(
-                  onTap: onSeeAll,
-                  behavior: HitTestBehavior.opaque,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-                    child: Text(
-                      'Lihat semua',
-                      style: TextStyle(
-                        color: _brandBlue,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
+                // Countdown chip inline — hanya kalau ada produk Tier 1
+                // (explicit flashSaleEndsAt). digitsOnly (angka tabular
+                // putih) di atas chip merah = tidak goyang tiap detik.
+                if (endsAt != null) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFC43E3E),
+                        borderRadius: BorderRadius.circular(7),
+                      ),
+                      child: FlashSaleCountdown.digitsOnly(
+                        endsAt: endsAt,
+                        onExpired: onCountdownExpired,
                       ),
                     ),
                   ),
-                ),
-            ],
-          ),
-          // Countdown timer bar — hanya tampil kalau ada produk Tier 1
-          // (explicit flashSaleEndsAt). Tier 2 (auto-include via 20%
-          // threshold) tidak pakai countdown.
-          if (endsAt != null) ...[
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FlashSaleCountdown(
-                endsAt: endsAt,
-                onExpired: onCountdownExpired,
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          // Row-loop manual (BUKAN GridView dengan childAspectRatio tetap).
-          // Alasan sama dengan grid "Rekomendasi Untuk Kamu" di bawah:
-          // childAspectRatio tetap memaksa tinggi sel seragam relatif lebar
-          // layar, menyisakan whitespace besar di bawah konten kartu yang
-          // lebih pendek. Auto-height: tinggi kartu murni ikut konten.
-          for (var i = 0; i < (visible.length + 2) ~/ 3; i++)
-            Padding(
-              padding: EdgeInsets.only(
-                bottom: i == ((visible.length + 2) ~/ 3) - 1 ? 0 : 10,
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var col = 0; col < 3; col++) ...[
-                    if (col > 0) const SizedBox(width: 10),
-                    Expanded(
-                      child: i * 3 + col < visible.length
-                          ? _FlashSaleCard(
-                              product: visible[i * 3 + col],
-                              onTap: () => onTap(visible[i * 3 + col]),
-                            )
-                          // Slot kosong di baris terakhir kalau jumlah
-                          // produk bukan kelipatan 3 — Expanded kosong
-                          // supaya kartu lain tetap lebar 1/3 kolom,
-                          // bukan melebar mengisi slot ini.
-                          : const SizedBox.shrink(),
-                    ),
-                  ],
                 ],
-              ),
+                const Spacer(),
+                if (hasMore)
+                  GestureDetector(
+                    onTap: onSeeAll,
+                    behavior: HitTestBehavior.opaque,
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+                      child: Text(
+                        'Lihat semua ›',
+                        style: TextStyle(
+                          color: _brandBlue,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
+          ),
+          const SizedBox(height: 10),
+          // Rail horizontal — kartu lebar tetap 118; padding kanan 16 supaya
+          // kartu terakhir tidak mepet tepi saat scroll mentok.
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < visible.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 9),
+                  SizedBox(
+                    width: 118,
+                    child: _FlashSaleCard(
+                      product: visible[i],
+                      onTap: () => onTap(visible[i]),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -2705,7 +2705,7 @@ class _FlashSaleCard extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               _FlashSalePriceBlock(product: product),
-              _FlashSaleRatingSoldRow(product: product),
+              _FlashSaleSoldProgress(product: product),
             ],
           ),
         ),
@@ -2764,6 +2764,66 @@ class _FlashSalePriceBlock extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Progress bar "terjual" ala Shopee di kartu flash sale — urgency cue
+/// visual (bar makin penuh = makin laku). Persen = sold/(sold+stock),
+/// clamp 6%–96% supaya bar tidak pernah tampak kosong/penuh sempurna.
+/// Fallback: produk belum ada penjualan → baris rating lama (tinggi sama,
+/// kartu-kartu di rail tetap rata).
+class _FlashSaleSoldProgress extends StatelessWidget {
+  final Product product;
+
+  const _FlashSaleSoldProgress({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    final sold = product.soldCount;
+    if (sold <= 0) return _FlashSaleRatingSoldRow(product: product);
+
+    final stock = product.stock;
+    final ratio = stock > 0 ? sold / (sold + stock) : 0.9;
+    final fraction = ratio.clamp(0.06, 0.96);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: SizedBox(
+              height: 5,
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: (fraction * 100).round(),
+                    child: const ColoredBox(color: Color(0xFFE06666)),
+                  ),
+                  Expanded(
+                    flex: 100 - (fraction * 100).round(),
+                    child: const ColoredBox(color: Color(0xFFFBE3E3)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            '${_formatHomeProductSoldCount(sold)} terjual',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 9.5,
+              height: 1.05,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFFA05252),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -3031,19 +3091,27 @@ class _HomeProductRankBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CircleAvatar(
-      radius: 12,
-      backgroundColor: rank == 1
-          ? const Color(0xFFF59E0B)
-          : rank == 2
-              ? const Color(0xFF94A3B8)
-              : _brandBlue,
+    // Redesign: biru bertingkat (#1 paling pekat → #3 paling muda) — satu
+    // keluarga warna brand, bukan emas/perak/biru campur (norak + tidak
+    // konsisten dgn selera badge subtle). Bentuk pill "#N" pojok, bukan
+    // lingkaran mengambang.
+    final color = switch (rank) {
+      1 => const Color(0xFF153E7E),
+      2 => const Color(0xFF3A69B0),
+      _ => const Color(0xFF7D9CC9),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(999),
+      ),
       child: Text(
-        '$rank',
+        '#$rank',
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 11,
-          fontWeight: FontWeight.w900,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
           height: 1,
         ),
       ),
