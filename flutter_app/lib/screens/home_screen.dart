@@ -157,9 +157,8 @@ class _HomeScreenState extends State<HomeScreen>
       _globalHomeVisitCount = 0;
       _globalExploreGeneration += 1;
       // Alternate threshold 2 ↔ 3 supaya rotation tidak strict pattern.
-      _globalNextRegenerateThreshold = _globalNextRegenerateThreshold == 2
-          ? 3
-          : 2;
+      _globalNextRegenerateThreshold =
+          _globalNextRegenerateThreshold == 2 ? 3 : 2;
     }
     _exploreGeneration = _globalExploreGeneration;
 
@@ -320,16 +319,15 @@ class _HomeScreenState extends State<HomeScreen>
       // duplikat — section di atas Jelajahi. Personalized endpoint cap 20
       // produk, jadi top 10 di Rekomendasi + next 10 di Jelajahi initial.
       if (initial) {
-        final excludeForPersonalized = _personalizedRecs
-            .map((p) => p.id)
-            .toList();
+        final excludeForPersonalized =
+            _personalizedRecs.map((p) => p.id).toList();
         final viewedIds = recentlyViewedStore.items.map((p) => p.id).toList();
-        final personalized = await productService
-            .fetchPersonalizedRecommendations(
-              viewedIds: viewedIds,
-              excludeIds: excludeForPersonalized,
-              limit: 8,
-            );
+        final personalized =
+            await productService.fetchPersonalizedRecommendations(
+          viewedIds: viewedIds,
+          excludeIds: excludeForPersonalized,
+          limit: 8,
+        );
         accumulated.addAll(personalized);
       }
 
@@ -409,9 +407,8 @@ class _HomeScreenState extends State<HomeScreen>
     _globalHomeVisitCount += 1;
     if (_globalHomeVisitCount < _globalNextRegenerateThreshold) return;
     _globalHomeVisitCount = 0;
-    _globalNextRegenerateThreshold = _globalNextRegenerateThreshold == 2
-        ? 3
-        : 2;
+    _globalNextRegenerateThreshold =
+        _globalNextRegenerateThreshold == 2 ? 3 : 2;
     _resetExploreProducts(regenerate: true);
     _loadMoreExplore(initial: true);
   }
@@ -514,9 +511,10 @@ class _HomeScreenState extends State<HomeScreen>
       return value;
     }
 
-    final candidates =
-        products.where((product) => !viewedIds.contains(product.id)).toList()
-          ..sort((a, b) => score(b).compareTo(score(a)));
+    final candidates = products
+        .where((product) => !viewedIds.contains(product.id))
+        .toList()
+      ..sort((a, b) => score(b).compareTo(score(a)));
     final personalized = candidates.where((product) => score(product) > 0);
     return _uniqueById([
       ...personalized,
@@ -554,8 +552,7 @@ class _HomeScreenState extends State<HomeScreen>
       }
     }
 
-    final generated = [...products]
-      ..sort((a, b) {
+    final generated = [...products]..sort((a, b) {
         final scoreCompare = _exploreScore(
           b,
           brandScores,
@@ -679,16 +676,15 @@ class _HomeScreenState extends State<HomeScreen>
                   // Filter: utamakan products dengan soldCount > 0 di top — yang
                   // benar2 "laris" muncul lebih dulu. Kalau API belum return
                   // soldCount yang valid, section fallback ke review-based.
-                  final bestSellers =
-                      ([...products]..sort((a, b) {
-                            // Primary: soldCount desc (yang paling banyak terjual)
-                            final byCount = b.soldCount.compareTo(a.soldCount);
-                            if (byCount != 0) return byCount;
-                            // Tie-break: reviewCount desc
-                            return b.reviewCount.compareTo(a.reviewCount);
-                          }))
-                          .take(8)
-                          .toList();
+                  final bestSellers = ([...products]..sort((a, b) {
+                          // Primary: soldCount desc (yang paling banyak terjual)
+                          final byCount = b.soldCount.compareTo(a.soldCount);
+                          if (byCount != 0) return byCount;
+                          // Tie-break: reviewCount desc
+                          return b.reviewCount.compareTo(a.reviewCount);
+                        }))
+                      .take(8)
+                      .toList();
                   return NataloPawRefreshIndicator(
                     onRefresh: _refreshAll,
                     // pinContent: konten diam total saat pull — tanpa ini bouncing
@@ -803,8 +799,8 @@ class _HomeScreenState extends State<HomeScreen>
                           child: AnimatedBuilder(
                             animation: recentlyViewedStore,
                             builder: (context, _) {
-                              final recommendations =
-                                  _personalizedRecs.isNotEmpty
+                              final recommendations = _personalizedRecs
+                                      .isNotEmpty
                                   ? _personalizedRecs
                                   : _buildPersonalizedRecommendations(products);
                               if (recommendations.isEmpty) {
@@ -853,7 +849,7 @@ class _HomeScreenState extends State<HomeScreen>
                                 // tampilkan skeleton — feels lebih native dari blank.
                                 final showingSkeleton =
                                     _exploreProducts.isEmpty &&
-                                    !_exploreInitialLoaded;
+                                        !_exploreInitialLoaded;
                                 final itemCount = showingSkeleton
                                     ? 6
                                     : _exploreProducts.length;
@@ -900,7 +896,7 @@ class _HomeScreenState extends State<HomeScreen>
                               childCount: (() {
                                 final showingSkeleton =
                                     _exploreProducts.isEmpty &&
-                                    !_exploreInitialLoaded;
+                                        !_exploreInitialLoaded;
                                 final itemCount = showingSkeleton
                                     ? 6
                                     : _exploreProducts.length;
@@ -1233,13 +1229,13 @@ class _HomeHeader extends StatelessWidget {
                                         fit: BoxFit.cover,
                                         errorBuilder: (_, __, ___) =>
                                             const Text(
-                                              'NL',
-                                              style: TextStyle(
-                                                color: _heroMid,
-                                                fontWeight: FontWeight.w900,
-                                                fontSize: 18,
-                                              ),
-                                            ),
+                                          'NL',
+                                          style: TextStyle(
+                                            color: _heroMid,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 18,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -1327,15 +1323,15 @@ class _HomeHeader extends StatelessWidget {
                                       switchOutCurve: Curves.easeInCubic,
                                       layoutBuilder:
                                           (currentChild, previousChildren) {
-                                            return Stack(
-                                              alignment: Alignment.centerLeft,
-                                              children: <Widget>[
-                                                ...previousChildren,
-                                                if (currentChild != null)
-                                                  currentChild,
-                                              ],
-                                            );
-                                          },
+                                        return Stack(
+                                          alignment: Alignment.centerLeft,
+                                          children: <Widget>[
+                                            ...previousChildren,
+                                            if (currentChild != null)
+                                              currentChild,
+                                          ],
+                                        );
+                                      },
                                       transitionBuilder: (child, animation) {
                                         final slide = Tween<Offset>(
                                           begin: const Offset(0, 0.3),
@@ -1415,26 +1411,33 @@ class _HomeHeader extends StatelessWidget {
         // ── Trust marquee — bagian header, ikut terlipat (Cara 1). Latar
         // ColoredBox = scaffold bg supaya sudut membulat strip tidak "bocor"
         // memperlihatkan konten yang lewat di belakang header pinned.
+        //
+        // TickerMode: matikan ticker marquee (repeat 34s) saat header
+        // collapsed — marquee tetap mounted (state & posisi scroll marquee
+        // awet) tapi tidak membakar frame untuk strip yang ter-clip 0px.
         ClipRect(
           child: Align(
             alignment: Alignment.topCenter,
             heightFactor: 1 - t,
-            child: Opacity(
-              opacity: blockOpacity,
-              child: ColoredBox(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                child: const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: NataloColors.heroGradientContinue,
-                    borderRadius: BorderRadius.vertical(
-                      bottom: Radius.circular(18),
+            child: TickerMode(
+              enabled: t < 0.99,
+              child: Opacity(
+                opacity: blockOpacity,
+                child: ColoredBox(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  child: const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: NataloColors.heroGradientContinue,
+                      borderRadius: BorderRadius.vertical(
+                        bottom: Radius.circular(18),
+                      ),
                     ),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.only(bottom: 6),
-                    child: _TrustMarquee(
-                      key: ValueKey('home-trust-marquee'),
-                      height: 36,
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: 6),
+                      child: _TrustMarquee(
+                        key: ValueKey('home-trust-marquee'),
+                        height: 36,
+                      ),
                     ),
                   ),
                 ),
@@ -1735,9 +1738,7 @@ class _HomeSearchContent extends StatelessWidget {
     return ListView(
       shrinkWrap: true,
       children: [
-        ...suggestions.brands
-            .take(3)
-            .map(
+        ...suggestions.brands.take(3).map(
               (item) => _HomeSearchRow(
                 icon: Icons.workspace_premium_outlined,
                 title: 'Brand: ${item.name}',
@@ -1745,9 +1746,7 @@ class _HomeSearchContent extends StatelessWidget {
                 onTap: () => onBrand(item),
               ),
             ),
-        ...suggestions.categories
-            .take(3)
-            .map(
+        ...suggestions.categories.take(3).map(
               (item) => _HomeSearchRow(
                 icon: Icons.category_outlined,
                 title: 'Kategori: ${item.name}',
@@ -1755,9 +1754,7 @@ class _HomeSearchContent extends StatelessWidget {
                 onTap: () => onCategory(item),
               ),
             ),
-        ...suggestions.products
-            .take(5)
-            .map(
+        ...suggestions.products.take(5).map(
               (item) => _HomeProductSuggestionRow(
                 item: item,
                 onTap: () => onProduct(item),
@@ -3493,9 +3490,8 @@ String? _homeProductShippingLabel(Product product) {
 String _formatHomeProductSoldCount(int count) {
   if (count >= 1000) {
     final value = count / 1000;
-    final text = value >= 10
-        ? value.toStringAsFixed(0)
-        : value.toStringAsFixed(1);
+    final text =
+        value >= 10 ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
     return '${text.replaceAll('.', ',').replaceAll(',0', '')}rb+';
   }
   if (count >= 100) return '${(count ~/ 50) * 50}+';
@@ -3880,11 +3876,11 @@ class _BrandChoiceSectionState extends State<_BrandChoiceSection> {
                     shrinkWrap: true,
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                          childAspectRatio: 1.35,
-                        ),
+                      crossAxisCount: 3,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: 1.35,
+                    ),
                     itemCount: pageBrands.length,
                     itemBuilder: (context, idx) {
                       final brand = pageBrands[idx];
