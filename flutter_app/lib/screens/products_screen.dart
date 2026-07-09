@@ -1081,9 +1081,18 @@ class _ProductsScreenState extends State<ProductsScreen>
                       delegate: _CollapsingCatalogHeaderDelegate(
                         vsync: this,
                         // Reduce motion: snap instan (reveal 1:1 tetap jalan
-                        // — itu direct manipulation dari jari, bukan animasi).
+                        // — itu direct manipulation dari jari, bukan
+                        // animasi). Aspect-scoped (maybeDisableAnimationsOf,
+                        // BUKAN maybeOf) — maybeOf mendaftarkan dependensi ke
+                        // SEMUA perubahan MediaQuery termasuk viewInsets per
+                        // frame saat keyboard buka/tutup di search field →
+                        // seluruh build berat halaman ini ikut re-run.
+                        // Catatan framework: duration snap di-latch controller
+                        // internal saat snap pertama — toggle reduce-motion
+                        // mid-session baru efektif setelah halaman dibangun
+                        // ulang (fresh start benar; batasan SDK, diterima).
                         reduceMotion:
-                            MediaQuery.maybeOf(context)?.disableAnimations ??
+                            MediaQuery.maybeDisableAnimationsOf(context) ??
                                 false,
                         controller: _searchController,
                         query: _query,
@@ -1495,8 +1504,10 @@ class _CatalogHeader extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            // ── Baris count + pill Filter/Urutkan — terlipat (gap bawah 10
-            // ikut di dalam blok supaya lipatannya linear).
+            // ── Baris count + pill Filter/Urutkan — terlipat (gap bawah
+            // ikut di dalam blok supaya lipatannya linear). Padding top 4:
+            // badge merah pill Filter overflow -4px ke atas — tanpa headroom
+            // ini ClipRect blok memotong pucuk badge (temuan review).
             ClipRect(
               child: Align(
                 alignment: Alignment.topCenter,
@@ -1508,7 +1519,7 @@ class _CatalogHeader extends StatelessWidget {
                     child: Opacity(
                       opacity: foldOpacity,
                       child: Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.only(top: 4, bottom: 6),
                         child: _ProductCountAndSortRow(
                           visibleCount: visibleCount,
                           totalCount: totalCount,
@@ -1537,9 +1548,10 @@ class _CatalogHeader extends StatelessWidget {
 }
 
 /// Tombol ikon kotak putih di dock samping search bar (Filter/Urutkan saat
-/// collapsed). Visual 42x42 radius 14 (match search field), tap target
-/// dijamin 44 via constraints. Ikon navy [NataloColors.heroMid] di atas
-/// putih. Badge merah count opsional (indikator filter aktif).
+/// collapsed). 44x44 — tap target penuh (quality floor spec), radius 14
+/// match search field. Ikon navy [NataloColors.heroMid] di atas putih.
+/// Badge merah count opsional DI DALAM bounds (pola AppChatButton) —
+/// overflow keluar bounds akan terpotong ClipRect reveal dock.
 class _DockIconButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
@@ -1561,13 +1573,12 @@ class _DockIconButton extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
-        child: const SizedBox(width: 42, height: 44),
+        child: const SizedBox(width: 44, height: 44),
       ),
     );
     return Tooltip(
       message: tooltip,
       child: Stack(
-        clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: [
           button,
@@ -1577,23 +1588,23 @@ class _DockIconButton extends StatelessWidget {
           ),
           if (badge != null)
             Positioned(
-              top: -4,
-              right: -4,
+              top: 2,
+              right: 2,
               child: IgnorePointer(
                 child: Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                   decoration: BoxDecoration(
                     color: NataloColors.danger,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  constraints: const BoxConstraints(minWidth: 16),
+                  constraints: const BoxConstraints(minWidth: 15),
                   child: Text(
                     badge! > 9 ? '9+' : '$badge',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 10,
+                      fontSize: 9.5,
                       fontWeight: FontWeight.w800,
                       height: 1,
                     ),
