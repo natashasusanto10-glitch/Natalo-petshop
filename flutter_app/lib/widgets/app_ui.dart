@@ -34,11 +34,16 @@ class AppHeaderIconButton extends StatelessWidget {
       // iconButtonTheme yang menimpanya → tanpa ini ikon header tampil ABU,
       // bukan hitam. onSurface = textPrimary (light) / textPrimaryDark (dark).
       color: Theme.of(context).colorScheme.onSurface,
-      // Rapatkan jarak antar-ikon header — default IconButton (48px) bikin gap
-      // lebar. Padding horizontal kecil + minWidth 38; tap-target vertikal
-      // tetap 44. Berlaku seragam utk semua ikon header (notif/chat/dll).
+      // Rapatkan jarak antar-ikon header. `constraints` saja TIDAK cukup:
+      // MaterialTapTargetSize.padded (default) tetap melebarkan LAYOUT ke
+      // 48px tak terlihat → gap antar ikon tetap jauh. shrinkWrap bikin
+      // layout = ukuran visual (minWidth 34); tap-target vertikal tetap 44
+      // via constraints. Berlaku seragam utk semua ikon header.
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
       constraints: const BoxConstraints(minWidth: 34, minHeight: 44),
+      style: IconButton.styleFrom(
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
     );
     if (tooltip == null) return button;
     return Tooltip(message: tooltip!, child: button);

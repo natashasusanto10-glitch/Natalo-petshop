@@ -832,6 +832,11 @@ class _CartScreenState extends State<CartScreen>
             color: cs.onSurface,
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             constraints: const BoxConstraints(minWidth: 34, minHeight: 44),
+            // shrinkWrap: tanpa ini MaterialTapTargetSize.padded tetap
+            // melebarkan layout ke 48px → gap antar ikon header jauh.
+            style: IconButton.styleFrom(
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             onPressed: () => Navigator.pushNamed(context, '/wishlist'),
             icon: const Icon(Icons.favorite_border_rounded),
           ),
