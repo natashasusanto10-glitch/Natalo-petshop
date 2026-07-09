@@ -17,11 +17,16 @@ class AppHeaderIconButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final String? tooltip;
 
+  /// Override warna ikon — dipakai header berwarna (mis. hero biru Beranda
+  /// butuh ikon PUTIH). Null = default onSurface (hitam/putih ikut theme).
+  final Color? color;
+
   const AppHeaderIconButton({
     super.key,
     required this.child,
     this.onPressed,
     this.tooltip,
+    this.color,
   });
 
   @override
@@ -33,7 +38,7 @@ class AppHeaderIconButton extends StatelessWidget {
       // colorScheme.onSurfaceVariant (#6B7280 abu) & tema tak punya
       // iconButtonTheme yang menimpanya → tanpa ini ikon header tampil ABU,
       // bukan hitam. onSurface = textPrimary (light) / textPrimaryDark (dark).
-      color: Theme.of(context).colorScheme.onSurface,
+      color: color ?? Theme.of(context).colorScheme.onSurface,
       // Rapatkan jarak antar-ikon header. `constraints` saja TIDAK cukup:
       // MaterialTapTargetSize.padded (default) tetap melebarkan LAYOUT ke
       // 48px tak terlihat → gap antar ikon tetap jauh. shrinkWrap bikin

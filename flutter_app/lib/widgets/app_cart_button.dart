@@ -14,7 +14,10 @@ import '../utils/action_throttle.dart';
 class AppCartButton extends StatefulWidget {
   final VoidCallback? onPressed;
 
-  const AppCartButton({super.key, this.onPressed});
+  /// Override warna ikon (mis. putih di hero biru Beranda). Null = onSurface.
+  final Color? iconColor;
+
+  const AppCartButton({super.key, this.onPressed, this.iconColor});
 
   /// Cart icon ada di BANYAK screen (Beranda, Produk, Wishlist, dst).
   /// IndexedStack keep semua tab alive → multiple AppCartButton coexist.
@@ -123,7 +126,7 @@ class _AppCartButtonState extends State<AppCartButton>
               // Warna onSurface eksplisit (default M3 IconButton = abu
               // onSurfaceVariant) + chrome rapat samakan dgn AppHeaderIconButton
               // → ikon header hitam & jaraknya konsisten.
-              color: Theme.of(context).colorScheme.onSurface,
+              color: widget.iconColor ?? Theme.of(context).colorScheme.onSurface,
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
               constraints: const BoxConstraints(minWidth: 34, minHeight: 44),
               // shrinkWrap: tanpa ini MaterialTapTargetSize.padded tetap

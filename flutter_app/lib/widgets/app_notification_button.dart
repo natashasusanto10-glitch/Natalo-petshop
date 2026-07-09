@@ -22,7 +22,10 @@ import 'app_ui.dart';
 /// Auto re-render saat memberStore change (login/logout) — bell muncul
 /// instant setelah login sukses, hilang instant saat logout.
 class AppNotificationButton extends StatefulWidget {
-  const AppNotificationButton({super.key});
+  /// Override warna ikon (mis. putih di hero biru Beranda). Null = onSurface.
+  final Color? iconColor;
+
+  const AppNotificationButton({super.key, this.iconColor});
 
   @override
   State<AppNotificationButton> createState() => _AppNotificationButtonState();
@@ -94,6 +97,7 @@ class _AppNotificationButtonState extends State<AppNotificationButton>
           return const SizedBox.shrink();
         }
         return AppHeaderIconButton(
+          color: widget.iconColor,
           onPressed: () async {
             await Navigator.pushNamed(context, '/notifications');
             if (mounted) _load();

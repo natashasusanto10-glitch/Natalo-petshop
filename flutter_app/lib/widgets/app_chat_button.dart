@@ -26,7 +26,10 @@ import 'app_ui.dart';
 /// tombol sepenuhnya (`SizedBox.shrink()`) supaya user tidak masuk ke chat
 /// yang sedang dimatikan.
 class AppChatButton extends StatefulWidget {
-  const AppChatButton({super.key});
+  /// Override warna ikon (mis. putih di hero biru Beranda). Null = onSurface.
+  final Color? iconColor;
+
+  const AppChatButton({super.key, this.iconColor});
 
   @override
   State<AppChatButton> createState() => _AppChatButtonState();
@@ -104,6 +107,7 @@ class _AppChatButtonState extends State<AppChatButton>
           children: [
             AppHeaderIconButton(
               tooltip: 'Chat',
+              color: widget.iconColor,
               onPressed: () => Navigator.pushNamed(context, '/chat'),
               // Ikon chat gaya marketplace (gelembung membulat + 3 titik),
               // custom-paint — Material tak punya glyph bulat+titik. Warisi
