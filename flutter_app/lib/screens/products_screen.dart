@@ -1387,12 +1387,16 @@ class _CatalogHeader extends StatelessWidget {
     final dockOpacity = ((t - 0.2) / 0.8).clamp(0.0, 1.0);
     final dockSlide = 12.0 * (1 - t);
 
-    // Hero biru pinned — gradasi heroTop→heroMid sama dengan sticky header
-    // Beranda. ClipRect terluar: saat floating menganimasi extent, konten
-    // yang belum terlipat tidak boleh bocor keluar paint bounds.
+    // Hero biru pinned VERTIKAL murni (heroGradientV) — bukan diagonal.
+    // Diagonal bikin garis tipis "seam" di sambungan strip status bar →
+    // header (tepi atas header sebaran warna miring, tidak sejajar strip
+    // heroTop solid). Vertikal = warna seragam tiap baris → menyatu. Terasa
+    // paling saat collapsed (blok pendek-lebar → diagonal jadi ~horizontal).
+    // ClipRect terluar: saat floating menganimasi extent, konten yang belum
+    // terlipat tidak boleh bocor keluar paint bounds.
     return ClipRect(
       child: DecoratedBox(
-        decoration: const BoxDecoration(gradient: NataloColors.heroGradient),
+        decoration: const BoxDecoration(gradient: NataloColors.heroGradientV),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
