@@ -48,3 +48,71 @@ test("formatVoucherBrandName: brandId tidak ketemu di map -> di-skip, bukan cras
   const result = formatVoucherBrandName(["brand-1", "brand-2"], brandNamesById);
   assert.equal(result, "Wolly+");
 });
+
+import {
+  voucherHasScope,
+  cartMatchesVoucherScope,
+} from "@/lib/voucher-eligibility";
+
+function scope(overrides: Partial<{
+  eligibleProductIds: string[];
+  eligibleCategoryIds: string[];
+  eligibleBrandIds: string[];
+}> = {}) {
+  return {
+    eligibleProductIds: [],
+    eligibleCategoryIds: [],
+    eligibleBrandIds: [],
+    ...overrides,
+  };
+}
+
+test("voucherHasScope: semua eligible*Ids kosong -> false", () => {
+  assert.equal(voucherHasScope(scope()), false);
+});
+
+test("voucherHasScope: eligibleBrandIds terisi -> true", () => {
+  assert.equal(voucherHasScope(scope({ eligibleBrandIds: ["brand-hpi"] })), true);
+});
+
+test("cartMatchesVoucherScope: voucher tanpa scope -> true (berlaku semua produk)", () => {
+  assert.equal(
+    cartMatchesVoucherScope(scope(), [{ id: "p1", brandId: "b1" }]),
+    true,
+  );
+});
+
+test("cartMatchesVoucherScope: brand-scoped, keranjang tanpa brand cocok -> false", () => {
+  assert.equal(
+    cartMatchesVoucherScope(scope({ eligibleBrandIds: ["brand-hpi"] }), [
+      { id: "p1", brandId: "brand-lain" },
+    ]),
+    false,
+  );
+});
+
+test("cartMatchesVoucherScope: brand-scoped, ada produk brand cocok -> true", () => {
+  assert.equal(
+    cartMatchesVoucherScope(scope({ eligibleBrandIds: ["brand-hpi"] }), [
+      { id: "p1", brandId: "brand-lain" },
+      { id: "p2", brandId: "brand-hpi" },
+    ]),
+    true,
+  );
+});
+
+test("cartMatchesVoucherScope: kategori-scoped cocok via categorySlug -> true", () => {
+  assert.equal(
+    cartMatchesVoucherScope(scope({ eligibleCategoryIds: ["kucing"] }), [
+      { id: "p1", categoryId: null, categorySlug: "kucing" },
+    ]),
+    true,
+  );
+});
+
+test("cartMatchesVoucherScope: keranjang kosong + voucher scoped -> false", () => {
+  assert.equal(
+    cartMatchesVoucherScope(scope({ eligibleBrandIds: ["brand-hpi"] }), []),
+    false,
+  );
+});
