@@ -826,6 +826,12 @@ class _CartScreenState extends State<CartScreen>
           // bukan di AppBar. Pattern match Tokopedia / e-commerce modern.
           IconButton(
             tooltip: 'Wishlist',
+            // Warna onSurface (default M3 IconButton = abu onSurfaceVariant) +
+            // chrome rapat samakan dgn AppChatButton → ikon header hitam &
+            // jaraknya konsisten.
+            color: cs.onSurface,
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            constraints: const BoxConstraints(minWidth: 34, minHeight: 44),
             onPressed: () => Navigator.pushNamed(context, '/wishlist'),
             icon: const Icon(Icons.favorite_border_rounded),
           ),

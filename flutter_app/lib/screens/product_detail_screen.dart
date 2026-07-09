@@ -31,6 +31,7 @@ import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../utils/voucher_promo.dart';
 import '../widgets/app_cart_button.dart';
+import '../widgets/app_chat_button.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/added_to_cart_sheet.dart';
@@ -579,8 +580,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     },
                   );
                 },
-                child:
-                    const Icon(Icons.chat_bubble_outline_rounded, size: 24),
+                // Ikon chat bulat yang sama dgn AppChatButton di header lain
+                // (gelembung + 3 titik). size 24 = samakan dgn share di kiri.
+                child: const ChatDotsBubbleIcon(size: 24),
               );
             },
           ),
