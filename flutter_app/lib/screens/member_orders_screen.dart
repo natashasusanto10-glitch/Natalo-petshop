@@ -147,6 +147,8 @@ class _MemberOrdersScreenState extends State<MemberOrdersScreen> {
           AppNotificationButton(),
           AppChatButton(),
           AppCartButton(),
+          // Jarak tepi kanan — ikon shrinkWrap mepet tepi tanpa ini.
+          SizedBox(width: 12),
         ],
       ),
       body: FutureBuilder<List<OrderSummary>>(

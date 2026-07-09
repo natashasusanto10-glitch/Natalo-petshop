@@ -543,6 +543,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           // (_StickyChatButton) — header cukup share + keranjang supaya
           // tidak dobel entry point di satu layar.
           const AppCartButton(),
+          // Jarak tepi kanan — ikon shrinkWrap (34px) cuma nyisa 4px dari
+          // tepi layar → tampak condong kanan vs header Beranda (margin 16).
+          const SizedBox(width: 12),
         ],
       ),
       body: CustomScrollView(
