@@ -70,6 +70,17 @@ class NataloPawRefreshIndicator extends StatefulWidget {
   /// [translateChild] true.
   final double maxChildOffset;
 
+  /// Konten benar-benar DIAM saat pull: child tidak di-translate DAN physics
+  /// dipaksa Clamping supaya scroll position tidak bisa lewat 0 (tidak ada
+  /// rubber-band). Satu-satunya sinyal visual = paw overlay.
+  ///
+  /// Dipakai halaman dengan pinned sliver header (Beranda): bouncing physics
+  /// membuat sliver non-pinned melar menjauh dari header pinned saat
+  /// overscroll → konten terlihat "terbelah" putih. Clamping tetap memicu
+  /// `OverscrollNotification`, jadi deteksi tarikan + trigger refresh tidak
+  /// berubah. Override [translateChild].
+  final bool pinContent;
+
   const NataloPawRefreshIndicator({
     super.key,
     required this.child,
@@ -78,6 +89,7 @@ class NataloPawRefreshIndicator extends StatefulWidget {
     this.topPadding = 8,
     this.translateChild = true,
     this.maxChildOffset = 34,
+    this.pinContent = false,
   });
 
   @override
@@ -253,7 +265,7 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
     // (translateChild) dan kurva paw finish di titik tarikan yang sama,
     // tidak "kurang sinkron" seperti sebelumnya.
     final rampProgress = (progress / pawRampFraction).clamp(0.0, 1.0);
-    final childOffset = widget.translateChild
+    final childOffset = widget.translateChild && !widget.pinContent
         ? (_isRefreshing
             ? widget.maxChildOffset
             : widget.maxChildOffset *
@@ -271,7 +283,7 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
           curve: Curves.easeOutCubic,
           transform: Matrix4.translationValues(0, childOffset, 0),
           child: ScrollConfiguration(
-            behavior: const _NataloPawScrollBehavior(),
+            behavior: _NataloPawScrollBehavior(clamp: widget.pinContent),
             child: NotificationListener<ScrollNotification>(
               onNotification: _handleScroll,
               child: widget.child,
@@ -353,10 +365,20 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
 /// 2. Disable default Android glow / stretching overscroll indicator —
 ///    hindari dual indikator (glow + paw) tabrakan visual.
 class _NataloPawScrollBehavior extends ScrollBehavior {
-  const _NataloPawScrollBehavior();
+  /// true saat [NataloPawRefreshIndicator.pinContent]: pakai Clamping supaya
+  /// konten tidak bisa ditarik lewat 0 sama sekali (tanpa rubber-band).
+  /// OverscrollNotification tetap fire → paw tetap armed.
+  final bool clamp;
+
+  const _NataloPawScrollBehavior({this.clamp = false});
 
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) {
+    if (clamp) {
+      return const ClampingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      );
+    }
     return const BouncingScrollPhysics(
       parent: AlwaysScrollableScrollPhysics(),
     );

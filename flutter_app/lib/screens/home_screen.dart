@@ -645,6 +645,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 .toList();
             return NataloPawRefreshIndicator(
               onRefresh: _refreshAll,
+              // pinContent: konten diam total saat pull — tanpa ini bouncing
+              // physics membuat sliver non-pinned melar menjauh dari sticky
+              // header (celah putih "terbelah") + translateChild menggeser
+              // seluruh hero turun. Paw = satu-satunya yang bergerak.
+              pinContent: true,
+              // Paw muncul tepat di bawah sticky header (extent 128, sudah
+              // di dalam SafeArea) — bukan mengambang di area status bar.
+              topPadding: 134,
               child: CustomScrollView(
                 controller: _scrollController,
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -1812,12 +1820,14 @@ class _TrustMarqueeState extends State<_TrustMarquee>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
-  // Teks di ATAS HERO BIRU — biru muda lembut (bukan slate gelap lama).
-  // Kontras sengaja rendah: marquee = tekstur pendukung, tidak boleh
-  // berebut perhatian dengan search bar putih di atasnya.
+  // Teks di ATAS HERO BIRU — putih-kebiruan terang supaya terbaca jelas
+  // (versi lama _onHeroSubtle terlalu redup, user tidak bisa baca trust
+  // point-nya). Tetap sedikit di bawah putih penuh supaya search bar putih
+  // masih jadi fokus utama.
+  static const _marqueeTextColor = Color(0xFFEFF5FF);
   static const _textStyle = TextStyle(
-    color: _onHeroSubtle,
-    fontSize: 11.5,
+    color: _marqueeTextColor,
+    fontSize: 12,
     fontWeight: FontWeight.w800,
   );
 
@@ -1843,7 +1853,7 @@ class _TrustMarqueeState extends State<_TrustMarquee>
     return [
       const _TrustMarqueeItemData(
         icon: Icons.local_shipping_outlined,
-        iconColor: _onHeroSubtle,
+        iconColor: _TrustMarqueeState._marqueeTextColor,
         text: 'Gratis Ongkir Area Medan',
       ),
       const _TrustMarqueeItemData(
@@ -1853,7 +1863,7 @@ class _TrustMarqueeState extends State<_TrustMarquee>
       ),
       _TrustMarqueeItemData(
         icon: Icons.chat_bubble_outline_rounded,
-        iconColor: _onHeroSubtle,
+        iconColor: _TrustMarqueeState._marqueeTextColor,
         text: 'Konsultasi via WhatsApp',
         showLinkIcon: true,
         onTap: () {
@@ -1868,7 +1878,7 @@ class _TrustMarqueeState extends State<_TrustMarquee>
       ),
       _TrustMarqueeItemData(
         icon: Icons.pets_rounded,
-        iconColor: _onHeroSubtle,
+        iconColor: _TrustMarqueeState._marqueeTextColor,
         text: 'Petshop Medan Terpercaya',
         onTap: () => AppInAppBrowser.openTentangNatalo(context),
       ),
@@ -1978,7 +1988,7 @@ class _TrustMarqueeItem extends StatelessWidget {
           maxLines: 1,
           style: _TrustMarqueeState._textStyle.copyWith(
             decoration: item.onTap == null ? null : TextDecoration.underline,
-            decorationColor: const Color(0xFF7FA6E0),
+            decorationColor: const Color(0xFF9FBEF0),
             decorationStyle: TextDecorationStyle.dotted,
           ),
         ),
@@ -1986,7 +1996,7 @@ class _TrustMarqueeItem extends StatelessWidget {
           const SizedBox(width: 4),
           const Icon(
             Icons.open_in_new_rounded,
-            color: Color(0xFF7FA6E0),
+            color: Color(0xFF9FBEF0),
             size: 12,
           ),
         ],
@@ -2032,7 +2042,7 @@ class _TrustDot extends StatelessWidget {
       height: 3,
       decoration: const BoxDecoration(
         // Dot pemisah di atas hero biru — biru pucat, bukan abu (tenggelam).
-        color: Color(0xFF7FA6E0),
+        color: Color(0xFF9FBEF0),
         shape: BoxShape.circle,
       ),
     );
@@ -2442,9 +2452,12 @@ class _ShortcutGrid extends StatelessWidget {
         itemCount: items.length,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 4,
-          mainAxisSpacing: 10,
+          mainAxisSpacing: 6,
           crossAxisSpacing: 8,
-          mainAxisExtent: 92,
+          // 84 (dulu 92): konten sel (ikon 48 + gap 6 + label) di-center,
+          // sisa tinggi jadi ruang kosong atas-bawah yang bikin jarak ke
+          // section flash sale terkesan jauh.
+          mainAxisExtent: 84,
         ),
         itemBuilder: (context, index) {
           final item = items[index];
@@ -2531,10 +2544,13 @@ class _FlashSaleGrid extends StatelessWidget {
   // Pita (bukan card di tengah) supaya saat section auto-hide tidak ada
   // "bekas lubang"; rail horizontal supaya 2 produk pun tidak menyisakan
   // kolom kanan kosong (kartu ke-3 mengintip → memancing scroll).
-  static const _bandLight = Color(0xFFFFF7F7);
+  // Warna disegarkan (dulu band #FFF7F7 + judul #8F2727 — terlalu pucat/
+  // kusam kata user): band rose muda, judul + petir merah rose vivid yang
+  // senada dengan chip countdown & badge diskon.
+  static const _bandLight = Color(0xFFFFF1F2);
   static const _bandDark = Color(0xFF2B1719);
-  static const _titleLight = Color(0xFF8F2727);
-  static const _titleDark = Color(0xFFF3B4B4);
+  static const _titleLight = Color(0xFFE11D48);
+  static const _titleDark = Color(0xFFFDA4AF);
 
   @override
   Widget build(BuildContext context) {
@@ -2547,7 +2563,7 @@ class _FlashSaleGrid extends StatelessWidget {
     final titleColor = isDark ? _titleDark : _titleLight;
 
     return Container(
-      margin: const EdgeInsets.only(top: 20),
+      margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.fromLTRB(0, 12, 0, 14),
       color: isDark ? _bandDark : _bandLight,
       child: Column(
@@ -2579,7 +2595,7 @@ class _FlashSaleGrid extends StatelessWidget {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFC43E3E),
+                        color: const Color(0xFFE11D48),
                         borderRadius: BorderRadius.circular(7),
                       ),
                       child: FlashSaleCountdown.digitsOnly(
