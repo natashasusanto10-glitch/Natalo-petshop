@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -24,6 +25,7 @@ import '../widgets/app_ui.dart';
 import '../widgets/chat/chat_bubble.dart';
 import '../widgets/chat/chat_composer.dart';
 import '../widgets/chat/chat_image_message.dart';
+import '../widgets/chat/chat_message_gestures.dart';
 import '../widgets/chat/chat_product_card.dart';
 import '../widgets/chat/chat_system_note.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
@@ -73,6 +75,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   final TextEditingController _composerController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _imagePicker = ImagePicker();
+
+  /// Pesan yang sedang dibalas (null = tidak membalas). Di-set oleh swipe /
+  /// long-press "Balas", dibersihkan setelah kirim atau tekan ✕.
+  ChatMessage? _replyingTo;
+
+  /// GlobalKey per-pesan (by id) untuk anchor menu long-press — di-cache
+  /// supaya tak buat key baru tiap rebuild (anchor tak meleset).
+  final Map<String, GlobalKey> _bubbleKeys = {};
 
   /// `viewInsets.bottom` terakhir yang teramati (`didChangeMetrics`) — dipakai
   /// mendeteksi transisi keyboard TERTUTUP->TERBUKA (0 -> positif) supaya
@@ -704,11 +714,18 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   Future<void> _onSendText(String text) async {
     if (!_guardChatEnabled()) return;
     final clientMsgId = newClientMsgId();
+    // Konsumsi balasan (kalau ada) SEBELUM await — banner hilang begitu kirim
+    // mulai (paritas WA). Optimistic membawa kutipan lokal supaya bubble tampil
+    // langsung; server tetap men-derive-ulang kutipan by id (anti-palsu).
+    final replyingMsg = _replyingTo;
+    final replyToId =
+        (replyingMsg != null && !replyingMsg.isOptimistic) ? replyingMsg.id : null;
     final optimistic = ChatMessage(
       id: clientMsgId,
       sender: ChatSender.customer,
       type: ChatMsgType.text,
       text: text,
+      replyTo: replyToId != null ? _optimisticReplyRef(replyingMsg!) : null,
       createdAt: _nextOptimisticCreatedAtNow(),
       clientMsgId: clientMsgId,
       status: ChatSendStatus.sending,
@@ -716,6 +733,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     );
 
     _composerController.clear();
+    if (_replyingTo != null) _replyingTo = null;
     setState(() => _messages.add(optimistic));
     _scrollToBottom();
 
@@ -762,6 +780,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       await chatService.sendText(
         text,
         context: sendContext,
+        replyToId: replyToId,
         clientMsgId: clientMsgId,
       );
       if (!mounted) return;
@@ -790,6 +809,106 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     }
   }
 
+  /// Wire "type" enum → wire value (untuk kutipan optimistic yang konsisten
+  /// dgn apa yang proxy tulis).
+  String _typeWire(ChatMsgType t) => switch (t) {
+        ChatMsgType.image => 'image',
+        ChatMsgType.product => 'product',
+        ChatMsgType.productContext => 'product_context',
+        ChatMsgType.orderContext => 'order_context',
+        ChatMsgType.system => 'system',
+        ChatMsgType.text => 'text',
+      };
+
+  /// Kutipan optimistic dari pesan [m] — cocok dgn derivasi server (senderName
+  /// 'Kamu' utk pesan sendiri / 'Admin' utk staff; foto/produk diberi label).
+  ChatReplyRef _optimisticReplyRef(ChatMessage m) {
+    final who = m.sender == ChatSender.customer ? 'Kamu' : 'Admin';
+    final preview = switch (m.type) {
+      ChatMsgType.image => '📷 Foto',
+      ChatMsgType.product ||
+      ChatMsgType.productContext =>
+        '🛍️ ${m.product?.name ?? 'Produk'}',
+      _ => m.text ?? '',
+    };
+    return ChatReplyRef(
+        id: m.id, senderName: who, type: _typeWire(m.type), text: preview);
+  }
+
+  void _startReply(ChatMessage m) {
+    if (m.isOptimistic) return; // belum ada id server → tak bisa dikutip
+    setState(() => _replyingTo = m);
+  }
+
+  /// Long-press pesan → menu Salin (bila ada teks) + Balas.
+  void _showMessageActions(ChatMessage m, GlobalKey anchorKey) {
+    final copyText = (m.text ?? '').trim();
+    showChatMessageActions(
+      context: context,
+      anchorKey: anchorKey,
+      mine: m.sender == ChatSender.customer,
+      actions: [
+        if (copyText.isNotEmpty)
+          ChatMsgAction(Icons.copy_rounded, 'Salin', () {
+            Clipboard.setData(ClipboardData(text: copyText));
+            AppToast.show(context, 'Teks disalin');
+          }),
+        if (!m.isOptimistic)
+          ChatMsgAction(Icons.reply_rounded, 'Balas', () => _startReply(m)),
+      ],
+    );
+  }
+
+  /// Banner "Membalas …" di atas composer + tombol ✕ batal.
+  Widget _replyBanner() {
+    final m = _replyingTo;
+    if (m == null) return const SizedBox.shrink();
+    final who = m.sender == ChatSender.customer ? 'Kamu' : 'Admin';
+    final preview = switch (m.type) {
+      ChatMsgType.image => '📷 Foto',
+      ChatMsgType.product ||
+      ChatMsgType.productContext =>
+        '🛍️ ${m.product?.name ?? 'Produk'}',
+      _ => (m.text ?? '').trim(),
+    };
+    return Container(
+      color: NataloColors.white,
+      padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+      child: Row(
+        children: [
+          Container(width: 3, height: 34, color: NataloColors.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Membalas $who',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: NataloColors.primary)),
+                Text(preview.isNotEmpty ? preview : 'Pesan',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 12.5, color: NataloColors.textSecondary)),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () => setState(() => _replyingTo = null),
+            icon: const Icon(Icons.close_rounded,
+                size: 20, color: NataloColors.textSecondary),
+            tooltip: 'Batal balas',
+          ),
+        ],
+      ),
+    );
+  }
+
   void _replaceStatus(String clientMsgId, ChatSendStatus status) {
     final idx = _messages.indexWhere((m) => m.clientMsgId == clientMsgId);
     if (idx == -1) return;
@@ -802,6 +921,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       product: m.product,
       image: m.image,
       order: m.order,
+      replyTo: m.replyTo,
       createdAt: m.createdAt,
       clientMsgId: m.clientMsgId,
       status: status,
@@ -1098,10 +1218,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     if (!chatStore.chatEnabled) {
       return const _ChatMaintenanceBanner();
     }
-    return ChatComposer(
-      controller: _composerController,
-      onAttachPhoto: _onAttachPhoto,
-      onSend: _onSendText,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _replyBanner(),
+        ChatComposer(
+          controller: _composerController,
+          onAttachPhoto: _onAttachPhoto,
+          onSend: _onSendText,
+        ),
+      ],
     );
   }
 
@@ -1231,10 +1357,23 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
         break;
     }
 
+    // Swipe kanan → balas; long-press → menu Salin/Balas. Anchor key stabil
+    // per pesan (untuk posisi menu). Swipe dinonaktifkan utk bubble optimistic
+    // (belum ada id server yang bisa dikutip).
+    final key = _bubbleKeys.putIfAbsent(message.id, GlobalKey.new);
+    final gestured = ChatSwipeToReply(
+      enabled: !message.isOptimistic,
+      onReply: () => _startReply(message),
+      child: GestureDetector(
+        onLongPress: () => _showMessageActions(message, key),
+        child: KeyedSubtree(key: key, child: content),
+      ),
+    );
+
     return Row(
       mainAxisAlignment:
           isCustomer ? MainAxisAlignment.end : MainAxisAlignment.start,
-      children: [content],
+      children: [Flexible(child: gestured)],
     );
   }
 }

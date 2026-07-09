@@ -210,13 +210,19 @@ class ChatService {
   /// (anti-IDOR) — menambah parameter `chatId` yang tak pernah dipakai
   /// hanya akan menyesatkan pemanggil.
   Future<ChatSendResult> sendText(String text,
-      {Map<String, dynamic>? context, String? clientMsgId}) async {
+      {Map<String, dynamic>? context,
+      String? replyToId,
+      String? clientMsgId}) async {
     final data = await _client.postJson(
       '/api/chat/send',
       body: {
         'text': text,
         'clientMsgId': clientMsgId ?? newClientMsgId(),
         if (context != null) 'context': context,
+        // Balasan: kirim HANYA id pesan yang dibalas — proxy mengambil-ulang
+        // teks kutipan dari pesan asli (anti-palsu), klien tak boleh menyetir
+        // isi kutipan. Pola sama dgn `context`.
+        if (replyToId != null) 'replyTo': {'id': replyToId},
       },
     );
     return _parseSendResult(data);

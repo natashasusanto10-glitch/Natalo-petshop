@@ -126,6 +126,27 @@ class ChatOrderRef {
   }
 }
 
+/// Kutipan pesan yang dibalas (pesan `replyTo`). Bentuk aman dari proxy:
+/// {id, senderName, type, text-preview} — TAK ada data internal, text sudah
+/// di-preview server saat penulisan.
+class ChatReplyRef {
+  final String? id;
+  final String? senderName;
+  final String? type;
+  final String? text;
+
+  const ChatReplyRef({this.id, this.senderName, this.type, this.text});
+
+  factory ChatReplyRef.fromJson(Map<String, dynamic> json) {
+    return ChatReplyRef(
+      id: _stringOrNull(json['id']),
+      senderName: _stringOrNull(json['senderName']),
+      type: _stringOrNull(json['type']),
+      text: _stringOrNull(json['text']),
+    );
+  }
+}
+
 class ChatMessage {
   final String id;
   final ChatSender sender;
@@ -137,6 +158,9 @@ class ChatMessage {
   /// getter [imageUrl] — tidak butuh model khusus karena cuma 1 field.
   final Map<String, dynamic>? image;
   final ChatOrderRef? order;
+
+  /// Kutipan pesan yang dibalas (null = bukan balasan).
+  final ChatReplyRef? replyTo;
 
   /// Epoch millis dari proxy. Fallback 0 kalau hilang/tak valid (BUKAN
   /// null) supaya sort by createdAt di caller tak perlu null-check.
@@ -178,6 +202,7 @@ class ChatMessage {
     this.product,
     this.image,
     this.order,
+    this.replyTo,
     this.createdAt = 0,
     this.clientMsgId,
     this.status,
@@ -198,6 +223,7 @@ class ChatMessage {
     final productRaw = json['product'];
     final imageRaw = json['image'];
     final orderRaw = json['order'];
+    final replyRaw = json['replyTo'];
     return ChatMessage(
       id: _string(json['id']),
       sender: _parseSender(json['senderRole']),
@@ -209,6 +235,9 @@ class ChatMessage {
       image: imageRaw is Map ? Map<String, dynamic>.from(imageRaw) : null,
       order: orderRaw is Map
           ? ChatOrderRef.fromJson(Map<String, dynamic>.from(orderRaw))
+          : null,
+      replyTo: replyRaw is Map
+          ? ChatReplyRef.fromJson(Map<String, dynamic>.from(replyRaw))
           : null,
       createdAt: _asInt(json['createdAt']),
       clientMsgId: _stringOrNull(json['clientMsgId']),
