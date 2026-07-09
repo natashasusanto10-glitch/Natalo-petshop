@@ -240,6 +240,10 @@ class ChatService {
       fieldName: 'file',
       filePath: filePath,
       fields: {'clientMsgId': clientMsgId ?? newClientMsgId()},
+      // 90 dtk (bukan default 30) — upload foto (s/d 5MB) + UploadThing di
+      // server bisa lambat di jaringan mobile lemah; 30 dtk sering timeout
+      // padahal upload sebenarnya masih jalan.
+      timeout: const Duration(seconds: 90),
     );
     return _parseSendResult(data);
   }
