@@ -1239,7 +1239,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   }
 }
 
-/// Header custom (bukan `AppBar` default) — avatar inisial "N", judul, dan
+/// Header custom (bukan `AppBar` default) — judul toko dan
 /// status jam operasional yang bereaksi ke `chatStore.online` (dihitung
 /// SERVER dari `GET /api/chat/config`, klien tidak menebak dari timestamp
 /// lokal — fix B3 Plan 2/4).
@@ -1269,31 +1269,14 @@ class _ChatHeader extends StatelessWidget implements PreferredSizeWidget {
                   color: NataloColors.textPrimary,
                 ),
               ),
-              Container(
-                width: 38,
-                height: 38,
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: NataloColors.primarySoft,
-                  shape: BoxShape.circle,
-                ),
-                child: const Text(
-                  'N',
-                  style: TextStyle(
-                    color: NataloColors.primary,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
+              const SizedBox(width: AppSpacing.xs),
               Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Natalo Petshop',
+                      'Natalo Petshop & Aquarium',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
