@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/natalo_colors.dart';
 
 import '../models/member_profile.dart';
@@ -83,37 +84,60 @@ class _TransactionsBodyState extends State<_TransactionsBody> {
   @override
   Widget build(BuildContext context) {
     final bottomGap = MediaQuery.of(context).padding.bottom + 96;
-    return NataloPawRefreshIndicator(
-      onRefresh: _refresh,
-      child: SafeArea(
-        bottom: false,
-        child: CustomScrollView(
-          slivers: [
-            const SliverToBoxAdapter(child: _TransactionsHeader()),
-            SliverToBoxAdapter(
-              child: _TransactionAlerts(key: ValueKey('alerts-$_refreshTick')),
-            ),
-            SliverToBoxAdapter(
-              child: _OrderStatusCard(key: ValueKey('orders-$_refreshTick')),
-            ),
-            SliverToBoxAdapter(
-              child: _BalancePointsCard(key: ValueKey('balance-$_refreshTick')),
-            ),
-            const SliverToBoxAdapter(child: _TransactionMenuList()),
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(20, 0, 20, bottomGap),
-                child: const Column(
-                  children: [
-                    Spacer(),
-                    _HelpCard(),
-                  ],
-                ),
+    // AnnotatedRegion + strip status bar heroTop — pola hero biru Beranda:
+    // area notch menyatu dengan header biru, ikon status bar putih.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Stack(
+        children: [
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: MediaQuery.paddingOf(context).top,
+            child: const ColoredBox(color: NataloColors.heroTop),
+          ),
+          NataloPawRefreshIndicator(
+            onRefresh: _refresh,
+            // Selaras Beranda (PR #56): konten diam saat pull, paw muncul di
+            // bawah blok hero (header ~96px dari bawah status bar).
+            pinContent: true,
+            topPadding: 100,
+            child: SafeArea(
+              bottom: false,
+              child: CustomScrollView(
+                slivers: [
+                  const SliverToBoxAdapter(child: _TransactionsHeader()),
+                  SliverToBoxAdapter(
+                    child: _TransactionAlerts(
+                        key: ValueKey('alerts-$_refreshTick')),
+                  ),
+                  SliverToBoxAdapter(
+                    child:
+                        _OrderStatusCard(key: ValueKey('orders-$_refreshTick')),
+                  ),
+                  SliverToBoxAdapter(
+                    child: _BalancePointsCard(
+                        key: ValueKey('balance-$_refreshTick')),
+                  ),
+                  const SliverToBoxAdapter(child: _TransactionMenuList()),
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(20, 0, 20, bottomGap),
+                      child: const Column(
+                        children: [
+                          Spacer(),
+                          _HelpCard(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -124,42 +148,50 @@ class _TransactionsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 18, 14, 20),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Transaksi',
-                  style: TextStyle(
-                    color: cs.onSurface,
-                    fontSize: 32,
-                    fontWeight: FontWeight.w900,
-                    height: 1.05,
+    // Hero biru — gradasi sama dengan header Beranda/Belanja, sudut bawah
+    // membulat sebagai penutup blok (pola marquee strip Beranda). Teks dan
+    // ikon putih via param iconColor (opt-in, sama seperti Beranda).
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: NataloColors.heroGradient,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 14, 14, 18),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Transaksi',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900,
+                      height: 1.05,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Kelola pesanan dan aktivitas belanjamu',
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    height: 1.3,
+                  SizedBox(height: 8),
+                  Text(
+                    'Kelola pesanan dan aktivitas belanjamu',
+                    style: TextStyle(
+                      color: NataloColors.onHeroBright,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      height: 1.3,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const AppNotificationButton(),
-          const AppChatButton(),
-          const AppCartButton(),
-        ],
+            AppNotificationButton(iconColor: Colors.white),
+            AppChatButton(iconColor: Colors.white),
+            AppCartButton(iconColor: Colors.white),
+          ],
+        ),
       ),
     );
   }

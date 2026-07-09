@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/natalo_colors.dart';
@@ -1031,222 +1032,247 @@ class _ProductsScreenState extends State<ProductsScreen> {
       // extendBody: konten tembus di belakang floating glass nav. Grid
       // sudah pakai bottomPadding (kBottomNavigationBarHeight + inset + 16).
       extendBody: true,
-      body: NataloPawRefreshIndicator(
-        onRefresh: _refreshAll,
-        child: SafeArea(
-          bottom: false,
-          child: CustomScrollView(
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              const SliverToBoxAdapter(child: _ProductPageHeader()),
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: _PinnedHeaderDelegate(
-                  // Extent disesuaikan: search 44 + gap 10 + count row 40 +
-                  // gap 10 + chip 46 + bottom gap 12 + top padding 12 = ~174
-                  minExtent: 174,
-                  maxExtent: 174,
-                  child: _CatalogHeader(
-                    controller: _searchController,
-                    query: _query,
-                    activeMode: _activeMode,
-                    selectedCategory: _filter.category,
-                    visibleCount: products.length,
-                    // Total dari API (jumlah produk sesuai filter di DB),
-                    // bukan jumlah yang kebetulan ter-load. Tanpa ini header
-                    // selalu tampil "24" walau DB punya ribuan → "dari N"
-                    // tidak pernah muncul. Fallback ke loaded length kalau
-                    // API tidak kirim total.
-                    totalCount: _result.total ?? _result.products.length,
-                    onQueryChanged: _onQueryChanged,
-                    onSubmitQuery: _commitSearch,
-                    onFilterModeChanged: _onFilterModeChanged,
-                    onOpenSort: _openSortSheet,
-                    onOpenFilterSheet: _openFilterSheet,
-                    activeAdvancedFilterCount: _filter.activeCount,
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _SearchSuggestionPanel(
-                  // open: gate utama untuk render panel. Kalau false →
-                  // SizedBox.shrink, no vertical space taken → product
-                  // grid muncul langsung di bawah filter chips.
-                  open: _showSuggestionPanel,
-                  query: _query,
-                  suggestions: _suggestions,
-                  loading: _suggestionLoading,
-                  history: _searchHistory,
-                  onProduct: _openProductSuggestion,
-                  onCategory: (item) => _applySuggestedCategory(item.name),
-                  onBrand: (item) => _applySuggestedBrand(item.name),
-                  onSearchQuery: _commitSearch,
-                  onHistoryTap: _commitSearch,
-                  onClearHistory: _clearSearchHistory,
-                ),
-              ),
-              // Active filter chips bar — horizontal scroll list dari
-              // semua filter aktif (price range, multi-brand, rating).
-              // Tap × di chip = remove individual filter. "Clear All"
-              // button di akhir kalau ada filter aktif. Auto-hide kalau
-              // tidak ada advanced filter.
-              if (_filter.hasAdvancedFilters)
-                SliverToBoxAdapter(
-                  child: _ActiveFiltersBar(
-                    filter: _filter,
-                    onRemoveMinPrice: () =>
-                        _removeFilterChip(clearMinPrice: true),
-                    onRemoveMaxPrice: () =>
-                        _removeFilterChip(clearMaxPrice: true),
-                    onRemoveBrand: (brand) =>
-                        _removeFilterChip(removeBrand: brand),
-                    onRemoveRating: () =>
-                        _removeFilterChip(clearMinRating: true),
-                    onRemoveDiscount: () =>
-                        _removeFilterChip(clearDiscount: true),
-                    onRemoveInStock: () =>
-                        _removeFilterChip(restoreInStock: true),
-                    onClearAll: _clearAllAdvancedFilters,
-                  ),
-                ),
-              if (hasLoadError)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  // #4: AppErrorState dengan varian dari statusCode asli —
-                  // 5xx tampil "server bermasalah" (bukan salah label
-                  // "cek koneksi"), offline tampil network.
-                  child: Center(
-                    child: AppErrorState(
-                      variant:
-                          appErrorVariantFromStatus(_result.errorStatusCode),
-                      title: 'Gagal memuat produk',
-                      onRetry: _loadProducts,
-                    ),
-                  ),
-                )
-              else if (_loading && products.isEmpty)
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding),
-                  sliver: SliverGrid(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 12,
-                      crossAxisSpacing: 12,
-                      childAspectRatio: 0.58,
-                    ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) => const SkeletonProductCard(
-                        showAddToCart: false,
+      // AnnotatedRegion + strip status bar heroTop — pola sama dengan
+      // Beranda: area notch menyatu dengan hero biru, ikon status bar putih.
+      body: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.light,
+        child: Stack(
+          children: [
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: MediaQuery.paddingOf(context).top,
+              child: const ColoredBox(color: NataloColors.heroTop),
+            ),
+            NataloPawRefreshIndicator(
+              onRefresh: _refreshAll,
+              // Selaras Beranda (PR #56): konten diam saat pull supaya hero biru
+              // tidak "terbelah"; paw muncul di bawah search bar (52 header judul
+              // + 12 pad + 42 search + 12 gap, diukur dari bawah status bar).
+              pinContent: true,
+              topPadding: 118,
+              child: SafeArea(
+                bottom: false,
+                child: CustomScrollView(
+                  controller: _scrollController,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    const SliverToBoxAdapter(child: _ProductPageHeader()),
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _PinnedHeaderDelegate(
+                        // Extent disesuaikan: search 44 + gap 10 + count row 40 +
+                        // gap 10 + chip 46 + bottom gap 12 + top padding 12 = ~174
+                        minExtent: 174,
+                        maxExtent: 174,
+                        child: _CatalogHeader(
+                          controller: _searchController,
+                          query: _query,
+                          activeMode: _activeMode,
+                          selectedCategory: _filter.category,
+                          visibleCount: products.length,
+                          // Total dari API (jumlah produk sesuai filter di DB),
+                          // bukan jumlah yang kebetulan ter-load. Tanpa ini header
+                          // selalu tampil "24" walau DB punya ribuan → "dari N"
+                          // tidak pernah muncul. Fallback ke loaded length kalau
+                          // API tidak kirim total.
+                          totalCount: _result.total ?? _result.products.length,
+                          onQueryChanged: _onQueryChanged,
+                          onSubmitQuery: _commitSearch,
+                          onFilterModeChanged: _onFilterModeChanged,
+                          onOpenSort: _openSortSheet,
+                          onOpenFilterSheet: _openFilterSheet,
+                          activeAdvancedFilterCount: _filter.activeCount,
+                        ),
                       ),
-                      childCount: 8,
                     ),
-                  ),
-                )
-              else if (products.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: _EmptyProductsState(
-                    onReset: _resetFilters,
-                    // "Terakhir kamu lihat" — jangan dead-end. Saat filter/
-                    // search 0 hasil, kasih jalan keluar berupa produk yang
-                    // pernah user buka (recently viewed, client-side store).
-                    recentProducts: recentlyViewedStore.items.take(10).toList(),
-                    onProductTap: _openProduct,
-                  ),
-                )
-              else
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding),
-                  // Grid 2-kolom auto-height (bukan SliverGrid dengan
-                  // childAspectRatio tetap). Tiap baris = 1 Row berisi 2
-                  // kartu; tinggi BARIS ikut konten terpanjang di baris itu —
-                  // jadi produk tanpa badge/rating/terjual tidak menyisakan
-                  // ruang kosong gede seperti waktu tinggi dipaku 0.58.
-                  //
-                  // WAJIB CrossAxisAlignment.start — JANGAN .stretch. Kartu
-                  // berisi CachedNetworkImage(width: double.infinity); .stretch
-                  // memaksa Row menghitung intrinsic-height sebaris, yang tak
-                  // bisa disediakan oleh CachedNetworkImage → throw layout
-                  // exception yang DITELAN FlutterError.onError (app_crashlytics
-                  // tanpa presentError) → seluruh grid blank tanpa jejak.
-                  // Sama persis bug yang dulu bikin Beranda blank.
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, rowIndex) {
-                        final leftIndex = rowIndex * 2;
-                        final rightIndex = leftIndex + 1;
-                        final left = products[leftIndex];
-                        final hasRight = rightIndex < products.length;
-                        final rowCount = (products.length + 1) ~/ 2;
-                        final isLastRow = rowIndex == rowCount - 1;
-                        return Padding(
-                          padding: EdgeInsets.only(bottom: isLastRow ? 0 : 12),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: _ProductsPageProductCard(
-                                  product: left,
-                                  onTap: () => _openProduct(left),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: hasRight
-                                    ? _ProductsPageProductCard(
-                                        product: products[rightIndex],
-                                        onTap: () =>
-                                            _openProduct(products[rightIndex]),
-                                      )
-                                    // Slot kanan kosong (jumlah produk ganjil)
-                                    // — jaga kartu kiri tetap selebar 1 kolom,
-                                    // tidak melar full-width.
-                                    : const SizedBox.shrink(),
-                              ),
-                            ],
+                    SliverToBoxAdapter(
+                      child: _SearchSuggestionPanel(
+                        // open: gate utama untuk render panel. Kalau false →
+                        // SizedBox.shrink, no vertical space taken → product
+                        // grid muncul langsung di bawah filter chips.
+                        open: _showSuggestionPanel,
+                        query: _query,
+                        suggestions: _suggestions,
+                        loading: _suggestionLoading,
+                        history: _searchHistory,
+                        onProduct: _openProductSuggestion,
+                        onCategory: (item) =>
+                            _applySuggestedCategory(item.name),
+                        onBrand: (item) => _applySuggestedBrand(item.name),
+                        onSearchQuery: _commitSearch,
+                        onHistoryTap: _commitSearch,
+                        onClearHistory: _clearSearchHistory,
+                      ),
+                    ),
+                    // Active filter chips bar — horizontal scroll list dari
+                    // semua filter aktif (price range, multi-brand, rating).
+                    // Tap × di chip = remove individual filter. "Clear All"
+                    // button di akhir kalau ada filter aktif. Auto-hide kalau
+                    // tidak ada advanced filter.
+                    if (_filter.hasAdvancedFilters)
+                      SliverToBoxAdapter(
+                        child: _ActiveFiltersBar(
+                          filter: _filter,
+                          onRemoveMinPrice: () =>
+                              _removeFilterChip(clearMinPrice: true),
+                          onRemoveMaxPrice: () =>
+                              _removeFilterChip(clearMaxPrice: true),
+                          onRemoveBrand: (brand) =>
+                              _removeFilterChip(removeBrand: brand),
+                          onRemoveRating: () =>
+                              _removeFilterChip(clearMinRating: true),
+                          onRemoveDiscount: () =>
+                              _removeFilterChip(clearDiscount: true),
+                          onRemoveInStock: () =>
+                              _removeFilterChip(restoreInStock: true),
+                          onClearAll: _clearAllAdvancedFilters,
+                        ),
+                      ),
+                    if (hasLoadError)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        // #4: AppErrorState dengan varian dari statusCode asli —
+                        // 5xx tampil "server bermasalah" (bukan salah label
+                        // "cek koneksi"), offline tampil network.
+                        child: Center(
+                          child: AppErrorState(
+                            variant: appErrorVariantFromStatus(
+                                _result.errorStatusCode),
+                            title: 'Gagal memuat produk',
+                            onRetry: _loadProducts,
                           ),
-                        );
-                      },
-                      childCount: (products.length + 1) ~/ 2,
-                    ),
-                  ),
-                ),
-              if (_loadingMore)
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(16, 0, 16, 28),
-                    child: Center(
-                      child: SizedBox(
-                        width: 26,
-                        height: 26,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.4,
-                          color: NataloColors.primary,
+                        ),
+                      )
+                    else if (_loading && products.isEmpty)
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding),
+                        sliver: SliverGrid(
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 12,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: 0.58,
+                          ),
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) => const SkeletonProductCard(
+                              showAddToCart: false,
+                            ),
+                            childCount: 8,
+                          ),
+                        ),
+                      )
+                    else if (products.isEmpty)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: _EmptyProductsState(
+                          onReset: _resetFilters,
+                          // "Terakhir kamu lihat" — jangan dead-end. Saat filter/
+                          // search 0 hasil, kasih jalan keluar berupa produk yang
+                          // pernah user buka (recently viewed, client-side store).
+                          recentProducts:
+                              recentlyViewedStore.items.take(10).toList(),
+                          onProductTap: _openProduct,
+                        ),
+                      )
+                    else
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding),
+                        // Grid 2-kolom auto-height (bukan SliverGrid dengan
+                        // childAspectRatio tetap). Tiap baris = 1 Row berisi 2
+                        // kartu; tinggi BARIS ikut konten terpanjang di baris itu —
+                        // jadi produk tanpa badge/rating/terjual tidak menyisakan
+                        // ruang kosong gede seperti waktu tinggi dipaku 0.58.
+                        //
+                        // WAJIB CrossAxisAlignment.start — JANGAN .stretch. Kartu
+                        // berisi CachedNetworkImage(width: double.infinity); .stretch
+                        // memaksa Row menghitung intrinsic-height sebaris, yang tak
+                        // bisa disediakan oleh CachedNetworkImage → throw layout
+                        // exception yang DITELAN FlutterError.onError (app_crashlytics
+                        // tanpa presentError) → seluruh grid blank tanpa jejak.
+                        // Sama persis bug yang dulu bikin Beranda blank.
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, rowIndex) {
+                              final leftIndex = rowIndex * 2;
+                              final rightIndex = leftIndex + 1;
+                              final left = products[leftIndex];
+                              final hasRight = rightIndex < products.length;
+                              final rowCount = (products.length + 1) ~/ 2;
+                              final isLastRow = rowIndex == rowCount - 1;
+                              return Padding(
+                                padding:
+                                    EdgeInsets.only(bottom: isLastRow ? 0 : 12),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: _ProductsPageProductCard(
+                                        product: left,
+                                        onTap: () => _openProduct(left),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: hasRight
+                                          ? _ProductsPageProductCard(
+                                              product: products[rightIndex],
+                                              onTap: () => _openProduct(
+                                                  products[rightIndex]),
+                                            )
+                                          // Slot kanan kosong (jumlah produk ganjil)
+                                          // — jaga kartu kiri tetap selebar 1 kolom,
+                                          // tidak melar full-width.
+                                          : const SizedBox.shrink(),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                            childCount: (products.length + 1) ~/ 2,
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                )
-              else if (!_hasMore && products.isNotEmpty)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(16, 4, 16, bottomPadding),
-                    child: Center(
-                      child: Text(
-                        'Sudah sampai akhir katalog',
-                        style: TextStyle(
-                          color: cs.onSurfaceVariant,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
+                    if (_loadingMore)
+                      const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(16, 0, 16, 28),
+                          child: Center(
+                            child: SizedBox(
+                              width: 26,
+                              height: 26,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.4,
+                                color: NataloColors.primary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    else if (!_hasMore && products.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding:
+                              EdgeInsets.fromLTRB(16, 4, 16, bottomPadding),
+                          child: Center(
+                            child: Text(
+                              'Sudah sampai akhir katalog',
+                              style: TextStyle(
+                                color: cs.onSurfaceVariant,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
+                  ],
                 ),
-            ],
-          ),
+              ),
+            ),
+          ],
         ),
       ),
       bottomNavigationBar: const BottomNavBar(currentIndex: 1),
@@ -1259,11 +1285,12 @@ class _ProductPageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return ColoredBox(
-      color: cs.surface,
+    // Hero biru — meneruskan strip status bar heroTop di atasnya; gradasi
+    // dilanjutkan _CatalogHeader (heroTop→heroMid) di bawahnya = satu blok.
+    return const ColoredBox(
+      color: NataloColors.heroTop,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
+        padding: EdgeInsets.fromLTRB(16, 4, 8, 0),
         child: Row(
           children: [
             Expanded(
@@ -1272,7 +1299,7 @@ class _ProductPageHeader extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: cs.onSurface,
+                  color: Colors.white,
                   fontSize: 22,
                   fontWeight: FontWeight.w700,
                   height: 1.2,
@@ -1282,9 +1309,9 @@ class _ProductPageHeader extends StatelessWidget {
             // Cart icon — match dengan home & wishlist header (single
             // source of truth via AppCartButton: shopping_cart_outlined
             // 24px, red badge live sync via cartStore).
-            const AppCartButton(),
+            AppCartButton(iconColor: Colors.white),
             // Jarak tepi kanan — ikon shrinkWrap mepet tepi tanpa ini.
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
           ],
         ),
       ),
@@ -1327,17 +1354,11 @@ class _CatalogHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Hero biru pinned — gradasi heroTop→heroMid sama dengan sticky header
+    // Beranda; saat scroll, blok ini menempel sendiri dan tetap terlihat
+    // sebagai hero utuh. Border bawah dihapus (transisi biru→surface).
     return DecoratedBox(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: isDark ? cs.outlineVariant : const Color(0xFFF1F5F9),
-          ),
-        ),
-      ),
+      decoration: const BoxDecoration(gradient: NataloColors.heroGradient),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1394,7 +1415,6 @@ class _ProductCountAndSortRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
@@ -1402,17 +1422,18 @@ class _ProductCountAndSortRow extends StatelessWidget {
           Expanded(
             child: Text.rich(
               TextSpan(
-                style: TextStyle(
+                // Di atas hero biru: teks terang, angka putih tebal.
+                style: const TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w600,
-                  color: cs.onSurfaceVariant,
+                  color: NataloColors.onHeroBright,
                 ),
                 children: [
                   const TextSpan(text: 'Menampilkan '),
                   TextSpan(
                     text: '$visibleCount',
                     style: const TextStyle(
-                      color: Color(0xFF2568C7),
+                      color: Colors.white,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -1421,7 +1442,7 @@ class _ProductCountAndSortRow extends StatelessWidget {
                     TextSpan(
                       text: '$totalCount',
                       style: const TextStyle(
-                        color: Color(0xFF2568C7),
+                        color: Colors.white,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -1474,7 +1495,8 @@ class _HeaderActionPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    // Glass putih di atas hero biru — teks/ikon putih; border menguat saat
+    // ada filter aktif (badge) sebagai pengganti aksen biru lama.
     final pill = Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1484,39 +1506,31 @@ class _HeaderActionPill extends StatelessWidget {
           height: 40,
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
-            color: cs.surface,
+            color: Colors.white.withValues(alpha: 0.14),
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color:
-                  badge != null ? const Color(0xFF2568C7) : cs.outlineVariant,
+              color: badge != null
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.38),
               width: badge != null ? 1.4 : 1,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.035),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 label,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w700,
-                  color: badge != null ? const Color(0xFF2568C7) : cs.onSurface,
+                  color: Colors.white,
                 ),
               ),
               const SizedBox(width: 6),
               Icon(
                 icon,
                 size: 19,
-                color: badge != null
-                    ? const Color(0xFF2568C7)
-                    : cs.onSurfaceVariant,
+                color: Colors.white,
               ),
             ],
           ),
@@ -1828,7 +1842,8 @@ class _ProductSearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    // Field PUTIH fixed (light & dark) di atas hero biru — pola sama dengan
+    // search bar sticky Beranda; warna teks/ikon netral gelap fixed.
     return SizedBox(
       height: 42,
       child: TextField(
@@ -1836,22 +1851,22 @@ class _ProductSearchBar extends StatelessWidget {
         onChanged: onChanged,
         onSubmitted: onSubmitted,
         textInputAction: TextInputAction.search,
-        style: TextStyle(
-          color: cs.onSurface,
+        style: const TextStyle(
+          color: NataloColors.textPrimary,
           fontSize: 14,
           fontWeight: FontWeight.w600,
         ),
         decoration: InputDecoration(
           hintText: 'Cari produk Natalo',
-          hintStyle: TextStyle(
-            color: cs.onSurfaceVariant,
+          hintStyle: const TextStyle(
+            color: Color(0xFF64748B),
             fontSize: 14,
             fontWeight: FontWeight.w500,
           ),
-          prefixIcon: Icon(
+          prefixIcon: const Icon(
             Icons.search_rounded,
             size: 22,
-            color: cs.onSurfaceVariant,
+            color: Color(0xFF64748B),
           ),
           prefixIconConstraints:
               const BoxConstraints(minWidth: 44, minHeight: 42),
@@ -1860,26 +1875,28 @@ class _ProductSearchBar extends StatelessWidget {
               : IconButton(
                   onPressed: onClear,
                   icon: const Icon(Icons.close_rounded, size: 18),
-                  color: cs.onSurfaceVariant,
+                  color: const Color(0xFF64748B),
                   tooltip: 'Hapus',
                   visualDensity: VisualDensity.compact,
                 ),
           filled: true,
-          fillColor: cs.surfaceContainerHighest,
+          fillColor: Colors.white,
           isDense: true,
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          // Tanpa border — field putih sudah kontras di atas hero biru
+          // (border abu tipis lama malah bikin kesan kotor di tepi).
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide(color: cs.outlineVariant),
+            borderSide: BorderSide.none,
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide(color: cs.outlineVariant),
+            borderSide: BorderSide.none,
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: _brandBlue, width: 1.2),
+            borderSide: BorderSide.none,
           ),
         ),
       ),
@@ -1959,7 +1976,6 @@ class ProductFilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
@@ -1968,36 +1984,24 @@ class ProductFilterChip extends StatelessWidget {
         // Active: glossy gradient biru Natalo dengan white border 0.35
         // untuk highlight glass effect. Inactive: glass ringan (white 0.72
         // + border `#D8E4F4`) — spec "Visual Direction".
-        gradient: selected
-            ? const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF2F7BEF), Color(0xFF0F63D8)],
-              )
-            : null,
-        color: selected ? null : cs.surface,
+        // Di atas hero biru: chip aktif = PUTIH solid (teks heroMid,
+        // kontras maksimal — pola chip hero yang diapprove user), chip
+        // pasif = heroChip lembut dengan teks terang.
+        color: selected ? Colors.white : NataloColors.heroChip,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color: selected
-              ? Colors.white.withValues(alpha: 0.35)
-              : cs.outlineVariant,
+          color: selected ? Colors.white : Colors.white.withValues(alpha: 0.22),
           width: 1,
         ),
         boxShadow: selected
             ? [
                 BoxShadow(
-                  color: const Color(0xFF1F6FD1).withValues(alpha: 0.22),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
+                  color: Colors.black.withValues(alpha: 0.16),
+                  blurRadius: 14,
+                  offset: const Offset(0, 5),
                 ),
               ]
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.035),
-                  blurRadius: 14,
-                  offset: const Offset(0, 6),
-                ),
-              ],
+            : null,
       ),
       child: Material(
         color: Colors.transparent,
@@ -2013,7 +2017,9 @@ class ProductFilterChip extends StatelessWidget {
                     Icon(
                       icon,
                       size: 18,
-                      color: selected ? Colors.white : cs.onSurfaceVariant,
+                      color: selected
+                          ? NataloColors.heroMid
+                          : NataloColors.onHeroBright,
                     ),
                 const SizedBox(width: 6),
                 ConstrainedBox(
@@ -2023,7 +2029,9 @@ class ProductFilterChip extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: selected ? Colors.white : cs.onSurface,
+                      color: selected
+                          ? NataloColors.heroMid
+                          : NataloColors.onHeroBright,
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),

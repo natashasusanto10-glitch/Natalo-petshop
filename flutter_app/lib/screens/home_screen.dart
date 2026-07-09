@@ -48,11 +48,13 @@ const _surface = Colors.transparent;
 // ── Hero biru beranda (redesign Jul 2026) ──
 // Gradasi header: navy pekat → brand blue. Marquee strip meneruskan
 // gradasi ke bawah supaya header+marquee terbaca sebagai SATU blok hero.
-const _heroTop = Color(0xFF153E7E);
-const _heroMid = Color(0xFF1E5FBF);
-const _heroBottom = Color(0xFF2F6FD0);
+// Nilai asli dipindah ke NataloColors.hero* supaya halaman lain (Belanja,
+// Transaksi, Akun, Notifikasi) pakai sumber yang sama; alias lokal
+// dipertahankan agar referensi di file ini tidak berubah.
+const _heroTop = NataloColors.heroTop;
+const _heroMid = NataloColors.heroMid;
 // Teks sekunder di atas biru (tagline, marquee) — biru muda lembut.
-const _onHeroSubtle = Color(0xFFBFD5F5);
+const _onHeroSubtle = NataloColors.onHeroSubtle;
 
 List<Product> _uniqueById(Iterable<Product> products) {
   final seen = <String>{};
@@ -594,291 +596,296 @@ class _HomeScreenState extends State<HomeScreen> {
               top: true,
               bottom: false,
               child: FutureBuilder<ProductResult>(
-          future: _productsFuture,
-          // Initial data empty supaya skeleton/loading UI muncul first paint
-          // — bukan flash sampleProducts mock. Capacitor admin dashboard
-          // adalah single source of truth.
-          initialData: const ProductResult(
-            products: <Product>[],
-            fromApi: false,
-          ),
-          builder: (context, snapshot) {
-            final result = snapshot.data;
-            final products = result?.products ?? const <Product>[];
-            // 3-tier eligibility — match backend getFlashSaleProducts():
-            //   1. Explicit flashSaleEndsAt set + di future → always
-            //   2. flashSaleEndsAt null + discount >= 20% → auto-include
-            //   3. flashSaleEndsAt expired → exclude
-            // Sorting: explicit-tagged (Tier 1) di awal sorted by earliest
-            // endsAt, lalu Tier 2 by discount % desc.
-            final flashSale =
-                products.where((p) => p.isFlashSaleEligible).toList()
-                  ..sort((a, b) {
-                    final aEnds = a.flashSaleEndsAt;
-                    final bEnds = b.flashSaleEndsAt;
-                    if (aEnds != null && bEnds != null) {
-                      return aEnds.compareTo(bEnds);
-                    }
-                    if (aEnds != null) return -1;
-                    if (bEnds != null) return 1;
-                    final aPct = a.discountPercent ?? 0;
-                    final bPct = b.discountPercent ?? 0;
-                    return bPct.compareTo(aPct);
-                  });
-            final flashSaleVisible = flashSale.take(8).toList();
-            // Produk Terlaris — ranked by SOLD COUNT (jumlah terjual) sebagai
-            // primary key. Tie-break ke reviewCount kalau soldCount sama
-            // (mis. saat API list endpoint return soldCount=0 — fallback
-            // graceful ke review-based ranking yang previously hardcoded).
-            //
-            // Filter: utamakan products dengan soldCount > 0 di top — yang
-            // benar2 "laris" muncul lebih dulu. Kalau API belum return
-            // soldCount yang valid, section fallback ke review-based.
-            final bestSellers = ([...products]..sort((a, b) {
-                    // Primary: soldCount desc (yang paling banyak terjual)
-                    final byCount = b.soldCount.compareTo(a.soldCount);
-                    if (byCount != 0) return byCount;
-                    // Tie-break: reviewCount desc
-                    return b.reviewCount.compareTo(a.reviewCount);
-                  }))
-                .take(8)
-                .toList();
-            return NataloPawRefreshIndicator(
-              onRefresh: _refreshAll,
-              // pinContent: konten diam total saat pull — tanpa ini bouncing
-              // physics membuat sliver non-pinned melar menjauh dari sticky
-              // header (celah putih "terbelah") + translateChild menggeser
-              // seluruh hero turun. Paw = satu-satunya yang bergerak.
-              pinContent: true,
-              // Paw muncul tepat di bawah sticky header (extent 128, sudah
-              // di dalam SafeArea) — bukan mengambang di area status bar.
-              topPadding: 134,
-              child: CustomScrollView(
-                controller: _scrollController,
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: _HomeStickyHeaderDelegate(
-                      collapse: _headerCollapse,
-                      onOpenProducts: () => _openProducts(context),
-                      onOpenSearch: () => _openHomeSearch(context),
-                    ),
-                  ),
-                  // Background upload relay card — visible HANYA saat ada
-                  // upload feed post aktif. AnimatedSize handle collapse
-                  // smooth saat task hilang (success auto-dismiss).
-                  const SliverToBoxAdapter(child: UploadRelayCard()),
-                  if (result?.fromApi == false)
-                    const SliverToBoxAdapter(child: _ApiFallbackNotice()),
-                  // Trust marquee — TIDAK sticky. Ikut scroll bersama content
-                  // di bawah sticky header (search bar). Saat user scroll
-                  // ke bawah, trust strip hilang dari viewport, hanya search
-                  // bar yang tetap visible.
-                  //
-                  // Visual: full-width meneruskan gradasi hero biru dari
-                  // sticky header di atasnya (satu blok hero); sudut bawah
-                  // membulat = penutup blok. Saat scroll, strip ini menyelip
-                  // ke belakang header biru → terlihat "menyatu lalu hilang".
-                  const SliverToBoxAdapter(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [_heroMid, _heroBottom],
-                        ),
-                        borderRadius: BorderRadius.vertical(
-                          bottom: Radius.circular(18),
-                        ),
-                      ),
-                      child: Padding(
-                        padding: EdgeInsets.only(bottom: 6),
-                        child: _TrustMarquee(
-                          key: ValueKey('home-trust-marquee'),
-                          height: 36,
-                        ),
-                      ),
-                    ),
-                  ),
-                  // API banner carousel kalau ada banner aktif dari admin.
-                  // Section auto-hide kalau _banners kosong (di _HeroBanner).
-                  SliverToBoxAdapter(child: _HeroBanner(banners: _banners)),
-                  SliverToBoxAdapter(
-                    child: _ShortcutGrid(
-                        onOpenProducts: () => _openProducts(context)),
-                  ),
-                  // Flash sale section — sembunyikan kalau tidak ada produk
-                  // diskon dari API (bukan fallback ke mock). Single source of
-                  // truth = Capacitor admin (admin set hasDiscount=true).
-                  if (flashSaleVisible.isNotEmpty)
-                    SliverToBoxAdapter(
-                      child: _FlashSaleGrid(
-                        products: flashSaleVisible,
-                        onTap: (product) =>
-                            _openProductDetail(context, product),
-                        onSeeAll: () => _openProducts(context),
-                        onCountdownExpired: () {
-                          // Refresh products supaya item yang expired
-                          // hilang dari grid. Backend juga filter
-                          // server-side, jadi list akan auto-cleanup.
-                          _refreshAll();
-                        },
-                      ),
-                    ),
-                  // Produk Terlaris — sembunyikan kalau API belum return data.
-                  if (bestSellers.isNotEmpty)
-                    SliverToBoxAdapter(
-                      child: _HorizontalProductSection(
-                        title: 'Produk Terlaris',
-                        subtitle: 'Paling sering dibeli member Natalo',
-                        products: bestSellers,
-                        showRank: true,
-                        onTap: (product) =>
-                            _openProductDetail(context, product),
-                      ),
-                    ),
-                  // Brand section — sembunyikan kalau tidak ada brand berlogo.
-                  // Tidak ada fallback ke sampleBrands lagi: brand di Flutter
-                  // harus sync dengan admin dashboard (single source of truth).
-                  // Pakai _logoBrands (hanya yang punya logo, tanpa cap) supaya
-                  // semua brand berlogo bisa di-slide, bukan cuma 12.
-                  if (_logoBrands.isNotEmpty)
-                    SliverToBoxAdapter(
-                      child: _BrandChoiceSection(
-                        brands: _logoBrands,
-                        onTap: (brand) =>
-                            _openProducts(context, brand: brand.name),
-                      ),
-                    ),
-                  SliverToBoxAdapter(
-                    child: _CategorySection(
-                      categories: _categories,
-                      // Pass category name — ProductsScreen filter cocok by name
-                      // (lihat `_filter.category == null || product.category == _filter.category`).
-                      onTap: (name) => _openProducts(context, category: name),
-                    ),
-                  ),
-                  // Rekomendasi personal — utamakan hasil server-side
-                  // scoring (`_personalizedRecs`) yang scan SELURUH catalog
-                  // dengan signal purchase + view weighted. Fallback ke
-                  // client-side scoring (pool 48) kalau API gagal /
-                  // offline / response kosong.
-                  SliverToBoxAdapter(
-                    child: AnimatedBuilder(
-                      animation: recentlyViewedStore,
-                      builder: (context, _) {
-                        final recommendations = _personalizedRecs.isNotEmpty
-                            ? _personalizedRecs
-                            : _buildPersonalizedRecommendations(products);
-                        if (recommendations.isEmpty) {
-                          return const SizedBox.shrink();
-                        }
-                        return _RecommendationGrid(
-                          products: recommendations,
-                          onTap: (product) =>
-                              _openProductDetail(context, product),
-                        );
-                      },
-                    ),
-                  ),
-                  // ── "Jelajahi Produk Natalo" infinite scroll section ──
-                  // Match PWA app/page.tsx HomeExploreProducts — semua produk
-                  // diakhiri infinite scroll di sini.
-                  const SliverToBoxAdapter(
-                    child: _ExploreSectionHeader(),
-                  ),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    // Grid 2-kolom AUTO-HEIGHT (bukan SliverGrid dengan
-                    // childAspectRatio tetap). Tiap baris = 1 Row berisi 2
-                    // kartu — tinggi BARIS ikut konten terpanjang. Sebelumnya
-                    // 0.54 dipaku → kartu dengan diskon + 2 badge (ongkir+
-                    // hemat, wrap 2 baris) + rating overflow ~8-9px.
-                    //
-                    // BUKAN CrossAxisAlignment.stretch (beda dari pola yang
-                    // sama di halaman Produk!): stretch di Row memaksa
-                    // Flutter hitung intrinsic-height _HomeProductCard.
-                    // Sesuatu di widget tree kartu ini tidak mendukung
-                    // perhitungan itu → layout exception. Di app ini,
-                    // FlutterError.onError (app_crashlytics.dart) di-override
-                    // TANPA memanggil FlutterError.presentError, jadi
-                    // exception layout itu tidak tercetak ke console SAMA
-                    // SEKALI — hasilnya Beranda blank total (bukan cuma grid
-                    // ini) tanpa jejak error apa pun. Ke-2 kartu di satu
-                    // baris kebetulan hampir selalu sama tinggi (struktur
-                    // konten seragam), jadi tanpa stretch pun rapi secara
-                    // visual — trade-off yang aman untuk menghindari crash
-                    // senyap ini.
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, rowIndex) {
-                          // Saat first load belum ada produk + masih loading,
-                          // tampilkan skeleton — feels lebih native dari blank.
-                          final showingSkeleton = _exploreProducts.isEmpty &&
-                              !_exploreInitialLoaded;
-                          final itemCount =
-                              showingSkeleton ? 6 : _exploreProducts.length;
-                          final leftIndex = rowIndex * 2;
-                          final rightIndex = leftIndex + 1;
-                          final rowCount = (itemCount + 1) ~/ 2;
-                          final isLastRow = rowIndex == rowCount - 1;
-
-                          Widget cell(int index) {
-                            if (showingSkeleton) {
-                              return const SkeletonProductCard(
-                                showAddToCart: false,
-                              );
-                            }
-                            final product = _exploreProducts[index];
-                            return _HomeProductCard(
-                              product: product,
-                              onTap: () => _openProductDetail(context, product),
-                            );
+                future: _productsFuture,
+                // Initial data empty supaya skeleton/loading UI muncul first paint
+                // — bukan flash sampleProducts mock. Capacitor admin dashboard
+                // adalah single source of truth.
+                initialData: const ProductResult(
+                  products: <Product>[],
+                  fromApi: false,
+                ),
+                builder: (context, snapshot) {
+                  final result = snapshot.data;
+                  final products = result?.products ?? const <Product>[];
+                  // 3-tier eligibility — match backend getFlashSaleProducts():
+                  //   1. Explicit flashSaleEndsAt set + di future → always
+                  //   2. flashSaleEndsAt null + discount >= 20% → auto-include
+                  //   3. flashSaleEndsAt expired → exclude
+                  // Sorting: explicit-tagged (Tier 1) di awal sorted by earliest
+                  // endsAt, lalu Tier 2 by discount % desc.
+                  final flashSale =
+                      products.where((p) => p.isFlashSaleEligible).toList()
+                        ..sort((a, b) {
+                          final aEnds = a.flashSaleEndsAt;
+                          final bEnds = b.flashSaleEndsAt;
+                          if (aEnds != null && bEnds != null) {
+                            return aEnds.compareTo(bEnds);
                           }
-
-                          return Padding(
-                            padding:
-                                EdgeInsets.only(bottom: isLastRow ? 0 : 12),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(child: cell(leftIndex)),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: rightIndex < itemCount
-                                      ? cell(rightIndex)
-                                      // Jumlah ganjil — slot kanan kosong,
-                                      // kartu kiri tetap selebar 1 kolom.
-                                      : const SizedBox.shrink(),
-                                ),
-                              ],
+                          if (aEnds != null) return -1;
+                          if (bEnds != null) return 1;
+                          final aPct = a.discountPercent ?? 0;
+                          final bPct = b.discountPercent ?? 0;
+                          return bPct.compareTo(aPct);
+                        });
+                  final flashSaleVisible = flashSale.take(8).toList();
+                  // Produk Terlaris — ranked by SOLD COUNT (jumlah terjual) sebagai
+                  // primary key. Tie-break ke reviewCount kalau soldCount sama
+                  // (mis. saat API list endpoint return soldCount=0 — fallback
+                  // graceful ke review-based ranking yang previously hardcoded).
+                  //
+                  // Filter: utamakan products dengan soldCount > 0 di top — yang
+                  // benar2 "laris" muncul lebih dulu. Kalau API belum return
+                  // soldCount yang valid, section fallback ke review-based.
+                  final bestSellers = ([...products]..sort((a, b) {
+                          // Primary: soldCount desc (yang paling banyak terjual)
+                          final byCount = b.soldCount.compareTo(a.soldCount);
+                          if (byCount != 0) return byCount;
+                          // Tie-break: reviewCount desc
+                          return b.reviewCount.compareTo(a.reviewCount);
+                        }))
+                      .take(8)
+                      .toList();
+                  return NataloPawRefreshIndicator(
+                    onRefresh: _refreshAll,
+                    // pinContent: konten diam total saat pull — tanpa ini bouncing
+                    // physics membuat sliver non-pinned melar menjauh dari sticky
+                    // header (celah putih "terbelah") + translateChild menggeser
+                    // seluruh hero turun. Paw = satu-satunya yang bergerak.
+                    pinContent: true,
+                    // Paw muncul tepat di bawah sticky header (extent 128, sudah
+                    // di dalam SafeArea) — bukan mengambang di area status bar.
+                    topPadding: 134,
+                    child: CustomScrollView(
+                      controller: _scrollController,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      slivers: [
+                        SliverPersistentHeader(
+                          pinned: true,
+                          delegate: _HomeStickyHeaderDelegate(
+                            collapse: _headerCollapse,
+                            onOpenProducts: () => _openProducts(context),
+                            onOpenSearch: () => _openHomeSearch(context),
+                          ),
+                        ),
+                        // Background upload relay card — visible HANYA saat ada
+                        // upload feed post aktif. AnimatedSize handle collapse
+                        // smooth saat task hilang (success auto-dismiss).
+                        const SliverToBoxAdapter(child: UploadRelayCard()),
+                        if (result?.fromApi == false)
+                          const SliverToBoxAdapter(child: _ApiFallbackNotice()),
+                        // Trust marquee — TIDAK sticky. Ikut scroll bersama content
+                        // di bawah sticky header (search bar). Saat user scroll
+                        // ke bawah, trust strip hilang dari viewport, hanya search
+                        // bar yang tetap visible.
+                        //
+                        // Visual: full-width meneruskan gradasi hero biru dari
+                        // sticky header di atasnya (satu blok hero); sudut bawah
+                        // membulat = penutup blok. Saat scroll, strip ini menyelip
+                        // ke belakang header biru → terlihat "menyatu lalu hilang".
+                        const SliverToBoxAdapter(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: NataloColors.heroGradientContinue,
+                              borderRadius: BorderRadius.vertical(
+                                bottom: Radius.circular(18),
+                              ),
                             ),
-                          );
-                        },
-                        childCount: (() {
-                          final showingSkeleton = _exploreProducts.isEmpty &&
-                              !_exploreInitialLoaded;
-                          final itemCount =
-                              showingSkeleton ? 6 : _exploreProducts.length;
-                          return (itemCount + 1) ~/ 2;
-                        })(),
-                      ),
+                            child: Padding(
+                              padding: EdgeInsets.only(bottom: 6),
+                              child: _TrustMarquee(
+                                key: ValueKey('home-trust-marquee'),
+                                height: 36,
+                              ),
+                            ),
+                          ),
+                        ),
+                        // API banner carousel kalau ada banner aktif dari admin.
+                        // Section auto-hide kalau _banners kosong (di _HeroBanner).
+                        SliverToBoxAdapter(
+                            child: _HeroBanner(banners: _banners)),
+                        SliverToBoxAdapter(
+                          child: _ShortcutGrid(
+                              onOpenProducts: () => _openProducts(context)),
+                        ),
+                        // Flash sale section — sembunyikan kalau tidak ada produk
+                        // diskon dari API (bukan fallback ke mock). Single source of
+                        // truth = Capacitor admin (admin set hasDiscount=true).
+                        if (flashSaleVisible.isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: _FlashSaleGrid(
+                              products: flashSaleVisible,
+                              onTap: (product) =>
+                                  _openProductDetail(context, product),
+                              onSeeAll: () => _openProducts(context),
+                              onCountdownExpired: () {
+                                // Refresh products supaya item yang expired
+                                // hilang dari grid. Backend juga filter
+                                // server-side, jadi list akan auto-cleanup.
+                                _refreshAll();
+                              },
+                            ),
+                          ),
+                        // Produk Terlaris — sembunyikan kalau API belum return data.
+                        if (bestSellers.isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: _HorizontalProductSection(
+                              title: 'Produk Terlaris',
+                              subtitle: 'Paling sering dibeli member Natalo',
+                              products: bestSellers,
+                              showRank: true,
+                              onTap: (product) =>
+                                  _openProductDetail(context, product),
+                            ),
+                          ),
+                        // Brand section — sembunyikan kalau tidak ada brand berlogo.
+                        // Tidak ada fallback ke sampleBrands lagi: brand di Flutter
+                        // harus sync dengan admin dashboard (single source of truth).
+                        // Pakai _logoBrands (hanya yang punya logo, tanpa cap) supaya
+                        // semua brand berlogo bisa di-slide, bukan cuma 12.
+                        if (_logoBrands.isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: _BrandChoiceSection(
+                              brands: _logoBrands,
+                              onTap: (brand) =>
+                                  _openProducts(context, brand: brand.name),
+                            ),
+                          ),
+                        SliverToBoxAdapter(
+                          child: _CategorySection(
+                            categories: _categories,
+                            // Pass category name — ProductsScreen filter cocok by name
+                            // (lihat `_filter.category == null || product.category == _filter.category`).
+                            onTap: (name) =>
+                                _openProducts(context, category: name),
+                          ),
+                        ),
+                        // Rekomendasi personal — utamakan hasil server-side
+                        // scoring (`_personalizedRecs`) yang scan SELURUH catalog
+                        // dengan signal purchase + view weighted. Fallback ke
+                        // client-side scoring (pool 48) kalau API gagal /
+                        // offline / response kosong.
+                        SliverToBoxAdapter(
+                          child: AnimatedBuilder(
+                            animation: recentlyViewedStore,
+                            builder: (context, _) {
+                              final recommendations = _personalizedRecs
+                                      .isNotEmpty
+                                  ? _personalizedRecs
+                                  : _buildPersonalizedRecommendations(products);
+                              if (recommendations.isEmpty) {
+                                return const SizedBox.shrink();
+                              }
+                              return _RecommendationGrid(
+                                products: recommendations,
+                                onTap: (product) =>
+                                    _openProductDetail(context, product),
+                              );
+                            },
+                          ),
+                        ),
+                        // ── "Jelajahi Produk Natalo" infinite scroll section ──
+                        // Match PWA app/page.tsx HomeExploreProducts — semua produk
+                        // diakhiri infinite scroll di sini.
+                        const SliverToBoxAdapter(
+                          child: _ExploreSectionHeader(),
+                        ),
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                          // Grid 2-kolom AUTO-HEIGHT (bukan SliverGrid dengan
+                          // childAspectRatio tetap). Tiap baris = 1 Row berisi 2
+                          // kartu — tinggi BARIS ikut konten terpanjang. Sebelumnya
+                          // 0.54 dipaku → kartu dengan diskon + 2 badge (ongkir+
+                          // hemat, wrap 2 baris) + rating overflow ~8-9px.
+                          //
+                          // BUKAN CrossAxisAlignment.stretch (beda dari pola yang
+                          // sama di halaman Produk!): stretch di Row memaksa
+                          // Flutter hitung intrinsic-height _HomeProductCard.
+                          // Sesuatu di widget tree kartu ini tidak mendukung
+                          // perhitungan itu → layout exception. Di app ini,
+                          // FlutterError.onError (app_crashlytics.dart) di-override
+                          // TANPA memanggil FlutterError.presentError, jadi
+                          // exception layout itu tidak tercetak ke console SAMA
+                          // SEKALI — hasilnya Beranda blank total (bukan cuma grid
+                          // ini) tanpa jejak error apa pun. Ke-2 kartu di satu
+                          // baris kebetulan hampir selalu sama tinggi (struktur
+                          // konten seragam), jadi tanpa stretch pun rapi secara
+                          // visual — trade-off yang aman untuk menghindari crash
+                          // senyap ini.
+                          sliver: SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, rowIndex) {
+                                // Saat first load belum ada produk + masih loading,
+                                // tampilkan skeleton — feels lebih native dari blank.
+                                final showingSkeleton =
+                                    _exploreProducts.isEmpty &&
+                                        !_exploreInitialLoaded;
+                                final itemCount = showingSkeleton
+                                    ? 6
+                                    : _exploreProducts.length;
+                                final leftIndex = rowIndex * 2;
+                                final rightIndex = leftIndex + 1;
+                                final rowCount = (itemCount + 1) ~/ 2;
+                                final isLastRow = rowIndex == rowCount - 1;
+
+                                Widget cell(int index) {
+                                  if (showingSkeleton) {
+                                    return const SkeletonProductCard(
+                                      showAddToCart: false,
+                                    );
+                                  }
+                                  final product = _exploreProducts[index];
+                                  return _HomeProductCard(
+                                    product: product,
+                                    onTap: () =>
+                                        _openProductDetail(context, product),
+                                  );
+                                }
+
+                                return Padding(
+                                  padding: EdgeInsets.only(
+                                      bottom: isLastRow ? 0 : 12),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(child: cell(leftIndex)),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: rightIndex < itemCount
+                                            ? cell(rightIndex)
+                                            // Jumlah ganjil — slot kanan kosong,
+                                            // kartu kiri tetap selebar 1 kolom.
+                                            : const SizedBox.shrink(),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                              childCount: (() {
+                                final showingSkeleton =
+                                    _exploreProducts.isEmpty &&
+                                        !_exploreInitialLoaded;
+                                final itemCount = showingSkeleton
+                                    ? 6
+                                    : _exploreProducts.length;
+                                return (itemCount + 1) ~/ 2;
+                              })(),
+                            ),
+                          ),
+                        ),
+                        SliverToBoxAdapter(
+                          child: _ExploreFooter(
+                            loading: _exploreLoading,
+                            hasMore: _exploreHasMore,
+                            initialLoaded: _exploreInitialLoaded,
+                            productsCount: _exploreProducts.length,
+                          ),
+                        ),
+                        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                      ],
                     ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: _ExploreFooter(
-                      loading: _exploreLoading,
-                      hasMore: _exploreHasMore,
-                      initialLoaded: _exploreInitialLoaded,
-                      productsCount: _exploreProducts.length,
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                ],
-              ),
-            );
-          },
+                  );
+                },
               ),
             ),
           ],
@@ -1067,11 +1074,7 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
                 // (header berwarna brand tidak ikut theme surface). Border
                 // bawah lama dihapus: transisi ke marquee strip biru harus
                 // seamless (satu blok hero).
-                gradient: const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [_heroTop, _heroMid],
-                ),
+                gradient: NataloColors.heroGradient,
                 boxShadow: t > 0.05
                     ? [
                         BoxShadow(
@@ -1824,7 +1827,7 @@ class _TrustMarqueeState extends State<_TrustMarquee>
   // (versi lama _onHeroSubtle terlalu redup, user tidak bisa baca trust
   // point-nya). Tetap sedikit di bawah putih penuh supaya search bar putih
   // masih jadi fokus utama.
-  static const _marqueeTextColor = Color(0xFFEFF5FF);
+  static const _marqueeTextColor = NataloColors.onHeroBright;
   static const _textStyle = TextStyle(
     color: _marqueeTextColor,
     fontSize: 12,
