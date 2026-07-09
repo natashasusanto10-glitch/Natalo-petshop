@@ -660,6 +660,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             reduceMotion:
                                 MediaQuery.maybeDisableAnimationsOf(context) ??
                                     false,
+                            // Snap Beranda lebih halus + sedikit pelan dari
+                            // default Produk (280ms): 360ms easeOutQuart —
+                            // settle "memunculkan kembali" terasa lembut,
+                            // tidak meloncat (user request). Reveal 1:1 ikut
+                            // jari tak berubah.
+                            snapDuration: const Duration(milliseconds: 360),
+                            snapCurve: Curves.easeOutQuart,
                             builder: (context, t) => _HomeHeader(
                               progress: t,
                               onOpenProducts: () => _openProducts(context),
