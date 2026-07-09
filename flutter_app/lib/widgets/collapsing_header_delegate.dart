@@ -56,9 +56,12 @@ class CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   FloatingHeaderSnapConfiguration get snapConfiguration =>
       FloatingHeaderSnapConfiguration(
-        curve: Curves.easeOut,
+        // Snap "lebih kalem" (user request): 280ms + easeOutCubic — settle
+        // saat jari lepas terasa halus, tidak "meloncat". Reveal 1:1-nya
+        // sendiri tetap mengikuti jari (tak terpengaruh ini).
+        curve: Curves.easeOutCubic,
         duration:
-            reduceMotion ? Duration.zero : const Duration(milliseconds: 200),
+            reduceMotion ? Duration.zero : const Duration(milliseconds: 280),
       );
 
   @override

@@ -1548,10 +1548,11 @@ class _CatalogHeader extends StatelessWidget {
 }
 
 /// Tombol ikon kotak putih di dock samping search bar (Filter/Urutkan saat
-/// collapsed). 44x44 — tap target penuh (quality floor spec), radius 14
-/// match search field. Ikon navy [NataloColors.heroMid] di atas putih.
-/// Badge merah count opsional DI DALAM bounds (pola AppChatButton) —
-/// overflow keluar bounds akan terpotong ClipRect reveal dock.
+/// collapsed). VISUAL chip 38×38 (user: ikon collapsed lebih ringkas), tapi
+/// TAP TARGET 44×44 penuh (Apple HIG) via InkWell transparan yang lebih besar
+/// dari chip. Radius 11 match search compact. Ikon navy [NataloColors.heroMid]
+/// di atas putih. Badge merah count opsional TETAP dalam bounds 44 (ClipRect
+/// reveal dock memotong overflow).
 class _DockIconButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
@@ -1565,54 +1566,71 @@ class _DockIconButton extends StatelessWidget {
     this.badge,
   });
 
+  static const double _visual = 38;
+  static const double _tap = 44;
+
   @override
   Widget build(BuildContext context) {
-    final button = Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: const SizedBox(width: 44, height: 44),
-      ),
-    );
     return Tooltip(
       message: tooltip,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          button,
-          // Ikon di atas InkWell — IgnorePointer supaya ripple tetap kena.
-          IgnorePointer(
-            child: Icon(icon, size: 20, color: NataloColors.heroMid),
-          ),
-          if (badge != null)
-            Positioned(
-              top: 2,
-              right: 2,
-              child: IgnorePointer(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: NataloColors.danger,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  constraints: const BoxConstraints(minWidth: 15),
-                  child: Text(
-                    badge! > 9 ? '9+' : '$badge',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w800,
-                      height: 1,
+      child: SizedBox(
+        width: _tap,
+        height: _tap,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Chip putih visual 38 (di bawah ripple).
+            Container(
+              width: _visual,
+              height: _visual,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(11),
+              ),
+            ),
+            // Layer tap + ripple 44 (transparan, clip rounded) — lebih besar
+            // dari chip supaya area tap tetap 44 walau visual 38.
+            Positioned.fill(
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onTap,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+            // Ikon navy — IgnorePointer supaya tap tembus ke InkWell.
+            IgnorePointer(
+              child: Icon(icon, size: 19, color: NataloColors.heroMid),
+            ),
+            if (badge != null)
+              Positioned(
+                top: 3,
+                right: 3,
+                child: IgnorePointer(
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: NataloColors.danger,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    constraints: const BoxConstraints(minWidth: 15),
+                    child: Text(
+                      badge! > 9 ? '9+' : '$badge',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        height: 1,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2063,10 +2081,12 @@ class _ProductSearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Field PUTIH fixed (light & dark) di atas hero biru — pola sama dengan
-    // search bar sticky Beranda; warna teks/ikon netral gelap fixed.
+    // Field PUTIH fixed (light & dark) di atas hero biru. Compact 38px
+    // (user request: search + ikon collapsed terasa gemuk) — di-center dalam
+    // baris 44 (_searchRowHeight, tap target ikon dock tetap 44), jadi
+    // extent tidak berubah, hanya visual lebih ringkas.
     return SizedBox(
-      height: 42,
+      height: 38,
       child: TextField(
         controller: controller,
         onChanged: onChanged,
@@ -2090,7 +2110,7 @@ class _ProductSearchBar extends StatelessWidget {
             color: Color(0xFF64748B),
           ),
           prefixIconConstraints:
-              const BoxConstraints(minWidth: 44, minHeight: 42),
+              const BoxConstraints(minWidth: 44, minHeight: 38),
           suffixIcon: query.isEmpty
               ? null
               : IconButton(
@@ -2104,7 +2124,7 @@ class _ProductSearchBar extends StatelessWidget {
           fillColor: Colors.white,
           isDense: true,
           contentPadding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           // Tanpa border — field putih sudah kontras di atas hero biru
           // (border abu tipis lama malah bikin kesan kotor di tepi).
           border: OutlineInputBorder(
