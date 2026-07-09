@@ -23,7 +23,7 @@ import {
   voucherTypeOf,
   type VoucherTypeCode,
 } from "@/lib/voucher-helpers";
-import { voucherMatchesProduct } from "@/lib/voucher-eligibility";
+import { cartMatchesVoucherScope, voucherMatchesProduct } from "@/lib/voucher-eligibility";
 
 class StockConflictError extends Error {
   status = 409;
@@ -142,6 +142,7 @@ export async function POST(request: Request) {
         weightGram: true,
         categoryId: true,
         brandId: true,
+        category: { select: { slug: true } },
         isActive: true,
         hasVariants: true,
         // Active Promo Toko items — HARUS di-fetch supaya order creation
@@ -258,6 +259,16 @@ export async function POST(request: Request) {
     const originalShippingCost = isSelfPickup ? 0 : input.shippingCost;
     const productById = new Map(products.map((product) => [product.id, product]));
 
+    const cartProductInputs = checkoutItems.map((item) => {
+      const product = productById.get(item.productId);
+      return {
+        id: item.productId,
+        categoryId: product?.categoryId ?? null,
+        categorySlug: product?.category?.slug ?? null,
+        brandId: product?.brandId ?? null,
+      };
+    });
+
     const [userUsedOrders, voucherUser, successfulOrderCount] = await Promise.all([
       prisma.order.findMany({
         where: {
@@ -326,6 +337,7 @@ export async function POST(request: Request) {
         const matches = voucherMatchesProduct(voucher, {
           id: item.productId,
           categoryId: product?.categoryId ?? null,
+          categorySlug: product?.category?.slug ?? null,
           brandId: product?.brandId ?? null,
         });
         return matches ? sum + item.price * item.quantity : sum;
@@ -390,10 +402,7 @@ export async function POST(request: Request) {
           "Kode voucher ini tidak tersedia untuk akun kamu",
         );
       }
-      if (
-        voucherScopeOf(voucher) === "PRODUCT" &&
-        eligibleProductSubtotal(voucher) <= 0
-      ) {
+      if (!cartMatchesVoucherScope(voucher, cartProductInputs)) {
         throw new VoucherValidationError(
           "Voucher tidak berlaku untuk produk ini",
         );
