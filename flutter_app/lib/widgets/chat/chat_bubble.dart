@@ -303,37 +303,44 @@ class _ChatContextChipState extends State<ChatContextChip> {
       onTap: _onTap,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.sizeOf(context).width * 0.68,
+          maxWidth: MediaQuery.sizeOf(context).width * 0.82,
         ),
         child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.sm,
-            vertical: AppSpacing.xs,
-          ),
+          padding: const EdgeInsets.all(AppSpacing.sm + 2),
           decoration: BoxDecoration(
             color: NataloColors.surface,
-            borderRadius: AppRadius.medium,
+            borderRadius: AppRadius.large,
             border: Border.all(color: NataloColors.border),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (product?.imageUrl != null)
                 Padding(
-                  padding: const EdgeInsets.only(right: AppSpacing.xs),
+                  padding: const EdgeInsets.only(right: AppSpacing.md),
                   child: AppProductImage(
                     imageUrl: product!.imageUrl,
-                    width: 28,
-                    height: 28,
+                    width: 64,
+                    height: 64,
                     fit: BoxFit.cover,
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
                 )
               else
                 Padding(
-                  padding: const EdgeInsets.only(right: AppSpacing.xs),
-                  child: Icon(leadingIcon,
-                      size: 16, color: NataloColors.textSecondary),
+                  padding: const EdgeInsets.only(right: AppSpacing.md),
+                  child: Container(
+                    width: 64,
+                    height: 64,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: NataloColors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                    ),
+                    child: Icon(leadingIcon,
+                        size: 30, color: NataloColors.textSecondary),
+                  ),
                 ),
               Flexible(
                 child: Column(
@@ -343,43 +350,47 @@ class _ChatContextChipState extends State<ChatContextChip> {
                     Text(
                       label,
                       style: const TextStyle(
-                        fontSize: 9,
+                        fontSize: 11,
                         fontWeight: FontWeight.w700,
                         color: NataloColors.textTertiary,
                       ),
                     ),
+                    const SizedBox(height: 2),
                     Text(
                       title,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        height: 1.25,
+                        fontWeight: FontWeight.w800,
                         color: NataloColors.textPrimary,
                       ),
                     ),
-                    if (product?.price != null)
+                    if (product?.price != null) ...[
+                      const SizedBox(height: 3),
                       Text(
                         formatRupiah(product!.price!),
                         style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
                           color: NataloColors.primary,
                         ),
                       ),
+                    ],
                   ],
                 ),
               ),
-              const SizedBox(width: AppSpacing.xs),
+              const SizedBox(width: AppSpacing.sm),
               _loading
                   ? const SizedBox(
-                      width: 12,
-                      height: 12,
-                      child: CircularProgressIndicator(strokeWidth: 1.6),
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 1.8),
                     )
                   : const Icon(
                       Icons.chevron_right_rounded,
-                      size: 16,
+                      size: 22,
                       color: NataloColors.textTertiary,
                     ),
             ],
