@@ -26,6 +26,53 @@ class NataloColors {
   /// Alias `primary` untuk legacy reference `NataloColors.nataloBlue`.
   static const Color nataloBlue = primary;
 
+  // ── Hero biru (blok header brand — Beranda, Belanja, Transaksi, Akun,
+  // Notifikasi) ──
+  // Satu sumber untuk gradasi header biru pekat supaya semua halaman serasi;
+  // jangan hardcode ulang per screen. Pakai [heroGradient] (header) dan
+  // [heroGradientContinue] (strip penutup, mis. trust marquee) — JANGAN
+  // menyusun LinearGradient sendiri per halaman.
+  // Warna fixed di light & dark mode (header brand tidak ikut theme surface).
+  //
+  // Palette "Navy Luxe" (premium): navy dalam & tenang, menggantikan royal
+  // blue terang lama (#1E5FBF) yang terkesan kurang berkelas.
+  static const Color heroTop = Color(0xFF0C2751);
+  static const Color heroMid = Color(0xFF153F86);
+  static const Color heroBottom = Color(0xFF1E52AE);
+
+  /// Teks/ikon sekunder redup di atas hero (tagline). Untuk teks yang harus
+  /// jelas terbaca pakai [onHeroBright].
+  static const Color onHeroSubtle = Color(0xFFAEC6EE);
+
+  /// Teks/ikon terang di atas hero — hampir putih, tetap kebiruan.
+  static const Color onHeroBright = Color(0xFFEAF1FC);
+
+  /// Chip tidak aktif di atas hero (chip aktif = putih + teks [heroMid]).
+  static const Color heroChip = Color(0xFF2C5CA8);
+
+  // Sentuhan premium: arah gradasi sedikit diagonal (≈160°) untuk kedalaman.
+  // begin/end dipakai SAMA di semua blok hero supaya garis gradasi paralel —
+  // blok yang bertumpuk di Beranda (status → header → marquee) tetap menyatu,
+  // tidak ada seam miring.
+  static const Alignment heroGradientBegin = Alignment(-0.55, -1.0);
+  static const Alignment heroGradientEnd = Alignment(0.55, 1.0);
+
+  /// Gradasi header standar (heroTop→heroMid). Pakai ini di SEMUA header hero
+  /// supaya warna + arah identik antar halaman.
+  static const LinearGradient heroGradient = LinearGradient(
+    begin: heroGradientBegin,
+    end: heroGradientEnd,
+    colors: [heroTop, heroMid],
+  );
+
+  /// Lanjutan gradasi ke bawah (heroMid→heroBottom) — mis. trust marquee
+  /// strip Beranda yang menyambung di bawah header sebagai satu blok.
+  static const LinearGradient heroGradientContinue = LinearGradient(
+    begin: heroGradientBegin,
+    end: heroGradientEnd,
+    colors: [heroMid, heroBottom],
+  );
+
   // ── Neutral scale ──
   static const Color grey50 = Color(0xFFFAFAFA);
   static const Color grey100 = Color(0xFFF5F5F5);

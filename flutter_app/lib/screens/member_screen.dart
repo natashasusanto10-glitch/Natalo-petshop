@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/natalo_colors.dart';
 
 import '../models/feed_post.dart';
@@ -286,16 +287,15 @@ class _ProfilePageState extends State<_ProfilePage>
       appBar: _ProfileAppBar(onCreatePost: _openCreatePost),
       body: NataloPawRefreshIndicator(
         onRefresh: _refresh,
-        topPadding: 4,
-        translateChild: true,
+        // Selaras Beranda (PR #56): app bar + blok profil kini satu hero
+        // biru — konten diam saat pull supaya tidak muncul celah putih di
+        // bawah hero; paw muncul tepat di bawah app bar.
+        topPadding: 60,
+        pinContent: true,
         child: NestedScrollView(
           headerSliverBuilder: (context, innerScrolled) => [
-            // Banner reminder pilih @username — auto-hide kalau user
-            // sudah set atau pernah snooze 7 hari. Above header supaya
-            // user lihat dulu sebelum scroll ke content.
-            const SliverToBoxAdapter(
-              child: UsernamePromptBanner(),
-            ),
+            // Blok profil = hero biru (avatar + statistik + nama di atas
+            // gradasi). Meneruskan gradasi app bar → satu hero.
             SliverToBoxAdapter(
               child: _ProfileSection(
                 profile: profile,
@@ -306,6 +306,12 @@ class _ProfilePageState extends State<_ProfilePage>
                 onFollowersTap: () => _openFollowList(FollowListKind.followers),
                 onFollowingTap: () => _openFollowList(FollowListKind.following),
               ),
+            ),
+            // Banner reminder pilih @username — dipindah ke bawah hero
+            // (area putih) supaya tidak memotong blok biru. Auto-hide kalau
+            // user sudah set / pernah snooze 7 hari.
+            const SliverToBoxAdapter(
+              child: UsernamePromptBanner(),
             ),
             SliverPersistentHeader(
               pinned: true,
@@ -371,14 +377,18 @@ class _ProfileAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final pageBg = cs.surface;
-    final ink = cs.onSurface;
+    // Hero biru — flexibleSpace mengecat gradasi (termasuk area status bar);
+    // blok profil di bawahnya meneruskan gradasi = satu hero. Ikon putih.
+    const ink = Colors.white;
     return AppBar(
-      backgroundColor: pageBg,
-      surfaceTintColor: pageBg,
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
+      systemOverlayStyle: SystemUiOverlayStyle.light,
+      flexibleSpace: const DecoratedBox(
+        decoration: BoxDecoration(gradient: NataloColors.heroGradient),
+      ),
       automaticallyImplyLeading: false,
       titleSpacing: 12,
       title: Row(
@@ -391,7 +401,7 @@ class _ProfileAppBar extends StatelessWidget implements PreferredSizeWidget {
               minimumSize: const Size(52, 52),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            icon: Icon(
+            icon: const Icon(
               Icons.add_rounded,
               size: 36,
               color: ink,
@@ -400,12 +410,12 @@ class _ProfileAppBar extends StatelessWidget implements PreferredSizeWidget {
         ],
       ),
       actions: [
-        IconTheme(
+        const IconTheme(
           data: IconThemeData(
             color: ink,
             size: 28,
           ),
-          child: const AppNotificationButton(),
+          child: AppNotificationButton(iconColor: ink),
         ),
         IconButton(
           onPressed: () => Navigator.pushNamed(context, '/account/settings'),
@@ -414,7 +424,7 @@ class _ProfileAppBar extends StatelessWidget implements PreferredSizeWidget {
             minimumSize: const Size(48, 48),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
-          icon: Icon(
+          icon: const Icon(
             Icons.settings_outlined,
             color: ink,
             size: 28,
@@ -449,12 +459,18 @@ class _ProfileSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final ink = cs.onSurface;
+    const ink = Colors.white;
     final username = profile.username as String?;
     final hasUsername = username != null && username.isNotEmpty;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 6, 18, 10),
+    // Blok profil di atas hero biru — meneruskan gradasi app bar
+    // (heroMid→heroBottom), sudut bawah membulat sebagai penutup hero
+    // sebelum area tab/grid putih.
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: NataloColors.heroGradientContinue,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
+      ),
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -505,7 +521,7 @@ class _ProfileSection extends StatelessWidget {
             (profile.name as String?) ?? 'Member Natalo',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
+            style: const TextStyle(
               color: ink,
               fontSize: 15.5,
               fontWeight: FontWeight.w800,
@@ -518,8 +534,8 @@ class _ProfileSection extends StatelessWidget {
               '@$username',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
+              style: const TextStyle(
+                color: NataloColors.onHeroSubtle,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 height: 1.1,
@@ -533,7 +549,7 @@ class _ProfileSection extends StatelessWidget {
               profile.bio as String,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
+              style: const TextStyle(
                 color: ink,
                 fontSize: 14,
                 fontWeight: FontWeight.w400,
@@ -549,6 +565,7 @@ class _ProfileSection extends StatelessWidget {
                 child: _ProfileActionButton(
                   label: 'Edit Profil',
                   onTap: onEditProfile,
+                  primary: true,
                 ),
               ),
               const SizedBox(width: 8),
@@ -570,31 +587,57 @@ class _ProfileActionButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  const _ProfileActionButton({required this.label, required this.onTap});
+  /// true = tombol utama (Edit Profil): putih solid, teks navy. false =
+  /// sekunder (Bagikan): transparan dengan border putih. Keduanya di atas
+  /// hero biru.
+  final bool primary;
+
+  const _ProfileActionButton({
+    required this.label,
+    required this.onTap,
+    this.primary = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    const textStyle = TextStyle(
+      fontSize: 13,
+      fontWeight: FontWeight.w800,
+    );
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(8),
+    );
     return SizedBox(
       height: 34,
-      child: OutlinedButton(
-        onPressed: onTap,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: cs.onSurface,
-          side: BorderSide(color: cs.outlineVariant),
-          padding: EdgeInsets.zero,
-          minimumSize: Size.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          textStyle: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
-        child: Text(label),
-      ),
+      child: primary
+          ? FilledButton(
+              onPressed: onTap,
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: NataloColors.heroMid,
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: textStyle,
+                shape: shape,
+              ),
+              child: Text(label),
+            )
+          : OutlinedButton(
+              onPressed: onTap,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.55),
+                ),
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: textStyle,
+                shape: shape,
+              ),
+              child: Text(label),
+            ),
     );
   }
 }
@@ -608,7 +651,7 @@ class _ProfileStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    // Di atas hero biru: angka putih, label biru muda (onHeroSubtle).
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -616,8 +659,8 @@ class _ProfileStat extends StatelessWidget {
           formatCountCompact(value),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: cs.onSurface,
+          style: const TextStyle(
+            color: Colors.white,
             fontSize: 17,
             fontWeight: FontWeight.w800,
             height: 1.0,
@@ -629,8 +672,8 @@ class _ProfileStat extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
-          style: TextStyle(
-            color: cs.onSurfaceVariant,
+          style: const TextStyle(
+            color: NataloColors.onHeroSubtle,
             fontSize: 12,
             fontWeight: FontWeight.w500,
             height: 1.05,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/natalo_colors.dart';
 
 import '../config/api_config.dart';
@@ -451,35 +452,52 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SafeArea(
-        child: Column(
+      // AnnotatedRegion + strip status bar heroTop — pola hero biru Beranda:
+      // area notch menyatu dengan header biru, ikon status bar putih.
+      body: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.light,
+        child: Stack(
           children: [
-            _NotificationHeader(
-              unreadCount: unread,
-              markingAll: _markingAll,
-              onBack: () => Navigator.maybePop(context),
-              onMarkAllRead: _markAllRead,
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: MediaQuery.paddingOf(context).top,
+              child: const ColoredBox(color: NataloColors.heroTop),
             ),
-            _NotificationTabs(
-              selected: _filter,
-              onChanged: (filter) {
-                AppHaptics.selection();
-                setState(() {
-                  _filter = filter;
-                  _cachedVisibleItems = null; // invalidate — filter berubah
-                });
-              },
-            ),
-            Expanded(
-              // Cross-fade skeleton → list/error/empty supaya konten tidak
-              // "pop" kasar saat data masuk.
-              child: AppFadeSwitcher(
-                stateKey: _loading && result == null
-                    ? 'loading'
-                    : _error != null && result == null
-                        ? 'error'
-                        : 'content',
-                child: _buildContent(result),
+            SafeArea(
+              child: Column(
+                children: [
+                  _NotificationHeader(
+                    unreadCount: unread,
+                    markingAll: _markingAll,
+                    onBack: () => Navigator.maybePop(context),
+                    onMarkAllRead: _markAllRead,
+                  ),
+                  _NotificationTabs(
+                    selected: _filter,
+                    onChanged: (filter) {
+                      AppHaptics.selection();
+                      setState(() {
+                        _filter = filter;
+                        _cachedVisibleItems =
+                            null; // invalidate — filter berubah
+                      });
+                    },
+                  ),
+                  Expanded(
+                    // Cross-fade skeleton → list/error/empty supaya konten tidak
+                    // "pop" kasar saat data masuk.
+                    child: AppFadeSwitcher(
+                      stateKey: _loading && result == null
+                          ? 'loading'
+                          : _error != null && result == null
+                              ? 'error'
+                              : 'content',
+                      child: _buildContent(result),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -561,16 +579,20 @@ class _NotificationHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    // Hero biru ringkas — gradasi + sudut bawah membulat, pola sama dengan
+    // header hero Beranda/Belanja/Transaksi. Warna fixed (bukan theme).
     return Container(
-      color: cs.surface,
+      decoration: const BoxDecoration(
+        gradient: NataloColors.heroGradient,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
+      ),
       padding: const EdgeInsets.fromLTRB(6, 10, 12, 14),
       child: Row(
         children: [
           IconButton(
             onPressed: onBack,
             icon: const Icon(Icons.arrow_back_rounded),
-            color: cs.onSurface,
+            color: Colors.white,
           ),
           Expanded(
             child: Column(
@@ -578,13 +600,13 @@ class _NotificationHeader extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Flexible(
+                    const Flexible(
                       child: Text(
                         'Notifikasi',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: cs.onSurface,
+                          color: Colors.white,
                           fontSize: 28,
                           fontWeight: FontWeight.w900,
                           height: 1.05,
@@ -601,12 +623,12 @@ class _NotificationHeader extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(
+                const Text(
                   'Update pesanan, promo, dan pengumuman dari Natalo Petshop.',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: cs.onSurfaceVariant,
+                    color: NataloColors.onHeroBright,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                     height: 1.25,
@@ -625,7 +647,9 @@ class _NotificationHeader extends StatelessWidget {
                     child: CircularProgressIndicator(strokeWidth: 2.4),
                   )
                 : const Icon(Icons.done_all_rounded),
-            color: unreadCount == 0 ? cs.onSurfaceVariant : cs.onSurface,
+            // Di atas hero: putih; saat disabled (tidak ada unread) putih
+            // redup supaya tetap terlihat non-interaktif.
+            color: unreadCount == 0 ? Colors.white54 : Colors.white,
           ),
         ],
       ),
@@ -958,15 +982,16 @@ enum _NotificationFilter {
           text.contains('gratis ongkir'),
       // Feed EXCLUDE mention — mention punya tab sendiri. Tanpa exclusion,
       // 1 mention notif muncul di 2 tab (Disebut + Feed) → confusing.
-      _NotificationFilter.feed => !isMention && (text.contains('feed') ||
-          text.contains('video') ||
-          text.contains('post') ||
-          text.contains('comment') ||
-          text.contains('komentar') ||
-          text.contains('like') ||
-          text.contains('share') ||
-          text.contains('approved') ||
-          text.contains('rejected')),
+      _NotificationFilter.feed => !isMention &&
+          (text.contains('feed') ||
+              text.contains('video') ||
+              text.contains('post') ||
+              text.contains('comment') ||
+              text.contains('komentar') ||
+              text.contains('like') ||
+              text.contains('share') ||
+              text.contains('approved') ||
+              text.contains('rejected')),
       _NotificationFilter.announcement => _isAnnouncementNotification(item),
       _NotificationFilter.all => true,
     };
@@ -1237,4 +1262,3 @@ String _errorMessage(Object error) {
   }
   return 'Koneksi notifikasi sedang tidak stabil. Coba lagi sebentar.';
 }
-
