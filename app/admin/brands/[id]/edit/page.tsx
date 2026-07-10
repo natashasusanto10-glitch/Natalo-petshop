@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { MultiImageUpload } from "@/components/MultiImageUpload";
-import { AdminPage, Button } from "@/components/admin/ui";
+import { AdminPage, Button, SubmitButton } from "@/components/admin/ui";
 
 async function requireAdmin() {
   const session = await getSession("ADMIN");
@@ -124,9 +124,9 @@ export default async function EditBrandPage({
           />
           Aktif di user app
         </label>
-        <Button type="submit" variant="primary" fullWidth>
+        <SubmitButton variant="primary" fullWidth>
           Simpan Perubahan
-        </Button>
+        </SubmitButton>
       </form>
     </AdminPage>
   );

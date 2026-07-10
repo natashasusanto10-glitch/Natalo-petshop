@@ -17,6 +17,7 @@ export { FormField } from "./FormField";
 
 export { Button, DangerButton } from "./Button";
 export type { ButtonVariant, ButtonSize, ButtonComponentProps } from "./Button";
+export { SubmitButton } from "./SubmitButton";
 
 export {
   Badge,

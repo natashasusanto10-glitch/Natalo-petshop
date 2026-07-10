@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { MultiImageUpload } from "@/components/MultiImageUpload";
 import { VariantEditor } from "@/components/admin/VariantEditor";
-import { AdminPage, Button, FormField } from "@/components/admin/ui";
+import { AdminPage, Button, FormField, SubmitButton } from "@/components/admin/ui";
 
 export default async function AdminProductEditPage({
   params,
@@ -334,9 +334,9 @@ export default async function AdminProductEditPage({
           <Button href="/admin/products" variant="secondary">
             Batal
           </Button>
-          <Button type="submit" className="flex-1 sm:flex-none">
+          <SubmitButton className="flex-1 sm:flex-none">
             Simpan perubahan
-          </Button>
+          </SubmitButton>
         </div>
       </form>
     </AdminPage>
