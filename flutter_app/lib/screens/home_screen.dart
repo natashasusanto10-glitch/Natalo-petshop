@@ -43,7 +43,6 @@ import '../widgets/skeleton_product_card.dart';
 import 'package:shimmer/shimmer.dart';
 
 const _brandBlue = NataloColors.nataloBlue;
-const _surface = Colors.transparent;
 
 // ── Hero biru beranda (redesign Jul 2026) ──
 // Gradasi header: navy pekat → brand blue. Marquee strip meneruskan
@@ -551,7 +550,11 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _surface,
+      // Latar seluruh Beranda abu muda (a la Shopee home) — SEMUA section jadi
+      // kartu putih mengambang di atas abu, tak ada belang putih→abu di
+      // tengah. Tile brand/kategori sudah Material(surface)=putih; grid
+      // Rekomendasi/Jelajahi sudah putih; jadi cukup latar halaman jadi abu.
+      backgroundColor: _homeGridSurfaceTint(context),
       // extendBody: konten memanjang ke belakang floating nav → frosted
       // glass nav punya konten untuk di-blur (efek kaca tembus). Grid/list
       // sudah kasih bottom padding untuk clear nav.
@@ -1340,7 +1343,9 @@ class _HomeHeader extends StatelessWidget {
               child: Opacity(
                 opacity: blockOpacity,
                 child: ColoredBox(
-                  color: Theme.of(context).scaffoldBackgroundColor,
+                  // Base abu (bukan putih) supaya sudut membulat bawah header
+                  // blend dgn latar Beranda yang kini abu — tak ada sabit putih.
+                  color: _homeGridSurfaceTint(context),
                   child: const DecoratedBox(
                     decoration: BoxDecoration(
                       // Vertikal murni — menyambung mulus dgn heroGradientV
