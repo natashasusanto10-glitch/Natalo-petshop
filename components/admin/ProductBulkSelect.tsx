@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
+import { useAdminToast } from "@/components/admin/ui/Toast";
 
 /**
  * Seleksi massal produk untuk halaman /admin/products.
@@ -135,13 +136,7 @@ export function ProductBulkBar() {
   const [confirmAction, setConfirmAction] = useState<null | "delete" | "archive">(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 4500);
-    return () => clearTimeout(t);
-  }, [toast]);
+  const { show } = useAdminToast();
 
   // Tutup dialog + reset error kalau tidak ada lagi yang terpilih.
   useEffect(() => {
@@ -171,9 +166,9 @@ export function ProductBulkBar() {
         const parts = [`${data?.deleted ?? 0} dihapus`];
         if (data?.archived) parts.push(`${data.archived} diarsipkan (pernah dipesan)`);
         if (data?.failed) parts.push(`${data.failed} gagal`);
-        setToast(parts.join(" · "));
+        show(parts.join(" · "));
       } else {
-        setToast(`${data?.archived ?? 0} produk diarsipkan`);
+        show(`${data?.archived ?? 0} produk diarsipkan`);
       }
       router.refresh();
     } catch (err) {
@@ -185,18 +180,6 @@ export function ProductBulkBar() {
 
   return (
     <>
-      {/* Toast hasil */}
-      {toast && (
-        <div className="fixed inset-x-0 top-4 z-[70] flex justify-center px-4">
-          <div className="flex items-center gap-2 rounded-full bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white shadow-lg">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-emerald-400" aria-hidden="true">
-              <path d="M20 6 9 17l-5-5" />
-            </svg>
-            <span>{toast}</span>
-          </div>
-        </div>
-      )}
-
       {/* Bar aksi mengambang */}
       {count > 0 && (
         <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 flex justify-center px-4 md:bottom-6">

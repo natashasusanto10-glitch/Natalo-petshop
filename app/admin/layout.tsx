@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { AdminNav } from "@/components/AdminNav";
+import { ToastProvider } from "@/components/admin/ui";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -16,8 +17,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // Login page gets no sidebar
   if (pathname === "/admin/login") {
-    return <>{children}</>;
+    return <ToastProvider>{children}</ToastProvider>;
   }
 
-  return <AdminNav>{children}</AdminNav>;
+  return (
+    <ToastProvider>
+      <AdminNav>{children}</AdminNav>
+    </ToastProvider>
+  );
 }

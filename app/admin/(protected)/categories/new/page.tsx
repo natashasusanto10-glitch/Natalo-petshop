@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { AdminPage, Button } from "@/components/admin/ui";
+import { AdminPage, Button, SubmitButton } from "@/components/admin/ui";
 
 function toSlug(name: string) {
   return name
@@ -50,9 +50,9 @@ export default function AdminCategoryNewPage() {
           <Button href="/admin/categories" variant="secondary">
             Batal
           </Button>
-          <Button type="submit" className="flex-1 sm:flex-none">
+          <SubmitButton className="flex-1 sm:flex-none">
             Simpan
-          </Button>
+          </SubmitButton>
         </div>
       </form>
     </AdminPage>

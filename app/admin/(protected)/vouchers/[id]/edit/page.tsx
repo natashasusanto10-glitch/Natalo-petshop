@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { VoucherType, VoucherUserUsageLimitPeriod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { AdminPage, Button } from "@/components/admin/ui";
+import { AdminPage, Button, SubmitButton } from "@/components/admin/ui";
 import { isLoyaltyClaimVoucher } from "@/lib/voucher-kind";
 import BrandTargetPicker from "../../BrandTargetPicker";
 
@@ -379,9 +379,9 @@ export default async function AdminVoucherEditPage({
           <Button href="/admin/vouchers" variant="secondary">
             Batal
           </Button>
-          <Button type="submit" className="flex-1 sm:flex-none">
+          <SubmitButton className="flex-1 sm:flex-none">
             Simpan perubahan
-          </Button>
+          </SubmitButton>
         </div>
       </form>
     </AdminPage>

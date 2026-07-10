@@ -3,7 +3,13 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { MultiImageUpload } from "@/components/MultiImageUpload";
 import { VariantEditor } from "@/components/admin/VariantEditor";
-import { AdminPage, Button, FormField } from "@/components/admin/ui";
+import {
+  AdminPage,
+  Button,
+  FormField,
+  SectionCard,
+  SubmitButton,
+} from "@/components/admin/ui";
 
 export default async function AdminProductEditPage({
   params,
@@ -129,6 +135,9 @@ export default async function AdminProductEditPage({
     redirect("/admin/products");
   }
 
+  const jumpLinkClass =
+    "block rounded-lg px-3 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-natalo-50 hover:text-natalo-700";
+
   return (
     <AdminPage maxWidth="xl">
       <Link href="/admin/products" className="text-sm font-bold text-zinc-500 hover:text-zinc-950">
@@ -161,182 +170,194 @@ export default async function AdminProductEditPage({
         </div>
       )}
 
-      <form action={updateProduct} className="mt-5 space-y-5 md:mt-8">
-        {/* ── 1. Foto Produk ─────────────────────────────────────── */}
-        <MultiImageUpload
-          name="images"
-          max={5}
-          defaultValue={[
-            ...(product.imageUrl ? [product.imageUrl] : []),
-            ...product.gallery,
-          ]}
-        />
+      <form action={updateProduct} className="mt-5 md:mt-8">
+        <div className="grid gap-6 md:grid-cols-[180px_minmax(0,1fr)]">
+          {/* Menu lompat — sticky, desktop only. Pakai anchor (#id) supaya
+              tak perlu JS. */}
+          <nav aria-label="Bagian form" className="hidden md:block">
+            <div className="sticky top-6 space-y-1 rounded-2xl border border-zinc-200 bg-white p-2">
+              <a href="#dasar" className={jumpLinkClass}>Informasi Dasar</a>
+              <a href="#penjualan" className={jumpLinkClass}>Informasi Penjualan</a>
+              <a href="#pengiriman" className={jumpLinkClass}>Pengiriman</a>
+            </div>
+          </nav>
 
-        {/* ── 2. Nama Produk ─────────────────────────────────────── */}
-        <Field label="Nama produk" name="name" required defaultValue={product.name} />
+          {/* Konten form */}
+          <div className="min-w-0 space-y-6">
+            {/* ── Informasi Dasar ── */}
+            <div id="dasar" className="scroll-mt-24">
+              <SectionCard title="Informasi Dasar">
+                <div className="space-y-5">
+                  <MultiImageUpload
+                    name="images"
+                    max={5}
+                    defaultValue={[
+                      ...(product.imageUrl ? [product.imageUrl] : []),
+                      ...product.gallery,
+                    ]}
+                  />
+                  <Field label="Nama produk" name="name" required defaultValue={product.name} />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-semibold text-zinc-700">Kategori</label>
+                      <select
+                        name="categoryId"
+                        defaultValue={product.categoryId ?? ""}
+                        className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-natalo-600"
+                      >
+                        <option value="">Tanpa kategori</option>
+                        {categories.map((cat) => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-zinc-700">
+                        Brand{" "}
+                        {product.brandAutoAssigned && (
+                          <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                            auto — verify
+                          </span>
+                        )}
+                      </label>
+                      <select
+                        name="brandId"
+                        defaultValue={product.brandId ?? ""}
+                        className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-natalo-600"
+                      >
+                        <option value="">Tanpa brand</option>
+                        {brands.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <Field
+                    label="Deskripsi"
+                    name="description"
+                    required
+                    defaultValue={product.description}
+                    textarea
+                  />
+                </div>
+              </SectionCard>
+            </div>
 
-        {/* ── 3. Kategori | Brand ────────────────────────────────── */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="block text-sm font-semibold text-zinc-700">Kategori</label>
-            <select
-              name="categoryId"
-              defaultValue={product.categoryId ?? ""}
-              className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-natalo-600"
-            >
-              <option value="">Tanpa kategori</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
+            {/* ── Informasi Penjualan (Variasi + Harga/Stok/SKU) ── */}
+            <div id="penjualan" className="scroll-mt-24 space-y-5">
+              {/* VariantEditor standalone (state + API sendiri). Anchor
+                  id="variants" di-target dari ?from=new. */}
+              <div id="variants" className="scroll-mt-24">
+                <VariantEditor
+                  productId={id}
+                  initialHasVariants={product.hasVariants}
+                  initialAttributes={product.variantAttrs.map((a) => ({
+                    id: a.id,
+                    name: a.name,
+                    position: a.position,
+                    options: a.options.map((o) => ({
+                      id: o.id,
+                      value: o.value,
+                      position: o.position,
+                    })),
+                  }))}
+                  initialVariants={product.variants.map((v) => ({
+                    id: v.id,
+                    price: v.price,
+                    stock: v.stock,
+                    weightGram: v.weightGram,
+                    sku: v.sku,
+                    imageUrl: v.imageUrl,
+                    isActive: v.isActive,
+                    options: v.options,
+                  }))}
+                />
+              </div>
+
+              <SectionCard title="Harga & Stok">
+                <div className="space-y-5">
+                  {/* Conditional disable: kalau produk punya varian, Harga/
+                      Stok base di-sync dari aggregate varian aktif. */}
+                  <Field
+                    label={
+                      product.hasVariants
+                        ? "Harga Satuan (Rp) — diatur per varian"
+                        : "Harga Satuan (Rp)"
+                    }
+                    name="price"
+                    type="number"
+                    required={!product.hasVariants}
+                    defaultValue={String(product.price)}
+                    disabled={product.hasVariants}
+                    hint={
+                      product.hasVariants
+                        ? "Diatur per varian di tabel Variasi di atas."
+                        : undefined
+                    }
+                  />
+                  <Field
+                    label={product.hasVariants ? "Stok (total varian)" : "Stok"}
+                    name="stock"
+                    type="number"
+                    defaultValue={String(product.stock)}
+                    disabled={product.hasVariants}
+                    hint={
+                      product.hasVariants
+                        ? `Total ${product.stock} dari semua varian aktif.`
+                        : undefined
+                    }
+                  />
+                  <Field
+                    label="SKU Induk"
+                    name="sku"
+                    defaultValue={product.sku ?? ""}
+                    placeholder={product.hasVariants ? "—" : "Mis. PROD-001"}
+                    disabled={product.hasVariants}
+                    hint={
+                      product.hasVariants
+                        ? "Tidak diperlukan — SKU diatur per varian di tabel Variasi di atas."
+                        : "Opsional. Identifier produk untuk inventory tracking (huruf, angka, _, -)."
+                    }
+                  />
+                </div>
+              </SectionCard>
+            </div>
+
+            {/* ── Pengiriman ── */}
+            <div id="pengiriman" className="scroll-mt-24">
+              <SectionCard title="Pengiriman">
+                <div className="max-w-xs">
+                  <Field
+                    label="Berat (gram)"
+                    name="weightGram"
+                    type="number"
+                    defaultValue={String(product.weightGram)}
+                    disabled={product.hasVariants}
+                    hint={
+                      product.hasVariants
+                        ? "Diatur per varian di tabel Variasi di atas."
+                        : "Berat setelah dikemas — dipakai hitung ongkir."
+                    }
+                  />
+                </div>
+              </SectionCard>
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-semibold text-zinc-700">
-              Brand{" "}
-              {product.brandAutoAssigned && (
-                <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                  auto — verify
-                </span>
-              )}
-            </label>
-            <select
-              name="brandId"
-              defaultValue={product.brandId ?? ""}
-              className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-natalo-600"
-            >
-              <option value="">Tanpa brand</option>
-              {brands.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
 
-        {/* ── 4. Deskripsi ───────────────────────────────────────── */}
-        <Field
-          label="Deskripsi"
-          name="description"
-          required
-          defaultValue={product.description}
-          textarea
-        />
-
-        {/* ── 5. Variasi (inline) ─────────────────────────────────
-            VariantEditor punya state + API call sendiri (standalone
-            mode), terpisah dari form action <updateProduct>. Tapi
-            secara visual harus inline antara Deskripsi dan Harga
-            Satuan supaya urutan konsisten dengan /admin/products/new.
-            Anchor `id="variants"` di-target dari ?from=new#variants
-            (kalau pernah ada redirect lama). */}
-        <div id="variants" className="scroll-mt-6">
-          <VariantEditor
-            productId={id}
-            initialHasVariants={product.hasVariants}
-            initialAttributes={product.variantAttrs.map((a) => ({
-              id: a.id,
-              name: a.name,
-              position: a.position,
-              options: a.options.map((o) => ({
-                id: o.id,
-                value: o.value,
-                position: o.position,
-              })),
-            }))}
-            initialVariants={product.variants.map((v) => ({
-              id: v.id,
-              price: v.price,
-              stock: v.stock,
-              weightGram: v.weightGram,
-              sku: v.sku,
-              imageUrl: v.imageUrl,
-              isActive: v.isActive,
-              options: v.options,
-            }))}
-          />
-        </div>
-
-        {/* ── 6. Harga Satuan ────────────────────────────────────── */}
-        {/* Conditional disable: kalau produk punya varian, Harga base
-            di-sync dari MIN(varian aktif) — admin tidak bisa override.
-            Field tetap visible supaya admin tahu value saat ini. */}
-        <Field
-          label={
-            product.hasVariants
-              ? "Harga Satuan (Rp) — diatur per varian"
-              : "Harga Satuan (Rp)"
-          }
-          name="price"
-          type="number"
-          required={!product.hasVariants}
-          defaultValue={String(product.price)}
-          disabled={product.hasVariants}
-          hint={
-            product.hasVariants
-              ? "Diatur per varian di tabel Variasi di atas."
-              : undefined
-          }
-        />
-
-        {/* ── 7. Stok | 8. Berat ─────────────────────────────────── */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label={product.hasVariants ? "Stok (total varian)" : "Stok"}
-            name="stock"
-            type="number"
-            defaultValue={String(product.stock)}
-            disabled={product.hasVariants}
-            hint={
-              product.hasVariants
-                ? `Total ${product.stock} dari semua varian aktif.`
-                : undefined
-            }
-          />
-          <Field
-            label="Berat (gram)"
-            name="weightGram"
-            type="number"
-            defaultValue={String(product.weightGram)}
-            disabled={product.hasVariants}
-            hint={
-              product.hasVariants
-                ? "Diatur per varian di tabel Variasi di atas."
-                : undefined
-            }
-          />
-        </div>
-
-        {/* ── 9. SKU Induk ─────────────────────────────────────────
-            Identifier opsional untuk produk single. Disabled saat
-            varian aktif (SKU dikelola per-varian di tabel Variasi). */}
-        <Field
-          label="SKU Induk"
-          name="sku"
-          defaultValue={product.sku ?? ""}
-          placeholder={product.hasVariants ? "—" : "Mis. PROD-001"}
-          disabled={product.hasVariants}
-          hint={
-            product.hasVariants
-              ? "Tidak diperlukan — SKU diatur per varian di tabel Variasi di atas."
-              : "Opsional. Identifier produk untuk inventory tracking (huruf, angka, _, -)."
-          }
-        />
-
-        {/* Flash Sale field dihapus dari form produk — sekarang
-            dikelola di halaman dedicated /admin/diskon/flash-sale.
-            Existing flashSaleEndsAt di DB di-preserve (tidak di-update
-            dari sini). Admin yang mau set Flash Sale buka hub Diskon. */}
-
-        <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
+        {/* ── Bar Simpan menempel ──
+            Sticky di bawah viewport. Di mobile diangkat di atas bottom-nav
+            admin (~4rem); di desktop menempel dekat bawah. SubmitButton tetap
+            di dalam <form> jadi pending-state jalan. */}
+        <div className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 mt-6 flex items-center justify-end gap-3 rounded-2xl border border-zinc-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur md:bottom-4">
           <Button href="/admin/products" variant="secondary">
             Batal
           </Button>
-          <Button type="submit" className="flex-1 sm:flex-none">
-            Simpan perubahan
-          </Button>
+          <SubmitButton>Simpan perubahan</SubmitButton>
         </div>
       </form>
     </AdminPage>

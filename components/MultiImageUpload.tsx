@@ -239,7 +239,8 @@ export function MultiImageUpload({
       <label className="block text-sm font-medium text-zinc-700">{label}</label>
       <p className="mt-0.5 text-xs text-zinc-500">
         1–{max} gambar, masing-masing maks {MAX_SIZE_MB} MB. Gambar pertama
-        jadi thumbnail utama. <span className="font-semibold">Geser foto</span> untuk ubah urutan.
+        jadi <span className="font-semibold">cover</span> (tampil kotak 1:1 di toko).{" "}
+        <span className="font-semibold">Geser foto</span> untuk ubah urutan.
       </p>
 
       {/* Hidden inputs — satu per gambar, dikirim sebagai {name}[] */}
@@ -277,7 +278,7 @@ export function MultiImageUpload({
               />
               {idx === 0 && (
                 <span className="absolute left-1.5 top-1.5 rounded-full bg-zinc-950/85 px-2 py-0.5 text-[10px] font-bold text-white">
-                  Utama
+                  Cover
                 </span>
               )}
               <span className="absolute right-1.5 top-1.5 rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] font-bold text-zinc-700 shadow">
