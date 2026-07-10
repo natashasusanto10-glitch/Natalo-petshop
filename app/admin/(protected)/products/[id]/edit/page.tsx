@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { MultiImageUpload } from "@/components/MultiImageUpload";
 import { VariantEditor } from "@/components/admin/VariantEditor";
+import { AdminPage, Button } from "@/components/admin/ui";
 
 export default async function AdminProductEditPage({
   params,
@@ -129,7 +130,7 @@ export default async function AdminProductEditPage({
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-5 md:px-8 md:py-10">
+    <AdminPage maxWidth="xl">
       <Link href="/admin/products" className="text-sm font-bold text-zinc-500 hover:text-zinc-950">
         ← Kembali ke produk
       </Link>
@@ -330,21 +331,15 @@ export default async function AdminProductEditPage({
             dari sini). Admin yang mau set Flash Sale buka hub Diskon. */}
 
         <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
-          <Link
-            href="/admin/products"
-            className="rounded-full border border-zinc-300 px-6 py-3 text-center text-sm font-bold"
-          >
+          <Button href="/admin/products" variant="secondary">
             Batal
-          </Link>
-          <button
-            type="submit"
-            className="flex-1 rounded-full bg-zinc-950 px-6 py-3 text-sm font-bold text-white sm:flex-none"
-          >
+          </Button>
+          <Button type="submit" className="flex-1 sm:flex-none">
             Simpan perubahan
-          </button>
+          </Button>
         </div>
       </form>
-    </div>
+    </AdminPage>
   );
 }
 

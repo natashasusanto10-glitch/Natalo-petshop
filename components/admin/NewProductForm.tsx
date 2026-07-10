@@ -8,6 +8,7 @@ import {
   VariantEditor,
   type VariantEditorDraftPayload,
 } from "@/components/admin/VariantEditor";
+import { AdminPage, Button } from "@/components/admin/ui";
 
 interface Props {
   categories: Array<{ id: string; name: string }>;
@@ -224,7 +225,7 @@ export function NewProductForm({ categories, brands }: Props) {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-5 md:px-8 md:py-10">
+    <AdminPage maxWidth="xl">
       <Link
         href="/admin/products"
         className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
@@ -433,23 +434,20 @@ export function NewProductForm({ categories, brands }: Props) {
 
         {/* ─── Submit buttons ─────────────────────────────────────── */}
         <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
-          <Link
-            href="/admin/products"
-            className="rounded-full border border-zinc-300 px-6 py-3 text-center text-sm font-bold"
-          >
+          <Button href="/admin/products" variant="secondary">
             Batal
-          </Link>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={handleSubmit}
             disabled={submitting}
-            className="flex-1 rounded-full bg-natalo-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
+            className="flex-1 sm:flex-none"
           >
             {submitting ? "Menyimpan..." : "Simpan Produk"}
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </AdminPage>
   );
 }
 
@@ -468,8 +466,8 @@ function Section({
   return (
     <div>
       <label className="block text-sm font-semibold text-zinc-700">
-        {required && <span className="mr-1 text-red-500">•</span>}
         {label}
+        {required && <span className="ml-1 text-red-500">*</span>}
       </label>
       <div className="mt-1.5">{children}</div>
       {hint && <p className="mt-1 text-xs text-zinc-500">ⓘ {hint}</p>}

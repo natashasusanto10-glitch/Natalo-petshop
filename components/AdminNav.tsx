@@ -139,13 +139,22 @@ function isActiveItem(pathname: string, item: NavItem) {
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
+function titleCaseSegment(segment: string): string {
+  return segment
+    .split("-")
+    .map((word) => (word ? word[0].toUpperCase() + word.slice(1) : word))
+    .join(" ");
+}
+
 function getPageTitle(pathname: string): string {
   for (const group of NAV_GROUPS) {
     for (const item of group.items) {
       if (isActiveItem(pathname, item)) return item.label;
     }
   }
-  return "Admin";
+  const segments = pathname.split("/").filter(Boolean);
+  const last = segments[segments.length - 1];
+  return last ? titleCaseSegment(last) : "Admin";
 }
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
@@ -228,7 +237,7 @@ function MobileTopBar({ title, onMenuClick }: { title: string; onMenuClick: () =
         type="button"
         onClick={onMenuClick}
         aria-label="Buka menu"
-        className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-700 hover:bg-slate-100"
+        className="inline-flex h-11 w-11 items-center justify-center rounded-md text-slate-700 hover:bg-slate-100"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
           <path d="M3 6h18M3 12h18M3 18h18" />
@@ -290,6 +299,15 @@ function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void })
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
   return (
     <div
       className={`fixed inset-0 z-40 md:hidden ${open ? "" : "pointer-events-none"}`}
@@ -300,6 +318,9 @@ function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void })
         onClick={onClose}
       />
       <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="Menu navigasi"
         className={`absolute right-0 top-0 flex h-full w-[82%] max-w-xs flex-col bg-[#0c2a52] shadow-2xl transition-transform ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
@@ -310,7 +331,7 @@ function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void })
             type="button"
             onClick={onClose}
             aria-label="Tutup menu"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-300 hover:bg-white/10 hover:text-white"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-slate-300 hover:bg-white/10 hover:text-white"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
               <path d="M18 6 6 18M6 6l12 12" />

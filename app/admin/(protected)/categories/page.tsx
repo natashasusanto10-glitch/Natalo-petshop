@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { PageHeader, EmptyState, Badge } from "@/components/admin/ui";
+import { PageHeader, EmptyState, Badge, AdminPage, Button } from "@/components/admin/ui";
 
 export default async function AdminCategoriesPage() {
   const categories = await prisma.category.findMany({
@@ -21,24 +20,18 @@ export default async function AdminCategoriesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-5 md:py-10">
+    <AdminPage maxWidth="lg">
       <PageHeader
         title="Kategori"
         subtitle={`${categories.length} kategori terdaftar.`}
         actions={
           <>
-            <Link
-              href="/admin/dashboard"
-              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
-            >
+            <Button href="/admin/dashboard" variant="secondary" size="sm">
               ← Dashboard
-            </Link>
-            <Link
-              href="/admin/categories/new"
-              className="inline-flex items-center gap-1.5 rounded-full bg-natalo-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-natalo-700 md:text-sm"
-            >
+            </Button>
+            <Button href="/admin/categories/new" size="sm">
               + Tambah Kategori
-            </Link>
+            </Button>
           </>
         }
       />
@@ -76,19 +69,21 @@ export default async function AdminCategoriesPage() {
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
-                <Link
+                <Button
                   href={`/admin/categories/${cat.id}/edit`}
-                  className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 md:px-4 md:py-2 md:text-sm"
+                  variant="secondary"
+                  size="md"
                 >
                   ✏️ Edit
-                </Link>
+                </Button>
 
                 <form action={deleteCategory}>
                   <input type="hidden" name="id" value={cat.id} />
-                  <button
+                  <Button
                     type="submit"
+                    variant="dangerSoft"
+                    size="md"
                     disabled={cat._count.products > 0}
-                    className="rounded-full border border-red-200 bg-white px-3 py-1.5 text-xs font-bold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 md:px-4 md:py-2 md:text-sm"
                     title={
                       cat._count.products > 0
                         ? "Hapus produk di kategori ini dulu"
@@ -96,13 +91,13 @@ export default async function AdminCategoriesPage() {
                     }
                   >
                     🗑️ Hapus
-                  </button>
+                  </Button>
                 </form>
               </div>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }

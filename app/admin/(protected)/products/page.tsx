@@ -6,7 +6,7 @@ import { formatRupiah } from "@/lib/format";
 import { InlineEditCell } from "@/components/admin/InlineEditCell";
 import { VariantInlineEditCell } from "@/components/admin/VariantInlineEditCell";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
-import { PageHeader, EmptyState } from "@/components/admin/ui";
+import { PageHeader, EmptyState, AdminPage, Button } from "@/components/admin/ui";
 import {
   ProductSelectionProvider,
   ProductSelectAll,
@@ -153,24 +153,18 @@ export default async function AdminProductsPage({
   const hasActiveFilter = search || catSlug || brandSlug;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-5 md:py-10">
+    <AdminPage maxWidth="xl">
       <PageHeader
         title="Produk"
         subtitle={`${totalAll} total · ${totalReady} ready · ${totalOut} habis · ${totalArchived} arsip${activeCategory ? ` · ${activeCategory.name}` : ""}`}
         actions={
           <>
-            <Link
-              href="/admin/products/import"
-              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-natalo-400 hover:bg-natalo-50 hover:text-natalo-700"
-            >
+            <Button href="/admin/products/import" variant="secondary" size="sm">
               ↧ Import
-            </Link>
-            <Link
-              href="/admin/products/new"
-              className="inline-flex items-center gap-1.5 rounded-full bg-natalo-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-natalo-700 md:text-sm"
-            >
+            </Button>
+            <Button href="/admin/products/new" variant="primary" size="sm">
               + Tambah Produk
-            </Link>
+            </Button>
           </>
         }
       />
@@ -247,7 +241,7 @@ export default async function AdminProductsPage({
         {/* Active filter chips */}
         {hasActiveFilter && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-zinc-400">Filter aktif:</span>
+            <span className="text-xs text-zinc-600">Filter aktif:</span>
             {search && (
               <span className="flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-700">
                 🔍 "{search}"
@@ -436,12 +430,14 @@ export default async function AdminProductsPage({
             );
 
             const editLink = (
-              <Link
+              <Button
                 href={`/admin/products/${product.id}/edit`}
-                className="rounded-full border border-zinc-300 px-3 py-2 text-center text-xs font-bold hover:bg-zinc-50"
+                variant="secondary"
+                size="sm"
+                fullWidth
               >
                 Edit
-              </Link>
+              </Button>
             );
 
             const toggleForm = (
@@ -644,6 +640,6 @@ export default async function AdminProductsPage({
           </div>
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }

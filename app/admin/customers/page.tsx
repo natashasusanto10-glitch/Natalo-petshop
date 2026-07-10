@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/session-guards";
-import Link from "next/link";
-import { PageHeader, EmptyState, Badge } from "@/components/admin/ui";
+import { PageHeader, EmptyState, Badge, Button, AdminPage } from "@/components/admin/ui";
 
 const PAGE_SIZE = 20;
 
@@ -29,17 +28,14 @@ export default async function AdminCustomersPage({
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-5 md:py-10">
+    <AdminPage maxWidth="lg">
       <PageHeader
         title="Customer"
         subtitle={`${total} customer terdaftar.`}
         actions={
-          <Link
-            href="/admin/dashboard"
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
-          >
+          <Button href="/admin/dashboard" variant="secondary" size="sm">
             ← Dashboard
-          </Link>
+          </Button>
         }
       />
 
@@ -86,7 +82,7 @@ export default async function AdminCustomersPage({
                           {customer.phone}
                         </p>
                       )}
-                      <p className="mt-1.5 text-[11px] text-zinc-400">
+                      <p className="mt-1.5 text-[11px] text-zinc-600">
                         Bergabung{" "}
                         {new Date(customer.createdAt).toLocaleDateString(
                           "id-ID",
@@ -144,7 +140,7 @@ export default async function AdminCustomersPage({
                         </td>
                         <td className="px-5 py-4 text-zinc-500">
                           <p className="text-xs">{customer.email ?? "—"}</p>
-                          <p className="text-[11px] text-zinc-400">
+                          <p className="text-[11px] text-zinc-600">
                             {customer.phone ?? ""}
                           </p>
                         </td>
@@ -182,24 +178,22 @@ export default async function AdminCustomersPage({
           </p>
           <div className="flex gap-2">
             {page > 1 && (
-              <Link
+              <Button
                 href={`/admin/customers?page=${page - 1}`}
-                className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-bold text-zinc-700 transition hover:border-zinc-400"
+                variant="secondary"
+                size="sm"
               >
                 ← Sebelumnya
-              </Link>
+              </Button>
             )}
             {page < totalPages && (
-              <Link
-                href={`/admin/customers?page=${page + 1}`}
-                className="rounded-full bg-natalo-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-natalo-700"
-              >
+              <Button href={`/admin/customers?page=${page + 1}`} size="sm">
                 Berikutnya →
-              </Link>
+              </Button>
             )}
           </div>
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }

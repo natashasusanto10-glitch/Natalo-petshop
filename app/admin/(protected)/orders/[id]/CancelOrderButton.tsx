@@ -16,6 +16,7 @@
  * import komponen Dialog.
  */
 import { useState } from "react";
+import { Button } from "@/components/admin/ui";
 
 type Props = {
   action: () => Promise<void>;
@@ -96,13 +97,14 @@ export default function CancelOrderButton({
   }
 
   return (
-    <button
+    <Button
       type="button"
       onClick={handleClick}
       disabled={submitting}
-      className="w-full rounded-full border border-red-300 bg-red-50 px-5 py-3 text-sm font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"
+      variant="dangerSoft"
+      fullWidth
     >
       {submitting ? "Membatalkan..." : "Batalkan order"}
-    </button>
+    </Button>
   );
 }

@@ -2,16 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
+import { paymentStatusLabel } from "@/lib/order-labels";
 import { PrintButton } from "./PrintButton";
-
-const PAYMENT_LABELS: Record<string, string> = {
-  UNPAID: "Belum bayar",
-  PENDING: "Menunggu verifikasi",
-  PAID: "Lunas",
-  FAILED: "Gagal",
-  EXPIRED: "Kedaluwarsa",
-  REFUNDED: "Refund",
-};
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("id-ID", {
@@ -115,7 +107,7 @@ export default async function PrintOrderPage({
             <InfoRow label="Total" value={formatRupiah(order.total)} strong />
             <InfoRow
               label="Status Pembayaran"
-              value={PAYMENT_LABELS[order.paymentStatus] ?? order.paymentStatus}
+              value={paymentStatusLabel(order.paymentStatus)}
             />
             <InfoRow label="Metode Pengiriman" value={formatShippingMethod(order)} />
           </div>

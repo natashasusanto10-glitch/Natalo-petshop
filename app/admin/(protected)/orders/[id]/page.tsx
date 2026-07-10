@@ -23,46 +23,14 @@ import RefundFormClient from "./RefundFormClient";
 import CancelOrderButton from "./CancelOrderButton";
 import CancellationRequestBanner from "./CancellationRequestBanner";
 import ShippingForm from "./ShippingForm";
-
-const STATUS_LABELS: Record<string, string> = {
-  PENDING: "Order Baru",
-  PAID: "Sudah Dibayar",
-  PROCESSING: "Diproses",
-  READY_FOR_PICKUP: "Siap Diambil",
-  SHIPPED: "Dikirim",
-  DELIVERED: "Selesai",
-  CANCELLED: "Dibatalkan",
-  REFUNDED: "Refund",
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  PENDING: "bg-amber-100 text-amber-700",
-  PAID: "bg-emerald-100 text-emerald-700",
-  PROCESSING: "bg-natalo-100 text-natalo-700",
-  READY_FOR_PICKUP: "bg-green-100 text-green-700",
-  SHIPPED: "bg-indigo-100 text-indigo-700",
-  DELIVERED: "bg-emerald-100 text-emerald-700",
-  CANCELLED: "bg-red-100 text-red-700",
-  REFUNDED: "bg-zinc-100 text-zinc-600",
-};
-
-const PAY_LABELS: Record<string, string> = {
-  UNPAID: "Belum bayar",
-  PENDING: "Menunggu verifikasi",
-  PAID: "Lunas",
-  FAILED: "Gagal",
-  EXPIRED: "Kedaluwarsa",
-  REFUNDED: "Refund",
-};
-
-const PAY_COLORS: Record<string, string> = {
-  UNPAID: "bg-red-100 text-red-700",
-  PENDING: "bg-amber-100 text-amber-700",
-  PAID: "bg-green-100 text-green-700",
-  FAILED: "bg-red-100 text-red-700",
-  EXPIRED: "bg-zinc-100 text-zinc-600",
-  REFUNDED: "bg-zinc-100 text-zinc-600",
-};
+import {
+  Button,
+  AdminPage,
+  Badge,
+  STATUS_BADGE_VARIANT,
+  PAY_BADGE_VARIANT,
+} from "@/components/admin/ui";
+import { orderStatusLabel, paymentStatusLabel } from "@/lib/order-labels";
 
 export default async function AdminOrderDetailPage({
   params,
@@ -140,7 +108,7 @@ export default async function AdminOrderDetailPage({
   const isDone = order.status === "DELIVERED" || order.status === "CANCELLED" || order.status === "REFUNDED";
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-5 md:py-10">
+    <AdminPage maxWidth="xl">
       <Link
         href="/admin/orders"
         className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
@@ -154,24 +122,17 @@ export default async function AdminOrderDetailPage({
           <p className="mt-1 truncate text-zinc-500">{order.orderNumber}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 md:gap-3">
-          <span
-            className={`rounded-full px-3 py-1.5 text-xs font-bold md:px-4 md:py-2 md:text-sm ${
-              PAY_COLORS[order.paymentStatus] ?? "bg-zinc-100 text-zinc-600"
-            }`}
-          >
-            {PAY_LABELS[order.paymentStatus] ?? order.paymentStatus}
-          </span>
-          <span
-            className={`rounded-full px-3 py-1.5 text-xs font-bold md:px-4 md:py-2 md:text-sm ${
-              STATUS_COLORS[order.status] ?? "bg-zinc-100 text-zinc-600"
-            }`}
-          >
-            {STATUS_LABELS[order.status] ?? order.status}
-          </span>
-          <Link
+          <Badge variant={PAY_BADGE_VARIANT[order.paymentStatus] ?? "neutral"} size="md">
+            {paymentStatusLabel(order.paymentStatus)}
+          </Badge>
+          <Badge variant={STATUS_BADGE_VARIANT[order.status] ?? "neutral"} size="md">
+            {orderStatusLabel(order.status)}
+          </Badge>
+          <Button
             href={`/admin/orders/${id}/print`}
             target="_blank"
-            className="flex items-center gap-2 rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:text-zinc-950 md:px-4 md:py-2 md:text-sm"
+            variant="secondary"
+            size="sm"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
               <path d="M6 9V2h12v7" />
@@ -179,7 +140,7 @@ export default async function AdminOrderDetailPage({
               <rect x="6" y="14" width="12" height="8" />
             </svg>
             Cetak Label
-          </Link>
+          </Button>
         </div>
       </div>
 
@@ -499,7 +460,7 @@ export default async function AdminOrderDetailPage({
         </section>
 
         {/* ── Sidebar ── */}
-        <aside className="space-y-5">
+        <aside className="flex flex-col gap-5">
           {/* Customer */}
           <section className="rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5">
             <h2 className="font-bold text-zinc-950">Customer</h2>
@@ -509,7 +470,7 @@ export default async function AdminOrderDetailPage({
               </p>
               <p>
                 <span className="font-semibold">WhatsApp:</span>{" "}
-                {order.customerPhone || <span className="text-zinc-400 italic">tidak diisi</span>}
+                {order.customerPhone || <span className="text-zinc-600 italic">tidak diisi</span>}
               </p>
               {order.customerEmail && (
                 <p>
@@ -527,7 +488,7 @@ export default async function AdminOrderDetailPage({
                 Hubungi via WhatsApp
               </a>
             ) : (
-              <p className="mt-5 rounded-full border border-dashed border-zinc-200 px-5 py-3 text-center text-xs font-semibold text-zinc-400">
+              <p className="mt-5 rounded-full border border-dashed border-zinc-200 px-5 py-3 text-center text-xs font-semibold text-zinc-600">
                 Nomor WhatsApp tidak valid
               </p>
             )}
@@ -656,14 +617,17 @@ export default async function AdminOrderDetailPage({
                   className="w-full object-contain"
                 />
               </div>
-              <a
+              <Button
                 href={order.paymentProofUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-3 inline-flex w-full justify-center rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold text-zinc-700 hover:bg-zinc-50"
+                variant="secondary"
+                size="sm"
+                fullWidth
+                className="mt-3"
               >
                 Lihat fullscreen →
-              </a>
+              </Button>
             </section>
           )}
 
@@ -787,44 +751,38 @@ export default async function AdminOrderDetailPage({
             </section>
           )}
 
-          {/* ── Aksi ── */}
+          {/* ── Aksi ──
+              order-first di mobile: naikkan panel Aksi ke atas sidebar supaya
+              tidak terkubur di bawah info Customer/Pengiriman. Di lg reset ke
+              urutan DOM (order-none) — layout desktop tidak berubah. */}
           {!isDone && (
-            <section className="rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5">
+            <section className="order-first rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5 lg:order-none">
               <h2 className="font-bold text-zinc-950">Aksi</h2>
 
               <div className="mt-5 space-y-3">
                 {/* 1. Konfirmasi pembayaran */}
                 {order.paymentStatus !== "PAID" && (
                   <form action={markAsPaidAction}>
-                    <button
-                      type="submit"
-                      className="w-full rounded-full bg-emerald-600 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-700"
-                    >
+                    <Button type="submit" fullWidth>
                       ✅ Konfirmasi pembayaran ({formatRupiah(order.total)})
-                    </button>
+                    </Button>
                   </form>
                 )}
 
                 {/* 2. Proses packing (setelah bayar) */}
                 {order.paymentStatus === "PAID" && (order.status === "PENDING" || order.status === "PAID") && (
                   <form action={markAsProcessingAction}>
-                    <button
-                      type="submit"
-                      className="w-full rounded-full bg-natalo-600 px-5 py-3 text-sm font-bold text-white hover:bg-natalo-700"
-                    >
+                    <Button type="submit" fullWidth>
                       📦 Mulai packing
-                    </button>
+                    </Button>
                   </form>
                 )}
 
                 {order.paymentStatus === "PAID" && !isSelfPickup && order.courierCode && !order.biteshipOrderId && (
                   <form action={createShipmentAction}>
-                    <button
-                      type="submit"
-                      className="w-full rounded-full bg-emerald-600 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-700"
-                    >
+                    <Button type="submit" variant="secondary" fullWidth>
                       🚚 Booking kurir Biteship
-                    </button>
+                    </Button>
                   </form>
                 )}
 
@@ -877,35 +835,26 @@ export default async function AdminOrderDetailPage({
                       lagi.
                     </p>
                     <form action={markAsDeliveredAction} className="mt-2">
-                      <button
-                        type="submit"
-                        className="w-full rounded-full border border-emerald-300 bg-white px-5 py-2.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50"
-                      >
+                      <Button type="submit" variant="secondary" size="sm" fullWidth>
                         Tandai selesai (override)
-                      </button>
+                      </Button>
                     </form>
                   </details>
                 )}
 
                 {isSelfPickup && order.paymentStatus === "PAID" && order.status === "PROCESSING" && (
                   <form action={markAsReadyForPickupAction}>
-                    <button
-                      type="submit"
-                      className="w-full rounded-full bg-green-600 px-5 py-3 text-sm font-bold text-white hover:bg-green-700"
-                    >
+                    <Button type="submit" fullWidth>
                       Siap Diambil
-                    </button>
+                    </Button>
                   </form>
                 )}
 
                 {isSelfPickup && order.status === "READY_FOR_PICKUP" && (
                   <form action={markAsPickedUpAction}>
-                    <button
-                      type="submit"
-                      className="w-full rounded-full bg-emerald-600 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-700"
-                    >
+                    <Button type="submit" fullWidth>
                       Serahkan Pesanan
-                    </button>
+                    </Button>
                   </form>
                 )}
 
@@ -938,7 +887,7 @@ export default async function AdminOrderDetailPage({
           )}
         </aside>
       </div>
-    </div>
+    </AdminPage>
   );
 }
 

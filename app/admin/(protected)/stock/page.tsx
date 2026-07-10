@@ -7,6 +7,8 @@ import {
   StatCard,
   EmptyState,
   Badge,
+  AdminPage,
+  Button,
 } from "@/components/admin/ui";
 
 // Halaman ini selalu render fresh — tidak boleh kena Next.js full-route cache
@@ -67,17 +69,14 @@ export default async function AdminStockPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-5 md:py-10">
+    <AdminPage maxWidth="lg">
       <PageHeader
         title="📦 Stok"
         subtitle="Monitor stok produk dan perbarui jika diperlukan."
         actions={
-          <Link
-            href="/admin/dashboard"
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
-          >
+          <Button href="/admin/dashboard" variant="secondary" size="sm">
             ← Dashboard
-          </Link>
+          </Button>
         }
       />
 
@@ -292,6 +291,6 @@ export default async function AdminStockPage() {
           </div>
         </>
       )}
-    </div>
+    </AdminPage>
   );
 }

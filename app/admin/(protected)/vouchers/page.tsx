@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
@@ -15,6 +14,8 @@ import {
   StatCard,
   EmptyState,
   Badge,
+  AdminPage,
+  Button,
 } from "@/components/admin/ui";
 
 export default async function AdminVouchersPage() {
@@ -61,17 +62,14 @@ export default async function AdminVouchersPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-5 md:py-10">
+    <AdminPage maxWidth="xl">
       <PageHeader
         title="Voucher"
         subtitle={`${vouchers.length} voucher total · kelola promo & loyalty reward`}
         actions={
-          <Link
-            href="/admin/vouchers/new"
-            className="inline-flex items-center gap-1.5 rounded-full bg-natalo-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-natalo-700 md:text-sm"
-          >
+          <Button href="/admin/vouchers/new" size="sm">
             + Buat voucher
-          </Link>
+          </Button>
         }
       />
 
@@ -213,39 +211,33 @@ export default async function AdminVouchersPage() {
 
                   <div className="flex flex-wrap items-center gap-2">
                     {/* Edit */}
-                    <Link
+                    <Button
                       href={`/admin/vouchers/${v.id}/edit`}
-                      className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-700 hover:border-zinc-400 hover:bg-zinc-50"
+                      variant="secondary"
+                      size="md"
                     >
                       ✏️ Edit
-                    </Link>
+                    </Button>
 
                     {/* Toggle aktif/nonaktif */}
                     <form action={toggleVoucher}>
                       <input type="hidden" name="id" value={v.id} />
                       <input type="hidden" name="isActive" value={String(v.isActive)} />
-                      <button
-                        type="submit"
-                        className={`rounded-full border px-3 py-1.5 text-xs font-bold ${
-                          v.isActive
-                            ? "border-amber-200 text-amber-700 hover:bg-amber-50"
-                            : "border-green-200 text-green-700 hover:bg-green-50"
-                        }`}
-                      >
+                      <Button type="submit" variant="secondary" size="md">
                         {v.isActive ? "Nonaktifkan" : "Aktifkan"}
-                      </button>
+                      </Button>
                     </form>
 
                     {/* Hapus dengan konfirmasi */}
                     {isLoyaltyClaimVoucher(v) ? (
-                      <span className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-400">
+                      <span className="inline-flex min-h-11 items-center rounded-full border border-zinc-200 px-4 text-xs font-bold text-zinc-500">
                         Klaim user
                       </span>
                     ) : (
                       <form action={deleteVoucher}>
                         <input type="hidden" name="id" value={v.id} />
                         <ConfirmSubmitButton
-                          className="rounded-full border border-red-100 px-3 py-1.5 text-xs font-bold text-red-500 hover:bg-red-50"
+                          className="inline-flex min-h-11 items-center justify-center rounded-full border border-red-200 bg-white px-5 text-sm font-bold text-red-600 transition hover:border-red-300 hover:bg-red-50"
                           message={
                             v.usedCount > 0
                               ? `⚠️ Voucher "${v.code}" sudah dipakai ${v.usedCount} kali. Order yang sudah pakai voucher ini tidak terpengaruh, tapi voucher akan hilang dari daftar. Lanjutkan hapus?`
@@ -263,6 +255,6 @@ export default async function AdminVouchersPage() {
           </div>
         )}
       </div>
-    </div>
+    </AdminPage>
   );
 }
