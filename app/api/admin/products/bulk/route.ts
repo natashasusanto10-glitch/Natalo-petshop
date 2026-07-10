@@ -177,10 +177,19 @@ export async function POST(request: NextRequest) {
   // di-hard-delete (bukan yang diarsipkan). Bukan wajib untuk kebenaran —
   // cron GC (Task 9) tetap menyapu video orphan kalau ini gagal, jadi tidak
   // boleh menggagalkan/menunda delete produk di bawah.
-  const withVideo = await prisma.product.findMany({
-    where: { id: { in: toDelete }, videoGuid: { not: null } },
-    select: { videoGuid: true },
-  });
+  // Dibungkus try/catch: kalau lookup ini gagal (mis. DB transient error),
+  // fallback ke [] supaya video cleanup TIDAK PERNAH memblokir hard-delete
+  // produk di bawah — cron GC tetap jadi backstop untuk video orphan.
+  let withVideo: { videoGuid: string | null }[] = [];
+  try {
+    withVideo = await prisma.product.findMany({
+      where: { id: { in: toDelete }, videoGuid: { not: null } },
+      select: { videoGuid: true },
+    });
+  } catch (err) {
+    console.error("[bulk-delete] lookup videoGuid gagal:", err);
+    withVideo = [];
+  }
   await Promise.allSettled(
     withVideo.map((p) => (p.videoGuid ? deleteProductVideo(p.videoGuid) : Promise.resolve())),
   );

@@ -58,22 +58,11 @@ export async function POST(
     return NextResponse.json({ error: "Produk tidak ditemukan" }, { status: 404 });
   }
 
-  // Ganti video: bersihkan yang lama dulu (best-effort) supaya tidak orphan.
-  if (product.videoGuid) {
-    await deleteProductVideo(product.videoGuid);
-    // Null stale fields immediately so a later create/TUS failure leaves the
-    // product in a safe "no video" state instead of a broken "ready" one.
-    await prisma.product.update({
-      where: { id: product.id },
-      data: {
-        videoGuid: null,
-        videoStatus: null,
-        videoUrl: null,
-        videoThumbnailUrl: null,
-        videoDurationSec: null,
-      },
-    });
-  }
+  // Ganti video: create-before-delete. Provision video BARU dulu, baru
+  // repoint DB, baru bersihkan video LAMA (best-effort). Kalau create atau
+  // TUS gagal (transient), video lama yang masih berfungsi tidak ikut hilang —
+  // DB tidak disentuh sampai video baru benar-benar siap dipakai.
+  const oldGuid = product.videoGuid;
 
   const created = await createProductVideo({ title: `product-${product.id}` });
   if (!created || "error" in created) {
@@ -84,6 +73,7 @@ export async function POST(
   }
   const tus = await generateProductTusCredentials(created.guid);
   if (!tus) {
+    // Bersihkan HANYA video baru yang gagal di-provision; video lama tetap utuh.
     await deleteProductVideo(created.guid);
     return NextResponse.json(
       { error: "Gagal menyiapkan kredensial upload." },
@@ -101,6 +91,12 @@ export async function POST(
       videoThumbnailUrl: null,
     },
   });
+
+  // DB sudah repoint ke video baru — video lama kini tidak lagi direferensikan,
+  // aman dihapus (best-effort; cron GC jadi backstop kalau ini gagal).
+  if (oldGuid && oldGuid !== created.guid) {
+    await deleteProductVideo(oldGuid);
+  }
 
   return NextResponse.json({ videoGuid: created.guid, tus });
 }
@@ -120,13 +116,19 @@ export async function PATCH(
   const duration = parseDuration(body);
   const product = await prisma.product.findUnique({
     where: { id },
-    select: { id: true, videoGuid: true },
+    select: { id: true, videoGuid: true, videoStatus: true },
   });
   if (!product?.videoGuid) {
     return NextResponse.json(
       { error: "Belum ada video untuk produk ini." },
       { status: 404 },
     );
+  }
+  // Settled-guard: kalau webhook Bunny (FINISHED/failed) sudah lebih dulu
+  // mendarat sebelum PATCH ini, jangan downgrade videoStatus balik ke
+  // "processing" — produk bisa stuck tersembunyi walau videonya sudah siap.
+  if (product.videoStatus === "ready" || product.videoStatus === "failed") {
+    return NextResponse.json({ ok: true, skipped: "already-settled" });
   }
   await prisma.product.update({
     where: { id: product.id },
