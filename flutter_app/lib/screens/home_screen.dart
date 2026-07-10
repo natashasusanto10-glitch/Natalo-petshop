@@ -682,11 +682,23 @@ class _HomeScreenState extends State<HomeScreen> {
                         // API banner carousel kalau ada banner aktif dari admin.
                         // Section auto-hide kalau _banners kosong (di _HeroBanner).
                         SliverToBoxAdapter(
-                          child: _HeroBanner(banners: _banners),
+                          // DEBUG(gap-probe): border MERAH = extent hero banner.
+                          child: Container(
+                            foregroundDecoration: BoxDecoration(
+                              border: Border.all(color: Colors.red, width: 3),
+                            ),
+                            child: _HeroBanner(banners: _banners),
+                          ),
                         ),
                         SliverToBoxAdapter(
-                          child: _ShortcutGrid(
-                            onOpenProducts: () => _openProducts(context),
+                          // DEBUG(gap-probe): border HIJAU = extent shortcut grid.
+                          child: Container(
+                            foregroundDecoration: BoxDecoration(
+                              border: Border.all(color: Colors.green, width: 3),
+                            ),
+                            child: _ShortcutGrid(
+                              onOpenProducts: () => _openProducts(context),
+                            ),
                           ),
                         ),
                         // Flash sale section — sembunyikan kalau tidak ada produk
@@ -694,17 +706,24 @@ class _HomeScreenState extends State<HomeScreen> {
                         // truth = Capacitor admin (admin set hasDiscount=true).
                         if (flashSaleVisible.isNotEmpty)
                           SliverToBoxAdapter(
-                            child: _FlashSaleGrid(
-                              products: flashSaleVisible,
-                              onTap: (product) =>
-                                  _openProductDetail(context, product),
-                              onSeeAll: () => _openProducts(context),
-                              onCountdownExpired: () {
-                                // Refresh products supaya item yang expired
-                                // hilang dari grid. Backend juga filter
-                                // server-side, jadi list akan auto-cleanup.
-                                _refreshAll();
-                              },
+                            // DEBUG(gap-probe): border BIRU = extent pita Flash Sale.
+                            child: Container(
+                              foregroundDecoration: BoxDecoration(
+                                border:
+                                    Border.all(color: Colors.blue, width: 3),
+                              ),
+                              child: _FlashSaleGrid(
+                                products: flashSaleVisible,
+                                onTap: (product) =>
+                                    _openProductDetail(context, product),
+                                onSeeAll: () => _openProducts(context),
+                                onCountdownExpired: () {
+                                  // Refresh products supaya item yang expired
+                                  // hilang dari grid. Backend juga filter
+                                  // server-side, jadi list akan auto-cleanup.
+                                  _refreshAll();
+                                },
+                              ),
                             ),
                           ),
                         // Produk Terlaris — sembunyikan kalau API belum return data.
