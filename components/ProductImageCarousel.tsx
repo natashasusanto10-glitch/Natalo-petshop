@@ -183,6 +183,7 @@ export function ProductImageCarousel({ images, alt, transitionName, video }: Pro
                   <video
                     ref={videoElRef}
                     src={video.mp4Url}
+                    poster={video.thumbnailUrl}
                     playsInline
                     preload="none"
                     controls={videoPlaying}
