@@ -386,14 +386,9 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
   VideoPlayerController? _controller;
   RangeValues _range = RangeValues(0, _maxFeedVideoSeconds.toDouble());
   bool _loading = true;
-  bool _exporting = false;
   bool _playing = false;
   String? _error;
   Timer? _playbackGuard;
-  // Job kompresi milik layar ini — dipakai untuk cancel ber-scope di
-  // dispose (JANGAN cancelCompression global: bisa bunuh kompresi milik
-  // background upload store).
-  VideoCompressJob? _exportJob;
   // Extracted frames untuk timeline thumbnails — IG-style.
   // Diisi setelah video controller init, parallel sambil show fallback.
   List<Uint8List?> _frameThumbs = const [];
@@ -418,12 +413,6 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
   void dispose() {
     _playbackGuard?.cancel();
     _controller?.dispose();
-    final job = _exportJob;
-    if (job != null) {
-      // Scoped cancel — hanya job milik layar ini. Kalau job sudah
-      // selesai, ini no-op.
-      unawaited(videoCompressGate.cancel(job));
-    }
     super.dispose();
   }
 
@@ -560,12 +549,10 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
     });
   }
 
-  Future<void> _exportTrim() async {
-    // `_error != null` sengaja TIDAK memblokir — saat error, tap Next =
-    // retry. setState di bawah meng-clear error lama.
-    if (_exporting) return;
-    final source = widget.draft.localVideoPath;
-    if (source == null) return;
+  /// Approach B: Next instan — TIDAK mengkompres di layar ini. Rentang
+  /// pilihan disimpan ke draft (trimStart + trimmedDuration); kompresi
+  /// terjadi SEKALI di FeedUploadStore saat upload dimulai.
+  Future<void> _confirmSelection() async {
     final selectedSeconds = (_range.end - _range.start).round();
     if (selectedSeconds < _minFeedVideoSeconds ||
         selectedSeconds > _maxFeedVideoSeconds) {
@@ -574,97 +561,25 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
       });
       return;
     }
-
     AppHaptics.tap();
     await _controller?.pause();
-    setState(() {
-      _exporting = true;
-      _error = null;
-    });
-
-    try {
-      // 720p compression — match IG upload spec + cocok untuk mobile feed
-      // viewport (<6" screen). Bunny Stream tetap re-encode multi-variant
-      // (240p/360p/480p/720p) untuk adaptive streaming. Dropped dari 1080p
-      // karena 60s video di 1080p = ~50-60MB (sering gagal di koneksi
-      // mobile / saat user matikan layar mid-upload), sedangkan 720p =
-      // ~18-22MB (3× lebih cepat upload, success rate jauh lebih tinggi).
-      final job = VideoCompressJob();
-      _exportJob = job;
-      final info = await videoCompressGate.compress(
-        source,
-        quality: VideoQuality.Res1280x720Quality,
-        includeAudio: true,
-        startTime: _range.start.floor(),
-        duration: selectedSeconds,
-        job: job,
-      );
-      // Dibatalkan via back/dispose → layar sudah/akan ditutup, jangan
-      // lempar error palsu.
-      if (job.cancelled || !mounted) return;
-      final file = info?.file;
-      if (file == null || !await file.exists()) {
-        throw const _FeedVideoFlowException(
-          'Video belum berhasil diproses. Coba lagi.',
-        );
-      }
-      final outputPath = file.path;
-      final thumbPath = await _generateVideoThumbnail(outputPath, timeMs: 500);
-      final nextDraft = widget.draft.copyWith(
-        trimmedVideoPath: outputPath,
-        thumbnailPath: thumbPath ?? widget.draft.thumbnailPath,
-        trimmedDuration: Duration(seconds: selectedSeconds),
-        fileSizeBytes: await file.length(),
-      );
-      if (!mounted) return;
-      setState(() => _exporting = false);
-      if (widget.returnResultOnNext) {
-        Navigator.pop(context, nextDraft);
-        return;
-      }
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => FeedNewPostScreen(
-            draft: NewPostMediaDraft.video(nextDraft),
-          ),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _exporting = false;
-        _error = error is _FeedVideoFlowException
-            ? error.message
-            : 'Video belum berhasil diproses. Coba lagi.';
-      });
-      AppHaptics.warning();
+    if (!mounted) return;
+    final nextDraft = widget.draft.copyWith(
+      trimStart: Duration(milliseconds: (_range.start * 1000).round()),
+      trimmedDuration: Duration(seconds: selectedSeconds),
+    );
+    if (widget.returnResultOnNext) {
+      Navigator.pop(context, nextDraft);
+      return;
     }
-  }
-
-  /// Konfirmasi keluar saat kompresi jalan. Pola sama dengan
-  /// `_confirmExit` di FeedUploadProgressScreen.
-  Future<bool> _confirmCancelExport() async {
-    final leave = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Batalkan proses video?'),
-        content: const Text(
-          'Video sedang diproses. Jika keluar sekarang, kamu perlu memproses ulang dari awal.',
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FeedNewPostScreen(
+          draft: NewPostMediaDraft.video(nextDraft),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Lanjutkan'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Keluar'),
-          ),
-        ],
       ),
     );
-    return leave == true;
   }
 
   @override
@@ -673,90 +588,67 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
     final selectedDuration = Duration(
       milliseconds: ((_range.end - _range.start) * 1000).round(),
     );
-    return PopScope(
-      // Saat tidak exporting, back bebas seperti biasa. Saat exporting,
-      // intercept → konfirmasi (cancel bersih terjadi di dispose via
-      // gate scoped-cancel).
-      canPop: !_exporting,
-      onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
-        final leave = await _confirmCancelExport();
-        // Kompresi bisa selesai (dan navigasi maju) selagi dialog
-        // terbuka — kalau export sudah tidak jalan, jangan pop route
-        // yang sudah basi.
-        if (leave && context.mounted && _exporting) {
-          Navigator.pop(context);
-        }
-      },
-      child: _DarkUploadScaffold(
-        title: 'Edit Video',
-        leading: Icons.arrow_back_rounded,
-        onLeading: () => Navigator.maybePop(context),
-        trailing: _RoundNextButton(
-          busy: _exporting,
-          // Saat _error terisi tombol TETAP aktif — tap = retry (dulu
-          // disabled → dead-end: pesan "Coba lagi" tanpa cara retry).
-          onTap: _loading || _exporting ? null : _exportTrim,
-        ),
-        child: Column(
-          children: [
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  _VideoPreviewStage(
-                    controller: _controller,
-                    thumbnailPath: widget.draft.thumbnailPath,
-                    loading: _loading,
-                    // IG-style: video auto-loop terus, tidak ada tap-to-toggle
-                    // play/pause. `playing` cuma untuk visual indicator
-                    // (kalau perlu).
-                    playing: _playing,
-                    onTap: null,
-                    timeText:
-                        '${_formatDuration(Duration(milliseconds: (_range.start * 1000).round()))} / ${_formatDuration(_duration)}',
+    return _DarkUploadScaffold(
+      title: 'Edit Video',
+      leading: Icons.arrow_back_rounded,
+      onLeading: () => Navigator.pop(context),
+      trailing: _RoundNextButton(
+        // Saat _error terisi tombol TETAP aktif — tap = retry (dulu
+        // disabled → dead-end: pesan "Coba lagi" tanpa cara retry).
+        onTap: _loading ? null : _confirmSelection,
+      ),
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                _VideoPreviewStage(
+                  controller: _controller,
+                  thumbnailPath: widget.draft.thumbnailPath,
+                  loading: _loading,
+                  // IG-style: video auto-loop terus, tidak ada tap-to-toggle
+                  // play/pause. `playing` cuma untuk visual indicator
+                  // (kalau perlu).
+                  playing: _playing,
+                  onTap: null,
+                  timeText:
+                      '${_formatDuration(Duration(milliseconds: (_range.start * 1000).round()))} / ${_formatDuration(_duration)}',
+                ),
+                const SizedBox(height: 14),
+                _InfoPanel(
+                  title: 'Durasi yang dipilih',
+                  value:
+                      '${_formatDuration(selectedDuration)}  •  Maksimal 60 detik',
+                ),
+                const SizedBox(height: 16),
+                _TrimTimeline(
+                  frameThumbs: _frameThumbs,
+                  fallbackThumbnailPath: widget.draft.thumbnailPath,
+                  range: _range,
+                  totalSeconds: totalSeconds,
+                  onChanged: (values, {required bool dragging}) =>
+                      _updateRange(values, dragging: dragging),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Geser pegangan untuk memangkas video',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _feedUploadMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
                   ),
+                ),
+                const SizedBox(height: 14),
+                if (_error != null) ...[
                   const SizedBox(height: 14),
-                  _InfoPanel(
-                    title: 'Durasi yang dipilih',
-                    value:
-                        '${_formatDuration(selectedDuration)}  •  Maksimal 60 detik',
-                  ),
-                  const SizedBox(height: 16),
-                  _TrimTimeline(
-                    frameThumbs: _frameThumbs,
-                    fallbackThumbnailPath: widget.draft.thumbnailPath,
-                    range: _range,
-                    totalSeconds: totalSeconds,
-                    onChanged: _exporting
-                        ? null
-                        : (values, {required bool dragging}) =>
-                            _updateRange(values, dragging: dragging),
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Geser pegangan untuk memangkas video',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: _feedUploadMuted,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  if (_exporting) ...[
-                    const SizedBox(height: 18),
-                    const _ProcessingPanel(),
-                  ],
-                  if (_error != null) ...[
-                    const SizedBox(height: 14),
-                    _DarkErrorBox(message: _error!),
-                  ],
+                  _DarkErrorBox(message: _error!),
                 ],
-              ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -2372,41 +2264,6 @@ class _ReviewEstimateCard extends StatelessWidget {
   }
 }
 
-class _ProcessingPanel extends StatelessWidget {
-  const _ProcessingPanel();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _feedUploadBlue.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _feedUploadBlue.withValues(alpha: 0.35)),
-      ),
-      child: const Row(
-        children: [
-          SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-          SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Sedang memproses video...',
-              style: TextStyle(
-                color: _feedUploadText,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _PrimaryUploadButton extends StatelessWidget {
   final String label;
   final IconData icon;
@@ -2489,10 +2346,9 @@ class _SecondaryUploadButton extends StatelessWidget {
 }
 
 class _RoundNextButton extends StatelessWidget {
-  final bool busy;
   final VoidCallback? onTap;
 
-  const _RoundNextButton({required this.busy, required this.onTap});
+  const _RoundNextButton({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -2506,15 +2362,7 @@ class _RoundNextButton extends StatelessWidget {
           color: onTap == null ? const Color(0xFF293244) : _feedUploadBlue,
           shape: BoxShape.circle,
         ),
-        child: busy
-            ? const Padding(
-                padding: EdgeInsets.all(12),
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            : const Icon(Icons.arrow_forward_rounded, color: Colors.white),
+        child: const Icon(Icons.arrow_forward_rounded, color: Colors.white),
       ),
     );
   }
