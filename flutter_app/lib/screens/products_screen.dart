@@ -85,8 +85,7 @@ class ProductsScreen extends StatefulWidget {
   State<ProductsScreen> createState() => _ProductsScreenState();
 }
 
-class _ProductsScreenState extends State<ProductsScreen>
-    with TickerProviderStateMixin {
+class _ProductsScreenState extends State<ProductsScreen> {
   static const _historyKey = 'natalo_search_history';
 
   final _searchController = TextEditingController();
@@ -1077,22 +1076,14 @@ class _ProductsScreenState extends State<ProductsScreen>
                     // glitchy di mockup: konten lompat + buka-tutup beruntun.
                     SliverPersistentHeader(
                       pinned: true,
-                      floating: true,
                       // Engine collapsing BERSAMA (sama dengan Beranda) —
-                      // lihat CollapsingHeaderDelegate. Catatan framework:
-                      // duration snap di-latch controller internal saat snap
-                      // pertama — toggle reduce-motion mid-session baru efektif
-                      // setelah halaman dibangun ulang (fresh start benar).
+                      // PINNED (floating dibuang atas keputusan user): header
+                      // mengecil lalu diam terkunci, mengembang penuh lagi
+                      // hanya saat scroll balik ke atas. Lihat
+                      // CollapsingHeaderDelegate.
                       delegate: CollapsingHeaderDelegate(
                         minHeight: _CatalogHeader.collapsedExtent,
                         maxHeight: _CatalogHeader.expandedExtent,
-                        vsync: this,
-                        // Aspect-scoped (maybeDisableAnimationsOf) — BUKAN
-                        // maybeOf yang mendaftarkan dependensi ke SEMUA
-                        // perubahan MediaQuery (viewInsets keyboard per-frame).
-                        reduceMotion:
-                            MediaQuery.maybeDisableAnimationsOf(context) ??
-                                false,
                         builder: (context, t) => _CatalogHeader(
                           progress: t,
                           controller: _searchController,

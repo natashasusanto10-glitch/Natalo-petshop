@@ -72,7 +72,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> {
   late final Future<ProductResult> _productsFuture;
   // ── Infinite scroll "Jelajahi Produk Natalo" — match PWA HomeExploreProducts ──
   final ScrollController _scrollController = ScrollController();
@@ -645,28 +645,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       controller: _scrollController,
                       physics: const AlwaysScrollableScrollPhysics(),
                       slivers: [
-                        // Header collapsing 1:1 (pinned+floating) — extent
-                        // 164 (expanded) → 66 (collapsed). Lipatan digerakkan
-                        // shrinkOffset native mengikuti jari; header kembali
-                        // saat scroll naik mid-list; snap saat gesture selesai.
-                        // Engine SAMA dengan halaman Produk (delegate bersama).
+                        // Header collapsing 1:1 PINNED — extent 164
+                        // (expanded) → 66 (collapsed). Lipatan digerakkan
+                        // shrinkOffset native mengikuti jari; setelah mengecil
+                        // DIAM terkunci, mengembang penuh lagi hanya saat
+                        // scroll balik ke atas (BUKAN mid-list). Floating
+                        // dibuang atas keputusan user (reveal terlalu gampang
+                        // + fling jump). Engine SAMA dengan Produk (delegate
+                        // bersama).
                         SliverPersistentHeader(
                           pinned: true,
-                          floating: true,
                           delegate: CollapsingHeaderDelegate(
                             minHeight: _HomeHeader.collapsedExtent,
                             maxHeight: _HomeHeader.expandedExtent,
-                            vsync: this,
-                            reduceMotion:
-                                MediaQuery.maybeDisableAnimationsOf(context) ??
-                                    false,
-                            // Snap Beranda lebih halus + sedikit pelan dari
-                            // default Produk (280ms): 360ms easeOutQuart —
-                            // settle "memunculkan kembali" terasa lembut,
-                            // tidak meloncat (user request). Reveal 1:1 ikut
-                            // jari tak berubah.
-                            snapDuration: const Duration(milliseconds: 360),
-                            snapCurve: Curves.easeOutQuart,
                             builder: (context, t) => _HomeHeader(
                               progress: t,
                               onOpenProducts: () => _openProducts(context),
@@ -764,127 +755,131 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                           sliver: SliverMainAxisGroup(
                             slivers: [
-                        SliverToBoxAdapter(
-                          child: AnimatedBuilder(
-                            animation: recentlyViewedStore,
-                            builder: (context, _) {
-                              final recommendations = _personalizedRecs
-                                      .isNotEmpty
-                                  ? _personalizedRecs
-                                  : _buildPersonalizedRecommendations(products);
-                              if (recommendations.isEmpty) {
-                                return const SizedBox.shrink();
-                              }
-                              return _RecommendationGrid(
-                                products: recommendations,
-                                onTap: (product) =>
-                                    _openProductDetail(context, product),
-                              );
-                            },
-                          ),
-                        ),
-                        // ── "Jelajahi Produk Natalo" infinite scroll section ──
-                        // Match PWA app/page.tsx HomeExploreProducts — semua produk
-                        // diakhiri infinite scroll di sini.
-                        const SliverToBoxAdapter(
-                          child: _ExploreSectionHeader(),
-                        ),
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-                          // Grid 2-kolom AUTO-HEIGHT (bukan SliverGrid dengan
-                          // childAspectRatio tetap). Tiap baris = 1 Row berisi 2
-                          // kartu — tinggi BARIS ikut konten terpanjang. Sebelumnya
-                          // 0.54 dipaku → kartu dengan diskon + 2 badge (ongkir+
-                          // hemat, wrap 2 baris) + rating overflow ~8-9px.
-                          //
-                          // BUKAN CrossAxisAlignment.stretch (beda dari pola yang
-                          // sama di halaman Produk!): stretch di Row memaksa
-                          // Flutter hitung intrinsic-height _HomeProductCard.
-                          // Sesuatu di widget tree kartu ini tidak mendukung
-                          // perhitungan itu → layout exception. Di app ini,
-                          // FlutterError.onError (app_crashlytics.dart) di-override
-                          // TANPA memanggil FlutterError.presentError, jadi
-                          // exception layout itu tidak tercetak ke console SAMA
-                          // SEKALI — hasilnya Beranda blank total (bukan cuma grid
-                          // ini) tanpa jejak error apa pun. Ke-2 kartu di satu
-                          // baris kebetulan hampir selalu sama tinggi (struktur
-                          // konten seragam), jadi tanpa stretch pun rapi secara
-                          // visual — trade-off yang aman untuk menghindari crash
-                          // senyap ini.
-                          sliver: SliverList(
-                            delegate: SliverChildBuilderDelegate(
-                              (context, rowIndex) {
-                                // Saat first load belum ada produk + masih loading,
-                                // tampilkan skeleton — feels lebih native dari blank.
-                                final showingSkeleton =
-                                    _exploreProducts.isEmpty &&
-                                        !_exploreInitialLoaded;
-                                final itemCount = showingSkeleton
-                                    ? 6
-                                    : _exploreProducts.length;
-                                final leftIndex = rowIndex * 2;
-                                final rightIndex = leftIndex + 1;
-                                final rowCount = (itemCount + 1) ~/ 2;
-                                final isLastRow = rowIndex == rowCount - 1;
-
-                                Widget cell(int index) {
-                                  if (showingSkeleton) {
-                                    return const SkeletonProductCard(
-                                      showAddToCart: false,
-                                      squareImage: true,
+                              SliverToBoxAdapter(
+                                child: AnimatedBuilder(
+                                  animation: recentlyViewedStore,
+                                  builder: (context, _) {
+                                    final recommendations =
+                                        _personalizedRecs.isNotEmpty
+                                            ? _personalizedRecs
+                                            : _buildPersonalizedRecommendations(
+                                                products);
+                                    if (recommendations.isEmpty) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    return _RecommendationGrid(
+                                      products: recommendations,
+                                      onTap: (product) =>
+                                          _openProductDetail(context, product),
                                     );
-                                  }
-                                  final product = _exploreProducts[index];
-                                  return _HomeProductCard(
-                                    product: product,
-                                    squareImage: true,
-                                    onTap: () =>
-                                        _openProductDetail(context, product),
-                                  );
-                                }
+                                  },
+                                ),
+                              ),
+                              // ── "Jelajahi Produk Natalo" infinite scroll section ──
+                              // Match PWA app/page.tsx HomeExploreProducts — semua produk
+                              // diakhiri infinite scroll di sini.
+                              const SliverToBoxAdapter(
+                                child: _ExploreSectionHeader(),
+                              ),
+                              SliverPadding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(12, 12, 12, 16),
+                                // Grid 2-kolom AUTO-HEIGHT (bukan SliverGrid dengan
+                                // childAspectRatio tetap). Tiap baris = 1 Row berisi 2
+                                // kartu — tinggi BARIS ikut konten terpanjang. Sebelumnya
+                                // 0.54 dipaku → kartu dengan diskon + 2 badge (ongkir+
+                                // hemat, wrap 2 baris) + rating overflow ~8-9px.
+                                //
+                                // BUKAN CrossAxisAlignment.stretch (beda dari pola yang
+                                // sama di halaman Produk!): stretch di Row memaksa
+                                // Flutter hitung intrinsic-height _HomeProductCard.
+                                // Sesuatu di widget tree kartu ini tidak mendukung
+                                // perhitungan itu → layout exception. Di app ini,
+                                // FlutterError.onError (app_crashlytics.dart) di-override
+                                // TANPA memanggil FlutterError.presentError, jadi
+                                // exception layout itu tidak tercetak ke console SAMA
+                                // SEKALI — hasilnya Beranda blank total (bukan cuma grid
+                                // ini) tanpa jejak error apa pun. Ke-2 kartu di satu
+                                // baris kebetulan hampir selalu sama tinggi (struktur
+                                // konten seragam), jadi tanpa stretch pun rapi secara
+                                // visual — trade-off yang aman untuk menghindari crash
+                                // senyap ini.
+                                sliver: SliverList(
+                                  delegate: SliverChildBuilderDelegate(
+                                    (context, rowIndex) {
+                                      // Saat first load belum ada produk + masih loading,
+                                      // tampilkan skeleton — feels lebih native dari blank.
+                                      final showingSkeleton =
+                                          _exploreProducts.isEmpty &&
+                                              !_exploreInitialLoaded;
+                                      final itemCount = showingSkeleton
+                                          ? 6
+                                          : _exploreProducts.length;
+                                      final leftIndex = rowIndex * 2;
+                                      final rightIndex = leftIndex + 1;
+                                      final rowCount = (itemCount + 1) ~/ 2;
+                                      final isLastRow =
+                                          rowIndex == rowCount - 1;
 
-                                return Padding(
-                                  padding: EdgeInsets.only(
-                                    bottom: isLastRow ? 0 : 6,
+                                      Widget cell(int index) {
+                                        if (showingSkeleton) {
+                                          return const SkeletonProductCard(
+                                            showAddToCart: false,
+                                            squareImage: true,
+                                          );
+                                        }
+                                        final product = _exploreProducts[index];
+                                        return _HomeProductCard(
+                                          product: product,
+                                          squareImage: true,
+                                          onTap: () => _openProductDetail(
+                                              context, product),
+                                        );
+                                      }
+
+                                      return Padding(
+                                        padding: EdgeInsets.only(
+                                          bottom: isLastRow ? 0 : 6,
+                                        ),
+                                        child: Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Expanded(child: cell(leftIndex)),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: rightIndex < itemCount
+                                                  ? cell(rightIndex)
+                                                  // Jumlah ganjil — slot kanan kosong,
+                                                  // kartu kiri tetap selebar 1 kolom.
+                                                  : const SizedBox.shrink(),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                    childCount: (() {
+                                      final showingSkeleton =
+                                          _exploreProducts.isEmpty &&
+                                              !_exploreInitialLoaded;
+                                      final itemCount = showingSkeleton
+                                          ? 6
+                                          : _exploreProducts.length;
+                                      return (itemCount + 1) ~/ 2;
+                                    })(),
                                   ),
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(child: cell(leftIndex)),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: rightIndex < itemCount
-                                            ? cell(rightIndex)
-                                            // Jumlah ganjil — slot kanan kosong,
-                                            // kartu kiri tetap selebar 1 kolom.
-                                            : const SizedBox.shrink(),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                              childCount: (() {
-                                final showingSkeleton =
-                                    _exploreProducts.isEmpty &&
-                                        !_exploreInitialLoaded;
-                                final itemCount = showingSkeleton
-                                    ? 6
-                                    : _exploreProducts.length;
-                                return (itemCount + 1) ~/ 2;
-                              })(),
-                            ),
-                          ),
-                        ),
-                        SliverToBoxAdapter(
-                          child: _ExploreFooter(
-                            loading: _exploreLoading,
-                            hasMore: _exploreHasMore,
-                            initialLoaded: _exploreInitialLoaded,
-                            productsCount: _exploreProducts.length,
-                          ),
-                        ),
-                        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                                ),
+                              ),
+                              SliverToBoxAdapter(
+                                child: _ExploreFooter(
+                                  loading: _exploreLoading,
+                                  hasMore: _exploreHasMore,
+                                  initialLoaded: _exploreInitialLoaded,
+                                  productsCount: _exploreProducts.length,
+                                ),
+                              ),
+                              const SliverToBoxAdapter(
+                                  child: SizedBox(height: 24)),
                             ],
                           ),
                         ),

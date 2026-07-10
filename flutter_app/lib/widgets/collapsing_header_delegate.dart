@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show FloatingHeaderSnapConfiguration;
 
-/// Delegate collapsing header BERSAMA (Beranda + Produk) — pinned + floating,
-/// lipatan digerakkan `shrinkOffset` NATIVE 1:1 dengan jari.
+/// Delegate collapsing header BERSAMA (Beranda + Produk) — PINNED, lipatan
+/// digerakkan `shrinkOffset` NATIVE 1:1 dengan jari.
 ///
 /// Kenapa mesin ini (bukan toggle biner / AnimationController yang jalan
 /// sendiri): protokol sliver menjaga `scrollExtent` KONSTAN (= [maxHeight]),
 /// jadi tinggi header menyusut/mengembang persis mengikuti jari tanpa pernah
-/// menggeser (lompat) konten di bawahnya. `floating: true` → header kembali
-/// saat scroll naik di TENGAH daftar sebagai reveal overlay (konten tidak
-/// tergeser). [FloatingHeaderSnapConfiguration] hanya merapikan header ke
-/// buka/tutup penuh saat gesture SELESAI (framework menunggu ScrollEnd), jadi
-/// snap tidak pernah melawan jari yang masih menempel.
+/// menggeser (lompat) konten di bawahnya.
+///
+/// PINNED-ONLY (bukan floating): header mengecil saat scroll turun lalu DIAM
+/// terkunci di [minHeight]; ia mengembang penuh lagi HANYA saat scroll balik
+/// mendekati ATAS (shrinkOffset mengecil), BUKAN saat scroll naik di tengah
+/// daftar. Keputusan user: floating ("kembali mid-list") dibuang karena efek
+/// sampingnya — reveal terlalu gampang pada scroll kecil + fling terasa jump —
+/// tidak sepadan. Konsekuensinya tidak perlu vsync/snap/reduce-motion sama
+/// sekali: collapse 1:1 adalah direct manipulation dari scroll, bukan animasi.
 ///
 /// SYARAT WAJIB pemakai: tinggi konten header harus LINEAR terhadap progress
 /// t, dan `builder(t=0)` = [maxHeight], `builder(t=1)` = [minHeight]. Kalau
@@ -25,52 +28,21 @@ class CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
   /// Tinggi expanded (t=0) = [maxExtent].
   final double maxHeight;
 
-  final TickerProvider _vsync;
-
-  /// Reduce motion ("Remove animations" Android / "Reduce Motion" iOS): snap
-  /// jadi instan (Duration.zero). Reveal 1:1-nya SENDIRI tetap jalan — itu
-  /// direct manipulation dari jari user, bukan animasi yang bergerak sendiri.
-  final bool reduceMotion;
-
   /// Bangun isi header dari progress collapse [t] (0 expanded → 1 collapsed,
   /// sudah di-clamp). t diturunkan dari `shrinkOffset / (maxHeight-minHeight)`.
   final Widget Function(BuildContext context, double t) builder;
 
-  /// Durasi + kurva snap "settle" saat gesture selesai (BUKAN reveal 1:1 yang
-  /// mengikuti jari — itu tak terpengaruh). Bisa beda per-halaman: Beranda
-  /// dibuat lebih pelan/halus atas permintaan user. Default = 280ms
-  /// easeOutCubic (dipakai Produk).
-  final Duration snapDuration;
-  final Curve snapCurve;
-
   const CollapsingHeaderDelegate({
     required this.minHeight,
     required this.maxHeight,
-    required TickerProvider vsync,
-    required this.reduceMotion,
     required this.builder,
-    this.snapDuration = const Duration(milliseconds: 280),
-    this.snapCurve = Curves.easeOutCubic,
-  }) : _vsync = vsync;
+  });
 
   @override
   double get minExtent => minHeight;
 
   @override
   double get maxExtent => maxHeight;
-
-  @override
-  TickerProvider get vsync => _vsync;
-
-  @override
-  FloatingHeaderSnapConfiguration get snapConfiguration =>
-      FloatingHeaderSnapConfiguration(
-        // Snap settle saat jari lepas — halus, tidak "meloncat". Durasi/kurva
-        // dari [snapDuration]/[snapCurve] (per-halaman). Reveal 1:1-nya
-        // sendiri tetap mengikuti jari (tak terpengaruh ini).
-        curve: snapCurve,
-        duration: reduceMotion ? Duration.zero : snapDuration,
-      );
 
   @override
   Widget build(
@@ -91,13 +63,9 @@ class CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
     // — badge cart, count, query, dsb), jadi kita selalu rebuild saat parent
     // rebuild. Lipatan per-frame TIDAK lewat sini (itu relayout dari
     // shrinkOffset), jadi ini hanya menyala saat state halaman berubah —
-    // frekuensinya rendah. minHeight/maxHeight/reduceMotion ikut dibandingkan
-    // supaya perubahan geometri (mis. reduce-motion toggle) pasti terpasang.
+    // frekuensinya rendah.
     return oldDelegate.minHeight != minHeight ||
         oldDelegate.maxHeight != maxHeight ||
-        oldDelegate.reduceMotion != reduceMotion ||
-        oldDelegate.snapDuration != snapDuration ||
-        oldDelegate.snapCurve != snapCurve ||
         true;
   }
 }
