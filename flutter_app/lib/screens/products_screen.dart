@@ -1162,23 +1162,46 @@ class _ProductsScreenState extends State<ProductsScreen> {
                         ),
                       )
                     else if (_loading && products.isEmpty)
-                      SliverPadding(
-                        padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding),
-                        sliver: SliverGrid(
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            mainAxisSpacing: 12,
-                            crossAxisSpacing: 12,
-                            childAspectRatio: 0.58,
-                          ),
+                      DecoratedSliver(
+                        decoration: BoxDecoration(
+                          color: _catalogGridSurfaceTint(context),
+                        ),
+                        sliver: SliverPadding(
+                        padding: EdgeInsets.fromLTRB(12, 12, 12, bottomPadding),
+                        // Skeleton pakai grid AUTO-HEIGHT row-based (sama dengan
+                        // grid asli & Beranda Fase 1) — BUKAN SliverGrid aspect
+                        // tetap: kartu foto persegi 1:1 tingginya ikut lebar,
+                        // jadi childAspectRatio tetap overflow di layar sempit
+                        // (mis. 360dp). Row auto-height kebal lebar layar.
+                        sliver: SliverList(
                           delegate: SliverChildBuilderDelegate(
-                            (context, index) => const SkeletonProductCard(
-                              showAddToCart: false,
+                            (context, rowIndex) => Padding(
+                              padding: EdgeInsets.only(
+                                bottom: rowIndex == 3 ? 0 : 6,
+                              ),
+                              child: const Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: SkeletonProductCard(
+                                      showAddToCart: false,
+                                      squareImage: true,
+                                    ),
+                                  ),
+                                  SizedBox(width: 6),
+                                  Expanded(
+                                    child: SkeletonProductCard(
+                                      showAddToCart: false,
+                                      squareImage: true,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                            childCount: 8,
+                            childCount: 4,
                           ),
                         ),
+                      ),
                       )
                     else if (products.isEmpty)
                       SliverFillRemaining(
@@ -1194,8 +1217,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
                         ),
                       )
                     else
-                      SliverPadding(
-                        padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding),
+                      DecoratedSliver(
+                        decoration: BoxDecoration(
+                          color: _catalogGridSurfaceTint(context),
+                        ),
+                        sliver: SliverPadding(
+                        padding: EdgeInsets.fromLTRB(12, 12, 12, bottomPadding),
                         // Grid 2-kolom auto-height (bukan SliverGrid dengan
                         // childAspectRatio tetap). Tiap baris = 1 Row berisi 2
                         // kartu; tinggi BARIS ikut konten terpanjang di baris itu —
@@ -1220,7 +1247,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                               final isLastRow = rowIndex == rowCount - 1;
                               return Padding(
                                 padding:
-                                    EdgeInsets.only(bottom: isLastRow ? 0 : 12),
+                                    EdgeInsets.only(bottom: isLastRow ? 0 : 6),
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -1230,7 +1257,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                         onTap: () => _openProduct(left),
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+                                    const SizedBox(width: 6),
                                     Expanded(
                                       child: hasRight
                                           ? _ProductsPageProductCard(
@@ -1250,6 +1277,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                             childCount: (products.length + 1) ~/ 2,
                           ),
                         ),
+                      ),
                       ),
                     if (_loadingMore)
                       const SliverToBoxAdapter(
@@ -2282,6 +2310,16 @@ class ProductFilterChip extends StatelessWidget {
   }
 }
 
+/// Latar abu muda di belakang grid Katalog (sama dengan Beranda Fase 1) —
+/// kartu putih menonjol di atas kanal abu. Dark mode: surface sedikit lebih
+/// rendah supaya kartu tetap terpisah.
+Color _catalogGridSurfaceTint(BuildContext context) {
+  final cs = Theme.of(context).colorScheme;
+  return Theme.of(context).brightness == Brightness.dark
+      ? cs.surfaceContainerLow
+      : const Color(0xFFEEF1F5);
+}
+
 class _ProductsPageProductCard extends StatelessWidget {
   final Product product;
   final VoidCallback onTap;
@@ -2298,14 +2336,13 @@ class _ProductsPageProductCard extends StatelessWidget {
 
     return Material(
       color: cs.surface,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(8),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(color: cs.outlineVariant),
             boxShadow: const [
               BoxShadow(
@@ -2318,6 +2355,8 @@ class _ProductsPageProductCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Foto 1:1 full-bleed (nempel tepi atas kartu), konten di
+              // bawahnya dapat padding sendiri — sama dengan grid Beranda.
               Stack(
                 children: [
                   _ProductGridImage(imageUrl: product.imageUrl),
@@ -2343,22 +2382,34 @@ class _ProductsPageProductCard extends StatelessWidget {
                     ),
                 ],
               ),
-              const SizedBox(height: 10),
-              Text(
-                product.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.25,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Tinggi nama dipaku 34 (2 baris) — sama Beranda Fase 1 —
+                    // supaya baris harga antar-kartu sebaris tetap sejajar.
+                    SizedBox(
+                      height: 34,
+                      child: Text(
+                        product.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.25,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _ProductPriceRow(product: product),
+                    _ProductSavingBadge(product: product),
+                    _ProductRatingSoldRow(product: product),
+                  ],
                 ),
               ),
-              const SizedBox(height: 8),
-              _ProductPriceRow(product: product),
-              _ProductSavingBadge(product: product),
-              _ProductRatingSoldRow(product: product),
             ],
           ),
         ),
@@ -2375,18 +2426,21 @@ class _ProductGridImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasImage = imageUrl.trim().isNotEmpty;
-    if (!hasImage) return const _ProductImagePlaceholder();
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: CachedNetworkImage(
-        imageUrl: imageUrl,
-        height: 132,
-        width: double.infinity,
-        fit: BoxFit.contain,
-        placeholder: (_, __) => const _ProductImagePlaceholder(),
-        errorWidget: (_, __, ___) => const _ProductImagePlaceholder(),
-      ),
+    // Foto persegi 1:1 full-bleed (BoxFit.cover), ala Shopee — sama dengan
+    // grid Beranda (Fase 1). Gambar Natalo dibuat 1:1 spec Shopee jadi cover
+    // mengisi penuh tanpa memotong apa pun.
+    return AspectRatio(
+      aspectRatio: 1,
+      child: hasImage
+          ? CachedNetworkImage(
+              imageUrl: imageUrl,
+              width: double.infinity,
+              height: double.infinity,
+              fit: BoxFit.cover,
+              placeholder: (_, __) => const _ProductImagePlaceholder(),
+              errorWidget: (_, __, ___) => const _ProductImagePlaceholder(),
+            )
+          : const _ProductImagePlaceholder(),
     );
   }
 }
@@ -2397,12 +2451,13 @@ class _ProductImagePlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      height: 132,
-      width: double.infinity,
+    // Mengisi kotak 1:1 (dipakai di dalam AspectRatio full-bleed) — bukan
+    // tinggi tetap. Selaras placeholder square Beranda.
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(14),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? cs.surfaceContainerHighest
+            : const Color(0xFFF3F7FF),
       ),
       child: Center(
         child: Icon(
