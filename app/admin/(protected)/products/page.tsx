@@ -7,6 +7,12 @@ import { InlineEditCell } from "@/components/admin/InlineEditCell";
 import { VariantInlineEditCell } from "@/components/admin/VariantInlineEditCell";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { PageHeader, EmptyState } from "@/components/admin/ui";
+import {
+  ProductSelectionProvider,
+  ProductSelectAll,
+  ProductRowCheckbox,
+  ProductBulkBar,
+} from "@/components/admin/ProductBulkSelect";
 
 const PAGE_SIZE = 50;
 
@@ -82,6 +88,7 @@ export default async function AdminProductsPage({
   ]);
 
   const totalPages = Math.max(1, Math.ceil(filtered / PAGE_SIZE));
+  const pageIds = products.map((p) => p.id);
 
   async function toggleActive(formData: FormData) {
     "use server";
@@ -306,8 +313,10 @@ export default async function AdminProductsPage({
       </div>
 
       {/* Product list */}
+      <ProductSelectionProvider allIds={pageIds}>
       <div className="mt-5 overflow-hidden rounded-2xl border border-zinc-200 bg-white md:mt-6">
-        <div className="hidden grid-cols-[minmax(320px,1fr)_160px_120px_120px] gap-4 border-b border-zinc-100 bg-zinc-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-zinc-400 lg:grid">
+        <div className="hidden grid-cols-[28px_minmax(300px,1fr)_160px_120px_120px] items-center gap-4 border-b border-zinc-100 bg-zinc-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-zinc-400 lg:grid">
+          <ProductSelectAll />
           <span>Produk</span>
           <span>Harga</span>
           <span>Stok</span>
@@ -478,6 +487,9 @@ export default async function AdminProductsPage({
                 {/* Mobile card */}
                 <div className="p-4 lg:hidden">
                   <div className="flex gap-3">
+                    <div className="flex items-center pt-1">
+                      <ProductRowCheckbox id={product.id} />
+                    </div>
                     <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
                       {product.imageUrl ? (
                         <Image
@@ -539,7 +551,10 @@ export default async function AdminProductsPage({
                 </div>
 
                 {/* Desktop grid row */}
-                <div className="hidden grid-cols-[minmax(320px,1fr)_160px_120px_120px] gap-4 px-4 py-5 lg:grid">
+                <div className="hidden grid-cols-[28px_minmax(300px,1fr)_160px_120px_120px] items-start gap-4 px-4 py-5 lg:grid">
+                  <div className="flex items-center pt-1">
+                    <ProductRowCheckbox id={product.id} />
+                  </div>
                   <div className="flex min-w-0 gap-3">
                     <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
                       {product.imageUrl ? (
@@ -600,6 +615,8 @@ export default async function AdminProductsPage({
           })
         )}
       </div>
+      <ProductBulkBar />
+      </ProductSelectionProvider>
 
       {/* Pagination */}
       {totalPages > 1 && (
