@@ -373,6 +373,13 @@ model Product {
   // Galeri tambahan (max 4 gambar). imageUrl tetap jadi thumbnail utama,
   // gallery dipakai di halaman detail produk untuk carousel.
   gallery               String[]                    @default([])
+  // Video produk (Bunny Stream, library TERPISAH dari feed — lihat
+  // lib/product/product-video.ts). Satu video per produk.
+  videoUrl              String? // HLS playlist.m3u8 dari CDN Bunny; null = tidak ada
+  videoGuid             String? @unique // GUID Bunny — dipakai webhook + GC produk
+  videoStatus           String? // "uploading" | "processing" | "ready" | "failed"
+  videoThumbnailUrl     String? // auto-thumbnail Bunny, diisi saat ready
+  videoDurationSec      Int?
   isActive              Boolean                     @default(true)
   hasVariants           Boolean                     @default(false)
   brandAutoAssigned     Boolean                     @default(false)
