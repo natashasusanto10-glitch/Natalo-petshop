@@ -310,19 +310,22 @@ class FeedUploadStore extends ChangeNotifier {
       // Sebelumnya skip generate, hanya pakai existing thumbnailPath.
       // Tapi kalau draft.thumbnailPath null (mis. user submit dari path
       // yang lewat tanpa cover picker), upload tidak punya thumbnail.
-      // Generate sekarang dari frame 500ms — atau 500ms setelah titik
-      // mulai trim (draft.trimStart), supaya cover diambil dari bagian
-      // yang dipilih user, bukan awal video mentah.
+      // Cover: kalau video di-trim (trimStart != null), thumbnail dari
+      // picker = frame 0 video ASLI (sebelum dipotong) → WAJIB regenerate
+      // dari `videoPath` (hasil kompres yang sudah terpotong, timeline
+      // mulai 0). timeMs selalu 500 karena videoPath sudah dimulai dari
+      // titik yang benar.
       String? thumbPath = draft.thumbnailPath;
-      if (thumbPath == null || !File(thumbPath).existsSync()) {
+      final coverFromUntrimmed = draft.trimStart != null;
+      if (coverFromUntrimmed ||
+          thumbPath == null ||
+          !File(thumbPath).existsSync()) {
         try {
           thumbPath = await VideoThumbnail.thumbnailFile(
             video: videoPath,
             imageFormat: ImageFormat.JPEG,
             maxWidth: 720,
-            timeMs: draft.trimStart != null
-                ? draft.trimStart!.inMilliseconds + 500
-                : 500,
+            timeMs: 500,
             quality: 82,
           );
         } catch (_) {
