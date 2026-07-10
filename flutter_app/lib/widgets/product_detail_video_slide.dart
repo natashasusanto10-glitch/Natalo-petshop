@@ -32,12 +32,18 @@ const _brandBlue = NataloColors.nataloBlue;
 class ProductDetailVideoSlide extends StatefulWidget {
   final String videoUrl;
   final String? thumbnailUrl;
+
+  /// Poster fallback saat `thumbnailUrl` null/kosong/gagal — biasanya
+  /// `product.imageUrl` (produk selalu punya foto). Tanpa ini, produk yang
+  /// punya video tapi thumbnail-nya null/error tampil slide hitam + ▶ saja.
+  final String? posterImageUrl;
   final int? durationSec;
 
   const ProductDetailVideoSlide({
     super.key,
     required this.videoUrl,
     required this.thumbnailUrl,
+    this.posterImageUrl,
     this.durationSec,
   });
 
@@ -130,19 +136,23 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
     try {
       await controller.initialize();
       // Race guard SETELAH await: widget lepas / `_controller` sudah di-swap →
-      // buang controller lokal, jangan sentuh state lagi.
+      // buang controller lokal, jangan sentuh state lagi. Reset `_initializing`
+      // juga supaya flag tak nyangkut di path apa pun (defensif).
       if (!mounted || !identical(_controller, controller)) {
+        _initializing = false;
         unawaited(controller.dispose());
         return;
       }
       await controller.setLooping(false);
       if (!mounted || !identical(_controller, controller)) {
+        _initializing = false;
         unawaited(controller.dispose());
         return;
       }
       controller.addListener(_onControllerTick);
       await controller.play();
       if (!mounted || !identical(_controller, controller)) {
+        _initializing = false;
         controller.removeListener(_onControllerTick);
         unawaited(controller.dispose());
         return;
@@ -265,12 +275,27 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
   }
 
   Widget _buildPoster() {
-    final url = widget.thumbnailUrl?.trim() ?? '';
-    // thumbnailUrl null/kosong/gagal → poster hitam netral (bukan kotak error),
-    // tombol ▶ tetap kontras di atasnya.
-    if (url.isEmpty) return const ColoredBox(color: Colors.black);
+    // Prioritas: thumbnailUrl → posterImageUrl (foto produk) → hitam netral.
+    // Produk selalu punya foto, jadi thumbnail null/error TIDAK boleh jadi
+    // slide hitam; jatuh ke posterImageUrl dulu. ▶ + kapsul tetap di atas.
+    final thumb = widget.thumbnailUrl?.trim() ?? '';
+    final poster = widget.posterImageUrl?.trim() ?? '';
+    if (thumb.isEmpty) return _posterImage(poster); // langsung ke fallback foto.
     return CachedNetworkImage(
-      imageUrl: url,
+      imageUrl: thumb,
+      width: double.infinity,
+      height: double.infinity,
+      fit: BoxFit.cover,
+      placeholder: (_, __) => _posterImage(poster),
+      errorWidget: (_, __, ___) => _posterImage(poster),
+    );
+  }
+
+  /// Fallback poster: foto produk kalau ada, kalau tidak hitam netral.
+  Widget _posterImage(String posterUrl) {
+    if (posterUrl.isEmpty) return const ColoredBox(color: Colors.black);
+    return CachedNetworkImage(
+      imageUrl: posterUrl,
       width: double.infinity,
       height: double.infinity,
       fit: BoxFit.cover,
@@ -332,12 +357,13 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
   }
 }
 
-/// mm:ss dari detik (00:30, 01:30). Klamp negatif ke 0.
+/// m:ss dari detik (0:05, 1:09, 12:00) — SELARAS web `ProductImageCarousel.
+/// formatClock` (menit TIDAK di-pad, detik di-pad 2). Klamp negatif ke 0.
 String _formatDuration(int totalSeconds) {
   final s = totalSeconds < 0 ? 0 : totalSeconds;
   final m = s ~/ 60;
   final sec = s % 60;
-  return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+  return '$m:${sec.toString().padLeft(2, '0')}';
 }
 
 /// Lingkaran 64 hitam-transparan + ikon putih 36. Dipakai tombol ▶ (thumbnail)
