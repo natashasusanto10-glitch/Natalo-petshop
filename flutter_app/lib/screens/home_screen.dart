@@ -2604,7 +2604,8 @@ class _FlashSaleGrid extends StatelessWidget {
     final titleColor = isDark ? _titleDark : _titleLight;
 
     return Container(
-      margin: const EdgeInsets.only(top: 6),
+      // Celah 0: pita nempel langsung ke shortcut grid (padding bawahnya 0)
+      // — tak ada ruang kosong shortcut → Flash Sale (margin dibuang).
       padding: const EdgeInsets.fromLTRB(0, 12, 0, 14),
       color: isDark ? _bandDark : _bandLight,
       child: Column(
@@ -2624,29 +2625,29 @@ class _FlashSaleGrid extends StatelessWidget {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                // Countdown chip inline — hanya kalau ada produk Tier 1
-                // (explicit flashSaleEndsAt). digitsOnly (angka tabular
-                // putih) di atas chip merah = tidak goyang tiap detik.
+                // Countdown kotak HH:MM:SS (Opsi B) — hanya kalau ada produk
+                // Tier 1 (explicit flashSaleEndsAt). 3 kotak merah + separator
+                // langsung di band = jelas "hitung mundur" (bukan pil tunggal
+                // yang mirip durasi biasa). FittedBox: menyusut mulus di layar
+                // sempit alih-alih overflow; Expanded mendorong "Lihat semua"
+                // ke kanan.
                 if (endsAt != null) ...[
                   const SizedBox(width: 8),
-                  Flexible(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE11D48),
-                        borderRadius: BorderRadius.circular(7),
-                      ),
-                      child: FlashSaleCountdown.digitsOnly(
-                        endsAt: endsAt,
-                        onExpired: onCountdownExpired,
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: FlashSaleCountdown.boxes(
+                          endsAt: endsAt,
+                          onExpired: onCountdownExpired,
+                        ),
                       ),
                     ),
                   ),
-                ],
-                const Spacer(),
+                ] else
+                  const Spacer(),
                 if (hasMore)
                   GestureDetector(
                     onTap: onSeeAll,
@@ -2980,6 +2981,11 @@ class _HomeProductCard extends StatelessWidget {
   // (_MiniProductCard "Terlaris" dst) yang me-reuse widget ini TIDAK ikut
   // berubah — cukup diaktifkan di call-site grid 2-kolom.
   final bool squareImage;
+  // Rail "ramping" (Terlaris): sembunyikan badge Hemat/Ongkir + harga-coret
+  // + repurchase badge → semua kartu seragam (foto + nama + harga + terjual)
+  // supaya rail fixed-height tak menyisakan kolong kosong di bawah kartu
+  // yang tak diskon. Default false: grid & rail lain tak berubah.
+  final bool railSlim;
 
   const _HomeProductCard({
     required this.product,
@@ -2989,6 +2995,7 @@ class _HomeProductCard extends StatelessWidget {
     this.priceFontSize = 16,
     this.compact = false,
     this.squareImage = false,
+    this.railSlim = false,
   });
 
   @override
@@ -3061,7 +3068,7 @@ class _HomeProductCard extends StatelessWidget {
       ),
       // Consumable repurchase badge — produk yang user pernah
       // beli dan sudah waktunya refill (food, pasir, vitamin, dst).
-      if (product.isRepurchaseCandidate) ...[
+      if (!railSlim && product.isRepurchaseCandidate) ...[
         SizedBox(height: compact ? 6 : 7),
         _HomeProductRepurchaseBadge(product: product),
       ],
@@ -3070,8 +3077,9 @@ class _HomeProductCard extends StatelessWidget {
         product: product,
         fontSize: priceFontSize,
         compact: compact,
+        finalPriceOnly: railSlim,
       ),
-      _HomeProductSavingBadge(product: product, compact: compact),
+      if (!railSlim) _HomeProductSavingBadge(product: product, compact: compact),
       _HomeProductRatingSoldRow(product: product, compact: compact),
     ];
 
@@ -3280,16 +3288,24 @@ class _HomeProductPriceRow extends StatelessWidget {
   final Product product;
   final double fontSize;
   final bool compact;
+  // Rail ramping (Terlaris): tampilkan HARGA AKHIR saja — harga coret asli
+  // disembunyikan supaya tinggi kartu seragam. Kalau produk diskon, harga
+  // akhir tetap merah (tetap terbaca sebagai harga promo).
+  final bool finalPriceOnly;
 
   const _HomeProductPriceRow({
     required this.product,
     required this.fontSize,
     required this.compact,
+    this.finalPriceOnly = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (!product.hasDiscount) {
+    if (!product.hasDiscount || finalPriceOnly) {
+      final color = product.hasDiscount
+          ? const Color(0xFFE11D48)
+          : Theme.of(context).colorScheme.onSurface;
       return Text(
         formatRupiah(product.finalPrice),
         maxLines: 1,
@@ -3297,7 +3313,7 @@ class _HomeProductPriceRow extends StatelessWidget {
         style: TextStyle(
           fontSize: fontSize,
           fontWeight: FontWeight.w900,
-          color: Theme.of(context).colorScheme.onSurface,
+          color: color,
           height: 1.1,
         ),
       );
@@ -3701,12 +3717,12 @@ class _HorizontalProductSection extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           SizedBox(
-            // 312: ListView horizontal butuh tinggi tetap (semua kartu
-            // sebaris = seragam). Foto kini 1:1 full-bleed (≈150 vs contain
-            // 112, +38) + kasus terburuk diskon (harga coret) + 2 badge
-            // (ongkir+hemat) + rating. (Bukan auto-height: horizontal wajib
-            // seragam.)
-            height: 312,
+            // 258: ListView horizontal butuh tinggi tetap (semua kartu
+            // sebaris = seragam). Kartu ramping (railSlim) = foto 1:1 (≈150)
+            // + nama 2 baris + harga akhir 1 baris + "X terjual", TANPA harga
+            // coret/badge → konten seragam, tinggi turun dari 312. (Bukan
+            // auto-height: horizontal wajib seragam.)
+            height: 258,
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               scrollDirection: Axis.horizontal,
@@ -3749,6 +3765,10 @@ class _MiniProductCard extends StatelessWidget {
       // Foto 1:1 cover full-bleed (spec grid) — rail Terlaris pun menonjol
       // ala Shopee. imageHeight diabaikan saat squareImage (pakai AspectRatio).
       squareImage: true,
+      // Ramping: cuma foto + nama + harga akhir + terjual (buang badge Hemat/
+      // Ongkir + harga coret) → semua kartu seragam, rail tak menyisakan
+      // kolong kosong di bawah kartu non-diskon.
+      railSlim: true,
       priceFontSize: 14,
       compact: true,
     );

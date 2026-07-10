@@ -46,11 +46,20 @@ class FlashSaleCountdown extends StatefulWidget {
     this.onExpired,
   }) : _style = _CountdownStyle.digitsOnly;
 
+  /// Boxes-only HH:MM:SS — 3 kotak merah + separator, tanpa label/bg
+  /// pembungkus. Dipakai di pita Flash Sale beranda (Opsi B) langsung di
+  /// atas band rose, senada warna judul.
+  const FlashSaleCountdown.boxes({
+    super.key,
+    required this.endsAt,
+    this.onExpired,
+  }) : _style = _CountdownStyle.boxes;
+
   @override
   State<FlashSaleCountdown> createState() => _FlashSaleCountdownState();
 }
 
-enum _CountdownStyle { section, compact, digitsOnly }
+enum _CountdownStyle { section, compact, digitsOnly, boxes }
 
 class _FlashSaleCountdownState extends State<FlashSaleCountdown> {
   Timer? _ticker;
@@ -123,6 +132,14 @@ class _FlashSaleCountdownState extends State<FlashSaleCountdown> {
         formatTwo: _two,
       );
     }
+    if (widget._style == _CountdownStyle.boxes) {
+      return _BoxesCountdown(
+        hours: hours,
+        minutes: minutes,
+        seconds: seconds,
+        formatTwo: _two,
+      );
+    }
     return _SectionHeaderTimer(
       hours: hours,
       minutes: minutes,
@@ -160,6 +177,40 @@ class _DigitsOnlyCountdown extends StatelessWidget {
         height: 1,
         fontFeatures: [FontFeature.tabularFigures()],
       ),
+    );
+  }
+}
+
+/// Boxes-only HH:MM:SS — 3 kotak merah + separator, tanpa label/bg
+/// pembungkus (beda dari _SectionHeaderTimer yang punya "Berakhir" + bg).
+/// Dipakai di pita Flash Sale beranda (Opsi B).
+class _BoxesCountdown extends StatelessWidget {
+  final int hours;
+  final int minutes;
+  final int seconds;
+  final String Function(int) formatTwo;
+
+  const _BoxesCountdown({
+    required this.hours,
+    required this.minutes,
+    required this.seconds,
+    required this.formatTwo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Senada judul pita + chip diskon + harga (0xFFE11D48). Putih di atas
+    // merah tetap terbaca di band rose muda maupun rose gelap (dark mode).
+    const accent = Color(0xFFE11D48);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _TimeBox(label: formatTwo(hours), accent: accent),
+        const _Separator(accent: accent),
+        _TimeBox(label: formatTwo(minutes), accent: accent),
+        const _Separator(accent: accent),
+        _TimeBox(label: formatTwo(seconds), accent: accent),
+      ],
     );
   }
 }
