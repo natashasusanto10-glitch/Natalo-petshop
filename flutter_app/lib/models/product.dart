@@ -357,6 +357,9 @@ class Product {
   final String category;
   final String brand;
   final String imageUrl;
+  final String? videoUrl;
+  final String? videoThumbnailUrl;
+  final int? videoDurationSec;
   final double price;
   final double? discountPrice;
   final double? memberPrice;
@@ -413,6 +416,9 @@ class Product {
     required this.category,
     required this.brand,
     required this.imageUrl,
+    this.videoUrl,
+    this.videoThumbnailUrl,
+    this.videoDurationSec,
     required this.price,
     this.discountPrice,
     this.memberPrice,
@@ -494,6 +500,9 @@ class Product {
         fallback: 'Natalo',
       ),
       imageUrl: image,
+      videoUrl: _stringOrNull(json['videoUrl']),
+      videoThumbnailUrl: _stringOrNull(json['videoThumbnailUrl']),
+      videoDurationSec: _asIntOrNull(json['videoDurationSec']),
       price: price,
       discountPrice: discountPrice,
       memberPrice: _nullableDouble(json['memberPrice'] ?? json['member_price']),
@@ -579,6 +588,9 @@ class Product {
         'variants': variants.map((v) => v.toJson()).toList(),
         'soldCount': soldCount,
         'flashSaleEndsAt': flashSaleEndsAt?.toUtc().toIso8601String(),
+        'videoUrl': videoUrl,
+        'videoThumbnailUrl': videoThumbnailUrl,
+        'videoDurationSec': videoDurationSec,
       };
 
   double get finalPrice {
@@ -626,6 +638,9 @@ class Product {
     final endsAt = flashSaleEndsAt;
     return endsAt != null && endsAt.isAfter(DateTime.now());
   }
+
+  /// True kalau produk punya video "ready" (server hanya kirim videoUrl saat ready).
+  bool get hasVideo => (videoUrl ?? '').isNotEmpty;
 }
 
 /// Parse ISO 8601 string ke DateTime local — graceful fallback null
