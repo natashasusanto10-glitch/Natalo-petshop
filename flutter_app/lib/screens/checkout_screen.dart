@@ -658,7 +658,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (_selectedProductVoucher == null) {
       final candidate = available
           .where((v) =>
-              v.isProductDiscount && !v.isLoyaltyClaim && !v.isPrivateManual)
+              v.isProductDiscount &&
+              !v.isLoyaltyClaim &&
+              !v.isPrivateManual &&
+              !v.isBrandExclusive)
           .toList()
         ..sort((a, b) => b.discount.compareTo(a.discount));
       if (candidate.isNotEmpty) {
@@ -681,7 +684,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     // Skip kalau Self-Pickup karena tidak butuh free shipping voucher.
     if (_selectedFreeShippingVoucher == null && !_selectedRate.isSelfPickup) {
       final candidate = available
-          .where((v) => v.isFreeShipping || v.isShippingDiscount)
+          .where((v) =>
+              (v.isFreeShipping || v.isShippingDiscount) &&
+              !v.isBrandExclusive)
           .toList()
         ..sort((a, b) => b.discount.compareTo(a.discount));
       if (candidate.isNotEmpty) {
