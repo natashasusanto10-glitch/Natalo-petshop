@@ -30,6 +30,8 @@ type Picked = {
   qualityLabel: string;
 };
 
+const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
+
 function qualityLabel(h: number): string {
   if (h >= 1080) return "HD 1080p";
   if (h >= 720) return "HD 720p";
@@ -101,6 +103,7 @@ export function ProductVideoUpload({
     if (!picked || uploading) return;
     setUploading(true);
     setProgress(0);
+    let provisioned = false;
     try {
       // 1) Provision.
       const provRes = await fetch(`/api/admin/products/${productId}/video`, {
@@ -116,6 +119,7 @@ export function ProductVideoUpload({
       if (!provRes.ok || !prov.tus) {
         throw new Error(prov.error ?? "Gagal menyiapkan upload.");
       }
+      provisioned = true;
 
       // 2) Trim bila perlu.
       let blob: Blob = picked.file;
@@ -142,11 +146,14 @@ export function ProductVideoUpload({
       });
 
       // 4) Mark processing.
-      await fetch(`/api/admin/products/${productId}/video`, {
+      const patchRes = await fetch(`/api/admin/products/${productId}/video`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ videoDurationSec: Math.round(finalDuration) }),
       });
+      if (!patchRes.ok) {
+        throw new Error("Gagal menandai video sebagai diproses.");
+      }
 
       setStatus("processing");
       setDurationSec(Math.round(finalDuration));
@@ -154,6 +161,11 @@ export function ProductVideoUpload({
       setPicked(null);
       show("Video diunggah — sedang diproses Bunny. Muncul di toko setelah selesai.");
     } catch (err) {
+      if (provisioned) {
+        setStatus(null);
+        setThumb(null);
+        setDurationSec(null);
+      }
       show(err instanceof Error ? err.message : "Upload gagal. Coba lagi.");
     } finally {
       setUploading(false);
@@ -178,7 +190,8 @@ export function ProductVideoUpload({
     }
   }
 
-  const hasVideo = status === "ready" || status === "processing" || status === "failed";
+  const hasVideo =
+    status === "ready" || status === "processing" || status === "failed" || status === "uploading";
 
   return (
     <div className="space-y-3">
@@ -210,10 +223,10 @@ export function ProductVideoUpload({
             ) : null}
           </div>
           <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={() => inputRef.current?.click()}>
+            <Button type="button" variant="secondary" size="sm" onClick={() => inputRef.current?.click()}>
               Ganti
             </Button>
-            <DangerButton size="sm" onClick={() => setConfirmDelete(true)}>
+            <DangerButton type="button" size="sm" onClick={() => setConfirmDelete(true)}>
               Hapus
             </DangerButton>
           </div>
@@ -263,14 +276,12 @@ export function ProductVideoUpload({
             durationSec={picked.durationSec}
             trimStart={trimStart}
             trimEnd={trimEnd}
-            onStart={(v) => setTrimStart(Math.max(0, Math.min(v, trimEnd - MIN_DURATION)))}
+            onStart={(v) =>
+              setTrimStart(clamp(v, Math.max(0, trimEnd - MAX_DURATION), trimEnd - MIN_DURATION))
+            }
             onEnd={(v) =>
               setTrimEnd(
-                Math.min(
-                  picked.durationSec,
-                  Math.min(v, trimStart + MAX_DURATION),
-                  Math.max(v, trimStart + MIN_DURATION),
-                ),
+                clamp(v, trimStart + MIN_DURATION, Math.min(picked.durationSec, trimStart + MAX_DURATION)),
               )
             }
           />
@@ -294,12 +305,13 @@ export function ProductVideoUpload({
 
           <div className="flex gap-2">
             <Button
+              type="button"
               onClick={() => void onUpload()}
               disabled={uploading || finalDuration < MIN_DURATION || finalDuration > MAX_DURATION}
             >
               {uploading ? "Memproses…" : "Unggah Video"}
             </Button>
-            <Button variant="ghost" onClick={() => setPicked(null)} disabled={uploading}>
+            <Button type="button" variant="ghost" onClick={() => setPicked(null)} disabled={uploading}>
               Batal
             </Button>
           </div>
@@ -332,6 +344,12 @@ function StatusBadge({ status }: { status: string | null }) {
     return <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700">Sedang diproses…</span>;
   if (status === "failed")
     return <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">Gagal diproses</span>;
+  if (status === "uploading")
+    return (
+      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700">
+        Menunggu unggahan…
+      </span>
+    );
   return null;
 }
 
@@ -355,7 +373,7 @@ function TrimRange({
         <input
           type="range"
           min={0}
-          max={Math.floor(durationSec)}
+          max={Math.ceil(durationSec)}
           step={1}
           value={trimStart}
           onChange={(e) => onStart(Number(e.target.value))}
@@ -367,7 +385,7 @@ function TrimRange({
         <input
           type="range"
           min={0}
-          max={Math.floor(durationSec)}
+          max={Math.ceil(durationSec)}
           step={1}
           value={trimEnd}
           onChange={(e) => onEnd(Number(e.target.value))}
