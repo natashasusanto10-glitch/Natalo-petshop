@@ -680,7 +680,11 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
       canPop: !_exporting,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
-        if (await _confirmCancelExport() && context.mounted) {
+        final leave = await _confirmCancelExport();
+        // Kompresi bisa selesai (dan navigasi maju) selagi dialog
+        // terbuka — kalau export sudah tidak jalan, jangan pop route
+        // yang sudah basi.
+        if (leave && context.mounted && _exporting) {
           Navigator.pop(context);
         }
       },
