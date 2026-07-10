@@ -37,6 +37,7 @@ import '../widgets/bottom_nav.dart';
 import '../widgets/flash_sale_countdown.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
+import '../widgets/product_grid_video.dart';
 import '../widgets/upload_relay_card.dart';
 import 'home_search_page.dart';
 import '../widgets/skeleton_product_card.dart';
@@ -3012,7 +3013,12 @@ class _HomeProductCard extends StatelessWidget {
     final imageStack = Stack(
       children: [
         squareImage
-            ? _HomeProductImageSquare(imageUrl: product.imageUrl)
+            ? (product.hasVideo
+                ? ProductGridVideo(
+                    videoUrl: product.videoUrl!,
+                    imageUrl: product.imageUrl,
+                  )
+                : _HomeProductImageSquare(imageUrl: product.imageUrl))
             : _HomeProductImage(
                 imageUrl: product.imageUrl,
                 // Fallback non-square (tak ada caller aktif — semua grid/rail
