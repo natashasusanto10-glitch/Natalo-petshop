@@ -16,6 +16,8 @@ import 'package:visibility_detector/visibility_detector.dart';
 import '../config/api_config.dart';
 import '../features/feed/widgets/feed_action_rail.dart';
 import '../features/feed/widgets/feed_creator_overlay.dart';
+import '../features/feed/widgets/feed_post_scrim.dart';
+import '../features/feed/widgets/feed_product_anchor_card.dart';
 import '../features/feed/widgets/feed_video_scrubber.dart';
 import '../models/cart_item.dart';
 import '../models/feed_post.dart';
@@ -47,9 +49,6 @@ import '../widgets/moderation_action_sheet.dart';
 const _officialGold = Color(0xFFF4D47C);
 const _feedActionBottomInset = 24.0;
 const _feedActionRailRightInset = 4.0;
-// Aksen commerce oranye — dipakai untuk aksi tambah-keranjang (kartu anchor
-// + cart-pill rail). Tombol "Beli" utama tetap biru brand.
-const _feedCommerceOrange = Color(0xFFFF7A00);
 const _feedTopActionRightInset = 8.0;
 
 /// Jarak dasar overlay bawah feed (rail durasi / caption / action rail)
@@ -1822,13 +1821,10 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                       // Reuse widget yang sama dengan _FeedPostView untuk
                       // consistency visual antar video post & photo carousel.
                       if (products.isNotEmpty) ...[
-                        _ProductAnchorCard(
-                          products: products,
-                          featuredProduct: featuredProduct!,
-                          featuredIndex:
-                              _featuredProductIndex % products.length,
+                        _feedProductAnchorCardFor(
+                          featuredProduct!,
                           onTap: () => _onProductsTap(products),
-                          onQuickAdd: () => _quickAddProduct(featuredProduct),
+                          onAddToCart: () => _quickAddProduct(featuredProduct),
                         ),
                         const SizedBox(height: 9),
                       ],
@@ -3204,26 +3200,12 @@ class _FeedPostViewState extends State<_FeedPostView>
                         // (kalau perlu nanti) bisa di-trigger lewat
                         // long-press atau gesture, bukan dedicated button.
                         // ── Bottom gradient untuk text readability ──
-                        Positioned(
+                        const Positioned(
                           left: 0,
                           right: 0,
                           bottom: 0,
-                          height: 330,
                           child: IgnorePointer(
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Colors.transparent,
-                                    Colors.black.withValues(alpha: 0.24),
-                                    Colors.black.withValues(alpha: 0.76),
-                                  ],
-                                  stops: const [0, 0.54, 1],
-                                ),
-                              ),
-                            ),
+                            child: FeedPostScrim(),
                           ),
                         ),
                         if (_videoController != null)
@@ -3312,10 +3294,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                                 children: [
                                   if (products.isNotEmpty) ...[
                                     _ProductCommerceOverlayGroup(
-                                      products: products,
                                       featuredProduct: featuredProduct!,
-                                      featuredIndex: _featuredProductIndex %
-                                          products.length,
                                       showProductCard: _endOfVideoCtaVisible &&
                                           !_commentSheetOpen,
                                       onTap: () => _onProductsTap(products),
@@ -4077,9 +4056,7 @@ class _PausedVideoControls extends StatelessWidget {
 /// - Background: dark translucent (Colors.black 0.55) + backdrop blur.
 /// - No quick-add button (removed per spec) — full pill area tap-to-open.
 class _ProductCommerceOverlayGroup extends StatelessWidget {
-  final List<FeedProductLink> products;
   final FeedProductLink featuredProduct;
-  final int featuredIndex;
   final bool showProductCard;
   final VoidCallback onTap;
   final VoidCallback onBuy;
@@ -4087,9 +4064,7 @@ class _ProductCommerceOverlayGroup extends StatelessWidget {
   final VoidCallback onDismiss;
 
   const _ProductCommerceOverlayGroup({
-    required this.products,
     required this.featuredProduct,
-    required this.featuredIndex,
     required this.showProductCard,
     required this.onTap,
     required this.onBuy,
@@ -4132,12 +4107,10 @@ class _ProductCommerceOverlayGroup extends StatelessWidget {
                 )
               : const SizedBox.shrink(key: ValueKey('product-card-closed')),
         ),
-        _ProductAnchorCard(
-          products: products,
-          featuredProduct: featuredProduct,
-          featuredIndex: featuredIndex,
+        _feedProductAnchorCardFor(
+          featuredProduct,
           onTap: onTap,
-          onQuickAdd: onQuickAdd,
+          onAddToCart: onQuickAdd,
         ),
       ],
     );
@@ -4181,217 +4154,6 @@ class _DownArrowPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _ProductAnchorCard extends StatelessWidget {
-  final List<FeedProductLink> products;
-  final FeedProductLink featuredProduct;
-  final int featuredIndex;
-  final VoidCallback onTap;
-  final VoidCallback? onQuickAdd;
-
-  const _ProductAnchorCard({
-    required this.products,
-    required this.featuredProduct,
-    required this.featuredIndex,
-    required this.onTap,
-    this.onQuickAdd,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final product = featuredProduct;
-    final pricing = _feedProductPricing(product);
-    final badgeText = product.hasActiveDiscount
-        ? (product.isFlashSale
-            ? 'Flash Sale ${product.discountPercent}%'
-            : 'Diskon ${product.discountPercent}%')
-        : null;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (badgeText != null) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFF4D4F),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              badgeText,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 10.5,
-                fontWeight: FontWeight.w900,
-                height: 1,
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-        ],
-        Material(
-          color: Colors.transparent,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.52),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.16),
-                    width: 1,
-                  ),
-                ),
-                padding: const EdgeInsets.all(7),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        onTap: onTap,
-                        borderRadius: BorderRadius.circular(9),
-                        child: Row(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: SizedBox(
-                                width: 40,
-                                height: 40,
-                                child: (product.imageUrl != null &&
-                                        product.imageUrl!.isNotEmpty)
-                                    ? CachedNetworkImage(
-                                        imageUrl: product.imageUrl!,
-                                        fit: BoxFit.cover,
-                                        placeholder: (_, __) => Container(
-                                          color: Colors.white
-                                              .withValues(alpha: 0.08),
-                                        ),
-                                        errorWidget: (_, __, ___) => Container(
-                                          color: Colors.white
-                                              .withValues(alpha: 0.08),
-                                          child: const Icon(
-                                            Icons.image_not_supported_outlined,
-                                            color: Colors.white54,
-                                            size: 18,
-                                          ),
-                                        ),
-                                      )
-                                    : Container(
-                                        color: Colors.white
-                                            .withValues(alpha: 0.08),
-                                        child: const Icon(
-                                          Icons.shopping_bag_outlined,
-                                          color: Colors.white54,
-                                          size: 18,
-                                        ),
-                                      ),
-                              ),
-                            ),
-                            const SizedBox(width: 9),
-                            Expanded(
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 260),
-                                transitionBuilder: (child, animation) =>
-                                    FadeTransition(
-                                        opacity: animation, child: child),
-                                child: Column(
-                                  key: ValueKey(product.id),
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      product.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w800,
-                                        height: 1.15,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.baseline,
-                                      textBaseline: TextBaseline.alphabetic,
-                                      children: [
-                                        Text(
-                                          formatRupiah(pricing.displayPrice),
-                                          style: const TextStyle(
-                                            color: Color(0xFFFF5A5F),
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w900,
-                                            height: 1,
-                                          ),
-                                        ),
-                                        if (pricing.hasPromo) ...[
-                                          const SizedBox(width: 5),
-                                          Text(
-                                            formatRupiah(pricing.originalPrice),
-                                            style: TextStyle(
-                                              color: Colors.white
-                                                  .withValues(alpha: 0.5),
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w600,
-                                              height: 1,
-                                              decoration:
-                                                  TextDecoration.lineThrough,
-                                              decorationColor: Colors.white
-                                                  .withValues(alpha: 0.5),
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    _AnchorCartButton(onTap: onQuickAdd),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _AnchorCartButton extends StatelessWidget {
-  final VoidCallback? onTap;
-
-  const _AnchorCartButton({this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: _feedCommerceOrange,
-      borderRadius: BorderRadius.circular(9),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(9),
-        child: const SizedBox(
-          width: 34,
-          height: 34,
-          child: Icon(
-            Icons.add_shopping_cart_rounded,
-            color: Colors.white,
-            size: 18,
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _FeedTaggedProductsSheet extends StatelessWidget {
@@ -5580,6 +5342,32 @@ _FeedProductPricing _feedProductPricing(FeedProductLink product) {
     displayPrice: display,
     hasPromo: hasPromo,
     discountPercent: percent,
+  );
+}
+
+/// Bangun `FeedProductAnchorCard` (widget bersama, API primitif) dari
+/// `FeedProductLink` — memformat rupiah + teks badge diskon di sini,
+/// dipanggil dari `_PhotoCarouselPostViewState` & `_ProductCommerceOverlayGroup`.
+FeedProductAnchorCard _feedProductAnchorCardFor(
+  FeedProductLink product, {
+  required VoidCallback onTap,
+  VoidCallback? onAddToCart,
+}) {
+  final pricing = _feedProductPricing(product);
+  final badgeText = product.hasActiveDiscount
+      ? (product.isFlashSale
+          ? 'Flash Sale ${product.discountPercent}%'
+          : 'Diskon ${product.discountPercent}%')
+      : null;
+  return FeedProductAnchorCard(
+    title: product.name,
+    imageUrl: product.imageUrl,
+    priceText: formatRupiah(pricing.displayPrice),
+    strikePriceText:
+        pricing.hasPromo ? formatRupiah(pricing.originalPrice) : null,
+    discountBadgeText: badgeText,
+    onTap: onTap,
+    onAddToCart: onAddToCart,
   );
 }
 
