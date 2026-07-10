@@ -54,9 +54,9 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: Builder(builder: (context) {
       return ElevatedButton(onPressed: () async {
         out = await Navigator.push<FeedPreviewResult>(context, MaterialPageRoute(
-          builder: (_) => FeedPostPreviewScreen(
-            draft: const NewPostMediaDraft.video(vd), videoDraft: vd,
-            caption: '', products: const [])));
+          builder: (_) => const FeedPostPreviewScreen(
+            draft: NewPostMediaDraft.video(vd), videoDraft: vd,
+            caption: '', products: [])));
       }, child: const Text('go'));
     })));
     await tester.tap(find.text('go'));
