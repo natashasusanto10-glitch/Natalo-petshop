@@ -773,14 +773,13 @@ class _CartScreenState extends State<CartScreen>
       // slot pertama yang ke-set (priority: product > loyalty > shipping).
       _manualVoucherCode = picked.discountVoucher?.code ??
           picked.loyaltyVoucher?.code ??
-          picked.shippingCode;
+          picked.shippingVoucher?.code;
       _appliedDiscountVoucher = picked.discountVoucher;
       _appliedLoyaltyVoucher = picked.loyaltyVoucher;
-      _appliedShippingVoucher =
-          picked.shippingSelected && picked.shippingCode != null
-              ? _findVoucherByCode(
-                  _availableDiscountVouchers, picked.shippingCode!)
-              : null;
+      // Voucher ongkir sudah di-resolve di dalam sheet dari snapshot immutable-nya
+      // (race-free). Set langsung — JANGAN re-lookup by code di _availableDiscountVouchers
+      // parent yang bisa berubah saat sheet terbuka (bikin pick hilang diam-diam).
+      _appliedShippingVoucher = picked.shippingVoucher;
     });
     // Setelah Hapus Voucher, re-run auto-apply supaya 3 slot ke-isi
     // ulang dari best available (ongkir + diskon produk + reward poin).
@@ -2530,31 +2529,33 @@ MemberVoucher? _findSheetVoucherByCode(
 }
 
 class _CartVoucherChoice {
-  final String? shippingCode;
+  // Shipping di-thread sebagai objek MemberVoucher penuh (mirror
+  // discount/loyalty), BUKAN bare code. Sheet me-resolve voucher dari
+  // snapshot immutable-nya sendiri (widget.availableDiscounts) supaya
+  // race-free: parent bisa refetch + reassign _availableDiscountVouchers
+  // (via _syncVouchersForSelection) saat sheet terbuka, dan re-lookup by
+  // code di parent bisa balik null → pick ongkir user hilang diam-diam.
+  final MemberVoucher? shippingVoucher;
   final MemberVoucher? discountVoucher;
   final MemberVoucher? loyaltyVoucher;
-  final bool shippingSelected;
   final bool remove;
 
   const _CartVoucherChoice._({
-    this.shippingCode,
+    this.shippingVoucher,
     this.discountVoucher,
     this.loyaltyVoucher,
-    this.shippingSelected = false,
     this.remove = false,
   });
 
   factory _CartVoucherChoice.combined({
     required MemberVoucher? discountVoucher,
     required MemberVoucher? loyaltyVoucher,
-    required bool shippingSelected,
-    String? shippingCode,
+    required MemberVoucher? shippingVoucher,
   }) {
     return _CartVoucherChoice._(
-      shippingCode: shippingCode,
+      shippingVoucher: shippingVoucher,
       discountVoucher: discountVoucher,
       loyaltyVoucher: loyaltyVoucher,
-      shippingSelected: shippingSelected,
     );
   }
 
@@ -2884,13 +2885,19 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
   }
 
   void _applySelection() {
+    final shippingCode = _selectedShippingCode;
+    // Resolve dari snapshot immutable milik sheet (widget.availableDiscounts),
+    // BUKAN dari parent yang bisa berubah saat sheet terbuka. _selectedShippingCode
+    // selalu berasal dari voucher.code di snapshot ini, jadi lookup pasti ketemu.
+    final shippingVoucher = shippingCode == null
+        ? null
+        : _findSheetVoucherByCode(widget.availableDiscounts, shippingCode);
     Navigator.pop(
       context,
       _CartVoucherChoice.combined(
         discountVoucher: _selectedProductDiscount,
         loyaltyVoucher: _selectedLoyalty,
-        shippingSelected: _selectedShippingCode != null,
-        shippingCode: _selectedShippingCode,
+        shippingVoucher: shippingVoucher,
       ),
     );
   }
