@@ -968,7 +968,9 @@ class _CartScreenState extends State<CartScreen>
                             );
                           },
                           center: Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                            // Horizontal 0 supaya latar abu grid rekomendasi
+                            // (di dalam section) bisa full-bleed ke tepi layar.
+                            padding: const EdgeInsets.fromLTRB(0, 8, 0, 24),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -3343,67 +3345,75 @@ class _CartRecommendationsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
+        // Judul di-padding sendiri (parent section ini sekarang horizontal 0
+        // supaya latar abu grid bisa nempel tepi layar / full-bleed).
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    color: cs.onSurface,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (loading && showLoadingPlaceholder)
-          // Skeleton grid — feels lebih native dari spinner ditengah.
-          const SkeletonProductGrid(count: 4, showAddToCart: true)
-        else
-          Column(
-            children: [
-              // Grid 2-kolom AUTO-HEIGHT (bukan GridView dengan
-              // childAspectRatio tetap) — tinggi tiap BARIS ikut konten
-              // terpanjang di baris itu. Kartu tanpa chip ongkir/hemat
-              // atau tanpa rating tidak menyisakan ruang kosong; kartu
-              // dengan 2 chip tidak overflow. Pola sama dengan Beranda &
-              // halaman Produk.
-              //
-              // WAJIB CrossAxisAlignment.start — JANGAN .stretch: stretch
-              // memaksa Row menghitung intrinsic-height kartu (berisi
-              // CachedNetworkImage) → layout exception yang DITELAN
-              // FlutterError.onError → seluruh section blank tanpa jejak.
-              // Lihat catatan lengkap di products_screen.dart.
-              for (var row = 0; row < (products.length + 1) ~/ 2; row++)
-                Padding(
-                  padding: EdgeInsets.only(
-                    bottom: row == (products.length + 1) ~/ 2 - 1 ? 0 : 12,
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: _buildCard(context, products[row * 2]),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: row * 2 + 1 < products.length
-                            ? _buildCard(context, products[row * 2 + 1])
-                            // Jumlah ganjil — slot kanan kosong, kartu
-                            // kiri tetap selebar 1 kolom.
-                            : const SizedBox.shrink(),
-                      ),
-                    ],
-                  ),
-                ),
-              if (loadingMore && showLoadingPlaceholder) ...[
-                const SizedBox(height: 12),
-                const SkeletonProductGrid(count: 2, showAddToCart: true),
-              ],
             ],
           ),
+        ),
+        const SizedBox(height: 12),
+        // Latar abu full-bleed di belakang grid — kartu putih foto 1:1
+        // menonjol, sama Beranda/Katalog/Wishlist.
+        ColoredBox(
+          color: commerceGridSurfaceTint(context),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            child: (loading && showLoadingPlaceholder)
+                // Skeleton row auto-height + square (anti overflow).
+                ? const SkeletonProductGrid(
+                    count: 4, showAddToCart: true, squareImage: true)
+                : Column(
+                    children: [
+                      // Grid 2-kolom AUTO-HEIGHT — tinggi baris ikut konten.
+                      // WAJIB CrossAxisAlignment.start (JANGAN .stretch →
+                      // intrinsic-height exception ditelan → section blank).
+                      // Lihat catatan lengkap di products_screen.dart.
+                      for (var row = 0;
+                          row < (products.length + 1) ~/ 2;
+                          row++)
+                        Padding(
+                          padding: EdgeInsets.only(
+                            bottom:
+                                row == (products.length + 1) ~/ 2 - 1 ? 0 : 6,
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: _buildCard(context, products[row * 2]),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: row * 2 + 1 < products.length
+                                    ? _buildCard(
+                                        context, products[row * 2 + 1])
+                                    : const SizedBox.shrink(),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (loadingMore && showLoadingPlaceholder) ...[
+                        const SizedBox(height: 6),
+                        const SkeletonProductGrid(
+                            count: 2, showAddToCart: true, squareImage: true),
+                      ],
+                    ],
+                  ),
+          ),
+        ),
       ],
     );
   }
@@ -3411,6 +3421,7 @@ class _CartRecommendationsSection extends StatelessWidget {
   Widget _buildCard(BuildContext context, Product product) {
     return CompactCommerceProductCard(
       product: product,
+      squareImage: true,
       onTap: () {
         AppHaptics.tap();
         Navigator.pushNamed(

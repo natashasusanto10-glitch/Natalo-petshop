@@ -136,15 +136,55 @@ class SkeletonProductCard extends StatelessWidget {
 class SkeletonProductGrid extends StatelessWidget {
   final int count;
   final bool showAddToCart;
+  // Grid square (Cart/Wishlist Fase 3): kartu foto persegi 1:1 + row
+  // auto-height (kebal lebar layar). Default false = GridView aspect-tetap
+  // lama untuk pemakai non-square.
+  final bool squareImage;
 
   const SkeletonProductGrid({
     super.key,
     this.count = 6,
     this.showAddToCart = true,
+    this.squareImage = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (squareImage) {
+      // Row auto-height (gap 6) — BUKAN SliverGrid/GridView childAspectRatio
+      // tetap: kartu foto persegi tingginya ikut lebar, fixed-ratio overflow
+      // di layar sempit. Sama pola dengan grid asli & Beranda/Katalog.
+      final rowCount = (count + 1) ~/ 2;
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var row = 0; row < rowCount; row++)
+            Padding(
+              padding: EdgeInsets.only(bottom: row == rowCount - 1 ? 0 : 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: SkeletonProductCard(
+                      showAddToCart: showAddToCart,
+                      squareImage: true,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: row * 2 + 1 < count
+                        ? SkeletonProductCard(
+                            showAddToCart: showAddToCart,
+                            squareImage: true,
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      );
+    }
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),

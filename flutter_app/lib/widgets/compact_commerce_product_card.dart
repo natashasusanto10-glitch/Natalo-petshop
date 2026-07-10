@@ -15,6 +15,16 @@ const _shippingGreen = Color(0xFF16A34A);
 const _shippingSoft = Color(0xFFECFDF3);
 const _starAmber = Color(0xFFF59E0B);
 
+/// Latar abu muda di belakang grid produk Cart/Wishlist (Fase 3) — sama
+/// dengan Beranda/Katalog: kartu putih menonjol di atas kanal abu. Dark:
+/// surface sedikit lebih rendah supaya kartu tetap terpisah.
+Color commerceGridSurfaceTint(BuildContext context) {
+  final cs = Theme.of(context).colorScheme;
+  return Theme.of(context).brightness == Brightness.dark
+      ? cs.surfaceContainerLow
+      : const Color(0xFFEEF1F5);
+}
+
 /// Compact product card for cart and wishlist surfaces only.
 ///
 /// This intentionally does not replace the global [ProductCard]; it mirrors
@@ -24,6 +34,11 @@ class CompactCommerceProductCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onAddToCart;
   final double? width;
+  // Grid Cart/Wishlist (Fase 3): foto persegi 1:1 full-bleed BoxFit.cover +
+  // radius kartu 8, konsisten dengan Beranda/Katalog. Default false supaya
+  // carousel "Yuk dilihat lagi"/"diborong bossku"/keranjang-kosong (yang
+  // me-reuse widget ini dengan width tetap) TIDAK ikut berubah.
+  final bool squareImage;
 
   const CompactCommerceProductCard({
     super.key,
@@ -31,6 +46,7 @@ class CompactCommerceProductCard extends StatelessWidget {
     required this.onTap,
     required this.onAddToCart,
     this.width,
+    this.squareImage = false,
   });
 
   @override
@@ -39,20 +55,76 @@ class CompactCommerceProductCard extends StatelessWidget {
     final adminDiscount = _adminDiscount(product);
     final discountPercent = _adminDiscountPercent(product);
     final promoChips = _promoChips(product);
+    // Radius 8 utk grid square (samakan Beranda/Katalog); 16 utk carousel.
+    final radius = squareImage ? BorderRadius.circular(8) : AppRadius.large;
+
+    // Konten di bawah foto (title → harga+tombol). Dipakai di dua layout:
+    // square (foto full-bleed, konten di-padding sendiri) & non-square lama.
+    final contentChildren = <Widget>[
+      Text(
+        product.title,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: cs.onSurface,
+          fontSize: 13.5,
+          height: 1.22,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      if (promoChips.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: promoChips,
+        ),
+      ],
+      // Rating/terjual hanya dirender kalau datanya ada — produk baru tanpa
+      // rating & belum terjual tidak menyisakan baris kosong.
+      if (product.rating > 0 || product.soldCount > 0) ...[
+        const SizedBox(height: 7),
+        _RatingSoldRow(product: product),
+      ],
+      const SizedBox(height: 10),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: _PriceBlock(
+              product: product,
+              hasAdminDiscount: adminDiscount,
+            ),
+          ),
+          const SizedBox(width: 8),
+          _CartButton(
+            enabled: product.stock > 0,
+            onTap: onAddToCart,
+          ),
+        ],
+      ),
+    ];
+
+    final imageWidget = _ProductImage(
+      product: product,
+      discountPercent: discountPercent,
+      square: squareImage,
+    );
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        // Radius 16 (AppRadius.large) — samakan dgn ProductCard di Products/
-        // Home; sebelumnya 20 → tile sama tampak beda sudut antar layar.
-        borderRadius: AppRadius.large,
+        borderRadius: radius,
         child: Container(
           width: width,
-          padding: const EdgeInsets.all(10),
+          // square: padding NOL supaya foto full-bleed nempel tepi; konten
+          // dapat padding sendiri. non-square: perilaku lama (padding 10).
+          padding: squareImage ? EdgeInsets.zero : const EdgeInsets.all(10),
+          clipBehavior: squareImage ? Clip.antiAlias : Clip.none,
           decoration: BoxDecoration(
             color: cs.surface,
-            borderRadius: AppRadius.large,
+            borderRadius: radius,
             border: Border.all(color: cs.outlineVariant, width: 1),
             boxShadow: [
               BoxShadow(
@@ -64,62 +136,26 @@ class CompactCommerceProductCard extends StatelessWidget {
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            // min — kartu shrink-wrap ke kontennya (auto-height grid +
-            // rail horizontal). Tanpa ini Column mengisi penuh constraint
-            // dan menyisakan ruang kosong di bawah harga.
+            // min — kartu shrink-wrap ke kontennya (auto-height grid + rail
+            // horizontal). Tanpa ini Column mengisi penuh constraint.
             mainAxisSize: MainAxisSize.min,
-            children: [
-              _ProductImage(
-                product: product,
-                discountPercent: discountPercent,
-              ),
-              const SizedBox(height: 10),
-              Text(
-                product.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 13.5,
-                  height: 1.22,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              if (promoChips.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: promoChips,
-                ),
-              ],
-              // Rating/terjual hanya dirender kalau datanya ada — produk
-              // baru tanpa rating & belum terjual tidak menyisakan baris
-              // kosong. Spacer DIBUANG: kartu ini sekarang dipakai di grid
-              // auto-height (tinggi baris ikut konten), Spacer butuh tinggi
-              // bounded dan justru bikin unbounded-height error.
-              if (product.rating > 0 || product.soldCount > 0) ...[
-                const SizedBox(height: 7),
-                _RatingSoldRow(product: product),
-              ],
-              const SizedBox(height: 10),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: _PriceBlock(
-                      product: product,
-                      hasAdminDiscount: adminDiscount,
+            children: squareImage
+                ? [
+                    imageWidget,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: contentChildren,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  _CartButton(
-                    enabled: product.stock > 0,
-                    onTap: onAddToCart,
-                  ),
-                ],
-              ),
-            ],
+                  ]
+                : [
+                    imageWidget,
+                    const SizedBox(height: 10),
+                    ...contentChildren,
+                  ],
           ),
         ),
       ),
@@ -130,15 +166,63 @@ class CompactCommerceProductCard extends StatelessWidget {
 class _ProductImage extends StatelessWidget {
   final Product product;
   final int? discountPercent;
+  final bool square;
 
   const _ProductImage({
     required this.product,
     required this.discountPercent,
+    this.square = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // Overlay badge sama utk dua mode.
+    final overlays = <Widget>[
+      if (discountPercent != null)
+        Positioned(
+          top: 0,
+          right: 0,
+          child: _DiscountBadge(percent: discountPercent!),
+        ),
+      // Icon-only: kartu ini sempit (grid cart/wishlist), nama brand penuh
+      // tidak muat tanpa overflow.
+      if (productHasBrandExclusiveBadge(
+        isBrandExclusive: product.voucherPreview?.isBrandExclusive,
+        brand: product.brand,
+      ))
+        Positioned(
+          top: 6,
+          left: 6,
+          child: BrandExclusiveBadge(brand: product.brand, full: false),
+        ),
+    ];
+
+    if (square) {
+      // Grid Cart/Wishlist (Fase 3): foto persegi 1:1 mengisi penuh (cover),
+      // full-bleed — sama Beranda/Katalog. Sudut atas dipotong oleh clip
+      // kartu (radius 8). Tanpa tile abu / padding.
+      return AspectRatio(
+        aspectRatio: 1,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: AppProductImage(
+                imageUrl: product.imageUrl,
+                fit: BoxFit.cover,
+                // Full-bleed: JANGAN clip radius internal (default 12) — sudut
+                // atas ditangani clip kartu (radius 8), sudut bawah lurus.
+                // Sama efeknya dengan CachedNetworkImage mentah di Beranda/
+                // Katalog.
+                borderRadius: BorderRadius.zero,
+              ),
+            ),
+            ...overlays,
+          ],
+        ),
+      );
+    }
+
     return AspectRatio(
       aspectRatio: 1.14,
       child: Stack(
@@ -156,23 +240,7 @@ class _ProductImage extends StatelessWidget {
               ),
             ),
           ),
-          if (discountPercent != null)
-            Positioned(
-              top: 0,
-              right: 0,
-              child: _DiscountBadge(percent: discountPercent!),
-            ),
-          // Icon-only: kartu ini sempit (grid cart/wishlist), nama brand
-          // penuh tidak muat tanpa overflow.
-          if (productHasBrandExclusiveBadge(
-            isBrandExclusive: product.voucherPreview?.isBrandExclusive,
-            brand: product.brand,
-          ))
-            Positioned(
-              top: 6,
-              left: 6,
-              child: BrandExclusiveBadge(brand: product.brand, full: false),
-            ),
+          ...overlays,
         ],
       ),
     );

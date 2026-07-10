@@ -396,9 +396,11 @@ class _WishlistScreenState extends State<WishlistScreen> {
             return ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 132),
               children: const [
-                SkeletonProductGrid(count: 6, showAddToCart: true),
+                SkeletonProductGrid(
+                    count: 6, showAddToCart: true, squareImage: true),
                 SizedBox(height: 24),
-                SkeletonProductGrid(count: 4, showAddToCart: true),
+                SkeletonProductGrid(
+                    count: 4, showAddToCart: true, squareImage: true),
               ],
             );
           }
@@ -452,8 +454,12 @@ class _WishlistScreenState extends State<WishlistScreen> {
                     ),
                   )
                 else
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  DecoratedSliver(
+                    decoration: BoxDecoration(
+                      color: commerceGridSurfaceTint(context),
+                    ),
+                    sliver: SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                     // Grid 2-kolom AUTO-HEIGHT (bukan SliverGrid dengan
                     // childAspectRatio tetap) — tinggi baris ikut konten:
                     // kartu tanpa chip/rating tidak menyisakan ruang
@@ -469,7 +475,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                           final rightIndex = rowIndex * 2 + 1;
                           return Padding(
                             padding: EdgeInsets.only(
-                              bottom: rowIndex == rowCount - 1 ? 0 : 12,
+                              bottom: rowIndex == rowCount - 1 ? 0 : 6,
                             ),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -479,18 +485,20 @@ class _WishlistScreenState extends State<WishlistScreen> {
                                     index: rowIndex * 2,
                                     child: CompactCommerceProductCard(
                                       product: left,
+                                      squareImage: true,
                                       onTap: () => _openProduct(left),
                                       onAddToCart: () => _addToCart(left),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 12),
+                                const SizedBox(width: 6),
                                 Expanded(
                                   child: rightIndex < products.length
                                       ? AppAnimatedEntrance(
                                           index: rightIndex,
                                           child: CompactCommerceProductCard(
                                             product: products[rightIndex],
+                                            squareImage: true,
                                             onTap: () => _openProduct(
                                                 products[rightIndex]),
                                             onAddToCart: () => _addToCart(
@@ -507,22 +515,33 @@ class _WishlistScreenState extends State<WishlistScreen> {
                       ),
                     ),
                   ),
+                  ),
                 SliverToBoxAdapter(
                   child: _LookAgainHeader(
                       hasSearchHistory: _searchHistory.isNotEmpty),
                 ),
                 if (!_lookAgainInitialLoaded && _lookAgainLoading)
-                  const SliverPadding(
-                    padding: EdgeInsets.fromLTRB(16, 0, 16, 0),
-                    sliver: SliverToBoxAdapter(
-                      child: SkeletonProductGrid(count: 4, showAddToCart: true),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+                    sliver: DecoratedSliver(
+                      decoration: BoxDecoration(
+                        color: commerceGridSurfaceTint(context),
+                      ),
+                      sliver: const SliverToBoxAdapter(
+                        child: SkeletonProductGrid(
+                            count: 4, showAddToCart: true, squareImage: true),
+                      ),
                     ),
                   )
                 else if (lookAgain.isEmpty)
                   const SliverToBoxAdapter(child: SizedBox.shrink())
                 else
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  DecoratedSliver(
+                    decoration: BoxDecoration(
+                      color: commerceGridSurfaceTint(context),
+                    ),
+                    sliver: SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                     // Sama dengan grid wishlist di atas: 2-kolom
                     // auto-height, start (bukan stretch).
                     sliver: SliverList(
@@ -533,7 +552,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                           final rightIndex = rowIndex * 2 + 1;
                           return Padding(
                             padding: EdgeInsets.only(
-                              bottom: rowIndex == rowCount - 1 ? 0 : 12,
+                              bottom: rowIndex == rowCount - 1 ? 0 : 6,
                             ),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -543,18 +562,20 @@ class _WishlistScreenState extends State<WishlistScreen> {
                                     index: rowIndex * 2,
                                     child: CompactCommerceProductCard(
                                       product: left,
+                                      squareImage: true,
                                       onTap: () => _openProduct(left),
                                       onAddToCart: () => _addToCart(left),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 12),
+                                const SizedBox(width: 6),
                                 Expanded(
                                   child: rightIndex < lookAgain.length
                                       ? AppAnimatedEntrance(
                                           index: rightIndex,
                                           child: CompactCommerceProductCard(
                                             product: lookAgain[rightIndex],
+                                            squareImage: true,
                                             onTap: () => _openProduct(
                                                 lookAgain[rightIndex]),
                                             onAddToCart: () => _addToCart(
@@ -570,6 +591,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                         childCount: (lookAgain.length + 1) ~/ 2,
                       ),
                     ),
+                  ),
                   ),
                 SliverToBoxAdapter(
                   child: Padding(
