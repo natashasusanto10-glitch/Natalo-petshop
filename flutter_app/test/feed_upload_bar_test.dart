@@ -47,4 +47,23 @@ void main() {
     expect(find.text('Gagal mengunggah'), findsOneWidget);
     expect(find.text('Coba lagi'), findsOneWidget);
   });
+
+  testWidgets('carousel uploading: counter pakai done/total asli (n/n)',
+      (tester) async {
+    // Progress banded (0.05-0.85) tidak boleh dipakai untuk hitung n —
+    // pastikan bar pakai photosDone/photosTotal asli dari store, bukan
+    // round(progress*total) yang bisa drift / tidak pernah n/n.
+    feedUploadStore.debugSetTask(FeedUploadTask(
+      localId: 't-carousel',
+      kind: FeedUploadKind.photo,
+      status: FeedUploadStatus.uploading,
+      progress: 0.85,
+      photosDone: 8,
+      photosTotal: 8,
+      createdAt: DateTime(2026),
+    ));
+    await tester.pumpWidget(_wrap());
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Foto 8/8'), findsOneWidget);
+  });
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -66,6 +67,11 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
   Timer? _copyTicker;
   int _copyIndex = 0;
 
+  // Guard monoton — progress tidak boleh mundur secara visual meski
+  // task.progress sesaat lompat turun (mis. transisi status).
+  double _maxShownProgress = 0;
+  String? _maxShownLocalId;
+
   static const _blue = Color(0xFF1E5BFF);
   static const _blueLight = Color(0xFF5B8CFF);
   static const _waitingBlue = Color(0xFF3B7BFF);
@@ -108,15 +114,17 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
   void _maybeStartCopyTicker() {
     _copyTicker?.cancel();
     if (!_isUploadingPhase) return;
+    final seqLength =
+        widget.task.kind == FeedUploadKind.photo ? 3 : 2;
     _copyTicker = Timer.periodic(const Duration(milliseconds: 2000), (_) {
       if (!mounted) return;
-      setState(() => _copyIndex = 1 - _copyIndex);
+      setState(() => _copyIndex = (_copyIndex + 1) % seqLength);
     });
   }
 
   String _mediaWord(FeedUploadTask task) {
     if (task.kind == FeedUploadKind.photo) {
-      final n = task.photoFiles.length;
+      final n = task.photosTotal ?? task.photoFiles.length;
       return n > 1 ? '$n fotomu' : 'fotomu';
     }
     return 'videomu';
@@ -128,11 +136,20 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
       case FeedUploadStatus.preparing:
         return 'Sebentar ya, ${_mediaWord(task)} lagi diposting…';
       case FeedUploadStatus.uploading:
-        final alt = [
+        final standard = [
           'Sabar ya, jangan tutup aplikasinya dulu',
-          '${_capitalize(_mediaWordSubject(task))} lagi jalan ke feed…',
+          '${_capitalize(_mediaWord(task))} lagi jalan ke feed…',
         ];
-        return alt[_copyIndex % alt.length];
+        if (task.kind == FeedUploadKind.photo) {
+          // Foto masuk uploading langsung (tanpa fase preparing kelihatan)
+          // — frame pertama tetap tampilkan lead copy, baru alternate.
+          final seq = [
+            'Sebentar ya, ${_mediaWord(task)} lagi diposting…',
+            ...standard,
+          ];
+          return seq[_copyIndex % seq.length];
+        }
+        return standard[_copyIndex % standard.length];
       case FeedUploadStatus.processing:
         return 'Dikit lagi selesai nih…';
       case FeedUploadStatus.waitingReview:
@@ -148,16 +165,18 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
     }
   }
 
-  String _mediaWordSubject(FeedUploadTask task) {
-    if (task.kind == FeedUploadKind.photo) {
-      final n = task.photoFiles.length;
-      return n > 1 ? '$n fotomu' : 'fotomu';
-    }
-    return 'videomu';
-  }
-
   String _capitalize(String s) =>
       s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
+  double _guardedProgress(FeedUploadTask task) {
+    if (_maxShownLocalId != task.localId) {
+      _maxShownLocalId = task.localId;
+      _maxShownProgress = task.progress;
+    } else if (task.progress > _maxShownProgress) {
+      _maxShownProgress = task.progress;
+    }
+    return math.max(_maxShownProgress, task.progress);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -184,7 +203,6 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
       padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
       child: Container(
         constraints: const BoxConstraints(minHeight: 56),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(14),
@@ -197,7 +215,44 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
             ),
           ],
         ),
-        child: Row(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Stack(
+            children: [
+              // Inset top highlight — emulasi `inset 0 1px 0
+              // rgba(255,255,255,0.06)` (BoxShadow inset tidak didukung
+              // Flutter), pakai strip 1px di atas.
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                child: Container(
+                  height: 1,
+                  color: const Color.fromRGBO(255, 255, 255, 0.06),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 8),
+                child: _buildRow(task, isFailed, showCancel, showBar),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRow(
+    FeedUploadTask task,
+    bool isFailed,
+    bool showCancel,
+    bool showBar,
+  ) {
+    final isTerminal = task.status == FeedUploadStatus.failed ||
+        task.status == FeedUploadStatus.waitingReview ||
+        task.status == FeedUploadStatus.success;
+    return Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             _Thumbnail(task: task, isTerminal: isTerminal, isFailed: isFailed),
@@ -238,7 +293,7 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
                   if (showBar) ...[
                     const SizedBox(height: 6),
                     _ProgressTrack(
-                      progress: task.progress,
+                      progress: _guardedProgress(task),
                       sheenController: _sheenController,
                       colorStart: _blue,
                       colorEnd: _blueLight,
@@ -261,9 +316,7 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
               _CancelButton(onTap: () => feedUploadStore.cancelActive()),
             ],
           ],
-        ),
-      ),
-    );
+        );
   }
 }
 
@@ -485,6 +538,12 @@ class _ProgressTrack extends StatelessWidget {
                       gradient: LinearGradient(
                         colors: [colorStart, colorEnd],
                       ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color.fromRGBO(30, 91, 255, 0.45),
+                          blurRadius: 6,
+                        ),
+                      ],
                     ),
                   ),
                   AnimatedBuilder(
@@ -551,12 +610,13 @@ class _TrailingIndicator extends StatelessWidget {
         );
       case FeedUploadStatus.uploading:
       case FeedUploadStatus.processing:
-        if (task.kind == FeedUploadKind.photo &&
-            task.photoFiles.length > 1) {
-          final total = task.photoFiles.length;
-          final done = (task.progress * total).round().clamp(0, total);
+        final photosTotal = task.photosTotal ?? task.photoFiles.length;
+        if (task.kind == FeedUploadKind.photo && photosTotal > 1) {
+          final done = (task.photosDone ??
+                  (task.progress * photosTotal).round())
+              .clamp(0, photosTotal);
           return Text(
-            'Foto $done/$total',
+            'Foto $done/$photosTotal',
             style: const TextStyle(
               color: Color(0xFFAEB7C7),
               fontSize: 11,
@@ -574,7 +634,7 @@ class _TrailingIndicator extends StatelessWidget {
           ),
         );
       case FeedUploadStatus.waitingReview:
-        return Icon(Icons.watch_later_rounded, color: waitingBlue, size: 18);
+        return _WaitingReviewIcon(color: waitingBlue);
       case FeedUploadStatus.success:
         return const Icon(Icons.check_circle_rounded,
             color: Color(0xFF22C55E), size: 18);
@@ -583,6 +643,48 @@ class _TrailingIndicator extends StatelessWidget {
       case FeedUploadStatus.idle:
         return const SizedBox.shrink();
     }
+  }
+}
+
+/// Ikon "jam-centang" — Icons.watch_later_rounded + badge centang kecil
+/// di sudut kanan-bawah, komposit karena Material tidak punya ikon
+/// clock-check bawaan.
+class _WaitingReviewIcon extends StatelessWidget {
+  final Color color;
+  const _WaitingReviewIcon({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 20,
+      height: 20,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Icon(Icons.watch_later_rounded, color: color, size: 18),
+          Positioned(
+            right: -1,
+            bottom: -1,
+            child: Container(
+              width: 11,
+              height: 11,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color,
+                border: const Border.fromBorderSide(
+                  BorderSide(color: Color(0xFF12151D), width: 1),
+                ),
+              ),
+              child: const Icon(
+                Icons.check_rounded,
+                color: Colors.white,
+                size: 8,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -58,6 +58,11 @@ class FeedUploadTask {
   final String? errorMessage;
   final DateTime createdAt;
 
+  /// Real photo counts dari onProgress callback (bukan derivasi banded
+  /// progress) — supaya counter "Foto n/total" akurat & bisa n/n di akhir.
+  final int? photosDone;
+  final int? photosTotal;
+
   const FeedUploadTask({
     required this.localId,
     required this.kind,
@@ -69,12 +74,16 @@ class FeedUploadTask {
     this.progress = 0,
     this.errorMessage,
     required this.createdAt,
+    this.photosDone,
+    this.photosTotal,
   });
 
   FeedUploadTask copyWith({
     FeedUploadStatus? status,
     double? progress,
     String? errorMessage,
+    int? photosDone,
+    int? photosTotal,
   }) {
     return FeedUploadTask(
       localId: localId,
@@ -87,6 +96,8 @@ class FeedUploadTask {
       progress: progress ?? this.progress,
       errorMessage: errorMessage,
       createdAt: createdAt,
+      photosDone: photosDone ?? this.photosDone,
+      photosTotal: photosTotal ?? this.photosTotal,
     );
   }
 }
@@ -229,6 +240,8 @@ class FeedUploadStore extends ChangeNotifier {
           _update(
             status: FeedUploadStatus.uploading,
             progress: (0.05 + (0.80 * ratio)).clamp(0.05, 0.85),
+            photosDone: done,
+            photosTotal: t,
           );
         },
       );
@@ -563,6 +576,8 @@ class FeedUploadStore extends ChangeNotifier {
     FeedUploadStatus? status,
     double? progress,
     String? errorMessage,
+    int? photosDone,
+    int? photosTotal,
   }) {
     final task = _task;
     if (task == null) return;
@@ -570,6 +585,8 @@ class FeedUploadStore extends ChangeNotifier {
       status: status,
       progress: progress,
       errorMessage: errorMessage,
+      photosDone: photosDone,
+      photosTotal: photosTotal,
     );
     notifyListeners();
   }
