@@ -56,7 +56,12 @@ export function ProductCard({
             style={{ viewTransitionName: `nat-prod-${product.slug}` }}
           >
             {gridVideoMp4 ? (
-              <ProductCardVideo mp4Url={gridVideoMp4} poster={product.imageUrl} alt={product.name} />
+              <ProductCardVideo
+                mp4Url={gridVideoMp4}
+                poster={product.imageUrl}
+                alt={product.name}
+                priority={priority}
+              />
             ) : product.imageUrl ? (
               <Image
                 src={product.imageUrl}
@@ -143,7 +148,13 @@ export function ProductCard({
           style={{ viewTransitionName: `nat-prod-${product.slug}` }}
         >
           {gridVideoMp4 ? (
-            <ProductCardVideo mp4Url={gridVideoMp4} poster={product.imageUrl} alt={product.name} />
+            <ProductCardVideo
+              mp4Url={gridVideoMp4}
+              poster={product.imageUrl}
+              alt={product.name}
+              priority={priority}
+              mediaClassName="object-contain p-2"
+            />
           ) : product.imageUrl ? (
             <Image
               src={product.imageUrl}

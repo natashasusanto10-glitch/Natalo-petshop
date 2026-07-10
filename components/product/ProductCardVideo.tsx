@@ -16,11 +16,15 @@ export function ProductCardVideo({
   poster,
   alt,
   className = "",
+  priority,
+  mediaClassName = "object-cover",
 }: {
   mp4Url: string;
   poster: string | null;
   alt: string;
   className?: string;
+  priority?: boolean;
+  mediaClassName?: string;
 }) {
   const id = useId();
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -73,10 +77,11 @@ export function ProductCardVideo({
           src={poster}
           alt={alt}
           fill
+          priority={priority}
           placeholder="blur"
           blurDataURL={IMAGE_BLUR_GRAY}
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-          className="object-cover"
+          className={mediaClassName}
         />
       ) : (
         <div className="flex h-full items-center justify-center text-5xl text-gray-300">🐾</div>
@@ -91,7 +96,7 @@ export function ProductCardVideo({
           preload="none"
           aria-hidden="true"
           onError={() => setFailed(true)}
-          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
+          className={`absolute inset-0 h-full w-full ${mediaClassName} transition-opacity duration-300 ${
             canPlay ? "opacity-100" : "opacity-0"
           }`}
         />
