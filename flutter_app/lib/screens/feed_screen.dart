@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:flutter/gestures.dart';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +15,7 @@ import 'package:visibility_detector/visibility_detector.dart';
 
 import '../config/api_config.dart';
 import '../features/feed/widgets/feed_action_rail.dart';
+import '../features/feed/widgets/feed_creator_overlay.dart';
 import '../features/feed/widgets/feed_video_scrubber.dart';
 import '../models/cart_item.dart';
 import '../models/feed_post.dart';
@@ -39,7 +38,6 @@ import '../state/settings_store.dart';
 import '../utils/android_back_overlays.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
-import '../utils/mention_text.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/feed_comment_sheet.dart';
@@ -47,7 +45,6 @@ import '../widgets/feed_upload_sheet.dart';
 import '../widgets/moderation_action_sheet.dart';
 
 const _officialGold = Color(0xFFF4D47C);
-const _feedBlue = Color(0xFF0B7FEA);
 const _feedActionBottomInset = 24.0;
 const _feedActionRailRightInset = 4.0;
 // Aksen commerce oranye — dipakai untuk aksi tambah-keranjang (kartu anchor
@@ -1104,7 +1101,7 @@ class _FeedErrorState extends StatelessWidget {
 
 /// PHOTO_CAROUSEL post view — render 1-8 foto pakai PageView horizontal +
 /// dots indicator + heart burst + action rail. Reuse helper components
-/// (FeedActionRail, _FeedCreatorIdentity, _ExpandableCaption)
+/// (FeedActionRail, _FeedCreatorIdentity, FeedExpandableCaption)
 /// dari _FeedPostView via lokasi sama-file.
 ///
 /// Beda dari _FeedPostView:
@@ -1138,7 +1135,6 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   int _commentCount = 0;
   int _shareCount = 0;
   bool _likeBusy = false;
-  bool _captionExpanded = false;
   bool _hideOverlayForLongPress = false;
   bool _hideOverlayForPinchZoom = false;
 
@@ -1841,11 +1837,10 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                         displayName: post.author.displayHandle,
                       ),
                       const SizedBox(height: 7),
-                      _ExpandableCaption(
+                      FeedExpandableCaption(
                         text: post.caption ?? '',
-                        expanded: _captionExpanded,
-                        onToggle: () => setState(
-                            () => _captionExpanded = !_captionExpanded),
+                        onMentionTap: (handle) => Navigator.of(context)
+                            .pushNamed('/u', arguments: handle),
                       ),
                     ],
                   ),
@@ -1910,7 +1905,6 @@ class _FeedPostViewState extends State<_FeedPostView>
   int _commentCount = 0;
   int _shareCount = 0;
   bool _isPaused = false;
-  bool _captionExpanded = false;
   bool _commentDrawerMounted = false;
   bool _commentSheetOpen = false;
   bool _videoLoadFailed = false;
@@ -3338,11 +3332,13 @@ class _FeedPostViewState extends State<_FeedPostView>
                                     displayName: post.author.displayHandle,
                                   ),
                                   const SizedBox(height: 7),
-                                  _ExpandableCaption(
+                                  FeedExpandableCaption(
                                     text: post.caption ?? '',
-                                    expanded: _captionExpanded,
-                                    onToggle: () => setState(() =>
-                                        _captionExpanded = !_captionExpanded),
+                                    onMentionTap: (handle) =>
+                                        Navigator.of(context).pushNamed(
+                                      '/u',
+                                      arguments: handle,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -3446,8 +3442,12 @@ class _CommentVideoFrame extends StatelessWidget {
   }
 }
 
-/// Caption dengan truncate 2 lines + "more" toggle — Reels pattern.
-class _FeedCreatorIdentity extends StatelessWidget {
+/// Menjembatani state reaktif (memberStore + followOverrides + follow
+/// service) dengan widget bersama `FeedCreatorIdentity`
+/// (features/feed/widgets/feed_creator_overlay.dart) — tetap di
+/// feed_screen.dart karena terikat langsung ke model FeedAuthor & service
+/// layer, bukan bagian widget presentasional yang di-share.
+class _FeedCreatorIdentity extends StatefulWidget {
   final FeedAuthor author;
   final String displayName;
 
@@ -3457,102 +3457,13 @@ class _FeedCreatorIdentity extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    // Identity tap-able buat user dengan username — buka public profile
-    // /u/{username}. Official account tetap non-tappable (admin = brand
-    // tunggal, gak ada profile page sendiri). User tanpa username
-    // (existing yang belum set) gak tappable juga supaya gak nge-route
-    // ke handle null.
-    final canOpenProfile = author.hasUsername;
-    final row = Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        _FeedCreatorAvatar(
-          name: displayName,
-          profilePhotoUrl: author.profilePhotoUrl,
-        ),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text(
-            displayName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: author.isOfficialAccount ? _officialGold : Colors.white,
-              // Setipis IG Reels: 13.5 + w600 (dari 15.5/w800) — nama lebih
-              // halus, tidak mendominasi over video.
-              fontSize: 13.5,
-              fontWeight: FontWeight.w600,
-              height: 1.1,
-              shadows: const [
-                Shadow(
-                  color: Colors.black54,
-                  blurRadius: 6,
-                  offset: Offset(0, 1),
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (author.isOfficialAccount) ...[
-          const SizedBox(width: 6),
-          const Icon(
-            Icons.verified_rounded,
-            color: _officialGold,
-            size: 17,
-            shadows: [
-              Shadow(
-                color: Colors.black54,
-                blurRadius: 5,
-              ),
-            ],
-          ),
-        ],
-        // Chip Ikuti/Mengikuti ala IG — di samping nama. Official account
-        // tidak dapat chip (brand tunggal, bukan akun sosial biasa);
-        // self juga tidak (tidak bisa follow diri sendiri).
-        if (!author.isOfficialAccount) ...[
-          const SizedBox(width: 10),
-          _FeedFollowChip(author: author),
-        ],
-      ],
-    );
-    if (!canOpenProfile) return row;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        AppHaptics.tap();
-        Navigator.pushNamed(
-          context,
-          '/u',
-          arguments: author.username!.toLowerCase(),
-        );
-      },
-      child: row,
-    );
-  }
+  State<_FeedCreatorIdentity> createState() => _FeedCreatorIdentityState();
 }
 
-/// Chip Ikuti/Mengikuti di samping nama kreator — IG Reels parity:
-/// pill transparan + border putih tipis, teks kecil bold.
-///
-/// State = override sesi (followOverrides, konsisten antar post dari
-/// author sama) ?? snapshot payload (author.isFollowing). Tap →
-/// optimistic toggle + call API; revert kalau gagal. Belum login → tap
-/// diarahkan ke halaman login (chip tetap tampil "Ikuti" ala IG).
-class _FeedFollowChip extends StatefulWidget {
-  final FeedAuthor author;
-
-  const _FeedFollowChip({required this.author});
-
-  @override
-  State<_FeedFollowChip> createState() => _FeedFollowChipState();
-}
-
-class _FeedFollowChipState extends State<_FeedFollowChip> {
+class _FeedCreatorIdentityState extends State<_FeedCreatorIdentity> {
   bool _busy = false;
 
-  Future<void> _toggle(bool currentlyFollowing) async {
+  Future<void> _toggleFollow(bool currentlyFollowing) async {
     if (_busy) return;
     AppHaptics.tap();
     if (!memberStore.isLoggedIn) {
@@ -3560,19 +3471,20 @@ class _FeedFollowChipState extends State<_FeedFollowChip> {
       return;
     }
     _busy = true;
+    final author = widget.author;
     final target = !currentlyFollowing;
     // Optimistic — chip (dan semua chip author sama di post lain)
     // langsung berubah; revert kalau API gagal.
-    setFollowOverride(widget.author.id, target);
+    setFollowOverride(author.id, target);
     try {
       if (target) {
-        await followService.follow(widget.author.id);
+        await followService.follow(author.id);
       } else {
-        await followService.unfollow(widget.author.id);
+        await followService.unfollow(author.id);
       }
     } catch (_) {
       if (mounted) {
-        setFollowOverride(widget.author.id, currentlyFollowing);
+        setFollowOverride(author.id, currentlyFollowing);
         AppToast.show(context, 'Gagal memperbarui. Coba lagi.');
       }
     } finally {
@@ -3582,227 +3494,59 @@ class _FeedFollowChipState extends State<_FeedFollowChip> {
 
   @override
   Widget build(BuildContext context) {
-    // Sembunyikan untuk diri sendiri — tidak bisa follow akun sendiri.
-    // AnimatedBuilder ke memberStore supaya chip hilang/muncul benar
-    // saat login state berubah tanpa perlu feed re-fetch.
+    final author = widget.author;
+    // Identity tap-able buat user dengan username — buka public profile
+    // /u/{username}. Official account tetap non-tappable (admin = brand
+    // tunggal, gak ada profile page sendiri). User tanpa username
+    // (existing yang belum set) gak tappable juga supaya gak nge-route
+    // ke handle null.
+    final canOpenProfile = author.hasUsername;
+    final trimmedName = widget.displayName.trim();
+    final avatarInitial =
+        trimmedName.isEmpty ? 'N' : trimmedName[0].toUpperCase();
+
+    // AnimatedBuilder ke memberStore + ValueListenableBuilder ke
+    // followOverrides supaya chip hilang/muncul & label berubah benar
+    // saat login state / follow state berubah tanpa perlu feed re-fetch.
     return AnimatedBuilder(
       animation: memberStore,
       builder: (context, _) {
         final selfId = memberStore.profile?.id;
-        if (selfId != null && selfId == widget.author.id) {
-          return const SizedBox.shrink();
-        }
+        final isSelf = selfId != null && selfId == author.id;
         return ValueListenableBuilder<Map<String, bool>>(
           valueListenable: followOverrides,
           builder: (context, overrides, _) {
-            final following =
-                overrides[widget.author.id] ?? widget.author.isFollowing;
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _toggle(following),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
-                decoration: BoxDecoration(
-                  // Transparan ala IG — cuma border, konten video tembus.
-                  borderRadius: BorderRadius.circular(9),
-                  border: Border.all(
-                    color: Colors.white.withValues(
-                      alpha: following ? 0.38 : 0.85,
-                    ),
-                    width: 1,
-                  ),
-                ),
-                child: Text(
-                  following ? 'Mengikuti' : 'Ikuti',
-                  style: TextStyle(
-                    color: following ? Colors.white70 : Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    height: 1,
-                    shadows: const [
-                      Shadow(color: Colors.black45, blurRadius: 4),
-                    ],
-                  ),
-                ),
-              ),
+            final following = overrides[author.id] ?? author.isFollowing;
+            // Official account tidak dapat chip (brand tunggal, bukan akun
+            // sosial biasa); self juga tidak (tidak bisa follow diri sendiri).
+            final followState = author.isOfficialAccount || isSelf
+                ? FeedFollowChipState.hidden
+                : (following
+                    ? FeedFollowChipState.following
+                    : FeedFollowChipState.none);
+            return FeedCreatorIdentity(
+              name: widget.displayName,
+              avatarInitial: avatarInitial,
+              avatarUrl: author.profilePhotoUrl,
+              isOfficial: author.isOfficialAccount,
+              followState: followState,
+              onFollowTap: followState == FeedFollowChipState.hidden
+                  ? null
+                  : () => _toggleFollow(following),
+              onProfileTap: canOpenProfile
+                  ? () {
+                      AppHaptics.tap();
+                      Navigator.pushNamed(
+                        context,
+                        '/u',
+                        arguments: author.username!.toLowerCase(),
+                      );
+                    }
+                  : null,
             );
           },
         );
       },
-    );
-  }
-}
-
-class _FeedCreatorAvatar extends StatelessWidget {
-  final String name;
-  final String? profilePhotoUrl;
-
-  const _FeedCreatorAvatar({
-    required this.name,
-    required this.profilePhotoUrl,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final url = profilePhotoUrl?.trim();
-    final hasPhoto = url != null && url.isNotEmpty;
-
-    return Container(
-      width: 34,
-      height: 34,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.88),
-          width: 1.4,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.30),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: ClipOval(
-        child: hasPhoto
-            ? CachedNetworkImage(
-                imageUrl: url,
-                fit: BoxFit.cover,
-                placeholder: (_, __) => _AvatarFallback(name: name),
-                errorWidget: (_, __, ___) => _AvatarFallback(name: name),
-              )
-            : _AvatarFallback(name: name),
-      ),
-    );
-  }
-}
-
-class _AvatarFallback extends StatelessWidget {
-  final String name;
-
-  const _AvatarFallback({required this.name});
-
-  @override
-  Widget build(BuildContext context) {
-    final trimmed = name.trim();
-    final initial = trimmed.isEmpty ? 'N' : trimmed[0].toUpperCase();
-    return Container(
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            _feedBlue.withValues(alpha: 0.92),
-            const Color(0xFF38BDF8).withValues(alpha: 0.86),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Text(
-        initial,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 13,
-          fontWeight: FontWeight.w900,
-          height: 1,
-        ),
-      ),
-    );
-  }
-}
-
-class _ExpandableCaption extends StatefulWidget {
-  final String text;
-  final bool expanded;
-  final VoidCallback onToggle;
-
-  const _ExpandableCaption({
-    required this.text,
-    required this.expanded,
-    required this.onToggle,
-  });
-
-  @override
-  State<_ExpandableCaption> createState() => _ExpandableCaptionState();
-}
-
-class _ExpandableCaptionState extends State<_ExpandableCaption> {
-  final List<TapGestureRecognizer> _recognizers = [];
-
-  @override
-  void dispose() {
-    for (final r in _recognizers) {
-      r.dispose();
-    }
-    _recognizers.clear();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final text = widget.text;
-    if (text.isEmpty) return const SizedBox.shrink();
-    const limit = 90;
-    final isLong = text.length > limit;
-    final visible = widget.expanded || !isLong
-        ? text
-        : '${text.substring(0, limit).trimRight()}... ';
-
-    // Dispose recognizers lama tiap rebuild — fresh per render.
-    for (final r in _recognizers) {
-      r.dispose();
-    }
-    _recognizers.clear();
-
-    const baseStyle = TextStyle(
-      color: Colors.white,
-      fontSize: 13.2,
-      fontWeight: FontWeight.w600,
-      height: 1.38,
-      shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
-    );
-    const mentionStyle = TextStyle(
-      color: Color(0xFF60A5FA),
-      fontSize: 13.2,
-      fontWeight: FontWeight.w900,
-      height: 1.38,
-      shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
-    );
-
-    final mentionSpans = buildMentionSpans(
-      visible,
-      onMentionTap: (handle) {
-        Navigator.of(context).pushNamed('/u', arguments: handle);
-      },
-      defaultStyle: baseStyle,
-      mentionStyle: mentionStyle,
-      collectRecognizers: _recognizers,
-    );
-
-    return GestureDetector(
-      onTap: isLong ? widget.onToggle : null,
-      child: Text.rich(
-        TextSpan(
-          style: baseStyle,
-          children: [
-            ...mentionSpans,
-            if (isLong)
-              TextSpan(
-                text: widget.expanded ? '  lebih sedikit' : 'selengkapnya',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.78),
-                  fontSize: 12.8,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-          ],
-        ),
-        maxLines: widget.expanded ? null : 2,
-        overflow:
-            widget.expanded ? TextOverflow.visible : TextOverflow.ellipsis,
-      ),
     );
   }
 }
