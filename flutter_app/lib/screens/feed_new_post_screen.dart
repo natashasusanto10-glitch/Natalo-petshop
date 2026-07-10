@@ -180,6 +180,20 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       final products = pinnable
           .whereType<Map>()
           .map((p) {
+            // Kontrak API `app/api/feed/pinnable-products/route.ts`:
+            // `price` = harga EFEKTIF (discountPrice ?? price asli),
+            // `originalPrice` = harga DASAR asli. API TIDAK mengirim key
+            // `discountPrice`/`memberPrice` — jangan baca key itu di sini.
+            double? toDouble(dynamic v) {
+              if (v is num) return v.toDouble();
+              if (v is String) return double.tryParse(v);
+              return null;
+            }
+
+            final effective = toDouble(p['price']);
+            final base = toDouble(p['originalPrice']) ?? effective;
+            final hasRealDiscount =
+                effective != null && base != null && effective < base;
             return Product(
               id: (p['productId'] ?? p['id'] ?? '').toString(),
               slug: (p['slug'] ?? '').toString(),
@@ -188,9 +202,8 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                   (p['variant'] ?? p['category'] ?? 'Pernah Dibeli').toString(),
               brand: '',
               imageUrl: (p['imageUrl'] ?? '').toString(),
-              price: (p['price'] as num?)?.toDouble() ?? 0,
-              discountPrice: (p['discountPrice'] as num?)?.toDouble(),
-              memberPrice: (p['memberPrice'] as num?)?.toDouble(),
+              price: base ?? 0,
+              discountPrice: hasRealDiscount ? effective : null,
               rating: p['avgRating'] is num
                   ? (p['avgRating'] as num).toDouble()
                   : 0,
@@ -994,10 +1007,10 @@ class _PurchasedProductCard extends StatelessWidget {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                if (product.price > 0) ...[
+                if (product.finalPrice > 0) ...[
                   const Spacer(),
                   Text(
-                    formatRupiah(product.price),
+                    formatRupiah(product.finalPrice),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
