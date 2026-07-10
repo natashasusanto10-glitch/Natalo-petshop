@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Lima layar flow posting menyamai IG secara visual & struktural — picker campur premium, Edit Video fullscreen tunggal, Bagikan dengan Simpan Draft + Bagikan berdampingan, Pratinjau memakai chrome feed ASLI + suara, Ubah Sampul scrubber frame — plus bar unggahan ramping ala IG (spec §2A-5) dan pembersihan ±3.000 baris dead code.
+**Goal:** Lima layar flow posting menyamai IG secara visual & struktural — picker campur premium (+ strip re-crop carousel), Edit Video fullscreen tunggal, Bagikan dengan Simpan Draft + Bagikan berdampingan, Pratinjau memakai chrome feed ASLI + suara, Ubah Sampul scrubber frame — plus bar unggahan ramping ala IG (spec §2A-5) dan pembersihan ±3.000 baris dead code.
 
 **Architecture:** Layar baru dipecah per file ke `lib/screens/feed_post/`. Pratinjau dibangun di atas widget bersama hasil 2A (`FeedActionRail`, `FeedCreatorIdentity`, `FeedExpandableCaption`, `FeedProductAnchorCard`, `FeedPostScrim`). Editor baru menggantikan pasangan `FeedVideoPreviewScreen`+`FeedVideoTrimScreen`. Draft mendapat `userPickedCover` agar sampul pilihan user tidak ditimpa regenerasi store (rekonsiliasi dengan fix I1 2A).
 
@@ -566,7 +566,7 @@ git commit -m "feat(feed): Pratinjau chrome feed ASLI + suara — FeedActionRail
 - Ganti SEMUA `_natoloBlue = Color(0xFF2563EB)` → `Color(0xFF1E5BFF)` (badge nomor, border seleksi, tombol Next) — unifikasi token.
 - Header: judul "Buat Postingan" → **"Post Baru"**; tombol close jadi lingkaran 36 frosted (`rgba(255,255,255,0.08)` border `0.14`); tombol "Next" teks → **lingkaran 36 biru ikon `chevron_right_rounded`** (disabled: bg `rgba(255,255,255,0.08)` ikon muted).
 - Preview besar: tambah pill counter kanan-atas `"Foto X dari Y"` saat multi-foto & yang tersorot foto (X = urutan foto tersorot, Y = total terpilih); video tetap badge durasi existing.
-- Grid: badge durasi video diberi ikon play kecil (`play_arrow_rounded` 9px) di depan teks (match mockup). JANGAN ubah logic seleksi/mode/crop.
+- Grid: badge durasi video diberi ikon play kecil (`play_arrow_rounded` 9px) di depan teks (match mockup). JANGAN ubah logic seleksi/mode/crop (penambahan strip re-crop carousel = Task 5B terpisah).
 
 - [ ] **Step 2: Ganti entry point.** Tambah `open()` static di `FeedMediaPickerScreen`; ganti 3 caller `FeedUploadSheet.show(context)` → `FeedMediaPickerScreen.open(context)` (+import); HAPUS `flutter_app/lib/widgets/feed_upload_sheet.dart` (1447 baris dead). Grep `FeedUploadSheet` sisa = 0.
 
@@ -635,6 +635,112 @@ void main() {
 ```bash
 git add -A flutter_app/lib flutter_app/test
 git commit -m "feat(feed): picker premium + biru terunifikasi #1E5BFF, pensiun 5 layar legacy + feed_upload_sheet (±3000 baris), test store rethrow"
+```
+
+---
+
+### Task 5B: Strip re-crop carousel (setara IG)
+
+**Konteks (VERIFIED):** picker existing SUDAH punya pinch-zoom + pan + double-tap-reset per-foto (`_PhotoCropPreview.onScaleUpdate` :1704, clamp skala 1.0–4.0), crop tersimpan per-asset (`Map<String,_PhotoCropTransform> _photoCropTransforms` :294) dan diterapkan ke SEMUA foto saat Next (`_preparePhotoFiles` :569). Kekurangan yang ditutup task ini: setelah foto dipilih, meng-crop-ulang foto tertentu belakangan belum mulus — tap tile di GRID justru men-deselect (`_selectPhoto` :622). IG memakai strip thumbnail kecil di bawah preview: tap thumbnail → foto itu masuk preview besar untuk di-crop ulang TANPA terhapus.
+
+**Files:**
+- Modify: `flutter_app/lib/screens/feed_media_picker_screen.dart`
+- Test: `flutter_app/test/feed_selected_thumb_strip_test.dart` (baru — widget presentasional murni, tanpa `photo_manager`)
+
+**Interfaces:**
+- Consumes: `SelectedMediaItem{id, localPath, ...}` (existing), `_setPreviewAsset(AssetEntity)` (existing, :440 — membawa foto ke preview besar + bind transform-nya), `_previewAsset` (existing).
+- Produces (widget baru presentasional, testable terpisah):
+
+```dart
+/// Strip thumbnail foto terpilih (carousel) — tap untuk membawa foto ke
+/// preview besar & atur crop-nya lagi. Presentasional murni.
+class _SelectedThumbStrip extends StatelessWidget {
+  final List<({String id, String path})> items; // urut = urutan slide
+  final String? activeId;                         // foto yang sedang di preview
+  final ValueChanged<String> onTap;               // tap thumbnail → recrop id
+  const _SelectedThumbStrip({
+    required this.items,
+    required this.activeId,
+    required this.onTap,
+  });
+}
+```
+
+- [ ] **Step 1: Test strip (failing)** — `test/feed_selected_thumb_strip_test.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/screens/feed_media_picker_screen.dart'
+    show debugSelectedThumbStrip; // seam: expose _SelectedThumbStrip utk test
+
+void main() {
+  final items = <({String id, String path})>[
+    (id: 'a', path: '/nonexistent/a.jpg'),
+    (id: 'b', path: '/nonexistent/b.jpg'),
+    (id: 'c', path: '/nonexistent/c.jpg'),
+  ];
+
+  testWidgets('render N thumbnail; tap memicu onTap(id) tanpa deselect',
+      (tester) async {
+    String? tapped;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        backgroundColor: Colors.black,
+        body: debugSelectedThumbStrip(items: items, activeId: 'b',
+            onTap: (id) => tapped = id),
+      ),
+    ));
+    for (var i = 0; i < 6; i++) { await tester.pump(const Duration(milliseconds: 60)); }
+    expect(find.byKey(const ValueKey('thumb-a')), findsOneWidget);
+    expect(find.byKey(const ValueKey('thumb-b')), findsOneWidget);
+    expect(find.byKey(const ValueKey('thumb-c')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('thumb-c')));
+    expect(tapped, 'c');
+  });
+
+  testWidgets('thumbnail aktif diberi border biru', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: debugSelectedThumbStrip(items: items, activeId: 'b', onTap: (_) {}),
+      ),
+    ));
+    for (var i = 0; i < 6; i++) { await tester.pump(const Duration(milliseconds: 60)); }
+    final active = tester.widget<Container>(find.descendant(
+      of: find.byKey(const ValueKey('thumb-b')),
+      matching: find.byType(Container),
+    ).first);
+    final deco = active.decoration as BoxDecoration;
+    expect(deco.border, isNotNull); // border biru #1E5BFF pada yang aktif
+  });
+}
+```
+(Seam: tambahkan di `feed_media_picker_screen.dart` fungsi `@visibleForTesting Widget debugSelectedThumbStrip({required List<({String id, String path})> items, required String? activeId, required ValueChanged<String> onTap}) => _SelectedThumbStrip(items: items, activeId: activeId, onTap: onTap);`)
+
+- [ ] **Step 2: Run — fail** (widget belum ada).
+
+- [ ] **Step 3: Implement `_SelectedThumbStrip`** — `SizedBox(height: 60)` + horizontal `ListView` (padding h12, gap 8); tiap item `GestureDetector(key: ValueKey('thumb-$id'), onTap: () => onTap(id))` → `Container` 44×56 radius 10, `Image.file(File(path), fit: cover)` (errorBuilder → kotak `#1F2937`); yang `id == activeId` diberi `border: Border.all(color: Color(0xFF1E5BFF), width: 2.5)` + sedikit terang, lainnya border transparan. Tema gelap (picker hitam).
+
+- [ ] **Step 4: Wire ke picker.**
+- Tambah `final Map<String, AssetEntity> _assetById = {};` — isi di `_selectPhoto` (`_assetById[asset.id] = asset;`) dan `_setPreviewAsset` (defensif).
+- Tambah handler:
+```dart
+  Future<void> _recropSelectedPhoto(String id) async {
+    final asset = _assetById[id];
+    if (asset == null || _busyProcessing) return;
+    AppHaptics.selection();
+    await _setPreviewAsset(asset); // bawa ke preview besar; transform-nya ke-bind
+  }
+```
+- Render strip HANYA saat `_mode == FeedPostContentType.image && _selectedPhotos.length >= 2`, diletakkan TEPAT DI BAWAH preview besar (sebelum baris "Galeri"/hint): `_SelectedThumbStrip(items: _selectedPhotos.map((e) => (id: e.id, path: e.localPath)).toList(), activeId: _previewAsset?.id, onTap: _recropSelectedPhoto)`.
+- Catatan: urutan strip = urutan `_selectedPhotos` (= urutan slide carousel). Reorder/hapus slide TETAP di Bagikan (Task 2C-3), bukan di sini — strip 2B hanya untuk re-crop. Tambah hint 1×: bila strip pertama muncul, helper text kecil "Ketuk foto untuk atur potongannya" (muted 11) di atas/registrasi strip.
+
+- [ ] **Step 5: Run semua — pass** + `flutter analyze`.
+
+- [ ] **Step 6: Commit.**
+```bash
+git add flutter_app/lib/screens/feed_media_picker_screen.dart flutter_app/test/feed_selected_thumb_strip_test.dart
+git commit -m "feat(feed): strip re-crop carousel — ketuk thumbnail untuk atur crop tiap slide (setara IG)"
 ```
 
 ---
@@ -737,6 +843,6 @@ git commit -m "feat(feed): bar unggahan ramping ala IG — copy ramah per status
 4. Sampul: pilih frame via scrubber di editor DAN di Bagikan → cover di post final = frame pilihan (BUKAN di-regenerate) — cek juga setelah ganti rentang trim (sampul direset).
 5. Bagikan: Simpan Draft + Bagikan berdampingan; draft tersimpan & bisa dilanjutkan (banner existing).
 6. Pratinjau: chrome PERSIS feed (rail, kartu produk dengan harga coret bila diskon, identitas, caption, scrim) + SUARA KELUAR (bug #3) + tampilan tidak aneh lagi (bug #4); Bagikan dari pratinjau langsung upload.
-7. Carousel foto: pilih 3 foto → Bagikan (counter 1/3 + dots) → Pratinjau swipe → upload sukses.
+7. Carousel foto: pilih 3 foto → strip re-crop muncul di bawah preview → ketuk foto #2, pinch/pan atur crop → Next → tiap slide ter-crop sesuai aturan masing-masing; counter 1/3 + dots di Bagikan → Pratinjau swipe → upload sukses.
 8. Feed publik tetap identik (regresi ekstraksi 2A + penghapusan legacy).
 9. Firebase DebugView: `feed_post_edit_opened` kini muncul juga untuk video ≤60s.
