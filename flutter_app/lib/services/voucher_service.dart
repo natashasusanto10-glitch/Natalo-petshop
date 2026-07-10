@@ -55,6 +55,7 @@ class VoucherService {
   Future<VoucherValidationResult> validate({
     required String code,
     int? subtotal,
+    List<String>? productIds,
   }) async {
     if (code.trim().isEmpty) {
       return VoucherValidationResult(
@@ -69,6 +70,8 @@ class VoucherService {
         body: {
           'code': code.trim(),
           if (subtotal != null) 'subtotal': subtotal,
+          if (productIds != null && productIds.isNotEmpty)
+            'productIds': productIds,
         },
       );
       return VoucherValidationResult.fromJson(data, requestedCode: code);
