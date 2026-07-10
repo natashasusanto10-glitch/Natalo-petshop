@@ -1029,7 +1029,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
         kBottomNavigationBarHeight + MediaQuery.paddingOf(context).bottom + 16;
 
     return Scaffold(
-      backgroundColor: cs.surface,
+      // Latar seluruh halaman Katalog abu (a la Shopee) — grid kartu putih
+      // menonjol; toolbar (search+filter) tetap solid di atas. Konsisten
+      // dengan Beranda.
+      backgroundColor: _catalogGridSurfaceTint(context),
       // extendBody: konten tembus di belakang floating glass nav. Grid
       // sudah pakai bottomPadding (kBottomNavigationBarHeight + inset + 16).
       extendBody: true,

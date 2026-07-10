@@ -800,7 +800,9 @@ class _CartScreenState extends State<CartScreen>
       // Solid surface bg — override theme transparency yang bikin header
       // & content nampak semi-transparent / kurang sharp (spec: header
       // harus solid, tidak terkena efek glass/blur dari layer lain).
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      // Latar seluruh halaman Keranjang abu (a la Shopee) — kartu item &
+      // grid rekomendasi putih menonjol di atas abu. AppBar tetap solid putih.
+      backgroundColor: commerceGridSurfaceTint(context),
       // Custom title dengan count subtitle — match PWA cart header
       // "Keranjang\n0 jenis produk (0 item)".
       // AppBar override eksplisit ke putih solid (theme global pakai

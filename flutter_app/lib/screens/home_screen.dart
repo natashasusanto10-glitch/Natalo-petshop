@@ -2973,7 +2973,6 @@ class _HomeProductCard extends StatelessWidget {
   final VoidCallback onTap;
   final int? rank;
   final double? width;
-  final double imageHeight;
   final double priceFontSize;
   final bool compact;
   // Grid utama Beranda: foto persegi 1:1 full-bleed (BoxFit.cover) + kartu
@@ -2987,7 +2986,6 @@ class _HomeProductCard extends StatelessWidget {
     required this.onTap,
     this.rank,
     this.width,
-    this.imageHeight = 132,
     this.priceFontSize = 16,
     this.compact = false,
     this.squareImage = false,
@@ -3010,7 +3008,9 @@ class _HomeProductCard extends StatelessWidget {
             ? _HomeProductImageSquare(imageUrl: product.imageUrl)
             : _HomeProductImage(
                 imageUrl: product.imageUrl,
-                height: imageHeight,
+                // Fallback non-square (tak ada caller aktif — semua grid/rail
+                // sudah squareImage). Dipertahankan supaya path lama tak putus.
+                height: 132,
               ),
         if (discountPercent != null)
           Positioned(
@@ -3701,12 +3701,12 @@ class _HorizontalProductSection extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           SizedBox(
-            // 260 → 274: ListView horizontal butuh tinggi tetap (semua kartu
-            // sebaris = seragam). _MiniProductCard dengan diskon (harga
-            // coret) + 2 badge (ongkir+hemat) + rating overflow ~9px di 260.
-            // +14 kasih ruang cukup untuk kasus terburuk tanpa boros
-            // berlebih. (Bukan auto-height: horizontal scroll wajib seragam.)
-            height: 274,
+            // 312: ListView horizontal butuh tinggi tetap (semua kartu
+            // sebaris = seragam). Foto kini 1:1 full-bleed (≈150 vs contain
+            // 112, +38) + kasus terburuk diskon (harga coret) + 2 badge
+            // (ongkir+hemat) + rating. (Bukan auto-height: horizontal wajib
+            // seragam.)
+            height: 312,
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               scrollDirection: Axis.horizontal,
@@ -3746,7 +3746,9 @@ class _MiniProductCard extends StatelessWidget {
       onTap: onTap,
       rank: rank,
       width: 150,
-      imageHeight: 112,
+      // Foto 1:1 cover full-bleed (spec grid) — rail Terlaris pun menonjol
+      // ala Shopee. imageHeight diabaikan saat squareImage (pakai AspectRatio).
+      squareImage: true,
       priceFontSize: 14,
       compact: true,
     );
