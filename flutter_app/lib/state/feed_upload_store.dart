@@ -114,6 +114,63 @@ class FeedUploadStore extends ChangeNotifier {
   bool _uploading = false;
   bool get isUploading => _uploading;
 
+  /// Flag batal — dicek setelah tiap await besar di _run*Upload. Best
+  /// effort: TUS chunk yang sudah terkirim tidak di-abort (lihat
+  /// cancelActive doc).
+  bool _cancelRequested = false;
+
+  /// Job kompresi aktif milik upload video yang sedang jalan — dipakai
+  /// cancelActive() untuk stop kompresi in-flight via gate (scoped,
+  /// tidak membunuh kompresi milik layar lain).
+  VideoCompressJob? _activeCompressJob;
+
+  /// Setter test-only — assign task langsung + notify, tanpa lewat
+  /// pipeline upload asli. Dipakai widget test FeedUploadBar untuk drive
+  /// tiap status tanpa File/network nyata.
+  @visibleForTesting
+  void debugSetTask(FeedUploadTask? task) {
+    _task = task;
+    notifyListeners();
+  }
+
+  /// Batal upload aktif — BEST EFFORT, bukan garansi hard-abort.
+  ///
+  /// Semantik per titik:
+  /// - Kompresi in-flight: dibatalkan via `gate.cancel(job)` (scoped ke
+  ///   job upload ini saja).
+  /// - Sebelum provision Bunny / sebelum finalize: flag dicek, upload
+  ///   berhenti bersih, TIDAK create/finalize post.
+  /// - TUS upload in-flight (chunk sedang jalan ke Bunny): TIDAK di-abort
+  ///   di tengah kirim chunk — library TUS tidak expose abort socket yang
+  ///   aman. Flag dicek SETELAH chunk selesai (baris progress callback
+  ///   tidak langsung stop, tapi step berikutnya sebelum provision/finalize
+  ///   akan berhenti). Placeholder Bunny yang telanjur ter-provision jadi
+  ///   orphan server-side — sama seperti kasus kegagalan existing (tidak
+  ///   ada cleanup otomatis di sisi client untuk kasus ini).
+  Future<void> cancelActive() async {
+    if (!_uploading || _task == null) return;
+    _cancelRequested = true;
+    final job = _activeCompressJob;
+    if (job != null) {
+      await gate.cancel(job);
+    }
+  }
+
+  /// Cek flag batal — kalau di-set, transisi task ke `cancelled` + jadwalkan
+  /// clear task setelah 400ms, return true (caller harus `return` segera,
+  /// `_uploading=false` sudah ditangani `finally` existing di pemanggil).
+  bool _checkCancel() {
+    if (!_cancelRequested) return false;
+    _update(status: FeedUploadStatus.cancelled);
+    Timer(const Duration(milliseconds: 400), () {
+      if (_task?.status == FeedUploadStatus.cancelled) {
+        _task = null;
+        notifyListeners();
+      }
+    });
+    return true;
+  }
+
   /// Start upload PHOTO_CAROUSEL — fire-and-forget. UI relay card auto
   /// update via notifyListeners. Returns immediately (Future<void>
   /// reflect "task accepted", bukan "upload selesai").
@@ -139,6 +196,7 @@ class FeedUploadStore extends ChangeNotifier {
     }
 
     _cancelAutoDismiss();
+    _cancelRequested = false;
     _task = FeedUploadTask(
       localId: _genId(),
       kind: FeedUploadKind.photo,
@@ -174,6 +232,9 @@ class FeedUploadStore extends ChangeNotifier {
           );
         },
       );
+
+      // ── Checkpoint batal — setelah upload foto, SEBELUM create post ──
+      if (_checkCancel()) return;
 
       _update(status: FeedUploadStatus.processing, progress: 0.92);
       // Pattern match video upload (line 322-326): title = short version
@@ -230,6 +291,7 @@ class FeedUploadStore extends ChangeNotifier {
   }) async {
     if (_uploading) return;
     _cancelAutoDismiss();
+    _cancelRequested = false;
     _task = FeedUploadTask(
       localId: _genId(),
       kind: FeedUploadKind.video,
@@ -271,6 +333,8 @@ class FeedUploadStore extends ChangeNotifier {
       String videoPath = originalPath;
       if (draft.trimmedVideoPath == null) {
         final range = compressRangeOf(draft);
+        final job = VideoCompressJob();
+        _activeCompressJob = job;
         try {
           // Lewat gate: kalau layar trim sedang kompres, job ini antre
           // (bukan StateError), dan dispose layar lain tidak bisa
@@ -281,6 +345,7 @@ class FeedUploadStore extends ChangeNotifier {
             includeAudio: true,
             startTime: range.startTimeSec,
             duration: range.durationSec,
+            job: job,
           );
           final compressed = info?.file;
           if (compressed != null && await compressed.exists()) {
@@ -307,8 +372,13 @@ class FeedUploadStore extends ChangeNotifier {
           if (range.startTimeSec != null) rethrow;
           // Tanpa range trim, original == video yang dimaksud user —
           // aman fallback, Bunny bisa accept + re-encode.
+        } finally {
+          _activeCompressJob = null;
         }
       }
+
+      // ── Checkpoint batal — setelah compress ──
+      if (_checkCancel()) return;
 
       // ── Step 1 — Generate thumbnail kalau belum ada ──
       // Sebelumnya skip generate, hanya pakai existing thumbnailPath.
@@ -357,6 +427,9 @@ class FeedUploadStore extends ChangeNotifier {
           // auto-generate thumbnail dari frame video.
         }
       }
+
+      // ── Checkpoint batal — setelah thumbnail, SEBELUM provision ──
+      if (_checkCancel()) return;
 
       // ── Step 3 — Bunny provision (create FeedPost placeholder + dapat
       // TUS credentials). ──
@@ -411,6 +484,10 @@ class FeedUploadStore extends ChangeNotifier {
           },
         );
       }
+
+      // ── Checkpoint batal — TUS chunks sudah terkirim (tidak di-abort
+      // di tengah, lihat cancelActive doc), SEBELUM finalize ──
+      if (_checkCancel()) return;
 
       // Step 4 — Server akan transcode via Bunny webhook async. Tampilkan
       // processing state. Customer post selalu PENDING_REVIEW.

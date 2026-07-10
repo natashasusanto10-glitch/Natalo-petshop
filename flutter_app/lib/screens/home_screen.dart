@@ -37,7 +37,7 @@ import '../widgets/bottom_nav.dart';
 import '../widgets/flash_sale_countdown.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
-import '../widgets/upload_relay_card.dart';
+import '../features/feed/widgets/feed_upload_bar.dart';
 import 'home_search_page.dart';
 import '../widgets/skeleton_product_card.dart';
 import 'package:shimmer/shimmer.dart';
@@ -671,7 +671,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         // Background upload relay card — visible HANYA saat ada
                         // upload feed post aktif. AnimatedSize handle collapse
                         // smooth saat task hilang (success auto-dismiss).
-                        const SliverToBoxAdapter(child: UploadRelayCard()),
+                        const SliverToBoxAdapter(child: FeedUploadBar()),
                         if (result?.fromApi == false)
                           const SliverToBoxAdapter(child: _ApiFallbackNotice()),
                         // Trust marquee SEKARANG bagian sticky header (ikut
