@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { VoucherType, VoucherUserUsageLimitPeriod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { AdminPage, Button } from "@/components/admin/ui";
 import { isLoyaltyClaimVoucher } from "@/lib/voucher-kind";
 import BrandTargetPicker from "../../BrandTargetPicker";
 
@@ -187,7 +188,7 @@ export default async function AdminVoucherEditPage({
     : "";
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-5 md:py-10">
+    <AdminPage maxWidth="md">
       <Link
         href="/admin/vouchers"
         className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
@@ -287,7 +288,7 @@ export default async function AdminVoucherEditPage({
             <option value="LOYALTY_POINT_CLAIM">Loyalty Point Claim</option>
             <option value="PRIVATE_MANUAL_CODE">Private / Manual Code</option>
           </select>
-          <p className="mt-1 text-xs text-zinc-400">
+          <p className="mt-1 text-xs text-zinc-600">
             Private voucher tidak muncul di list public dan hanya bisa dipakai
             lewat input kode manual.
           </p>
@@ -375,21 +376,15 @@ export default async function AdminVoucherEditPage({
         )}
 
         <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
-          <Link
-            href="/admin/vouchers"
-            className="rounded-full border border-zinc-300 px-6 py-3 text-center text-sm font-bold hover:bg-zinc-50"
-          >
+          <Button href="/admin/vouchers" variant="secondary">
             Batal
-          </Link>
-          <button
-            type="submit"
-            className="flex-1 rounded-full bg-zinc-950 px-6 py-3 text-sm font-bold text-white hover:bg-zinc-800 sm:flex-none"
-          >
+          </Button>
+          <Button type="submit" className="flex-1 sm:flex-none">
             Simpan perubahan
-          </button>
+          </Button>
         </div>
       </form>
-    </div>
+    </AdminPage>
   );
 }
 
@@ -410,7 +405,7 @@ function UsageLimitPeriodField({ defaultValue }: { defaultValue: string }) {
         <option value="WEEK">Per minggu</option>
         <option value="MONTH">Per bulan</option>
       </select>
-      <p className="mt-1 text-xs text-zinc-400">
+      <p className="mt-1 text-xs text-zinc-600">
         Jika batas per user 0, sistem otomatis memakai tanpa batas.
       </p>
     </div>
@@ -449,7 +444,7 @@ function Field({
         min={type === "number" ? 0 : undefined}
         className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
       />
-      {hint && <p className="mt-1 text-xs text-zinc-400">{hint}</p>}
+      {hint && <p className="mt-1 text-xs text-zinc-600">{hint}</p>}
     </div>
   );
 }

@@ -10,6 +10,7 @@
  * Untuk akhiri lebih awal, edit produk + clear flashSaleEndsAt.
  */
 import Link from "next/link";
+import { AdminPage, Button } from "@/components/admin/ui";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import { EndFlashSaleButton } from "@/components/admin/EndFlashSaleButton";
@@ -85,7 +86,7 @@ export default async function FlashSaleListPage({
   ]);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-5 md:px-8 md:py-10">
+    <AdminPage>
       <Link
         href="/admin/diskon"
         className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
@@ -140,12 +141,7 @@ export default async function FlashSaleListPage({
           placeholder="🔍 Cari nama produk..."
           className="flex-1 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-natalo-600"
         />
-        <button
-          type="submit"
-          className="rounded-xl bg-natalo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-natalo-700"
-        >
-          Cari
-        </button>
+        <Button type="submit">Cari</Button>
       </form>
 
       {/* List */}
@@ -255,7 +251,7 @@ export default async function FlashSaleListPage({
           </div>
         )}
       </div>
-    </div>
+    </AdminPage>
   );
 }
 

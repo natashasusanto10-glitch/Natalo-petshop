@@ -16,6 +16,7 @@
  *   - Inform customer di WA: "Sudah diubah ya, silakan cek di app"
  */
 import { useState, useActionState, useTransition } from "react";
+import { Button } from "@/components/admin/ui";
 import {
   searchUserByQuery,
   unlockAndUpdateBirthDate,
@@ -115,13 +116,12 @@ export default function BirthDateOverrideClient() {
             className="flex-1 rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
             disabled={searching}
           />
-          <button
+          <Button
             type="submit"
             disabled={searching || query.trim().length < 2}
-            className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-bold text-white hover:bg-zinc-700 disabled:opacity-50"
           >
             {searching ? "Cari…" : "Cari"}
-          </button>
+          </Button>
         </div>
         {searchError && (
           <p className="text-xs text-red-600">{searchError}</p>
@@ -283,21 +283,22 @@ export default function BirthDateOverrideClient() {
             </div>
 
             <div className="flex gap-2">
-              <button
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={() => setSelectedUser(null)}
                 disabled={overridePending}
-                className="rounded-full border border-zinc-300 px-5 py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
               >
                 Batal
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
+                variant="primary"
                 disabled={overridePending}
-                className="flex-1 rounded-full bg-zinc-900 px-5 py-3 text-sm font-bold text-white hover:bg-zinc-700 disabled:opacity-50"
+                className="flex-1"
               >
                 {overridePending ? "Memproses…" : "Update & Audit"}
-              </button>
+              </Button>
             </div>
           </form>
         </div>

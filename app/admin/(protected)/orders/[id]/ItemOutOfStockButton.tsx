@@ -190,7 +190,7 @@ export default function ItemOutOfStockButton({
       <button
         type="submit"
         disabled={missingQty <= 0 || missingQty > itemQuantity}
-        className="w-full rounded-md bg-amber-600 px-3 py-2 text-sm font-bold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
+        className="min-h-11 w-full rounded-md bg-amber-600 px-3 py-2 text-sm font-bold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
       >
         Refund {formatRupiah(net)} ke Saldo
       </button>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { AdminPage, Button } from "@/components/admin/ui";
 
 function toSlug(name: string) {
   return name
@@ -38,12 +39,12 @@ export default async function AdminCategoryEditPage({
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-5 md:py-10">
+    <AdminPage maxWidth="md">
       <Link href="/admin/categories" className="text-sm font-bold text-zinc-500 hover:text-zinc-950">
         ← Kembali ke kategori
       </Link>
       <h1 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">Edit Kategori</h1>
-      <p className="mt-1 truncate text-sm text-zinc-400">/{category.slug}</p>
+      <p className="mt-1 truncate text-sm text-zinc-600">/{category.slug}</p>
 
       <form action={updateCategory} className="mt-5 space-y-5 md:mt-8">
         <div>
@@ -56,24 +57,18 @@ export default async function AdminCategoryEditPage({
             defaultValue={category.name}
             className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
           />
-          <p className="mt-1 text-xs text-zinc-400">Slug akan diperbarui otomatis.</p>
+          <p className="mt-1 text-xs text-zinc-600">Slug akan diperbarui otomatis.</p>
         </div>
 
         <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
-          <Link
-            href="/admin/categories"
-            className="rounded-full border border-zinc-300 px-6 py-3 text-center text-sm font-bold"
-          >
+          <Button href="/admin/categories" variant="secondary">
             Batal
-          </Link>
-          <button
-            type="submit"
-            className="flex-1 rounded-full bg-zinc-950 px-6 py-3 text-sm font-bold text-white sm:flex-none"
-          >
+          </Button>
+          <Button type="submit" className="flex-1 sm:flex-none">
             Simpan perubahan
-          </button>
+          </Button>
         </div>
       </form>
-    </div>
+    </AdminPage>
   );
 }

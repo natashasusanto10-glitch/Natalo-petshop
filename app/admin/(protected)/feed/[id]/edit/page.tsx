@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/session-guards";
 import { bunnyThumbnailUrl, signBunnyUrl } from "@/lib/feed/bunny";
 import { AdminEditFeedPostClient } from "@/components/admin/feed/AdminEditFeedPostClient";
+import { AdminPage } from "@/components/admin/ui";
 
 export const metadata: Metadata = {
   title: "Edit Postingan — Admin",
@@ -62,7 +63,7 @@ export default async function AdminEditFeedPostPage({ params }: PageProps) {
     }));
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-6">
+    <AdminPage maxWidth="md">
       <AdminEditFeedPostClient
         postId={post.id}
         initialTitle={post.title}
@@ -78,6 +79,6 @@ export default async function AdminEditFeedPostPage({ params }: PageProps) {
         kind={post.kind}
         tab={post.tab}
       />
-    </main>
+    </AdminPage>
   );
 }

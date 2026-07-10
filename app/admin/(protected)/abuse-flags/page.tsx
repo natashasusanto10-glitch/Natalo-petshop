@@ -14,11 +14,12 @@
  * Audit logged via admin-audit (action: USER_ROLE_CHANGED untuk block,
  * generic ABUSE_FLAG_REVIEWED untuk lainnya).
  */
-import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { AbuseRule } from "@/lib/abuse-detection";
 import { reviewAbuseFlag } from "./actions";
 import {
+  AdminPage,
+  Button,
   PageHeader,
   StatCard,
   EmptyState,
@@ -105,17 +106,14 @@ export default async function AbuseFlagsPage({
     ]);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-5 md:py-10">
+    <AdminPage maxWidth="xl">
       <PageHeader
         title="🚨 Abuse Flags"
         subtitle="Cron daily scan suspicious pattern (burst claim, gmail alias, alamat duplikat, instant claim). Review flagged user + decide action. Daily 03:00 WIB."
         actions={
-          <Link
-            href="/admin/dashboard"
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
-          >
+          <Button href="/admin/dashboard" variant="secondary" size="sm">
             ← Dashboard
-          </Link>
+          </Button>
         }
       />
 
@@ -206,12 +204,7 @@ export default async function AbuseFlagsPage({
           </select>
         </div>
         <div className="md:col-span-3">
-          <button
-            type="submit"
-            className="rounded-full bg-natalo-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-natalo-700"
-          >
-            Apply filter
-          </button>
+          <Button type="submit">Apply filter</Button>
         </div>
       </form>
 
@@ -240,7 +233,7 @@ export default async function AbuseFlagsPage({
           ))}
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }
 
@@ -327,30 +320,15 @@ function FlagCard({ flag }: { flag: FlagWithUser }) {
             maxLength={500}
             className="flex-1 min-w-[200px] rounded-lg border border-zinc-300 px-2.5 py-1.5 text-xs"
           />
-          <button
-            type="submit"
-            name="action"
-            value="REVIEWED"
-            className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-100"
-          >
+          <Button type="submit" name="action" value="REVIEWED" variant="primary" size="md">
             Tinjau (Monitoring)
-          </button>
-          <button
-            type="submit"
-            name="action"
-            value="DISMISSED"
-            className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-zinc-50"
-          >
+          </Button>
+          <Button type="submit" name="action" value="DISMISSED" variant="secondary" size="md">
             Dismiss (False Positive)
-          </button>
-          <button
-            type="submit"
-            name="action"
-            value="BLOCKED"
-            className="rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
-          >
+          </Button>
+          <Button type="submit" name="action" value="BLOCKED" variant="dangerSoft" size="md">
             🚫 Block User
-          </button>
+          </Button>
         </form>
       )}
     </article>

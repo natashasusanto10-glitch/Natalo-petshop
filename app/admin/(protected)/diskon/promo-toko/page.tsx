@@ -5,6 +5,7 @@
  * Sedang Berlangsung / Kedaluwarsa) + action per row.
  */
 import Link from "next/link";
+import { AdminPage, Button } from "@/components/admin/ui";
 import { prisma } from "@/lib/prisma";
 import { DeletePromoTokoButton } from "@/components/admin/DeletePromoTokoButton";
 
@@ -100,7 +101,7 @@ export default async function PromoTokoListPage({
     ]);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-5 md:px-8 md:py-10">
+    <AdminPage>
       <Link
         href="/admin/diskon"
         className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
@@ -116,12 +117,7 @@ export default async function PromoTokoListPage({
             {totalCount} campaign promosi
           </p>
         </div>
-        <Link
-          href="/admin/diskon/promo-toko/new"
-          className="rounded-full bg-natalo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-natalo-700"
-        >
-          + Buat Promo Toko
-        </Link>
+        <Button href="/admin/diskon/promo-toko/new">+ Buat Promo Toko</Button>
       </div>
 
       {/* Tab filter */}
@@ -160,12 +156,7 @@ export default async function PromoTokoListPage({
           placeholder="🔍 Cari nama promosi..."
           className="flex-1 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-natalo-600"
         />
-        <button
-          type="submit"
-          className="rounded-xl bg-natalo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-natalo-700"
-        >
-          Cari
-        </button>
+        <Button type="submit">Cari</Button>
       </form>
 
       {/* List */}
@@ -185,12 +176,9 @@ export default async function PromoTokoListPage({
                       : "Belum ada promo toko."}
             </p>
             {!search && status === "all" && (
-              <Link
-                href="/admin/diskon/promo-toko/new"
-                className="mt-4 inline-block rounded-full bg-natalo-600 px-5 py-2.5 text-sm font-bold text-white"
-              >
+              <Button href="/admin/diskon/promo-toko/new" className="mt-4">
                 Buat Promo Toko
-              </Link>
+              </Button>
             )}
           </div>
         ) : (
@@ -269,7 +257,7 @@ export default async function PromoTokoListPage({
           </div>
         )}
       </div>
-    </div>
+    </AdminPage>
   );
 }
 

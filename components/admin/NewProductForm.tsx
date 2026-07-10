@@ -8,7 +8,7 @@ import {
   VariantEditor,
   type VariantEditorDraftPayload,
 } from "@/components/admin/VariantEditor";
-import { AdminPage, Button } from "@/components/admin/ui";
+import { AdminPage, Button, FormField } from "@/components/admin/ui";
 
 interface Props {
   categories: Array<{ id: string; name: string }>;
@@ -238,7 +238,7 @@ export function NewProductForm({ categories, brands }: Props) {
 
       <div className="mt-5 space-y-5 md:mt-8">
         {/* ─── 1. Foto Produk ─────────────────────────────────────── */}
-        <Section
+        <FormField
           label="Foto Produk"
           required
           hint="Foto pertama = cover (thumbnail di list & search). Max 5 foto, 2 MB per file."
@@ -250,10 +250,10 @@ export function NewProductForm({ categories, brands }: Props) {
             defaultValue={images}
             onChange={setImages}
           />
-        </Section>
+        </FormField>
 
         {/* ─── 2. Nama Produk ─────────────────────────────────────── */}
-        <Section label="Nama Produk" required>
+        <FormField label="Nama Produk" required>
           <input
             type="text"
             value={name}
@@ -268,11 +268,11 @@ export function NewProductForm({ categories, brands }: Props) {
           {showFieldErrors && !name.trim() && (
             <p className="mt-1 text-xs text-red-500">Kolom wajib diisi</p>
           )}
-        </Section>
+        </FormField>
 
         {/* ─── 3. Kategori | Brand ────────────────────────────────── */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Section label="Kategori">
+          <FormField label="Kategori">
             <select
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
@@ -285,8 +285,8 @@ export function NewProductForm({ categories, brands }: Props) {
                 </option>
               ))}
             </select>
-          </Section>
-          <Section label="Brand">
+          </FormField>
+          <FormField label="Brand">
             <select
               value={brandId}
               onChange={(e) => setBrandId(e.target.value)}
@@ -299,11 +299,11 @@ export function NewProductForm({ categories, brands }: Props) {
                 </option>
               ))}
             </select>
-          </Section>
+          </FormField>
         </div>
 
         {/* ─── 4. Deskripsi ───────────────────────────────────────── */}
-        <Section label="Deskripsi" required>
+        <FormField label="Deskripsi" required>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -318,7 +318,7 @@ export function NewProductForm({ categories, brands }: Props) {
           {showFieldErrors && !description.trim() && (
             <p className="mt-1 text-xs text-red-500">Kolom wajib diisi</p>
           )}
-        </Section>
+        </FormField>
 
         {/* ─── 5. Variasi (draft mode — emit ke variantData state) ── */}
         <VariantEditor
@@ -329,7 +329,7 @@ export function NewProductForm({ categories, brands }: Props) {
         />
 
         {/* ─── 6. Harga Satuan ────────────────────────────────────── */}
-        <Section
+        <FormField
           label="Harga Satuan (Rp)"
           required={!hasVariants}
           hint={
@@ -354,11 +354,11 @@ export function NewProductForm({ categories, brands }: Props) {
           {showFieldErrors && !hasVariants && Number(price) <= 0 && (
             <p className="mt-1 text-xs text-red-500">Harga harus lebih dari 0</p>
           )}
-        </Section>
+        </FormField>
 
         {/* ─── 7. Stok | 8. Berat ────────────────────────────────── */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Section
+          <FormField
             label="Stok"
             required={!hasVariants}
             hint={
@@ -376,8 +376,8 @@ export function NewProductForm({ categories, brands }: Props) {
               min={0}
               className="block w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-natalo-600 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
             />
-          </Section>
-          <Section
+          </FormField>
+          <FormField
             label="Berat (gram)"
             required={!hasVariants}
             hint={
@@ -395,14 +395,14 @@ export function NewProductForm({ categories, brands }: Props) {
               min={1}
               className="block w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-natalo-600 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
             />
-          </Section>
+          </FormField>
         </div>
 
         {/* ─── 9. SKU Induk ─────────────────────────────────────────
             Identifier opsional untuk produk single (tanpa varian).
             Saat varian aktif, field disabled karena SKU per-varian
             ada di tabel Variasi di atas. */}
-        <Section
+        <FormField
           label="SKU Induk"
           hint={
             hasVariants
@@ -419,7 +419,7 @@ export function NewProductForm({ categories, brands }: Props) {
             maxLength={80}
             className="block w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-natalo-600 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
           />
-        </Section>
+        </FormField>
 
         {/* ─── Error banner — support multi-line via whitespace-pre-line
             supaya detail field errors tampil per baris. */}
@@ -448,29 +448,5 @@ export function NewProductForm({ categories, brands }: Props) {
         </div>
       </div>
     </AdminPage>
-  );
-}
-
-// ── Sub-component: Section wrapper with label + required dot + hint ─
-function Section({
-  label,
-  required,
-  hint,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label className="block text-sm font-semibold text-zinc-700">
-        {label}
-        {required && <span className="ml-1 text-red-500">*</span>}
-      </label>
-      <div className="mt-1.5">{children}</div>
-      {hint && <p className="mt-1 text-xs text-zinc-500">ⓘ {hint}</p>}
-    </div>
   );
 }

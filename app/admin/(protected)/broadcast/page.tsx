@@ -1,22 +1,18 @@
-import Link from "next/link";
 import { BroadcastForm } from "./BroadcastForm";
-import { PageHeader } from "@/components/admin/ui";
+import { AdminPage, Button, PageHeader } from "@/components/admin/ui";
 
 export const dynamic = "force-dynamic";
 
 export default function AdminBroadcastPage() {
   return (
-    <div className="mx-auto max-w-2xl px-4 py-5 md:py-10">
+    <AdminPage maxWidth="md">
       <PageHeader
         title="📣 Broadcast Notifikasi"
         subtitle="Buat promo atau pengumuman resmi Natalo Petshop. Setelah publish, notifikasi masuk ke Notification Center user sesuai tipe broadcast."
         actions={
-          <Link
-            href="/admin/dashboard"
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
-          >
+          <Button href="/admin/dashboard" variant="secondary" size="sm">
             ← Dashboard
-          </Link>
+          </Button>
         }
       />
 
@@ -37,6 +33,6 @@ export default function AdminBroadcastPage() {
       <div className="mt-6">
         <BroadcastForm />
       </div>
-    </div>
+    </AdminPage>
   );
 }

@@ -12,10 +12,11 @@
  *
  * Pagination cursor-based — 50 entries per page. Newest first.
  */
-import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { AdminAction } from "@/lib/admin-audit";
 import {
+  AdminPage,
+  Button,
   PageHeader,
   EmptyState,
   Badge,
@@ -173,17 +174,14 @@ export default async function AdminAuditLogPage({
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-5 md:py-10">
+    <AdminPage maxWidth="xl">
       <PageHeader
         title="Audit Log"
         subtitle="Kronologi semua tindakan admin. Pakai untuk verifikasi, dispute, dan tracking staff. Newest first."
         actions={
-          <Link
-            href="/admin/dashboard"
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
-          >
+          <Button href="/admin/dashboard" variant="secondary" size="sm">
             ← Dashboard
-          </Link>
+          </Button>
         }
       />
 
@@ -257,19 +255,11 @@ export default async function AdminAuditLogPage({
           />
         </div>
         <div className="md:col-span-4 flex items-center gap-2 pt-1">
-          <button
-            type="submit"
-            className="rounded-full bg-natalo-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-natalo-700"
-          >
-            Apply filter
-          </button>
+          <Button type="submit">Apply filter</Button>
           {(actorId || actionFilter || targetFilter || searchQuery) && (
-            <Link
-              href="/admin/audit-log"
-              className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-bold text-zinc-700 transition hover:border-zinc-400"
-            >
+            <Button href="/admin/audit-log" variant="secondary">
               ✕ Reset
-            </Link>
+            </Button>
           )}
           <span className="ml-auto text-xs font-semibold text-zinc-500">
             Showing {sliced.length} entries
@@ -360,14 +350,11 @@ export default async function AdminAuditLogPage({
       {/* Pagination */}
       {nextCursor && (
         <div className="mt-5 flex justify-center">
-          <Link
-            href={buildFilterUrl({ cursor: nextCursor })}
-            className="rounded-full bg-natalo-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-natalo-700"
-          >
+          <Button href={buildFilterUrl({ cursor: nextCursor })}>
             Load 50 lagi →
-          </Link>
+          </Button>
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }
