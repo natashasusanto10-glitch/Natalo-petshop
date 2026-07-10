@@ -398,6 +398,10 @@ export default function CartPage() {
   const selectedCount = selectedItems.length;
   const selectedQuantity = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
   const selectedSubtotal = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const selectedProductIds = useMemo(
+    () => Array.from(new Set(selectedItems.map((item) => item.productId))),
+    [selectedItems],
+  );
   // Total diskon dari kombinasi voucher member (capped at subtotal supaya tidak negative).
   const voucherDiscount = Math.min(
     memberVouchers.reduce((sum, voucher) => sum + (voucher.discount ?? 0), 0),
@@ -438,7 +442,9 @@ export default function CartPage() {
 
     let active = true;
     setVoucherLookupComplete(false);
-    fetch(`/api/cart/vouchers?subtotal=${selectedSubtotal}`)
+    fetch(
+      `/api/cart/vouchers?subtotal=${selectedSubtotal}&productIds=${encodeURIComponent(selectedProductIds.join(","))}`,
+    )
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!active) return;
@@ -510,6 +516,7 @@ export default function CartPage() {
     isLoggedIn,
     selectedCount,
     selectedSubtotal,
+    selectedProductIds,
     selectedVoucherSignature,
     voucherSelectionMode,
   ]);
@@ -1048,6 +1055,7 @@ export default function CartPage() {
         onClose={() => setVoucherSheetOpen(false)}
         isLoggedIn={isLoggedIn}
         subtotal={selectedSubtotal}
+        productIds={selectedProductIds}
         selectedMemberCodes={selectedMemberCodes}
         onSelectMember={(code, discount, description, kind) => {
           setVoucherSelectionMode("manual");
