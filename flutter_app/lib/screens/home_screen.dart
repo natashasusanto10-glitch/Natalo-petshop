@@ -752,6 +752,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         // dengan signal purchase + view weighted. Fallback ke
                         // client-side scoring (pool 48) kalau API gagal /
                         // offline / response kosong.
+                        //
+                        // ── Zona belanja latar abu (ala Shopee) ──
+                        // Rekomendasi + Jelajahi dibungkus satu DecoratedSliver
+                        // (verified tetap lazy: SliverMainAxisGroup tak
+                        // memaksa materialisasi list) supaya kartu putih
+                        // menonjol di atas kanal abu, tanpa seam antar-section.
+                        DecoratedSliver(
+                          decoration: BoxDecoration(
+                            color: _homeGridSurfaceTint(context),
+                          ),
+                          sliver: SliverMainAxisGroup(
+                            slivers: [
                         SliverToBoxAdapter(
                           child: AnimatedBuilder(
                             animation: recentlyViewedStore,
@@ -778,7 +790,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           child: _ExploreSectionHeader(),
                         ),
                         SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
                           // Grid 2-kolom AUTO-HEIGHT (bukan SliverGrid dengan
                           // childAspectRatio tetap). Tiap baris = 1 Row berisi 2
                           // kartu — tinggi BARIS ikut konten terpanjang. Sebelumnya
@@ -819,11 +831,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   if (showingSkeleton) {
                                     return const SkeletonProductCard(
                                       showAddToCart: false,
+                                      squareImage: true,
                                     );
                                   }
                                   final product = _exploreProducts[index];
                                   return _HomeProductCard(
                                     product: product,
+                                    squareImage: true,
                                     onTap: () =>
                                         _openProductDetail(context, product),
                                   );
@@ -831,14 +845,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                                 return Padding(
                                   padding: EdgeInsets.only(
-                                    bottom: isLastRow ? 0 : 12,
+                                    bottom: isLastRow ? 0 : 8,
                                   ),
                                   child: Row(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
                                       Expanded(child: cell(leftIndex)),
-                                      const SizedBox(width: 12),
+                                      const SizedBox(width: 8),
                                       Expanded(
                                         child: rightIndex < itemCount
                                             ? cell(rightIndex)
@@ -871,6 +885,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                         const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   );
@@ -894,7 +911,7 @@ class _ExploreSectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 28, 16, 0),
+      padding: const EdgeInsets.fromLTRB(12, 28, 12, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2938,6 +2955,11 @@ class _HomeProductCard extends StatelessWidget {
   final double imageHeight;
   final double priceFontSize;
   final bool compact;
+  // Grid utama Beranda: foto persegi 1:1 full-bleed (BoxFit.cover) + kartu
+  // radius lebih kecil (10), ala Shopee. Default false supaya rail compact
+  // (_MiniProductCard "Terlaris" dst) yang me-reuse widget ini TIDAK ikut
+  // berubah — cukup diaktifkan di call-site grid 2-kolom.
+  final bool squareImage;
 
   const _HomeProductCard({
     required this.product,
@@ -2947,6 +2969,7 @@ class _HomeProductCard extends StatelessWidget {
     this.imageHeight = 132,
     this.priceFontSize = 16,
     this.compact = false,
+    this.squareImage = false,
   });
 
   @override
@@ -2955,21 +2978,122 @@ class _HomeProductCard extends StatelessWidget {
     final nameHeight = compact ? 31.0 : 34.0;
     final discountPercent = _activeHomeProductDiscountPercent(product);
 
+    final cs = Theme.of(context).colorScheme;
+    // Grid utama: radius kartu lebih kecil (10) + foto full-bleed. Rail
+    // compact tetap radius 18 + foto fixed-height contain (tak berubah).
+    final cardRadius = squareImage ? 10.0 : 18.0;
+
+    final imageStack = Stack(
+      children: [
+        squareImage
+            ? _HomeProductImageSquare(imageUrl: product.imageUrl)
+            : _HomeProductImage(
+                imageUrl: product.imageUrl,
+                height: imageHeight,
+              ),
+        if (discountPercent != null)
+          Positioned(
+            right: 8,
+            top: 8,
+            child: _HomeProductDiscountBadge(
+              percent: discountPercent,
+              compact: compact,
+            ),
+          ),
+        if (rank != null)
+          Positioned(
+            left: 8,
+            top: 8,
+            child: _HomeProductRankBadge(rank: rank!),
+          )
+        // Rank badge (Terlaris dsb) pakai slot kiri-atas yang sama
+        // — brand badge cuma tampil kalau slot itu kosong.
+        else if (productHasBrandExclusiveBadge(
+          isBrandExclusive: product.voucherPreview?.isBrandExclusive,
+          brand: product.brand,
+        ))
+          Positioned(
+            left: 8,
+            top: 8,
+            child: BrandExclusiveBadge(
+              brand: product.brand,
+              full: !compact,
+            ),
+          ),
+      ],
+    );
+
+    final infoChildren = <Widget>[
+      SizedBox(
+        height: nameHeight,
+        child: Text(
+          product.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 13,
+            height: 1.25,
+            fontWeight: FontWeight.w600,
+            color: cs.onSurface,
+          ),
+        ),
+      ),
+      // Consumable repurchase badge — produk yang user pernah
+      // beli dan sudah waktunya refill (food, pasir, vitamin, dst).
+      if (product.isRepurchaseCandidate) ...[
+        SizedBox(height: compact ? 6 : 7),
+        _HomeProductRepurchaseBadge(product: product),
+      ],
+      SizedBox(height: compact ? 7 : 8),
+      _HomeProductPriceRow(
+        product: product,
+        fontSize: priceFontSize,
+        compact: compact,
+      ),
+      _HomeProductSavingBadge(product: product, compact: compact),
+      _HomeProductRatingSoldRow(product: product, compact: compact),
+    ];
+
+    // squareImage: foto full-bleed di atas (nempel tepi kartu), konten di
+    // bawahnya dapat padding sendiri. Non-square (rail): perilaku lama.
+    final Widget cardBody = squareImage
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              imageStack,
+              Padding(
+                padding: EdgeInsets.fromLTRB(padding, 8, padding, padding),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: infoChildren,
+                ),
+              ),
+            ],
+          )
+        : Padding(
+            padding: EdgeInsets.all(padding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                imageStack,
+                SizedBox(height: compact ? 8 : 10),
+                ...infoChildren,
+              ],
+            ),
+          );
+
     return SizedBox(
       width: width,
       child: Material(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(cardRadius),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
           child: Container(
-            padding: EdgeInsets.all(padding),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: Theme.of(context).colorScheme.outlineVariant,
-              ),
+              borderRadius: BorderRadius.circular(cardRadius),
+              border: Border.all(color: cs.outlineVariant),
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x08000000),
@@ -2978,80 +3102,67 @@ class _HomeProductCard extends StatelessWidget {
                 ),
               ],
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Stack(
-                  children: [
-                    _HomeProductImage(
-                      imageUrl: product.imageUrl,
-                      height: imageHeight,
-                    ),
-                    if (discountPercent != null)
-                      Positioned(
-                        right: 8,
-                        top: 8,
-                        child: _HomeProductDiscountBadge(
-                          percent: discountPercent,
-                          compact: compact,
-                        ),
-                      ),
-                    if (rank != null)
-                      Positioned(
-                        left: 8,
-                        top: 8,
-                        child: _HomeProductRankBadge(rank: rank!),
-                      )
-                    // Rank badge (Terlaris dsb) pakai slot kiri-atas yang sama
-                    // — brand badge cuma tampil kalau slot itu kosong.
-                    else if (productHasBrandExclusiveBadge(
-                      isBrandExclusive:
-                          product.voucherPreview?.isBrandExclusive,
-                      brand: product.brand,
-                    ))
-                      Positioned(
-                        left: 8,
-                        top: 8,
-                        child: BrandExclusiveBadge(
-                          brand: product.brand,
-                          full: !compact,
-                        ),
-                      ),
-                  ],
-                ),
-                SizedBox(height: compact ? 8 : 10),
-                SizedBox(
-                  height: nameHeight,
-                  child: Text(
-                    product.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.25,
-                      fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-                  ),
-                ),
-                // Consumable repurchase badge — produk yang user pernah
-                // beli dan sudah waktunya refill (food, pasir, vitamin, dst).
-                if (product.isRepurchaseCandidate) ...[
-                  SizedBox(height: compact ? 6 : 7),
-                  _HomeProductRepurchaseBadge(product: product),
-                ],
-                SizedBox(height: compact ? 7 : 8),
-                _HomeProductPriceRow(
-                  product: product,
-                  fontSize: priceFontSize,
-                  compact: compact,
-                ),
-                _HomeProductSavingBadge(product: product, compact: compact),
-                _HomeProductRatingSoldRow(product: product, compact: compact),
-              ],
-            ),
+            child: cardBody,
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Latar abu muda di belakang grid produk utama (ala Shopee — kartu putih
+/// menonjol di atas kanal abu). Dark mode: surface sedikit lebih rendah
+/// supaya kartu tetap terpisah.
+Color _homeGridSurfaceTint(BuildContext context) {
+  final cs = Theme.of(context).colorScheme;
+  return Theme.of(context).brightness == Brightness.dark
+      ? cs.surfaceContainerLow
+      : const Color(0xFFEEF1F5);
+}
+
+/// Foto produk persegi 1:1 full-bleed (BoxFit.cover) untuk grid utama —
+/// gambar mengisi penuh kotak seperti Shopee. Gambar Natalo dibuat 1:1
+/// sesuai spec Shopee jadi cover tidak memotong apa pun.
+class _HomeProductImageSquare extends StatelessWidget {
+  final String imageUrl;
+
+  const _HomeProductImageSquare({required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasImage = imageUrl.trim().isNotEmpty;
+    return AspectRatio(
+      aspectRatio: 1,
+      child: hasImage
+          ? CachedNetworkImage(
+              imageUrl: imageUrl,
+              width: double.infinity,
+              height: double.infinity,
+              fit: BoxFit.cover,
+              placeholder: (_, __) =>
+                  const _HomeProductImageSquarePlaceholder(),
+              errorWidget: (_, __, ___) =>
+                  const _HomeProductImageSquarePlaceholder(),
+            )
+          : const _HomeProductImageSquarePlaceholder(),
+    );
+  }
+}
+
+class _HomeProductImageSquarePlaceholder extends StatelessWidget {
+  const _HomeProductImageSquarePlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? cs.surfaceContainerHighest
+            : const Color(0xFFF3F7FF),
+      ),
+      child: Center(
+        child: Icon(Icons.pets_rounded, size: 34, color: cs.onSurfaceVariant),
       ),
     );
   }
@@ -4113,7 +4224,7 @@ class _RecommendationGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      padding: const EdgeInsets.fromLTRB(12, 24, 12, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -4143,7 +4254,7 @@ class _RecommendationGrid extends StatelessWidget {
           for (var i = 0; i < (products.length + 1) ~/ 2; i++)
             Padding(
               padding: EdgeInsets.only(
-                bottom: i == ((products.length + 1) ~/ 2) - 1 ? 0 : 12,
+                bottom: i == ((products.length + 1) ~/ 2) - 1 ? 0 : 8,
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -4151,14 +4262,16 @@ class _RecommendationGrid extends StatelessWidget {
                   Expanded(
                     child: _HomeProductCard(
                       product: products[i * 2],
+                      squareImage: true,
                       onTap: () => onTap(products[i * 2]),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: i * 2 + 1 < products.length
                         ? _HomeProductCard(
                             product: products[i * 2 + 1],
+                            squareImage: true,
                             onTap: () => onTap(products[i * 2 + 1]),
                           )
                         // Jumlah ganjil — slot kanan kosong, kartu kiri
