@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { AdminPage, Button } from "@/components/admin/ui";
 
 const PAGE_SIZE = 30;
 
@@ -89,13 +90,10 @@ export default async function BrandReviewPage({
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-5 md:py-10">
-      <Link
-        href="/admin/brands"
-        className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
-      >
+    <AdminPage maxWidth="xl">
+      <Button href="/admin/brands" variant="secondary" size="sm">
         ← Kembali ke brand
-      </Link>
+      </Button>
       <h1 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
         Review Auto-Assign Brand
       </h1>
@@ -162,12 +160,9 @@ export default async function BrandReviewPage({
               name="brandId"
               value={brands.find((b) => b.slug === brandFilter)?.id}
             />
-            <button
-              type="submit"
-              className="rounded-full bg-amber-500 px-5 py-2 text-sm font-bold text-white hover:bg-amber-600"
-            >
+            <Button type="submit" variant="primary">
               ✓ Konfirmasi semua
-            </button>
+            </Button>
           </form>
         </div>
       )}
@@ -198,7 +193,7 @@ export default async function BrandReviewPage({
                   >
                     {p.name}
                   </Link>
-                  <p className="mt-1 text-xs text-zinc-400">
+                  <p className="mt-1 text-xs text-zinc-600">
                     Saat ini:{" "}
                     <span className="font-bold text-amber-700">
                       {p.brand?.name ?? "—"}
@@ -221,23 +216,17 @@ export default async function BrandReviewPage({
                       </option>
                     ))}
                   </select>
-                  <button
-                    type="submit"
-                    className="rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-bold hover:bg-zinc-50"
-                  >
+                  <Button type="submit" variant="secondary">
                     Ubah
-                  </button>
+                  </Button>
                 </form>
 
                 {/* Confirm */}
                 <form action={confirmBrand}>
                   <input type="hidden" name="productId" value={p.id} />
-                  <button
-                    type="submit"
-                    className="w-full rounded-full bg-green-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-green-600"
-                  >
+                  <Button type="submit" variant="primary" fullWidth>
                     ✓ Sudah benar
-                  </button>
+                  </Button>
                 </form>
               </div>
             ))}
@@ -253,24 +242,24 @@ export default async function BrandReviewPage({
           </p>
           <div className="flex gap-2">
             {page > 1 && (
-              <Link
+              <Button
                 href={`/admin/brands/review?page=${page - 1}${brandFilter ? `&brand=${brandFilter}` : ""}`}
-                className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-semibold hover:bg-zinc-50"
+                variant="secondary"
               >
                 ← Sebelumnya
-              </Link>
+              </Button>
             )}
             {page < totalPages && (
-              <Link
+              <Button
                 href={`/admin/brands/review?page=${page + 1}${brandFilter ? `&brand=${brandFilter}` : ""}`}
-                className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-semibold hover:bg-zinc-50"
+                variant="secondary"
               >
                 Selanjutnya →
-              </Link>
+              </Button>
             )}
           </div>
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }

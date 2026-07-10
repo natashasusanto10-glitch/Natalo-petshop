@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import { markAsPickedUp } from "../orders/[id]/actions";
-import { PageHeader, Badge } from "@/components/admin/ui";
+import { PageHeader, Badge, Button } from "@/components/admin/ui";
 
 const PICKUP_STATUS_LABELS: Record<string, string> = {
   WAITING_PAYMENT: "Menunggu pembayaran",
@@ -38,12 +37,9 @@ export default async function PickupValidationPage({
         title="🏪 Validasi Pickup"
         subtitle="Masukkan kode pickup yang ditunjukkan customer saat mengambil pesanan di toko."
         actions={
-          <Link
-            href="/admin/orders"
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
-          >
+          <Button href="/admin/orders" variant="secondary" size="sm">
             ← Kembali ke pesanan
-          </Link>
+          </Button>
         }
       />
 
@@ -65,9 +61,7 @@ export default async function PickupValidationPage({
             placeholder="NTL-4821"
             className="min-w-0 flex-1 rounded-2xl border border-zinc-300 px-4 py-3 font-mono text-base font-black uppercase tracking-wider outline-none transition focus:border-natalo-500 focus:ring-2 focus:ring-natalo-100"
           />
-          <button className="rounded-full bg-natalo-600 px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-natalo-700">
-            Cek Kode
-          </button>
+          <Button type="submit">Cek Kode</Button>
         </div>
       </form>
 

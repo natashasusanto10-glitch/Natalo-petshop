@@ -188,6 +188,7 @@ export default function AIVoucherSuggestButton() {
               <button
                 type="button"
                 onClick={close}
+                aria-label="Tutup"
                 className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-100"
               >
                 ✕

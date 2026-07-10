@@ -8,6 +8,8 @@ import {
   EmptyState,
   PageHeader,
   Badge,
+  Button,
+  AdminPage,
   STATUS_BADGE_VARIANT,
   PAY_BADGE_VARIANT,
 } from "@/components/admin/ui";
@@ -329,24 +331,18 @@ export default async function AdminDashboardPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-5 md:py-8">
+    <AdminPage maxWidth="xl">
       <PageHeader
         title="Dashboard Admin"
         subtitle={`${getGreeting()}, ${session?.name ?? "Admin"}. Fokus: order masuk & stok kritis.`}
         actions={
           <>
-            <Link
-              href="/admin/abuse-flags"
-              className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-bold text-red-700 transition hover:border-red-400 hover:bg-red-100"
-            >
+            <Button href="/admin/abuse-flags" variant="dangerSoft" size="sm">
               🚨 Abuse Flags
-            </Link>
-            <Link
-              href="/admin/audit-log"
-              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
-            >
+            </Button>
+            <Button href="/admin/audit-log" variant="secondary" size="sm">
               📋 Audit Log
-            </Link>
+            </Button>
           </>
         }
       />
@@ -489,14 +485,11 @@ export default async function AdminDashboardPage() {
       {/* Danger zone link — subtle styling supaya tidak accidentally
           tapped tapi findable kalau admin perlu wipe data sebelum launch. */}
       <div className="mt-12 border-t border-zinc-100 pt-6 text-center">
-        <Link
-          href="/admin/danger-zone"
-          className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-white px-4 py-2 text-xs font-bold text-red-700 transition hover:bg-red-50"
-        >
+        <Button href="/admin/danger-zone" variant="dangerSoft" size="sm">
           ⚠️ Danger Zone — Reset Database
-        </Link>
+        </Button>
       </div>
-    </div>
+    </AdminPage>
   );
 }
 

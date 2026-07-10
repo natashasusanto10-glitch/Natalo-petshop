@@ -10,8 +10,11 @@ import {
   PageHeader,
   EmptyState,
   Badge,
+  Button,
+  AdminPage,
   type BadgeVariant,
 } from "@/components/admin/ui";
+import { reviewStatusLabel } from "@/lib/order-labels";
 
 const REVIEW_STATUS_VARIANT: Record<string, BadgeVariant> = {
   VISIBLE: "success",
@@ -96,17 +99,14 @@ export default async function AdminReviewsPage({
   ];
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-5 md:py-10">
+    <AdminPage maxWidth="xl">
       <PageHeader
         title="Moderasi Review"
         subtitle={`Kelola ${total} review pembeli — approve, hide, atau balas.`}
         actions={
-          <Link
-            href="/admin/dashboard"
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
-          >
+          <Button href="/admin/dashboard" variant="secondary" size="sm">
             ← Dashboard
-          </Link>
+          </Button>
         }
       />
 
@@ -174,7 +174,7 @@ export default async function AdminReviewsPage({
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={r.product.imageUrl}
-                        alt=""
+                        alt={r.product.name}
                         className="h-full w-full object-cover"
                       />
                     ) : (
@@ -188,7 +188,7 @@ export default async function AdminReviewsPage({
                     >
                       {r.product.name}
                     </Link>
-                    <p className="text-xs text-zinc-400">
+                    <p className="text-xs text-zinc-600">
                       {r.user.name} · {r.user.email ?? "—"}
                     </p>
                   </div>
@@ -197,14 +197,14 @@ export default async function AdminReviewsPage({
                   variant={REVIEW_STATUS_VARIANT[r.status] ?? "neutral"}
                   size="md"
                 >
-                  {r.status}
+                  {reviewStatusLabel(r.status)}
                 </Badge>
               </div>
 
               {/* Body */}
               <div className="mt-3 flex items-center gap-3">
                 <Stars rating={r.rating} size="sm" />
-                <span className="text-xs text-zinc-400">
+                <span className="text-xs text-zinc-600">
                   {new Date(r.createdAt).toLocaleString("id-ID")}
                 </span>
                 {r.variantLabel && (
@@ -222,7 +222,7 @@ export default async function AdminReviewsPage({
                     <img
                       key={img.id}
                       src={img.imageUrl}
-                      alt=""
+                      alt={`Foto ulasan ${r.product.name}`}
                       className="h-16 w-16 rounded-lg object-cover"
                     />
                   ))}
@@ -246,22 +246,16 @@ export default async function AdminReviewsPage({
                   <form action={hideReview}>
                     <input type="hidden" name="id" value={r.id} />
                     <input type="hidden" name="reason" value="Konten tidak sesuai kebijakan toko" />
-                    <button
-                      type="submit"
-                      className="rounded-full border border-red-300 bg-white px-4 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50"
-                    >
+                    <Button type="submit" variant="dangerSoft" size="sm">
                       Sembunyikan
-                    </button>
+                    </Button>
                   </form>
                 ) : r.status === "HIDDEN" ? (
                   <form action={unhideReview}>
                     <input type="hidden" name="id" value={r.id} />
-                    <button
-                      type="submit"
-                      className="rounded-full border border-green-300 bg-white px-4 py-1.5 text-xs font-bold text-green-600 hover:bg-green-50"
-                    >
+                    <Button type="submit" variant="secondary" size="sm">
                       Tampilkan
-                    </button>
+                    </Button>
                   </form>
                 ) : null}
 
@@ -279,12 +273,9 @@ export default async function AdminReviewsPage({
                       rows={2}
                       className="w-full max-w-md rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-950"
                     />
-                    <button
-                      type="submit"
-                      className="self-start rounded-full bg-natalo-600 px-4 py-2 text-xs font-bold text-white hover:bg-natalo-700"
-                    >
+                    <Button type="submit" size="sm" className="self-start">
                       Kirim
-                    </button>
+                    </Button>
                   </form>
                 </details>
               </div>
@@ -301,24 +292,25 @@ export default async function AdminReviewsPage({
           </p>
           <div className="flex gap-2">
             {page > 1 && (
-              <Link
+              <Button
                 href={`/admin/reviews?${filterStatus ? `status=${filterStatus}&` : ""}page=${page - 1}`}
-                className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-bold hover:bg-zinc-50"
+                variant="secondary"
+                size="sm"
               >
                 ← Sebelumnya
-              </Link>
+              </Button>
             )}
             {page < totalPages && (
-              <Link
+              <Button
                 href={`/admin/reviews?${filterStatus ? `status=${filterStatus}&` : ""}page=${page + 1}`}
-                className="rounded-full bg-zinc-950 px-4 py-2 text-sm font-bold text-white hover:bg-zinc-800"
+                size="sm"
               >
                 Selanjutnya →
-              </Link>
+              </Button>
             )}
           </div>
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }

@@ -1,9 +1,10 @@
-import Link from "next/link";
 import { requireAdminSession } from "@/lib/session-guards";
 import {
   PageHeader,
   SectionCard,
   Badge,
+  Button,
+  AdminPage,
 } from "@/components/admin/ui";
 
 export default async function AdminSettingsPage() {
@@ -13,17 +14,14 @@ export default async function AdminSettingsPage() {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "-";
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-5 md:py-10">
+    <AdminPage maxWidth="md">
       <PageHeader
         title="⚙️ Pengaturan Toko"
         subtitle="Konfigurasi umum toko kamu. Sebagian dikontrol via env vars di server."
         actions={
-          <Link
-            href="/admin/dashboard"
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
-          >
+          <Button href="/admin/dashboard" variant="secondary" size="sm">
             ← Dashboard
-          </Link>
+          </Button>
         }
       />
 
@@ -38,7 +36,7 @@ export default async function AdminSettingsPage() {
                 Nama Toko
               </p>
               <p className="mt-1 font-black text-zinc-900">{brand}</p>
-              <p className="mt-0.5 font-mono text-[10px] text-zinc-400">
+              <p className="mt-0.5 font-mono text-[10px] text-zinc-600">
                 NEXT_PUBLIC_BRAND_NAME
               </p>
             </div>
@@ -49,7 +47,7 @@ export default async function AdminSettingsPage() {
               <p className="mt-1 break-all font-black text-zinc-900">
                 {siteUrl}
               </p>
-              <p className="mt-0.5 font-mono text-[10px] text-zinc-400">
+              <p className="mt-0.5 font-mono text-[10px] text-zinc-600">
                 NEXT_PUBLIC_SITE_URL
               </p>
             </div>
@@ -92,6 +90,6 @@ export default async function AdminSettingsPage() {
           ℹ️ Fitur pengaturan langsung dari UI akan segera hadir.
         </p>
       </div>
-    </div>
+    </AdminPage>
   );
 }

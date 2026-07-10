@@ -1,12 +1,15 @@
 "use client";
 
+import { Button } from "@/components/admin/ui";
+
 export function PrintButton() {
   return (
-    <button
+    <Button
+      type="button"
       onClick={() => window.print()}
-      className="print:hidden rounded-lg bg-zinc-950 px-5 py-3 text-sm font-bold text-white hover:bg-zinc-800"
+      className="print:hidden"
     >
       Print Resi
-    </button>
+    </Button>
   );
 }

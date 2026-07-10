@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Button } from "@/components/admin/ui";
 
 type BroadcastType = "promo" | "announcement";
 type Segment = "all" | "members" | "active30d" | "test";
@@ -407,14 +408,16 @@ export function BroadcastForm() {
               {recipientCount !== null ? recipientCount.toLocaleString("id-ID") : "-"} user
             </p>
           </div>
-          <button
+          <Button
             type="button"
             onClick={checkRecipientCount}
             disabled={loading || !canSubmit}
-            className="shrink-0 rounded-full border border-zinc-300 bg-white px-4 py-2 text-xs font-bold text-zinc-700 disabled:opacity-50"
+            variant="secondary"
+            size="sm"
+            className="shrink-0"
           >
             Cek jumlah
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -452,7 +455,7 @@ export function BroadcastForm() {
 
       <div className="flex flex-col gap-3 pt-2 sm:flex-row">
         {!confirming ? (
-          <button
+          <Button
             type="button"
             onClick={() => {
               if (!canSubmit) return;
@@ -463,7 +466,8 @@ export function BroadcastForm() {
               }
             }}
             disabled={!canSubmit}
-            className="flex-1 rounded-full bg-natalo-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
+            variant="primary"
+            className="flex-1"
           >
             {loading
               ? "Memproses..."
@@ -472,25 +476,27 @@ export function BroadcastForm() {
                 : status === "DRAFT"
                   ? "Simpan draft"
                   : "Publish broadcast"}
-          </button>
+          </Button>
         ) : (
           <>
-            <button
+            <Button
               type="button"
               onClick={() => setConfirming(false)}
               disabled={loading}
-              className="rounded-full border border-zinc-300 bg-white px-6 py-3 text-sm font-bold text-zinc-700 disabled:opacity-50 sm:flex-1"
+              variant="secondary"
+              className="sm:flex-1"
             >
               Batal
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={sendBroadcast}
               disabled={loading}
-              className="flex-1 rounded-full bg-red-600 px-6 py-3 text-sm font-bold text-white transition active:bg-red-700 disabled:bg-zinc-300"
+              variant="danger"
+              className="flex-1"
             >
               {loading ? "Mengirim..." : `Konfirmasi publish${recipientCount !== null ? ` ke ${recipientCount} user` : ""}`}
-            </button>
+            </Button>
           </>
         )}
       </div>

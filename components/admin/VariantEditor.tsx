@@ -45,6 +45,40 @@ function cartesian<T>(arrays: T[][]): T[][] {
   return first.flatMap((item) => restProduct.map((r) => [item, ...r]));
 }
 
+// Label field varian untuk pesan error dari server (path Zod → nama manusiawi).
+const VARIANT_FIELD_LABEL: Record<string, string> = {
+  sku: "Kode SKU",
+  price: "Harga",
+  stock: "Stok",
+  weightGram: "Berat",
+  optionRefs: "Opsi/kombinasi",
+  imageUrl: "Foto",
+};
+
+/**
+ * Ubah satu issue Zod dari server ({path, message}) jadi kalimat yang
+ * menunjuk baris varian / atribut mana yang salah, mis:
+ *   `Varian "Hair & Skin" — Kode SKU: SKU hanya boleh huruf, angka, _ dan -`
+ */
+function describeVariantIssue(
+  issue: { path: (string | number)[]; message: string },
+  rows: VariantRow[],
+  attrs: Array<{ name: string }>,
+): string {
+  const [root, idx, field] = issue.path;
+  if (root === "variants" && typeof idx === "number") {
+    const row = rows[idx];
+    const label =
+      row?.optionValues.filter(Boolean).join(" / ") || `Varian #${idx + 1}`;
+    const f = typeof field === "string" ? VARIANT_FIELD_LABEL[field] ?? field : "";
+    return `Varian "${label}"${f ? ` — ${f}` : ""}: ${issue.message}`;
+  }
+  if (root === "attributes" && typeof idx === "number") {
+    return `Variasi "${attrs[idx]?.name ?? `#${idx + 1}`}": ${issue.message}`;
+  }
+  return issue.message;
+}
+
 // ── Props ──────────────────────────────────────────────────────
 /**
  * Payload yang di-emit ke parent saat draft mode (onChange). Match
@@ -121,6 +155,8 @@ export function VariantEditor({
   const [rows, setRows] = useState<VariantRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  /** Daftar alasan spesifik dari server (422) — ditampilkan per baris. */
+  const [serverErrors, setServerErrors] = useState<string[] | null>(null);
   const [bulkPrice, setBulkPrice] = useState("");
   const [bulkStock, setBulkStock] = useState("");
   const [bulkSku, setBulkSku] = useState("");
@@ -425,6 +461,7 @@ export function VariantEditor({
   // ── Save ──────────────────────────────────────────────────────
   async function handleSave() {
     setShowFieldErrors(true);
+    setServerErrors(null);
     if (validationErrors.length > 0) return;
     setSaving(true);
     setSaveMsg(null);
@@ -456,8 +493,27 @@ export function VariantEditor({
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Gagal menyimpan");
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        // Server (422) kirim `issues` detail per-field → tampilkan alasan
+        // spesifik per baris varian, bukan cuma "Payload varian tidak valid".
+        const issues: Array<{ path: (string | number)[]; message: string }> =
+          Array.isArray(data?.issues) ? data.issues : [];
+        if (issues.length > 0) {
+          setServerErrors(
+            issues.map((iss) => describeVariantIssue(iss, rows, nonEmptyAttrs)),
+          );
+          setSaveMsg({
+            ok: false,
+            text: `Gagal menyimpan — ${issues.length} masalah, lihat detail di bawah.`,
+          });
+        } else {
+          setSaveMsg({ ok: false, text: data?.error ?? "Gagal menyimpan" });
+        }
+        return;
+      }
+
       setSaveMsg({ ok: true, text: "Varian berhasil disimpan!" });
       setShowFieldErrors(false);
     } catch (e) {
@@ -488,19 +544,27 @@ export function VariantEditor({
         {/* Toggle */}
         <button
           type="button"
+          role="switch"
+          aria-checked={hasVariants}
+          aria-label="Aktifkan variasi produk"
           onClick={() => {
             setHasVariants((v) => !v);
             setSaveMsg(null);
+            setServerErrors(null);
           }}
-          className={`relative flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
-            hasVariants ? "bg-natalo-600" : "bg-zinc-300"
-          }`}
+          className="flex h-11 w-12 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-natalo-400 focus-visible:ring-offset-2"
         >
           <span
-            className={`absolute h-5 w-5 rounded-full bg-white shadow transition-transform ${
-              hasVariants ? "translate-x-6" : "translate-x-1"
+            className={`relative flex h-7 w-12 items-center rounded-full transition-colors ${
+              hasVariants ? "bg-natalo-600" : "bg-zinc-300"
             }`}
-          />
+          >
+            <span
+              className={`absolute h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                hasVariants ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </span>
         </button>
       </div>
 
@@ -557,6 +621,7 @@ export function VariantEditor({
                     onClick={() => removeAttr(attr.tempId)}
                     className="rounded-full p-1 text-zinc-400 hover:bg-white hover:text-red-500"
                     title="Hapus variasi"
+                    aria-label="Hapus variasi"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <line x1="18" y1="6" x2="6" y2="18" />
@@ -602,6 +667,7 @@ export function VariantEditor({
                             }
                             className="shrink-0 rounded p-2 text-zinc-400 hover:bg-white hover:text-natalo-600"
                             title="Tambah opsi di bawah"
+                            aria-label="Tambah opsi di bawah"
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                               <line x1="12" y1="5" x2="12" y2="19" />
@@ -614,6 +680,7 @@ export function VariantEditor({
                             disabled={attr.options.length <= 1}
                             className="shrink-0 rounded p-2 text-zinc-400 hover:bg-white hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-30"
                             title="Hapus opsi"
+                            aria-label="Hapus opsi"
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                               <polyline points="3 6 5 6 21 6" />
@@ -719,10 +786,13 @@ export function VariantEditor({
                       </div>
                       <button
                         type="button"
+                        role="switch"
+                        aria-checked={row.isActive}
+                        aria-label="Aktifkan varian"
                         onClick={() =>
                           updateRow(row.tempId, "isActive", !row.isActive)
                         }
-                        className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-bold transition-colors ${
+                        className={`inline-flex min-h-11 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors ${
                           row.isActive
                             ? "bg-green-50 text-green-700"
                             : "bg-zinc-100 text-zinc-500"
@@ -958,18 +1028,25 @@ export function VariantEditor({
                           <td className="px-3 py-3 text-center align-top">
                             <button
                               type="button"
+                              role="switch"
+                              aria-checked={row.isActive}
+                              aria-label="Aktifkan varian"
                               onClick={() =>
                                 updateRow(row.tempId, "isActive", !row.isActive)
                               }
-                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                                row.isActive ? "bg-green-500" : "bg-zinc-300"
-                              }`}
+                              className="inline-flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-natalo-400 focus-visible:ring-offset-2"
                             >
                               <span
-                                className={`absolute h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
-                                  row.isActive ? "translate-x-4" : "translate-x-1"
+                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                                  row.isActive ? "bg-green-500" : "bg-zinc-300"
                                 }`}
-                              />
+                              >
+                                <span
+                                  className={`absolute h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+                                    row.isActive ? "translate-x-4" : "translate-x-1"
+                                  }`}
+                                />
+                              </span>
                             </button>
                           </td>
                         </tr>
@@ -992,6 +1069,23 @@ export function VariantEditor({
                 </p>
                 <ul className="mt-2 space-y-1 text-red-600">
                   {validationErrors.map((e, i) => (
+                    <li key={i}>• {e}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* Alasan spesifik dari server (422) — tunjuk baris/field yang salah. */}
+          {serverErrors && serverErrors.length > 0 && (
+            <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+              <span className="text-red-500">⚠</span>
+              <div className="flex-1 text-sm">
+                <p className="font-semibold text-red-700">
+                  Server menolak — perbaiki hal berikut:
+                </p>
+                <ul className="mt-2 space-y-1 text-red-600">
+                  {serverErrors.map((e, i) => (
                     <li key={i}>• {e}</li>
                   ))}
                 </ul>
@@ -1085,6 +1179,7 @@ function VariantImageCell({
           onClick={() => onChange("")}
           className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white hover:bg-red-600"
           title="Hapus foto"
+          aria-label="Hapus foto varian"
         >
           ×
         </button>
@@ -1100,6 +1195,7 @@ function VariantImageCell({
         disabled={uploading}
         className="flex h-16 w-16 items-center justify-center rounded-lg border-2 border-dashed border-zinc-300 bg-white text-zinc-400 transition hover:border-natalo-400 hover:text-natalo-600 disabled:cursor-wait disabled:opacity-50"
         title="Tambah foto varian"
+        aria-label="Tambah foto varian"
       >
         {uploading ? (
           <span className="text-[10px] font-bold">...</span>

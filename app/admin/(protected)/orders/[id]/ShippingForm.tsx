@@ -23,6 +23,7 @@
  *   - submitLabel="Update info pengiriman" → status SHIPPED (edit info)
  */
 import { useState } from "react";
+import { Button } from "@/components/admin/ui";
 
 type CourierType = "REGULAR" | "INSTANT";
 
@@ -59,11 +60,6 @@ export default function ShippingForm({
     courierType === "REGULAR"
       ? trackingNumber.trim().length > 0
       : driverInfo.trim().length > 0;
-
-  const buttonClass =
-    variant === "primary"
-      ? "w-full rounded-full bg-indigo-600 px-5 py-3 text-sm font-bold text-white hover:bg-indigo-700 disabled:bg-zinc-300 disabled:cursor-not-allowed"
-      : "w-full rounded-full border border-zinc-300 px-5 py-3 text-sm font-bold hover:border-zinc-500 disabled:opacity-50 disabled:cursor-not-allowed";
 
   return (
     <form action={action} className="space-y-3">
@@ -143,14 +139,15 @@ export default function ShippingForm({
         </div>
       )}
 
-      <button
+      <Button
         type="submit"
         disabled={!isFilled}
-        className={buttonClass}
+        variant={variant === "primary" ? "primary" : "secondary"}
+        fullWidth
       >
         {variant === "primary" ? "🚚 " : ""}
         {submitLabel}
-      </button>
+      </Button>
     </form>
   );
 }

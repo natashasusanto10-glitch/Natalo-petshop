@@ -32,6 +32,12 @@ export async function PUT(
         {
           error: "Payload varian tidak valid",
           fields: parsed.error.flatten().fieldErrors,
+          // Detail per-issue (path + pesan) supaya UI bisa tunjuk baris/field
+          // mana yang salah, bukan cuma pesan generik.
+          issues: parsed.error.issues.map((i) => ({
+            path: i.path,
+            message: i.message,
+          })),
         },
         { status: 422 }
       );

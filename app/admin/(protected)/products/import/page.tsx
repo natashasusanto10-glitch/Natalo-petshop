@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
+import { AdminPage, Button } from "@/components/admin/ui";
 
 type Summary = {
   categoriesUpserted: number;
@@ -190,7 +191,7 @@ export default function ImportProductsPage() {
       : 0;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-5 md:py-8">
+    <AdminPage maxWidth="lg">
       <div className="mb-6 flex items-center justify-between gap-3">
         <div>
           <Link
@@ -258,22 +259,13 @@ export default function ImportProductsPage() {
         </div>
 
         <div className="mt-5 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={runImport}
-            disabled={running}
-            className="rounded-xl bg-natalo-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
-          >
+          <Button type="button" onClick={runImport} disabled={running}>
             {running ? "Memproses..." : done ? "Jalankan Lagi" : "Mulai Import"}
-          </button>
+          </Button>
           {running && (
-            <button
-              type="button"
-              onClick={cancelImport}
-              className="rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-bold text-zinc-700 transition hover:bg-zinc-50"
-            >
+            <Button type="button" onClick={cancelImport} variant="secondary">
               Batalkan
-            </button>
+            </Button>
           )}
         </div>
 
@@ -345,17 +337,18 @@ export default function ImportProductsPage() {
               </code>{" "}
               versi baru sudah siap sebelum reset.
             </p>
-            <button
+            <Button
               type="button"
               onClick={() => {
                 setResetOpen(true);
                 setResetError(null);
               }}
               disabled={running || resetLoading}
-              className="mt-3 rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              variant="dangerSoft"
+              className="mt-3"
             >
               Reset Semua Produk
-            </button>
+            </Button>
 
             {resetSummary && (
               <div className="mt-3 rounded-xl border border-red-200 bg-white p-3">
@@ -499,22 +492,24 @@ export default function ImportProductsPage() {
               />
 
               <div className="flex gap-2 pt-2">
-                <button
+                <Button
                   type="button"
                   onClick={() => setResetOpen(false)}
                   disabled={resetLoading}
-                  className="flex-1 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
+                  variant="secondary"
+                  className="flex-1"
                 >
                   Batal
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={runReset}
                   disabled={resetLoading || resetConfirmText !== "HAPUS"}
-                  className="flex-1 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  variant="danger"
+                  className="flex-1"
                 >
                   {resetLoading ? "Menghapus..." : "Konfirmasi Reset"}
-                </button>
+                </Button>
               </div>
             </div>
             </div>
@@ -533,6 +528,6 @@ export default function ImportProductsPage() {
           </pre>
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }

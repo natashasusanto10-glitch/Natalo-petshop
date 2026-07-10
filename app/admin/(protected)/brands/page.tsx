@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { BrandLogoOrderClient } from "@/components/admin/BrandLogoOrderClient";
 import { BrandLogoUploadButton } from "@/components/admin/BrandLogoUploadButton";
-import { PageHeader, EmptyState } from "@/components/admin/ui";
+import { PageHeader, EmptyState, Badge, AdminPage, Button } from "@/components/admin/ui";
 
 function slugify(name: string) {
   return name
@@ -153,17 +153,14 @@ export default async function AdminBrandsPage({
     }));
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-5 md:py-10">
+    <AdminPage maxWidth="xl">
       <PageHeader
         title="Brand"
         subtitle={`${brands.length} brand terdaftar.`}
         actions={
-          <Link
-            href="/admin/dashboard"
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
-          >
+          <Button href="/admin/dashboard" variant="secondary" size="sm">
             ← Dashboard
-          </Link>
+          </Button>
         }
       />
 
@@ -232,12 +229,7 @@ export default async function AdminBrandsPage({
             />
             Aktif di user app
           </label>
-          <button
-            type="submit"
-            className="rounded-full bg-zinc-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-zinc-800"
-          >
-            + Tambah brand
-          </button>
+          <Button type="submit">+ Tambah brand</Button>
         </div>
       </form>
       {error === "exists" && (
@@ -275,39 +267,35 @@ export default async function AdminBrandsPage({
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-bold text-zinc-900">{brand.name}</p>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
-                          brand.isActive
-                            ? "bg-green-50 text-green-700"
-                            : "bg-zinc-100 text-zinc-500"
-                        }`}
-                      >
+                      <Badge variant={brand.isActive ? "success" : "neutral"}>
                         {brand.isActive ? "Aktif" : "Nonaktif"}
-                      </span>
+                      </Badge>
                     </div>
-                    <p className="text-xs text-zinc-400">
+                    <p className="text-xs text-zinc-600">
                       /{brand.slug} - urutan {brand.position} -{" "}
                       {brand._count.products} produk
                     </p>
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center">
-                  <Link
+                  <Button
                     href={`/admin/brands/${brand.id}/edit`}
-                    className="rounded-full border border-zinc-200 px-3 py-1.5 text-center text-xs font-bold text-zinc-700 hover:border-zinc-400"
+                    variant="secondary"
+                    size="md"
                   >
                     Edit
-                  </Link>
-                  <Link
+                  </Button>
+                  <Button
                     href={`/admin/products?brand=${brand.slug}`}
-                    className="rounded-full border border-zinc-200 px-3 py-1.5 text-center text-xs font-bold text-zinc-700 hover:border-zinc-400"
+                    variant="secondary"
+                    size="md"
                   >
                     Produk
-                  </Link>
+                  </Button>
                   <form action={deleteBrand}>
                     <input type="hidden" name="id" value={brand.id} />
                     <ConfirmSubmitButton
-                      className="w-full rounded-full border border-red-100 px-3 py-1.5 text-xs font-bold text-red-500 hover:bg-red-50"
+                      className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-red-200 bg-white px-4 text-sm font-bold text-red-600 transition hover:border-red-300 hover:bg-red-50"
                       message={`Hapus brand "${brand.name}"? ${brand._count.products} produk akan kehilangan label brand-nya (tapi produk tidak terhapus).`}
                     >
                       Hapus
@@ -319,6 +307,6 @@ export default async function AdminBrandsPage({
           </div>
         )}
       </div>
-    </div>
+    </AdminPage>
   );
 }

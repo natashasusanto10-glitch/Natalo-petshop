@@ -20,6 +20,7 @@
  * sudah CANCELLED (parent page biasanya udah render "Dibatalkan" banner).
  */
 import { useState, useTransition } from "react";
+import { Button } from "@/components/admin/ui";
 
 type Props = {
   status: "PENDING" | "APPROVED" | "REJECTED";
@@ -178,22 +179,22 @@ export default function CancellationRequestBanner({
 
           {!showRejectForm ? (
             <div className="mt-4 flex flex-wrap gap-2">
-              <button
+              <Button
                 type="button"
+                variant="primary"
                 onClick={handleApprove}
                 disabled={isPending}
-                className="rounded-full bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-50"
               >
                 {isPending ? "Memproses..." : "Setujui & Refund"}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="dangerSoft"
                 onClick={() => setShowRejectForm(true)}
                 disabled={isPending}
-                className="rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
               >
                 Tolak
-              </button>
+              </Button>
             </div>
           ) : (
             <form onSubmit={handleReject} className="mt-4 space-y-2">
@@ -210,24 +211,20 @@ export default function CancellationRequestBanner({
                 disabled={isPending}
               />
               <div className="flex gap-2">
-                <button
-                  type="submit"
-                  disabled={isPending}
-                  className="rounded-full bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50"
-                >
+                <Button type="submit" variant="danger" disabled={isPending}>
                   {isPending ? "Memproses..." : "Kirim Penolakan"}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="secondary"
                   onClick={() => {
                     setShowRejectForm(false);
                     setError(null);
                   }}
                   disabled={isPending}
-                  className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
                 >
                   Batal
-                </button>
+                </Button>
               </div>
             </form>
           )}

@@ -5,32 +5,13 @@ import {
   PageHeader,
   EmptyState,
   Badge,
+  Button,
+  AdminPage,
   STATUS_BADGE_VARIANT,
   PAY_BADGE_VARIANT,
   type BadgeVariant,
 } from "@/components/admin/ui";
-
-const STATUS_LABELS: Record<string, string> = {
-  NEED_PACKING: "Siap packing",
-  PENDING: "Order Baru",
-  PAID: "Sudah Dibayar",
-  PROCESSING: "Diproses",
-  READY_FOR_PICKUP: "Siap Diambil",
-  SHIPPED: "Dikirim",
-  DELIVERED: "Selesai",
-  CANCELLED: "Dibatalkan",
-  REFUNDED: "Refund",
-};
-
-const PAY_LABELS: Record<string, string> = {
-  WAITING: "Menunggu bayar",
-  UNPAID: "Belum bayar",
-  PENDING: "Menunggu",
-  PAID: "Lunas",
-  FAILED: "Gagal",
-  EXPIRED: "Kedaluwarsa",
-  REFUNDED: "Refund",
-};
+import { orderStatusLabel, paymentStatusLabel } from "@/lib/order-labels";
 
 // Special variant override untuk NEED_PACKING (bukan order.status real, tapi
 // filter combine PAID + status ∈ {PENDING,PAID,PROCESSING}). Treat as success.
@@ -132,17 +113,14 @@ export default async function AdminOrdersPage({
   const activeType = type || "ALL";
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-5 md:py-10">
+    <AdminPage maxWidth="xl">
       <PageHeader
         title="Manajemen Order"
         subtitle={`${total} order ditemukan${activeStatus !== "ALL" ? " dengan filter aktif" : ""}.`}
         actions={
-          <Link
-            href="/admin/dashboard"
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
-          >
+          <Button href="/admin/dashboard" variant="secondary" size="sm">
             ← Dashboard
-          </Link>
+          </Button>
         }
       />
 
@@ -209,7 +187,7 @@ export default async function AdminOrdersPage({
                   : "border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
               }`}
             >
-              {p === "ALL" ? "Semua" : PAY_LABELS[p]}
+              {p === "ALL" ? "Semua" : paymentStatusLabel(p)}
             </Link>
           ),
         )}
@@ -279,12 +257,12 @@ export default async function AdminOrdersPage({
 
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     <Badge variant={EXTRA_STATUS_VARIANT[order.status] ?? "neutral"}>
-                      {STATUS_LABELS[order.status] ?? order.status}
+                      {orderStatusLabel(order.status)}
                     </Badge>
                     <Badge
                       variant={EXTRA_PAY_VARIANT[order.paymentStatus] ?? "neutral"}
                     >
-                      {PAY_LABELS[order.paymentStatus] ?? order.paymentStatus}
+                      {paymentStatusLabel(order.paymentStatus)}
                     </Badge>
                   </div>
                 </Link>
@@ -372,7 +350,7 @@ export default async function AdminOrdersPage({
                             }
                             size="md"
                           >
-                            {PAY_LABELS[order.paymentStatus] ?? order.paymentStatus}
+                            {paymentStatusLabel(order.paymentStatus)}
                           </Badge>
                         </td>
                         <td className="px-5 py-4">
@@ -382,7 +360,7 @@ export default async function AdminOrdersPage({
                             }
                             size="md"
                           >
-                            {STATUS_LABELS[order.status] ?? order.status}
+                            {orderStatusLabel(order.status)}
                           </Badge>
                         </td>
                         <td className="hidden px-5 py-4 text-xs text-zinc-500 lg:table-cell">
@@ -393,12 +371,13 @@ export default async function AdminOrdersPage({
                           })}
                         </td>
                         <td className="px-5 py-4">
-                          <Link
+                          <Button
                             href={`/admin/orders/${order.id}`}
-                            className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-bold text-zinc-700 transition hover:border-natalo-400 hover:bg-natalo-50 hover:text-natalo-700 group-hover:border-natalo-300"
+                            variant="secondary"
+                            size="sm"
                           >
                             Detail →
-                          </Link>
+                          </Button>
                         </td>
                       </tr>
                     );
@@ -419,24 +398,26 @@ export default async function AdminOrdersPage({
           </p>
           <div className="flex gap-2">
             {page > 1 && (
-              <Link
+              <Button
                 href={buildUrl({ page: String(page - 1) })}
-                className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-bold text-zinc-700 transition hover:border-zinc-400"
+                variant="secondary"
+                size="sm"
               >
                 ← Sebelumnya
-              </Link>
+              </Button>
             )}
             {page < totalPages && (
-              <Link
+              <Button
                 href={buildUrl({ page: String(page + 1) })}
-                className="rounded-full bg-natalo-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-natalo-700"
+                variant="primary"
+                size="sm"
               >
                 Berikutnya →
-              </Link>
+              </Button>
             )}
           </div>
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }

@@ -1,9 +1,9 @@
-import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { MultiImageUpload } from "@/components/MultiImageUpload";
+import { AdminPage, Button } from "@/components/admin/ui";
 
 async function requireAdmin() {
   const session = await getSession("ADMIN");
@@ -65,13 +65,10 @@ export default async function EditBrandPage({
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-6 lg:py-10">
-      <Link
-        href="/admin/brands"
-        className="text-sm font-semibold text-blue-500 hover:underline"
-      >
+    <AdminPage maxWidth="md">
+      <Button href="/admin/brands" variant="secondary" size="sm">
         Kembali ke Brand
-      </Link>
+      </Button>
 
       <h1 className="mt-4 text-2xl font-black tracking-tight text-zinc-950">
         Edit Brand
@@ -127,13 +124,10 @@ export default async function EditBrandPage({
           />
           Aktif di user app
         </label>
-        <button
-          type="submit"
-          className="w-full rounded-full bg-blue-500 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
-        >
+        <Button type="submit" variant="primary" fullWidth>
           Simpan Perubahan
-        </button>
+        </Button>
       </form>
-    </div>
+    </AdminPage>
   );
 }

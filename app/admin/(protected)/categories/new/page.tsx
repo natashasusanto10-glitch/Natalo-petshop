@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { AdminPage, Button } from "@/components/admin/ui";
 
 function toSlug(name: string) {
   return name
@@ -25,7 +26,7 @@ export default function AdminCategoryNewPage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-5 md:py-10">
+    <AdminPage maxWidth="md">
       <Link href="/admin/categories" className="text-sm font-bold text-zinc-500 hover:text-zinc-950">
         ← Kembali ke kategori
       </Link>
@@ -42,24 +43,18 @@ export default function AdminCategoryNewPage() {
             placeholder="Contoh: Pakan Ikan"
             className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
           />
-          <p className="mt-1 text-xs text-zinc-400">Slug akan dibuat otomatis dari nama.</p>
+          <p className="mt-1 text-xs text-zinc-600">Slug akan dibuat otomatis dari nama.</p>
         </div>
 
         <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
-          <Link
-            href="/admin/categories"
-            className="rounded-full border border-zinc-300 px-6 py-3 text-center text-sm font-bold"
-          >
+          <Button href="/admin/categories" variant="secondary">
             Batal
-          </Link>
-          <button
-            type="submit"
-            className="flex-1 rounded-full bg-zinc-950 px-6 py-3 text-sm font-bold text-white sm:flex-none"
-          >
+          </Button>
+          <Button type="submit" className="flex-1 sm:flex-none">
             Simpan
-          </button>
+          </Button>
         </div>
       </form>
-    </div>
+    </AdminPage>
   );
 }

@@ -25,6 +25,7 @@
  *  6. Submit via server action — kirim hidden `amount` field.
  */
 import { useState, useMemo, useActionState, useEffect } from "react";
+import { Button } from "@/components/admin/ui";
 import type { RefundActionResult } from "./actions";
 
 // Reason list untuk MANUAL refund (form ini). ORDER_CANCELLED sengaja
@@ -459,13 +460,9 @@ export default function RefundFormClient({
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={!canSubmit}
-        className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
-      >
+      <Button type="submit" variant="primary" fullWidth disabled={!canSubmit}>
         {isPending ? "Memproses refund..." : "Kredit Saldo Refund"}
-      </button>
+      </Button>
 
       {/* Order context untuk debugging admin */}
       <details className="text-[11px] text-zinc-500">

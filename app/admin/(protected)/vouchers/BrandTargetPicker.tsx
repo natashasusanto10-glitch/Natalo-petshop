@@ -115,9 +115,9 @@ export default function BrandTargetPicker({
 
       <div className="mt-2 max-h-44 overflow-y-auto rounded-xl border border-zinc-300">
         {loading ? (
-          <p className="px-4 py-3 text-xs text-zinc-400">Memuat brand…</p>
+          <p className="px-4 py-3 text-xs text-zinc-600">Memuat brand…</p>
         ) : filtered.length === 0 ? (
-          <p className="px-4 py-3 text-xs text-zinc-400">
+          <p className="px-4 py-3 text-xs text-zinc-600">
             Brand tidak ditemukan.
           </p>
         ) : (
@@ -139,7 +139,7 @@ export default function BrandTargetPicker({
           })
         )}
       </div>
-      <p className="mt-1 text-xs text-zinc-400">
+      <p className="mt-1 text-xs text-zinc-600">
         Dipetik dari daftar brand di katalog. Kosong = berlaku semua brand.
       </p>
     </div>

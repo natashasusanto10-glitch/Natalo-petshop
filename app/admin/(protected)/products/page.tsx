@@ -6,7 +6,13 @@ import { formatRupiah } from "@/lib/format";
 import { InlineEditCell } from "@/components/admin/InlineEditCell";
 import { VariantInlineEditCell } from "@/components/admin/VariantInlineEditCell";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
-import { PageHeader, EmptyState } from "@/components/admin/ui";
+import { PageHeader, EmptyState, AdminPage, Button } from "@/components/admin/ui";
+import {
+  ProductSelectionProvider,
+  ProductSelectAll,
+  ProductRowCheckbox,
+  ProductBulkBar,
+} from "@/components/admin/ProductBulkSelect";
 
 const PAGE_SIZE = 50;
 
@@ -82,6 +88,7 @@ export default async function AdminProductsPage({
   ]);
 
   const totalPages = Math.max(1, Math.ceil(filtered / PAGE_SIZE));
+  const pageIds = products.map((p) => p.id);
 
   async function toggleActive(formData: FormData) {
     "use server";
@@ -146,24 +153,18 @@ export default async function AdminProductsPage({
   const hasActiveFilter = search || catSlug || brandSlug;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-5 md:py-10">
+    <AdminPage maxWidth="xl">
       <PageHeader
         title="Produk"
         subtitle={`${totalAll} total · ${totalReady} ready · ${totalOut} habis · ${totalArchived} arsip${activeCategory ? ` · ${activeCategory.name}` : ""}`}
         actions={
           <>
-            <Link
-              href="/admin/products/import"
-              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-natalo-400 hover:bg-natalo-50 hover:text-natalo-700"
-            >
+            <Button href="/admin/products/import" variant="secondary" size="sm">
               ↧ Import
-            </Link>
-            <Link
-              href="/admin/products/new"
-              className="inline-flex items-center gap-1.5 rounded-full bg-natalo-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-natalo-700 md:text-sm"
-            >
+            </Button>
+            <Button href="/admin/products/new" variant="primary" size="sm">
               + Tambah Produk
-            </Link>
+            </Button>
           </>
         }
       />
@@ -240,7 +241,7 @@ export default async function AdminProductsPage({
         {/* Active filter chips */}
         {hasActiveFilter && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-zinc-400">Filter aktif:</span>
+            <span className="text-xs text-zinc-600">Filter aktif:</span>
             {search && (
               <span className="flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-700">
                 🔍 "{search}"
@@ -306,8 +307,10 @@ export default async function AdminProductsPage({
       </div>
 
       {/* Product list */}
+      <ProductSelectionProvider allIds={pageIds}>
       <div className="mt-5 overflow-hidden rounded-2xl border border-zinc-200 bg-white md:mt-6">
-        <div className="hidden grid-cols-[minmax(320px,1fr)_160px_120px_120px] gap-4 border-b border-zinc-100 bg-zinc-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-zinc-400 lg:grid">
+        <div className="hidden grid-cols-[28px_minmax(300px,1fr)_160px_120px_120px] items-center gap-4 border-b border-zinc-100 bg-zinc-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-zinc-400 lg:grid">
+          <ProductSelectAll />
           <span>Produk</span>
           <span>Harga</span>
           <span>Stok</span>
@@ -427,12 +430,14 @@ export default async function AdminProductsPage({
             );
 
             const editLink = (
-              <Link
+              <Button
                 href={`/admin/products/${product.id}/edit`}
-                className="rounded-full border border-zinc-300 px-3 py-2 text-center text-xs font-bold hover:bg-zinc-50"
+                variant="secondary"
+                size="sm"
+                fullWidth
               >
                 Edit
-              </Link>
+              </Button>
             );
 
             const toggleForm = (
@@ -478,6 +483,9 @@ export default async function AdminProductsPage({
                 {/* Mobile card */}
                 <div className="p-4 lg:hidden">
                   <div className="flex gap-3">
+                    <div className="flex items-center pt-1">
+                      <ProductRowCheckbox id={product.id} />
+                    </div>
                     <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
                       {product.imageUrl ? (
                         <Image
@@ -539,7 +547,10 @@ export default async function AdminProductsPage({
                 </div>
 
                 {/* Desktop grid row */}
-                <div className="hidden grid-cols-[minmax(320px,1fr)_160px_120px_120px] gap-4 px-4 py-5 lg:grid">
+                <div className="hidden grid-cols-[28px_minmax(300px,1fr)_160px_120px_120px] items-start gap-4 px-4 py-5 lg:grid">
+                  <div className="flex items-center pt-1">
+                    <ProductRowCheckbox id={product.id} />
+                  </div>
                   <div className="flex min-w-0 gap-3">
                     <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
                       {product.imageUrl ? (
@@ -600,6 +611,8 @@ export default async function AdminProductsPage({
           })
         )}
       </div>
+      <ProductBulkBar />
+      </ProductSelectionProvider>
 
       {/* Pagination */}
       {totalPages > 1 && (
@@ -627,6 +640,6 @@ export default async function AdminProductsPage({
           </div>
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }

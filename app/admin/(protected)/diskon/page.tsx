@@ -18,7 +18,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getPerformaMetrics } from "@/lib/promo-analytics";
 import { formatRupiah } from "@/lib/format";
-import { PageHeader } from "@/components/admin/ui";
+import { PageHeader, AdminPage, Button } from "@/components/admin/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -86,17 +86,14 @@ export default async function AdminDiskonHub() {
   );
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-5 md:px-8 md:py-10">
+    <AdminPage maxWidth="xl">
       <PageHeader
         title="🎁 Buat Diskon"
         subtitle="Hub semua jenis promosi: Promo Toko, Voucher, Flash Sale, dan Paket. Pilih tipe yang sesuai campaign kamu."
         actions={
-          <Link
-            href="/admin/dashboard"
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
-          >
+          <Button href="/admin/dashboard" variant="secondary" size="sm">
             ← Dashboard
-          </Link>
+          </Button>
         }
       />
 
@@ -179,7 +176,7 @@ export default async function AdminDiskonHub() {
             compare="vs 7 hari terakhir"
           />
         </div>
-        <p className="mt-2 text-xs text-zinc-400">
+        <p className="mt-2 text-xs text-zinc-600">
           ⓘ Metrik di atas dihitung dari order PAID/PROCESSING/SHIPPED/
           DELIVERED yang include produk yang sedang/pernah masuk promo
           (Flash Sale atau Promo Toko) dalam periode tersebut.
@@ -233,7 +230,7 @@ export default async function AdminDiskonHub() {
           />
         </div>
       </div>
-    </div>
+    </AdminPage>
   );
 }
 
@@ -277,12 +274,9 @@ function PromoTypeCard({
             {ctaLabel}
           </span>
         ) : (
-          <Link
-            href={ctaHref}
-            className="rounded-lg bg-natalo-600 px-4 py-2 text-xs font-bold text-white hover:bg-natalo-700"
-          >
+          <Button href={ctaHref} size="sm">
             {ctaLabel}
-          </Link>
+          </Button>
         )}
       </div>
     </div>
