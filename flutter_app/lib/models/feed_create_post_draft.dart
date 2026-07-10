@@ -16,6 +16,10 @@ class FeedCreatePostDraft {
   final String? originalFilename;
   final String? mimeType;
 
+  /// True bila thumbnailPath dipilih user via Ubah Sampul — store TIDAK
+  /// boleh me-regenerate cover (guard di _runVideoUpload step 1).
+  final bool userPickedCover;
+
   const FeedCreatePostDraft({
     this.originalVideoPath,
     this.localVideoPath,
@@ -29,6 +33,7 @@ class FeedCreatePostDraft {
     this.taggedProductIds = const [],
     this.originalFilename,
     this.mimeType,
+    this.userPickedCover = false,
   });
 
   String? get finalVideoPath => trimmedVideoPath ?? localVideoPath;
@@ -48,6 +53,7 @@ class FeedCreatePostDraft {
     List<String>? taggedProductIds,
     String? originalFilename,
     String? mimeType,
+    bool? userPickedCover,
   }) {
     return FeedCreatePostDraft(
       originalVideoPath: originalVideoPath ?? this.originalVideoPath,
@@ -62,6 +68,7 @@ class FeedCreatePostDraft {
       taggedProductIds: taggedProductIds ?? this.taggedProductIds,
       originalFilename: originalFilename ?? this.originalFilename,
       mimeType: mimeType ?? this.mimeType,
+      userPickedCover: userPickedCover ?? this.userPickedCover,
     );
   }
 }

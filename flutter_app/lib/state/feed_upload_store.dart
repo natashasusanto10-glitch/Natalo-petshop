@@ -315,8 +315,12 @@ class FeedUploadStore extends ChangeNotifier {
       // dari `videoPath` (hasil kompres yang sudah terpotong, timeline
       // mulai 0). timeMs selalu 500 karena videoPath sudah dimulai dari
       // titik yang benar.
+      // Kecuali user sudah pilih sampul sendiri (layar Ubah Sampul,
+      // `userPickedCover`) — cover itu sudah diekstrak dari rentang trim
+      // yang benar, JANGAN ditimpa regenerate frame 0.
       String? thumbPath = draft.thumbnailPath;
-      final coverFromUntrimmed = draft.trimStart != null;
+      final coverFromUntrimmed =
+          draft.trimStart != null && !draft.userPickedCover;
       if (coverFromUntrimmed ||
           thumbPath == null ||
           !File(thumbPath).existsSync()) {

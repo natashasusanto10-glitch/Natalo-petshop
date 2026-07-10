@@ -40,4 +40,12 @@ void main() {
     );
     expect(d.finalDuration, const Duration(seconds: 20));
   });
+
+  test('userPickedCover default false, copyWith set & pertahankan', () {
+    const d = FeedCreatePostDraft(localVideoPath: 'a.mp4');
+    expect(d.userPickedCover, isFalse);
+    final picked = d.copyWith(userPickedCover: true);
+    expect(picked.userPickedCover, isTrue);
+    expect(picked.copyWith(caption: 'x').userPickedCover, isTrue);
+  });
 }
