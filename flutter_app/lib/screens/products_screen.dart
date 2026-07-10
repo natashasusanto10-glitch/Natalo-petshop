@@ -1928,7 +1928,8 @@ class _EmptyProductsState extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               SizedBox(
-                height: 168,
+                // 186: foto kini 1:1 (dari 96x84) → kartu lebih tinggi.
+                height: 186,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: recentProducts.length,
@@ -1975,13 +1976,15 @@ class _RecentlyViewedMiniCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: AppProductImage(
-                imageUrl: product.imageUrl,
-                width: 96,
-                height: 84,
-                fit: BoxFit.cover,
+            // Foto 1:1 cover — isi kotak penuh, menonjol ala Shopee.
+            AspectRatio(
+              aspectRatio: 1,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: AppProductImage(
+                  imageUrl: product.imageUrl,
+                  fit: BoxFit.cover,
+                ),
               ),
             ),
             const SizedBox(height: 6),

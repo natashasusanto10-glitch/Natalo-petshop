@@ -2539,7 +2539,8 @@ class _ProductRecommendationSection extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: 252,
+            // 260: foto kini 1:1 (lebih tinggi dari AspectRatio 1.05 lama).
+            height: 260,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: related.length,
@@ -2590,13 +2591,15 @@ class _DetailRecommendationCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Foto 1:1 cover — isi kotak penuh, menonjol ala Shopee (dari
+              // AspectRatio 1.05 + contain).
               AspectRatio(
-                aspectRatio: 1.05,
+                aspectRatio: 1,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: AppProductImage(
                     imageUrl: product.imageUrl,
-                    fit: BoxFit.contain,
+                    fit: BoxFit.cover,
                   ),
                 ),
               ),
