@@ -4,7 +4,9 @@ import { StoreProduct } from "@/lib/products";
 import { formatRupiah } from "@/lib/format";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 import { rankBadgeClass } from "@/lib/rank-badge";
+import { productVideoMp4 } from "@/lib/product/product-video-url";
 import { ProductCardCta } from "./ProductCardCta";
+import { ProductCardVideo } from "./product/ProductCardVideo";
 
 // Exported for unit testing + reuse. Guard price=0 → hindari Infinity%.
 export function computeDiscountPercent(price: number, displayPrice: number): number {
@@ -43,6 +45,7 @@ export function ProductCard({
   const outOfStock = product.stock <= 0;
   const productHref = `/products/${product.slug}`;
   const discountPercent = computeDiscountPercent(product.price, displayPrice);
+  const gridVideoMp4 = productVideoMp4(product.videoUrl, 360);
 
   if (isCompact) {
     return (
@@ -52,7 +55,9 @@ export function ProductCard({
             className="relative aspect-square max-h-[160px] w-full overflow-hidden rounded-t-xl bg-gray-100"
             style={{ viewTransitionName: `nat-prod-${product.slug}` }}
           >
-            {product.imageUrl ? (
+            {gridVideoMp4 ? (
+              <ProductCardVideo mp4Url={gridVideoMp4} poster={product.imageUrl} alt={product.name} />
+            ) : product.imageUrl ? (
               <Image
                 src={product.imageUrl}
                 alt={product.name}
@@ -137,7 +142,9 @@ export function ProductCard({
           className="relative aspect-square rounded-2xl bg-white"
           style={{ viewTransitionName: `nat-prod-${product.slug}` }}
         >
-          {product.imageUrl ? (
+          {gridVideoMp4 ? (
+            <ProductCardVideo mp4Url={gridVideoMp4} poster={product.imageUrl} alt={product.name} />
+          ) : product.imageUrl ? (
             <Image
               src={product.imageUrl}
               alt={product.name}
