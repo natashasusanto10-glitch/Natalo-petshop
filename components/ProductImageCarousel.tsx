@@ -160,7 +160,10 @@ export function ProductImageCarousel({ images, alt, transitionName, video }: Pro
             if (slide.kind === "video") {
               if (!video) return null; // tidak mungkin — dijaga oleh guard di atas
               const durationLabel = formatClock(video.durationSec);
-              const showOverlay = !videoPlaying && !videoErrored;
+              // Overlay thumbnail + ▶ tampil saat belum diputar ATAU saat error
+              // (supaya gagal-load balik ke thumbnail + bisa retry, bukan kotak
+              // hitam). Sembunyi hanya saat benar-benar sedang memutar.
+              const showOverlay = !videoPlaying || videoErrored;
 
               return (
                 <div
