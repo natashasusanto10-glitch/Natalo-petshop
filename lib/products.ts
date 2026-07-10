@@ -4,6 +4,7 @@ import {
   type ProductVoucherPreview,
 } from "@/lib/product-vouchers";
 import { resolveActiveDiscount } from "@/lib/product-pricing";
+import { productVideoPayload } from "@/lib/product/product-video-serialize";
 import { productSearchWhere } from "@/lib/search";
 import { sampleProducts } from "@/lib/sample-data";
 import type { OrderStatus, Prisma } from "@prisma/client";
@@ -66,6 +67,10 @@ export type StoreProduct = {
    *  discount %-nya, dengan countdown. Kalau null, masuk Flash Sale
    *  hanya kalau discount >= FLASH_SALE_MIN_DISCOUNT_PERCENT (auto). */
   flashSaleEndsAt?: string | null;
+  /** Video produk (Bunny) — hanya terisi saat encoding "ready". */
+  videoUrl?: string | null;
+  videoThumbnailUrl?: string | null;
+  videoDurationSec?: number | null;
   // hanya diisi oleh getProductBySlug
   variantAttrs?: StoreVariantAttribute[];
   variants?: StoreProductVariant[];
@@ -195,6 +200,12 @@ function mapProductListRecord(p: ProductListRecord): StoreProduct {
       voucherPreview: null,
       shippingVoucherPreview: null,
       flashSaleEndsAt: p.flashSaleEndsAt?.toISOString() ?? null,
+      ...productVideoPayload({
+        videoStatus: p.videoStatus,
+        videoUrl: p.videoUrl,
+        videoThumbnailUrl: p.videoThumbnailUrl,
+        videoDurationSec: p.videoDurationSec,
+      }),
     };
   }
 
@@ -243,6 +254,12 @@ function mapProductListRecord(p: ProductListRecord): StoreProduct {
     voucherPreview: null,
     shippingVoucherPreview: null,
     flashSaleEndsAt: effectiveFlashSaleEndsAt,
+    ...productVideoPayload({
+      videoStatus: p.videoStatus,
+      videoUrl: p.videoUrl,
+      videoThumbnailUrl: p.videoThumbnailUrl,
+      videoDurationSec: p.videoDurationSec,
+    }),
   };
 }
 
@@ -1149,6 +1166,12 @@ export async function getProductBySlug(
         variantAttrs: p.variantAttrs as unknown as StoreVariantAttribute[],
         variants: p.variants as unknown as StoreProductVariant[],
         flashSaleEndsAt: p.flashSaleEndsAt?.toISOString() ?? null,
+        ...productVideoPayload({
+          videoStatus: p.videoStatus,
+          videoUrl: p.videoUrl,
+          videoThumbnailUrl: p.videoThumbnailUrl,
+          videoDurationSec: p.videoDurationSec,
+        }),
       };
       const [withPreview] = await withVoucherPreviews([product], viewerId);
       return withPreview;
@@ -1191,6 +1214,12 @@ export async function getProductBySlug(
       categorySlug: p.category?.slug ?? null,
       brandId: p.brandId ?? null,
       flashSaleEndsAt: effectiveFlashSaleEndsAt,
+      ...productVideoPayload({
+        videoStatus: p.videoStatus,
+        videoUrl: p.videoUrl,
+        videoThumbnailUrl: p.videoThumbnailUrl,
+        videoDurationSec: p.videoDurationSec,
+      }),
     };
     const [withPreview] = await withVoucherPreviews([product], viewerId);
     return withPreview;
