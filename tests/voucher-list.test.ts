@@ -595,3 +595,37 @@ test("voucher SHIPPING brand-scoped + cartProducts ADA brand cocok -> applicable
   assert.equal(items.length, 1);
   assert.equal(items[0].applicable, true);
 });
+
+test("voucher SHIPPING brand-scoped scope-mismatch + brandNamesById -> reason sebut nama brand", () => {
+  const items = buildVoucherListItems({
+    vouchers: [
+      voucher({
+        id: "v-oks-hpi",
+        code: "FREEOKSHPI",
+        kind: "FREE_SHIPPING",
+        type: "PUBLIC_FREE_SHIPPING",
+        discountScope: "SHIPPING",
+        discountAmount: 0,
+        discountPercent: 0,
+        eligibleBrandIds: ["brand-hpi"],
+      }),
+    ],
+    userUsedOrders: [],
+    userCtx: userCtx(),
+    subtotal: 100000,
+    now: NOW,
+    cartProducts: [
+      { id: "p1", categoryId: null, categorySlug: null, brandId: "brand-lain" },
+    ],
+    brandNamesById: new Map([["brand-hpi", "HPI"]]),
+  });
+  assert.equal(items[0].applicable, false);
+  assert.ok(
+    items[0].disabledReason?.includes("HPI"),
+    `expected brand name in reason, got: ${items[0].disabledReason}`,
+  );
+  assert.ok(
+    items[0].disabledReason?.toLowerCase().includes("brand"),
+    `expected 'brand' in reason, got: ${items[0].disabledReason}`,
+  );
+});

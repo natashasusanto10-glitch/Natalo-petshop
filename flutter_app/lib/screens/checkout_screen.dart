@@ -658,7 +658,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (_selectedProductVoucher == null) {
       final candidate = available
           .where((v) =>
-              v.isProductDiscount && !v.isLoyaltyClaim && !v.isPrivateManual)
+              v.isProductDiscount &&
+              !v.isLoyaltyClaim &&
+              !v.isPrivateManual &&
+              !v.isBrandExclusive)
           .toList()
         ..sort((a, b) => b.discount.compareTo(a.discount));
       if (candidate.isNotEmpty) {
@@ -681,7 +684,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     // Skip kalau Self-Pickup karena tidak butuh free shipping voucher.
     if (_selectedFreeShippingVoucher == null && !_selectedRate.isSelfPickup) {
       final candidate = available
-          .where((v) => v.isFreeShipping || v.isShippingDiscount)
+          .where((v) =>
+              (v.isFreeShipping || v.isShippingDiscount) &&
+              !v.isBrandExclusive)
           .toList()
         ..sort((a, b) => b.discount.compareTo(a.discount));
       if (candidate.isNotEmpty) {
@@ -4399,9 +4404,6 @@ String _voucherTypeLabel(MemberVoucher voucher) {
   if (voucher.isFreeShipping || voucher.isShippingDiscount) {
     return 'Voucher Gratis Ongkir';
   }
-  if (voucher.isBrandExclusive) {
-    return 'Voucher Brand Eksklusif';
-  }
   if (voucher.isLoyaltyClaim) {
     return 'Voucher Reward Poin';
   }
@@ -4944,6 +4946,28 @@ class _VoucherDetailTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (voucher.isBrandExclusive) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF0DC),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: const Color(0xFFFCD9A0)),
+                      ),
+                      child: const Text(
+                        'Brand Eksklusif',
+                        style: TextStyle(
+                          color: Color(0xFFB85C00),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                  ],
                   Row(
                     children: [
                       Expanded(

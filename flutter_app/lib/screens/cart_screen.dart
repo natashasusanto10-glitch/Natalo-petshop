@@ -2967,7 +2967,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                       _CartVoucherCard(
                         title: 'Gratis Ongkir',
                         subtitle:
-                            'Potongan ongkir ${formatRupiah(widget.shippingDiscount)}',
+                            'Potongan ongkir ${formatRupiah(widget.shippingDiscount)} · min. belanja Rp250rb',
                         badge: 'Ongkir',
                         icon: Icons.local_shipping_outlined,
                         accent: _shippingGreen,
@@ -2987,6 +2987,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                           widget.shippingDiscount,
                         ),
                         badge: 'Ongkir',
+                        brandExclusive: voucher.isBrandExclusive,
                         trailing: voucher.discount > 0
                             ? formatRupiah(voucher.discount)
                             : null,
@@ -3077,6 +3078,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                                 widget.shippingDiscount,
                               ),
                           badge: 'Ongkir',
+                          brandExclusive: voucher.isBrandExclusive,
                           trailing: voucher.discount > 0
                               ? formatRupiah(voucher.discount)
                               : null,
@@ -3177,6 +3179,7 @@ class _CartVoucherCard extends StatelessWidget {
   final bool selected;
   final bool enabled;
   final VoidCallback? onTap;
+  final bool brandExclusive;
 
   const _CartVoucherCard({
     required this.title,
@@ -3190,6 +3193,7 @@ class _CartVoucherCard extends StatelessWidget {
     required this.enabled,
     required this.onTap,
     this.trailing,
+    this.brandExclusive = false,
   });
 
   @override
@@ -3226,7 +3230,10 @@ class _CartVoucherCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -3246,8 +3253,27 @@ class _CartVoucherCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (selected) ...[
-                        const SizedBox(width: 6),
+                      if (brandExclusive)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _brandExclusiveAmberSoft,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: _brandExclusiveAmberBorder),
+                          ),
+                          child: const Text(
+                            'Brand Eksklusif',
+                            style: TextStyle(
+                              color: _brandExclusiveAmber,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      if (selected)
                         Text(
                           'Terpilih',
                           style: TextStyle(
@@ -3256,7 +3282,6 @@ class _CartVoucherCard extends StatelessWidget {
                             fontWeight: FontWeight.w900,
                           ),
                         ),
-                      ],
                     ],
                   ),
                   const SizedBox(height: 7),
