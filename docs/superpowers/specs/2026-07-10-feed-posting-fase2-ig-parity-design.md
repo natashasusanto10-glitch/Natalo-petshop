@@ -54,6 +54,33 @@ Sebelum masuk pipeline (saat pilih di galeri): validasi durasi ≥1s & ≤batas 
 Pakai infra existing `AppAnalytics.logEvent` (Firebase, `lib/services/app_analytics.dart`). Event (fire-and-forget, gagal diam):
 `feed_post_pick_opened`, `feed_post_media_selected` (param `type`: video/photo/carousel, `count`), `feed_post_edit_opened`, `feed_post_share_opened`, `feed_post_preview_opened`, `feed_post_submitted`, `feed_post_upload_success`, `feed_post_upload_failed` (param `step`, `reason`). Tujuan: drop-off & failure-rate kelihatan tanpa menunggu keluhan.
 
+### 2A-5. Bar unggahan feed — redesign relay card (DISETUJUI user 2026-07-11, mockup final)
+
+Pengganti visual relay card existing di atas feed (pola bar IG "Keep Instagram open to finish posting", versi premium Natalo). Satu komponen untuk 3 jenis post; muncul dipin di atas feed selama upload background (Approach B 2A-2), single-flight mengikuti `FeedUploadStore`.
+
+**Bentuk kartu (ramping — WAJIB, user tolak versi besar):**
+- Satu baris: thumbnail kecil + 1 baris teks + progress bar tipis + indikator kanan + tombol batal. Tinggi total ±56px, padding 8×10, radius 14.
+- Kartu `#12151D`, border hairline `rgba(255,255,255,0.11)`, sorot tepi atas `inset 0 1px 0 rgba(255,255,255,0.06)` + shadow lembut (kesan mengambang di feed gelap).
+- Thumbnail: video = potret 32×40 radius 9 + chip play frosted; foto single = kotak 34×34 radius 9; carousel = 3 lapis kotak 30×30 bertumpuk + badge biru jumlah foto (border 1.5 warna kartu).
+- Progress bar: tinggi 4px, track `rgba(255,255,255,0.09)`, isi gradasi `#1E5BFF→#5B8CFF` + glow biru + kilau (sheen) bergerak ~1.7s. Tidak pernah mundur.
+- Indikator kanan: video/foto = persen; carousel = "Foto n/3" (map dari `onProgress(done, total)` existing); tahap preparing = spinner biru kecil.
+- Tombol batal (×) frosted bundar 24px di kanan — hanya saat preparing/uploading (status `cancelled` sudah ada di enum).
+
+**Copy per status (final — TANPA emoji, satu baris, cross-fade ~300ms antar ganti):**
+| `FeedUploadStatus` | Copy | Indikator kanan |
+|---|---|---|
+| `preparing` (video) | "Sebentar ya, videomu lagi diposting…" | spinner |
+| `uploading` | bergantian ~2s: "Sabar ya, jangan tutup aplikasinya dulu" ↔ "Videomu lagi jalan ke feed…" | persen / Foto n/3 |
+| `uploading` (foto/carousel, tanpa preparing) | "Sebentar ya, fotomu lagi diposting…" / "Sebentar ya, 3 fotomu lagi diposting…" lalu bergantian sama | persen / Foto n/3 |
+| `processing` | "Dikit lagi selesai nih…" | persen (→100) |
+| `waitingReview` (state akhir normal customer — `PENDING_REVIEW`) | "Terkirim! Menunggu review admin dulu ya" | ikon jam-centang biru `#3B7BFF` |
+| `success` (hanya admin, server `ACTIVE`) | "Postingan kamu sudah tayang" | centang hijau |
+| `failed` | "Gagal mengunggah" + subteks "Periksa koneksi lalu coba lagi" | tombol pill "Coba lagi" (retry existing) |
+
+**Transisi state akhir:** kartu melunak ke tint biru `rgba(91,140,255,0.10)` border `rgba(91,140,255,0.38)`, bar & tombol batal hilang, thumbnail dapat overlay centang, lalu auto-dismiss (timer existing). Failed = tint merah `rgba(255,107,107,0.06)` border `.30`.
+
+**Catatan:** kata media di copy menyesuaikan kind ("videomu"/"fotomu"/"3 fotomu"). JANGAN menjanjikan "langsung tayang" untuk customer — selalu berakhir "menunggu review admin" (konsisten label "Menunggu Review" `feed_post.dart:186`).
+
 ---
 
 ## Sub-fase 2B — Lima layar (visual sesuai mockup v2)
