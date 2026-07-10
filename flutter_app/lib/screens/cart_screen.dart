@@ -3863,6 +3863,9 @@ class _EmptyCartProductCarouselSection extends StatelessWidget {
               return CompactCommerceProductCard(
                 product: product,
                 width: 178,
+                // Foto 1:1 cover penuh (spec grid) — carousel keranjang-kosong
+                // pun menonjol ala Shopee. Tinggi carousel (336) muat.
+                squareImage: true,
                 onTap: () => onProductTap(product),
                 onAddToCart: () => onAddToCart(product),
               );
