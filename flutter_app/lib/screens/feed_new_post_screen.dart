@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -23,6 +24,24 @@ const _newPostInk = Color(0xFF101828);
 const _newPostMuted = Color(0xFF667085);
 const _newPostBorder = Color(0xFFE0E7F0);
 const _newPostSoft = Color(0xFFF5F8FF);
+
+/// Loop playback dalam rentang trim draft (Approach B: file belum
+/// terpotong secara fisik sampai upload). Return timer guard — cancel
+/// di dispose. Tanpa trimStart → biarkan looping bawaan controller.
+Timer? startTrimLoopGuard(
+  VideoPlayerController controller,
+  FeedCreatePostDraft? draft,
+) {
+  final start = draft?.trimStart;
+  final span = draft?.finalDuration;
+  if (start == null || span == null) return null;
+  final end = start + span;
+  controller.seekTo(start);
+  return Timer.periodic(const Duration(milliseconds: 200), (_) {
+    if (!controller.value.isInitialized || !controller.value.isPlaying) return;
+    if (controller.value.position >= end) controller.seekTo(start);
+  });
+}
 
 enum NewPostMediaType {
   image,
@@ -77,6 +96,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
 
   VideoPlayerController? _videoController;
   FeedCreatePostDraft? _videoDraft;
+  Timer? _trimGuard;
   List<Product> _products = const [];
   List<Product> _visibleProducts = const [];
   bool _loadingProducts = true;
@@ -114,6 +134,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
 
   @override
   void dispose() {
+    _trimGuard?.cancel();
     _captionController.dispose();
     _productSearchController.dispose();
     _photoPageController.dispose();
@@ -152,6 +173,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
         return;
       }
       setState(() => _videoController = controller);
+      _trimGuard = startTrimLoopGuard(controller, _videoDraft);
     } catch (_) {
       await controller.dispose();
       if (!mounted) return;
@@ -1439,6 +1461,7 @@ class FeedPostPreviewScreen extends StatefulWidget {
 
 class _FeedPostPreviewScreenState extends State<FeedPostPreviewScreen> {
   VideoPlayerController? _videoController;
+  Timer? _trimGuard;
   bool _videoReady = false;
   int _photoIndex = 0;
   late final PageController _photoPageController;
@@ -1454,6 +1477,7 @@ class _FeedPostPreviewScreenState extends State<FeedPostPreviewScreen> {
 
   @override
   void dispose() {
+    _trimGuard?.cancel();
     _videoController?.dispose();
     _photoPageController.dispose();
     super.dispose();
@@ -1471,6 +1495,7 @@ class _FeedPostPreviewScreenState extends State<FeedPostPreviewScreen> {
       await controller.setVolume(0);
       await controller.play();
       setState(() => _videoReady = true);
+      _trimGuard = startTrimLoopGuard(controller, widget.videoDraft);
     } catch (_) {
       if (!mounted) return;
       setState(() => _videoReady = false);
