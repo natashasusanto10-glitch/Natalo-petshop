@@ -140,7 +140,10 @@ class _FeedVideoStartScreenState extends State<FeedVideoStartScreen> {
         _stage = '';
         _error = error is _FeedVideoFlowException
             ? error.message
-            : 'Video tidak bisa dibuka. Pilih video lain.';
+            : error is _UnsupportedVideoException
+                ? 'Format video ini belum didukung. Coba video lain atau '
+                  'rekam ulang dengan kamera.'
+                : 'Video tidak bisa dibuka. Pilih video lain.';
       });
       AppHaptics.warning();
     }
@@ -2484,6 +2487,14 @@ class _FeedVideoFlowException implements Exception {
   const _FeedVideoFlowException(this.message);
 }
 
+/// Dilempar saat video gagal di-init oleh [VideoPlayerController] (mis.
+/// codec tak didukung / HDR) atau durasi hasil init tidak valid. Dipakai
+/// di [_pick] untuk kasih pesan spesifik SEBELUM user lanjut ke langkah
+/// berikutnya, bukan gagal misterius di layar lain.
+class _UnsupportedVideoException implements Exception {
+  const _UnsupportedVideoException();
+}
+
 Future<String> _copyVideoToCache(String sourcePath) async {
   final source = File(sourcePath);
   if (!await source.exists()) {
@@ -2503,8 +2514,16 @@ Future<String> _copyVideoToCache(String sourcePath) async {
 Future<Duration> _readVideoDuration(String path) async {
   final controller = VideoPlayerController.file(File(path));
   try {
-    await controller.initialize();
-    return controller.value.duration;
+    try {
+      await controller.initialize();
+    } catch (_) {
+      throw const _UnsupportedVideoException();
+    }
+    final duration = controller.value.duration;
+    if (duration <= Duration.zero) {
+      throw const _UnsupportedVideoException();
+    }
+    return duration;
   } finally {
     await controller.dispose();
   }
