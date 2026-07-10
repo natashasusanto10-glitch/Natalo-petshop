@@ -11,6 +11,14 @@ Flow posting (foto, carousel foto, video) menyamai Instagram dari awal pilih med
 
 Bug yang dituntaskan fase ini: **#3 suara tidak keluar di pratinjau** dan **#4 pratinjau tidak sesuai kondisi feed** (rail mockup palsu angka "0").
 
+## Standar visual — "semirip IG, lebih premium" (permintaan eksplisit user)
+
+Layar 2B belum boleh dinyatakan selesai sebelum lolos bar ini:
+1. **Side-by-side dengan IG**: tiap layar dibandingkan berdampingan dengan screenshot IG (`C:\Users\USER\Desktop\IG\`) — struktur, hierarki, dan ritme spacing menyamai IG; identitas warna/font tetap Natalo (`#1E5BFF`, PlusJakartaSans).
+2. **Premium checklist**: pill/tombol frosted konsisten (`rgba(255,255,255,0.06–0.08)` + border `0.14`), tombol bulat header 36–44px, media edge-to-edge di layar gelap, hairline divider (bukan garis tebal), tidak ada komponen yang tampak "default Flutter" di flow ini.
+3. **Gerak**: transisi antar langkah 150–350ms mulus (fade-through/Hero), haptics pada aksi pilih, nol jank di profile mode.
+4. Verifikasi visual = bagian dari device-verify tiap sub-fase, bukan opsional.
+
 ## Alur target
 
 ```
