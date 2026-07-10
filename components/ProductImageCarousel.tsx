@@ -122,17 +122,6 @@ export function ProductImageCarousel({ images, alt, transitionName, video }: Pro
     }
   }, [active, video]);
 
-  // Mulai play begitu user klik tombol ▶ — dilakukan di effect (bukan
-  // langsung di handler klik) supaya <video> sudah ter-mount di DOM saat
-  // .play() dipanggil (videoPlaying baru jadi true setelah re-render).
-  useEffect(() => {
-    if (videoPlaying) {
-      videoElRef.current?.play().catch(() => {
-        // Autoplay/permission gagal — user masih bisa pakai native controls.
-      });
-    }
-  }, [videoPlaying]);
-
   function goTo(index: number) {
     const slide = slideRefs.current[index];
     if (slide) {
@@ -171,7 +160,7 @@ export function ProductImageCarousel({ images, alt, transitionName, video }: Pro
             if (slide.kind === "video") {
               if (!video) return null; // tidak mungkin — dijaga oleh guard di atas
               const durationLabel = formatClock(video.durationSec);
-              const showVideoEl = videoPlaying && !videoErrored;
+              const showOverlay = !videoPlaying && !videoErrored;
 
               return (
                 <div
@@ -183,27 +172,36 @@ export function ProductImageCarousel({ images, alt, transitionName, video }: Pro
                   className="relative h-full w-full shrink-0 snap-start bg-black"
                   style={slideStyle}
                 >
-                  {showVideoEl ? (
-                    <video
-                      ref={videoElRef}
-                      src={video.mp4Url}
-                      controls
-                      playsInline
-                      className="h-full w-full object-contain bg-black"
-                      onError={() => {
-                        setVideoErrored(true);
-                        setVideoPlaying(false);
-                      }}
-                    />
-                  ) : (
+                  {/* <video> selalu ter-mount (bukan digate videoPlaying) supaya
+                      ref-nya sudah ada SEBELUM user klik — .play() dipanggil
+                      sinkron di handler klik ▶ di bawah, bukan lewat effect.
+                      Wajib untuk iOS Safari: .play() yg tidak sinkron dalam
+                      user-gesture handler ditolak (NotAllowedError). */}
+                  <video
+                    ref={videoElRef}
+                    src={video.mp4Url}
+                    playsInline
+                    preload="none"
+                    controls={videoPlaying}
+                    onError={() => {
+                      setVideoErrored(true);
+                      setVideoPlaying(false);
+                    }}
+                    className="h-full w-full object-contain bg-black"
+                  />
+
+                  {showOverlay && (
                     <button
                       type="button"
                       aria-label="Putar video produk"
                       onClick={() => {
                         setVideoErrored(false);
                         setVideoPlaying(true);
+                        void videoElRef.current
+                          ?.play()
+                          .catch(() => setVideoPlaying(false));
                       }}
-                      className="relative block h-full w-full bg-white text-left"
+                      className="absolute inset-0 block h-full w-full bg-white text-left"
                     >
                       <Image
                         src={video.thumbnailUrl}
@@ -298,7 +296,7 @@ export function ProductImageCarousel({ images, alt, transitionName, video }: Pro
                 <button
                   key={`dot-${index}`}
                   type="button"
-                  aria-label={`Lihat slide ${index + 1}`}
+                  aria-label={`Lihat ${video ? "slide" : "foto"} ${index + 1}`}
                   onClick={() => goTo(index)}
                   className={`h-1.5 rounded-full transition-all ${
                     active === index ? "w-5 bg-white" : "w-1.5 bg-white/60"
