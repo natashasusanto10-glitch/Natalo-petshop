@@ -8,6 +8,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../models/feed_create_post_draft.dart';
 import '../services/api_client.dart';
+import '../services/video_compress_gate.dart';
 import '../services/bunny_upload_service.dart';
 import '../services/feed_photo_service.dart';
 import '../services/feed_service.dart';
@@ -256,10 +257,12 @@ class FeedUploadStore extends ChangeNotifier {
       String videoPath = originalPath;
       if (draft.trimmedVideoPath == null) {
         try {
-          final info = await VideoCompress.compressVideo(
+          // Lewat gate: kalau layar trim sedang kompres, job ini antre
+          // (bukan StateError), dan dispose layar lain tidak bisa
+          // membunuh job ini.
+          final info = await videoCompressGate.compress(
             originalPath,
             quality: VideoQuality.Res1280x720Quality,
-            deleteOrigin: false,
             includeAudio: true,
           );
           final compressed = info?.file;

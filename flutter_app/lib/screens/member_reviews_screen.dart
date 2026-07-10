@@ -8,6 +8,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 import '../models/review.dart';
 import '../services/api_client.dart';
 import '../services/review_service.dart';
+import '../services/video_compress_gate.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
 import '../utils/read_only_mode.dart';
@@ -936,11 +937,10 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
     try {
       var videoPath = picked.path;
       try {
-        final compressed = await VideoCompress.compressVideo(
+        final compressed = await videoCompressGate.compress(
           picked.path,
           quality: VideoQuality.MediumQuality,
           includeAudio: true,
-          deleteOrigin: false,
         );
         final compressedPath = compressed?.path;
         if (compressedPath != null && compressedPath.isNotEmpty) {

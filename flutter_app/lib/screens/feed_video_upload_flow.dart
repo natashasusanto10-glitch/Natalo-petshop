@@ -17,6 +17,7 @@ import '../services/api_client.dart';
 import '../services/bunny_upload_service.dart';
 import '../services/feed_service.dart';
 import '../services/product_service.dart';
+import '../services/video_compress_gate.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_product_image.dart';
@@ -274,15 +275,17 @@ class _FeedVideoPreviewScreenState extends State<FeedVideoPreviewScreen> {
     }
     await _controller?.pause();
     if (!mounted) return;
-    final draft = widget.draft.copyWith(
-      trimmedVideoPath: widget.draft.localVideoPath,
-      trimmedDuration: widget.draft.originalDuration,
-    );
+    // JANGAN isi trimmedVideoPath dengan path mentah: FeedUploadStore
+    // memakai `trimmedVideoPath != null` sebagai penanda "sudah
+    // terkompres 720p" untuk skip kompresi. Mengisinya di sini membuat
+    // video pendek (≤60s) ter-upload MENTAH — file besar, upload lambat,
+    // gampang gagal. finalVideoPath/finalDuration otomatis fallback ke
+    // localVideoPath/originalDuration.
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => FeedNewPostScreen(
-          draft: NewPostMediaDraft.video(draft),
+          draft: NewPostMediaDraft.video(widget.draft),
         ),
       ),
     );
@@ -387,6 +390,10 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
   bool _playing = false;
   String? _error;
   Timer? _playbackGuard;
+  // Job kompresi milik layar ini — dipakai untuk cancel ber-scope di
+  // dispose (JANGAN cancelCompression global: bisa bunuh kompresi milik
+  // background upload store).
+  VideoCompressJob? _exportJob;
   // Extracted frames untuk timeline thumbnails — IG-style.
   // Diisi setelah video controller init, parallel sambil show fallback.
   List<Uint8List?> _frameThumbs = const [];
@@ -411,7 +418,12 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
   void dispose() {
     _playbackGuard?.cancel();
     _controller?.dispose();
-    VideoCompress.cancelCompression();
+    final job = _exportJob;
+    if (job != null) {
+      // Scoped cancel — hanya job milik layar ini. Kalau job sudah
+      // selesai, ini no-op.
+      unawaited(videoCompressGate.cancel(job));
+    }
     super.dispose();
   }
 
@@ -549,7 +561,9 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
   }
 
   Future<void> _exportTrim() async {
-    if (_exporting || _error != null) return;
+    // `_error != null` sengaja TIDAK memblokir — saat error, tap Next =
+    // retry. setState di bawah meng-clear error lama.
+    if (_exporting) return;
     final source = widget.draft.localVideoPath;
     if (source == null) return;
     final selectedSeconds = (_range.end - _range.start).round();
@@ -575,14 +589,19 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
       // karena 60s video di 1080p = ~50-60MB (sering gagal di koneksi
       // mobile / saat user matikan layar mid-upload), sedangkan 720p =
       // ~18-22MB (3× lebih cepat upload, success rate jauh lebih tinggi).
-      final info = await VideoCompress.compressVideo(
+      final job = VideoCompressJob();
+      _exportJob = job;
+      final info = await videoCompressGate.compress(
         source,
         quality: VideoQuality.Res1280x720Quality,
-        deleteOrigin: false,
         includeAudio: true,
         startTime: _range.start.floor(),
         duration: selectedSeconds,
+        job: job,
       );
+      // Dibatalkan via back/dispose → layar sudah/akan ditutup, jangan
+      // lempar error palsu.
+      if (job.cancelled || !mounted) return;
       final file = info?.file;
       if (file == null || !await file.exists()) {
         throw const _FeedVideoFlowException(
@@ -623,78 +642,121 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
     }
   }
 
+  /// Konfirmasi keluar saat kompresi jalan. Pola sama dengan
+  /// `_confirmExit` di FeedUploadProgressScreen.
+  Future<bool> _confirmCancelExport() async {
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Batalkan proses video?'),
+        content: const Text(
+          'Video sedang diproses. Jika keluar sekarang, kamu perlu memproses ulang dari awal.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Lanjutkan'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Keluar'),
+          ),
+        ],
+      ),
+    );
+    return leave == true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final totalSeconds = math.max(1.0, _duration.inMilliseconds / 1000);
     final selectedDuration = Duration(
       milliseconds: ((_range.end - _range.start) * 1000).round(),
     );
-    return _DarkUploadScaffold(
-      title: 'Edit Video',
-      leading: Icons.arrow_back_rounded,
-      onLeading: () => Navigator.pop(context),
-      trailing: _RoundNextButton(
-        busy: _exporting,
-        onTap: _loading || _exporting || _error != null ? null : _exportTrim,
-      ),
-      child: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                _VideoPreviewStage(
-                  controller: _controller,
-                  thumbnailPath: widget.draft.thumbnailPath,
-                  loading: _loading,
-                  // IG-style: video auto-loop terus, tidak ada tap-to-toggle
-                  // play/pause. `playing` cuma untuk visual indicator
-                  // (kalau perlu).
-                  playing: _playing,
-                  onTap: null,
-                  timeText:
-                      '${_formatDuration(Duration(milliseconds: (_range.start * 1000).round()))} / ${_formatDuration(_duration)}',
-                ),
-                const SizedBox(height: 14),
-                _InfoPanel(
-                  title: 'Durasi yang dipilih',
-                  value:
-                      '${_formatDuration(selectedDuration)}  •  Maksimal 60 detik',
-                ),
-                const SizedBox(height: 16),
-                _TrimTimeline(
-                  frameThumbs: _frameThumbs,
-                  fallbackThumbnailPath: widget.draft.thumbnailPath,
-                  range: _range,
-                  totalSeconds: totalSeconds,
-                  onChanged: _exporting
-                      ? null
-                      : (values, {required bool dragging}) =>
-                          _updateRange(values, dragging: dragging),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'Geser pegangan untuk memangkas video',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: _feedUploadMuted,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
+    return PopScope(
+      // Saat tidak exporting, back bebas seperti biasa. Saat exporting,
+      // intercept → konfirmasi (cancel bersih terjadi di dispose via
+      // gate scoped-cancel).
+      canPop: !_exporting,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final leave = await _confirmCancelExport();
+        // Kompresi bisa selesai (dan navigasi maju) selagi dialog
+        // terbuka — kalau export sudah tidak jalan, jangan pop route
+        // yang sudah basi.
+        if (leave && context.mounted && _exporting) {
+          Navigator.pop(context);
+        }
+      },
+      child: _DarkUploadScaffold(
+        title: 'Edit Video',
+        leading: Icons.arrow_back_rounded,
+        onLeading: () => Navigator.maybePop(context),
+        trailing: _RoundNextButton(
+          busy: _exporting,
+          // Saat _error terisi tombol TETAP aktif — tap = retry (dulu
+          // disabled → dead-end: pesan "Coba lagi" tanpa cara retry).
+          onTap: _loading || _exporting ? null : _exportTrim,
+        ),
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  _VideoPreviewStage(
+                    controller: _controller,
+                    thumbnailPath: widget.draft.thumbnailPath,
+                    loading: _loading,
+                    // IG-style: video auto-loop terus, tidak ada tap-to-toggle
+                    // play/pause. `playing` cuma untuk visual indicator
+                    // (kalau perlu).
+                    playing: _playing,
+                    onTap: null,
+                    timeText:
+                        '${_formatDuration(Duration(milliseconds: (_range.start * 1000).round()))} / ${_formatDuration(_duration)}',
                   ),
-                ),
-                const SizedBox(height: 14),
-                if (_exporting) ...[
-                  const SizedBox(height: 18),
-                  const _ProcessingPanel(),
-                ],
-                if (_error != null) ...[
                   const SizedBox(height: 14),
-                  _DarkErrorBox(message: _error!),
+                  _InfoPanel(
+                    title: 'Durasi yang dipilih',
+                    value:
+                        '${_formatDuration(selectedDuration)}  •  Maksimal 60 detik',
+                  ),
+                  const SizedBox(height: 16),
+                  _TrimTimeline(
+                    frameThumbs: _frameThumbs,
+                    fallbackThumbnailPath: widget.draft.thumbnailPath,
+                    range: _range,
+                    totalSeconds: totalSeconds,
+                    onChanged: _exporting
+                        ? null
+                        : (values, {required bool dragging}) =>
+                            _updateRange(values, dragging: dragging),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Geser pegangan untuk memangkas video',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: _feedUploadMuted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  if (_exporting) ...[
+                    const SizedBox(height: 18),
+                    const _ProcessingPanel(),
+                  ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 14),
+                    _DarkErrorBox(message: _error!),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1000,10 +1062,9 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
         // Silent compress — user tidak perlu tau internal backend service.
         // _stage tetap "Mengirim postingan..." dari setState awal.
         try {
-          final info = await VideoCompress.compressVideo(
+          final info = await videoCompressGate.compress(
             originalPath,
             quality: VideoQuality.Res1280x720Quality,
-            deleteOrigin: false,
             includeAudio: true,
           );
           final compressed = info?.file;

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -15,6 +16,7 @@ import '../services/api_client.dart';
 import '../services/bunny_upload_service.dart';
 import '../services/feed_service.dart';
 import '../services/product_service.dart';
+import '../services/video_compress_gate.dart';
 import '../utils/haptics.dart';
 import 'app_product_image.dart';
 import '../screens/feed_media_picker_screen.dart';
@@ -75,6 +77,10 @@ class _FeedUploadSheetState extends State<FeedUploadSheet>
   String? _error;
   // Sprint 3 #8 — backup _stage saat lifecycle pause, restore saat resume.
   String? _stageBeforePause;
+  // Job kompresi milik sheet ini — dipakai untuk cancel ber-scope di
+  // dispose (pattern sama dengan `_exportJob` di
+  // _FeedVideoTrimScreenState, feed_video_upload_flow.dart).
+  VideoCompressJob? _compressJob;
 
   @override
   void initState() {
@@ -91,7 +97,12 @@ class _FeedUploadSheetState extends State<FeedUploadSheet>
     _previewController?.dispose();
     // Free VideoCompress resources kalau encode masih in-progress saat
     // user dismiss sheet — hindari leak FFmpeg session di native.
-    VideoCompress.cancelCompression();
+    final job = _compressJob;
+    if (job != null) {
+      // Scoped cancel — hanya job milik sheet ini, tidak membunuh
+      // kompresi milik background upload store / layar lain.
+      unawaited(videoCompressGate.cancel(job));
+    }
     super.dispose();
   }
 
@@ -445,17 +456,20 @@ class _FeedUploadSheetState extends State<FeedUploadSheet>
         });
 
         try {
-          final info = await VideoCompress.compressVideo(
+          final job = VideoCompressJob();
+          _compressJob = job;
+          final info = await videoCompressGate.compress(
             video.path,
             // Res1280x720Quality eksplisit (match feed_video_upload_flow
             // setelah parity fix). MediumQuality di iOS = 540p-720p
             // depending on source, Res1280x720Quality memastikan 720p
             // konsisten di semua platform.
             quality: VideoQuality.Res1280x720Quality,
-            deleteOrigin: false,
             includeAudio: true,
             // frameRate: 30, // default sudah ~30
+            job: job,
           );
+          if (job.cancelled || !mounted) return;
           if (info != null && info.file != null) {
             final compressedFile = info.file!;
             final compressedSize = await compressedFile.length();
