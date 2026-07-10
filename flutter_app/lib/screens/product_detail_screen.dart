@@ -40,6 +40,7 @@ import '../widgets/app_ui.dart';
 import '../widgets/favorite_button.dart';
 import '../widgets/flash_sale_countdown.dart';
 import '../widgets/moderation_action_sheet.dart';
+import '../widgets/product_detail_video_slide.dart';
 import 'image_viewer_screen.dart';
 
 const _brandBlue = NataloColors.primary;
@@ -686,6 +687,10 @@ class _ProductHeroState extends State<_ProductHero> {
   late final PageController _controller;
   int _activeIndex = 0;
 
+  // Pause video slide saat user swipe ke slide lain (Task 6).
+  final GlobalKey<ProductDetailVideoSlideState> _videoSlideKey =
+      GlobalKey<ProductDetailVideoSlideState>();
+
   // Slide pertama = imageUrl (thumbnail utama), sisanya = gallery.
   // Match PWA components/ProductImageCarousel.tsx urutan.
   List<String> get _images {
@@ -697,6 +702,11 @@ class _ProductHeroState extends State<_ProductHero> {
     final seen = <String>{};
     return all.where(seen.add).toList();
   }
+
+  // Ada video → slide #0 = video, sisanya foto. `_slideCount` = video + foto,
+  // dipakai untuk itemCount / dots / counter (index PageController = slide index).
+  bool get _hasVideo => widget.product.hasVideo;
+  int get _slideCount => _images.length + (_hasVideo ? 1 : 0);
 
   @override
   void initState() {
@@ -714,7 +724,7 @@ class _ProductHeroState extends State<_ProductHero> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final images = _images;
-    final showIndicators = images.length > 1;
+    final showIndicators = _slideCount > 1;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -731,7 +741,7 @@ class _ProductHeroState extends State<_ProductHero> {
                 child: Stack(
                   children: [
                     Positioned.fill(
-                      child: images.isEmpty
+                      child: (images.isEmpty && !_hasVideo)
                           ? const _ImagePlaceholder()
                           : PageView.builder(
                               // Hero wrap di PageView dihapus — bikin bug
@@ -745,10 +755,33 @@ class _ProductHeroState extends State<_ProductHero> {
                               // prioritas, animation bisa di-restore
                               // nanti via flightShuttleBuilder).
                               controller: _controller,
-                              itemCount: images.length,
-                              onPageChanged: (index) =>
-                                  setState(() => _activeIndex = index),
+                              itemCount: _slideCount,
+                              onPageChanged: (index) {
+                                setState(() => _activeIndex = index);
+                                // Pindah dari slide video (index 0) → pause.
+                                // pauseIfPlaying idempotent (aman kapan pun).
+                                if (index != 0) {
+                                  _videoSlideKey.currentState
+                                      ?.pauseIfPlaying();
+                                }
+                              },
                               itemBuilder: (context, index) {
+                                // Slide #0 = video (kalau ada). Main in-place,
+                                // JANGAN buka ImageViewerScreen.
+                                if (_hasVideo && index == 0) {
+                                  return ProductDetailVideoSlide(
+                                    key: _videoSlideKey,
+                                    videoUrl: widget.product.videoUrl!,
+                                    thumbnailUrl:
+                                        widget.product.videoThumbnailUrl,
+                                    posterImageUrl: widget.product.imageUrl,
+                                    durationSec:
+                                        widget.product.videoDurationSec,
+                                  );
+                                }
+                                // Slide foto: geser index kalau video di depan.
+                                final imageIndex =
+                                    index - (_hasVideo ? 1 : 0);
                                 return GestureDetector(
                                   // Tap image → buka fullscreen pinch-zoom
                                   // gallery viewer dengan native Flutter
@@ -767,7 +800,7 @@ class _ProductHeroState extends State<_ProductHero> {
                                         pageBuilder: (_, __, ___) =>
                                             ImageViewerScreen(
                                           images: images,
-                                          initialIndex: _activeIndex,
+                                          initialIndex: imageIndex,
                                           productMediaViewer: true,
                                           product: widget.product,
                                           selectedVariant:
@@ -788,7 +821,7 @@ class _ProductHeroState extends State<_ProductHero> {
                                     );
                                   },
                                   child: AppProductImage(
-                                    imageUrl: images[index],
+                                    imageUrl: images[imageIndex],
                                     width: double.infinity,
                                     height: double.infinity,
                                     fit: BoxFit.contain,
@@ -805,7 +838,7 @@ class _ProductHeroState extends State<_ProductHero> {
                         bottom: 14,
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(images.length, (index) {
+                          children: List.generate(_slideCount, (index) {
                             final active = index == _activeIndex;
                             return AnimatedContainer(
                               duration: const Duration(milliseconds: 220),
@@ -836,7 +869,7 @@ class _ProductHeroState extends State<_ProductHero> {
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
-                            '${_activeIndex + 1}/${images.length}',
+                            '${_activeIndex + 1}/$_slideCount',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 11,
