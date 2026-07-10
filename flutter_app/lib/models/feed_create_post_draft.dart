@@ -5,6 +5,11 @@ class FeedCreatePostDraft {
   final String? thumbnailPath;
   final Duration? originalDuration;
   final Duration? trimmedDuration;
+
+  /// Titik mulai potong pilihan user (layar trim). Kompresi video terjadi
+  /// di store (Approach B — FeedUploadStore), BUKAN di layar trim; field
+  /// ini yang membawa pilihan range dari layar trim ke store.
+  final Duration? trimStart;
   final int? fileSizeBytes;
   final String caption;
   final List<String> taggedProductIds;
@@ -18,6 +23,7 @@ class FeedCreatePostDraft {
     this.thumbnailPath,
     this.originalDuration,
     this.trimmedDuration,
+    this.trimStart,
     this.fileSizeBytes,
     this.caption = '',
     this.taggedProductIds = const [],
@@ -36,6 +42,7 @@ class FeedCreatePostDraft {
     String? thumbnailPath,
     Duration? originalDuration,
     Duration? trimmedDuration,
+    Duration? trimStart,
     int? fileSizeBytes,
     String? caption,
     List<String>? taggedProductIds,
@@ -49,6 +56,7 @@ class FeedCreatePostDraft {
       thumbnailPath: thumbnailPath ?? this.thumbnailPath,
       originalDuration: originalDuration ?? this.originalDuration,
       trimmedDuration: trimmedDuration ?? this.trimmedDuration,
+      trimStart: trimStart ?? this.trimStart,
       fileSizeBytes: fileSizeBytes ?? this.fileSizeBytes,
       caption: caption ?? this.caption,
       taggedProductIds: taggedProductIds ?? this.taggedProductIds,
@@ -56,4 +64,14 @@ class FeedCreatePostDraft {
       mimeType: mimeType ?? this.mimeType,
     );
   }
+}
+
+/// Argumen kompresi dari draft — dipakai FeedUploadStore.
+/// trimStart null = kompres penuh tanpa potong.
+({int? startTimeSec, int? durationSec}) compressRangeOf(FeedCreatePostDraft d) {
+  if (d.trimStart == null) return (startTimeSec: null, durationSec: null);
+  return (
+    startTimeSec: d.trimStart!.inSeconds,
+    durationSec: (d.trimmedDuration ?? d.originalDuration)?.inSeconds,
+  );
 }

@@ -245,17 +245,19 @@ class FeedUploadStore extends ChangeNotifier {
         );
       }
 
-      // ── Step 0 — Compress video ke 720p ──
+      // ── Step 0 — Compress video ke 720p (Approach B: ber-range) ──
       // CRITICAL: missed di first version background upload (v1.0.86) →
       // user upload original video (50-300MB iPhone 4K) → Bunny encode
       // lambat → URL .mp4 404 sampai encode selesai. Trip compress dulu:
       // - Skip kalau sudah ada trimmedVideoPath (= sudah hasil
       //   VideoCompress di trim screen).
-      // - Skip kalau compress gagal (fallback ke original).
+      // - Skip kalau compress gagal (fallback ke original) — TAPI HANYA
+      //   kalau tidak ada range trim (lihat catch di bawah).
       // Match logic FeedUploadProgressScreen._startUpload() yang lama.
       _update(status: FeedUploadStatus.preparing, progress: 0.05);
       String videoPath = originalPath;
       if (draft.trimmedVideoPath == null) {
+        final range = compressRangeOf(draft);
         try {
           // Lewat gate: kalau layar trim sedang kompres, job ini antre
           // (bukan StateError), dan dispose layar lain tidak bisa
@@ -264,6 +266,8 @@ class FeedUploadStore extends ChangeNotifier {
             originalPath,
             quality: VideoQuality.Res1280x720Quality,
             includeAudio: true,
+            startTime: range.startTimeSec,
+            duration: range.durationSec,
           );
           final compressed = info?.file;
           if (compressed != null && await compressed.exists()) {
@@ -280,9 +284,16 @@ class FeedUploadStore extends ChangeNotifier {
           }
         } catch (e) {
           if (kDebugMode) {
-            debugPrint('[feed-upload-store] compress failed, fallback: $e');
+            debugPrint('[feed-upload-store] compress failed: $e');
           }
-          // Tetap pakai original — Bunny bisa accept + re-encode.
+          // Kalau ada range trim, `originalPath` masih video PENUH
+          // (belum dipotong) — upload apa adanya akan post konten yang
+          // salah (durasi/isi tidak sesuai pilihan user di layar trim).
+          // Rethrow supaya job ini gagal & user bisa retry, bukan
+          // diam-diam post video yang salah.
+          if (range.startTimeSec != null) rethrow;
+          // Tanpa range trim, original == video yang dimaksud user —
+          // aman fallback, Bunny bisa accept + re-encode.
         }
       }
 
@@ -290,7 +301,9 @@ class FeedUploadStore extends ChangeNotifier {
       // Sebelumnya skip generate, hanya pakai existing thumbnailPath.
       // Tapi kalau draft.thumbnailPath null (mis. user submit dari path
       // yang lewat tanpa cover picker), upload tidak punya thumbnail.
-      // Generate sekarang dari frame 500ms.
+      // Generate sekarang dari frame 500ms — atau 500ms setelah titik
+      // mulai trim (draft.trimStart), supaya cover diambil dari bagian
+      // yang dipilih user, bukan awal video mentah.
       String? thumbPath = draft.thumbnailPath;
       if (thumbPath == null || !File(thumbPath).existsSync()) {
         try {
@@ -298,7 +311,9 @@ class FeedUploadStore extends ChangeNotifier {
             video: videoPath,
             imageFormat: ImageFormat.JPEG,
             maxWidth: 720,
-            timeMs: 500,
+            timeMs: draft.trimStart != null
+                ? draft.trimStart!.inMilliseconds + 500
+                : 500,
             quality: 82,
           );
         } catch (_) {
