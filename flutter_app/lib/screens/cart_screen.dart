@@ -492,11 +492,11 @@ class _CartScreenState extends State<CartScreen>
   double get _totalVoucherSaving => _voucherDiscount;
 
   /// Detect apakah voucher ini termasuk kategori shipping (gratis ongkir).
-  /// Cek 3 indicator dari backend response:
-  ///   1. Sentinel code `__shipping_free__` (UI-side internal voucher
-  ///      slot untuk free shipping system)
-  ///   2. `isFreeShipping` getter (type == 'PUBLIC_FREE_SHIPPING')
-  ///   3. `isShippingDiscount` getter (discountScope == 'SHIPPING')
+  /// Cek 2 indicator dari backend response:
+  ///   1. `isFreeShipping` getter (type == 'PUBLIC_FREE_SHIPPING')
+  ///   2. `isShippingDiscount` getter (discountScope == 'SHIPPING')
+  /// Fallback: cocokkan teks kode/judul/deskripsi voucher terhadap
+  /// 'ongkir', 'gratis kirim', atau 'free shipping'.
   /// Method ini dipakai untuk pisahkan slot shipping voucher vs discount
   /// voucher di dual-slot voucher UI (1 customer + 1 shipping).
   bool _isCartShippingVoucher(MemberVoucher voucher) {
@@ -1083,6 +1083,10 @@ class _CartScreenState extends State<CartScreen>
                         discountAmount: _voucherDiscount,
                         shippingSelected: _appliedShippingVoucher != null,
                         shippingDiscount: _shippingDiscount,
+                        shippingText: _appliedShippingVoucher != null
+                            ? _shippingVoucherDisplayTitle(
+                                _appliedShippingVoucher!)
+                            : 'Gratis Ongkir',
                         onTap: _selectedItems.isEmpty
                             ? null
                             : () {
@@ -2500,6 +2504,17 @@ String _cartShippingVoucherSubtitle(
   return 'Gratis ongkir untuk pesanan ini';
 }
 
+/// Judul display voucher gratis-ongkir. Brand-eksklusif -> "Gratis Ongkir
+/// dari {brand}" (pakai nama brand asli, bukan judul admin/kode); selain
+/// itu pakai judul voucher apa adanya.
+String _shippingVoucherDisplayTitle(MemberVoucher voucher) {
+  final brand = voucher.brandName?.trim();
+  if (voucher.isBrandExclusive && brand != null && brand.isNotEmpty) {
+    return 'Gratis Ongkir dari $brand';
+  }
+  return voucher.title;
+}
+
 bool _isCartShippingVoucher(MemberVoucher voucher) {
   return _isCartShippingVoucherData(voucher);
 }
@@ -2555,6 +2570,7 @@ class _StickyVoucherBar extends StatelessWidget {
   final double discountAmount;
   final bool shippingSelected;
   final double shippingDiscount;
+  final String shippingText;
   final VoidCallback? onTap;
 
   const _StickyVoucherBar({
@@ -2564,6 +2580,7 @@ class _StickyVoucherBar extends StatelessWidget {
     required this.discountAmount,
     required this.shippingSelected,
     required this.shippingDiscount,
+    required this.shippingText,
     required this.onTap,
   });
 
@@ -2632,7 +2649,7 @@ class _StickyVoucherBar extends StatelessWidget {
                     alignment: Alignment.centerRight,
                     child: _VoucherBenefitChips(
                       hasShipping: hasShipping,
-                      shippingText: 'Gratis Ongkir',
+                      shippingText: shippingText,
                       hasDiscount: hasDiscount,
                       discountText: '-${formatRupiah(discountAmount)}',
                       loading: loading,
@@ -2956,7 +2973,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                       const LinearProgressIndicator(minHeight: 3),
                     for (final voucher in availableShippingVouchers) ...[
                       _CartVoucherCard(
-                        title: voucher.title,
+                        title: _shippingVoucherDisplayTitle(voucher),
                         subtitle: _cartShippingVoucherSubtitle(voucher, 0),
                         badge: 'Ongkir',
                         brandExclusive: voucher.isBrandExclusive,
