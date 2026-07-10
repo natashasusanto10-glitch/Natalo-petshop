@@ -3907,13 +3907,14 @@ class _BrandChoiceSectionState extends State<_BrandChoiceSection> {
     }
 
     // Compute card height dari aspect ratio + screen width
-    // (childAspectRatio: 1.35 = width/height — sedikit lebih tinggi dari
-    // sebelumnya (1.45) supaya logo kotak/tinggi punya ruang yang sama
-    // dengan logo banner lebar; lihat BrandLogoImage untuk patok tinggi).
+    // (childAspectRatio: 1.2 = width/height — kartu dibuat lebih tinggi dari
+    // sebelumnya (1.35) supaya logo, terutama yang KOTAK 1:1, punya ruang
+    // vertikal lebih besar; lihat patok tinggi 40 di BrandGridCard. HARUS
+    // sama dengan childAspectRatio gridDelegate di bawah.)
     final screenWidth = MediaQuery.sizeOf(context).width;
     final innerWidth = screenWidth - 32; // 16 padding × 2
     final cardWidth = (innerWidth - 24) / 3; // 12 spacing × 2 between 3 cols
-    final cardHeight = cardWidth / 1.35;
+    final cardHeight = cardWidth / 1.2;
     final gridHeight = (cardHeight * 2) + 12; // 2 rows + mainAxisSpacing
 
     return Padding(
@@ -3961,7 +3962,7 @@ class _BrandChoiceSectionState extends State<_BrandChoiceSection> {
                       crossAxisCount: 3,
                       mainAxisSpacing: 12,
                       crossAxisSpacing: 12,
-                      childAspectRatio: 1.35,
+                      childAspectRatio: 1.2,
                     ),
                     itemCount: pageBrands.length,
                     itemBuilder: (context, idx) {
@@ -3999,7 +4000,7 @@ class BrandGridCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
@@ -4017,13 +4018,13 @@ class BrandGridCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               // Patok tinggi logo ke garis yang sama untuk semua brand —
-              // ini yang menghentikan logo banner lebar (Happy Dog, Royal
-              // Canin) melar mepet tepi sementara logo kotak (Nexgard,
-              // Whiskas) tenggelam kecil. BoxFit.contain di dalam
-              // ConstrainedBox mengepaskan ke TINGGI yang sama, bukan ke
-              // seluruh area kartu.
+              // BoxFit.contain di ConstrainedBox mengepaskan ke TINGGI yang
+              // sama (bukan seluruh area kartu) biar logo banner lebar (Happy
+              // Dog, Royal Canin) tak melar mepet tepi. Cap 40 (naik dari 26)
+              // + kartu lebih tinggi (aspect 1.2) supaya logo KOTAK 1:1 (mis.
+              // 1024×1024) tampil cukup besar, tak lagi tenggelam kecil.
               ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 26),
+                constraints: const BoxConstraints(maxHeight: 40),
                 child: BrandLogoImage(brand: brand),
               ),
               const SizedBox(height: 4),
