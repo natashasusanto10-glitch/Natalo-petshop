@@ -101,6 +101,7 @@ export default async function AdminProductEditPage({
       price?: number;
       stock?: number;
       weightGram?: number;
+      lastEditedAt: Date;
     } = {
       name,
       description,
@@ -110,6 +111,8 @@ export default async function AdminProductEditPage({
       brandId,
       brandAutoAssigned: false,
       sku,
+      // Tandai admin baru mengedit produk ini → naik ke atas di admin list.
+      lastEditedAt: new Date(),
     };
     if (!product?.hasVariants) {
       baseData.price = price;

@@ -412,6 +412,12 @@ model Product {
   feedPostTags          FeedPostProduct[]
   createdAt             DateTime                    @default(now())
   updatedAt             DateTime                    @updatedAt
+  // Kapan admin terakhir MENGEDIT produk ini (via form Edit Produk) atau
+  // membuatnya. Beda dari updatedAt yang ikut berubah otomatis tiap stok
+  // turun / rating / promo. Dipakai admin list untuk urutkan "baru diedit"
+  // ke atas + badge. Nullable; produk lama (pre-kolom) = null → jatuh ke
+  // createdAt saat sort.
+  lastEditedAt          DateTime?
 }
 
 model UserProductView {

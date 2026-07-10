@@ -200,6 +200,8 @@ export async function POST(request: NextRequest) {
         brandId: body.brandId?.trim() || null,
         isActive: body.isActive,
         hasVariants: body.hasVariants,
+        // Produk baru dianggap "baru disentuh admin" → tampil di atas admin list.
+        lastEditedAt: new Date(),
       },
       select: {
         id: true,
