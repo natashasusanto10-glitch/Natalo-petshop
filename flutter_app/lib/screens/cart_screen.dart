@@ -3254,14 +3254,14 @@ class _CartVoucherCard extends StatelessWidget {
                             vertical: 3,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFEF0DC),
+                            color: _brandExclusiveAmberSoft,
                             borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: const Color(0xFFFCD9A0)),
+                            border: Border.all(color: _brandExclusiveAmberBorder),
                           ),
                           child: const Text(
                             'Brand Eksklusif',
                             style: TextStyle(
-                              color: Color(0xFFB85C00),
+                              color: _brandExclusiveAmber,
                               fontSize: 10,
                               fontWeight: FontWeight.w900,
                             ),
