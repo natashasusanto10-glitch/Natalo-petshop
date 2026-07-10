@@ -2963,7 +2963,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                       _CartVoucherCard(
                         title: 'Gratis Ongkir',
                         subtitle:
-                            'Potongan ongkir ${formatRupiah(widget.shippingDiscount)}',
+                            'Potongan ongkir ${formatRupiah(widget.shippingDiscount)} · min. belanja Rp250rb',
                         badge: 'Ongkir',
                         icon: Icons.local_shipping_outlined,
                         accent: _shippingGreen,
@@ -2983,6 +2983,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                           widget.shippingDiscount,
                         ),
                         badge: 'Ongkir',
+                        brandExclusive: voucher.isBrandExclusive,
                         trailing: voucher.discount > 0
                             ? formatRupiah(voucher.discount)
                             : null,
@@ -3073,6 +3074,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                                 widget.shippingDiscount,
                               ),
                           badge: 'Ongkir',
+                          brandExclusive: voucher.isBrandExclusive,
                           trailing: voucher.discount > 0
                               ? formatRupiah(voucher.discount)
                               : null,
@@ -3173,6 +3175,7 @@ class _CartVoucherCard extends StatelessWidget {
   final bool selected;
   final bool enabled;
   final VoidCallback? onTap;
+  final bool brandExclusive;
 
   const _CartVoucherCard({
     required this.title,
@@ -3186,6 +3189,7 @@ class _CartVoucherCard extends StatelessWidget {
     required this.enabled,
     required this.onTap,
     this.trailing,
+    this.brandExclusive = false,
   });
 
   @override
@@ -3242,6 +3246,28 @@ class _CartVoucherCard extends StatelessWidget {
                           ),
                         ),
                       ),
+                      if (brandExclusive) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF0DC),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: const Color(0xFFFCD9A0)),
+                          ),
+                          child: const Text(
+                            'Brand Eksklusif',
+                            style: TextStyle(
+                              color: Color(0xFFB85C00),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ],
                       if (selected) ...[
                         const SizedBox(width: 6),
                         Text(
