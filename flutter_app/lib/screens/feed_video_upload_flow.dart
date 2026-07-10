@@ -14,6 +14,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 import '../models/feed_create_post_draft.dart';
 import '../models/product.dart';
 import '../services/api_client.dart';
+import '../services/app_analytics.dart';
 import '../services/bunny_upload_service.dart';
 import '../services/feed_service.dart';
 import '../services/product_service.dart';
@@ -49,6 +50,14 @@ class _FeedVideoStartScreenState extends State<FeedVideoStartScreen> {
   bool _busy = false;
   String? _error;
   String _stage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(
+      AppAnalytics.logEvent('feed_post_pick_opened', {'source': 'video_start'}),
+    );
+  }
 
   Future<void> _pick(ImageSource source) async {
     if (_busy) return;
@@ -108,6 +117,12 @@ class _FeedVideoStartScreenState extends State<FeedVideoStartScreen> {
         _busy = false;
         _stage = '';
       });
+      unawaited(
+        AppAnalytics.logEvent('feed_post_media_selected', {
+          'type': 'video',
+          'count': 1,
+        }),
+      );
 
       if (duration.inSeconds > _maxFeedVideoSeconds) {
         AppHaptics.selection();
@@ -402,6 +417,7 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(AppAnalytics.logEvent('feed_post_edit_opened'));
     _range = RangeValues(
       0,
       math.min(

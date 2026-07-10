@@ -13,6 +13,7 @@ import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../models/feed_create_post_draft.dart';
+import '../services/app_analytics.dart';
 import '../utils/haptics.dart';
 import 'feed_new_post_screen.dart';
 import 'feed_video_upload_flow.dart';
@@ -341,6 +342,9 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(
+      AppAnalytics.logEvent('feed_post_pick_opened', {'source': 'media_picker'}),
+    );
     _initPermissionAndLoad();
   }
 
@@ -730,6 +734,21 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     if (!_canProceed) return;
     AppHaptics.tap();
     if (_mode == FeedPostContentType.image) {
+      unawaited(
+        AppAnalytics.logEvent('feed_post_media_selected', {
+          'type': _selectedPhotos.length > 1 ? 'carousel' : 'photo',
+          'count': _selectedPhotos.length,
+        }),
+      );
+    } else if (_mode == FeedPostContentType.video) {
+      unawaited(
+        AppAnalytics.logEvent('feed_post_media_selected', {
+          'type': 'video',
+          'count': 1,
+        }),
+      );
+    }
+    if (_mode == FeedPostContentType.image) {
       // Prepare semua selected photos sesuai mode preview:
       // cover/fill → center-crop 4:5, fit/original → preserve rasio asli.
       setState(() => _busyProcessing = true);
@@ -773,12 +792,20 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
       mimeType: _videoMimeType(video.localPath),
     );
     // Video > 60 dtk → masuk Trim Video. <= 60 dtk → masuk Preview/Detail.
+    // BUGFIX: dulu Trim screen dipanggil dengan `returnResultOnNext: true`
+    // di bawah `Navigator.push<bool>` — saat user tap Next, Trim screen
+    // pop() dengan `FeedCreatePostDraft` (bukan bool) ke route yang
+    // di-type sebagai Route<bool> → runtime TypeError. Trim screen dengan
+    // `returnResultOnNext: false` (default) justru men-push
+    // FeedNewPostScreen sendiri, PERSIS seperti jalur <=60s
+    // (FeedVideoPreviewScreen._next() juga push forward, tidak pernah pop
+    // dengan value) — jadi wiring kedua cabang sekarang konsisten.
     final needsTrim = duration.inSeconds > maxVideoDurationSeconds;
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => needsTrim
-            ? FeedVideoTrimScreen(draft: draft, returnResultOnNext: true)
+            ? FeedVideoTrimScreen(draft: draft)
             : FeedVideoPreviewScreen(draft: draft),
       ),
     );

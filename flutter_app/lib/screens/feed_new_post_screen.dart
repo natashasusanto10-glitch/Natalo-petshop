@@ -9,6 +9,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../models/feed_create_post_draft.dart';
 import '../models/product.dart';
+import '../services/app_analytics.dart';
 import '../services/feed_service.dart';
 import '../state/feed_upload_store.dart';
 import '../state/member_store.dart';
@@ -116,6 +117,13 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(
+      AppAnalytics.logEvent('feed_post_share_opened', {
+        'type': _isVideo
+            ? 'video'
+            : (widget.draft.photoFiles.length > 1 ? 'carousel' : 'photo'),
+      }),
+    );
     _videoDraft = widget.draft.videoDraft;
     // Restore caption + tagged products dari draft (kalau ada).
     if (widget.prefilledCaption != null &&
@@ -358,6 +366,10 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
         taggedProductIds: productIds,
       );
       feedUploadStore.startVideoUpload(draft: readyDraft);
+      unawaited(AppAnalytics.logEvent('feed_post_submitted', {
+        'type': 'video',
+        'product_count': productIds.length,
+      }));
       _goHome();
       return;
     }
@@ -375,6 +387,10 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       caption: caption,
       productIds: productIds,
     );
+    unawaited(AppAnalytics.logEvent('feed_post_submitted', {
+      'type': files.length > 1 ? 'carousel' : 'photo',
+      'product_count': productIds.length,
+    }));
     _goHome();
   }
 
@@ -1471,6 +1487,13 @@ class _FeedPostPreviewScreenState extends State<FeedPostPreviewScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(
+      AppAnalytics.logEvent('feed_post_preview_opened', {
+        'type': _isVideo
+            ? 'video'
+            : (widget.draft.photoFiles.length > 1 ? 'carousel' : 'photo'),
+      }),
+    );
     _photoPageController = PageController();
     if (_isVideo) _initVideo();
   }

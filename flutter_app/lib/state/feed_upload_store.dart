@@ -8,6 +8,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../models/feed_create_post_draft.dart';
 import '../services/api_client.dart';
+import '../services/app_analytics.dart';
 import '../services/video_compress_gate.dart';
 import '../services/bunny_upload_service.dart';
 import '../services/feed_photo_service.dart';
@@ -197,6 +198,9 @@ class FeedUploadStore extends ChangeNotifier {
             : FeedUploadStatus.success,
         progress: 1,
       );
+      unawaited(AppAnalytics.logEvent('feed_post_upload_success', {
+        'type': task.photoFiles.length > 1 ? 'carousel' : 'photo',
+      }));
       _scheduleAutoDismiss();
     } catch (error) {
       AppHaptics.warning();
@@ -204,6 +208,11 @@ class FeedUploadStore extends ChangeNotifier {
         status: FeedUploadStatus.failed,
         errorMessage: _friendlyError(error),
       );
+      final reasonStr = error.toString();
+      unawaited(AppAnalytics.logEvent('feed_post_upload_failed', {
+        'type': task.photoFiles.length > 1 ? 'carousel' : 'photo',
+        'reason': reasonStr.substring(0, math.min(90, reasonStr.length)),
+      }));
     } finally {
       _uploading = false;
     }
@@ -399,6 +408,9 @@ class FeedUploadStore extends ChangeNotifier {
 
       AppHaptics.success();
       _update(status: FeedUploadStatus.waitingReview, progress: 1);
+      unawaited(
+        AppAnalytics.logEvent('feed_post_upload_success', {'type': 'video'}),
+      );
       _scheduleAutoDismiss();
     } catch (error) {
       AppHaptics.warning();
@@ -406,6 +418,11 @@ class FeedUploadStore extends ChangeNotifier {
         status: FeedUploadStatus.failed,
         errorMessage: _friendlyError(error),
       );
+      final reasonStr = error.toString();
+      unawaited(AppAnalytics.logEvent('feed_post_upload_failed', {
+        'type': 'video',
+        'reason': reasonStr.substring(0, math.min(90, reasonStr.length)),
+      }));
     } finally {
       _uploading = false;
     }
