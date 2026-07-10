@@ -43,6 +43,8 @@ type Props = {
   isLoggedIn: boolean;
   /** Subtotal cart yg dipakai untuk filter voucher applicable */
   subtotal: number;
+  /** Id produk terpilih di cart — untuk gate voucher scoped (brand/kategori) */
+  productIds: string[];
   /** Kode voucher member terpilih saat ini */
   selectedMemberCodes: string[];
   /** Callback saat user pilih voucher member */
@@ -61,6 +63,7 @@ export function CartVoucherSheet({
   onClose,
   isLoggedIn,
   subtotal,
+  productIds,
   selectedMemberCodes,
   onSelectMember,
   onRequireLogin,
@@ -159,7 +162,9 @@ export function CartVoucherSheet({
     }
     setMemberLoading(true);
     setMemberError("");
-    fetch(`/api/cart/vouchers?subtotal=${subtotal}`)
+    fetch(
+      `/api/cart/vouchers?subtotal=${subtotal}&productIds=${encodeURIComponent(productIds.join(","))}`,
+    )
       .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
       .then(({ ok, data }) => {
         if (!ok) {
@@ -171,7 +176,7 @@ export function CartVoucherSheet({
       })
       .catch(() => setMemberError("Gagal memuat voucher member"))
       .finally(() => setMemberLoading(false));
-  }, [open, isLoggedIn, subtotal]);
+  }, [open, isLoggedIn, subtotal, productIds]);
 
   useEffect(() => {
     if (!open) {

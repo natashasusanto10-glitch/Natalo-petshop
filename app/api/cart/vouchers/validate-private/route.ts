@@ -18,10 +18,16 @@ import {
   isVoucherUsageLimitReached,
   voucherTypeOf,
 } from "@/lib/voucher-helpers";
+import {
+  cartMatchesVoucherScope,
+  voucherHasScope,
+  type EligibilityProductInput,
+} from "@/lib/voucher-eligibility";
 
 const bodySchema = z.object({
   code: z.string().trim().min(1),
   subtotal: z.number().int().nonnegative(),
+  productIds: z.array(z.string()).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -126,6 +132,33 @@ export async function POST(request: NextRequest) {
       ok: false,
       message: "Voucher tidak berlaku untuk pesanan ini",
     });
+  }
+
+  if (parsed.data.productIds && voucherHasScope(voucher)) {
+    const ids = parsed.data.productIds.map((id) => id.trim()).filter(Boolean);
+    const products = ids.length
+      ? await prisma.product.findMany({
+          where: { id: { in: ids } },
+          select: {
+            id: true,
+            categoryId: true,
+            brandId: true,
+            category: { select: { slug: true } },
+          },
+        })
+      : [];
+    const cartProducts: EligibilityProductInput[] = products.map((p) => ({
+      id: p.id,
+      categoryId: p.categoryId ?? null,
+      categorySlug: p.category?.slug ?? null,
+      brandId: p.brandId ?? null,
+    }));
+    if (!cartMatchesVoucherScope(voucher, cartProducts)) {
+      return NextResponse.json({
+        ok: false,
+        message: "Voucher tidak berlaku untuk produk di keranjang",
+      });
+    }
   }
 
   const discount = calcVoucherDiscount(subtotal, voucher);

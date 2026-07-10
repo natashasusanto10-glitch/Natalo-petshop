@@ -120,11 +120,17 @@ class CartService {
   Future<CartPrivateVoucherResult> validatePrivateVoucher({
     required String code,
     required int subtotal,
+    List<String>? productIds,
   }) async {
     try {
       final data = await apiClient.postJson(
         '/api/cart/vouchers/validate-private',
-        body: {'code': code.trim(), 'subtotal': subtotal},
+        body: {
+          'code': code.trim(),
+          'subtotal': subtotal,
+          if (productIds != null && productIds.isNotEmpty)
+            'productIds': productIds,
+        },
       );
       final voucher = data['voucher'];
       final voucherJson = voucher is Map<String, dynamic> ? voucher : data;

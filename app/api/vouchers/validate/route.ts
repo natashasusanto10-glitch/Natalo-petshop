@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  cartMatchesVoucherScope,
+  voucherHasScope,
+  type EligibilityProductInput,
+} from "@/lib/voucher-eligibility";
 
 export async function POST(request: NextRequest) {
-  const { code, subtotal } = await request.json();
+  const { code, subtotal, productIds } = await request.json();
 
   if (!code || typeof subtotal !== "number") {
     return NextResponse.json({ valid: false, error: "Data tidak lengkap." }, { status: 400 });
@@ -36,6 +41,38 @@ export async function POST(request: NextRequest) {
       valid: false,
       error: `Minimum belanja Rp${voucher.minimumOrder.toLocaleString("id-ID")} untuk menggunakan voucher ini.`,
     });
+  }
+
+  // Scope gate: kalau client kirim productIds dan voucher di-scope ke
+  // brand/kategori/produk, tolak kalau tidak ada produk keranjang yang cocok.
+  // Backward-compat: productIds tidak dikirim -> skip (permisif).
+  if (Array.isArray(productIds) && voucherHasScope(voucher)) {
+    const ids = (productIds as unknown[])
+      .map((id) => String(id).trim())
+      .filter(Boolean);
+    const products = ids.length
+      ? await prisma.product.findMany({
+          where: { id: { in: ids } },
+          select: {
+            id: true,
+            categoryId: true,
+            brandId: true,
+            category: { select: { slug: true } },
+          },
+        })
+      : [];
+    const cartProducts: EligibilityProductInput[] = products.map((p) => ({
+      id: p.id,
+      categoryId: p.categoryId ?? null,
+      categorySlug: p.category?.slug ?? null,
+      brandId: p.brandId ?? null,
+    }));
+    if (!cartMatchesVoucherScope(voucher, cartProducts)) {
+      return NextResponse.json({
+        valid: false,
+        error: "Voucher tidak berlaku untuk produk di keranjang",
+      });
+    }
   }
 
   let discount = 0;

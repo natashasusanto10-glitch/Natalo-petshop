@@ -46,6 +46,35 @@ export function voucherMatchesProduct(
 }
 
 /**
+ * True kalau voucher di-scope ke produk/kategori/brand tertentu (salah satu
+ * eligible*Ids non-empty). Voucher tanpa scope berlaku untuk semua produk.
+ */
+export function voucherHasScope(voucher: VoucherEligibilityScope): boolean {
+  return (
+    (voucher.eligibleProductIds ?? []).length > 0 ||
+    (voucher.eligibleCategoryIds ?? []).length > 0 ||
+    (voucher.eligibleBrandIds ?? []).length > 0
+  );
+}
+
+/**
+ * True kalau voucher boleh dipakai untuk isi keranjang: TIDAK di-scope, ATAU
+ * minimal SATU produk keranjang cocok ke scope-nya.
+ *
+ * Berbasis EKSISTENSI produk cocok (products.some) — BUKAN jumlah subtotal —
+ * supaya produk cocok berharga 0 (hadiah / diskon 100%) tetap memenuhi scope.
+ * Dipakai SEMUA surface (listing, checkout preview, order) supaya aturan scope
+ * seragam untuk semua discountScope (termasuk gratis ongkir / SHIPPING).
+ */
+export function cartMatchesVoucherScope(
+  voucher: VoucherEligibilityScope,
+  products: EligibilityProductInput[]
+): boolean {
+  if (!voucherHasScope(voucher)) return true;
+  return products.some((product) => voucherMatchesProduct(voucher, product));
+}
+
+/**
  * Batch-resolve brand id -> nama, untuk display voucher scoped ke brand
  * (mis. "Khusus Wolly+"). Dipakai oleh lib/voucher-list.ts dan
  * app/api/checkout/recalculate/route.ts -- satu tempat supaya query batch

@@ -47,7 +47,8 @@ import {
 } from "@/lib/voucher-helpers";
 import { isFreeShippingVoucher } from "@/lib/voucher-kind";
 import {
-  voucherMatchesProduct,
+  cartMatchesVoucherScope,
+  voucherHasScope,
   formatVoucherBrandName,
   loadBrandNamesByIds,
   type EligibilityProductInput,
@@ -229,10 +230,7 @@ export function buildVoucherListItems(input: {
       continue;
     }
 
-    const hasProductScope =
-      v.eligibleProductIds.length > 0 ||
-      v.eligibleCategoryIds.length > 0 ||
-      v.eligibleBrandIds.length > 0;
+    const hasProductScope = voucherHasScope(v);
 
     // Bug fix: voucher scoped ke produk/kategori/brand tertentu HARUS
     // dicek terhadap isi cart yang sesungguhnya -- sebelumnya listing ini
@@ -242,9 +240,7 @@ export function buildVoucherListItems(input: {
     // undefined (caller belum kirim, mis. app lama) tetap permissive supaya
     // tidak regress voucher yang sebelumnya applicable.
     const scopeUnmatched =
-      hasProductScope &&
-      cartProducts !== undefined &&
-      !cartProducts.some((p) => voucherMatchesProduct(v, p));
+      cartProducts !== undefined && !cartMatchesVoucherScope(v, cartProducts);
 
     // Transient disabled state: belum mulai / NEW_MEMBER mismatch /
     // subtotal kurang / scope tidak cocok dengan isi cart. Voucher tetap

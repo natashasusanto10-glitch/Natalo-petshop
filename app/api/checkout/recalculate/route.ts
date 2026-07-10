@@ -17,6 +17,7 @@ import {
   type VoucherSlotValue,
 } from "@/lib/voucher-kind";
 import {
+  cartMatchesVoucherScope,
   voucherMatchesProduct,
   loadBrandNamesByIds,
   formatVoucherBrandName,
@@ -266,6 +267,7 @@ export async function POST(request: NextRequest) {
         stock: true,
         categoryId: true,
         brandId: true,
+        category: { select: { slug: true } },
         weightGram: true,
         isActive: true,
         hasVariants: true,
@@ -308,6 +310,15 @@ export async function POST(request: NextRequest) {
 
   const subtotal = checkoutItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const productById = new Map(products.map((product) => [product.id, product]));
+  const cartProductInputs = checkoutItems.map((item) => {
+    const product = productById.get(item.productId);
+    return {
+      id: item.productId,
+      categoryId: product?.categoryId ?? null,
+      categorySlug: product?.category?.slug ?? null,
+      brandId: product?.brandId ?? null,
+    };
+  });
   const now = new Date();
 
   // Aturan Natalo: voucher CUSTOMER (member) HANYA untuk user login.
@@ -396,6 +407,7 @@ export async function POST(request: NextRequest) {
       const matches = voucherMatchesProduct(voucher, {
         id: item.productId,
         categoryId: product?.categoryId ?? null,
+        categorySlug: product?.category?.slug ?? null,
         brandId: product?.brandId ?? null,
       });
       return matches ? sum + item.price * item.quantity : sum;
@@ -439,9 +451,9 @@ export async function POST(request: NextRequest) {
       );
       continue;
     }
-    if (voucherScopeOf(voucher) === "PRODUCT" && eligibleProductSubtotal(voucher) <= 0) {
+    if (!cartMatchesVoucherScope(voucher, cartProductInputs)) {
       unavailable.push(
-        normalizeUnavailable(voucher, "Voucher tidak berlaku untuk produk ini", 0, brandNamesById),
+        normalizeUnavailable(voucher, "Voucher tidak berlaku untuk produk di keranjang", 0, brandNamesById),
       );
       continue;
     }
@@ -551,11 +563,8 @@ export async function POST(request: NextRequest) {
     } else if (subtotal < manualVoucher.minimumOrder) {
       const shortfall = manualVoucher.minimumOrder - subtotal;
       manualVoucherError = `Belanja kurang Rp${new Intl.NumberFormat("id-ID").format(shortfall)} lagi`;
-    } else if (
-      voucherScopeOf(manualVoucher) === "PRODUCT" &&
-      eligibleProductSubtotal(manualVoucher) <= 0
-    ) {
-      manualVoucherError = "Voucher tidak berlaku untuk produk ini";
+    } else if (!cartMatchesVoucherScope(manualVoucher, cartProductInputs)) {
+      manualVoucherError = "Voucher tidak berlaku untuk produk di keranjang";
     } else {
       const discount = checkoutVoucherDiscount(manualVoucher);
       if (discount <= 0) {
