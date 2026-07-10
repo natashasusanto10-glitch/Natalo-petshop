@@ -4399,9 +4399,6 @@ String _voucherTypeLabel(MemberVoucher voucher) {
   if (voucher.isFreeShipping || voucher.isShippingDiscount) {
     return 'Voucher Gratis Ongkir';
   }
-  if (voucher.isBrandExclusive) {
-    return 'Voucher Brand Eksklusif';
-  }
   if (voucher.isLoyaltyClaim) {
     return 'Voucher Reward Poin';
   }
@@ -4944,6 +4941,28 @@ class _VoucherDetailTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (voucher.isBrandExclusive) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF0DC),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: const Color(0xFFFCD9A0)),
+                      ),
+                      child: const Text(
+                        'Brand Eksklusif',
+                        style: TextStyle(
+                          color: Color(0xFFB85C00),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                  ],
                   Row(
                     children: [
                       Expanded(
