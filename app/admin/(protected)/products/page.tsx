@@ -17,6 +17,9 @@ import {
 
 const PAGE_SIZE = 50;
 
+// Produk yang diedit/dibuat admin dalam jendela ini dapat badge "Baru diedit".
+const RECENTLY_EDITED_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 type StockFilter = "all" | "ready" | "out" | "archived";
 
 export default async function AdminProductsPage({
@@ -81,7 +84,12 @@ export default async function AdminProductsPage({
     prisma.product.count({ where }),
     prisma.product.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      // "Baru diedit/dibuat" ke atas: urut lastEditedAt desc (produk lama yang
+      // belum pernah diedit = null → nulls last), lalu createdAt desc.
+      orderBy: [
+        { lastEditedAt: { sort: "desc", nulls: "last" } },
+        { createdAt: "desc" },
+      ],
       include: { category: true, brand: true },
       skip: (currentPage - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
@@ -378,9 +386,18 @@ export default async function AdminProductsPage({
             const displayPrice = hasDiscount ? product.discountPrice! : product.price;
             const isOut = product.stock === 0;
             const isArchived = !product.isActive && product.stock > 0;
+            const isRecentlyEdited =
+              product.lastEditedAt != null &&
+              Date.now() - product.lastEditedAt.getTime() < RECENTLY_EDITED_WINDOW_MS;
 
             const productMeta = (
               <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                {isRecentlyEdited && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-natalo-50 px-2 py-0.5 text-[10px] font-semibold text-natalo-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-natalo-500" aria-hidden="true" />
+                    Baru diedit
+                  </span>
+                )}
                 {product.category ? (
                   <Link
                     href={buildHref({ page: 1, cat: product.category.slug })}
