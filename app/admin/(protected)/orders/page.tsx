@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import {
@@ -25,6 +26,67 @@ const EXTRA_PAY_VARIANT: Record<string, BadgeVariant> = {
   ...PAY_BADGE_VARIANT,
   WAITING: "warning",
 };
+
+const CTA_PILL_CLASSES: Record<string, string> = {
+  primary: "bg-natalo-600 text-white",
+  secondary: "bg-zinc-100 text-zinc-700",
+  dangerSoft: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-200",
+};
+
+/**
+ * Label/tombol aksi sadar-status pesanan. SEMUA mengarah ke halaman Detail
+ * (aksi dieksekusi di sana), tapi label + warna mencerminkan langkah
+ * berikutnya supaya admin tahu apa yang harus dilakukan tanpa membuka detail.
+ */
+function orderCtaLabel(order: {
+  status: string;
+  paymentStatus: string;
+  orderType: string;
+  cancellationRequestStatus: string | null;
+}): { label: string; variant: "primary" | "secondary" | "dangerSoft" } {
+  if (order.cancellationRequestStatus === "PENDING")
+    return { label: "Tinjau Pembatalan", variant: "dangerSoft" };
+  if (
+    order.status === "DELIVERED" ||
+    order.status === "CANCELLED" ||
+    order.status === "REFUNDED"
+  )
+    return { label: "Lihat Detail", variant: "secondary" };
+  if (order.paymentStatus !== "PAID")
+    return { label: "Cek Bukti & Konfirmasi", variant: "primary" };
+  if (order.status === "PENDING" || order.status === "PAID")
+    return { label: "Mulai Packing", variant: "primary" };
+  if (order.status === "PROCESSING")
+    return order.orderType === "SELF_PICKUP"
+      ? { label: "Siap Diambil", variant: "primary" }
+      : { label: "Input Resi & Kirim", variant: "primary" };
+  if (order.status === "READY_FOR_PICKUP")
+    return { label: "Serahkan", variant: "primary" };
+  if (order.status === "SHIPPED")
+    return { label: "Lihat / Lacak", variant: "secondary" };
+  return { label: "Lihat Detail", variant: "secondary" };
+}
+
+/** Thumbnail produk (item pertama) untuk baris pesanan, dengan placeholder. */
+function OrderThumb({
+  url,
+  className = "h-10 w-10",
+}: {
+  url: string | null;
+  className?: string;
+}) {
+  return (
+    <div className={`relative shrink-0 overflow-hidden rounded-lg bg-zinc-100 ${className}`}>
+      {url ? (
+        <Image src={url} alt="" fill sizes="40px" className="object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-[9px] font-bold text-zinc-300">
+          IMG
+        </div>
+      )}
+    </div>
+  );
+}
 
 const PAGE_SIZE = 20;
 
@@ -64,7 +126,11 @@ export default async function AdminOrdersPage({
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
-      include: { items: { select: { quantity: true } } },
+      include: {
+        items: {
+          select: { quantity: true, product: { select: { imageUrl: true } } },
+        },
+      },
     }),
     prisma.order.count({ where }),
     prisma.order.groupBy({ by: ["status"], _count: true }),
@@ -209,7 +275,8 @@ export default async function AdminOrdersPage({
           <div className="mt-5 space-y-3 md:hidden">
             {orders.map((order) => {
               const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
-              const initial = order.customerName?.[0]?.toUpperCase() ?? "?";
+              const firstImg = order.items[0]?.product?.imageUrl ?? null;
+              const cta = orderCtaLabel(order);
               return (
                 <Link
                   key={order.id}
@@ -218,9 +285,7 @@ export default async function AdminOrdersPage({
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-start gap-2.5">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-natalo-50 text-sm font-black text-natalo-700">
-                        {initial}
-                      </div>
+                      <OrderThumb url={firstImg} className="h-9 w-9" />
                       <div className="min-w-0">
                         <p className="truncate font-black text-zinc-950">
                           {order.orderNumber}
@@ -265,6 +330,14 @@ export default async function AdminOrdersPage({
                       {paymentStatusLabel(order.paymentStatus)}
                     </Badge>
                   </div>
+
+                  <div className="mt-3 border-t border-zinc-100 pt-2.5">
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold ${CTA_PILL_CLASSES[cta.variant]}`}
+                    >
+                      {cta.label} →
+                    </span>
+                  </div>
                 </Link>
               );
             })}
@@ -305,23 +378,31 @@ export default async function AdminOrdersPage({
                     );
                     const initial =
                       order.customerName?.[0]?.toUpperCase() ?? "?";
+                    const firstImg =
+                      order.items[0]?.product?.imageUrl ?? null;
+                    const cta = orderCtaLabel(order);
                     return (
                       <tr
                         key={order.id}
                         className="group border-b border-zinc-100 last:border-0 transition hover:bg-natalo-50/40"
                       >
                         <td className="px-5 py-4">
-                          <p className="font-black text-zinc-950">
-                            {order.orderNumber}
-                          </p>
-                          <p className="mt-0.5 text-xs text-zinc-500">
-                            {totalQty} item
-                          </p>
-                          <p className="mt-1 text-[11px] font-bold text-zinc-500">
-                            {order.orderType === "SELF_PICKUP"
-                              ? "Ambil Sendiri di Toko"
-                              : "Delivery"}
-                          </p>
+                          <div className="flex items-start gap-3">
+                            <OrderThumb url={firstImg} />
+                            <div className="min-w-0">
+                              <p className="font-black text-zinc-950">
+                                {order.orderNumber}
+                              </p>
+                              <p className="mt-0.5 text-xs text-zinc-500">
+                                {totalQty} item
+                              </p>
+                              <p className="mt-1 text-[11px] font-bold text-zinc-500">
+                                {order.orderType === "SELF_PICKUP"
+                                  ? "Ambil Sendiri di Toko"
+                                  : "Delivery"}
+                              </p>
+                            </div>
+                          </div>
                         </td>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2.5">
@@ -373,10 +454,10 @@ export default async function AdminOrdersPage({
                         <td className="px-5 py-4">
                           <Button
                             href={`/admin/orders/${order.id}`}
-                            variant="secondary"
+                            variant={cta.variant}
                             size="sm"
                           >
-                            Detail →
+                            {cta.label}
                           </Button>
                         </td>
                       </tr>
