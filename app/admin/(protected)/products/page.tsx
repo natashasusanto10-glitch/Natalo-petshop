@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { deleteProductVideo } from "@/lib/product/product-video";
 import { formatRupiah } from "@/lib/format";
 import { InlineEditCell } from "@/components/admin/InlineEditCell";
 import { VariantInlineEditCell } from "@/components/admin/VariantInlineEditCell";
@@ -113,6 +114,21 @@ export default async function AdminProductsPage({
       throw new Error(
         `Produk pernah dipesan (${orderCount}× di order). Tidak bisa dihapus permanen — gunakan tombol Arsipkan/Nonaktifkan.`
       );
+    }
+
+    // Best-effort: hapus video Bunny sebelum hard-delete row. Bukan wajib
+    // untuk kebenaran — cron GC (Task 9) tetap menyapu video orphan kalau
+    // ini gagal, jadi tidak boleh menggagalkan/menunda delete produk.
+    try {
+      const productWithVideo = await prisma.product.findUnique({
+        where: { id },
+        select: { videoGuid: true },
+      });
+      if (productWithVideo?.videoGuid) {
+        await deleteProductVideo(productWithVideo.videoGuid);
+      }
+    } catch {
+      // best-effort, diabaikan — lihat komentar di atas.
     }
 
     // Hard delete — cascade akan handle variants, reviews, favorites, variantAttrs
