@@ -52,7 +52,7 @@ export async function POST(
   const { id } = await params;
   const product = await prisma.product.findUnique({
     where: { id },
-    select: { id: true, name: true, videoGuid: true },
+    select: { id: true, videoGuid: true },
   });
   if (!product) {
     return NextResponse.json({ error: "Produk tidak ditemukan" }, { status: 404 });
@@ -61,6 +61,18 @@ export async function POST(
   // Ganti video: bersihkan yang lama dulu (best-effort) supaya tidak orphan.
   if (product.videoGuid) {
     await deleteProductVideo(product.videoGuid);
+    // Null stale fields immediately so a later create/TUS failure leaves the
+    // product in a safe "no video" state instead of a broken "ready" one.
+    await prisma.product.update({
+      where: { id: product.id },
+      data: {
+        videoGuid: null,
+        videoStatus: null,
+        videoUrl: null,
+        videoThumbnailUrl: null,
+        videoDurationSec: null,
+      },
+    });
   }
 
   const created = await createProductVideo({ title: `product-${product.id}` });
