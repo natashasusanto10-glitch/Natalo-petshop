@@ -43,6 +43,17 @@ class _ProductGridVideoState extends State<ProductGridVideo>
     with WidgetsBindingObserver {
   VideoPlayerController? _controller;
 
+  /// Key VisibilityDetector — WAJIB unik per-instance secara global.
+  /// JANGAN pakai `ValueKey(videoUrl)`: `visibility_detector` mem-key map
+  /// statiknya (`_updates`, `_lastVisibility`) berdasarkan `Key`, jadi produk
+  /// yang SAMA yang ter-mount di DUA grid sekaligus (mis. grid rekomendasi +
+  /// grid explore di Beranda sama-sama render `_HomeProductCard`) bakal saling
+  /// menimpa — satu kembar berhenti dapat `onVisibilityChanged` (nyangkut di
+  /// foto / bocor slot registry). `UniqueKey()` dibuat SEKALI per State (stabil
+  /// across rebuild, unik per instance, aman saat list-recycle); JANGAN bikin
+  /// `UniqueKey()` inline di build (re-register tiap frame).
+  late final Key _detectorKey = UniqueKey();
+
   /// Fraksi visibilitas terakhir dari `VisibilityDetector` (0..1).
   double _visibleFraction = 0;
 
@@ -125,6 +136,12 @@ class _ProductGridVideoState extends State<ProductGridVideo>
       _addSlotListener();
       return;
     }
+    // Sudah pegang slot → jangan lagi jadi waiter. WAJIB dilepas SEKARANG (bukan
+    // cuma di path sukses): kalau init nanti gagal, `catch` memanggil
+    // `release(this)` yang mem-broadcast ke `_waiters`; kalau kartu ini masih
+    // terdaftar, ia menotifikasi DIRINYA SENDIRI (`_onSlotFree`) → `_ensureAndPlay`
+    // → re-acquire → gagal → release → self-notify → … retry storm tak berujung.
+    _removeSlotListener();
 
     _acquiring = true;
     final controller = VideoPlayerController.networkUrl(
@@ -230,7 +247,7 @@ class _ProductGridVideoState extends State<ProductGridVideo>
     final playing = showVideo && controller.value.isPlaying;
 
     return VisibilityDetector(
-      key: ValueKey(widget.videoUrl),
+      key: _detectorKey,
       onVisibilityChanged: _onVisibilityChanged,
       child: AspectRatio(
         aspectRatio: 1,
@@ -260,15 +277,14 @@ class _ProductGridVideoState extends State<ProductGridVideo>
 
   Widget _buildPhoto(BuildContext context) {
     final url = widget.imageUrl?.trim() ?? '';
-    if (url.isEmpty) return _PhotoFallback(color: _gridSurfaceTint(context));
+    if (url.isEmpty) return const _PhotoPlaceholder();
     return CachedNetworkImage(
       imageUrl: url,
       width: double.infinity,
       height: double.infinity,
       fit: BoxFit.cover,
-      placeholder: (_, __) => _PhotoFallback(color: _gridSurfaceTint(context)),
-      errorWidget: (_, __, ___) =>
-          _PhotoFallback(color: _gridSurfaceTint(context)),
+      placeholder: (_, __) => const _PhotoPlaceholder(),
+      errorWidget: (_, __, ___) => const _PhotoPlaceholder(),
     );
   }
 
@@ -293,20 +309,27 @@ class _ProductGridVideoState extends State<ProductGridVideo>
   }
 }
 
-/// Warna dasar/placeholder foto grid — cocokkan tint grid Beranda.
-Color _gridSurfaceTint(BuildContext context) {
-  final cs = Theme.of(context).colorScheme;
-  return Theme.of(context).brightness == Brightness.dark
-      ? cs.surfaceContainerLow
-      : const Color(0xFFEEF1F5);
-}
-
-class _PhotoFallback extends StatelessWidget {
-  final Color color;
-  const _PhotoFallback({required this.color});
+/// Placeholder/error layer foto — cermin `_HomeProductImageSquarePlaceholder`
+/// (home_screen.dart, private jadi direplikasi lokal) supaya kartu video tampak
+/// sama dengan kartu non-video tetangganya saat loading: latar biru sangat muda
+/// + ikon paw di tengah, bukan kotak abu polos.
+class _PhotoPlaceholder extends StatelessWidget {
+  const _PhotoPlaceholder();
 
   @override
-  Widget build(BuildContext context) => ColoredBox(color: color);
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? cs.surfaceContainerHighest
+            : const Color(0xFFF3F7FF),
+      ),
+      child: Center(
+        child: Icon(Icons.pets_rounded, size: 34, color: cs.onSurfaceVariant),
+      ),
+    );
+  }
 }
 
 /// Chip subtle penanda video sedang main — gaya sama badge counter existing,
