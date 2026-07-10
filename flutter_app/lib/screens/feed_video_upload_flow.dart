@@ -1056,10 +1056,9 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
         // Silent compress — user tidak perlu tau internal backend service.
         // _stage tetap "Mengirim postingan..." dari setState awal.
         try {
-          final info = await VideoCompress.compressVideo(
+          final info = await videoCompressGate.compress(
             originalPath,
             quality: VideoQuality.Res1280x720Quality,
-            deleteOrigin: false,
             includeAudio: true,
           );
           final compressed = info?.file;
