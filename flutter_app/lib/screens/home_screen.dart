@@ -3013,7 +3013,11 @@ class _HomeProductCard extends StatelessWidget {
     final imageStack = Stack(
       children: [
         squareImage
-            ? (product.hasVideo
+            // Video HANYA di grid utama Beranda, TIDAK pernah di rail. `railSlim`
+            // menandai kartu rail horizontal (Terlaris / carousel keranjang-kosong)
+            // yang tetap foto-only sesuai plan; kedua grid asli membiarkan
+            // `railSlim` default false → dapat video.
+            ? ((product.hasVideo && !railSlim)
                 ? ProductGridVideo(
                     videoUrl: product.videoUrl!,
                     imageUrl: product.imageUrl,
