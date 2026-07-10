@@ -845,14 +845,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                                 return Padding(
                                   padding: EdgeInsets.only(
-                                    bottom: isLastRow ? 0 : 8,
+                                    bottom: isLastRow ? 0 : 6,
                                   ),
                                   child: Row(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
                                       Expanded(child: cell(leftIndex)),
-                                      const SizedBox(width: 8),
+                                      const SizedBox(width: 6),
                                       Expanded(
                                         child: rightIndex < itemCount
                                             ? cell(rightIndex)
@@ -2979,9 +2979,9 @@ class _HomeProductCard extends StatelessWidget {
     final discountPercent = _activeHomeProductDiscountPercent(product);
 
     final cs = Theme.of(context).colorScheme;
-    // Grid utama: radius kartu lebih kecil (10) + foto full-bleed. Rail
+    // Grid utama: radius kartu lebih kecil (8) + foto full-bleed. Rail
     // compact tetap radius 18 + foto fixed-height contain (tak berubah).
-    final cardRadius = squareImage ? 10.0 : 18.0;
+    final cardRadius = squareImage ? 8.0 : 18.0;
 
     final imageStack = Stack(
       children: [
@@ -4254,7 +4254,7 @@ class _RecommendationGrid extends StatelessWidget {
           for (var i = 0; i < (products.length + 1) ~/ 2; i++)
             Padding(
               padding: EdgeInsets.only(
-                bottom: i == ((products.length + 1) ~/ 2) - 1 ? 0 : 8,
+                bottom: i == ((products.length + 1) ~/ 2) - 1 ? 0 : 6,
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -4266,7 +4266,7 @@ class _RecommendationGrid extends StatelessWidget {
                       onTap: () => onTap(products[i * 2]),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: i * 2 + 1 < products.length
                         ? _HomeProductCard(

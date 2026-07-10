@@ -24,7 +24,7 @@ class SkeletonProductCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final radius = squareImage ? 10.0 : 18.0;
+    final radius = squareImage ? 8.0 : 18.0;
 
     final lines = <Widget>[
       // Name line 1
