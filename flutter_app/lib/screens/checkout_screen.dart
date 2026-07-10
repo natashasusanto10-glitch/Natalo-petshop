@@ -4402,6 +4402,10 @@ String _voucherAppliedSubtitle(MemberVoucher voucher) {
 
 String _voucherTypeLabel(MemberVoucher voucher) {
   if (voucher.isFreeShipping || voucher.isShippingDiscount) {
+    final brand = voucher.brandName?.trim();
+    if (voucher.isBrandExclusive && brand != null && brand.isNotEmpty) {
+      return 'Gratis Ongkir dari $brand';
+    }
     return 'Voucher Gratis Ongkir';
   }
   if (voucher.isLoyaltyClaim) {
