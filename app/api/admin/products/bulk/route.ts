@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
+import { deleteProductVideo } from "@/lib/product/product-video";
 
 type Update = { id: string; price?: number; stock?: number };
 
@@ -171,6 +172,18 @@ export async function POST(request: NextRequest) {
       data: { isActive: false },
     });
   }
+
+  // Best-effort: hapus video Bunny milik produk yang BENAR-BENAR akan
+  // di-hard-delete (bukan yang diarsipkan). Bukan wajib untuk kebenaran —
+  // cron GC (Task 9) tetap menyapu video orphan kalau ini gagal, jadi tidak
+  // boleh menggagalkan/menunda delete produk di bawah.
+  const withVideo = await prisma.product.findMany({
+    where: { id: { in: toDelete }, videoGuid: { not: null } },
+    select: { videoGuid: true },
+  });
+  await Promise.allSettled(
+    withVideo.map((p) => (p.videoGuid ? deleteProductVideo(p.videoGuid) : Promise.resolve())),
+  );
 
   // Hapus per-item supaya satu produk yang masih terkait data lain tidak
   // menggagalkan seluruh batch (cascade menghapus varian/review/favorite).
