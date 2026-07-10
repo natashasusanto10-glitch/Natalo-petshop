@@ -51,15 +51,17 @@ const _feedBlue = Color(0xFF0B7FEA);
 const _feedActionForegroundColor = Color(0xFFFFFFFF);
 const _feedActionShadowColor = Color(0x99000000);
 const _feedActionTextShadowColor = Color(0xB3000000);
-// Ikon action rail — disetel setipis IG Reels: stroke 1.7 (dari 2.2) +
-// ukuran 30 (dari 32). Garis lebih halus/elegan, tidak lagi terlihat
-// "gemuk" di atas video.
+// Ikon action rail — proporsi ala IG Reels: ukuran 30 + stroke 2.2.
+// Sempat diturunkan ke 1.7 tapi terasa terlalu kurus di atas video;
+// kesan "gemuk" dulu datang dari count w900 (kini w600), bukan stroke.
 const _feedActionIconSize = 30.0;
-const _feedActionStrokeWidth = 1.7;
+const _feedActionStrokeWidth = 2.2;
 const _feedActionCountFontSize = 12.0;
-const _feedActionItemSpacing = 18.0;
-const _feedActionBottomInset = 24.0;
-const _feedActionRailRightInset = 4.0;
+const _feedActionItemSpacing = 22.0;
+// 4 (dari 24) — rail diturunkan supaya ikon terbawah sejajar dengan
+// dasar blok caption (feedInfoInset video = navClearance + railBand + 4).
+const _feedActionBottomInset = 4.0;
+const _feedActionRailRightInset = 10.0;
 // Aksen commerce oranye — dipakai untuk aksi tambah-keranjang (kartu anchor
 // + cart-pill rail). Tombol "Beli" utama tetap biru brand.
 const _feedCommerceOrange = Color(0xFFFF7A00);
@@ -686,7 +688,7 @@ class _FeedScreenState extends State<FeedScreen> {
                         top: MediaQuery.paddingOf(context).top + 8,
                         left: 4,
                         child: _FeedTopIconButton(
-                          icon: Icons.add_rounded,
+                          iconChild: const _FeedPlusGlyph(),
                           onTap: _onUpload,
                           tooltip: 'Upload video',
                         ),
@@ -845,39 +847,42 @@ class _LoadingState extends StatelessWidget {
 /// icon putih dengan soft drop shadow biar tetap legible di atas video
 /// yang bright. Optional badgeCount untuk indikator jumlah keranjang.
 class _FeedTopIconButton extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconChild;
   final VoidCallback onTap;
   final String? tooltip;
   final int? badgeCount;
 
   const _FeedTopIconButton({
-    required this.icon,
+    this.icon,
+    this.iconChild,
     required this.onTap,
     this.tooltip,
     this.badgeCount,
-  });
+  }) : assert(icon != null || iconChild != null);
 
   @override
   Widget build(BuildContext context) {
     final iconWidget = Stack(
       clipBehavior: Clip.none,
       children: [
-        Icon(
-          icon,
-          color: Colors.white,
-          // 28px — sized untuk visibility tinggi di atas video terang/
-          // gelap. Beda dari home AppCartButton (24px) karena context
-          // berbeda: home header dense banyak icon, feed top icon harus
-          // prominent solo dengan soft drop shadow.
-          size: 28,
-          shadows: const [
-            Shadow(
-              color: Color(0xCC000000),
-              blurRadius: 10,
-              offset: Offset(0, 1),
+        iconChild ??
+            Icon(
+              icon,
+              color: Colors.white,
+              // 28px — sized untuk visibility tinggi di atas video terang/
+              // gelap. Beda dari home AppCartButton (24px) karena context
+              // berbeda: home header dense banyak icon, feed top icon harus
+              // prominent solo dengan soft drop shadow.
+              size: 28,
+              shadows: const [
+                Shadow(
+                  color: Color(0xCC000000),
+                  blurRadius: 10,
+                  offset: Offset(0, 1),
+                ),
+              ],
             ),
-          ],
-        ),
         if (badgeCount != null && badgeCount! > 0)
           Positioned(
             top: -4,
@@ -918,6 +923,52 @@ class _FeedTopIconButton extends StatelessWidget {
     if (tooltip == null) return button;
     return Tooltip(message: tooltip!, child: button);
   }
+}
+
+/// Glyph `+` upload — flat tanpa wadah, 32px stroke 2.6 supaya presence-nya
+/// setara tombol create IG/TikTok. Icons.add_rounded 28 terlalu kurus di
+/// atas video (weight glyph material tidak bisa ditebalkan).
+class _FeedPlusGlyph extends StatelessWidget {
+  const _FeedPlusGlyph();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      height: 32,
+      width: 32,
+      child: CustomPaint(painter: _PlusGlyphPainter()),
+    );
+  }
+}
+
+class _PlusGlyphPainter extends CustomPainter {
+  const _PlusGlyphPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()
+      ..moveTo(size.width * 0.5, size.height * 0.16)
+      ..lineTo(size.width * 0.5, size.height * 0.84)
+      ..moveTo(size.width * 0.16, size.height * 0.5)
+      ..lineTo(size.width * 0.84, size.height * 0.5);
+    final shadowPaint = Paint()
+      ..color = _feedActionShadowColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.6
+      ..strokeCap = StrokeCap.round
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.8);
+    final paint = Paint()
+      ..color = _feedActionForegroundColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.6
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawPath(path.shift(const Offset(0, 1.2)), shadowPaint);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 /// Helper skeleton circle (untuk action rail icons).
@@ -1806,18 +1857,8 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                         onTap: _onShare,
                       ),
                       const SizedBox(height: _feedActionItemSpacing),
-                      if (products.isNotEmpty) ...[
-                        AnimatedBuilder(
-                          animation: cartStore,
-                          builder: (context, _) => _ReelsAction(
-                            iconChild:
-                                _ReelsCartGlyph(count: cartStore.totalQuantity),
-                            onTap: () =>
-                                Navigator.of(context).pushNamed('/cart'),
-                          ),
-                        ),
-                        const SizedBox(height: _feedActionItemSpacing),
-                      ],
+                      // Cart di rail DIHAPUS — duplikat dengan cart
+                      // kanan-atas (satu-satunya pintu keranjang di feed).
                       // More actions (Report/Block) — Google Play UGC policy.
                       _ReelsAction(
                         iconChild: const _ReelsMoreGlyph(),
@@ -3312,19 +3353,9 @@ class _FeedPostViewState extends State<_FeedPostView>
                                   ),
                                   const SizedBox(
                                       height: _feedActionItemSpacing),
-                                  if (products.isNotEmpty) ...[
-                                    AnimatedBuilder(
-                                      animation: cartStore,
-                                      builder: (context, _) => _ReelsAction(
-                                        iconChild: _ReelsCartGlyph(
-                                            count: cartStore.totalQuantity),
-                                        onTap: () => Navigator.of(context)
-                                            .pushNamed('/cart'),
-                                      ),
-                                    ),
-                                    const SizedBox(
-                                        height: _feedActionItemSpacing),
-                                  ],
+                                  // Cart di rail DIHAPUS — duplikat dengan
+                                  // cart kanan-atas (satu-satunya pintu
+                                  // keranjang di feed sekarang).
                                   // ── More actions (Report / Block) ──
                                   // Google Play UGC policy requirement: setiap
                                   // post UGC harus ada cara user laporkan +
@@ -4420,6 +4451,9 @@ class _ReelsActionState extends State<_ReelsAction>
 
   @override
   Widget build(BuildContext context) {
+    // Count 0 disembunyikan ala IG Reels — label baru muncul saat >0.
+    // Post baru tampil ikon bersih, tidak dipenuhi deretan angka "0".
+    final showCount = widget.count != null && widget.count! > 0;
     return SizedBox(
       width: 54,
       child: Material(
@@ -4430,12 +4464,12 @@ class _ReelsActionState extends State<_ReelsAction>
           child: ScaleTransition(
             scale: _tapPulseScale,
             child: SizedBox(
-              height: widget.count == null ? 44 : 60,
+              height: !showCount ? 44 : 60,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   widget.iconChild,
-                  if (widget.count != null) ...[
+                  if (showCount) ...[
                     const SizedBox(height: 2),
                     RepaintBoundary(
                       child: Text(
@@ -4790,60 +4824,6 @@ class _MoreGlyphPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _ReelsCartGlyph extends StatelessWidget {
-  final int count;
-
-  const _ReelsCartGlyph({required this.count});
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        const Icon(
-          Icons.shopping_cart,
-          color: _feedActionForegroundColor,
-          size: _feedActionIconSize,
-          shadows: [
-            Shadow(
-              color: _feedActionShadowColor,
-              blurRadius: 4,
-              offset: Offset(0, 1),
-            ),
-          ],
-        ),
-        if (count > 0)
-          Positioned(
-            top: -5,
-            right: -7,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              decoration: BoxDecoration(
-                color: _feedCommerceOrange,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  width: 1.2,
-                ),
-              ),
-              constraints: const BoxConstraints(minWidth: 17, minHeight: 17),
-              child: Text(
-                count > 99 ? '99+' : '$count',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w900,
-                  height: 1.2,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
 }
 
 /// Compact product pill — Final Lock Spec Feed Product Tag.
