@@ -302,6 +302,10 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   Size? _previewImageSize;
   String? _previewImageSizeAssetId; // track asset yg size-nya sudah loaded.
   final Map<String, _PhotoCropTransform> _photoCropTransforms = {};
+  // Lookup asset by id — dipakai strip re-crop (Task 5B) untuk resolve
+  // AssetEntity dari id foto terpilih tanpa scan ulang _assets.
+  final Map<String, AssetEntity> _assetById = {};
+  bool _thumbStripHintShown = false;
 
   /// Computed preview aspect — 4:5 default, atau natural foto kalau
   /// fitOriginal mode aktif dan image size sudah loaded.
@@ -448,6 +452,9 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   FeedPostContentType? _previewType;
 
   Future<void> _setPreviewAsset(AssetEntity asset) async {
+    // Defensif: pastikan lookup id→asset selalu up-to-date walau dipanggil
+    // dari path lain (bukan hanya _selectPhoto), mis. auto-preview initial.
+    _assetById[asset.id] = asset;
     final isVideo = asset.type == AssetType.video;
     // Pakai originFile (bukan asset.file) — preserve ICC color profile
     // bytes dari original photo (iPhone biasa simpan dengan P3 wide
@@ -650,6 +657,7 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         orderIndex: _selectedPhotos.length,
       );
       if (!mounted) return;
+      _assetById[asset.id] = asset;
       setState(() {
         _selectedPhotos = [..._selectedPhotos, item];
         _mode = FeedPostContentType.image;
@@ -881,6 +889,8 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         // Diagonal button overlay toggle cover/fill <-> contain/fit,
         // seperti Instagram picker.
         SliverToBoxAdapter(child: _buildPreview()),
+        if (_mode == FeedPostContentType.image && _selectedPhotos.length >= 2)
+          SliverToBoxAdapter(child: _buildThumbStripSection()),
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
@@ -1039,6 +1049,53 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     if (asset == null) return 1;
     final idx = _selectedPhotos.indexWhere((p) => p.id == asset.id);
     return idx >= 0 ? idx + 1 : 1;
+  }
+
+  /// Tap thumbnail strip → bawa foto itu ke preview besar tanpa deselect
+  /// (setara re-crop carousel IG). [id] = SelectedMediaItem.id / AssetEntity.id.
+  Future<void> _recropSelectedPhoto(String id) async {
+    final asset = _assetById[id];
+    if (asset == null || _busyProcessing) return;
+    AppHaptics.selection();
+    await _setPreviewAsset(asset); // bawa ke preview besar; transform-nya ke-bind
+  }
+
+  /// Strip re-crop carousel (Task 5B) — tampil di bawah preview besar saat
+  /// mode foto & minimal 2 foto terpilih. Hint 1× muncul saat strip
+  /// pertama kali dirender di session ini.
+  Widget _buildThumbStripSection() {
+    final showHint = !_thumbStripHintShown;
+    if (showHint) {
+      // Set setelah build frame ini supaya hint hanya tampil sekali —
+      // hindari setState di dalam build().
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _thumbStripHintShown = true);
+      });
+    }
+    return Column(
+      children: [
+        const SizedBox(height: 12),
+        if (showHint)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Text(
+              'Ketuk foto untuk atur potongannya',
+              style: TextStyle(
+                color: _textMuted,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        _SelectedThumbStrip(
+          items: _selectedPhotos
+              .map((e) => (id: e.id, path: e.localPath))
+              .toList(),
+          activeId: _previewAsset?.id,
+          onTap: _recropSelectedPhoto,
+        ),
+      ],
+    );
   }
 
   /// Toggle preview image fitting: default cover/fill, tap icon diagonal
@@ -1908,6 +1965,70 @@ class _PhotoCropPreviewState extends State<_PhotoCropPreview> {
     );
   }
 }
+
+/// Strip thumbnail foto terpilih (carousel) — tap untuk membawa foto ke
+/// preview besar & atur crop-nya lagi. Presentasional murni.
+class _SelectedThumbStrip extends StatelessWidget {
+  final List<({String id, String path})> items; // urut = urutan slide
+  final String? activeId;                         // foto yang sedang di preview
+  final ValueChanged<String> onTap;               // tap thumbnail → recrop id
+  const _SelectedThumbStrip({
+    required this.items,
+    required this.activeId,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 60,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final item = items[index];
+          final active = item.id == activeId;
+          return GestureDetector(
+            key: ValueKey('thumb-${item.id}'),
+            onTap: () => onTap(item.id),
+            child: Container(
+              width: 44,
+              height: 56,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: active ? _natoloBlue : Colors.transparent,
+                  width: 2.5,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(7.5),
+                child: Image.file(
+                  File(item.path),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) =>
+                      const ColoredBox(color: _tileBg),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Seam untuk widget test — expose `_SelectedThumbStrip` tanpa perlu
+/// `photo_manager` (presentasional murni, testable terpisah).
+@visibleForTesting
+Widget debugSelectedThumbStrip({
+  required List<({String id, String path})> items,
+  required String? activeId,
+  required ValueChanged<String> onTap,
+}) =>
+    _SelectedThumbStrip(items: items, activeId: activeId, onTap: onTap);
 
 /// Floating fit/fill toggle button — IG-style icon di bottom-left preview.
 /// Tap = toggle cover/fill <-> contain/fit di frame 4:5 yang sama.
