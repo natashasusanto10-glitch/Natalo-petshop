@@ -40,11 +40,11 @@ const _loyaltyPurpleSoft = Color(0xFFF3E8FF);
 const _loyaltyPurpleBorder = Color(0xFFD9C4F5);
 const _shippingGreenSoft = Color(0xFFECFDF3);
 const _shippingGreenBorder = Color(0xFFA6F4C5);
-// Aksen brand-exclusive: amber gelap #B85C00 (kontras di atas bg soft
-// #FEF0DC) — konsisten dgn badge grid & chip detail "Brand Eksklusif".
-const _brandExclusiveAmber = Color(0xFFB85C00);
-const _brandExclusiveAmberSoft = Color(0xFFFEF0DC);
-const _brandExclusiveAmberBorder = Color(0xFFFCD9A0);
+// Aksen brand-exclusive: amber gelap (kontras di atas bg soft) — konsisten dgn
+// badge grid & chip detail "Brand Eksklusif". Satu sumber di NataloColors.
+const _brandExclusiveAmber = NataloColors.brandExclusiveDark;
+const _brandExclusiveAmberSoft = NataloColors.brandExclusiveSoft;
+const _brandExclusiveAmberBorder = NataloColors.brandExclusiveBorder;
 const _voucherBarHeight = 50.0;
 const _selectionRowHeight = 42.0;
 // Auto-hide chrome collapse — smooth (easeInOut) & sengaja tidak terlalu cepat.

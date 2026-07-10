@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/natalo_colors.dart';
+
 /// Badge "voucher brand-exclusive aktif" — dipakai di semua kartu produk
 /// (Beranda, Katalog, Wishlist, rekomendasi Cart, hasil pencarian, Feed)
 /// supaya konsisten satu sumber styling. Chip amber lembut (bg #FEF0DC,
@@ -24,11 +26,11 @@ class BrandExclusiveBadge extends StatelessWidget {
     this.full = true,
   });
 
-  // Palet brand-exclusive "soft" — sinkron dgn _brandExclusiveSoft* di
-  // product_detail_screen / cart_screen.
-  static const _softBg = Color(0xFFFEF0DC);
-  static const _softBorder = Color(0xFFFCD9A0);
-  static const _dark = Color(0xFFB85C00);
+  // Palet brand-exclusive "soft" — satu sumber di NataloColors, dipakai juga di
+  // product_detail_screen / cart_screen / checkout_screen / member_vouchers.
+  static const _softBg = NataloColors.brandExclusiveSoft;
+  static const _softBorder = NataloColors.brandExclusiveBorder;
+  static const _dark = NataloColors.brandExclusiveDark;
 
   @override
   Widget build(BuildContext context) {

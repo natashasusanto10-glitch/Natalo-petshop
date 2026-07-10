@@ -4448,7 +4448,7 @@ Color _voucherAccentColor(MemberVoucher voucher) {
   if (voucher.isFreeShipping || voucher.isShippingDiscount) {
     return const Color(0xFF12A66A);
   }
-  if (voucher.isBrandExclusive) return const Color(0xFFB85C00);
+  if (voucher.isBrandExclusive) return NataloColors.brandExclusiveDark;
   if (voucher.isLoyaltyClaim) return const Color(0xFF7C3AED);
   return const Color(0xFFE91E63);
 }

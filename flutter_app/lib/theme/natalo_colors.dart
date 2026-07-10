@@ -169,6 +169,23 @@ class NataloColors {
   static const Color infoSoft = Color(0xFFEFF6FF);
   static const Color infoDark = Color(0xFF2563EB);
 
+  // ── Brand-exclusive (aksen amber "Brand Eksklusif") ──
+  // Satu sumber untuk palet voucher/badge brand-exclusive — dipakai di badge
+  // grid produk, chip voucher detail/cart/checkout, dan pill member vouchers.
+  // Jangan hardcode ulang per screen: rebrand cukup ubah di sini.
+  /// Fill solid amber terang untuk ikon "workspace premium" (mis. kontainer
+  /// ikon voucher brand di detail produk).
+  static const Color brandExclusive = Color(0xFFF7A100);
+
+  /// Latar chip/pill "Brand Eksklusif" (soft).
+  static const Color brandExclusiveSoft = Color(0xFFFEF0DC);
+
+  /// Border chip/pill "Brand Eksklusif" (soft).
+  static const Color brandExclusiveBorder = Color(0xFFFCD9A0);
+
+  /// Teks & ikon gelap "Brand Eksklusif" (kontras di atas [brandExclusiveSoft]).
+  static const Color brandExclusiveDark = Color(0xFFB85C00);
+
   // ── Category colors ──
   static const Color catKucingBg = primarySoft;
   static const Color catKucingIcon = primaryNavy;

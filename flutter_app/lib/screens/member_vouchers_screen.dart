@@ -359,10 +359,10 @@ class _VoucherCard extends StatelessWidget {
                               vertical: 3,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFFEF0DC),
+                              color: NataloColors.brandExclusiveSoft,
                               borderRadius: BorderRadius.circular(999),
                               border: Border.all(
-                                color: const Color(0xFFFCD9A0),
+                                color: NataloColors.brandExclusiveBorder,
                               ),
                             ),
                             child: const Text(
@@ -370,7 +370,7 @@ class _VoucherCard extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: Color(0xFFB85C00),
+                                color: NataloColors.brandExclusiveDark,
                                 fontSize: 10,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 0.4,
