@@ -4336,6 +4336,9 @@ class _PausedVideoControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Gaya IG Reels: play = glyph putih polos di tengah (tanpa lingkaran
+    // scrim besar — dulu 80px terasa berat menutupi video), mute = lingkaran
+    // kecil 32px di atasnya. Hit-area tetap lega via InkResponse radius.
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -4346,19 +4349,16 @@ class _PausedVideoControls extends StatelessWidget {
             onTap: onToggleMute,
             radius: 22,
             child: Container(
-              height: 38,
-              width: 38,
+              height: 32,
+              width: 32,
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.46),
+                color: Colors.black.withValues(alpha: 0.42),
                 shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.16),
-                ),
               ),
               child: Icon(
                 muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
                 color: Colors.white,
-                size: 20,
+                size: 17,
                 shadows: const [
                   Shadow(color: Colors.black87, blurRadius: 8),
                 ],
@@ -4366,30 +4366,26 @@ class _PausedVideoControls extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         Material(
           color: Colors.transparent,
           shape: const CircleBorder(),
           child: InkResponse(
             onTap: onTogglePlayPause,
-            radius: 42,
-            child: Container(
-              height: 80,
-              width: 80,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.45),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.12),
-                ),
-              ),
-              child: const Icon(
+            radius: 36,
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Icon(
                 Icons.play_arrow_rounded,
-                color: Colors.white,
-                size: 46,
-                shadows: [
-                  Shadow(color: Colors.black87, blurRadius: 8),
+                color: Colors.white.withValues(alpha: 0.96),
+                size: 44,
+                shadows: const [
+                  Shadow(color: Colors.black54, blurRadius: 18),
+                  Shadow(
+                    color: Colors.black87,
+                    blurRadius: 6,
+                    offset: Offset(0, 1),
+                  ),
                 ],
               ),
             ),
