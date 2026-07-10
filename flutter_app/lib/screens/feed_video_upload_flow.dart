@@ -275,15 +275,17 @@ class _FeedVideoPreviewScreenState extends State<FeedVideoPreviewScreen> {
     }
     await _controller?.pause();
     if (!mounted) return;
-    final draft = widget.draft.copyWith(
-      trimmedVideoPath: widget.draft.localVideoPath,
-      trimmedDuration: widget.draft.originalDuration,
-    );
+    // JANGAN isi trimmedVideoPath dengan path mentah: FeedUploadStore
+    // memakai `trimmedVideoPath != null` sebagai penanda "sudah
+    // terkompres 720p" untuk skip kompresi. Mengisinya di sini membuat
+    // video pendek (≤60s) ter-upload MENTAH — file besar, upload lambat,
+    // gampang gagal. finalVideoPath/finalDuration otomatis fallback ke
+    // localVideoPath/originalDuration.
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => FeedNewPostScreen(
-          draft: NewPostMediaDraft.video(draft),
+          draft: NewPostMediaDraft.video(widget.draft),
         ),
       ),
     );
