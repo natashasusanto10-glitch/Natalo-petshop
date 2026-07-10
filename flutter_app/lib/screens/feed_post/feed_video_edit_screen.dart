@@ -50,6 +50,8 @@ class _FeedVideoEditScreenState extends State<FeedVideoEditScreen> {
   bool _playing = false;
   String? _error;
   Timer? _playbackGuard;
+  Timer? _timecodeTicker;
+  int _lastShownPosSec = -1;
   late bool _showTimeline;
 
   // Frame thumbnails untuk timeline trim, IG-style.
@@ -74,11 +76,23 @@ class _FeedVideoEditScreenState extends State<FeedVideoEditScreen> {
       ),
     );
     _initVideo();
+    _timecodeTicker = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      final ctrl = _controller;
+      if (ctrl == null || !ctrl.value.isInitialized || !ctrl.value.isPlaying) {
+        return;
+      }
+      final posSec = ctrl.value.position.inSeconds;
+      if (posSec != _lastShownPosSec) {
+        _lastShownPosSec = posSec;
+        setState(() {});
+      }
+    });
   }
 
   @override
   void dispose() {
     _playbackGuard?.cancel();
+    _timecodeTicker?.cancel();
     _controller?.dispose();
     super.dispose();
   }
@@ -88,7 +102,7 @@ class _FeedVideoEditScreenState extends State<FeedVideoEditScreen> {
     if (path == null) {
       setState(() {
         _loading = false;
-        _error = 'Video tidak bisa dipreview. Pilih video lain.';
+        _error = 'Video belum bisa dipreview. Pilih video lain.';
       });
       return;
     }
@@ -632,7 +646,7 @@ class _SolidCircleButton extends StatelessWidget {
           color: enabled ? _editBlue : Colors.white.withValues(alpha: 0.12),
           shape: BoxShape.circle,
         ),
-        child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
+        child: Icon(icon, color: Colors.white, size: 20),
       ),
     );
   }
