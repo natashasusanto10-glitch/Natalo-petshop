@@ -832,7 +832,12 @@ export async function getProducts(opts?: {
     }
 
     return withProductListMeta(products.map(mapProductListRecord), viewerId);
-  } catch {
+  } catch (err) {
+    // JANGAN telan diam-diam: error di sini (mis. Prisma schema drift —
+    // "column does not exist") bikin daftar produk balik kosong tanpa jejak,
+    // dan storefront tampak "produk hilang semua". Log supaya langsung
+    // kelihatan di Vercel logs / Sentry.
+    console.error("[getProducts] product list query failed", err);
     if (randomSeed) return [];
     if (category || brand || search || newFilter || popularFilter) return [];
     return withVoucherPreviews(sampleProducts, viewerId);
@@ -906,7 +911,8 @@ export async function getProductsCount(opts?: {
     return await prisma.product.count({
       where: countWhere,
     });
-  } catch {
+  } catch (err) {
+    console.error("[getProductsCount] count query failed", err);
     return 0;
   }
 }
