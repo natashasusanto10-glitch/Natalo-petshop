@@ -19,6 +19,7 @@ export { Button, DangerButton } from "./Button";
 export type { ButtonVariant, ButtonSize, ButtonComponentProps } from "./Button";
 export { SubmitButton } from "./SubmitButton";
 export { ConfirmDialog } from "./ConfirmDialog";
+export { ToastProvider, useAdminToast } from "./Toast";
 
 export {
   Badge,
