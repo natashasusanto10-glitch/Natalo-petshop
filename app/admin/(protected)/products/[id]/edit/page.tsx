@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { MultiImageUpload } from "@/components/MultiImageUpload";
+import { ProductVideoUpload } from "@/components/admin/ProductVideoUpload";
 import { VariantEditor } from "@/components/admin/VariantEditor";
 import {
   AdminPage,
@@ -196,6 +197,17 @@ export default async function AdminProductEditPage({
                       ...product.gallery,
                     ]}
                   />
+                  <div className="mt-5 border-t border-zinc-100 pt-4">
+                    <p className="mb-2 text-sm font-semibold text-zinc-800">Video Produk</p>
+                    <ProductVideoUpload
+                      productId={product.id}
+                      initial={{
+                        videoStatus: product.videoStatus,
+                        videoThumbnailUrl: product.videoThumbnailUrl,
+                        videoDurationSec: product.videoDurationSec,
+                      }}
+                    />
+                  </div>
                   <Field label="Nama produk" name="name" required defaultValue={product.name} />
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
