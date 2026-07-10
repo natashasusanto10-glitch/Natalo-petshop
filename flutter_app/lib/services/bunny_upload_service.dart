@@ -149,10 +149,18 @@ class BunnyUploadService {
       uploadsDir.createSync(recursive: true);
     }
 
+    // Auto-retry per-chunk: gangguan jaringan sesaat tidak lagi
+    // menggagalkan seluruh upload. Backoff exponential: jeda 2s → 4s →
+    // 8s. Kombinasi dengan TusFileStore di atas = resume dari byte
+    // terakhir, bukan dari 0%. Gagal permanen hanya setelah 3 percobaan
+    // berturut-turut gagal.
     final client = TusClient(
       XFile(videoFile.path),
       store: TusFileStore(uploadsDir),
       maxChunkSize: chunkSize,
+      retries: 3,
+      retryScale: RetryScale.exponential,
+      retryInterval: 2,
     );
 
     await client.upload(
