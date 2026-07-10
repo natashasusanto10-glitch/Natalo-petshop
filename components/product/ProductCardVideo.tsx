@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useEffect, useId, useRef, useState } from "react";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
-import { releasePlay, requestPlay } from "./video-autoplay-registry";
+import { releasePlay, requestPlay, subscribeSlotFree } from "./video-autoplay-registry";
 
 /**
  * Area media kartu produk saat ada video: foto cover sebagai dasar +
@@ -42,6 +42,7 @@ export function ProductCardVideo({
     const stop = () => {
       video.pause();
       releasePlay(id);
+      setCanPlay(false);
     };
 
     const io = new IntersectionObserver(
@@ -55,8 +56,12 @@ export function ProductCardVideo({
       { threshold: [0, 0.6] },
     );
     io.observe(wrap);
+    // Kartu yang gagal dapat slot saat masuk viewport dicoba lagi begitu
+    // kartu lain melepas slotnya (lihat comment di registry).
+    const unsubscribe = subscribeSlotFree(() => tryPlay());
     return () => {
       io.disconnect();
+      unsubscribe();
       stop();
     };
   }, [id, failed]);

@@ -6,6 +6,7 @@
  */
 const MAX_CONCURRENT = 4;
 const playing = new Set<string>();
+const waiters = new Set<() => void>();
 
 export function requestPlay(id: string): boolean {
   if (playing.has(id)) return true;
@@ -15,5 +16,14 @@ export function requestPlay(id: string): boolean {
 }
 
 export function releasePlay(id: string): void {
-  playing.delete(id);
+  if (!playing.delete(id)) return;
+  // Beri tahu kartu yang menunggu slot supaya mencoba main lagi (cegah kartu
+  // ke-5+ yang terlihat saat load nyangkut di foto walau slot sudah kosong).
+  for (const cb of [...waiters]) cb();
+}
+
+/** Dipanggil saat sebuah slot play terbebas. Return fungsi unsubscribe. */
+export function subscribeSlotFree(cb: () => void): () => void {
+  waiters.add(cb);
+  return () => waiters.delete(cb);
 }
