@@ -1,7 +1,4 @@
-import { revalidatePath } from "next/cache";
-import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import {
   PageHeader,
   StatCard,
@@ -32,47 +29,14 @@ export default async function AdminStockPage() {
   const lowStock = products.filter((p) => p.stock <= 5);
   const outOfStock = products.filter((p) => p.stock === 0);
 
-  async function archiveProduct(formData: FormData) {
-    "use server";
-    const id = String(formData.get("id"));
-    await prisma.product.update({
-      where: { id },
-      data: { isActive: false },
-    });
-    const { syncProduct } = await import("@/lib/search");
-    await syncProduct(id).catch(() => {});
-    revalidatePath("/admin/stock");
-    revalidatePath("/admin/products");
-    revalidatePath("/admin/dashboard");
-  }
-
-  async function deleteProduct(formData: FormData) {
-    "use server";
-    const id = String(formData.get("id"));
-
-    // Refuse hapus permanen kalau pernah dipesan — paksa user pakai Arsip.
-    const orderCount = await prisma.orderItem.count({ where: { productId: id } });
-    if (orderCount > 0) {
-      throw new Error(
-        `Produk pernah dipesan (${orderCount}× di order). Tidak bisa dihapus permanen — gunakan tombol Arsip.`,
-      );
-    }
-
-    await prisma.product.delete({ where: { id } });
-
-    const { deleteProductFromIndex } = await import("@/lib/search");
-    await deleteProductFromIndex(id).catch(() => {});
-
-    revalidatePath("/admin/stock");
-    revalidatePath("/admin/products");
-    revalidatePath("/admin/dashboard");
-  }
-
+  // Halaman ini MONITORING-only. Mutasi (edit/arsip/hapus) dipusatkan di
+  // /admin/products supaya tidak duplikat di dua tempat — tiap baris hanya
+  // menautkan ke halaman kelola produk.
   return (
     <AdminPage maxWidth="lg">
       <PageHeader
         title="📦 Stok"
-        subtitle="Monitor stok produk dan perbarui jika diperlukan."
+        subtitle="Pantau stok produk. Kelola (edit / arsip / hapus) di halaman Produk."
         actions={
           <Button href="/admin/dashboard" variant="secondary" size="sm">
             ← Dashboard
@@ -159,31 +123,15 @@ export default async function AdminStockPage() {
                     </div>
                   </div>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 border-t border-zinc-100 pt-3">
-                  <Link
+                <div className="mt-3 border-t border-zinc-100 pt-3">
+                  <Button
                     href={`/admin/products/${product.id}/edit`}
-                    className="rounded-full border border-zinc-200 px-3 py-2 text-center text-xs font-bold hover:border-zinc-400"
+                    variant="secondary"
+                    size="sm"
+                    fullWidth
                   >
-                    Edit
-                  </Link>
-                  <form action={archiveProduct}>
-                    <input type="hidden" name="id" value={product.id} />
-                    <ConfirmSubmitButton
-                      className="w-full rounded-full border border-amber-200 px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-50"
-                      message={`Arsipkan "${product.name}"? Produk akan di-set non-aktif dan tidak muncul di toko, tapi history pesanan tetap aman.`}
-                    >
-                      Arsip
-                    </ConfirmSubmitButton>
-                  </form>
-                  <form action={deleteProduct}>
-                    <input type="hidden" name="id" value={product.id} />
-                    <ConfirmSubmitButton
-                      className="w-full rounded-full border border-red-200 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
-                      message={`Hapus permanen "${product.name}"? Tidak bisa di-undo. Produk yg pernah dipesan tidak bisa dihapus permanen — gunakan Arsip.`}
-                    >
-                      Hapus
-                    </ConfirmSubmitButton>
-                  </form>
+                    Kelola di Produk →
+                  </Button>
                 </div>
               </div>
             ))}
@@ -256,31 +204,14 @@ export default async function AdminStockPage() {
                         </Badge>
                       </td>
                       <td className="px-5 py-4">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <Link
+                        <div className="flex items-center justify-end">
+                          <Button
                             href={`/admin/products/${product.id}/edit`}
-                            className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-bold hover:border-zinc-400 transition"
+                            variant="secondary"
+                            size="sm"
                           >
-                            Edit
-                          </Link>
-                          <form action={archiveProduct}>
-                            <input type="hidden" name="id" value={product.id} />
-                            <ConfirmSubmitButton
-                              className="rounded-full border border-amber-200 px-3 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-50 transition"
-                              message={`Arsipkan "${product.name}"? Produk akan di-set non-aktif dan tidak muncul di toko, tapi history pesanan tetap aman.`}
-                            >
-                              Arsip
-                            </ConfirmSubmitButton>
-                          </form>
-                          <form action={deleteProduct}>
-                            <input type="hidden" name="id" value={product.id} />
-                            <ConfirmSubmitButton
-                              className="rounded-full border border-red-200 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 transition"
-                              message={`Hapus permanen "${product.name}"? Tidak bisa di-undo. Produk yg pernah dipesan tidak bisa dihapus permanen — gunakan Arsip.`}
-                            >
-                              Hapus
-                            </ConfirmSubmitButton>
-                          </form>
+                            Kelola →
+                          </Button>
                         </div>
                       </td>
                     </tr>
