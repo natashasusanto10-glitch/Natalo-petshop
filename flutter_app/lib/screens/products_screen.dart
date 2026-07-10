@@ -191,16 +191,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   List<Product> get _products {
     final keyword = _query.trim().toLowerCase();
-    final selectedBrandLc = widget.selectedBrand?.toLowerCase();
     final filterBrandLc = _filter.brand?.toLowerCase();
     final filtered = _result.products.where((product) {
-      // Brand filter case-insensitive — defensive guard. Server SUDAH filter
-      // by slug/name (lihat _loadProducts), tapi client compare jaga-jaga
-      // kalau ada produk lolos dari server filter karena cache stale atau
-      // data anomaly. Tanpa lowercase, "Whiskas" != "WHISKAS" → produk hilang.
+      // selectedBrand bisa berupa SLUG (dari banner admin:
+      // /products?brand=<slug>) ATAU nama (dari home Brand Favorit). Server
+      // SUDAH filter by slug ATAU nama (lib/products.ts), jadi JANGAN
+      // re-filter di client — kalau slug ("happy-cat") dibandingkan dengan
+      // product.brand yang nama ("Happy Cat"), semua produk ke-filter habis.
+      // Sama kelas bug dengan kategori di bawah.
+      const brandMatch = true;
+      // _filter.brand dari Filter sheet = selalu NAMA → compare case-insensitive
+      // aman, jaga-jaga produk lolos server filter (cache stale/anomali).
       final productBrandLc = product.brand.toLowerCase();
-      final brandMatch =
-          selectedBrandLc == null || productBrandLc == selectedBrandLc;
       final filterBrandMatch =
           filterBrandLc == null || productBrandLc == filterBrandLc;
       // Kategori sudah difilter SERVER-SIDE di _loadProducts (lihat sana).
@@ -836,13 +838,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
   /// getter, tapi terima filter parameter custom.
   int _previewFilterMatchCount(ProductCatalogFilter filter) {
     final keyword = _query.trim().toLowerCase();
-    final selectedBrandLc = widget.selectedBrand?.toLowerCase();
     final filterBrandLc = filter.brand?.toLowerCase();
     var count = 0;
     for (final product in _result.products) {
+      // selectedBrand bisa SLUG (banner) atau nama (home) — server sudah
+      // filter by slug ATAU nama, jadi jangan re-filter di client (lihat
+      // _products getter). Slug vs nama = semua produk ke-filter habis.
+      const brandMatch = true;
       final productBrandLc = product.brand.toLowerCase();
-      final brandMatch =
-          selectedBrandLc == null || productBrandLc == selectedBrandLc;
       final filterBrandMatch =
           filterBrandLc == null || productBrandLc == filterBrandLc;
       final categoryMatch =
