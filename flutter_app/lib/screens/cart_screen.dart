@@ -3226,7 +3226,10 @@ class _CartVoucherCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -3246,8 +3249,7 @@ class _CartVoucherCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (brandExclusive) ...[
-                        const SizedBox(width: 6),
+                      if (brandExclusive)
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 8,
@@ -3267,9 +3269,7 @@ class _CartVoucherCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                      ],
-                      if (selected) ...[
-                        const SizedBox(width: 6),
+                      if (selected)
                         Text(
                           'Terpilih',
                           style: TextStyle(
@@ -3278,7 +3278,6 @@ class _CartVoucherCard extends StatelessWidget {
                             fontWeight: FontWeight.w900,
                           ),
                         ),
-                      ],
                     ],
                   ),
                   const SizedBox(height: 7),
