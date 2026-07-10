@@ -23,7 +23,7 @@ const int minVideoDurationSeconds = 1;
 const int maxVideoDurationSeconds = 60;
 
 const _bgBlack = Color(0xFF000000);
-const _natoloBlue = Color(0xFF2563EB);
+const _natoloBlue = Color(0xFF1E5BFF);
 const _textWhite = Color(0xFFFFFFFF);
 const _textMuted = Color(0xFF9CA3AF);
 const _selectedBorder = _natoloBlue;
@@ -247,6 +247,16 @@ class _PhotoCropTransform extends ChangeNotifier {
 ///  - Album bottom sheet picker.
 class FeedMediaPickerScreen extends StatefulWidget {
   const FeedMediaPickerScreen({super.key});
+
+  /// Entry point flow posting — pengganti FeedUploadSheet.show() (dihapus).
+  static Future<bool?> open(BuildContext context) {
+    return Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => const FeedMediaPickerScreen(),
+        fullscreenDialog: true,
+      ),
+    );
+  }
 
   @override
   State<FeedMediaPickerScreen> createState() => _FeedMediaPickerScreenState();
@@ -1000,6 +1010,17 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
                           onTap: _togglePreviewFit,
                         ),
                       ),
+                    if (_mode == FeedPostContentType.image &&
+                        _selectedPhotos.length > 1 &&
+                        _previewAsset != null)
+                      Positioned(
+                        right: 10,
+                        top: 10,
+                        child: _PhotoCounterPill(
+                          current: _selectedPhotoOrderForCounter,
+                          total: _selectedPhotos.length,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -1008,6 +1029,16 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         );
       },
     );
+  }
+
+  /// Urutan foto tersorot (1-based) di antara foto terpilih — untuk pill
+  /// counter "Foto X dari Y". Fallback 1 kalau tidak ketemu (mis. preview
+  /// sedang menampilkan foto belum terseleksi).
+  int get _selectedPhotoOrderForCounter {
+    final asset = _previewAsset;
+    if (asset == null) return 1;
+    final idx = _selectedPhotos.indexWhere((p) => p.id == asset.id);
+    return idx >= 0 ? idx + 1 : 1;
   }
 
   /// Toggle preview image fitting: default cover/fill, tap icon diagonal
@@ -1136,13 +1167,11 @@ class _MediaPickerHeader extends StatelessWidget {
       height: 52,
       child: Row(
         children: [
-          IconButton(
-            onPressed: onClose,
-            icon: const Icon(Icons.close_rounded, color: _textWhite, size: 26),
-          ),
+          const SizedBox(width: 14),
+          _HeaderCloseButton(onTap: onClose),
           const Expanded(
             child: Text(
-              'Buat Postingan',
+              'Post Baru',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: _textWhite,
@@ -1151,18 +1180,72 @@ class _MediaPickerHeader extends StatelessWidget {
               ),
             ),
           ),
-          TextButton(
-            onPressed: canProceed ? onNext : null,
-            child: Text(
-              'Next',
-              style: TextStyle(
-                color: canProceed ? _natoloBlue : _textMuted,
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-              ),
+          _HeaderNextButton(enabled: canProceed, onTap: onNext),
+          const SizedBox(width: 14),
+        ],
+      ),
+    );
+  }
+}
+
+/// Header close — lingkaran 36 frosted (match mockup v2).
+class _HeaderCloseButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _HeaderCloseButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.14),
+              width: 1,
             ),
           ),
-        ],
+          child: const Icon(Icons.close_rounded, color: _textWhite, size: 19),
+        ),
+      ),
+    );
+  }
+}
+
+/// Header next — lingkaran 36 biru solid, disabled = frosted + ikon muted.
+class _HeaderNextButton extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _HeaderNextButton({required this.enabled, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: enabled ? _natoloBlue : Colors.white.withValues(alpha: 0.08),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.chevron_right_rounded,
+            color: enabled ? _textWhite : _textMuted,
+            size: 22,
+          ),
+        ),
       ),
     );
   }
@@ -1376,12 +1459,47 @@ class _DurationBadge extends StatelessWidget {
         color: Colors.black.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(6),
       ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.play_arrow_rounded, color: _textWhite, size: 9),
+          const SizedBox(width: 2),
+          Text(
+            '$mm:$ss',
+            style: const TextStyle(
+              color: _textWhite,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pill counter "Foto X dari Y" — top-right preview besar, tampil saat
+/// multi-foto (>1 selected).
+class _PhotoCounterPill extends StatelessWidget {
+  final int current;
+  final int total;
+
+  const _PhotoCounterPill({required this.current, required this.total});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(999),
+      ),
       child: Text(
-        '$mm:$ss',
+        'Foto $current dari $total',
         style: const TextStyle(
           color: _textWhite,
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );

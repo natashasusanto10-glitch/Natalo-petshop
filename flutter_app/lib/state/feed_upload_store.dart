@@ -102,6 +102,10 @@ class FeedUploadStore extends ChangeNotifier {
   FeedUploadTask? get activeTask => _task;
   bool get hasActiveUpload => _task != null;
 
+  /// Injectable untuk unit test — default gate global.
+  @visibleForTesting
+  VideoCompressGate gate = videoCompressGate;
+
   /// Auto-dismiss timer untuk success / waiting-review state. Disimpan
   /// supaya bisa di-cancel kalau task baru di-start sebelum dismiss.
   Timer? _autoDismissTimer;
@@ -271,7 +275,7 @@ class FeedUploadStore extends ChangeNotifier {
           // Lewat gate: kalau layar trim sedang kompres, job ini antre
           // (bukan StateError), dan dispose layar lain tidak bisa
           // membunuh job ini.
-          final info = await videoCompressGate.compress(
+          final info = await gate.compress(
             originalPath,
             quality: VideoQuality.Res1280x720Quality,
             includeAudio: true,

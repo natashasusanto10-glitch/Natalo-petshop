@@ -13,7 +13,7 @@ import '../services/feed_service.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
-import '../widgets/feed_upload_sheet.dart';
+import 'feed_media_picker_screen.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/profile_avatar.dart';
 import 'feed_new_post_screen.dart';
@@ -216,7 +216,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
 
   Future<void> _openUpload() async {
     AppHaptics.tap();
-    final uploaded = await FeedUploadSheet.show(context);
+    final uploaded = await FeedMediaPickerScreen.open(context);
     if (uploaded == true) {
       await _loadPosts();
     }

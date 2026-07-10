@@ -43,7 +43,7 @@ import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/feed_comment_sheet.dart';
-import '../widgets/feed_upload_sheet.dart';
+import 'feed_media_picker_screen.dart';
 import '../widgets/moderation_action_sheet.dart';
 
 const _officialGold = Color(0xFFF4D47C);
@@ -546,8 +546,8 @@ class _FeedScreenState extends State<FeedScreen> {
     AppHaptics.tap();
     _setFeedInteractionLocked(true);
     // Unified "Postingan baru" flow — push FeedMediaPickerScreen via
-    // FeedUploadSheet.show() yang juga dipakai oleh member_screen dan
-    // member_posts_screen. Picker IG-style (preview + gallery grid)
+    // FeedMediaPickerScreen.open() yang juga dipakai oleh member_screen
+    // dan member_posts_screen. Picker IG-style (preview + gallery grid)
     // handle photo + video di satu screen, lalu push FeedNewPostScreen
     // untuk caption + product tag + submit.
     //
@@ -555,7 +555,7 @@ class _FeedScreenState extends State<FeedScreen> {
     // dulu) → flow lama yang inkonsisten dengan akun entry. Sekarang
     // SEMUA "+" icon (feed + akun + postingan saya) lead ke flow yang
     // sama untuk konsistensi UX.
-    await FeedUploadSheet.show(context);
+    await FeedMediaPickerScreen.open(context);
     if (mounted) _setFeedInteractionLocked(false);
     if (!mounted) return;
     await _loadInitial();
@@ -6068,6 +6068,6 @@ class _PopupCartButton extends StatelessWidget {
 Product? _typeHint() => null;
 
 // Note: _UploadChoiceSheet (split video/photo dulu) di-remove. Flow upload
-// sekarang unified via FeedUploadSheet.show() → FeedMediaPickerScreen
-// yang handle photo + video di satu picker IG-style. Konsisten dengan
-// entry point dari member_screen + member_posts_screen.
+// sekarang unified via FeedMediaPickerScreen.open() yang handle photo +
+// video di satu picker IG-style. Konsisten dengan entry point dari
+// member_screen + member_posts_screen.
