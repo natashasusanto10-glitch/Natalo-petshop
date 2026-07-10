@@ -417,7 +417,9 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
   @override
   void initState() {
     super.initState();
-    unawaited(AppAnalytics.logEvent('feed_post_edit_opened'));
+    // feed_post_edit_opened kini dilempar dari FeedVideoEditScreen (Fase
+    // 2B) — layar ini sudah tak terjangkau dari picker, tinggal dipakai
+    // FeedPostDetailScreen._editVideo (dihapus Task 5).
     _range = RangeValues(
       0,
       math.min(

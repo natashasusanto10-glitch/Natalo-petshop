@@ -16,7 +16,7 @@ import '../models/feed_create_post_draft.dart';
 import '../services/app_analytics.dart';
 import '../utils/haptics.dart';
 import 'feed_new_post_screen.dart';
-import 'feed_video_upload_flow.dart';
+import 'feed_post/feed_video_edit_screen.dart';
 
 const int maxPhotoCarouselItems = 8;
 const int minVideoDurationSeconds = 1;
@@ -791,23 +791,12 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
       originalFilename: video.localPath.split(RegExp(r'[\\/]')).last,
       mimeType: _videoMimeType(video.localPath),
     );
-    // Video > 60 dtk → masuk Trim Video. <= 60 dtk → masuk Preview/Detail.
-    // BUGFIX: dulu Trim screen dipanggil dengan `returnResultOnNext: true`
-    // di bawah `Navigator.push<bool>` — saat user tap Next, Trim screen
-    // pop() dengan `FeedCreatePostDraft` (bukan bool) ke route yang
-    // di-type sebagai Route<bool> → runtime TypeError. Trim screen dengan
-    // `returnResultOnNext: false` (default) justru men-push
-    // FeedNewPostScreen sendiri, PERSIS seperti jalur <=60s
-    // (FeedVideoPreviewScreen._next() juga push forward, tidak pernah pop
-    // dengan value) — jadi wiring kedua cabang sekarang konsisten.
-    final needsTrim = duration.inSeconds > maxVideoDurationSeconds;
+    // Semua video (<=60s dan >60s) masuk Edit Video fullscreen tunggal
+    // (Fase 2B) — gabungan preview+trim, Next di sana push FeedNewPostScreen
+    // sendiri (tidak pernah pop dengan value), jadi wiring konsisten.
     final result = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(
-        builder: (_) => needsTrim
-            ? FeedVideoTrimScreen(draft: draft)
-            : FeedVideoPreviewScreen(draft: draft),
-      ),
+      MaterialPageRoute(builder: (_) => FeedVideoEditScreen(draft: draft)),
     );
     if (result == true && mounted) Navigator.pop(context, true);
   }
