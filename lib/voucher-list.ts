@@ -242,12 +242,22 @@ export function buildVoucherListItems(input: {
     const scopeUnmatched =
       cartProducts !== undefined && !cartMatchesVoucherScope(v, cartProducts);
 
+    // Nama brand voucher (null kalau tidak scoped ke brand / brand tidak
+    // ke-resolve di brandNamesById). Dipakai untuk display DAN untuk alasan
+    // disabled yang spesifik brand.
+    const brandName = formatVoucherBrandName(v.eligibleBrandIds, brandNamesById);
+
     // Transient disabled state: belum mulai / NEW_MEMBER mismatch /
     // subtotal kurang / scope tidak cocok dengan isi cart. Voucher tetap
-    // tampil dengan reason.
+    // tampil dengan reason. Kalau mismatch-nya karena brand, sebut nama
+    // brand supaya user paham harus tambah produk brand itu.
     const disabledReason =
       getVoucherDisabledReason(v, subtotal, userCtx, now) ??
-      (scopeUnmatched ? "Voucher tidak berlaku untuk produk di keranjang" : null);
+      (scopeUnmatched
+        ? brandName
+          ? `Belum ada produk brand ${brandName} di keranjang`
+          : "Voucher tidak berlaku untuk produk di keranjang"
+        : null);
     const discount = disabledReason ? 0 : calcVoucherDiscount(subtotal, v);
     const isFreeShipping = isFreeShippingVoucher(v);
     // Free shipping voucher: applicable bahkan kalau discount=0 (karena
@@ -255,8 +265,6 @@ export function buildVoucherListItems(input: {
     // bukan di sini — listing tidak tau shipping fee).
     const applicable =
       disabledReason === null && (discount > 0 || isFreeShipping);
-
-    const brandName = formatVoucherBrandName(v.eligibleBrandIds, brandNamesById);
 
     items.push({
       id: v.id,
