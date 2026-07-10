@@ -27,6 +27,23 @@ void main() {
       isPluginBusy: () => false,
       resetPluginFlag: () {},
     );
+    // Rekam riwayat status (dedupe berurutan) via listener — sinyal pembeda
+    // antara "rethrow murni" vs "regresi ke fallback lalu gagal di network":
+    // fallback SELALU melewati status `uploading` (di-set saat mulai upload
+    // thumbnail, progress 0.1) sebelum akhirnya gagal. Jalur rethrow gagal
+    // SAAT kompresi, sebelum tahap upload — jadi `uploading` TIDAK PERNAH
+    // tercapai. Assert final==failed saja tidak membedakan kedua jalur ini.
+    final history = <FeedUploadStatus>[];
+    void listener() {
+      final status = store.activeTask?.status;
+      if (status != null && (history.isEmpty || history.last != status)) {
+        history.add(status);
+      }
+    }
+
+    store.addListener(listener);
+    addTearDown(() => store.removeListener(listener));
+
     await store.startVideoUpload(
       draft: FeedCreatePostDraft(
         localVideoPath: tmp.path,
@@ -40,6 +57,15 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
     }
     expect(store.activeTask?.status, FeedUploadStatus.failed);
+    expect(history, contains(FeedUploadStatus.failed));
+    expect(
+      history,
+      isNot(contains(FeedUploadStatus.uploading)),
+      reason: 'rethrow-on-trim-fail harus gagal SAAT kompresi, sebelum '
+          'tahap upload — status uploading tak boleh pernah tercapai. '
+          'Jika tercapai, berarti regresi ke fallback (upload video asli).',
+    );
+    store.removeListener(listener);
     store.clear();
   });
 }

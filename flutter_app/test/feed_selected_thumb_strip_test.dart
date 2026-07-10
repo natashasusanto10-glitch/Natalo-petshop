@@ -40,6 +40,18 @@ void main() {
       matching: find.byType(Container),
     ).first);
     final deco = active.decoration as BoxDecoration;
-    expect(deco.border, isNotNull); // border biru #1E5BFF pada yang aktif
+    expect(deco.border, isNotNull);
+    final activeBorder = deco.border as Border;
+    expect(activeBorder.top.color, const Color(0xFF1E5BFF));
+
+    // Bandingkan dengan tile TIDAK aktif — pastikan bukan false positive
+    // (semua tile punya `border` non-null, cuma yang aktif berwarna biru).
+    final inactive = tester.widget<Container>(find.descendant(
+      of: find.byKey(const ValueKey('thumb-a')),
+      matching: find.byType(Container),
+    ).first);
+    final inactiveDeco = inactive.decoration as BoxDecoration;
+    final inactiveBorder = inactiveDeco.border as Border;
+    expect(inactiveBorder.top.color, isNot(const Color(0xFF1E5BFF)));
   });
 }
