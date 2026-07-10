@@ -1984,12 +1984,11 @@ class _FeedPostViewState extends State<_FeedPostView>
   Timer? _productRotationTimer;
   double _commentDragOffset = 0;
 
-  // End-of-video product CTA — slide-in card di 2.5s terakhir tiap loop
-  // supaya user yang nonton sampai abis lihat reminder produk dengan tombol
-  // "Beli" lebih prominent dari product chip kecil di bottom info yang selalu
-  // visible. Reset tiap loop wrap (position < 500ms), tapi sticky setelah
-  // user dismiss (per-session). Skip untuk post tanpa tagged products atau
-  // video <3 detik.
+  // Product CTA card — slide-in sekali di detik ~4 (min(4s, durasi/2))
+  // lalu menetap sampai user dismiss (gaya TikTok Shop). Tombol "Beli"
+  // lebih prominent dari product chip kecil di bottom info yang selalu
+  // visible. Dismiss sticky per post; reset saat swipe ke post lain.
+  // Skip untuk post tanpa tagged products.
   bool _endOfVideoCtaVisible = false;
   bool _endOfVideoCtaDismissed = false;
 
@@ -2104,37 +2103,34 @@ class _FeedPostViewState extends State<_FeedPostView>
     if (mounted) setState(() {});
   }
 
-  /// Listener position video → toggle end-of-video product CTA visibility.
+  /// Listener position video → trigger product CTA visibility.
   /// Dipanggil tiap frame video (puluhan kali/detik). Cepat-keluar untuk
   /// kondisi yang gak perlu re-render supaya gak ngabisin frame budget.
+  ///
+  /// Gaya TikTok Shop: kartu muncul SEKALI di detik ~4 (atau setengah
+  /// durasi untuk video pendek) lalu MENETAP sampai user dismiss — tidak
+  /// hilang saat loop. Pola lama (2.5 dtk terakhir tiap loop) tidak
+  /// efektif: mayoritas penonton swipe sebelum video habis, dan 2.5 dtk
+  /// tidak cukup untuk baca produk + harga.
   void _handleVideoPositionForCta() {
     final ctrl = _videoController;
     if (ctrl == null || !mounted) return;
+    if (_endOfVideoCtaVisible || _endOfVideoCtaDismissed) return;
     final value = ctrl.value;
     if (!value.isInitialized) return;
 
     final durMs = value.duration.inMilliseconds;
-    // Skip ultra-short clips (<3s) — gak ada window 2.5s yang masuk akal.
-    if (durMs < 3000) return;
+    if (durMs <= 0) return;
     final posMs = value.position.inMilliseconds;
 
-    // Detect loop wrap (position balik ke awal) — reset visibility supaya
-    // CTA muncul lagi di loop berikutnya. Dismissed flag tetap di-hormati.
-    if (posMs < 500 && _endOfVideoCtaVisible) {
-      setState(() => _endOfVideoCtaVisible = false);
-      return;
-    }
-
-    // Show window: 2.5 detik terakhir, kecuali 50ms terakhir (avoid flicker
-    // di loop boundary saat position mau wrap).
-    final remainingMs = durMs - posMs;
-    final inShowWindow = remainingMs > 50 && remainingMs <= 2500;
-    if (inShowWindow && !_endOfVideoCtaVisible && !_endOfVideoCtaDismissed) {
-      // Cek post punya tagged product yang valid sebelum trigger setState —
-      // hindari render kosong.
-      if (_rotatingProductsForPost(widget.post).isEmpty) return;
-      setState(() => _endOfVideoCtaVisible = true);
-    }
+    // Trigger: min(4 dtk, setengah durasi) — video 5 dtk tetap dapat
+    // kartu di ~2.5 dtk.
+    final showAtMs = durMs ~/ 2 < 4000 ? durMs ~/ 2 : 4000;
+    if (posMs < showAtMs) return;
+    // Cek post punya tagged product yang valid sebelum trigger setState —
+    // hindari render kosong.
+    if (_rotatingProductsForPost(widget.post).isEmpty) return;
+    setState(() => _endOfVideoCtaVisible = true);
   }
 
   void _dismissEndOfVideoCta() {
