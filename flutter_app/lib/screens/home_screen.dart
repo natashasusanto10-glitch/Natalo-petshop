@@ -2495,10 +2495,10 @@ class _ShortcutGrid extends StatelessWidget {
           crossAxisCount: 4,
           mainAxisSpacing: 6,
           crossAxisSpacing: 8,
-          // 84 (dulu 92): konten sel (ikon 48 + gap 6 + label) di-center,
-          // sisa tinggi jadi ruang kosong atas-bawah yang bikin jarak ke
-          // section flash sale terkesan jauh.
-          mainAxisExtent: 84,
+          // 72 (dulu 84/92): konten sel (ikon 48 + gap 6 + label ~18) muat
+          // pas, whitespace atas-bawah minim → jarak ke section berikutnya
+          // (flash sale) tidak terkesan jauh.
+          mainAxisExtent: 72,
         ),
         itemBuilder: (context, index) {
           final item = items[index];
@@ -2554,9 +2554,9 @@ class _FlashSaleGrid extends StatelessWidget {
   final VoidCallback onSeeAll;
   final VoidCallback? onCountdownExpired;
 
-  // Rail horizontal muat lebih banyak tanpa makan tinggi layar (dulu grid
-  // 3 kolom × 2 baris = 6; rail 1 baris scroll → 8).
-  static const _maxVisible = 8;
+  // Grid 3 kolom × 3 baris = 9 (user minta grid atas-bawah, pakai spec kartu
+  // grid 1:1). Sebelumnya sempat rail horizontal (8).
+  static const _maxVisible = 9;
 
   const _FlashSaleGrid({
     required this.products,
@@ -2604,7 +2604,7 @@ class _FlashSaleGrid extends StatelessWidget {
     final titleColor = isDark ? _titleDark : _titleLight;
 
     return Container(
-      margin: const EdgeInsets.only(top: 12),
+      margin: const EdgeInsets.only(top: 6),
       padding: const EdgeInsets.fromLTRB(0, 12, 0, 14),
       color: isDark ? _bandDark : _bandLight,
       child: Column(
@@ -2667,24 +2667,38 @@ class _FlashSaleGrid extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          // Rail horizontal — kartu lebar tetap 118; padding kanan 16 supaya
-          // kartu terakhir tidak mepet tepi saat scroll mentok.
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+          // Grid 3-kolom AUTO-HEIGHT (spec sama Beranda/Katalog) — dulu rail
+          // horizontal; user minta grid 3×3 atas-bawah. Row-based auto-height
+          // (BUKAN GridView aspect-tetap) supaya kartu foto 1:1 + progress
+          // terjual tak overflow di layar sempit. Tepi 16, gap 6.
+          Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Column(
               children: [
-                for (var i = 0; i < visible.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 9),
-                  SizedBox(
-                    width: 118,
-                    child: _FlashSaleCard(
-                      product: visible[i],
-                      onTap: () => onTap(visible[i]),
+                for (var row = 0; row < (visible.length + 2) ~/ 3; row++)
+                  Padding(
+                    padding: EdgeInsets.only(
+                      bottom: row == (visible.length + 2) ~/ 3 - 1 ? 0 : 6,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (var col = 0; col < 3; col++) ...[
+                          if (col > 0) const SizedBox(width: 6),
+                          Expanded(
+                            child: row * 3 + col < visible.length
+                                ? _FlashSaleCard(
+                                    product: visible[row * 3 + col],
+                                    onTap: () => onTap(visible[row * 3 + col]),
+                                  )
+                                // Baris terakhir ganjil — slot kosong jaga
+                                // lebar kolom tetap 1/3 (kartu tak melar).
+                                : const SizedBox.shrink(),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                ],
               ],
             ),
           ),
@@ -2706,14 +2720,13 @@ class _FlashSaleCard extends StatelessWidget {
 
     return Material(
       color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(8),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(7),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: Theme.of(context).colorScheme.outlineVariant,
             ),
@@ -2728,9 +2741,10 @@ class _FlashSaleCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Foto 1:1 full-bleed cover (spec grid) + badge diskon overlay.
               Stack(
                 children: [
-                  _HomeProductImage(imageUrl: product.imageUrl, height: 92),
+                  _HomeProductImageSquare(imageUrl: product.imageUrl),
                   if (discountPercent != null)
                     Positioned(
                       right: 6,
@@ -2742,24 +2756,31 @@ class _FlashSaleCard extends StatelessWidget {
                     ),
                 ],
               ),
-              const SizedBox(height: 7),
-              SizedBox(
-                height: 27,
-                child: Text(
-                  product.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10.8,
-                    height: 1.18,
-                    fontWeight: FontWeight.w700,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(7, 6, 7, 7),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      height: 27,
+                      child: Text(
+                        product.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10.8,
+                          height: 1.18,
+                          fontWeight: FontWeight.w700,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    _FlashSalePriceBlock(product: product),
+                    _FlashSaleSoldProgress(product: product),
+                  ],
                 ),
               ),
-              const SizedBox(height: 6),
-              _FlashSalePriceBlock(product: product),
-              _FlashSaleSoldProgress(product: product),
             ],
           ),
         ),
