@@ -2263,16 +2263,6 @@ class _ProductCustomerPostsSection extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Foto dan video dari Natalo & pelanggan yang men-tag produk ini.',
-            style: TextStyle(
-              color: cs.onSurfaceVariant,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              height: 1.35,
-            ),
-          ),
           const SizedBox(height: 12),
           SizedBox(
             height: 190,
