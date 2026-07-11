@@ -6,9 +6,9 @@ import 'package:natalo_petshop_flutter/models/brand.dart';
 
 /// Golden test untuk `BrandGridCard` — capture render side-by-side untuk
 /// logo banner lebar (happy-cat) vs logo kotak (drontal) vs fallback
-/// inisial. Ukuran sel 110×138 = childAspectRatio 0.8 tile 1:1 (logo
-/// Expanded memenuhi kartu + nama di bawah). Fail di future runs kalau:
-/// - Area logo tak lagi memenuhi kartu (regresi tile 1:1)
+/// inisial. Ukuran sel 110×82 = kartu 4:3 (spec): logo dalam bounding box
+/// 42dp (contain, lebar maks 82%) + nama di bawah. Fail di future runs kalau:
+/// - Logo keluar dari bounding box / meng-crop
 /// - Nama brand hilang / overflow
 /// - Padding kartu berubah tanpa sengaja
 ///
@@ -30,7 +30,7 @@ void main() {
               children: [
                 SizedBox(
                   width: 110,
-                  height: 138,
+                  height: 82,
                   child: BrandGridCard(
                     brand: PetBrand(
                       name: 'Happy Cat',
@@ -43,7 +43,7 @@ void main() {
                 SizedBox(width: 12),
                 SizedBox(
                   width: 110,
-                  height: 138,
+                  height: 82,
                   child: BrandGridCard(
                     brand: PetBrand(
                       name: 'Drontal',
@@ -56,7 +56,7 @@ void main() {
                 SizedBox(width: 12),
                 SizedBox(
                   width: 110,
-                  height: 138,
+                  height: 82,
                   child: BrandGridCard(
                     brand: PetBrand(
                       name: 'Tanpa Logo',
