@@ -3933,17 +3933,16 @@ class _BrandChoiceSectionState extends State<_BrandChoiceSection> {
       return const SizedBox.shrink();
     }
 
-    // Compute card height dari aspect ratio + screen width
-    // (childAspectRatio: 0.8 = width/height — kartu "tile 1:1": area logo
-    // ~persegi memenuhi lebar kartu + nama di bawah, ala grid produk.
-    // Redesign Jul 2026 dari 1.2/patok-40: gambar logo yang di-upload berupa
-    // kotak putih 1024×1024 dengan ruang kosong internal, jadi patok tinggi
-    // berapapun tetap terasa kecil — solusinya logo mengisi SELURUH kartu.
-    // HARUS sama dengan childAspectRatio gridDelegate di bawah.)
+    // Compute card height dari aspect ratio + screen width.
+    // Spec Brand Favorit (disepakati): kartu 4:3 (childAspectRatio 4/3),
+    // logo dalam BOUNDING BOX 42dp (contain, lebar maks 82%) + nama di bawah.
+    // Full-tile (aspect 0.8) sebelumnya adalah workaround untuk asset logo
+    // kotak-putih; sekarang asset diganti TRANSPARAN → bounding box rapi.
+    // HARUS sama dengan childAspectRatio gridDelegate di bawah.
     final screenWidth = MediaQuery.sizeOf(context).width;
     final innerWidth = screenWidth - 32; // 16 padding × 2
     final cardWidth = (innerWidth - 24) / 3; // 12 spacing × 2 between 3 cols
-    final cardHeight = cardWidth / 0.8;
+    final cardHeight = cardWidth / (4 / 3);
     final gridHeight = (cardHeight * 2) + 12; // 2 rows + mainAxisSpacing
 
     return Padding(
@@ -3992,7 +3991,7 @@ class _BrandChoiceSectionState extends State<_BrandChoiceSection> {
                       crossAxisCount: 3,
                       mainAxisSpacing: 12,
                       crossAxisSpacing: 12,
-                      childAspectRatio: 0.8,
+                      childAspectRatio: 4 / 3,
                     ),
                     itemCount: pageBrands.length,
                     itemBuilder: (context, idx) {
@@ -4030,7 +4029,7 @@ class BrandGridCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
@@ -4045,21 +4044,25 @@ class BrandGridCard extends StatelessWidget {
             ],
           ),
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Tile 1:1 (redesign Jul 2026): logo mengisi SELURUH area kartu
-              // (Expanded + contain), bukan patok tinggi 26/40 — gambar brand
-              // di-upload sebagai kotak putih 1024×1024 dengan ruang kosong
-              // internal, sehingga slot kecil membuat logo efektif mini.
-              // Expanded (bukan AspectRatio) supaya kebal overflow saat
-              // textScale besar: area logo mengalah, nama selalu muat.
-              // BoxFit.contain → logo wordmark lebar pun tak pernah ke-crop.
-              Expanded(
-                child: SizedBox(
-                  width: double.infinity,
-                  child: BrandLogoImage(brand: brand),
+              // Spec: BOUNDING BOX logo tinggi 42dp, lebar maks 82% kartu,
+              // BoxFit.contain center. Full-tile (Expanded) dibuang — asset
+              // logo sekarang TRANSPARAN jadi ruang putih di sekeliling logo
+              // normal & rapi. Flexible + maxHeight 42: normal 42dp, tapi
+              // kalau ruang sempit (kartu 4:3 pendek / textScale besar) logo
+              // MENGALAH supaya nama tak overflow. FractionallySizedBox
+              // batasi lebar ke 82% biar wordmark lebar tak mepet tepi.
+              Flexible(
+                child: FractionallySizedBox(
+                  widthFactor: 0.82,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 42),
+                    child: BrandLogoImage(brand: brand),
+                  ),
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
               Text(
                 brand.name,
                 maxLines: 1,
@@ -4067,8 +4070,8 @@ class BrandGridCard extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurface,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
@@ -4149,18 +4152,6 @@ class _CategorySection extends StatelessWidget {
   final ValueChanged<String> onTap;
 
   const _CategorySection({required this.categories, required this.onTap});
-
-  // Palet warna tile kategori — hue sama dengan shortcut grid biar serumpun.
-  static const _tileColors = <Color>[
-    Color(0xFF0B7FEA), // biru
-    Color(0xFFF59E0B), // amber
-    Color(0xFF0891B2), // cyan
-    Color(0xFFEF4444), // merah
-    Color(0xFF16A34A), // hijau
-    Color(0xFFDB2777), // pink
-    Color(0xFFEA580C), // oranye
-    Color(0xFF7C3AED), // ungu
-  ];
 
   // Map nama kategori → icon yang relevan. Fallback ke generic store icon.
   // Icon FALLBACK — dipakai hanya saat kategori belum punya foto produk
@@ -4249,20 +4240,20 @@ class _CategorySection extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           SizedBox(
-            height: 68,
+            height: 78,
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               scrollDirection: Axis.horizontal,
               itemCount: visible.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
                 final category = visible[index];
                 return _PopularCategoryCard(
                   category: category,
                   icon: _iconFor(category.name),
-                  // Warna bergilir per kategori (dulu semua biru seragam —
-                  // terasa datar). Palet sama dengan shortcut grid.
-                  color: _tileColors[index % _tileColors.length],
+                  // Kartu 76% lebar layar → kartu berikutnya "peek" sebagai
+                  // affordance scroll (spec). Hard scroll-snap = follow-up.
+                  width: MediaQuery.sizeOf(context).width * 0.76,
                   onTap: () => onTap(category.name),
                 );
               },
@@ -4274,91 +4265,96 @@ class _CategorySection extends StatelessWidget {
   }
 }
 
-/// Compact horizontal category card — 148w row dengan icon + nama.
-/// Pattern reference Anda: icon di kotak primaryLight, nama di samping.
+/// Kartu kategori horizontal (spec): thumbnail 58×58 foto produk (cover +
+/// overlay putih 12%) + nama; lebar kartu ~76% layar (peek). Fallback WAJIB:
+/// imageUrl null / gambar rusak → icon kategori di latar biru muda.
 class _PopularCategoryCard extends StatelessWidget {
   final HomeCategory category;
   final IconData icon;
-  final Color color;
+  final double width;
   final VoidCallback onTap;
 
   const _PopularCategoryCard({
     required this.category,
     required this.icon,
-    required this.color,
+    required this.width,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          width: 168,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-          ),
-          child: Row(
+    final scheme = Theme.of(context).colorScheme;
+
+    // Fallback thumbnail (spec WAJIB) — imageUrl null ATAU gambar rusak/
+    // cache-miss → icon kategori di latar biru muda, BUKAN broken image /
+    // kotak abu kosong.
+    Widget fallback() => ColoredBox(
+          color: scheme.primary.withValues(alpha: 0.10),
+          child: Center(child: Icon(icon, color: scheme.primary, size: 26)),
+        );
+
+    // Thumbnail: foto produk kategori (server kirim imageUrl = produk
+    // TERBARU). CachedNetworkImage langsung (bukan AppProductImage) supaya
+    // errorWidget → fallback icon. Overlay putih 12% meredam foto promo
+    // yang mencolok (spec). cover-crop karena rasio foto tak konsisten.
+    final url = category.imageUrl;
+    final Widget thumb = (url != null && url.isNotEmpty)
+        ? Stack(
+            fit: StackFit.expand,
             children: [
-              // Foto PRODUK kategori full tinggi kartu, edge-to-edge kiri
-              // (Opsi 2, Jul 2026) — server /api/categories kirim imageUrl =
-              // foto produk TERBARU per kategori, ala pola foto-1:1-cover di
-              // seluruh app. borderRadius.zero WAJIB (default AppProductImage
-              // radius 12 → bocor sudut); clip kartu via Clip.antiAlias.
-              // Fallback kategori tanpa foto: lingkaran icon warna (segaya
-              // shortcut grid).
-              SizedBox(
-                width: 64,
-                height: double.infinity,
-                child: category.imageUrl != null
-                    ? AppProductImage(
-                        imageUrl: category.imageUrl,
-                        borderRadius: BorderRadius.zero,
-                      )
-                    : ColoredBox(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHighest,
-                        child: Center(
-                          child: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(icon,
-                                color: Colors.white, size: 21),
-                          ),
-                        ),
-                      ),
+              CachedNetworkImage(
+                imageUrl: url,
+                fit: BoxFit.cover,
+                fadeInDuration: const Duration(milliseconds: 180),
+                placeholder: (_, __) => fallback(),
+                errorWidget: (_, __, ___) => fallback(),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 10),
+              const ColoredBox(color: Color(0x1FFFFFFF)),
+            ],
+          )
+        : fallback();
+
+    return SizedBox(
+      width: width,
+      child: Material(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: scheme.outlineVariant),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 58,
+                  height: 58,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: scheme.outlineVariant),
+                  ),
+                  child: thumb,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
                   child: Text(
                     category.name,
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface,
-                      fontSize: 13,
-                      height: 1.2,
-                      fontWeight: FontWeight.w800,
+                      color: scheme.onSurface,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
