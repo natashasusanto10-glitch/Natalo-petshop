@@ -1,31 +1,23 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-import '../models/launch_popup_campaign.dart';
-import '../theme/natalo_colors.dart';
+import '../models/launch_popup.dart';
 import '../utils/haptics.dart';
 import '../utils/motion_prefs.dart';
-import 'app_product_image.dart';
 
 /// Hasil interaksi popup pembuka.
 enum LaunchPromoOutcome { cta, dismiss }
 
-class _Tone {
-  final Color color;
-  final Color softBg;
-  const _Tone(this.color, this.softBg);
-
-  /// Paritas dengan _AnnouncementTone di announcement_detail_screen.dart.
-  factory _Tone.of(LaunchPopupTone tone) => tone == LaunchPopupTone.promo
-      ? const _Tone(Color(0xFFE11D48), Color(0xFFFFEEF2))
-      : const _Tone(Color(0xFF20B26B), Color(0xFFE8F8F0));
-}
-
-/// Tampilkan popup pembuka di atas layar sekarang. Return outcome:
-/// [LaunchPromoOutcome.cta] bila user tap tombol utama; selain itu
-/// (tombol dismiss / X / tap area gelap / back Android) → dismiss.
+/// Popup pembuka gaya Shopee: SATU gambar kreatif penuh (admin-managed) +
+/// tombol X. Tap gambar = CTA (deep link), X / tap area gelap / back =
+/// dismiss. Menggantikan kartu teks hardcoded lama.
+///
+/// Gambar diasumsikan SUDAH di-precache oleh LaunchPromoGate sebelum dialog
+/// dibuka (gagal precache = popup di-skip total), jadi di sini tidak perlu
+/// placeholder/error state — CachedNetworkImage langsung hit cache.
 Future<LaunchPromoOutcome> showLaunchPromoDialog(
   BuildContext context, {
-  required LaunchPopupCampaign campaign,
+  required LaunchPopup popup,
 }) async {
   final reduce = MotionPrefs.shouldReduce(context);
   final result = await showGeneralDialog<LaunchPromoOutcome>(
@@ -33,9 +25,8 @@ Future<LaunchPromoOutcome> showLaunchPromoDialog(
     barrierDismissible: true,
     barrierLabel: 'Tutup',
     barrierColor: const Color(0x8C0F172A), // rgba(15,23,42,.55)
-    transitionDuration:
-        Duration(milliseconds: reduce ? 120 : 240),
-    pageBuilder: (context, _, __) => LaunchPromoDialog(campaign: campaign),
+    transitionDuration: Duration(milliseconds: reduce ? 120 : 240),
+    pageBuilder: (context, _, __) => LaunchPromoDialog(popup: popup),
     transitionBuilder: (context, anim, _, child) {
       final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
       if (reduce) return FadeTransition(opacity: curved, child: child);
@@ -52,8 +43,8 @@ Future<LaunchPromoOutcome> showLaunchPromoDialog(
 }
 
 class LaunchPromoDialog extends StatelessWidget {
-  final LaunchPopupCampaign campaign;
-  const LaunchPromoDialog({super.key, required this.campaign});
+  final LaunchPopup popup;
+  const LaunchPromoDialog({super.key, required this.popup});
 
   void _close(BuildContext context, LaunchPromoOutcome outcome) {
     AppHaptics.tap();
@@ -62,169 +53,63 @@ class LaunchPromoDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tone = _Tone.of(campaign.tone);
+    final size = MediaQuery.sizeOf(context);
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
+        // 28: ruang samping + ruang untuk tombol X yang menjorok keluar
+        // sudut gambar (Stack clip none).
+        padding: const EdgeInsets.symmetric(horizontal: 28),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 400),
-          child: Material(
-            color: NataloColors.surfaceElevated,
-            borderRadius: BorderRadius.circular(20),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (campaign.hasImage)
-                  Stack(
-                    children: [
-                      AppProductImage(
-                        imageUrl: campaign.imageUrl,
-                        width: double.infinity,
-                        height: 172,
-                        borderRadius: BorderRadius.zero,
+          constraints: BoxConstraints(
+            maxWidth: 380,
+            // 68% tinggi layar: gambar 4:5 muat penuh + masih terlihat
+            // konteks Beranda di belakang (gaya Shopee, bukan fullscreen).
+            maxHeight: size.height * 0.68,
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Semantics(
+                label: popup.imageAlt.isEmpty ? 'Promo' : popup.imageAlt,
+                button: popup.href != null,
+                child: GestureDetector(
+                  key: const ValueKey('launch-popup-image'),
+                  // opaque: seluruh area kartu (termasuk saat gambar belum/
+                  // gagal ter-render) menangkap tap — tanpa ini tap jatuh
+                  // tembus ke barrier (= dismiss yang tidak diminta).
+                  behavior: HitTestBehavior.opaque,
+                  // Tap gambar = CTA hanya kalau admin set link tujuan.
+                  onTap: popup.href == null
+                      ? null
+                      : () => _close(context, LaunchPromoOutcome.cta),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    // Min 200×200: jaga area hit + posisi tombol X wajar
+                    // walau gambar gagal render (produksi normalnya tidak —
+                    // gate sudah precache; gagal = popup di-skip).
+                    child: ConstrainedBox(
+                      constraints:
+                          const BoxConstraints(minWidth: 200, minHeight: 200),
+                      child: CachedNetworkImage(
+                        imageUrl: popup.imageUrl,
+                        fit: BoxFit.contain,
+                        fadeInDuration: Duration.zero,
+                        // errorWidget: jaring pengaman supaya error stream
+                        // tidak rethrow (termasuk di test).
+                        errorWidget: (_, __, ___) => const SizedBox.shrink(),
                       ),
-                      Positioned(
-                        top: 12,
-                        left: 12,
-                        child: _CategoryChip(label: campaign.categoryLabel, tone: tone),
-                      ),
-                      Positioned(
-                        top: 10,
-                        right: 10,
-                        child: _CloseButton(
-                          onTap: () => _close(context, LaunchPromoOutcome.dismiss),
-                        ),
-                      ),
-                    ],
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 10, 0),
-                    child: Row(
-                      children: [
-                        _CategoryChip(label: campaign.categoryLabel, tone: tone),
-                        const Spacer(),
-                        _CloseButton(
-                          onTap: () => _close(context, LaunchPromoOutcome.dismiss),
-                        ),
-                      ],
                     ),
                   ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        campaign.title,
-                        style: const TextStyle(
-                          color: NataloColors.textPrimary,
-                          fontSize: 19,
-                          fontWeight: FontWeight.w900,
-                          height: 1.2,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        campaign.body,
-                        style: const TextStyle(
-                          color: NataloColors.textSecondary,
-                          fontSize: 14,
-                          height: 1.5,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      _Actions(
-                        campaign: campaign,
-                        onCta: () => _close(context, LaunchPromoOutcome.cta),
-                        onDismiss: () => _close(context, LaunchPromoOutcome.dismiss),
-                      ),
-                    ],
-                  ),
                 ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Actions extends StatelessWidget {
-  final LaunchPopupCampaign campaign;
-  final VoidCallback onCta;
-  final VoidCallback onDismiss;
-  const _Actions({
-    required this.campaign,
-    required this.onCta,
-    required this.onDismiss,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final dismiss = _PillButton(
-      key: const ValueKey('launch-popup-dismiss'),
-      label: campaign.dismissLabel,
-      filled: false,
-      onTap: onDismiss,
-    );
-    if (!campaign.hasCta) {
-      return SizedBox(width: double.infinity, child: dismiss);
-    }
-    return Row(
-      children: [
-        Expanded(child: dismiss),
-        const SizedBox(width: 10),
-        Expanded(
-          flex: 3,
-          child: _PillButton(
-            key: const ValueKey('launch-popup-cta'),
-            label: campaign.ctaLabel!,
-            filled: true,
-            onTap: onCta,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _PillButton extends StatelessWidget {
-  final String label;
-  final bool filled;
-  final VoidCallback onTap;
-  const _PillButton({
-    super.key,
-    required this.label,
-    required this.filled,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 46,
-      child: Material(
-        color: filled ? NataloColors.primary : NataloColors.primarySoft,
-        borderRadius: BorderRadius.circular(999),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(999),
-          onTap: onTap,
-          child: Center(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: filled ? Colors.white : NataloColors.primary,
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
               ),
-            ),
+              Positioned(
+                top: -12,
+                right: -12,
+                child: _CloseButton(
+                  onTap: () => _close(context, LaunchPromoOutcome.dismiss),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -232,31 +117,8 @@ class _PillButton extends StatelessWidget {
   }
 }
 
-class _CategoryChip extends StatelessWidget {
-  final String label;
-  final _Tone tone;
-  const _CategoryChip({required this.label, required this.tone});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
-      decoration: BoxDecoration(
-        color: tone.softBg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: tone.color,
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
+/// X bulat translusen putih (gaya Shopee) — kontras di atas gambar apa pun
+/// maupun di atas barrier gelap saat menjorok keluar sudut gambar.
 class _CloseButton extends StatelessWidget {
   final VoidCallback onTap;
   const _CloseButton({required this.onTap});
@@ -265,21 +127,20 @@ class _CloseButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       key: const ValueKey('launch-popup-close'),
-      color: NataloColors.surfaceElevated,
+      color: const Color(0x40FFFFFF),
       shape: const CircleBorder(),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Container(
-          width: 30,
-          height: 30,
+          width: 34,
+          height: 34,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: NataloColors.border),
+            border: Border.all(color: Colors.white, width: 1.5),
           ),
-          child: const Icon(Icons.close_rounded,
-              size: 18, color: NataloColors.textPrimary),
+          child: const Icon(Icons.close_rounded, size: 20, color: Colors.white),
         ),
       ),
     );

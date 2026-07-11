@@ -5,6 +5,7 @@
 /// shimmer AppProductImage yang tak pernah settle di test).
 bool launchPromoShouldShow({
   required bool hasCampaign,
+  required bool memberOnly,
   required bool isLoggedIn,
   required bool hasSeenOnboarding,
   required bool isOnline,
@@ -12,7 +13,9 @@ bool launchPromoShouldShow({
   required bool routeStackedAboveHome,
 }) {
   if (!hasCampaign) return false;
-  if (!isLoggedIn) return false; // member-only
+  // Gating audience dari admin: popup "member" hanya untuk user login;
+  // popup "all" tampil ke semua (termasuk guest).
+  if (memberOnly && !isLoggedIn) return false;
   if (!hasSeenOnboarding) return false;
   if (!isOnline) return false;
   if (launchedExternally) return false; // jangan tutupi tujuan deep-link/push
