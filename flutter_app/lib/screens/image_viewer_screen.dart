@@ -1,11 +1,20 @@
+import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 
 import '../models/product.dart';
 import '../state/cart_store.dart';
+import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../widgets/app_product_image.dart';
+
+/// Brand blue lokal untuk `VideoProgressIndicator.playedColor` di
+/// [_PreviewVideoSlide]. `NataloColors.nataloBlue` = `NataloColors.primary`
+/// (0xFF1E5FBF) — jangan referensi private `_brandBlue` dari file lain.
+const _brandBlue = NataloColors.nataloBlue;
 
 /// Fullscreen image viewer dengan pinch-to-zoom.
 ///
@@ -593,5 +602,349 @@ class _ProductMediaBar extends StatelessWidget {
       return;
     }
     onAddToCart?.call(selectedVariant, 1);
+  }
+}
+
+/// Slide video di dalam viewer fullscreen (di-wire ke PageView oleh Task 2).
+///
+/// Beda dengan [ProductDetailVideoSlide] (manual-play, bisu-sampai-tap): slide
+/// ini **autoplay BERSUARA saat [active]** — membuka viewer fullscreen =
+/// keputusan user, jadi boleh langsung bunyi (default options, bukan mute /
+/// mixWithOthers). Saat [active] jadi false → hanya `pause()`; controller
+/// **tetap hidup** supaya resume instan saat user bolak-balik antar slide
+/// (tidak re-download). Dispose HANYA saat widget dibuang.
+///
+/// State machine:
+/// - poster (belum init) → thumbnail/poster contain di hitam
+/// - initializing (`_initializing`) → poster + spinner
+/// - ready (`_ready`) → VideoPlayer contain di hitam + progress + mute
+/// - failed (`_failed`) → poster + ▶ retry (tap = `_ensure`), BUKAN kotak hitam
+///
+/// onTap toggle play/pause pakai `HitTestBehavior.opaque` + `onTap` SAJA →
+/// tidak meng-claim horizontal drag, jadi PageView parent tetap bisa swipe.
+class _PreviewVideoSlide extends StatefulWidget {
+  final String videoUrl;
+  final String? thumbnailUrl;
+
+  /// Poster fallback saat `thumbnailUrl` null/kosong/gagal — biasanya
+  /// `product.imageUrl`. Cegah slide hitam saat thumbnail bermasalah.
+  final String? posterImageUrl;
+
+  /// True saat slide ini yang aktif di PageView → autoplay. False → pause
+  /// (controller dipertahankan untuk resume instan).
+  final bool active;
+
+  const _PreviewVideoSlide({
+    super.key,
+    required this.videoUrl,
+    required this.thumbnailUrl,
+    this.posterImageUrl,
+    required this.active,
+  });
+
+  @override
+  State<_PreviewVideoSlide> createState() => _PreviewVideoSlideState();
+}
+
+class _PreviewVideoSlideState extends State<_PreviewVideoSlide> {
+  VideoPlayerController? _controller;
+
+  /// True selama `initialize()` in-flight (ada `await` belum selesai). Dipakai:
+  /// (a) render spinner, (b) cegah re-entry `_ensure`, (c) single-owner dispose
+  /// — saat in-flight `dispose()` TIDAK dispose controller; race guard di
+  /// `_ensure` (`!mounted`/`!identical`) yang dispose (cegah double-dispose =
+  /// assertion "already disposed").
+  bool _initializing = false;
+
+  /// True setelah init sukses → render VideoPlayer.
+  bool _ready = false;
+
+  /// True kalau init gagal → poster + ▶ retry (JANGAN kotak hitam).
+  bool _failed = false;
+
+  /// Suara: default bersuara (false). Toggle via tombol mute.
+  bool _muted = false;
+
+  /// Ikon toggle play/pause yang muncul sekejap lalu fade saat user tap.
+  bool _showToggleIcon = false;
+  Timer? _toggleIconTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) _ensure();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PreviewVideoSlide oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active == widget.active) return;
+    final controller = _controller;
+    if (!widget.active) {
+      // active true→false: pause tapi PERTAHANKAN controller (resume instan).
+      if (controller != null && controller.value.isInitialized) {
+        unawaited(controller.pause());
+      }
+    } else {
+      // active false→true: controller siap → langsung play; belum ada / masih
+      // in-flight / gagal → `_ensure` (bikin atau resume saat init selesai).
+      if (controller != null && controller.value.isInitialized) {
+        unawaited(controller.play());
+      } else {
+        _ensure();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _toggleIconTimer?.cancel();
+    final controller = _controller;
+    _controller = null;
+    // Kalau init MASIH in-flight: JANGAN dispose di sini — race guard di
+    // `_ensure` yang dispose (`_controller` sudah null → `!identical` true).
+    // Dispose ganda controller = assertion "already disposed".
+    if (controller != null && !_initializing) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  /// Pastikan ada controller yang main. Controller sudah ada → play. Belum →
+  /// buat, initialize (bersuara, default options), race-guard setelah await,
+  /// lalu play kalau `widget.active`. Init gagal → poster + ▶ retry.
+  Future<void> _ensure() async {
+    final existing = _controller;
+    if (existing != null) {
+      if (existing.value.isInitialized) unawaited(existing.play());
+      return; // masih in-flight → play menyusul saat init selesai.
+    }
+    if (_initializing) return; // cegah re-entry.
+    final url = widget.videoUrl.trim();
+    if (url.isEmpty) {
+      setState(() => _failed = true);
+      return;
+    }
+    // Default options (BUKAN mixWithOthers, BUKAN setVolume(0) di awal):
+    // slide fullscreen sengaja bersuara.
+    final c = VideoPlayerController.networkUrl(Uri.parse(url));
+    _controller = c;
+    setState(() {
+      _initializing = true;
+      _failed = false;
+    });
+    try {
+      await c.initialize();
+      // Race guard SETELAH await: widget lepas / controller sudah di-swap →
+      // buang controller lokal, jangan sentuh state lagi.
+      if (!mounted || !identical(_controller, c)) {
+        _initializing = false;
+        unawaited(c.dispose());
+        return;
+      }
+      await c.setLooping(false);
+      await c.setVolume(_muted ? 0 : 1);
+      if (!mounted || !identical(_controller, c)) {
+        _initializing = false;
+        unawaited(c.dispose());
+        return;
+      }
+      if (widget.active) unawaited(c.play());
+      setState(() {
+        _ready = true;
+        _initializing = false;
+      });
+    } catch (_) {
+      // Init gagal (URL rusak / hiccup) → poster + ▶ retry, BUKAN kotak hitam.
+      if (identical(_controller, c)) _controller = null;
+      unawaited(c.dispose());
+      if (mounted) {
+        setState(() {
+          _initializing = false;
+          _ready = false;
+          _failed = true;
+        });
+      } else {
+        _initializing = false;
+      }
+    }
+  }
+
+  void _togglePlay() {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    final willPlay = !controller.value.isPlaying;
+    unawaited(willPlay ? controller.play() : controller.pause());
+    _toggleIconTimer?.cancel();
+    setState(() => _showToggleIcon = true);
+    // Ikon nongol sekejap lalu fade (saat main). Saat pause overlay ▶ tetap
+    // terlihat karena build memaksa ikon saat `!isPlaying`.
+    _toggleIconTimer = Timer(const Duration(milliseconds: 650), () {
+      if (mounted) setState(() => _showToggleIcon = false);
+    });
+  }
+
+  void _toggleMute() {
+    setState(() => _muted = !_muted);
+    final controller = _controller;
+    if (controller != null) unawaited(controller.setVolume(_muted ? 0 : 1));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    final showVideo =
+        _ready && controller != null && controller.value.isInitialized;
+    return ColoredBox(
+      color: Colors.black,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (showVideo) _buildPlaying(controller) else _buildPoster(),
+          if (showVideo) ...[
+            // Tombol mute (pojok kanan-atas, di bawah zona SafeArea top).
+            Positioned(
+              top: MediaQuery.paddingOf(context).top + 12,
+              right: 12,
+              child: GestureDetector(
+                onTap: _toggleMute,
+                child: Container(
+                  padding: const EdgeInsets.all(9),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Icon(
+                    _muted
+                        ? Icons.volume_off_rounded
+                        : Icons.volume_up_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+              ),
+            ),
+            // Progress bar tipis, ditaruh di atas zona `_ProductMediaBar` +
+            // thumbnails (Task 2 render chrome di atas slide) supaya tak ketiban.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: MediaQuery.paddingOf(context).bottom + 180,
+              child: VideoProgressIndicator(
+                controller,
+                allowScrubbing: true,
+                colors: const VideoProgressColors(playedColor: _brandBlue),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Saat main: contain di latar hitam (letterbox — konsisten foto viewer yang
+  // juga `BoxFit.contain`). onTap SAJA + opaque supaya PageView tetap bisa swipe.
+  Widget _buildPlaying(VideoPlayerController controller) {
+    final size = controller.value.size;
+    final isPlaying = controller.value.isPlaying;
+    // Ikon nampak saat: baru toggle (fade) ATAU sedang pause (affordance resume).
+    final showIcon = _showToggleIcon || !isPlaying;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _togglePlay,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const ColoredBox(color: Colors.black),
+          Center(
+            child: FittedBox(
+              fit: BoxFit.contain,
+              child: SizedBox(
+                width: size.width,
+                height: size.height,
+                child: VideoPlayer(controller),
+              ),
+            ),
+          ),
+          Center(
+            child: AnimatedOpacity(
+              opacity: showIcon ? 1 : 0,
+              duration: const Duration(milliseconds: 200),
+              child: _PreviewGlyph(
+                icon:
+                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Belum ready / gagal: poster contain di hitam + spinner (initializing) atau
+  // ▶ retry (failed). Tap ▶ = `_ensure` (coba lagi).
+  Widget _buildPoster() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _posterImage(),
+        if (_initializing)
+          const Center(child: CircularProgressIndicator(color: Colors.white))
+        else if (_failed)
+          Center(
+            child: GestureDetector(
+              onTap: _ensure,
+              child: const _PreviewGlyph(icon: Icons.play_arrow_rounded),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _posterImage() {
+    // Prioritas: thumbnailUrl → posterImageUrl (foto produk) → hitam netral.
+    // Contain (bukan cover) supaya konsisten letterbox video.
+    final thumb = widget.thumbnailUrl?.trim() ?? '';
+    final poster = widget.posterImageUrl?.trim() ?? '';
+    if (thumb.isEmpty) return _posterFrom(poster);
+    return CachedNetworkImage(
+      imageUrl: thumb,
+      width: double.infinity,
+      height: double.infinity,
+      fit: BoxFit.contain,
+      placeholder: (_, __) => _posterFrom(poster),
+      errorWidget: (_, __, ___) => _posterFrom(poster),
+    );
+  }
+
+  Widget _posterFrom(String url) {
+    if (url.isEmpty) return const ColoredBox(color: Colors.black);
+    return CachedNetworkImage(
+      imageUrl: url,
+      width: double.infinity,
+      height: double.infinity,
+      fit: BoxFit.contain,
+      placeholder: (_, __) => const ColoredBox(color: Colors.black),
+      errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black),
+    );
+  }
+}
+
+/// Lingkaran 64 hitam-transparan + ikon putih 36 — tombol ▶/⏸ [_PreviewVideoSlide].
+class _PreviewGlyph extends StatelessWidget {
+  final IconData icon;
+  const _PreviewGlyph({required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icon, color: Colors.white, size: 36),
+    );
   }
 }
