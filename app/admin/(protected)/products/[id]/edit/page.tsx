@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { MultiImageUpload } from "@/components/MultiImageUpload";
 import { ProductVideoUpload } from "@/components/admin/ProductVideoUpload";
 import { VariantEditor } from "@/components/admin/VariantEditor";
+import { AiDescriptionField } from "@/components/admin/AiDescriptionField";
 import {
   AdminPage,
   Button,
@@ -255,12 +256,9 @@ export default async function AdminProductEditPage({
                       </select>
                     </div>
                   </div>
-                  <Field
-                    label="Deskripsi"
-                    name="description"
-                    required
+                  <AiDescriptionField
+                    productId={product.id}
                     defaultValue={product.description}
-                    textarea
                   />
                 </div>
               </SectionCard>
