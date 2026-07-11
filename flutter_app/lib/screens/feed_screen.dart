@@ -38,6 +38,7 @@ import '../state/follow_override_store.dart';
 import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/android_back_overlays.dart';
+import '../utils/app_route_observer.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
@@ -504,6 +505,11 @@ class _FeedScreenState extends State<FeedScreen> {
       _preloadedCachedPlayers[id] = cachedPlayer;
       initFutures.add(
         cachedPlayer.initialize().then((_) async {
+          // Entry mungkin sudah DIKONSUMSI itemBuilder (post keburu aktif —
+          // child dispose wrapper in-flight sendiri) atau di-evict window.
+          // Tanpa guard ini, controller di-re-add ke map sebagai zombie
+          // yang tidak pernah di-dispose (leak native player).
+          if (_preloadedCachedPlayers[id] != cachedPlayer) return;
           final controller = cachedPlayer.controller;
           _preloadedControllers[id] = controller;
           // Prepared state: paused, frame 0 ready, muted, looping prepped.
@@ -639,8 +645,14 @@ class _FeedScreenState extends State<FeedScreen> {
                       // Branch by kind: PHOTO_CAROUSEL render carousel
                       // PageView horizontal 1-8 foto; video kind render
                       // _FeedPostView dengan VideoPlayerController.
+                      // ValueKey(post.id) WAJIB — tanpa key, Flutter match
+                      // State by posisi list. Saat _visiblePosts bergeser
+                      // (block/unblock user), State di index i menerima post
+                      // BERBEDA dan controller video lama tetap memutar klip
+                      // lama di bawah post baru (audio nyasar).
                       if (post.isPhotoCarousel) {
                         return _PhotoCarouselPostView(
+                          key: ValueKey('feed-photo-${post.id}'),
                           post: post,
                           isActive: index == _activeIndex,
                           onOverlayStateChanged: _setFeedInteractionLocked,
@@ -648,6 +660,7 @@ class _FeedScreenState extends State<FeedScreen> {
                         );
                       }
                       return _FeedPostView(
+                        key: ValueKey('feed-video-${post.id}'),
                         post: post,
                         isActive: index == _activeIndex,
                         preloadedController:
@@ -1174,6 +1187,7 @@ class _PhotoCarouselPostView extends StatefulWidget {
   final ValueChanged<bool> onMediaZoomChanged;
 
   const _PhotoCarouselPostView({
+    super.key,
     required this.post,
     required this.isActive,
     required this.onOverlayStateChanged,
@@ -1891,6 +1905,7 @@ class _FeedPostView extends StatefulWidget {
   final ValueChanged<bool> onMediaZoomChanged;
 
   const _FeedPostView({
+    super.key,
     required this.post,
     required this.isActive,
     required this.preloadedController,
@@ -1904,7 +1919,7 @@ class _FeedPostView extends StatefulWidget {
 }
 
 class _FeedPostViewState extends State<_FeedPostView>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, RouteAware, WidgetsBindingObserver {
   static const double _commentSheetMinExtent = 0.22;
   static const double _commentSheetInitialExtent = 0.60;
   static const double _commentSheetMaxExtentCap = 0.82;
@@ -2033,9 +2048,75 @@ class _FeedPostViewState extends State<_FeedPostView>
 
     _commentSheetController.addListener(_syncCommentSheetProgress);
 
+    // Pause deterministik saat app ke background — VisibilityDetector tidak
+    // fire untuk lifecycle app, hanya untuk perubahan layout.
+    WidgetsBinding.instance.addObserver(this);
+
     _adoptPreloadedController();
     _maybeInitVideo();
     _syncProductRotation();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Subscribe RouteAware — pause pasti SEBELUM route lain menutup feed,
+    // tidak lagi menunggu debounce VisibilityDetector (~500ms) yang
+    // membiarkan dua video bersuara bersamaan (fix double-audio).
+    final route = ModalRoute.of(context);
+    if (route != null) {
+      appRouteObserver.subscribe(this, route);
+    }
+  }
+
+  // ── Pause/resume deterministik (route + app lifecycle) ──
+  // _pausedByCover true HANYA kalau kita yang mem-pause karena tertutup —
+  // supaya resume tidak menyalakan video yang memang di-pause user.
+  bool _pausedByCover = false;
+
+  void _pauseForCover() {
+    final ctrl = _videoController;
+    if (ctrl == null || !ctrl.value.isInitialized) return;
+    if (!ctrl.value.isPlaying) return;
+    _pausedByCover = true;
+    ctrl.pause();
+  }
+
+  void _resumeFromCover() {
+    if (!_pausedByCover) return;
+    _pausedByCover = false;
+    if (!mounted || !widget.isActive) return;
+    if (_isPaused || !_shouldAutoplay) return;
+    _videoController?.play();
+  }
+
+  @override
+  void didPushNext() {
+    // Halaman penuh menutup feed → pause. Sheet/dialog transparan (mis.
+    // sheet produk) TIDAK mem-pause — video tetap jalan di baliknya (ala
+    // TikTok/IG) dan tidak ada konflik audio dari sheet.
+    if (lastPushedRouteIsOpaque()) {
+      _pauseForCover();
+    }
+  }
+
+  @override
+  void didPopNext() {
+    _resumeFromCover();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+        _pauseForCover();
+      case AppLifecycleState.resumed:
+        _resumeFromCover();
+      case AppLifecycleState.detached:
+        break;
+    }
   }
 
   bool get _dataSaverEnabled =>
@@ -2046,7 +2127,23 @@ class _FeedPostViewState extends State<_FeedPostView>
 
   Future<void> _adoptPreloadedController() async {
     final controller = widget.preloadedController;
-    if (controller == null) return;
+    if (controller == null) {
+      // RACE FIX: post jadi aktif sebelum preload MP4 selesai — controller
+      // belum masuk map (baru di-add di .then initialize), tapi wrapper
+      // in-flight SUDAH ter-remove dari map oleh itemBuilder dan sampai ke
+      // sini. Dulu wrapper ini dibiarkan → VideoPlayerController native
+      // bocor (tidak pernah dispose). Sekarang: dispose begitu init-nya
+      // settle; _maybeInitVideo lanjut bikin controller fresh.
+      final orphan = widget.preloadedCachedPlayer;
+      if (orphan != null) {
+        Future(() async {
+          try {
+            await orphan.dispose();
+          } catch (_) {}
+        });
+      }
+      return;
+    }
     _videoController = controller;
     // Adopt wrapper juga supaya child bisa dispose properly. Wrapper
     // might be null (legacy or unwrapped). Either way, controller-level
@@ -2060,6 +2157,25 @@ class _FeedPostViewState extends State<_FeedPostView>
     await controller.setVolume(appSettingsStore.feedMuted ? 0 : 1);
     if (widget.isActive && _shouldAutoplay) {
       await controller.play();
+    }
+    // HLS bisa ter-adopt SEBELUM initialize selesai (controller masuk map
+    // sinkron, init jalan async). play()/setVolume di atas jadi no-op diam
+    // → tanpa hook ini video stuck di poster sampai user interaksi.
+    // Listener one-shot: begitu initialized, apply volume + play.
+    if (!controller.value.isInitialized) {
+      void onInit() {
+        if (!controller.value.isInitialized) return;
+        controller.removeListener(onInit);
+        if (!mounted || _videoController != controller) return;
+        controller.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+        if (widget.isActive && _shouldAutoplay && !_isPaused) {
+          controller.play();
+        }
+        _cancelLoadingSpinnerDelay();
+        if (mounted) setState(() {});
+      }
+
+      controller.addListener(onInit);
     }
     if (mounted) setState(() {});
   }
@@ -2300,6 +2416,8 @@ class _FeedPostViewState extends State<_FeedPostView>
 
   @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
+    WidgetsBinding.instance.removeObserver(this);
     feedStore.removeListener(_onFeedStoreChanged);
     _loadingSpinnerDelay?.cancel();
     _stopProductRotation();
