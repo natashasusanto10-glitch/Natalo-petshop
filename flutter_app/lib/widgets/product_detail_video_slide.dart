@@ -5,13 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
-import '../theme/natalo_colors.dart';
-
-/// Brand blue lokal — samakan dengan `_brandBlue` di product_detail_screen.dart
-/// (di sana `NataloColors.primary`, yang identik dengan `NataloColors.nataloBlue`
-/// = 0xFF1E5FBF). Dipakai untuk `VideoProgressIndicator.playedColor`.
-const _brandBlue = NataloColors.nataloBlue;
-
 /// Slide #1 galeri detail produk: video **autoplay bisu visible-only**
 /// (pola Tokopedia + grid Beranda `ProductGridVideo`).
 ///
@@ -449,7 +442,11 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
             child: VideoProgressIndicator(
               controller,
               allowScrubbing: true,
-              colors: const VideoProgressColors(playedColor: _brandBlue),
+              colors: const VideoProgressColors(
+                playedColor: Colors.white,
+                bufferedColor: Color(0x55FFFFFF),
+                backgroundColor: Color(0x33FFFFFF),
+              ),
             ),
           ),
           // Kontrol [🔇][⛶] pojok kanan-bawah — child TERAKHIR (topmost) di
