@@ -1747,25 +1747,13 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                   }
 
                   final position = _heartBurstPosition;
-                  final progress = _heartBurstController.value;
+                  // Ala IG: putih, bentuk sama dengan heart rail, tegak —
+                  // pop overshoot lalu fade (tanpa tilt/naik gaya TikTok).
                   final heart = Opacity(
                     opacity: _heartOpacity.value,
-                    child: Transform.translate(
-                      offset: Offset(0, -14 * progress),
-                      child: Transform.scale(
-                        scale: _heartScale.value,
-                        child: Transform.rotate(
-                          angle: -0.08,
-                          child: const Icon(
-                            Icons.favorite_rounded,
-                            color: Color(0xFFEF4444),
-                            size: 128,
-                            shadows: [
-                              Shadow(color: Colors.black54, blurRadius: 28),
-                            ],
-                          ),
-                        ),
-                      ),
+                    child: Transform.scale(
+                      scale: _heartScale.value,
+                      child: const _BurstHeart(),
                     ),
                   );
                   if (position == null) {
@@ -1774,10 +1762,10 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                   return Stack(
                     children: [
                       Positioned(
-                        left: position.dx - 64,
-                        top: position.dy - 64,
-                        width: 128,
-                        height: 128,
+                        left: position.dx - 52,
+                        top: position.dy - 52,
+                        width: 104,
+                        height: 104,
                         child: Center(child: heart),
                       ),
                     ],
@@ -3197,32 +3185,15 @@ class _FeedPostViewState extends State<_FeedPostView>
                               }
 
                               final position = _heartBurstPosition;
-                              final progress = _heartBurstController.value;
+                              // Ala IG: putih, bentuk sama dengan heart
+                              // rail, tegak — pop overshoot lalu fade
+                              // (tanpa tilt/naik gaya TikTok). Shared
+                              // dengan versi foto carousel.
                               final heart = Opacity(
                                 opacity: _heartOpacity.value,
-                                child: Transform.translate(
-                                  offset: Offset(0, -18 * progress),
-                                  child: Transform.scale(
-                                    scale: _heartScale.value,
-                                    child: Transform.rotate(
-                                      angle: -0.08,
-                                      child: const Icon(
-                                        Icons.favorite_rounded,
-                                        color: Color(0xFFEF4444),
-                                        size: 128,
-                                        shadows: [
-                                          Shadow(
-                                            color: Colors.white54,
-                                            blurRadius: 2,
-                                          ),
-                                          Shadow(
-                                            color: Colors.black54,
-                                            blurRadius: 28,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
+                                child: Transform.scale(
+                                  scale: _heartScale.value,
+                                  child: const _BurstHeart(),
                                 ),
                               );
 
@@ -3233,10 +3204,10 @@ class _FeedPostViewState extends State<_FeedPostView>
                               return Stack(
                                 children: [
                                   Positioned(
-                                    left: position.dx - 64,
-                                    top: position.dy - 64,
-                                    width: 128,
-                                    height: 128,
+                                    left: position.dx - 52,
+                                    top: position.dy - 52,
+                                    width: 104,
+                                    height: 104,
                                     child: Center(child: heart),
                                   ),
                                 ],
@@ -4336,62 +4307,101 @@ class _PausedVideoControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Gaya IG Reels: play = glyph putih polos di tengah (tanpa lingkaran
-    // scrim besar — dulu 80px terasa berat menutupi video), mute = lingkaran
-    // kecil 32px di atasnya. Hit-area tetap lega via InkResponse radius.
+    // Gaya IG Reels: play = lingkaran scrim 52px (glyph polos ditolak
+    // setelah device-verify; 80px lama terlalu berat), mute = lingkaran
+    // kecil 32px di atasnya. Keduanya pakai _PausedControlButton dengan
+    // feedback tekan pegas. Hit-area tetap lega via InkResponse radius.
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Material(
-          color: Colors.transparent,
-          shape: const CircleBorder(),
-          child: InkResponse(
-            onTap: onToggleMute,
-            radius: 22,
-            child: Container(
-              height: 32,
-              width: 32,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.42),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                color: Colors.white,
-                size: 17,
-                shadows: const [
-                  Shadow(color: Colors.black87, blurRadius: 8),
-                ],
-              ),
-            ),
+        _PausedControlButton(
+          diameter: 32,
+          scrimAlpha: 0.42,
+          inkRadius: 22,
+          onTap: onToggleMute,
+          child: Icon(
+            muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+            color: Colors.white,
+            size: 17,
+            shadows: const [
+              Shadow(color: Colors.black87, blurRadius: 8),
+            ],
           ),
         ),
         const SizedBox(height: 14),
-        Material(
-          color: Colors.transparent,
-          shape: const CircleBorder(),
-          child: InkResponse(
-            onTap: onTogglePlayPause,
-            radius: 36,
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Icon(
-                Icons.play_arrow_rounded,
-                color: Colors.white.withValues(alpha: 0.96),
-                size: 44,
-                shadows: const [
-                  Shadow(color: Colors.black54, blurRadius: 18),
-                  Shadow(
-                    color: Colors.black87,
-                    blurRadius: 6,
-                    offset: Offset(0, 1),
-                  ),
-                ],
-              ),
-            ),
+        // Play: lingkaran 52 — satu keluarga dengan mute (~1.6×), jauh
+        // dari 80px lama yang berat. Glyph polos tanpa lingkaran ditolak
+        // user setelah device-verify (kurang jelas sebagai tombol).
+        _PausedControlButton(
+          diameter: 52,
+          scrimAlpha: 0.40,
+          inkRadius: 36,
+          onTap: onTogglePlayPause,
+          child: const Icon(
+            Icons.play_arrow_rounded,
+            color: Colors.white,
+            size: 28,
+            shadows: [
+              Shadow(color: Colors.black54, blurRadius: 8),
+            ],
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Tombol bundar kontrol pause (mute + play) dengan feedback tekan pegas —
+/// mengecil ke 0.86 saat jari turun (90ms) lalu membal balik easeOutBack
+/// (240ms). Tanpa ini toggle terasa kaku: state berubah tanpa ada respons
+/// fisik dari tombolnya.
+class _PausedControlButton extends StatefulWidget {
+  final double diameter;
+  final double scrimAlpha;
+  final double inkRadius;
+  final VoidCallback onTap;
+  final Widget child;
+
+  const _PausedControlButton({
+    required this.diameter,
+    required this.scrimAlpha,
+    required this.inkRadius,
+    required this.onTap,
+    required this.child,
+  });
+
+  @override
+  State<_PausedControlButton> createState() => _PausedControlButtonState();
+}
+
+class _PausedControlButtonState extends State<_PausedControlButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      shape: const CircleBorder(),
+      child: InkResponse(
+        onTap: widget.onTap,
+        radius: widget.inkRadius,
+        onHighlightChanged: (v) => setState(() => _pressed = v),
+        child: AnimatedScale(
+          scale: _pressed ? 0.86 : 1.0,
+          duration: Duration(milliseconds: _pressed ? 90 : 240),
+          curve: _pressed ? Curves.easeOut : Curves.easeOutBack,
+          child: Container(
+            height: widget.diameter,
+            width: widget.diameter,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: widget.scrimAlpha),
+              shape: BoxShape.circle,
+            ),
+            child: widget.child,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -4514,7 +4524,15 @@ class _ReelsActionState extends State<_ReelsAction>
   }
 }
 
-class _ReelsHeartGlyph extends StatelessWidget {
+/// Heart rail — like toggle ala IG: heart TERISI merah, bukan ganti bentuk.
+///
+/// Dulu unliked = stroke / liked = fill pada path yang sama → siluet
+/// benar-benar berubah (stroke center mengembang keluar strokeWidth/2 dan
+/// round-join membulatkan ujung lancip; fill memakai path mentah yang lebih
+/// kecil + tajam) → tap terbaca "ganti bentuk". Sekarang stroke round-join
+/// digambar di KEDUA state (siluet identik piksel), dan fill merah masuk
+/// dengan animasi progress 0→1 (180ms) — stroke ikut lerp ke merah.
+class _ReelsHeartGlyph extends StatefulWidget {
   final bool liked;
 
   const _ReelsHeartGlyph({
@@ -4522,28 +4540,70 @@ class _ReelsHeartGlyph extends StatelessWidget {
   });
 
   @override
+  State<_ReelsHeartGlyph> createState() => _ReelsHeartGlyphState();
+}
+
+class _ReelsHeartGlyphState extends State<_ReelsHeartGlyph>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _fillController;
+  late final Animation<double> _fill;
+
+  @override
+  void initState() {
+    super.initState();
+    _fillController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+      value: widget.liked ? 1 : 0,
+    );
+    _fill = CurvedAnimation(
+      parent: _fillController,
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReelsHeartGlyph oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.liked != widget.liked) {
+      // Unlike balik lebih cepat (tanpa easing panjang) — IG juga begitu.
+      widget.liked ? _fillController.forward() : _fillController.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _fillController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: _feedActionIconSize,
       width: _feedActionIconSize,
-      child: CustomPaint(painter: _HeartGlyphPainter(liked: liked)),
+      child: CustomPaint(painter: _HeartGlyphPainter(fillProgress: _fill)),
     );
   }
 }
 
 class _HeartGlyphPainter extends CustomPainter {
-  final bool liked;
+  final Animation<double> fillProgress;
 
-  const _HeartGlyphPainter({
-    required this.liked,
-  });
+  _HeartGlyphPainter({
+    required this.fillProgress,
+  }) : super(repaint: fillProgress);
+
+  static const _likedRed = Color(0xFFEF4444);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final path = _buildHeartPath(size);
+    final t = fillProgress.value;
+    final path = _buildFeedHeartPath(size);
+    // Shadow SELALU stroke — silhouette shadow konstan di kedua state.
     final shadowPaint = Paint()
       ..color = _feedActionShadowColor
-      ..style = liked ? PaintingStyle.fill : PaintingStyle.stroke
+      ..style = PaintingStyle.stroke
       ..strokeWidth = _feedActionStrokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
@@ -4551,18 +4611,36 @@ class _HeartGlyphPainter extends CustomPainter {
 
     canvas.drawPath(path.shift(const Offset(0, 1.2)), shadowPaint);
 
-    final paint = Paint()
-      ..color = liked ? const Color(0xFFEF4444) : _feedActionForegroundColor
-      ..style = liked ? PaintingStyle.fill : PaintingStyle.stroke
+    // Fill merah masuk di dalam stroke — opacity mengikuti progress.
+    if (t > 0) {
+      final fillPaint = Paint()
+        ..color = _likedRed.withValues(alpha: t)
+        ..style = PaintingStyle.fill;
+      canvas.drawPath(path, fillPaint);
+    }
+
+    // Stroke digambar TERAKHIR di kedua state — dialah siluet konstan.
+    // Warnanya lerp putih → merah supaya rim menyatu saat liked.
+    final strokePaint = Paint()
+      ..color = Color.lerp(_feedActionForegroundColor, _likedRed, t)!
+      ..style = PaintingStyle.stroke
       ..strokeWidth = _feedActionStrokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    canvas.drawPath(path, paint);
+    canvas.drawPath(path, strokePaint);
   }
 
-  Path _buildHeartPath(Size size) {
-    return Path()
+  @override
+  bool shouldRepaint(covariant _HeartGlyphPainter oldDelegate) {
+    return oldDelegate.fillProgress != fillProgress;
+  }
+}
+
+/// Path heart bersama — dipakai rail glyph (stroke+fill) DAN burst
+/// double-tap (fill putih besar) supaya seluruh feed satu bentuk hati.
+Path _buildFeedHeartPath(Size size) {
+  return Path()
       ..moveTo(size.width * 0.50, size.height * 0.844)
       ..cubicTo(
         size.width * 0.469,
@@ -4629,12 +4707,49 @@ class _HeartGlyphPainter extends CustomPainter {
         size.height * 0.844,
       )
       ..close();
+}
+
+/// Heart burst double-tap ala IG — fill PUTIH, bentuk sama dengan rail
+/// (path bersama), tegak tanpa tilt/naik. Sebelumnya merah + miring −0.08
+/// + rise = resep TikTok, dan bentuknya (Icons.favorite_rounded) beda dari
+/// heart rail sehingga dua gestur like menampilkan dua hati berbeda.
+class _BurstHeart extends StatelessWidget {
+  const _BurstHeart();
+
+  // 104 (dari 128 Material) — IG sedikit lebih ramping; kedua render site
+  // (video + foto) memakai kotak 104 yang sama.
+  static const double size = 104;
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      height: size,
+      width: size,
+      child: CustomPaint(painter: _BurstHeartPainter()),
+    );
+  }
+}
+
+class _BurstHeartPainter extends CustomPainter {
+  const _BurstHeartPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = _buildFeedHeartPath(size);
+    final shadowPaint = Paint()
+      ..color = Colors.black54
+      ..style = PaintingStyle.fill
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14);
+    canvas.drawPath(path.shift(const Offset(0, 3)), shadowPaint);
+
+    final fillPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(path, fillPaint);
   }
 
   @override
-  bool shouldRepaint(covariant _HeartGlyphPainter oldDelegate) {
-    return oldDelegate.liked != liked;
-  }
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _ReelsCommentGlyph extends StatelessWidget {
