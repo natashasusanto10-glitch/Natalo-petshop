@@ -119,11 +119,13 @@ class VideoQualityService {
 
   /// Rewrite Bunny URL berdasarkan network tier + user preference.
   ///
-  /// IMPORTANT: Saat URL sudah mengandung signed token (`token=...&expires=...`)
-  /// dari server, **rewrite di-skip** karena token Bunny CDN signature
-  /// terikat ke path SPESIFIK (mis. `/play_720p.mp4`). Rewrite path ke
-  /// `/playlist.m3u8` atau quality lain bikin signature gak match path baru →
-  /// CDN 403. Server sudah sign path 720p MP4 — pakai apa adanya.
+  /// IMPORTANT: Perlakuan URL signed tergantung skema token Bunny:
+  ///   - **Directory token** (HLS, ada `token_path=`): token berlaku untuk
+  ///     seluruh direktori `/<guid>/`, jadi rewrite nama file di dalamnya
+  ///     (playlist.m3u8 → play_<NNN>p.mp4) tetap valid. Preferensi eksplisit
+  ///     user (`data_saver` / `high`) DIHORMATI; `auto` dibiarkan apa adanya.
+  ///   - **File-spesifik token** (query `token=` tanpa `token_path`): signature
+  ///     terikat path file persis → rewrite bikin CDN 403. Skip, pakai apa adanya.
   ///
   /// Untuk legacy URL (tidak signed): rewrite sesuai user preference (kalau
   /// `data_saver` / `high`) atau network tier (kalau `auto` / null).
@@ -142,14 +144,44 @@ class VideoQualityService {
   String resolvePlaybackUrl(String url, {String? userPreference}) {
     if (url.isEmpty) return url;
 
-    // Signed URL — server sudah pre-sign path SPECIFIC. Rewrite path bikin
-    // signature gak match → CDN reject 403. Skip rewrite, pakai apa adanya.
-    if (url.contains('token=') && url.contains('expires=')) {
+    // Signed URL — dua skema token Bunny CDN:
+    //
+    //   1) Directory token (HLS): ditandai `token_path=` di path, mis.
+    //      `<origin>/bcdn_token=…&token_path=%2F<guid>%2F&expires=…/<guid>/playlist.m3u8`.
+    //      Token ditandatangani atas DIREKTORI (`token_path`), bukan file —
+    //      jadi SEMUA file di dalam `/<guid>/` (playlist.m3u8, play_480p.mp4,
+    //      segment .ts) valid dengan token yang sama. Rewrite nama file dalam
+    //      direktori itu (playlist.m3u8 → play_<NNN>p.mp4) TIDAK bikin 403,
+    //      jadi preferensi eksplisit user boleh dihormati.
+    //
+    //   2) File-spesifik token (query `token=…&expires=…` TANPA `token_path`):
+    //      signature terikat path file persis. Rewrite path apa pun → 403.
+    //      Skip, pakai apa adanya.
+    //
+    // Ref: Bunny Token Authentication V2 — directory token via `token_path`
+    // (https://docs.bunny.net/cdn/security/token-authentication/advanced).
+    final isSigned = url.contains('token=') && url.contains('expires=');
+    final isDirectoryToken = isSigned && url.contains('token_path=');
+
+    if (isSigned && !isDirectoryToken) {
+      return url;
+    }
+    // Opsi A: hanya preferensi kualitas EKSPLISIT (data_saver / high) yang
+    // men-trigger rewrite pada directory-token URL. `auto` / null tetap pakai
+    // signed URL apa adanya supaya perilaku produksi saat ini tidak berubah.
+    if (isDirectoryToken &&
+        userPreference != 'data_saver' &&
+        userPreference != 'high') {
       return url;
     }
 
     // User override beats tier. data_saver = paksa 480p MP4 (no HLS).
     if (userPreference == 'data_saver') {
+      // Directory-token signed URL: rewrite file terminal saja (prefix token
+      // dipertahankan, tetap di direktori yang sama → signature valid).
+      if (isDirectoryToken) {
+        return _rewriteTerminalFile(url, 480) ?? url;
+      }
       final isHls = url.contains('.m3u8');
       if (isHls) {
         return _bunnyHlsToMp4(url, 480) ?? url;
@@ -160,6 +192,9 @@ class VideoQualityService {
     // high = cap di 720p MP4, jangan upgrade HLS (HLS bisa adaptive ke 1080p
     // di WiFi cepat — user pilih high biasanya mau predictable 720p).
     if (userPreference == 'high') {
+      if (isDirectoryToken) {
+        return _rewriteTerminalFile(url, 720) ?? url;
+      }
       final isHls = url.contains('.m3u8');
       if (isHls) {
         return _bunnyHlsToMp4(url, 720) ?? url;
@@ -214,6 +249,25 @@ class VideoQualityService {
     if (match == null) return null;
     final query = match.group(2) ?? '';
     return '${match.group(1)}playlist.m3u8$query';
+  }
+
+  /// Rewrite file terminal (`playlist.m3u8` atau `play_<NNN>p.mp4`) → MP4
+  /// quality target, TANPA menyentuh prefix di depannya.
+  ///
+  /// Dipakai untuk URL signed directory-token (HLS) yang bentuknya:
+  ///   `<origin>/bcdn_token=…&token_path=…&expires=…/<guid>/playlist.m3u8`
+  /// Regex `_bunnyHlsToMp4` biasa tidak cocok karena prefix token menambah
+  /// satu segmen path. Di sini kita hanya ganti segmen file paling akhir,
+  /// jadi token/token_path/expires + direktori `/<guid>/` tetap utuh →
+  /// signature Bunny tetap valid (token berlaku untuk seluruh direktori).
+  String? _rewriteTerminalFile(String url, int height) {
+    final match = RegExp(
+      r'/(?:playlist\.m3u8|play_\d{3,4}p\.mp4)(\?[^/]*)?$',
+      caseSensitive: false,
+    ).firstMatch(url);
+    if (match == null) return null;
+    final query = match.group(1) ?? '';
+    return '${url.substring(0, match.start)}/play_${height}p.mp4$query';
   }
 
   /// Rewrite quality digit di Bunny MP4 URL.
