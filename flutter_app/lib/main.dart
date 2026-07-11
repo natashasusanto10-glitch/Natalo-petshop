@@ -55,6 +55,7 @@ import 'state/recently_viewed_store.dart';
 import 'state/search_history_store.dart';
 import 'state/settings_store.dart';
 import 'state/trending_placeholder_controller.dart';
+import 'utils/app_route_observer.dart';
 import 'utils/motion_prefs.dart';
 import 'utils/read_only_mode.dart';
 import 'screens/products_screen.dart';
@@ -230,7 +231,13 @@ class NataloPetshopApp extends StatelessWidget {
           // setiap push/replace. Cover semua route tanpa per-screen edits.
           // BottomNavScrollObserver reset collapse nav tiap pindah route
           // supaya layar baru mulai dengan nav penuh (lihat bottom_nav_scroll).
-          navigatorObservers: [nataloAnalyticsObserver, BottomNavScrollObserver()],
+          // appRouteObserver — pause deterministik video feed saat route
+          // lain menutup (fix double-audio; lihat app_route_observer.dart).
+          navigatorObservers: [
+            nataloAnalyticsObserver,
+            BottomNavScrollObserver(),
+            appRouteObserver,
+          ],
           title: 'Natalo Petshop',
           debugShowCheckedModeBanner: false,
           theme: NataloTheme.lightTheme,

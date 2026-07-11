@@ -12,19 +12,25 @@ import '../theme/natalo_colors.dart';
 /// = 0xFF1E5FBF). Dipakai untuk `VideoProgressIndicator.playedColor`.
 const _brandBlue = NataloColors.nataloBlue;
 
-/// Slide #1 galeri detail produk: video **manual-play** (bersuara).
+/// Slide #1 galeri detail produk: video **autoplay bisu visible-only**
+/// (pola Tokopedia + grid Beranda `ProductGridVideo`).
 ///
-/// Beda dengan grid Beranda (`ProductGridVideo`, autoplay bisu visible-only):
-/// video detail TIDAK autoplay — user harus tap ▶ (keputusan user, boleh
-/// duck musik latar). Sebelum play tampil thumbnail + overlay premium (kapsul
-/// "Video" + durasi mm:ss, tombol ▶), saat main render **contain di latar
-/// hitam** (letterbox — konsisten foto detail yang `BoxFit.contain`).
+/// Saat slide cukup terlihat (>=0.6) video otomatis main **bisu** (`setVolume(0)`,
+/// `_muted=true` default) — tombol 🔇/🔊 di pojok kanan-bawah (bareng ⛶) untuk
+/// unmute. Poster (thumbnail→foto produk→hitam) render **contain di latar hitam**
+/// sama seperti video main, jadi tak ada "pop" cover→contain saat init selesai.
+/// Tap area video = toggle play/pause (ikon ⏸/▶ sekejap). ⛶ buka viewer
+/// fullscreen (bersuara) — karena inline bisu, tak ada double-audio.
 ///
 /// Lifecycle penting (hero ada di dalam scroll view + PageView):
-/// - `VisibilityDetector` < 0.5 → `pauseIfPlaying()` (suara tidak lanjut saat
-///   user scroll ke deskripsi).
-/// - App background (`WidgetsBindingObserver.paused`) → pause. TIDAK auto-resume
-///   (play detail = keputusan user).
+/// - `VisibilityDetector`: TRANSISI ke terlihat (>=0.6) → ensure controller +
+///   play (bisu); TRANSISI ke tak-terlihat (<0.5) → `pauseIfPlaying()`. Dipicu
+///   di transisi (bukan tiap event) supaya pause manual saat diam tidak
+///   ditimpa.
+/// - App background (`WidgetsBindingObserver.paused`) → `_foreground=false` +
+///   pause (juga menggate `play()` kalau background mendarat saat init
+///   in-flight). `resumed` → `_foreground=true` + autoplay bisu resume kalau
+///   slide masih terlihat.
 /// - Parent (`_ProductHero`, Task 6) pegang `GlobalKey<ProductDetailVideoSlideState>`
 ///   dan panggil [ProductDetailVideoSlideState.pauseIfPlaying] saat user swipe ke
 ///   slide lain — makanya State class ini **publik** (private tak bisa direferensi
@@ -79,16 +85,24 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
   bool _showToggleIcon = false;
   Timer? _toggleIconTimer;
 
-  /// Niat main yang tertunda selama `initialize()` in-flight. Di-set `true` saat
-  /// user tap ▶ (`_startPlayback`), di-set `false` oleh SETIAP permintaan pause
-  /// lewat `pauseIfPlaying` (⛶ fullscreen, swipe-away parent Task 6,
-  /// visibility<0.5, app-background). Init HLS bisa 0.5–3s; `pauseIfPlaying`
-  /// no-op selama init (belum `isInitialized`/`isPlaying`), jadi TANPA flag ini
-  /// `controller.play()` pasca-init tetap jalan → suara inline bocor di belakang
-  /// viewer fullscreen (double-audio). Gate `if (!_playIntent) return;` sebelum
-  /// `play()` yang membatalkannya (controller dibiarkan initialized-tapi-paused,
-  /// resumable via `_togglePlay`).
-  bool _playIntent = false;
+  /// Apakah slide sedang cukup terlihat (>=0.6). Ini konsep "should be playing":
+  /// autoplay hanya saat `_visible`. Dipakai sebagai gate di `_ensureAndPlay`
+  /// (menggantikan `_playIntent` lama): kalau slide sudah scroll-off selama
+  /// `initialize()` in-flight, JANGAN `play()` controller yang tak terlihat.
+  /// Init inline bisu, jadi tak ada isu double-audio dengan viewer fullscreen.
+  bool _visible = false;
+
+  /// Bisu default (`true` → `setVolume(0)`). Tombol 🔇/🔊 men-toggle-nya +
+  /// `_controller?.setVolume(_muted ? 0 : 1)`.
+  bool _muted = true;
+
+  /// Apakah app di foreground. Gate autoplay BARENG `_visible`: kalau app
+  /// di-background SAAT `initialize()` in-flight, `pauseIfPlaying` (dari
+  /// `didChangeAppLifecycleState`) no-op (controller belum init) & `_visible`
+  /// tetap true → tanpa flag ini `play()` pasca-init jalan OFFSTAGE (buang
+  /// decoder). Branch `resumed` men-set `true` lagi + panggil `_ensureAndPlay`
+  /// saat masih terlihat (resume autoplay bisu).
+  bool _foreground = true;
 
   @override
   void initState() {
@@ -119,9 +133,17 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden) {
-      // App ke background → pause. TIDAK auto-resume saat `resumed`
-      // (play detail = keputusan user, jangan mendadak bersuara).
+      // App ke background → tandai + pause. `_foreground=false` juga menggate
+      // `play()` pasca-init kalau background mendarat SAAT init in-flight
+      // (`pauseIfPlaying` no-op selama controller belum init).
+      _foreground = false;
       pauseIfPlaying();
+    } else if (state == AppLifecycleState.resumed) {
+      // Balik ke foreground → kalau slide masih terlihat, resume autoplay bisu.
+      // `_ensureAndPlay` no-op kalau sudah main; kalau controller ada tapi
+      // paused (mis. digate saat background) ia yang men-`play()`.
+      _foreground = true;
+      if (_visible) unawaited(_ensureAndPlay());
     }
   }
 
@@ -129,11 +151,9 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
 
   /// Pause kalau ada controller yang sedang main. Idempotent & aman dipanggil
   /// kapan saja (init in-flight / belum init / sudah pause → no-op).
+  /// TIDAK menandai "jangan autoplay lagi": begitu slide terlihat lagi, transisi
+  /// visibility memanggil `_ensureAndPlay` → resume (bisu).
   void pauseIfPlaying() {
-    // DULUAN: batalkan niat main yang tertunda. Kalau init masih in-flight,
-    // controller belum `isPlaying` → cek di bawah no-op, TAPI flag ini yang
-    // mencegah `_startPlayback` men-`play()` pasca-init (anti double-audio).
-    _playIntent = false;
     final controller = _controller;
     if (controller != null &&
         controller.value.isInitialized &&
@@ -145,18 +165,24 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
 
   // ─── Playback ─────────────────────────────────────────────────────────────
 
-  Future<void> _startPlayback() async {
-    if (_initializing || _controller != null) return; // cegah double.
+  /// Pastikan ada controller yang init & main (bisu). Lazy + race-guarded.
+  /// Dipanggil saat TRANSISI ke terlihat (VisibilityDetector) — bukan tap.
+  /// Kalau controller sudah ada, cukup resume (mis. balik dari pause off-screen).
+  Future<void> _ensureAndPlay() async {
+    final existing = _controller;
+    if (existing != null) {
+      if (existing.value.isInitialized && !existing.value.isPlaying) {
+        unawaited(existing.play());
+        if (mounted) setState(() {});
+      }
+      return;
+    }
+    if (_initializing) return; // init sedang jalan — jangan bikin dua.
     final url = widget.videoUrl.trim();
     if (url.isEmpty) return;
 
-    // Niat main: dipicu tap ▶. Selama init in-flight, `pauseIfPlaying`
-    // (⛶ / swipe-away / visibility / background) bisa membatalkannya → gate
-    // sebelum `play()` di bawah.
-    _playIntent = true;
-
-    // Default options (bukan mixWithOthers): dipicu user & bersuara, boleh
-    // duck musik latar.
+    // Default options (bukan mixWithOthers): dibisukan via `setVolume(0)`, jadi
+    // playback bisu tak mengganggu musik latar user tanpa perlu mixWithOthers.
     final controller = VideoPlayerController.networkUrl(Uri.parse(url));
     _controller = controller;
     setState(() => _initializing = true);
@@ -176,14 +202,19 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
         unawaited(controller.dispose());
         return;
       }
+      await controller.setVolume(_muted ? 0 : 1);
+      if (!mounted || !identical(_controller, controller)) {
+        _initializing = false;
+        unawaited(controller.dispose());
+        return;
+      }
       controller.addListener(_onControllerTick);
-      // Niat main dibatalkan selama init (⛶ fullscreen / swipe-away /
-      // visibility<0.5 / app-background lewat `pauseIfPlaying`). Controller
-      // SUDAH `isInitialized` → biarkan paused (frame-1 + ▶ overlay, resumable
-      // via `_togglePlay`), JANGAN `play()`. Kalau tetap play, suara inline
-      // bocor di belakang viewer fullscreen (double-audio). Reset `_initializing`
-      // supaya UI keluar dari state loading (bukan spinner selamanya).
-      if (!_playIntent) {
+      // Slide sudah scroll-off (`_visible=false`) ATAU app di-background
+      // (`_foreground=false`) selama init? JANGAN `play()` video tak-terlihat /
+      // offstage — biarkan paused (frame-1, resumable saat terlihat lagi / via
+      // `_togglePlay` / branch `resumed`). Reset `_initializing` supaya UI
+      // keluar dari loading.
+      if (!_visible || !_foreground) {
         setState(() => _initializing = false);
         return;
       }
@@ -194,22 +225,18 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
         unawaited(controller.dispose());
         return;
       }
-      // Niat main dibatalkan SELAMA `await play()` (yield point): `pauseIfPlaying`
-      // sudah men-set `_playIntent=false` + issue `pause()` konkuren, tapi `play()`
-      // yang resolve belakangan bisa menyisakan blip suara sebelum pause itu
-      // landing. Re-check → pause segera (idempotent dengan pause konkuren).
-      // Controller tetap initialized-tapi-paused (resumable via `_togglePlay`),
-      // JANGAN dispose. Ini menutup sisa window single-native-round-trip; window
-      // init lebar sudah ditutup gate sebelum `play()`.
-      if (!_playIntent) {
+      // Jadi tak-terlihat / app-background SELAMA `await play()` (yield point)
+      // → pause segera. Controller tetap initialized-tapi-paused (resumable),
+      // JANGAN dispose.
+      if (!_visible || !_foreground) {
         unawaited(controller.pause());
         setState(() => _initializing = false);
         return;
       }
       setState(() => _initializing = false);
     } catch (_) {
-      // Init gagal (URL rusak / hiccup) → balik ke thumbnail + ▶ (retry),
-      // JANGAN kotak hitam.
+      // Init gagal (URL rusak / hiccup) → balik ke poster (retry saat terlihat
+      // lagi), JANGAN kotak hitam.
       controller.removeListener(_onControllerTick);
       if (identical(_controller, controller)) _controller = null;
       unawaited(controller.dispose());
@@ -257,8 +284,9 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
     }
   }
 
-  /// Handler tombol ⛶: pause inline dulu (cegah suara dobel saat viewer
-  /// fullscreen mulai main), baru serahkan ke Task 4 lewat callback parent.
+  /// Handler tombol ⛶: pause inline dulu (hemat decoder + hentikan playback
+  /// yang tak terlihat saat viewer fullscreen naik), baru serahkan ke Task 4
+  /// lewat callback parent. Inline bisu jadi tak ada isu double-audio.
   void _openFullscreen() {
     pauseIfPlaying();
     widget.onOpenFullscreen?.call();
@@ -278,6 +306,14 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
     });
   }
 
+  /// Toggle bisu/bersuara (tombol 🔇/🔊). Ubah `_muted` + volume controller
+  /// (aman kalau controller null / belum init — `setVolume` disimpan & dipakai
+  /// saat init selesai lewat `setVolume(_muted ? 0 : 1)` di `_ensureAndPlay`).
+  void _toggleMute() {
+    setState(() => _muted = !_muted);
+    _controller?.setVolume(_muted ? 0 : 1);
+  }
+
   // ─── Render ─────────────────────────────────────────────────────────────
 
   @override
@@ -289,8 +325,16 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
     return VisibilityDetector(
       key: ValueKey('detail-video-${widget.videoUrl}'),
       onVisibilityChanged: (info) {
-        // Hero ada di scroll view: scroll ke deskripsi → suara berhenti.
-        if (info.visibleFraction < 0.5) pauseIfPlaying();
+        // Dipicu di TRANSISI (bukan tiap event) supaya pause manual saat diam
+        // tidak ditimpa. Terlihat (>=0.6) → autoplay bisu; tak-terlihat (<0.5)
+        // → pause. Hysteresis 0.5..0.6 = pertahankan state (anti flicker).
+        if (info.visibleFraction >= 0.6 && !_visible) {
+          _visible = true;
+          unawaited(_ensureAndPlay());
+        } else if (info.visibleFraction < 0.5 && _visible) {
+          _visible = false;
+          pauseIfPlaying();
+        }
       },
       child: ColoredBox(
         color: Colors.black,
@@ -301,22 +345,15 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
     );
   }
 
-  // Overlay sebelum play: poster + kapsul + tombol ▶ (atau loading).
+  // Overlay poster saat init/belum-terlihat: poster contain + kapsul + kontrol
+  // (mute + ⛶). Autoplay bisu jalan begitu terlihat, jadi poster cuma sekejap.
   Widget _buildThumbnail(BuildContext context) {
     return Stack(
       fit: StackFit.expand,
       children: [
         _buildPoster(),
         if (_initializing)
-          const Center(child: CircularProgressIndicator(color: Colors.white))
-        else
-          Center(
-            child: GestureDetector(
-              // onTap SAJA — tidak makan horizontal drag (PageView swipe jalan).
-              onTap: _startPlayback,
-              child: const _CircleGlyph(icon: Icons.play_arrow_rounded),
-            ),
-          ),
+          const Center(child: CircularProgressIndicator(color: Colors.white)),
         // Kapsul kiri-atas "Video".
         const Positioned(top: 12, left: 12, child: _Capsule(text: 'Video')),
         // Kapsul kanan-atas durasi mm:ss (sembunyi kalau durationSec null).
@@ -326,9 +363,12 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
             right: 12,
             child: _Capsule(text: _formatDuration(widget.durationSec!)),
           ),
-        // ⛶ pojok kanan-bawah — child TERAKHIR (topmost) supaya tap-nya
-        // menang lebih dulu daripada ▶ di tengah (lihat dok _FullscreenButton).
-        _FullscreenButton(onTap: _openFullscreen),
+        // Kontrol pojok kanan-bawah [🔇][⛶] — child TERAKHIR (topmost).
+        _BottomRightControls(
+          muted: _muted,
+          onToggleMute: _toggleMute,
+          onOpenFullscreen: _openFullscreen,
+        ),
       ],
     );
   }
@@ -344,7 +384,9 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
       imageUrl: thumb,
       width: double.infinity,
       height: double.infinity,
-      fit: BoxFit.cover,
+      // CONTAIN (bukan cover): samakan dengan render video yang contain-di-hitam,
+      // jadi tak ada "pop" ukuran cover→contain saat autoplay mulai.
+      fit: BoxFit.contain,
       placeholder: (_, __) => _posterImage(poster),
       errorWidget: (_, __, ___) => _posterImage(poster),
     );
@@ -357,7 +399,7 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
       imageUrl: posterUrl,
       width: double.infinity,
       height: double.infinity,
-      fit: BoxFit.cover,
+      fit: BoxFit.contain,
       placeholder: (_, __) => const ColoredBox(color: Colors.black),
       errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black),
     );
@@ -410,13 +452,17 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
               colors: const VideoProgressColors(playedColor: _brandBlue),
             ),
           ),
-          // ⛶ pojok kanan-bawah — child TERAKHIR (topmost) di Stack ini,
-          // yang jadi child dari GestureDetector luar (_togglePlay). Karena
-          // topmost, hit-test-nya duluan ketemu & memenangkan gesture arena
-          // duluan → tap ⛶ TIDAK jatuh ke _togglePlay (lihat dok
-          // _FullscreenButton). Posisi bottom:12 aman dari progress bar
+          // Kontrol [🔇][⛶] pojok kanan-bawah — child TERAKHIR (topmost) di
+          // Stack ini, yang jadi child dari GestureDetector luar (_togglePlay).
+          // Karena topmost, hit-test-nya duluan ketemu & memenangkan gesture
+          // arena duluan → tap kontrol TIDAK jatuh ke _togglePlay (lihat dok
+          // _BottomRightControls). Posisi bottom:12 aman dari progress bar
           // (tinggi ~9px, padding top 5 + LinearProgressIndicator 4).
-          _FullscreenButton(onTap: _openFullscreen),
+          _BottomRightControls(
+            muted: _muted,
+            onToggleMute: _toggleMute,
+            onOpenFullscreen: _openFullscreen,
+          ),
         ],
       ),
     );
@@ -452,40 +498,70 @@ class _CircleGlyph extends StatelessWidget {
   }
 }
 
-/// Tombol ⛶ pojok kanan-bawah video — buka viewer fullscreen (callback Task 4).
-/// Gaya kapsul sama dengan `_Capsule` (black 0.55 / radius 999), ikon
-/// `Icons.fullscreen_rounded` putih 20.
+/// Kontrol pojok kanan-bawah video: [🔇/🔊 mute][⛶ fullscreen] (pola Tokopedia,
+/// mute + fullscreen berdampingan). Dua kapsul gaya `_Capsule` (black 0.55 /
+/// radius 999), ikon putih 20.
 ///
-/// `GestureDetector` DISENGAJA terpisah dari `GestureDetector` play/pause di
-/// `_buildPlaying`/`_startPlayback` di `_buildThumbnail` — bukan `onTap`
-/// tunggal yang bercabang. Widget ini HARUS jadi child TERAKHIR di `Stack`
-/// pemanggilnya (poster & playing): Stack hit-test anak dari topmost (child
-/// terakhir) ke bawah, jadi tap di area ⛶ kena widget ini duluan & menang di
-/// gesture arena (recognizer yang duluan masuk arena menang saat sweep) —
-/// tap TIDAK diteruskan/jatuh ke GestureDetector ▶ / toggle di baliknya.
-class _FullscreenButton extends StatelessWidget {
-  final VoidCallback onTap;
-  const _FullscreenButton({required this.onTap});
+/// `GestureDetector` tiap tombol DISENGAJA terpisah dari `GestureDetector`
+/// play/pause di `_buildPlaying` — bukan `onTap` tunggal yang bercabang. Widget
+/// ini HARUS jadi child TERAKHIR di `Stack` pemanggilnya (poster & playing):
+/// Stack hit-test anak dari topmost (child terakhir) ke bawah, jadi tap di area
+/// kontrol kena widget ini duluan & menang di gesture arena (recognizer yang
+/// duluan masuk arena menang saat sweep) — tap TIDAK jatuh ke GestureDetector
+/// toggle play/pause di baliknya.
+class _BottomRightControls extends StatelessWidget {
+  final bool muted;
+  final VoidCallback onToggleMute;
+  final VoidCallback onOpenFullscreen;
+  const _BottomRightControls({
+    required this.muted,
+    required this.onToggleMute,
+    required this.onOpenFullscreen,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Positioned(
       right: 12,
       bottom: 12,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.circular(999),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _CapsuleIconButton(
+            icon: muted
+                ? Icons.volume_off_rounded
+                : Icons.volume_up_rounded,
+            onTap: onToggleMute,
           ),
-          child: const Icon(
-            Icons.fullscreen_rounded,
-            color: Colors.white,
-            size: 20,
+          const SizedBox(width: 8),
+          _CapsuleIconButton(
+            icon: Icons.fullscreen_rounded,
+            onTap: onOpenFullscreen,
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Kapsul tombol ikon (black 0.55 / radius 999 / ikon putih 20) — dipakai
+/// tombol mute & fullscreen di `_BottomRightControls`.
+class _CapsuleIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _CapsuleIconButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(999),
         ),
+        child: Icon(icon, color: Colors.white, size: 20),
       ),
     );
   }

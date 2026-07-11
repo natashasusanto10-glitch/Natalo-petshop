@@ -29,6 +29,7 @@ import '../../../state/feed_store.dart';
 import '../../../state/member_store.dart';
 import '../../../state/settings_store.dart';
 import '../../../utils/android_back_overlays.dart';
+import '../../../utils/app_route_observer.dart';
 import '../../../utils/formatters.dart';
 import '../../../utils/haptics.dart';
 import '../../../widgets/app_toast.dart';
@@ -69,7 +70,7 @@ class FeedVideoPostView extends StatefulWidget {
 }
 
 class _FeedVideoPostViewState extends State<FeedVideoPostView>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, RouteAware, WidgetsBindingObserver {
   static const double _commentSheetMinExtent = 0.22;
   static const double _commentSheetInitialExtent = 0.60;
   static const double _commentSheetMaxExtentCap = 0.82;
@@ -122,7 +123,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   late final AnimationController _heartBurstController;
   late final Animation<double> _heartScale;
   late final Animation<double> _heartOpacity;
+  late final Animation<double> _heartTravel;
   Offset? _heartBurstPosition;
+  // Target "terbang ke rail" — pusat tombol like, di-capture saat gesture.
+  Offset? _heartBurstTarget;
+  final GlobalKey _likeButtonKey = GlobalKey();
 
   @override
   void initState() {
@@ -186,12 +191,83 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         weight: 37,
       ),
     ]).animate(_heartBurstController);
+    // Terbang ke rail: mulai setelah pop (0.5) lalu melesat easeIn.
+    _heartTravel = CurvedAnimation(
+      parent: _heartBurstController,
+      curve: const Interval(0.5, 1.0, curve: Curves.easeInCubic),
+    );
 
     _commentSheetController.addListener(_syncCommentSheetProgress);
+
+    // Pause deterministik saat app ke background — VisibilityDetector tidak
+    // fire untuk lifecycle app, hanya untuk perubahan layout.
+    WidgetsBinding.instance.addObserver(this);
 
     _adoptPreloadedController();
     _maybeInitVideo();
     _syncProductRotation();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Subscribe RouteAware — pause pasti SEBELUM route lain menutup feed,
+    // tidak lagi menunggu debounce VisibilityDetector (~500ms) yang
+    // membiarkan dua video bersuara bersamaan (fix double-audio).
+    final route = ModalRoute.of(context);
+    if (route != null) {
+      appRouteObserver.subscribe(this, route);
+    }
+  }
+
+  // ── Pause/resume deterministik (route + app lifecycle) ──
+  // _pausedByCover true HANYA kalau kita yang mem-pause karena tertutup —
+  // supaya resume tidak menyalakan video yang memang di-pause user.
+  bool _pausedByCover = false;
+
+  void _pauseForCover() {
+    final ctrl = _videoController;
+    if (ctrl == null || !ctrl.value.isInitialized) return;
+    if (!ctrl.value.isPlaying) return;
+    _pausedByCover = true;
+    ctrl.pause();
+  }
+
+  void _resumeFromCover() {
+    if (!_pausedByCover) return;
+    _pausedByCover = false;
+    if (!mounted || !widget.isActive) return;
+    if (_isPaused || !_shouldAutoplay) return;
+    _videoController?.play();
+  }
+
+  @override
+  void didPushNext() {
+    // Halaman penuh menutup feed → pause. Sheet/dialog transparan (mis.
+    // sheet produk) TIDAK mem-pause — video tetap jalan di baliknya (ala
+    // TikTok/IG) dan tidak ada konflik audio dari sheet.
+    if (lastPushedRouteIsOpaque()) {
+      _pauseForCover();
+    }
+  }
+
+  @override
+  void didPopNext() {
+    _resumeFromCover();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+        _pauseForCover();
+      case AppLifecycleState.resumed:
+        _resumeFromCover();
+      case AppLifecycleState.detached:
+        break;
+    }
   }
 
   bool get _dataSaverEnabled =>
@@ -202,7 +278,23 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
   Future<void> _adoptPreloadedController() async {
     final controller = widget.preloadedController;
-    if (controller == null) return;
+    if (controller == null) {
+      // RACE FIX: post jadi aktif sebelum preload MP4 selesai — controller
+      // belum masuk map (baru di-add di .then initialize), tapi wrapper
+      // in-flight SUDAH ter-remove dari map oleh itemBuilder dan sampai ke
+      // sini. Dulu wrapper ini dibiarkan → VideoPlayerController native
+      // bocor (tidak pernah dispose). Sekarang: dispose begitu init-nya
+      // settle; _maybeInitVideo lanjut bikin controller fresh.
+      final orphan = widget.preloadedCachedPlayer;
+      if (orphan != null) {
+        Future(() async {
+          try {
+            await orphan.dispose();
+          } catch (_) {}
+        });
+      }
+      return;
+    }
     _videoController = controller;
     // Adopt wrapper juga supaya child bisa dispose properly. Wrapper
     // might be null (legacy or unwrapped). Either way, controller-level
@@ -216,6 +308,25 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     await controller.setVolume(appSettingsStore.feedMuted ? 0 : 1);
     if (widget.isActive && _shouldAutoplay) {
       await controller.play();
+    }
+    // HLS bisa ter-adopt SEBELUM initialize selesai (controller masuk map
+    // sinkron, init jalan async). play()/setVolume di atas jadi no-op diam
+    // → tanpa hook ini video stuck di poster sampai user interaksi.
+    // Listener one-shot: begitu initialized, apply volume + play.
+    if (!controller.value.isInitialized) {
+      void onInit() {
+        if (!controller.value.isInitialized) return;
+        controller.removeListener(onInit);
+        if (!mounted || _videoController != controller) return;
+        controller.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+        if (widget.isActive && _shouldAutoplay && !_isPaused) {
+          controller.play();
+        }
+        _cancelLoadingSpinnerDelay();
+        if (mounted) setState(() {});
+      }
+
+      controller.addListener(onInit);
     }
     if (mounted) setState(() {});
   }
@@ -456,6 +567,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
   @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
+    WidgetsBinding.instance.removeObserver(this);
     feedStore.removeListener(_onFeedStoreChanged);
     _loadingSpinnerDelay?.cancel();
     _stopProductRotation();
@@ -615,12 +728,21 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     _heartBurstPosition = details.localPosition;
   }
 
+  /// Pusat tombol like rail dalam koordinat ~global (Stack mengisi layar
+  /// dari 0,0), untuk target "terbang ke rail". Null kalau belum ter-render.
+  Offset? _resolveLikeCenter() {
+    final box = _likeButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return box.localToGlobal(box.size.center(Offset.zero));
+  }
+
   void _onDoubleTapLike() {
     if (!_liked) {
       _onLikePressed();
     } else {
       AppHaptics.impact();
     }
+    _heartBurstTarget = _resolveLikeCenter();
     _heartBurstController.forward(from: 0);
   }
 
@@ -1305,45 +1427,20 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                             ),
                           ),
                         ),
-                      // ── Heart burst overlay (Reels double-tap signature) ──
+                      // ── Heart burst double-tap — MERAH, muncul di titik
+                      // jari lalu terbang mengecil ke tombol like rail ──
                       Positioned.fill(
                         child: IgnorePointer(
                           child: AnimatedBuilder(
                             animation: _heartBurstController,
-                            builder: (context, _) {
-                              if (_heartOpacity.value == 0) {
-                                return const SizedBox.shrink();
-                              }
-
-                              final position = _heartBurstPosition;
-                              // Ala IG: putih, bentuk sama dengan heart
-                              // rail, tegak — pop overshoot lalu fade
-                              // (tanpa tilt/naik gaya TikTok). Shared
-                              // dengan versi foto carousel.
-                              final heart = Opacity(
-                                opacity: _heartOpacity.value,
-                                child: Transform.scale(
-                                  scale: _heartScale.value,
-                                  child: const FeedPostBurstHeart(),
-                                ),
-                              );
-
-                              if (position == null) {
-                                return Center(child: heart);
-                              }
-
-                              return Stack(
-                                children: [
-                                  Positioned(
-                                    left: position.dx - 52,
-                                    top: position.dy - 52,
-                                    width: 104,
-                                    height: 104,
-                                    child: Center(child: heart),
-                                  ),
-                                ],
-                              );
-                            },
+                            builder: (context, _) => feedPostBuildFlyingBurstHeart(
+                              tap: _heartBurstPosition,
+                              target: _heartBurstTarget,
+                              scale: _heartScale.value,
+                              opacity: _heartOpacity.value,
+                              travel: _heartTravel.value,
+                              screenSize: MediaQuery.sizeOf(context),
+                            ),
                           ),
                         ),
                       ),
@@ -1417,6 +1514,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                               // kanan-atas (satu-satunya pintu keranjang di
                               // feed sekarang).
                               child: FeedActionRail(
+                                likeKey: _likeButtonKey,
                                 likeCount: _likeCount,
                                 liked: _liked,
                                 commentCount: _commentCount,

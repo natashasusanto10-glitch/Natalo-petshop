@@ -480,6 +480,11 @@ class _FeedScreenState extends State<FeedScreen> {
       _preloadedCachedPlayers[id] = cachedPlayer;
       initFutures.add(
         cachedPlayer.initialize().then((_) async {
+          // Entry mungkin sudah DIKONSUMSI itemBuilder (post keburu aktif —
+          // child dispose wrapper in-flight sendiri) atau di-evict window.
+          // Tanpa guard ini, controller di-re-add ke map sebagai zombie
+          // yang tidak pernah di-dispose (leak native player).
+          if (_preloadedCachedPlayers[id] != cachedPlayer) return;
           final controller = cachedPlayer.controller;
           _preloadedControllers[id] = controller;
           // Prepared state: paused, frame 0 ready, muted, looping prepped.
@@ -615,8 +620,14 @@ class _FeedScreenState extends State<FeedScreen> {
                       // Branch by kind: PHOTO_CAROUSEL render carousel
                       // PageView horizontal 1-8 foto; video kind render
                       // FeedVideoPostView dengan VideoPlayerController.
+                      // ValueKey(post.id) WAJIB — tanpa key, Flutter match
+                      // State by posisi list. Saat _visiblePosts bergeser
+                      // (block/unblock user), State di index i menerima post
+                      // BERBEDA dan controller video lama tetap memutar klip
+                      // lama di bawah post baru (audio nyasar).
                       if (post.isPhotoCarousel) {
                         return _PhotoCarouselPostView(
+                          key: ValueKey('feed-photo-${post.id}'),
                           post: post,
                           isActive: index == _activeIndex,
                           onOverlayStateChanged: _setFeedInteractionLocked,
@@ -624,6 +635,7 @@ class _FeedScreenState extends State<FeedScreen> {
                         );
                       }
                       return FeedVideoPostView(
+                        key: ValueKey('feed-video-${post.id}'),
                         post: post,
                         isActive: index == _activeIndex,
                         preloadedController:
@@ -1150,6 +1162,7 @@ class _PhotoCarouselPostView extends StatefulWidget {
   final ValueChanged<bool> onMediaZoomChanged;
 
   const _PhotoCarouselPostView({
+    super.key,
     required this.post,
     required this.isActive,
     required this.onOverlayStateChanged,
@@ -1175,7 +1188,11 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   late final AnimationController _heartBurstController;
   late final Animation<double> _heartScale;
   late final Animation<double> _heartOpacity;
+  late final Animation<double> _heartTravel;
   Offset? _heartBurstPosition;
+  // Target "terbang ke rail" — pusat tombol like, di-capture saat gesture.
+  Offset? _heartBurstTarget;
+  final GlobalKey _likeButtonKey = GlobalKey();
 
   // Product chip rotation — sama pattern dengan FeedVideoPostView untuk video.
   // Tagged products di PHOTO_CAROUSEL/COMMUNITY post juga butuh chip
@@ -1234,6 +1251,11 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
         weight: 37,
       ),
     ]).animate(_heartBurstController);
+    // Terbang ke rail: mulai setelah pop (0.5) lalu melesat easeIn.
+    _heartTravel = CurvedAnimation(
+      parent: _heartBurstController,
+      curve: const Interval(0.5, 1.0, curve: Curves.easeInCubic),
+    );
 
     // Pre-cache thumbnail foto pertama supaya muncul instan.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1365,11 +1387,20 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     _heartBurstPosition = details.localPosition;
   }
 
+  /// Pusat tombol like rail dalam koordinat ~global (Stack mengisi layar
+  /// dari 0,0), untuk target "terbang ke rail". Null kalau belum ter-render.
+  Offset? _resolveLikeCenter() {
+    final box = _likeButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return box.localToGlobal(box.size.center(Offset.zero));
+  }
+
   void _onDoubleTapLike() {
     AppHaptics.impact();
     if (!_liked) {
       _onLikePressed();
     }
+    _heartBurstTarget = _resolveLikeCenter();
     _heartBurstController.forward(from: 0);
   }
 
@@ -1702,40 +1733,20 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                 },
               ),
             ),
-            // Heart burst overlay (double-tap signature) di titik jari.
+            // Heart burst double-tap — muncul di titik jari, MERAH, lalu
+            // terbang mengecil ke tombol like rail (target di-capture saat
+            // gesture; null → fade di tempat).
             IgnorePointer(
               child: AnimatedBuilder(
                 animation: _heartBurstController,
-                builder: (context, _) {
-                  if (_heartOpacity.value == 0) {
-                    return const SizedBox.shrink();
-                  }
-
-                  final position = _heartBurstPosition;
-                  // Ala IG: putih, bentuk sama dengan heart rail, tegak —
-                  // pop overshoot lalu fade (tanpa tilt/naik gaya TikTok).
-                  final heart = Opacity(
-                    opacity: _heartOpacity.value,
-                    child: Transform.scale(
-                      scale: _heartScale.value,
-                      child: const FeedPostBurstHeart(),
-                    ),
-                  );
-                  if (position == null) {
-                    return Center(child: heart);
-                  }
-                  return Stack(
-                    children: [
-                      Positioned(
-                        left: position.dx - 52,
-                        top: position.dy - 52,
-                        width: 104,
-                        height: 104,
-                        child: Center(child: heart),
-                      ),
-                    ],
-                  );
-                },
+                builder: (context, _) => feedPostBuildFlyingBurstHeart(
+                  tap: _heartBurstPosition,
+                  target: _heartBurstTarget,
+                  scale: _heartScale.value,
+                  opacity: _heartOpacity.value,
+                  travel: _heartTravel.value,
+                  screenSize: MediaQuery.sizeOf(context),
+                ),
               ),
             ),
             // Dots indicator (kalau >1 foto) — tengah atas, Instagram-style
@@ -1792,6 +1803,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                   // Cart di rail DIHAPUS — duplikat dengan cart kanan-atas
                   // (satu-satunya pintu keranjang di feed).
                   child: FeedActionRail(
+                    likeKey: _likeButtonKey,
                     likeCount: _likeCount,
                     liked: _liked,
                     commentCount: _commentCount,

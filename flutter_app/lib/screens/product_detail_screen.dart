@@ -1007,17 +1007,7 @@ class _ProductInfo extends StatelessWidget {
           const SizedBox(height: 18),
         // Judul full-width; favorit pindah ke baris meta di bawah supaya
         // judul panjang tidak berebut ruang dengan tombol hati.
-        Text(
-          product.title,
-          maxLines: 3,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: cs.onSurface,
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            height: 1.22,
-          ),
-        ),
+        _ExpandableProductTitle(title: product.title),
         const SizedBox(height: 8),
         // Baris meta padat: rating • ulasan • terjual di kiri, favorit
         // sejajar di kanan. Baris SELALU render (favorit butuh rumah)
@@ -5356,6 +5346,42 @@ class _WhatsAppIcon extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ExpandableProductTitle extends StatefulWidget {
+  final String title;
+  const _ExpandableProductTitle({required this.title});
+  @override
+  State<_ExpandableProductTitle> createState() =>
+      _ExpandableProductTitleState();
+}
+
+class _ExpandableProductTitleState extends State<_ExpandableProductTitle> {
+  bool _expanded = false;
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _expanded ? null : () => setState(() => _expanded = true),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOut,
+        alignment: Alignment.topCenter,
+        child: Text(
+          widget.title,
+          maxLines: _expanded ? null : 2,
+          overflow: _expanded ? TextOverflow.clip : TextOverflow.ellipsis,
+          style: TextStyle(
+            color: cs.onSurface,
+            fontSize: 20,
+            fontWeight: FontWeight.w500,
+            height: 1.22,
+          ),
+        ),
+      ),
     );
   }
 }

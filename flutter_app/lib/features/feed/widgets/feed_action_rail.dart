@@ -28,6 +28,10 @@ class FeedActionRail extends StatelessWidget {
   final VoidCallback? onShare;
   final VoidCallback? onMore;
 
+  /// Key pada tombol like — dipakai overlay burst double-tap untuk tahu
+  /// posisi target "terbang ke rail" (lihat _buildFlyingBurstHeart).
+  final Key? likeKey;
+
   const FeedActionRail({
     super.key,
     required this.likeCount,
@@ -38,6 +42,7 @@ class FeedActionRail extends StatelessWidget {
     this.onComment,
     this.onShare,
     this.onMore,
+    this.likeKey,
   });
 
   @override
@@ -46,6 +51,7 @@ class FeedActionRail extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         _ReelsAction(
+          key: likeKey,
           iconChild: _ReelsHeartGlyph(liked: liked),
           count: likeCount,
           onTap: onLike ?? () {},
@@ -86,6 +92,7 @@ class _ReelsAction extends StatefulWidget {
   final bool Function()? shouldPulse;
 
   const _ReelsAction({
+    super.key,
     required this.iconChild,
     this.count,
     required this.onTap,

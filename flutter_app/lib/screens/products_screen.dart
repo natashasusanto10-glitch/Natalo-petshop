@@ -1066,6 +1066,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 child: CustomScrollView(
                   controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
+                  // User sudah ketik → hasil live tampil tanpa perlu tekan
+                  // tombol "search" keyboard. Begitu jari mulai men-drag
+                  // daftar, keyboard OTOMATIS turun (pola Shopee/Tokopedia)
+                  // supaya hasil kelihatan penuh tanpa harus tutup keyboard
+                  // manual dulu.
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   slivers: [
                     // ── Collapsing header katalog (spec Jul 2026) ──
                     // Judul "Produk Natalo"+cart PINDAH ke dalam pinned
@@ -2389,6 +2396,18 @@ class _ProductsPageProductCard extends StatelessWidget {
                       top: 8,
                       child: BrandExclusiveBadge(brand: product.brand),
                     ),
+                  // Badge video: indikator statis (play + durasi) — Katalog
+                  // TIDAK autoplay, cuma penanda. Tap kartu tetap ke detail
+                  // tempat video sungguhan main. Pojok kiri-bawah karena
+                  // kanan-atas & kiri-atas sudah dipakai diskon/brand.
+                  if (product.hasVideo)
+                    Positioned(
+                      left: 8,
+                      bottom: 8,
+                      child: _ProductVideoBadge(
+                        durationSec: product.videoDurationSec,
+                      ),
+                    ),
                 ],
               ),
               Padding(
@@ -2773,6 +2792,53 @@ class _ProductDiscountBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Badge video statis (▶ + durasi) di kartu Katalog — hanya indikator,
+/// TIDAK autoplay. Bahasa visual sama dengan capsule "Video"/durasi di
+/// detail (product_detail_video_slide.dart): hitam translusen, radius
+/// penuh, teks putih kecil.
+class _ProductVideoBadge extends StatelessWidget {
+  final int? durationSec;
+
+  const _ProductVideoBadge({required this.durationSec});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 14),
+          if (durationSec != null) ...[
+            const SizedBox(width: 3),
+            Text(
+              _formatVideoDuration(durationSec!),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// m:ss dari detik (0:05, 1:09, 12:00) — SELARAS dengan
+/// product_detail_video_slide.dart `_formatDuration` (menit TIDAK di-pad,
+/// detik di-pad 2) supaya format durasi video konsisten lintas layar.
+/// Klamp negatif ke 0.
+String _formatVideoDuration(int totalSeconds) {
+  final s = totalSeconds < 0 ? 0 : totalSeconds;
+  return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
 }
 
 class _SearchSuggestionPanel extends StatelessWidget {

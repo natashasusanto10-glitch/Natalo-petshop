@@ -335,13 +335,56 @@ class FeedPostBurstHeartPainter extends CustomPainter {
     canvas.drawPath(path.shift(const Offset(0, 3)), shadowPaint);
 
     final fillPaint = Paint()
-      ..color = Colors.white
+      ..color = const Color(0xFFEF4444)
       ..style = PaintingStyle.fill;
     canvas.drawPath(path, fillPaint);
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Subtree overlay hati burst double-tap yang TERBANG ke tombol like rail.
+///
+/// - [tap]: titik jari (koordinat Stack ≈ global — media detector mengisi
+///   layar dari (0,0)). Null → tampil di tengah.
+/// - [target]: pusat tombol like rail; null (mis. key belum ter-render) →
+///   fade di tempat tanpa terbang.
+/// - [travel] 0→1: interpolasi posisi tap→target. [scale]/[opacity] dari
+///   TweenSequence burst (pop di titik jari, lalu mengecil + memudar saat
+///   melesat ke rail).
+///
+/// Return nested Stack supaya bisa jadi child langsung AnimatedBuilder
+/// (Positioned wajib punya Stack parent).
+Widget feedPostBuildFlyingBurstHeart({
+  required Offset? tap,
+  required Offset? target,
+  required double scale,
+  required double opacity,
+  required double travel,
+  required Size screenSize,
+}) {
+  if (opacity == 0) return const SizedBox.shrink();
+  final origin =
+      tap ?? Offset(screenSize.width / 2, screenSize.height / 2);
+  final pos = target != null ? Offset.lerp(origin, target, travel)! : origin;
+  return Stack(
+    children: [
+      Positioned(
+        left: pos.dx - FeedPostBurstHeart.size / 2,
+        top: pos.dy - FeedPostBurstHeart.size / 2,
+        width: FeedPostBurstHeart.size,
+        height: FeedPostBurstHeart.size,
+        child: Opacity(
+          opacity: opacity,
+          child: Transform.scale(
+            scale: scale,
+            child: const FeedPostBurstHeart(),
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
 /// Compact product pill — Final Lock Spec Feed Product Tag.
