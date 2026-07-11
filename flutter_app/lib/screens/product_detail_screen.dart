@@ -720,6 +720,45 @@ class _ProductHeroState extends State<_ProductHero> {
     super.dispose();
   }
 
+  /// Buka ImageViewerScreen dalam mode SLIDE (video slide 0 kalau ada + foto
+  /// 1+). [initialSlide] adalah index SLIDE viewer, BUKAN index foto — hero
+  /// slide index memetakan 1:1 ke viewer slide index karena keduanya memakai
+  /// urutan video-dulu yang sama. Dipakai oleh tombol ⛶ video (slide 0) dan
+  /// tap foto (slide index hero yang sudah termasuk offset video).
+  void _openMediaViewer(
+    BuildContext context,
+    int initialSlide,
+    List<String> images,
+  ) {
+    AppHaptics.tap();
+    Navigator.push<void>(
+      context,
+      PageRouteBuilder<void>(
+        opaque: true,
+        barrierColor: Colors.black,
+        transitionDuration: const Duration(milliseconds: 280),
+        reverseTransitionDuration: const Duration(milliseconds: 220),
+        pageBuilder: (_, __, ___) => ImageViewerScreen(
+          images: images,
+          videoUrl: _hasVideo ? widget.product.videoUrl : null,
+          videoThumbnailUrl:
+              _hasVideo ? widget.product.videoThumbnailUrl : null,
+          videoDurationSec: _hasVideo ? widget.product.videoDurationSec : null,
+          posterImageUrl: widget.product.imageUrl,
+          initialIndex: initialSlide,
+          productMediaViewer: true,
+          product: widget.product,
+          selectedVariant: widget.selectedVariant,
+          needsVariantSelection: widget.needsVariantSelection,
+          onSelectVariant: widget.onSelectVariant,
+          onAddToCart: widget.onAddToCart,
+        ),
+        transitionsBuilder: (_, animation, __, child) =>
+            FadeTransition(opacity: animation, child: child),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -777,6 +816,9 @@ class _ProductHeroState extends State<_ProductHero> {
                                     posterImageUrl: widget.product.imageUrl,
                                     durationSec:
                                         widget.product.videoDurationSec,
+                                    // ⛶ → buka viewer di slide video (0).
+                                    onOpenFullscreen: () =>
+                                        _openMediaViewer(context, 0, images),
                                   );
                                 }
                                 // Slide foto: geser index kalau video di depan.
@@ -786,40 +828,12 @@ class _ProductHeroState extends State<_ProductHero> {
                                   // Tap image → buka fullscreen pinch-zoom
                                   // gallery viewer dengan native Flutter
                                   // InteractiveViewer (smooth + GPU-accelerated).
-                                  onTap: () {
-                                    AppHaptics.tap();
-                                    Navigator.push<void>(
-                                      context,
-                                      PageRouteBuilder<void>(
-                                        opaque: true,
-                                        barrierColor: Colors.black,
-                                        transitionDuration:
-                                            const Duration(milliseconds: 280),
-                                        reverseTransitionDuration:
-                                            const Duration(milliseconds: 220),
-                                        pageBuilder: (_, __, ___) =>
-                                            ImageViewerScreen(
-                                          images: images,
-                                          initialIndex: imageIndex,
-                                          productMediaViewer: true,
-                                          product: widget.product,
-                                          selectedVariant:
-                                              widget.selectedVariant,
-                                          needsVariantSelection:
-                                              widget.needsVariantSelection,
-                                          onSelectVariant:
-                                              widget.onSelectVariant,
-                                          onAddToCart: widget.onAddToCart,
-                                        ),
-                                        transitionsBuilder:
-                                            (_, animation, __, child) =>
-                                                FadeTransition(
-                                          opacity: animation,
-                                          child: child,
-                                        ),
-                                      ),
-                                    );
-                                  },
+                                  // Pakai SLIDE index hero (`index`, sudah
+                                  // termasuk offset video) supaya foto yang
+                                  // dibuka SAMA dengan yang di-tap — viewer kini
+                                  // berbasis slide (video 0 + foto 1+).
+                                  onTap: () =>
+                                      _openMediaViewer(context, index, images),
                                   child: AppProductImage(
                                     imageUrl: images[imageIndex],
                                     width: double.infinity,
