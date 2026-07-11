@@ -30,6 +30,8 @@ type Props = {
    *  Saat ada, jadi slide #0 galeri (sebelum semua gambar). */
   video?: {
     mp4Url: string;
+    /** Rendition mundur (mis. 720p) bila mp4Url (mis. 1080p) belum ada. */
+    mp4FallbackUrl?: string;
     thumbnailUrl: string;
     durationSec: number | null;
   };
@@ -80,6 +82,9 @@ export function ProductImageCarousel({ images, alt, transitionName, video }: Pro
   const [active, setActive] = useState(0);
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [videoErrored, setVideoErrored] = useState(false);
+  // Src aktif <video>: mulai dari mp4Url (1080p); kalau gagal load & ada
+  // mp4FallbackUrl (720p), pindah ke sana sekali sebelum menyerah.
+  const [videoSrc, setVideoSrc] = useState(video?.mp4Url ?? "");
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [errored, setErrored] = useState<Record<number, boolean>>({});
@@ -182,12 +187,27 @@ export function ProductImageCarousel({ images, alt, transitionName, video }: Pro
                       user-gesture handler ditolak (NotAllowedError). */}
                   <video
                     ref={videoElRef}
-                    src={video.mp4Url}
+                    src={videoSrc}
                     poster={video.thumbnailUrl}
                     playsInline
                     preload="none"
                     controls={videoPlaying}
                     onError={() => {
+                      // 1080p belum ada → coba 720p sekali, pertahankan intent
+                      // putar supaya recovery-nya mulus (satu klik).
+                      if (video.mp4FallbackUrl && videoSrc !== video.mp4FallbackUrl) {
+                        const fallback = video.mp4FallbackUrl;
+                        setVideoSrc(fallback);
+                        if (videoPlaying) {
+                          requestAnimationFrame(() => {
+                            const el = videoElRef.current;
+                            if (!el) return;
+                            el.load();
+                            void el.play().catch(() => setVideoPlaying(false));
+                          });
+                        }
+                        return;
+                      }
                       setVideoErrored(true);
                       setVideoPlaying(false);
                     }}
