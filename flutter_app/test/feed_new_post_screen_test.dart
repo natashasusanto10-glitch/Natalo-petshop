@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/feed_create_post_draft.dart';
@@ -5,9 +7,24 @@ import 'package:natalo_petshop_flutter/screens/feed_new_post_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  late Directory tempDir;
+
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    tempDir = Directory.systemTemp.createTempSync('feed_new_post_test_');
   });
+
+  tearDown(() {
+    if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+  });
+
+  List<File> makePhotoFiles(int count) {
+    return List.generate(count, (i) {
+      final file = File('${tempDir.path}${Platform.pathSeparator}slide_$i.jpg');
+      file.writeAsBytesSync(<int>[0xFF, 0xD8, 0xFF, i]);
+      return file;
+    });
+  }
 
   const videoDraft = FeedCreatePostDraft(
     localVideoPath: '/nonexistent/v.mp4',
@@ -37,5 +54,60 @@ void main() {
   testWidgets('caption trigger tetap ada', (tester) async {
     await pumpScreen(tester);
     expect(find.text('Tulis caption...'), findsOneWidget);
+  });
+
+  Future<void> pumpCarouselScreen(WidgetTester tester, List<File> files) async {
+    await tester.pumpWidget(MaterialApp(
+      home: FeedNewPostScreen(draft: NewPostMediaDraft.photos(files)),
+    ));
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  }
+
+  testWidgets('carousel: strip slide tampil dengan 3 item saat >1 foto',
+      (tester) async {
+    final files = makePhotoFiles(3);
+    await pumpCarouselScreen(tester, files);
+
+    expect(find.byKey(const ValueKey('slide-0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('slide-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('slide-2')), findsOneWidget);
+    expect(find.text('1/3'), findsOneWidget);
+  });
+
+  testWidgets('carousel: tombol hapus slide mengurangi jumlah',
+      (tester) async {
+    final files = makePhotoFiles(3);
+    await pumpCarouselScreen(tester, files);
+
+    expect(find.text('1/3'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('slide-delete-0')));
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(find.text('1/2'), findsOneWidget);
+    expect(find.byKey(const ValueKey('slide-0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('slide-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('slide-2')), findsNothing);
+  });
+
+  testWidgets('carousel: hapus sampai 1 foto → tombol hapus hilang (min 1)',
+      (tester) async {
+    final files = makePhotoFiles(2);
+    await pumpCarouselScreen(tester, files);
+
+    // Strip hanya muncul kalau >1 foto — hapus salah satu dulu.
+    await tester.tap(find.byKey(const ValueKey('slide-delete-0')));
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    // Tinggal 1 foto — strip carousel disembunyikan (bukan cuma tombol
+    // hapus), karena strip hanya dirender saat _photoFiles.length > 1.
+    expect(find.byKey(const ValueKey('slide-delete-0')), findsNothing);
+    expect(find.byKey(const ValueKey('slide-0')), findsNothing);
   });
 }

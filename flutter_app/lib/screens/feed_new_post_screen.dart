@@ -108,6 +108,16 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   String? _error;
   int _photoIndex = 0;
 
+  /// Foto carousel — mutable copy dari `widget.draft.photoFiles` (yang
+  /// immutable) supaya user bisa urutkan (drag) & hapus slide di layar
+  /// Bagikan (Task 5 / 2C-3). Foto sudah pre-cropped final JPEG dari
+  /// picker — reorder/hapus cuma manipulasi urutan/isi List<File>, TANPA
+  /// re-crop. Setiap referensi ke `widget.draft.photoFiles` di state class
+  /// ini HARUS baca dari `_photoFiles`, bukan `widget.draft.photoFiles`
+  /// langsung, supaya reorder/hapus ke-reflect di semua tempat (upload,
+  /// counter, dots, save draft, dst).
+  late final List<File> _photoFiles = List.of(widget.draft.photoFiles);
+
   /// Id draft aktif — null = belum pernah disimpan sebagai draft. Di-set
   /// dari `widget.resumeDraftId` (kalau restore) atau dibuat baru saat
   /// `_saveDraftAndExit` pertama kali dipanggil, supaya save berikutnya
@@ -119,7 +129,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   bool get _hasProgress {
     return _captionController.text.trim().isNotEmpty ||
         _selectedProductIds.isNotEmpty ||
-        widget.draft.photoFiles.isNotEmpty ||
+        _photoFiles.isNotEmpty ||
         widget.draft.videoDraft != null;
   }
 
@@ -130,7 +140,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       AppAnalytics.logEvent('feed_post_share_opened', {
         'type': _isVideo
             ? 'video'
-            : (widget.draft.photoFiles.length > 1 ? 'carousel' : 'photo'),
+            : (_photoFiles.length > 1 ? 'carousel' : 'photo'),
       }),
     );
     _videoDraft = widget.draft.videoDraft;
@@ -258,6 +268,48 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
     });
   }
 
+  /// Urutkan ulang slide carousel (drag di strip bawah thumbnail) — cuma
+  /// manipulasi urutan `_photoFiles` (foto sudah pre-cropped final JPEG
+  /// dari picker, TANPA re-crop). Setelah pindah, coba tetap fokus ke
+  /// slide logis yang sama di thumbnail PageView (fallback clamp).
+  void _reorderPhoto(int oldIndex, int newIndex) {
+    if (newIndex > oldIndex) newIndex -= 1;
+    if (oldIndex == newIndex) return;
+    AppHaptics.selection();
+    setState(() {
+      final moved = _photoFiles.removeAt(oldIndex);
+      _photoFiles.insert(newIndex, moved);
+      if (_photoIndex == oldIndex) {
+        _photoIndex = newIndex;
+      } else if (_photoIndex > oldIndex && _photoIndex <= newIndex) {
+        _photoIndex -= 1;
+      } else if (_photoIndex < oldIndex && _photoIndex >= newIndex) {
+        _photoIndex += 1;
+      }
+      _photoIndex = _photoIndex.clamp(0, _photoFiles.length - 1);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_photoPageController.hasClients) return;
+      _photoPageController.jumpToPage(_photoIndex);
+    });
+  }
+
+  /// Hapus satu slide carousel — min 1 foto tersisa (tombol hapus
+  /// disembunyikan/di-guard saat tinggal 1). Tidak ada undo — langsung
+  /// hapus (spec brief: "snackbar undo TIDAK perlu").
+  void _deletePhoto(int index) {
+    if (_photoFiles.length <= 1) return;
+    AppHaptics.selection();
+    setState(() {
+      _photoFiles.removeAt(index);
+      _photoIndex = _photoIndex.clamp(0, _photoFiles.length - 1);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_photoPageController.hasClients) return;
+      _photoPageController.jumpToPage(_photoIndex);
+    });
+  }
+
   /// Buka fullscreen Preview Mode — show bagaimana post akan tampil di
   /// feed sebelum publish. User bisa balik untuk revise atau langsung
   /// Share dari preview.
@@ -372,7 +424,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       return;
     }
 
-    final files = widget.draft.photoFiles;
+    final files = _photoFiles;
     if (files.isEmpty || files.length > 8) {
       setState(
           () => _error = 'Media belum bisa diproses. Coba pilih ulang media.');
@@ -417,7 +469,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       productIds: _selectedProductIds.toList(),
       mediaPaths: _isVideo
           ? [_videoDraft?.finalVideoPath].whereType<String>().toList()
-          : widget.draft.photoFiles.map((file) => file.path).toList(),
+          : _photoFiles.map((file) => file.path).toList(),
       thumbnailPath: _videoDraft?.thumbnailPath,
       trimStartMs: _videoDraft?.trimStart?.inMilliseconds,
       trimmedDurationMs: _videoDraft?.trimmedDuration?.inMilliseconds,
@@ -521,7 +573,8 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                       child: FractionallySizedBox(
                         widthFactor: 0.42,
                         child: _NewPostThumbnail(
-                          draft: widget.draft,
+                          isVideo: _isVideo,
+                          photoFiles: _photoFiles,
                           videoDraft: _videoDraft,
                           photoIndex: _photoIndex,
                           photoPageController: _photoPageController,
@@ -532,6 +585,14 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                         ),
                       ),
                     ),
+                    if (!_isVideo && _photoFiles.length > 1) ...[
+                      const SizedBox(height: 14),
+                      _PhotoReorderStrip(
+                        photoFiles: _photoFiles,
+                        onReorder: _reorderPhoto,
+                        onDelete: _deletePhoto,
+                      ),
+                    ],
                     const SizedBox(height: 22),
                     // Simple caption trigger — tap → buka fade-modal Caption
                     // editor (separate page). Tidak ada border/box, tidak
@@ -586,7 +647,8 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
 /// Foto/carousel: PageView swipeable + pill "Pratinjau" + counter X/Y +
 /// dot indicator (tanpa "Ubah sampul").
 class _NewPostThumbnail extends StatelessWidget {
-  final NewPostMediaDraft draft;
+  final bool isVideo;
+  final List<File> photoFiles;
   final FeedCreatePostDraft? videoDraft;
   final int photoIndex;
   final PageController photoPageController;
@@ -595,7 +657,8 @@ class _NewPostThumbnail extends StatelessWidget {
   final VoidCallback onEditCover;
 
   const _NewPostThumbnail({
-    required this.draft,
+    required this.isVideo,
+    required this.photoFiles,
     required this.videoDraft,
     required this.photoIndex,
     required this.photoPageController,
@@ -606,8 +669,7 @@ class _NewPostThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isVideo = draft.type == NewPostMediaType.video;
-    final files = draft.photoFiles;
+    final files = photoFiles;
     final thumb = videoDraft?.thumbnailPath;
     return AspectRatio(
       aspectRatio: 3 / 4,
@@ -781,6 +843,149 @@ class _DotIndicator extends StatelessWidget {
           ),
         );
       }),
+    );
+  }
+}
+
+/// Strip slide horizontal di bawah thumbnail carousel — reorder via
+/// long-press drag (`ReorderableDragStartListener`) + hapus per-slide
+/// (min 1 foto tersisa). Item 56×72 radius 10, badge nomor kecil (soft
+/// tint, bukan warna nge-jreng), tombol × 18px pojok kanan-atas.
+class _PhotoReorderStrip extends StatelessWidget {
+  final List<File> photoFiles;
+  final void Function(int oldIndex, int newIndex) onReorder;
+  final ValueChanged<int> onDelete;
+
+  const _PhotoReorderStrip({
+    required this.photoFiles,
+    required this.onReorder,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final canDelete = photoFiles.length > 1;
+    return SizedBox(
+      height: 76,
+      child: ReorderableListView(
+        scrollDirection: Axis.horizontal,
+        buildDefaultDragHandles: false,
+        onReorder: onReorder,
+        children: [
+          for (var i = 0; i < photoFiles.length; i++)
+            Padding(
+              key: ValueKey('slide-$i'),
+              padding: EdgeInsets.only(
+                right: i == photoFiles.length - 1 ? 0 : 10,
+              ),
+              child: ReorderableDragStartListener(
+                index: i,
+                child: _PhotoReorderTile(
+                  index: i,
+                  file: photoFiles[i],
+                  canDelete: canDelete,
+                  onDelete: () => onDelete(i),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PhotoReorderTile extends StatelessWidget {
+  final int index;
+  final File file;
+  final bool canDelete;
+  final VoidCallback onDelete;
+
+  const _PhotoReorderTile({
+    required this.index,
+    required this.file,
+    required this.canDelete,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 56,
+      height: 72,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.file(
+              file,
+              width: 56,
+              height: 72,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                width: 56,
+                height: 72,
+                color: const Color(0xFF161A24),
+                child: const Icon(
+                  Icons.image_outlined,
+                  color: Colors.white38,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 4,
+            bottom: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '${index + 1}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+          if (canDelete)
+            Positioned(
+              right: -6,
+              top: -6,
+              child: GestureDetector(
+                key: ValueKey('slide-delete-$index'),
+                behavior: HitTestBehavior.opaque,
+                onTap: onDelete,
+                child: Container(
+                  width: 18,
+                  height: 18,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: _newPostBorder),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.12),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 13,
+                    color: _newPostMuted,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
