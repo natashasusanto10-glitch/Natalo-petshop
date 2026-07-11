@@ -771,7 +771,12 @@ class _PostFeedItemState extends State<_PostFeedItem>
           onDoubleTap: _handleDoubleTap,
           child: Stack(
             children: [
-              _PostMediaSurface(post: post),
+              _PostMediaSurface(
+                post: post,
+                onVideoExpandRequested: (controller, anchorKey) {
+                  // TODO(Task 6): open fullscreen overlay with `controller`.
+                },
+              ),
               if (post.isVideo)
                 Positioned(
                   top: 0,
@@ -1424,8 +1429,10 @@ class _PostStatusBadge extends StatelessWidget {
 
 class _PostMediaSurface extends StatelessWidget {
   final FeedPost post;
+  final void Function(VideoPlayerController controller, GlobalKey anchorKey)?
+      onVideoExpandRequested;
 
-  const _PostMediaSurface({required this.post});
+  const _PostMediaSurface({required this.post, this.onVideoExpandRequested});
 
   @override
   Widget build(BuildContext context) {
@@ -1450,6 +1457,7 @@ class _PostMediaSurface extends StatelessWidget {
             mediaUrl: post.videoPlaybackUrl,
             thumbnailUrl: post.thumbnailUrl,
             aspectRatio: aspectRatio,
+            onExpandRequested: onVideoExpandRequested,
           ),
         FeedContentType.carousel => Hero(
             tag: 'post-thumb-${post.id}',
@@ -1828,12 +1836,15 @@ class _InlineVideoPlayer extends StatefulWidget {
   final String mediaUrl;
   final String? thumbnailUrl;
   final double aspectRatio;
+  final void Function(VideoPlayerController controller, GlobalKey anchorKey)?
+      onExpandRequested;
 
   const _InlineVideoPlayer({
     required this.postId,
     required this.mediaUrl,
     required this.thumbnailUrl,
     required this.aspectRatio,
+    this.onExpandRequested,
   });
 
   @override
@@ -1854,6 +1865,9 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
   bool _muted = appSettingsStore.feedMuted;
   // Track viewport visibility to drive auto-play (≥60% visible).
   double _visibleFraction = 0;
+  // Stable key so Task 6's fullscreen overlay can anchor to this exact
+  // inline player's position when expanding.
+  final GlobalKey _anchorKey = GlobalKey();
 
   @override
   void initState() {
@@ -1959,7 +1973,13 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     return VisibilityDetector(
       key: ValueKey('inline-video-${widget.postId}'),
       onVisibilityChanged: _onVisibilityChanged,
-      child: AbsorbPointer(
+      child: GestureDetector(
+        key: _anchorKey,
+        behavior: HitTestBehavior.opaque,
+        onTap: ready && widget.onExpandRequested != null
+            ? () => widget.onExpandRequested!(controller, _anchorKey)
+            : null,
+        child: AbsorbPointer(
         absorbing: false,
         child: Stack(
           fit: StackFit.expand,
@@ -2045,6 +2065,7 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
                 ),
               ),
           ],
+        ),
         ),
       ),
     );
