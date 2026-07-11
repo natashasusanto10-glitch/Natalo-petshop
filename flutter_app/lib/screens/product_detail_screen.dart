@@ -5376,9 +5376,9 @@ class _ExpandableProductTitleState extends State<_ExpandableProductTitle> {
           overflow: _expanded ? TextOverflow.clip : TextOverflow.ellipsis,
           style: TextStyle(
             color: cs.onSurface,
-            fontSize: 20,
+            fontSize: 15,
             fontWeight: FontWeight.w500,
-            height: 1.22,
+            height: 1.35,
           ),
         ),
       ),
