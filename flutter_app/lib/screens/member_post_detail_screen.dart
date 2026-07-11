@@ -14,6 +14,7 @@ import '../models/feed_post.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
 import '../services/report_service.dart';
+import '../services/video_quality_service.dart';
 import '../state/feed_local_store.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
@@ -1925,36 +1926,82 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
       _initializing = true;
       _error = null;
     });
-    final wrapper = CachedVideoPlayerPlus.networkUrl(
-      Uri.parse(widget.mediaUrl),
-      invalidateCacheIfOlderThan: const Duration(days: 7),
+    // Paritas dengan feed_screen: network-aware quality + preferensi user.
+    // Dulu URL mentah dipakai langsung tanpa resolusi sama sekali.
+    final resolvedUrl = videoQualityService.resolvePlaybackUrl(
+      widget.mediaUrl,
+      userPreference: appSettingsStore.feedVideoQuality,
     );
-    _cachedPlayer = wrapper;
+    // ── HLS bypass cache wrapper (paritas feed_screen) ──
+    // CachedVideoPlayerPlus TIDAK support .m3u8 (README paket): playlist
+    // di-cache sebagai file lokal → URI segmen relatif tidak ke-resolve →
+    // playback gagal. Konten feed production = HLS signed, jadi tanpa
+    // bypass ini SEMUA video di layar postingan lewat jalur rusak itu.
+    final isHls = resolvedUrl.contains('.m3u8');
     try {
-      await wrapper.initialize();
-      final controller = wrapper.controller;
-      if (!mounted || _cachedPlayer != wrapper) {
-        await wrapper.dispose();
-        return;
+      final VideoPlayerController controller;
+      if (isHls) {
+        controller = VideoPlayerController.networkUrl(Uri.parse(resolvedUrl));
+        _controller = controller;
+        await controller.initialize();
+        if (!mounted || _controller != controller) {
+          await controller.dispose();
+          return;
+        }
+      } else {
+        // MP4 legacy — tetap lewat wrapper untuk disk cache repeat-view.
+        final wrapper = CachedVideoPlayerPlus.networkUrl(
+          Uri.parse(resolvedUrl),
+          invalidateCacheIfOlderThan: const Duration(days: 7),
+        );
+        _cachedPlayer = wrapper;
+        await wrapper.initialize();
+        if (!mounted || _cachedPlayer != wrapper) {
+          await wrapper.dispose();
+          return;
+        }
+        controller = wrapper.controller;
+        _controller = controller;
       }
-      _controller = controller;
       // Muted state ikut preferensi global (appSettingsStore.feedMuted),
       // sama seperti feed_screen — bukan selalu muted-by-default.
       await controller.setVolume(_muted ? 0 : 1);
       await controller.setLooping(true);
+      // Error playback SETELAH init (mis. segmen HLS gagal dimuat) tidak
+      // lewat try/catch ini — tangkap via listener supaya jadi state error
+      // yang terlihat, bukan frame hitam diam.
+      controller.addListener(_onControllerValueChanged);
       setState(() => _initializing = false);
       // Apply current visibility — kalau sudah visible saat init selesai,
       // langsung play.
       _applyVisibility();
     } catch (_) {
-      await wrapper.dispose();
-      if (!mounted || _cachedPlayer != wrapper) return;
+      final wrapper = _cachedPlayer;
+      final controller = _controller;
+      _cachedPlayer = null;
+      _controller = null;
+      try {
+        if (wrapper != null) {
+          await wrapper.dispose();
+        } else {
+          await controller?.dispose();
+        }
+      } catch (_) {}
+      if (!mounted) return;
       setState(() {
-        _cachedPlayer = null;
-        _controller = null;
         _initializing = false;
         _error = 'Video belum bisa diputar';
       });
+    }
+  }
+
+  /// Playback error asinkron (setelah initialize sukses) → tampilkan
+  /// state error alih-alih frame hitam / spinner selamanya.
+  void _onControllerValueChanged() {
+    final controller = _controller;
+    if (controller == null || !mounted) return;
+    if (controller.value.hasError && _error == null) {
+      setState(() => _error = 'Video belum bisa diputar');
     }
   }
 
@@ -1964,7 +2011,12 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     _cachedPlayer = null;
     _controller = null;
     // Dispose via wrapper — handle underlying controller + cache reference.
-    await controller?.pause();
+    // try/catch: pause/dispose pada controller yang native-nya sudah mati
+    // melempar PlatformException — jangan biarkan jadi unhandled error.
+    try {
+      controller?.removeListener(_onControllerValueChanged);
+      await controller?.pause();
+    } catch (_) {}
     if (wrapper != null) {
       await wrapper.dispose();
     } else {
@@ -1981,11 +2033,15 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
     final shouldPlay = _visibleFraction >= 0.6;
-    if (shouldPlay && !controller.value.isPlaying) {
-      controller.play();
-    } else if (!shouldPlay && controller.value.isPlaying) {
-      controller.pause();
-    }
+    // try/catch: play/pause fire-and-forget bisa melempar PlatformException
+    // kalau native controller keburu invalid (dispose race / backgrounding).
+    try {
+      if (shouldPlay && !controller.value.isPlaying) {
+        controller.play();
+      } else if (!shouldPlay && controller.value.isPlaying) {
+        controller.pause();
+      }
+    } catch (_) {}
   }
 
   Future<void> _toggleMute() async {
@@ -1996,7 +2052,9 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     // Write-back ke preferensi global (pola sama feed_screen :2947) —
     // toggle mute di post detail ikut sinkron balik ke layar feed.
     await appSettingsStore.setFeedMuted(nextMuted);
-    await controller.setVolume(nextMuted ? 0 : 1);
+    try {
+      await controller.setVolume(nextMuted ? 0 : 1);
+    } catch (_) {}
     if (!mounted) return;
     setState(() => _muted = nextMuted);
   }
@@ -2005,7 +2063,9 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     // Pause SEBELUM navigasi — viewer scoped autoplay video yang sama;
     // tanpa pause di sini dua controller bersuara bersamaan (jendela
     // debounce VisibilityDetector, akar bug double-audio PR #95).
-    _controller?.pause();
+    try {
+      _controller?.pause();
+    } catch (_) {}
     widget.onOpenFeed?.call();
   }
 

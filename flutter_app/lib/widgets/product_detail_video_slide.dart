@@ -6,6 +6,7 @@ import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../theme/natalo_colors.dart';
+import '../utils/app_route_observer.dart';
 
 /// Brand blue lokal — samakan dengan `_brandBlue` di product_detail_screen.dart
 /// (di sana `NataloColors.primary`, yang identik dengan `NataloColors.nataloBlue`
@@ -68,7 +69,7 @@ class ProductDetailVideoSlide extends StatefulWidget {
 /// `product_detail_screen.dart` bisa `GlobalKey<ProductDetailVideoSlideState>()`
 /// lalu `.currentState?.pauseIfPlaying()`.
 class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, RouteAware {
   VideoPlayerController? _controller;
 
   /// True selama `initialize()` + setup in-flight (ada `await` belum selesai).
@@ -111,7 +112,37 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Pause DETERMINISTIK saat route lain menutup layar (pola fix
+    // double-audio feed PR #95) — VisibilityDetector tidak mendeteksi
+    // oklusi oleh route baru, jadi tanpa ini AVPlayer slide produk tetap
+    // hidup di bawah layar lain (mis. viewer Postingan Terkait yang juga
+    // membuat AVPlayer sendiri → dua player aktif bersamaan di iOS).
+    final route = ModalRoute.of(context);
+    if (route != null) {
+      appRouteObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didPushNext() {
+    if (lastPushedRouteIsOpaque()) {
+      pauseIfPlaying();
+    }
+  }
+
+  @override
+  void didPopNext() {
+    // Balik ke Detail Produk → resume autoplay bisu kalau masih terlihat.
+    if (_visible && _foreground) {
+      unawaited(_ensureAndPlay());
+    }
+  }
+
+  @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
     _toggleIconTimer?.cancel();
     final controller = _controller;
