@@ -236,12 +236,14 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
               child: _ProductMediaThumbnails(
                 images: images,
                 activeIndex: _index,
-                // Kalau ada video → thumbnail pertama = video (slide 0),
-                // sisanya foto (slide 1+). URL: thumbnail video → poster produk.
-                videoThumbnailUrl: hasVideo
-                    ? (widget.videoThumbnailUrl ?? widget.posterImageUrl)
-                    : null,
-                videoDurationSec: hasVideo ? widget.videoDurationSec : null,
+                // `hasVideo` = SATU sumber kebenaran (sama dgn viewer/PageView,
+                // berbasis `videoUrl`). Strip menampilkan item video iff viewer
+                // punya slide video → cegah desync off-by-one. `videoThumbnailUrl`
+                // (thumbnail video → poster produk) HANYA gambar yg ditampilkan.
+                hasVideo: hasVideo,
+                videoThumbnailUrl:
+                    widget.videoThumbnailUrl ?? widget.posterImageUrl,
+                videoDurationSec: widget.videoDurationSec,
                 onTap: (index) {
                   _controller.animateToPage(
                     index,
@@ -491,8 +493,14 @@ class _ProductMediaThumbnails extends StatelessWidget {
   final int activeIndex;
   final ValueChanged<int> onTap;
 
-  /// Non-null → ada video: thumbnail pertama = video (slide 0), sisanya foto.
-  /// URL sudah di-resolve caller (thumbnail video → poster produk).
+  /// SATU sumber kebenaran "ada video" — SAMA dgn viewer (`ImageViewerScreen
+  /// .hasVideo`, berbasis `videoUrl`). Strip menampilkan item video iff ini
+  /// true; TIDAK boleh disimpulkan dari `videoThumbnailUrl != null` (bisa
+  /// desync off-by-one kalau thumbnail/poster null tapi videoUrl ada).
+  final bool hasVideo;
+
+  /// Gambar untuk thumbnail video (caller resolve: thumbnail video → poster
+  /// produk). HANYA gambar; tampil/tidaknya item video ditentukan [hasVideo].
   final String? videoThumbnailUrl;
   final int? videoDurationSec;
 
@@ -500,17 +508,16 @@ class _ProductMediaThumbnails extends StatelessWidget {
     required this.images,
     required this.activeIndex,
     required this.onTap,
+    this.hasVideo = false,
     this.videoThumbnailUrl,
     this.videoDurationSec,
   });
-
-  bool get _hasVideo => videoThumbnailUrl != null;
 
   @override
   Widget build(BuildContext context) {
     // Total item = foto + (video di depan kalau ada). Index item == index SLIDE
     // (video=0, foto ke-k = k+1), jadi onTap(index) langsung ke slide benar.
-    final total = _hasVideo ? images.length + 1 : images.length;
+    final total = hasVideo ? images.length + 1 : images.length;
     return SizedBox(
       height: 56,
       child: ListView.separated(
@@ -519,14 +526,14 @@ class _ProductMediaThumbnails extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
           final active = index == activeIndex;
-          if (_hasVideo && index == 0) {
+          if (hasVideo && index == 0) {
             return _thumbFrame(
               active: active,
               slideIndex: 0,
               child: _videoThumbContent(active),
             );
           }
-          final imgI = index - (_hasVideo ? 1 : 0);
+          final imgI = index - (hasVideo ? 1 : 0);
           return _thumbFrame(
             active: active,
             slideIndex: index,
