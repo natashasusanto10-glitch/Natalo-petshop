@@ -41,4 +41,15 @@ void main() {
     for (var i = 0; i < 10; i++) { await tester.pump(const Duration(milliseconds: 80)); }
     expect(find.text('Geser pegangan untuk memangkas video'), findsOneWidget);
   });
+
+  testWidgets('durasi 60.5s dianggap >60s: timeline langsung tampil',
+      (tester) async {
+    const d = FeedCreatePostDraft(
+      localVideoPath: '/nonexistent/v.mp4',
+      originalDuration: Duration(milliseconds: 60500),
+    );
+    await tester.pumpWidget(const MaterialApp(home: FeedVideoEditScreen(draft: d)));
+    for (var i = 0; i < 10; i++) { await tester.pump(const Duration(milliseconds: 80)); }
+    expect(find.text('Geser pegangan untuk memangkas video'), findsOneWidget);
+  });
 }

@@ -67,7 +67,10 @@ class _FeedVideoEditScreenState extends State<FeedVideoEditScreen> {
   void initState() {
     super.initState();
     unawaited(AppAnalytics.logEvent('feed_post_edit_opened'));
-    _showTimeline = _duration.inSeconds > _maxEditVideoSeconds;
+    // Pakai milliseconds (bukan inSeconds yang truncate) — klip 60.5s
+    // harus tetap dianggap >60s dan wajib trim, bukan lolos jadi <=60s
+    // karena pembulatan ke bawah.
+    _showTimeline = _duration.inMilliseconds > _maxEditVideoSeconds * 1000;
     _range = RangeValues(
       0,
       math.min(
@@ -297,8 +300,13 @@ class _FeedVideoEditScreenState extends State<FeedVideoEditScreen> {
     await _controller?.pause();
     if (!mounted) return;
 
+    // Full-range hanya bila seleksi menutup durasi PENUH dalam
+    // milliseconds — klip 60.5s dengan seleksi 60s BUKAN full range
+    // (0.5s terpotong), jadi wajib masuk trimStart/trimmedDuration
+    // supaya kompresi benar-benar memotong. inSeconds (truncate) di sini
+    // sebelumnya bikin klip 60.x lolos dianggap "full" dan tidak di-trim.
     final isFullRange = _range.start == 0 &&
-        selectedSeconds >= (_duration.inSeconds);
+        selectedSeconds * 1000 >= _duration.inMilliseconds;
     var next = widget.draft;
     if (!isFullRange) {
       next = next.copyWith(

@@ -29,6 +29,13 @@ const _textMuted = Color(0xFF9CA3AF);
 const _selectedBorder = _natoloBlue;
 const _tileBg = Color(0xFF1F2937);
 
+/// Pesan format video tak didukung — dipakai saat VideoPlayerController
+/// gagal initialize (decode error) baik di preview (`_ensureVideoController`)
+/// maupun saat pick (`_selectVideo`), supaya user dapat pesan konsisten
+/// alih-alih spinner selamanya / "File belum bisa diproses" generik.
+const _unsupportedVideoFormatMessage =
+    'Format video ini belum didukung. Coba video lain atau rekam ulang dengan kamera.';
+
 // Saturation boost matrices DIHAPUS (v1.0.82) — bikin lag scroll grid
 // + lag swipe/pinch preview karena ColorFilter shader apply per-frame
 // ke setiap thumbnail (100+ tile) + ke VideoPlayer/preview. Trade-off:
@@ -283,6 +290,12 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   VideoPlayerController? _videoController;
   bool _videoControllerReady = false;
   String? _videoControllerPath;
+  /// Pesan error preview video (mis. format tak didukung / decode gagal
+  /// oleh VideoPlayerController). null = tidak ada error. Di-reset saat
+  /// ganti preview asset (`_setPreviewAsset`). Dipakai `_buildPreviewContent`
+  /// untuk render pesan inline (bukan spinner selamanya) + toast sekali
+  /// saat error pertama terjadi.
+  String? _previewVideoError;
 
   // Instagram-style preview frame:
   // - Default (fitOriginal=false): Frame 4:5, foto cover/fill (crop).
@@ -477,6 +490,8 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         _previewImageSize = null;
         _previewImageSizeAssetId = null;
       }
+      // Reset error preview video — asset baru, error lama tidak relevan.
+      _previewVideoError = null;
     });
     if (isVideo) {
       // Generate thumbnail fallback (saat video belum ready).
@@ -513,13 +528,18 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
       await controller.setVolume(0);
       await controller.setLooping(true);
       await controller.play();
-      setState(() => _videoControllerReady = true);
+      setState(() {
+        _videoControllerReady = true;
+        _previewVideoError = null;
+      });
     } catch (_) {
       await controller.dispose();
       if (!mounted || _videoController != controller) return;
       setState(() {
         _videoControllerReady = false;
+        _previewVideoError = _unsupportedVideoFormatMessage;
       });
+      _showToast(_unsupportedVideoFormatMessage);
     }
   }
 
@@ -708,10 +728,14 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _busyProcessing = false);
+      // error is String → pesan validasi kita sendiri (mis. durasi
+      // minimum) — tampilkan apa adanya. Selain itu (decode/plugin
+      // error lain, bukan String) → kemungkinan besar format video
+      // tak didukung; pakai pesan format yang konsisten dengan
+      // _ensureVideoController, bukan pesan generik "File belum bisa
+      // diproses" yang kurang actionable.
       _showToast(
-        error is String
-            ? error
-            : 'File belum bisa diproses. Coba pilih media lain.',
+        error is String ? error : _unsupportedVideoFormatMessage,
       );
     }
   }
@@ -1155,7 +1179,11 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
             Image.file(File(_previewThumb!), fit: BoxFit.cover)
           else
             const ColoredBox(color: _tileBg),
-          if (!ready)
+          // Spinner hanya selama masih ada harapan video bisa siap.
+          // Kalau sudah gagal init (_previewVideoError != null),
+          // spinner selamanya menyesatkan — tampilkan pesan inline
+          // sebagai gantinya (lihat cabang di bawah).
+          if (!ready && _previewVideoError == null)
             const Center(
               child: SizedBox(
                 width: 26,
@@ -1163,6 +1191,33 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
                 child: CircularProgressIndicator(
                   strokeWidth: 2.4,
                   color: _textWhite,
+                ),
+              ),
+            ),
+          if (!ready && _previewVideoError != null)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.videocam_off_rounded,
+                      color: _textMuted,
+                      size: 40,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      _previewVideoError!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: _textMuted,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

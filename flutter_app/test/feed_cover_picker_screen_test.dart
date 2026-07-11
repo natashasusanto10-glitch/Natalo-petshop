@@ -47,4 +47,69 @@ void main() {
     for (var i = 0; i < 10; i++) { await tester.pump(const Duration(milliseconds: 60)); }
     expect(popped, '/tmp/cover.jpg');
   });
+
+  testWidgets(
+      'hero preview pakai previewFrameExtractor hi-res, bukan frameExtractor filmstrip',
+      (tester) async {
+    final filmstripBytes = Uint8List.fromList([1, 1, 1]);
+    final previewBytes = Uint8List.fromList([9, 9, 9]);
+    final previewCallTimes = <int>[];
+    await tester.pumpWidget(MaterialApp(
+      home: FeedCoverPickerScreen(
+        videoPath: 'v.mp4',
+        rangeStart: const Duration(seconds: 40),
+        rangeSpan: const Duration(seconds: 20),
+        currentCoverPath: null,
+        frameExtractor: (p, t) async => filmstripBytes,
+        previewFrameExtractor: (p, t) async {
+          previewCallTimes.add(t);
+          return previewBytes;
+        },
+        coverGenerator: (p, t) async => '/tmp/cover-$t.jpg',
+      ),
+    ));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 60));
+    }
+
+    // Hero preview awal (initState) sudah pakai previewFrameExtractor —
+    // BUKAN bytes filmstrip (frameExtractor).
+    expect(previewCallTimes, isNotEmpty);
+    final heroFinderInitial = find.byWidgetPredicate(
+      (w) =>
+          w is Image &&
+          w.image is MemoryImage &&
+          identical((w.image as MemoryImage).bytes, previewBytes),
+    );
+    expect(heroFinderInitial, findsOneWidget);
+    // Filmstrip tetap render frame low-res-nya sendiri (frameExtractor),
+    // memastikan kedua extractor tidak tertukar.
+    final filmstripFinder = find.byWidgetPredicate(
+      (w) =>
+          w is Image &&
+          w.image is MemoryImage &&
+          identical((w.image as MemoryImage).bytes, filmstripBytes),
+    );
+    expect(filmstripFinder, findsWidgets);
+
+    // Drag/tap filmstrip → hero refresh lewat previewFrameExtractor lagi
+    // (dengan timestamp baru), bukan frameExtractor filmstrip.
+    final callsBeforeDrag = previewCallTimes.length;
+    final filmstripGesture = find.byWidgetPredicate(
+      (w) => w is GestureDetector && w.onHorizontalDragEnd != null,
+    );
+    expect(filmstripGesture, findsOneWidget);
+    await tester.tap(filmstripGesture);
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 60));
+    }
+    expect(previewCallTimes.length, greaterThan(callsBeforeDrag));
+    final heroFinderAfterDrag = find.byWidgetPredicate(
+      (w) =>
+          w is Image &&
+          w.image is MemoryImage &&
+          identical((w.image as MemoryImage).bytes, previewBytes),
+    );
+    expect(heroFinderAfterDrag, findsOneWidget);
+  });
 }

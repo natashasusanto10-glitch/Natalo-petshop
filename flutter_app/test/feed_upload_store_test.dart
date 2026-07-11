@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/feed_create_post_draft.dart';
@@ -66,6 +67,47 @@ void main() {
           'Jika tercapai, berarti regresi ke fallback (upload video asli).',
     );
     store.removeListener(listener);
+    store.clear();
+  });
+
+  test('cancelActive saat kompresi trimmed → status CANCELLED, bukan failed',
+      () async {
+    final tmp = await File(
+      '${Directory.systemTemp.path}/store-cancel-${DateTime.now().microsecondsSinceEpoch}.mp4',
+    ).create();
+    addTearDown(() => tmp.delete());
+    final store = FeedUploadStore.instance;
+    store.clear();
+    final started = Completer<void>();
+    final blocker = Completer<MediaInfo?>();
+    store.gate = VideoCompressGate(
+      compressRunner: (path, {quality = VideoQuality.Res1280x720Quality,
+          includeAudio = true, startTime, duration}) {
+        started.complete();
+        return blocker.future;
+      },
+      cancelRunner: () async =>
+          blocker.completeError(StateError('cancelled by user')),
+      isPluginBusy: () => false,
+      resetPluginFlag: () {},
+    );
+    unawaited(store.startVideoUpload(
+      draft: FeedCreatePostDraft(
+        localVideoPath: tmp.path,
+        originalDuration: const Duration(seconds: 70),
+        trimStart: const Duration(seconds: 5),
+        trimmedDuration: const Duration(seconds: 60),
+      ),
+    ));
+    await started.future;
+    await store.cancelActive();
+    for (var i = 0; i < 50; i++) {
+      final s = store.activeTask?.status;
+      if (s == FeedUploadStatus.cancelled || s == FeedUploadStatus.failed || store.activeTask == null) break;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    // Status TIDAK boleh failed; boleh cancelled atau task sudah di-clear.
+    expect(store.activeTask?.status, isNot(FeedUploadStatus.failed));
     store.clear();
   });
 }

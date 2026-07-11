@@ -382,7 +382,11 @@ class FeedUploadStore extends ChangeNotifier {
           // salah (durasi/isi tidak sesuai pilihan user di layar trim).
           // Rethrow supaya job ini gagal & user bisa retry, bukan
           // diam-diam post video yang salah.
-          if (range.startTimeSec != null) rethrow;
+          // KECUALI: throw ini dipicu oleh cancel user (gate.cancel →
+          // cancelRunner bikin compress future error). Itu bukan
+          // kegagalan — jangan rethrow, biarkan jatuh ke _checkCancel()
+          // di bawah supaya transisi ke status `cancelled`, bukan `failed`.
+          if (range.startTimeSec != null && !_cancelRequested) rethrow;
           // Tanpa range trim, original == video yang dimaksud user —
           // aman fallback, Bunny bisa accept + re-encode.
         } finally {

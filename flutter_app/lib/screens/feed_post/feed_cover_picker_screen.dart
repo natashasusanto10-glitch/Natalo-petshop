@@ -33,8 +33,18 @@ class FeedCoverPickerScreen extends StatefulWidget {
   final Duration rangeSpan;
   final String? currentCoverPath;
 
-  /// Injectable untuk widget test (default `VideoThumbnail.thumbnailData`).
+  /// Injectable untuk widget test (default `VideoThumbnail.thumbnailData`
+  /// maxWidth 120 quality 50) — dipakai FILMSTRIP saja (thumbnail kecil,
+  /// banyak frame sekaligus).
   final Future<Uint8List?> Function(String path, int timeMs)? frameExtractor;
+
+  /// Injectable untuk widget test — dipakai HERO PREVIEW besar (satu frame
+  /// resolusi lebih tinggi, jadi jelas dilihat sebagai calon sampul).
+  /// Default `VideoThumbnail.thumbnailData` maxWidth 720 quality 80. Beda
+  /// dari [frameExtractor] yang dipakai filmstrip (120/q50) — hero preview
+  /// butuh detail lebih tajam, filmstrip cukup thumbnail kecil.
+  final Future<Uint8List?> Function(String path, int timeMs)?
+      previewFrameExtractor;
 
   /// Generate file JPEG sampul final dari timestamp terpilih. Default
   /// `VideoThumbnail.thumbnailFile` (maxWidth 720, quality 82).
@@ -47,6 +57,7 @@ class FeedCoverPickerScreen extends StatefulWidget {
     required this.rangeSpan,
     this.currentCoverPath,
     this.frameExtractor,
+    this.previewFrameExtractor,
     this.coverGenerator,
   });
 
@@ -67,6 +78,7 @@ class _FeedCoverPickerScreenState extends State<FeedCoverPickerScreen> {
     super.initState();
     _selectedMs = widget.rangeStart.inMilliseconds;
     _loadFilmstrip();
+    _loadInitialPreview();
   }
 
   Future<void> _loadFilmstrip() async {
@@ -78,24 +90,39 @@ class _FeedCoverPickerScreenState extends State<FeedCoverPickerScreen> {
       extractor: widget.frameExtractor,
       onFrame: (i, bytes) {
         if (!mounted) return;
-        setState(() {
-          _frameThumbs[i] = bytes;
-          if (i == 0 && _previewBytes == null) _previewBytes = bytes;
-        });
+        setState(() => _frameThumbs[i] = bytes);
       },
     );
   }
 
-  Future<Uint8List?> _extract(String path, int timeMs) {
-    final extractor = widget.frameExtractor ??
+  /// Extract 1 frame TINGGI resolusi (720px/q80) — dipakai HERO PREVIEW
+  /// besar (satu frame ditampilkan besar, jadi butuh detail lebih tajam
+  /// daripada thumbnail filmstrip 120px/q50 yang dipakai `_loadFilmstrip`).
+  /// Extractor terpisah dari filmstrip supaya sampul yang dilihat user
+  /// tidak blur upscale dari thumbnail kecil.
+  Future<Uint8List?> _extractPreview(String path, int timeMs) {
+    final extractor = widget.previewFrameExtractor ??
         (String p, int t) => VideoThumbnail.thumbnailData(
               video: p,
               imageFormat: ImageFormat.JPEG,
-              quality: 50,
-              maxWidth: 120,
+              quality: 80,
+              maxWidth: 720,
               timeMs: t,
             );
     return extractor(path, timeMs);
+  }
+
+  /// Hero preview awal (posisi rangeStart) — dipanggil paralel dengan
+  /// filmstrip di initState, hi-res langsung (tidak lagi numpang frame
+  /// 0 filmstrip yang cuma 120px/q50).
+  Future<void> _loadInitialPreview() async {
+    try {
+      final bytes = await _extractPreview(widget.videoPath, _selectedMs);
+      if (!mounted) return;
+      setState(() => _previewBytes = bytes);
+    } catch (_) {
+      // Preview gagal — biarkan fallback (currentCoverPath / placeholder).
+    }
   }
 
   Future<void> _onDragUpdate(double fraction) async {
@@ -107,7 +134,7 @@ class _FeedCoverPickerScreenState extends State<FeedCoverPickerScreen> {
         widget.rangeStart.inMilliseconds + (_fraction * widget.rangeSpan.inMilliseconds).round();
     setState(() => _selectedMs = absoluteMs);
     try {
-      final bytes = await _extract(widget.videoPath, absoluteMs);
+      final bytes = await _extractPreview(widget.videoPath, absoluteMs);
       if (!mounted) return;
       setState(() => _previewBytes = bytes);
     } catch (_) {
