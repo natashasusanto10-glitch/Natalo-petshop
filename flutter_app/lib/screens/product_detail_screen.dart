@@ -26,6 +26,8 @@ import '../state/member_store.dart';
 import '../state/recently_viewed_store.dart';
 import 'checkout_screen.dart';
 import 'member_post_detail_screen.dart';
+import 'scoped_video_feed_screen.dart';
+import '../widgets/scaled_video_feed_route.dart';
 import '../utils/fly_to_cart.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -2293,7 +2295,11 @@ class _ProductCustomerPostsSection extends StatelessWidget {
                     itemCount: posts.length,
                     separatorBuilder: (_, __) => const SizedBox(width: 10),
                     itemBuilder: (context, index) {
-                      return _CustomerPostCard(post: posts[index]);
+                      return _CustomerPostCard(
+                        post: posts[index],
+                        allPosts: posts,
+                        index: index,
+                      );
                     },
                   ),
           ),
@@ -2332,8 +2338,15 @@ const _customerPostOfficialGold = Color(0xFFF4D47C);
 
 class _CustomerPostCard extends StatelessWidget {
   final _ProductCustomerPost post;
+  final List<_ProductCustomerPost> allPosts;
+  final int index;
+  final GlobalKey _thumbnailKey = GlobalKey();
 
-  const _CustomerPostCard({required this.post});
+  _CustomerPostCard({
+    required this.post,
+    required this.allPosts,
+    required this.index,
+  });
 
   /// Buka postingan pelanggan DI DALAM app (bukan browser web). Fetch
   /// detail postingan by ID lalu push MemberPostDetailScreen sebagai
@@ -2361,21 +2374,61 @@ class _CustomerPostCard extends StatelessWidget {
       ),
     );
 
-    FeedPost? feedPost;
-    var failed = false;
-    try {
-      feedPost = await feedService.fetchPostById(post.id);
-    } catch (_) {
-      failed = true;
+    if (!post.isVideo) {
+      FeedPost? feedPost;
+      var failed = false;
+      try {
+        feedPost = await feedService.fetchPostById(post.id);
+      } catch (_) {
+        failed = true;
+      }
+      rootNav.pop(); // tutup loading dialog
+      if (!context.mounted) return;
+      if (feedPost == null) {
+        AppToast.show(
+          context,
+          failed
+              ? 'Postingan belum bisa dibuka. Coba lagi.'
+              : 'Postingan sudah tidak tersedia.',
+          kind: ToastKind.warning,
+        );
+        return;
+      }
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => MemberPostDetailScreen(
+            post: feedPost!,
+            authorName: feedPost.author.displayName,
+            authorPhotoUrl: feedPost.author.profilePhotoUrl,
+            authorInitial: feedPost.author.initial,
+            isOwner: false,
+          ),
+        ),
+      );
+      return;
     }
 
-    rootNav.pop(); // tutup loading dialog
+    // Video path — fetch every video sibling in this "Postingan Terkait"
+    // section so swipe stays scoped to videos tagged to this product.
+    final videoSiblings = allPosts.where((p) => p.isVideo).toList();
+    final fetched = <FeedPost>[];
+    var anyFailed = false;
+    for (final sibling in videoSiblings) {
+      try {
+        final fp = await feedService.fetchPostById(sibling.id);
+        if (fp != null) fetched.add(fp);
+      } catch (_) {
+        anyFailed = true;
+      }
+    }
+
+    rootNav.pop();
     if (!context.mounted) return;
 
-    if (feedPost == null) {
+    if (fetched.isEmpty) {
       AppToast.show(
         context,
-        failed
+        anyFailed
             ? 'Postingan belum bisa dibuka. Coba lagi.'
             : 'Postingan sudah tidak tersedia.',
         kind: ToastKind.warning,
@@ -2383,15 +2436,15 @@ class _CustomerPostCard extends StatelessWidget {
       return;
     }
 
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => MemberPostDetailScreen(
-          post: feedPost!,
-          authorName: feedPost.author.displayName,
-          authorPhotoUrl: feedPost.author.profilePhotoUrl,
-          authorInitial: feedPost.author.initial,
-          isOwner: false,
-        ),
+    final tappedIndex = fetched.indexWhere((fp) => fp.id == post.id);
+    await pushScaledVideoFeed(
+      context,
+      thumbnailKey: _thumbnailKey,
+      thumbnailImageUrl: post.thumbnailUrl,
+      thumbnailBorderRadius: 14,
+      destinationBuilder: (_) => ScopedVideoFeedScreen(
+        posts: fetched,
+        initialIndex: tappedIndex >= 0 ? tappedIndex : 0,
       ),
     );
   }
@@ -2404,6 +2457,7 @@ class _CustomerPostCard extends StatelessWidget {
         onTap: () => _openPost(context),
         borderRadius: BorderRadius.circular(14),
         child: ClipRRect(
+          key: _thumbnailKey,
           borderRadius: BorderRadius.circular(14),
           child: Stack(
             fit: StackFit.expand,
