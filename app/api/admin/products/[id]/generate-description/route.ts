@@ -47,7 +47,8 @@ export async function POST(
     attr.options.map((opt) => opt.value),
   );
 
-  const name = body.name?.trim() ? body.name.trim() : product.name;
+  const overrideName = typeof body.name === "string" ? body.name.trim() : "";
+  const name = overrideName || product.name;
 
   try {
     const description = await generateProductDescription({
