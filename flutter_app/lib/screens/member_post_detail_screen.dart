@@ -29,8 +29,10 @@ import '../widgets/moderation_action_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/post_likers_sheet.dart';
 import '../widgets/profile_avatar.dart';
+import '../widgets/scaled_video_feed_route.dart';
 import '../shared/widgets/natalo_post_action_icon.dart';
 import 'public_profile_screen.dart';
+import 'scoped_video_feed_screen.dart';
 
 /// Detail Postingan style Instagram Feed — continuous vertical scroll list
 /// of user's own posts (Postingan Saya).
@@ -531,6 +533,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
                     onShare: () => _shareNative(index),
                     onMenuTap:
                         widget.isOwner ? () => _openPostMenu(index) : null,
+                    onOpenScopedFeed: (controller, anchorKey) =>
+                        _openScopedVideoFeed(index, controller, anchorKey),
                   );
                 },
               ),
@@ -554,6 +558,42 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
       viewerLiked: liked,
       isLiked: liked,
       recentLikers: recentLikers,
+    );
+  }
+
+  /// Tap video di detail → buka viewer feed imersif (swipeable) berisi
+  /// HANYA video milik user ini. Reuse [ScopedVideoFeedScreen] +
+  /// [pushScaledVideoFeed] persis flow "Postingan Terkait", jadi visual &
+  /// transisi seragam. Video yang di-tap jadi halaman awal; swipe hanya
+  /// menampilkan video user ini (foto di-skip, ala IG Reels).
+  Future<void> _openScopedVideoFeed(
+    int index,
+    VideoPlayerController controller,
+    GlobalKey anchorKey,
+  ) async {
+    final videoPosts = _posts.where((p) => p.isVideo).toList();
+    if (videoPosts.isEmpty) return;
+    final tapped = _posts[index];
+    final initialIndex =
+        videoPosts.indexWhere((p) => p.id == tapped.id).clamp(
+              0,
+              videoPosts.length - 1,
+            );
+    // Pause inline player SEBELUM push — route scoped opaque, tanpa ini
+    // sempat ada jendela double-suara (inline masih play di belakang).
+    try {
+      await controller.pause();
+    } catch (_) {}
+    if (!mounted) return;
+    await pushScaledVideoFeed(
+      context,
+      thumbnailKey: anchorKey,
+      thumbnailImageUrl: tapped.thumbnailUrl ?? '',
+      thumbnailBorderRadius: 0,
+      destinationBuilder: (_) => ScopedVideoFeedScreen(
+        posts: videoPosts,
+        initialIndex: initialIndex,
+      ),
     );
   }
 
@@ -598,6 +638,12 @@ class _PostFeedItem extends StatefulWidget {
   // Nullable — null ketika viewing post user lain (showMenu = false).
   // Author row builder cek null untuk decide render trailing menu icon.
   final VoidCallback? onMenuTap;
+  // Tap video → buka viewer feed scoped (swipeable) berisi HANYA video
+  // milik user ini. State yang punya list `_posts` menyuplai callback ini
+  // (butuh live controller utk pause anti double-suara + anchorKey utk
+  // transisi morph-scale). Null → fallback ke overlay fullscreen lama.
+  final void Function(VideoPlayerController controller, GlobalKey anchorKey)?
+      onOpenScopedFeed;
 
   const _PostFeedItem({
     super.key,
@@ -612,6 +658,7 @@ class _PostFeedItem extends StatefulWidget {
     required this.onComment,
     required this.onShare,
     required this.onMenuTap,
+    this.onOpenScopedFeed,
   });
 
   @override
@@ -774,6 +821,15 @@ class _PostFeedItemState extends State<_PostFeedItem>
               _PostMediaSurface(
                 post: post,
                 onVideoExpandRequested: (controller, anchorKey) {
+                  // Preferensi: buka viewer feed scoped (swipeable) ke
+                  // semua video user ini — konsisten dgn flow "Postingan
+                  // Terkait". Fallback ke overlay fullscreen lama kalau
+                  // state tak menyuplai callback (mis. deep-link 1 post).
+                  final openScoped = widget.onOpenScopedFeed;
+                  if (openScoped != null) {
+                    openScoped(controller, anchorKey);
+                    return;
+                  }
                   final renderBox = anchorKey.currentContext?.findRenderObject() as RenderBox?;
                   if (renderBox == null) return;
                   final origin = renderBox.localToGlobal(Offset.zero) & renderBox.size;
