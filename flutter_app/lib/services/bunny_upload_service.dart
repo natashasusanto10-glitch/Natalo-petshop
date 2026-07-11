@@ -43,6 +43,17 @@ class BunnyUploadProvision {
           : null,
     );
   }
+
+  /// Mirror `fromJson` — dipakai FeedUploadStore untuk persist provision
+  /// (postId + TUS creds) ke SharedPreferences supaya upload video bisa
+  /// resume setelah app di-kill (Fase 2C).
+  Map<String, dynamic> toJson() => {
+        'postId': postId,
+        'videoGuid': videoGuid,
+        if (uploadUrl != null) 'uploadUrl': uploadUrl,
+        'uploadHeaders': uploadHeaders,
+        if (tus != null) 'tus': tus!.toJson(),
+      };
 }
 
 /// TUS credentials dari Bunny — signature SHA256 (library + key + expire
@@ -74,6 +85,14 @@ class BunnyTusCredentials {
           : int.tryParse(json['authExpire']?.toString() ?? '') ?? 0,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'endpoint': endpoint,
+        'videoId': videoId,
+        'libraryId': libraryId,
+        'authSignature': authSignature,
+        'authExpire': authExpire,
+      };
 }
 
 /// Service untuk upload video direct ke Bunny Stream CDN — bypass Vercel

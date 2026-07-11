@@ -1,28 +1,47 @@
-import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
-import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../models/feed_create_post_draft.dart';
 import '../models/product.dart';
+import '../services/app_analytics.dart';
 import '../services/feed_service.dart';
+import '../state/feed_draft_store.dart';
 import '../state/feed_upload_store.dart';
-import '../state/member_store.dart';
 import '../utils/formatters.dart';
+import '../utils/fade_route.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_product_image.dart';
-import '../widgets/profile_avatar.dart';
 import 'feed_caption_edit_screen.dart';
+import 'feed_post/feed_cover_picker_screen.dart';
+import 'feed_post/feed_post_preview_screen.dart'
+    show FeedPostPreviewScreen, FeedPreviewResult;
 
-const _newPostDraftKey = 'natalo-feed-upload-pending';
 const _newPostBlue = Color(0xFF1E5BFF);
 const _newPostInk = Color(0xFF101828);
 const _newPostMuted = Color(0xFF667085);
 const _newPostBorder = Color(0xFFE0E7F0);
 const _newPostSoft = Color(0xFFF5F8FF);
+
+/// Loop playback dalam rentang trim draft (Approach B: file belum
+/// terpotong secara fisik sampai upload). Return timer guard — cancel
+/// di dispose. Tanpa trimStart → biarkan looping bawaan controller.
+Timer? startTrimLoopGuard(
+  VideoPlayerController controller,
+  FeedCreatePostDraft? draft,
+) {
+  final start = draft?.trimStart;
+  final span = draft?.finalDuration;
+  if (start == null || span == null) return null;
+  final end = start + span;
+  controller.seekTo(start);
+  return Timer.periodic(const Duration(milliseconds: 200), (_) {
+    if (!controller.value.isInitialized || !controller.value.isPlaying) return;
+    if (controller.value.position >= end) controller.seekTo(start);
+  });
+}
 
 enum NewPostMediaType {
   image,
@@ -58,11 +77,18 @@ class FeedNewPostScreen extends StatefulWidget {
   /// pas resume draft. Empty = no products tagged.
   final List<String> prefilledProductIds;
 
+  /// Id draft (dari `FeedDraftStore`) yang sedang di-resume — bila layar
+  /// ini dibuka dari restore draft (bukan compose baru), simpan ulang
+  /// harus UPSERT ke id yang sama (bukan bikin draft duplikat), dan
+  /// publish sukses menghapus draft ini.
+  final String? resumeDraftId;
+
   const FeedNewPostScreen({
     super.key,
     required this.draft,
     this.prefilledCaption,
     this.prefilledProductIds = const [],
+    this.resumeDraftId,
   });
 
   @override
@@ -75,7 +101,6 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   final _photoPageController = PageController();
   final Set<String> _selectedProductIds = {};
 
-  VideoPlayerController? _videoController;
   FeedCreatePostDraft? _videoDraft;
   List<Product> _products = const [];
   List<Product> _visibleProducts = const [];
@@ -84,19 +109,43 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   String? _error;
   int _photoIndex = 0;
 
+  /// Foto carousel — mutable copy dari `widget.draft.photoFiles` (yang
+  /// immutable) supaya user bisa urutkan (drag) & hapus slide di layar
+  /// Bagikan (Task 5 / 2C-3). Foto sudah pre-cropped final JPEG dari
+  /// picker — reorder/hapus cuma manipulasi urutan/isi List<File>, TANPA
+  /// re-crop. Setiap referensi ke `widget.draft.photoFiles` di state class
+  /// ini HARUS baca dari `_photoFiles`, bukan `widget.draft.photoFiles`
+  /// langsung, supaya reorder/hapus ke-reflect di semua tempat (upload,
+  /// counter, dots, save draft, dst).
+  late final List<File> _photoFiles = List.of(widget.draft.photoFiles);
+
+  /// Id draft aktif — null = belum pernah disimpan sebagai draft. Di-set
+  /// dari `widget.resumeDraftId` (kalau restore) atau dibuat baru saat
+  /// `_saveDraftAndExit` pertama kali dipanggil, supaya save berikutnya
+  /// UPSERT (bukan duplikat).
+  String? _draftId;
+
   bool get _isVideo => widget.draft.type == NewPostMediaType.video;
 
   bool get _hasProgress {
     return _captionController.text.trim().isNotEmpty ||
         _selectedProductIds.isNotEmpty ||
-        widget.draft.photoFiles.isNotEmpty ||
+        _photoFiles.isNotEmpty ||
         widget.draft.videoDraft != null;
   }
 
   @override
   void initState() {
     super.initState();
+    unawaited(
+      AppAnalytics.logEvent('feed_post_share_opened', {
+        'type': _isVideo
+            ? 'video'
+            : (_photoFiles.length > 1 ? 'carousel' : 'photo'),
+      }),
+    );
     _videoDraft = widget.draft.videoDraft;
+    _draftId = widget.resumeDraftId;
     // Restore caption + tagged products dari draft (kalau ada).
     if (widget.prefilledCaption != null &&
         widget.prefilledCaption!.isNotEmpty) {
@@ -109,7 +158,6 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       if (mounted) setState(() {});
     });
     _loadPurchasedProducts();
-    _initVideo();
   }
 
   @override
@@ -117,7 +165,6 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
     _captionController.dispose();
     _productSearchController.dispose();
     _photoPageController.dispose();
-    _videoController?.dispose();
     super.dispose();
   }
 
@@ -139,27 +186,6 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
     }
   }
 
-  Future<void> _initVideo() async {
-    final path = _videoDraft?.finalVideoPath;
-    if (!_isVideo || path == null) return;
-    final controller = VideoPlayerController.file(File(path));
-    try {
-      await controller.initialize();
-      await controller.setLooping(true);
-      await controller.setVolume(0);
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-      setState(() => _videoController = controller);
-    } catch (_) {
-      await controller.dispose();
-      if (!mounted) return;
-      setState(
-          () => _error = 'Media belum bisa diproses. Coba pilih ulang media.');
-    }
-  }
-
   Future<void> _loadPurchasedProducts() async {
     setState(() {
       _loadingProducts = true;
@@ -171,7 +197,20 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       final products = pinnable
           .whereType<Map>()
           .map((p) {
-            final priceRaw = p['price'] ?? p['discountPrice'] ?? 0;
+            // Kontrak API `app/api/feed/pinnable-products/route.ts`:
+            // `price` = harga EFEKTIF (discountPrice ?? price asli),
+            // `originalPrice` = harga DASAR asli. API TIDAK mengirim key
+            // `discountPrice`/`memberPrice` — jangan baca key itu di sini.
+            double? toDouble(dynamic v) {
+              if (v is num) return v.toDouble();
+              if (v is String) return double.tryParse(v);
+              return null;
+            }
+
+            final effective = toDouble(p['price']);
+            final base = toDouble(p['originalPrice']) ?? effective;
+            final hasRealDiscount =
+                effective != null && base != null && effective < base;
             return Product(
               id: (p['productId'] ?? p['id'] ?? '').toString(),
               slug: (p['slug'] ?? '').toString(),
@@ -180,9 +219,8 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                   (p['variant'] ?? p['category'] ?? 'Pernah Dibeli').toString(),
               brand: '',
               imageUrl: (p['imageUrl'] ?? '').toString(),
-              price: priceRaw is num
-                  ? priceRaw.toDouble()
-                  : double.tryParse(priceRaw.toString()) ?? 0,
+              price: base ?? 0,
+              discountPrice: hasRealDiscount ? effective : null,
               rating: p['avgRating'] is num
                   ? (p['avgRating'] as num).toDouble()
                   : 0,
@@ -231,62 +269,104 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
     });
   }
 
+  /// Urutkan ulang slide carousel (drag di strip bawah thumbnail) — cuma
+  /// manipulasi urutan `_photoFiles` (foto sudah pre-cropped final JPEG
+  /// dari picker, TANPA re-crop). Setelah pindah, coba tetap fokus ke
+  /// slide logis yang sama di thumbnail PageView (fallback clamp).
+  void _reorderPhoto(int oldIndex, int newIndex) {
+    if (newIndex > oldIndex) newIndex -= 1;
+    if (oldIndex == newIndex) return;
+    AppHaptics.selection();
+    setState(() {
+      final moved = _photoFiles.removeAt(oldIndex);
+      _photoFiles.insert(newIndex, moved);
+      if (_photoIndex == oldIndex) {
+        _photoIndex = newIndex;
+      } else if (_photoIndex > oldIndex && _photoIndex <= newIndex) {
+        _photoIndex -= 1;
+      } else if (_photoIndex < oldIndex && _photoIndex >= newIndex) {
+        _photoIndex += 1;
+      }
+      _photoIndex = _photoIndex.clamp(0, _photoFiles.length - 1);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_photoPageController.hasClients) return;
+      _photoPageController.jumpToPage(_photoIndex);
+    });
+  }
+
+  /// Hapus satu slide carousel — min 1 foto tersisa (tombol hapus
+  /// disembunyikan/di-guard saat tinggal 1). Tidak ada undo — langsung
+  /// hapus (spec brief: "snackbar undo TIDAK perlu").
+  void _deletePhoto(int index) {
+    if (_photoFiles.length <= 1) return;
+    AppHaptics.selection();
+    setState(() {
+      _photoFiles.removeAt(index);
+      if (index < _photoIndex) _photoIndex -= 1;
+      _photoIndex = _photoIndex.clamp(0, _photoFiles.length - 1);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_photoPageController.hasClients) return;
+      _photoPageController.jumpToPage(_photoIndex);
+    });
+  }
+
   /// Buka fullscreen Preview Mode — show bagaimana post akan tampil di
   /// feed sebelum publish. User bisa balik untuk revise atau langsung
   /// Share dari preview.
   Future<void> _openPreview() async {
     AppHaptics.tap();
-    // Pause video di-edit screen supaya audio tidak overlap dengan video
-    // di preview screen.
-    await _videoController?.pause();
     final caption = _captionController.text.trim();
+    final selected =
+        _products.where((p) => _selectedProductIds.contains(p.id)).toList();
     if (!mounted) return;
-    final result = await Navigator.push<bool>(
+    final result = await Navigator.push<FeedPreviewResult>(
       context,
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => FeedPostPreviewScreen(
-          draft: widget.draft,
+      fadeThroughRoute(
+        FeedPostPreviewScreen(
+          draft: _isVideo ? widget.draft : NewPostMediaDraft.photos(_photoFiles),
           videoDraft: _videoDraft,
           caption: caption,
+          products: selected,
         ),
+        fullscreenDialog: true,
       ),
     );
-    // Setelah balik dari preview, kalau user tekan Share di preview,
-    // result == true → langsung upload.
-    if (result == true && mounted) {
+    if (!mounted) return;
+    if (result == FeedPreviewResult.share) {
       await _upload();
-    } else {
-      // Resume video editor preview.
-      await _videoController?.play();
+    } else if (result == FeedPreviewResult.saveDraft) {
+      await _saveDraftAndExit();
     }
   }
 
+  /// Buka `FeedCoverPickerScreen` (filmstrip scrubber, rentang trim aktif)
+  /// untuk pilih sampul baru. Return non-null → set thumbnailPath baru +
+  /// tandai `userPickedCover: true` (dipakai 2C-1 untuk skip auto-cover).
   Future<void> _editCover() async {
     final draft = _videoDraft;
-    final path = draft?.finalVideoPath;
-    final duration = draft?.finalDuration;
-    if (path == null || duration == null) return;
+    final path = draft?.localVideoPath;
+    final span = draft?.finalDuration;
+    if (path == null || span == null) return;
     AppHaptics.tap();
-    final selectedMs = await showModalBottomSheet<int>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _CoverPickerSheet(
-        duration: duration,
-        currentThumbnailPath: draft?.thumbnailPath,
+    final selectedPath = await Navigator.push<String>(
+      context,
+      fadeThroughRoute(
+        FeedCoverPickerScreen(
+          videoPath: path,
+          rangeStart: draft?.trimStart ?? Duration.zero,
+          rangeSpan: span,
+          currentCoverPath: draft?.thumbnailPath,
+        ),
       ),
     );
-    if (selectedMs == null) return;
-    final thumb = await VideoThumbnail.thumbnailFile(
-      video: path,
-      imageFormat: ImageFormat.JPEG,
-      maxWidth: 720,
-      timeMs: selectedMs,
-      quality: 82,
-    );
-    if (!mounted || thumb == null) return;
+    if (selectedPath == null || !mounted) return;
     setState(() {
-      _videoDraft = draft?.copyWith(thumbnailPath: thumb);
+      _videoDraft = draft?.copyWith(
+        thumbnailPath: selectedPath,
+        userPickedCover: true,
+      );
     });
   }
 
@@ -336,11 +416,17 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
         taggedProductIds: productIds,
       );
       feedUploadStore.startVideoUpload(draft: readyDraft);
+      unawaited(AppAnalytics.logEvent('feed_post_submitted', {
+        'type': 'video',
+        'product_count': productIds.length,
+      }));
+      final draftId = _draftId;
+      if (draftId != null) unawaited(feedDraftStore.remove(draftId));
       _goHome();
       return;
     }
 
-    final files = widget.draft.photoFiles;
+    final files = _photoFiles;
     if (files.isEmpty || files.length > 8) {
       setState(
           () => _error = 'Media belum bisa diproses. Coba pilih ulang media.');
@@ -353,6 +439,12 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       caption: caption,
       productIds: productIds,
     );
+    unawaited(AppAnalytics.logEvent('feed_post_submitted', {
+      'type': files.length > 1 ? 'carousel' : 'photo',
+      'product_count': productIds.length,
+    }));
+    final draftId = _draftId;
+    if (draftId != null) unawaited(feedDraftStore.remove(draftId));
     _goHome();
   }
 
@@ -366,21 +458,28 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
     if (_savingDraft) return;
     AppHaptics.tap();
     setState(() => _savingDraft = true);
-    final prefs = await SharedPreferences.getInstance();
-    final payload = {
-      'type': _isVideo ? 'video' : 'image',
-      'caption': _captionController.text.trim(),
-      'productIds': _selectedProductIds.toList(),
-      'media': _isVideo
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // Keep id sama kalau ini resume/edit ulang draft — upsert bukan
+    // duplikat. Draft baru → id fresh, langsung di-keep di state supaya
+    // save berikutnya (atau remove saat publish sukses) pakai id yang sama.
+    final draftId = _draftId ?? 'draft-$now';
+    _draftId = draftId;
+    final draft = FeedDraft(
+      id: draftId,
+      type: _isVideo ? 'video' : 'image',
+      caption: _captionController.text.trim(),
+      productIds: _selectedProductIds.toList(),
+      mediaPaths: _isVideo
           ? [_videoDraft?.finalVideoPath].whereType<String>().toList()
-          : widget.draft.photoFiles.map((file) => file.path).toList(),
-      'thumbnailPath': _videoDraft?.thumbnailPath,
-      'savedAt': DateTime.now().millisecondsSinceEpoch,
-    };
-    await prefs.setString(
-      _newPostDraftKey,
-      'local|post-new|${jsonEncode(payload)}|${DateTime.now().millisecondsSinceEpoch}',
+          : _photoFiles.map((file) => file.path).toList(),
+      thumbnailPath: _videoDraft?.thumbnailPath,
+      trimStartMs: _videoDraft?.trimStart?.inMilliseconds,
+      trimmedDurationMs: _videoDraft?.trimmedDuration?.inMilliseconds,
+      originalDurationMs: _videoDraft?.originalDuration?.inMilliseconds,
+      userPickedCover: _videoDraft?.userPickedCover ?? false,
+      savedAtMs: now,
     );
+    await feedDraftStore.save(draft);
     if (!mounted) return;
     setState(() => _savingDraft = false);
     Navigator.pop(context, false);
@@ -466,30 +565,36 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                     //    work karena swipe ≠ tap gesture)
                     //  - Tap "Edit cover" button → tetap edit cover (button
                     //    capture tap lebih spesifik)
-                    // Medium portrait preview center — Final Lock Spec.
-                    // widthFactor 0.62 = ~62% lebar layar, auto-scale per
-                    // device (iPhone SE ~220px, iPhone Pro Max ~260px).
-                    // Center alignment + ListView padding 20px tetap.
+                    // Thumbnail kecil — IG-style "Post Baru" share screen.
+                    // widthFactor 0.42 (~42% lebar layar), aspect 3:4. Video
+                    // pakai cover statis (thumbnailPath) — TIDAK ada video
+                    // player inline di layar ini (keputusan #4, lihat brief
+                    // Fase 2B Task 3). Preview dgn video asli hanya di
+                    // FeedPostPreviewScreen (fullscreen).
                     Center(
                       child: FractionallySizedBox(
-                        widthFactor: 0.62,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: _openPreview,
-                          child: _MediaPreview(
-                            draft: widget.draft,
-                            videoDraft: _videoDraft,
-                            videoController: _videoController,
-                            photoIndex: _photoIndex,
-                            photoPageController: _photoPageController,
-                            onPhotoChanged: (index) =>
-                                setState(() => _photoIndex = index),
-                            onToggleVideo: _openPreview,
-                            onEditCover: _editCover,
-                          ),
+                        widthFactor: 0.42,
+                        child: _NewPostThumbnail(
+                          isVideo: _isVideo,
+                          photoFiles: _photoFiles,
+                          videoDraft: _videoDraft,
+                          photoIndex: _photoIndex,
+                          photoPageController: _photoPageController,
+                          onPhotoChanged: (index) =>
+                              setState(() => _photoIndex = index),
+                          onOpenPreview: _openPreview,
+                          onEditCover: _editCover,
                         ),
                       ),
                     ),
+                    if (!_isVideo && _photoFiles.length > 1) ...[
+                      const SizedBox(height: 14),
+                      _PhotoReorderStrip(
+                        photoFiles: _photoFiles,
+                        onReorder: _reorderPhoto,
+                        onDelete: _deletePhoto,
+                      ),
+                    ],
                     const SizedBox(height: 22),
                     // Simple caption trigger — tap → buka fade-modal Caption
                     // editor (separate page). Tidak ada border/box, tidak
@@ -522,8 +627,8 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
               ),
               _BottomActions(
                 uploadEnabled: _error == null,
-                busy: false,
-                onUpload: _upload,
+                onSaveDraft: _saveDraftAndExit,
+                onShare: _upload,
               ),
             ],
           ),
@@ -538,192 +643,106 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   // manual hanya tersedia di fullscreen Preview Mode.
 }
 
-class _MediaPreview extends StatelessWidget {
-  final NewPostMediaDraft draft;
+/// Thumbnail kecil (~42% lebar layar, aspect 3:4, radius 18) untuk layar
+/// "Post Baru" share — bukan editor lagi. Video: cover statis (tanpa video
+/// player inline — keputusan #4 Fase 2B) + pill "Pratinjau" + "Ubah sampul".
+/// Foto/carousel: PageView swipeable + pill "Pratinjau" + counter X/Y +
+/// dot indicator (tanpa "Ubah sampul").
+class _NewPostThumbnail extends StatelessWidget {
+  final bool isVideo;
+  final List<File> photoFiles;
   final FeedCreatePostDraft? videoDraft;
-  final VideoPlayerController? videoController;
   final int photoIndex;
   final PageController photoPageController;
   final ValueChanged<int> onPhotoChanged;
-  final VoidCallback onToggleVideo;
+  final VoidCallback onOpenPreview;
   final VoidCallback onEditCover;
 
-  const _MediaPreview({
-    required this.draft,
+  const _NewPostThumbnail({
+    required this.isVideo,
+    required this.photoFiles,
     required this.videoDraft,
-    required this.videoController,
     required this.photoIndex,
     required this.photoPageController,
     required this.onPhotoChanged,
-    required this.onToggleVideo,
+    required this.onOpenPreview,
     required this.onEditCover,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isVideo = draft.type == NewPostMediaType.video;
-    final files = draft.photoFiles;
-    // Aspect ratio 4:5 — match Instagram Feed portrait (`width 80, height
-    // 100`). Sebelumnya 16:10 landscape — video portrait user terlihat
-    // kecil center dengan kanan-kiri kosong. 4:5 accommodate portrait
-    // content natural sambil tetap show foto landscape (sedikit
-    // letterbox top-bottom acceptable).
+    final files = photoFiles;
+    final thumb = videoDraft?.thumbnailPath;
     return AspectRatio(
-      aspectRatio: 4 / 5,
+      aspectRatio: 3 / 4,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(26),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (isVideo)
-              _VideoPreview(
-                draft: videoDraft,
-                controller: videoController,
-                onTap: onToggleVideo,
-              )
-            else
-              PageView.builder(
-                controller: photoPageController,
-                itemCount: files.length,
-                onPageChanged: onPhotoChanged,
-                itemBuilder: (context, index) {
-                  return Image.file(files[index], fit: BoxFit.cover);
-                },
-              ),
-            if (!isVideo && files.length > 1)
+        borderRadius: BorderRadius.circular(18),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onOpenPreview,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (isVideo)
+                (thumb != null
+                    ? Image.file(
+                        File(thumb),
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                            const _ThumbnailFallback(),
+                      )
+                    : const _ThumbnailFallback())
+              else
+                PageView.builder(
+                  controller: photoPageController,
+                  itemCount: files.length,
+                  onPageChanged: onPhotoChanged,
+                  itemBuilder: (context, index) {
+                    return Image.file(files[index], fit: BoxFit.cover);
+                  },
+                ),
               Positioned(
-                top: 16,
-                right: 16,
-                child: _MediaCounter(text: '${photoIndex + 1}/${files.length}'),
-              ),
-            if (!isVideo && files.length > 1)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 10,
-                child: _DotIndicator(
-                  length: files.length,
-                  index: photoIndex,
+                left: 8,
+                top: 8,
+                child: _ThumbnailPill(
+                  icon: Icons.visibility_outlined,
+                  label: 'Pratinjau',
+                  onTap: onOpenPreview,
                 ),
               ),
-            if (isVideo)
-              Positioned(
-                left: 16,
-                bottom: 16,
-                child: _EditCoverButton(onTap: onEditCover),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _VideoPreview extends StatelessWidget {
-  final FeedCreatePostDraft? draft;
-  final VideoPlayerController? controller;
-  final VoidCallback onTap;
-
-  const _VideoPreview({
-    required this.draft,
-    required this.controller,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final ctrl = controller;
-    final thumb = draft?.thumbnailPath;
-    final playing = ctrl?.value.isPlaying ?? false;
-    final videoReady = ctrl != null && ctrl.value.isInitialized;
-    return ColoredBox(
-      color: Colors.black,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Thumb cuma render saat video belum ready (loading state) —
-          // memberikan preview frame sebentar sebelum VideoPlayer initialize.
-          // Setelah video loaded, thumb HILANG supaya kanan-kiri video
-          // (yang punya aspect ratio asli) tampil sebagai black screen,
-          // bukan thumb yang ke-stretch BoxFit.cover (terlihat seperti blur).
-          if (!videoReady && thumb != null)
-            Image.file(File(thumb), fit: BoxFit.cover)
-          else if (!videoReady)
-            const Center(
-              child: Icon(
-                Icons.play_circle_outline_rounded,
-                color: Colors.white54,
-                size: 64,
-              ),
-            ),
-          if (videoReady)
-            Center(
-              child: AspectRatio(
-                aspectRatio: ctrl.value.aspectRatio,
-                child: VideoPlayer(ctrl),
-              ),
-            ),
-          Positioned.fill(
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onTap,
-                child: Center(
-                  child: AnimatedOpacity(
-                    opacity: playing ? 0 : 1,
-                    duration: const Duration(milliseconds: 160),
-                    child: Container(
-                      width: 58,
-                      height: 58,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.42),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.play_arrow_rounded,
-                        color: Colors.white,
-                        size: 38,
-                      ),
+              if (!isVideo && files.length > 1)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: _ThumbnailPill(
+                    icon: null,
+                    label: '${photoIndex + 1}/${files.length}',
+                    onTap: null,
+                  ),
+                ),
+              if (!isVideo && files.length > 1)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 8,
+                  child: _DotIndicator(
+                    length: files.length,
+                    index: photoIndex,
+                  ),
+                ),
+              if (isVideo)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 8,
+                  child: Center(
+                    child: _ThumbnailPill(
+                      icon: Icons.photo_outlined,
+                      label: 'Ubah sampul',
+                      onTap: onEditCover,
                     ),
                   ),
                 ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EditCoverButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _EditCoverButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.black.withValues(alpha: 0.46),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.edit_rounded, color: Colors.white, size: 18),
-              SizedBox(width: 8),
-              Text(
-                'Edit cover',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
             ],
           ),
         ),
@@ -732,26 +751,68 @@ class _EditCoverButton extends StatelessWidget {
   }
 }
 
-class _MediaCounter extends StatelessWidget {
-  final String text;
-
-  const _MediaCounter({required this.text});
+/// Fallback saat video belum punya thumbnail (mis. sedang diproses).
+class _ThumbnailFallback extends StatelessWidget {
+  const _ThumbnailFallback();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(16),
+    return const ColoredBox(
+      color: Color(0xFF161A24),
+      child: Center(
+        child: Icon(Icons.videocam_outlined, color: Colors.white38, size: 34),
       ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: _newPostInk,
-          fontSize: 15,
-          fontWeight: FontWeight.w800,
-        ),
+    );
+  }
+}
+
+/// Pill overlay reusable untuk thumbnail — "Pratinjau", "Ubah sampul",
+/// counter X/Y. bg rgba(0,0,0,0.52) radius 999, teks 10.5 w700, ikon kecil
+/// opsional. `onTap` null = non-interactive (mis. counter pill).
+class _ThumbnailPill extends StatelessWidget {
+  final IconData? icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  const _ThumbnailPill({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.52),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, color: Colors.white, size: 12),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+    if (onTap == null) return content;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: content,
       ),
     );
   }
@@ -784,6 +845,149 @@ class _DotIndicator extends StatelessWidget {
           ),
         );
       }),
+    );
+  }
+}
+
+/// Strip slide horizontal di bawah thumbnail carousel — reorder via
+/// long-press drag (`ReorderableDragStartListener`) + hapus per-slide
+/// (min 1 foto tersisa). Item 56×72 radius 10, badge nomor kecil (soft
+/// tint, bukan warna nge-jreng), tombol × 18px pojok kanan-atas.
+class _PhotoReorderStrip extends StatelessWidget {
+  final List<File> photoFiles;
+  final void Function(int oldIndex, int newIndex) onReorder;
+  final ValueChanged<int> onDelete;
+
+  const _PhotoReorderStrip({
+    required this.photoFiles,
+    required this.onReorder,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final canDelete = photoFiles.length > 1;
+    return SizedBox(
+      height: 76,
+      child: ReorderableListView(
+        scrollDirection: Axis.horizontal,
+        buildDefaultDragHandles: false,
+        onReorder: onReorder,
+        children: [
+          for (var i = 0; i < photoFiles.length; i++)
+            Padding(
+              key: ValueKey('slide-$i'),
+              padding: EdgeInsets.only(
+                right: i == photoFiles.length - 1 ? 0 : 10,
+              ),
+              child: ReorderableDragStartListener(
+                index: i,
+                child: _PhotoReorderTile(
+                  index: i,
+                  file: photoFiles[i],
+                  canDelete: canDelete,
+                  onDelete: () => onDelete(i),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PhotoReorderTile extends StatelessWidget {
+  final int index;
+  final File file;
+  final bool canDelete;
+  final VoidCallback onDelete;
+
+  const _PhotoReorderTile({
+    required this.index,
+    required this.file,
+    required this.canDelete,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 56,
+      height: 72,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.file(
+              file,
+              width: 56,
+              height: 72,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                width: 56,
+                height: 72,
+                color: const Color(0xFF161A24),
+                child: const Icon(
+                  Icons.image_outlined,
+                  color: Colors.white38,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 4,
+            bottom: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '${index + 1}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+          if (canDelete)
+            Positioned(
+              right: -6,
+              top: -6,
+              child: GestureDetector(
+                key: ValueKey('slide-delete-$index'),
+                behavior: HitTestBehavior.opaque,
+                onTap: onDelete,
+                child: Container(
+                  width: 18,
+                  height: 18,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: _newPostBorder),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.12),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 13,
+                    color: _newPostMuted,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -1025,10 +1229,10 @@ class _PurchasedProductCard extends StatelessWidget {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                if (product.price > 0) ...[
+                if (product.finalPrice > 0) ...[
                   const Spacer(),
                   Text(
-                    formatRupiah(product.price),
+                    formatRupiah(product.finalPrice),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -1071,20 +1275,23 @@ class _PurchasedProductCard extends StatelessWidget {
   }
 }
 
+/// Dual bottom bar — "Simpan Draft" (outline soft biru) + "Bagikan"
+/// (filled biru), berdampingan 52px, radius 16, gap 10. Ganti tombol
+/// tunggal lama — param `busy` dihapus total (upload sekarang background
+/// via feedUploadStore, tidak butuh loading state di sini).
 class _BottomActions extends StatelessWidget {
   final bool uploadEnabled;
-  final bool busy;
-  final VoidCallback onUpload;
+  final VoidCallback onSaveDraft;
+  final VoidCallback onShare;
 
   const _BottomActions({
     required this.uploadEnabled,
-    required this.busy,
-    required this.onUpload,
+    required this.onSaveDraft,
+    required this.onShare,
   });
 
   @override
   Widget build(BuildContext context) {
-    final disabled = !uploadEnabled || busy;
     return SafeArea(
       top: false,
       child: Container(
@@ -1093,41 +1300,55 @@ class _BottomActions extends StatelessWidget {
           color: Colors.white,
           border: Border(top: BorderSide(color: Color(0xFFE5EAF2))),
         ),
-        child: SizedBox(
-          width: double.infinity,
-          height: 56,
-          child: FilledButton(
-            onPressed: disabled ? null : onUpload,
-            style: FilledButton.styleFrom(
-              backgroundColor: _newPostBlue,
-              disabledBackgroundColor: const Color(0xFFCBD5E1),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-              textStyle: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
+        child: Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 52,
+                child: OutlinedButton(
+                  onPressed: onSaveDraft,
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: _newPostSoft,
+                    side: const BorderSide(color: _newPostBorder),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Text(
+                    'Simpan Draft',
+                    style: TextStyle(
+                      color: _newPostBlue,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
               ),
             ),
-            child: busy
-                ? const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.4,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      Text('Memproses foto...'),
-                    ],
-                  )
-                : const Text('Bagikan'),
-          ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: SizedBox(
+                height: 52,
+                child: FilledButton(
+                  onPressed: uploadEnabled ? onShare : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _newPostBlue,
+                    disabledBackgroundColor: const Color(0xFFCBD5E1),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Text(
+                    'Bagikan',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1305,457 +1526,3 @@ class _SheetButton extends StatelessWidget {
   }
 }
 
-class _CoverPickerSheet extends StatelessWidget {
-  final Duration duration;
-  final String? currentThumbnailPath;
-
-  const _CoverPickerSheet({
-    required this.duration,
-    required this.currentThumbnailPath,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final totalMs = duration.inMilliseconds;
-    final options = <({String label, int timeMs})>[
-      (label: 'Awal', timeMs: 0),
-      (label: 'Tengah', timeMs: (totalMs * 0.5).round()),
-      (label: 'Akhir', timeMs: (totalMs - 700).clamp(0, totalMs)),
-    ];
-    return SafeArea(
-      child: Container(
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(26),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 46,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD0D5DD),
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
-            const Text(
-              'Edit cover',
-              style: TextStyle(
-                color: _newPostInk,
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                if (currentThumbnailPath != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.file(
-                      File(currentThumbnailPath!),
-                      width: 84,
-                      height: 84,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                if (currentThumbnailPath != null) const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    children: options.map((option) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: InkWell(
-                          onTap: () => Navigator.pop(context, option.timeMs),
-                          borderRadius: BorderRadius.circular(16),
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 13,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _newPostSoft,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: _newPostBorder),
-                            ),
-                            child: Text(
-                              option.label,
-                              style: const TextStyle(
-                                color: _newPostInk,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Preview Mode — fullscreen preview before publish ──────────────
-
-/// Fullscreen preview screen — show how post akan tampil di feed
-/// publik. Inspired by Instagram "New reel" → tap "Edit" → preview mode.
-///
-/// Layout:
-///  - Background hitam (immersive)
-///  - Media fullscreen di tengah dengan aspect ratio asli
-///  - Floating action rail di kanan (heart, comment, share) — UI mockup,
-///    tidak interactive (preview only)
-///  - Creator avatar + name + caption overlay di bawah
-///  - Bottom action bar: "Upload ke Feed" (real action)
-///  - Back button kiri atas
-class FeedPostPreviewScreen extends StatefulWidget {
-  final NewPostMediaDraft draft;
-  final FeedCreatePostDraft? videoDraft;
-  final String caption;
-
-  const FeedPostPreviewScreen({
-    super.key,
-    required this.draft,
-    required this.videoDraft,
-    required this.caption,
-  });
-
-  @override
-  State<FeedPostPreviewScreen> createState() => _FeedPostPreviewScreenState();
-}
-
-class _FeedPostPreviewScreenState extends State<FeedPostPreviewScreen> {
-  VideoPlayerController? _videoController;
-  bool _videoReady = false;
-  int _photoIndex = 0;
-  late final PageController _photoPageController;
-
-  bool get _isVideo => widget.draft.type == NewPostMediaType.video;
-
-  @override
-  void initState() {
-    super.initState();
-    _photoPageController = PageController();
-    if (_isVideo) _initVideo();
-  }
-
-  @override
-  void dispose() {
-    _videoController?.dispose();
-    _photoPageController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _initVideo() async {
-    final path = widget.videoDraft?.finalVideoPath;
-    if (path == null) return;
-    final controller = VideoPlayerController.file(File(path));
-    _videoController = controller;
-    try {
-      await controller.initialize();
-      if (!mounted || _videoController != controller) return;
-      await controller.setLooping(true);
-      await controller.setVolume(0);
-      await controller.play();
-      setState(() => _videoReady = true);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _videoReady = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // ── Media fullscreen ──
-          Positioned.fill(child: _buildMediaContent()),
-          // ── Top chrome: back button + Preview label ──
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              child: Row(
-                children: [
-                  _PreviewRoundButton(
-                    icon: Icons.arrow_back_rounded,
-                    onTap: () => Navigator.pop(context, false),
-                  ),
-                  const Expanded(
-                    child: Center(
-                      child: Text(
-                        'Preview',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 44),
-                ],
-              ),
-            ),
-          ),
-          // ── Right rail: heart / comment / share (mockup, not interactive) ──
-          const Positioned(
-            right: 14,
-            bottom: 200,
-            child: _PreviewActionRail(),
-          ),
-          // ── Bottom-left creator overlay ──
-          Positioned(
-            left: 16,
-            right: 80,
-            bottom: 120,
-            child: _PreviewCreatorOverlay(caption: widget.caption),
-          ),
-          // ── Bottom action bar: Upload ke Feed ──
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _newPostBlue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    child: const Text(
-                      'Bagikan',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMediaContent() {
-    if (_isVideo) {
-      final ctrl = _videoController;
-      if (_videoReady && ctrl != null && ctrl.value.isInitialized) {
-        return Center(
-          child: AspectRatio(
-            aspectRatio: ctrl.value.aspectRatio,
-            child: VideoPlayer(ctrl),
-          ),
-        );
-      }
-      final thumb = widget.videoDraft?.thumbnailPath;
-      if (thumb != null) {
-        return Image.file(File(thumb), fit: BoxFit.contain);
-      }
-      return const Center(
-        child: SizedBox(
-          width: 32,
-          height: 32,
-          child: CircularProgressIndicator(
-            color: Colors.white,
-            strokeWidth: 2.4,
-          ),
-        ),
-      );
-    }
-    // Photo / carousel.
-    final files = widget.draft.photoFiles;
-    if (files.isEmpty) {
-      return const Center(
-        child: Icon(Icons.image_outlined, color: Colors.white24, size: 64),
-      );
-    }
-    if (files.length == 1) {
-      return Image.file(files.first, fit: BoxFit.contain);
-    }
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        PageView.builder(
-          controller: _photoPageController,
-          itemCount: files.length,
-          onPageChanged: (i) => setState(() => _photoIndex = i),
-          itemBuilder: (context, index) {
-            return Image.file(files[index], fit: BoxFit.contain);
-          },
-        ),
-        Positioned(
-          top: 70,
-          right: 14,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.55),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              '${_photoIndex + 1}/${files.length}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _PreviewRoundButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _PreviewRoundButton({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.black.withValues(alpha: 0.45),
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox(
-          width: 40,
-          height: 40,
-          child: Icon(icon, color: Colors.white, size: 20),
-        ),
-      ),
-    );
-  }
-}
-
-/// Right rail mockup — heart, comment, share. NOT interactive — ini cuma
-/// show user bagaimana action buttons akan terlihat di feed publik nanti.
-class _PreviewActionRail extends StatelessWidget {
-  const _PreviewActionRail();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _PreviewActionIcon(icon: Icons.favorite_border_rounded, label: '0'),
-        SizedBox(height: 22),
-        _PreviewActionIcon(
-          icon: Icons.mode_comment_outlined,
-          label: '0',
-        ),
-        SizedBox(height: 22),
-        _PreviewActionIcon(icon: Icons.send_outlined, label: '0'),
-      ],
-    );
-  }
-}
-
-class _PreviewActionIcon extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _PreviewActionIcon({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: Colors.white, size: 32),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _PreviewCreatorOverlay extends StatelessWidget {
-  final String caption;
-
-  const _PreviewCreatorOverlay({required this.caption});
-
-  @override
-  Widget build(BuildContext context) {
-    final profile = memberStore.profile;
-    final name = profile?.name ?? 'Kamu';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            ProfileAvatar(
-              initial: profile?.initial ?? 'U',
-              imageUrl: profile?.profilePhotoUrl,
-              size: 34,
-              fontSize: 14,
-            ),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ],
-        ),
-        if (caption.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            caption,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 13.5,
-              fontWeight: FontWeight.w600,
-              height: 1.35,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}

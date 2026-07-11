@@ -137,7 +137,10 @@ export async function GET(
         createdAt: p.createdAt.toISOString(),
         author: {
           id: p.author.id,
-          name: p.author.name,
+          // Post admin tampil sebagai brand, bukan nama pribadi admin —
+          // konsisten dengan FeedAuthor.displayName di app Flutter, dan
+          // membetulkan app rilis lama yang membaca `name` mentah.
+          name: p.author.role === "ADMIN" ? "Natalo Petshop" : p.author.name,
           role: p.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
         },
       };
