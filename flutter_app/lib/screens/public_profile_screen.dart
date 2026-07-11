@@ -182,6 +182,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           authorPhotoUrl: profile?.profilePhotoUrl,
           authorInitial: profile?.initial,
           isOwner: profile?.isOwner ?? false,
+          // Untuk viewer feed scoped (tap video) — pagination lanjutan
+          // via /api/u/{username}.
+          authorUsername: widget.username,
         ),
       ),
     );

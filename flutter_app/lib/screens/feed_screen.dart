@@ -29,6 +29,7 @@ import '../services/block_service.dart';
 import '../services/feed_service.dart';
 import '../services/follow_service.dart';
 import '../services/product_service.dart';
+import '../services/profile_service.dart';
 import '../services/report_service.dart';
 import '../services/video_quality_service.dart';
 import '../state/cart_store.dart';
@@ -87,14 +88,41 @@ double _feedOverlayBaseInset(BuildContext context) =>
 /// - VisibilityDetector untuk autoplay/pause
 /// - 60fps animations (double-tap heart, like burst)
 class FeedScreen extends StatefulWidget {
-  const FeedScreen({super.key});
+  const FeedScreen({super.key})
+      : scopedPosts = null,
+        scopedInitialIndex = 0,
+        scopedAuthorUsername = null,
+        scopedNextCursor = null;
+
+  /// Mode scoped ala IG Reels dari profil: viewer imersif berisi HANYA
+  /// postingan satu user (urut sama dengan grid/list profil), mulai dari
+  /// post yang di-tap. Swipe atas/bawah = post user itu saja. Di-push
+  /// sebagai halaman (bukan tab): overlay atas jadi tombol back, bottom
+  /// nav disembunyikan, fetch feed global di-skip.
+  const FeedScreen.scoped({
+    super.key,
+    required List<FeedPost> posts,
+    this.scopedInitialIndex = 0,
+    this.scopedAuthorUsername,
+    this.scopedNextCursor,
+  }) : scopedPosts = posts;
+
+  final List<FeedPost>? scopedPosts;
+  final int scopedInitialIndex;
+
+  /// Username author untuk pagination lanjutan via /api/u/{username}.
+  /// Null → pagination mati (hanya list yang dioper yang bisa di-swipe).
+  final String? scopedAuthorUsername;
+  final String? scopedNextCursor;
+
+  bool get isScoped => scopedPosts != null;
 
   @override
   State<FeedScreen> createState() => _FeedScreenState();
 }
 
 class _FeedScreenState extends State<FeedScreen> {
-  final PageController _pageController = PageController();
+  late final PageController _pageController;
   // Parallel maps: _preloadedControllers untuk reads (.value, VideoPlayer
   // widget, play/pause). _preloadedCachedPlayers untuk lifecycle (dispose
   // via wrapper supaya cache file di-track properly oleh
@@ -119,10 +147,18 @@ class _FeedScreenState extends State<FeedScreen> {
   @override
   void initState() {
     super.initState();
-    // Gap #11: load offline cache first untuk show stale data instantly
-    // sambil network fetch jalan. Plus #7: hydrate likedStore.
-    _bootstrapFromCache();
-    _loadInitial();
+    if (widget.isScoped) {
+      // Mode scoped: data sudah dioper caller — tidak ada fetch feed
+      // global & tidak menyentuh offline cache feed (jangan menimpa cache
+      // global dengan postingan satu profil).
+      _initScopedFeed();
+    } else {
+      // Gap #11: load offline cache first untuk show stale data instantly
+      // sambil network fetch jalan. Plus #7: hydrate likedStore.
+      _bootstrapFromCache();
+      _loadInitial();
+    }
+    _pageController = PageController(initialPage: _activeIndex);
     // Top-right cart icon — sync badge ke cartStore.totalQuantity supaya
     // real-time match dengan keranjang. Listener di-detach di dispose().
     _cartCount = cartStore.totalQuantity;
@@ -224,6 +260,66 @@ class _FeedScreenState extends State<FeedScreen> {
     );
   }
 
+  /// Seed sinkron mode scoped — list post user sudah dimuat halaman
+  /// profil/postingan, tidak perlu network. Posisi awal dicari BY ID di
+  /// list ter-filter blocklist (index mentah bisa bergeser kalau ada
+  /// creator yang diblok di antara post).
+  void _initScopedFeed() {
+    final posts = widget.scopedPosts!;
+    feedStore.seed(posts);
+    _posts = List<FeedPost>.from(posts);
+    _rebuildVisiblePostsCache();
+    _nextCursor = widget.scopedNextCursor;
+    _loading = false;
+    if (posts.isNotEmpty) {
+      final safeIndex =
+          widget.scopedInitialIndex.clamp(0, posts.length - 1);
+      final targetId = posts[safeIndex].id;
+      final visibleIndex =
+          _visiblePosts.indexWhere((p) => p.id == targetId);
+      _activeIndex = visibleIndex < 0 ? 0 : visibleIndex;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _preloadNext(_activeIndex);
+    });
+  }
+
+  /// Pagination mode scoped — lanjut dari cursor profil via
+  /// /api/u/{username}. Tanpa username → pagination mati (list yang
+  /// dioper adalah keseluruhan).
+  Future<void> _loadMoreScoped() async {
+    final username = widget.scopedAuthorUsername;
+    if (username == null || username.isEmpty) return;
+    _loadingMore = true;
+    final fetchedAt = DateTime.now();
+    try {
+      final page = await profileService.fetchPublicProfile(
+        username: username,
+        cursor: _nextCursor,
+      );
+      if (!mounted) {
+        _loadingMore = false;
+        return;
+      }
+      final existing = _posts.map((p) => p.id).toSet();
+      final fresh =
+          page.posts.where((p) => !existing.contains(p.id)).toList();
+      feedStore.mergeFromServer(fresh, fetchedAt: fetchedAt);
+      setState(() {
+        _posts.addAll(fresh);
+        _rebuildVisiblePostsCache();
+        _nextCursor = page.nextCursor;
+        _loadingMore = false;
+      });
+      _preloadNext(_activeIndex);
+    } catch (_) {
+      // Pagination error — silent, existing posts tetap bisa dilihat.
+      if (!mounted) return;
+      setState(() => _loadingMore = false);
+    }
+  }
+
   /// Gap #11: hydrate dari offline cache supaya feed tidak blank saat
   /// network slow. Cache otomatis di-replace saat fetch sukses.
   ///
@@ -318,6 +414,10 @@ class _FeedScreenState extends State<FeedScreen> {
 
   Future<void> _loadMore() async {
     if (_loadingMore || _nextCursor == null) return;
+    if (widget.isScoped) {
+      await _loadMoreScoped();
+      return;
+    }
     _loadingMore = true;
     final fetchedAt = DateTime.now();
     try {
@@ -689,41 +789,51 @@ class _FeedScreenState extends State<FeedScreen> {
                   ignoring: _mediaZooming,
                   child: Stack(
                     children: [
+                      // Mode scoped (viewer profil ala IG Reels): kiri-atas
+                      // = tombol back; upload/search/cart disembunyikan —
+                      // ini halaman pushed, bukan tab feed global.
                       Positioned(
                         top: MediaQuery.paddingOf(context).top + 8,
                         left: 4,
-                        child: _FeedTopIconButton(
-                          iconChild: const _FeedPlusGlyph(),
-                          onTap: _onUpload,
-                          tooltip: 'Upload video',
-                        ),
+                        child: widget.isScoped
+                            ? _FeedTopIconButton(
+                                icon: Icons.arrow_back_rounded,
+                                onTap: () => Navigator.maybePop(context),
+                                tooltip: 'Kembali',
+                              )
+                            : _FeedTopIconButton(
+                                iconChild: const _FeedPlusGlyph(),
+                                onTap: _onUpload,
+                                tooltip: 'Upload video',
+                              ),
                       ),
-                      Positioned(
-                        top: MediaQuery.paddingOf(context).top + 8,
-                        right: _feedTopActionRightInset,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _FeedTopIconButton(
-                              icon: Icons.search_rounded,
-                              onTap: _openFeedSearch,
-                              tooltip: 'Cari',
-                            ),
-                            const SizedBox(height: 2),
-                            _FeedTopIconButton(
-                              // Icon SHAPE match home AppCartButton:
-                              // shopping_cart_outlined. Size tetap 28 (default
-                              // _FeedTopIconButton) supaya tetap prominent di atas
-                              // video — beda dari home yang 24 karena context-nya
-                              // beda (header dense dengan banyak icon).
-                              icon: Icons.shopping_cart_outlined,
-                              onTap: _openCartPage,
-                              tooltip: 'Keranjang',
-                              badgeCount: _cartCount > 0 ? _cartCount : null,
-                            ),
-                          ],
+                      if (!widget.isScoped)
+                        Positioned(
+                          top: MediaQuery.paddingOf(context).top + 8,
+                          right: _feedTopActionRightInset,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _FeedTopIconButton(
+                                icon: Icons.search_rounded,
+                                onTap: _openFeedSearch,
+                                tooltip: 'Cari',
+                              ),
+                              const SizedBox(height: 2),
+                              _FeedTopIconButton(
+                                // Icon SHAPE match home AppCartButton:
+                                // shopping_cart_outlined. Size tetap 28 (default
+                                // _FeedTopIconButton) supaya tetap prominent di atas
+                                // video — beda dari home yang 24 karena context-nya
+                                // beda (header dense dengan banyak icon).
+                                icon: Icons.shopping_cart_outlined,
+                                onTap: _openCartPage,
+                                tooltip: 'Keranjang',
+                                badgeCount: _cartCount > 0 ? _cartCount : null,
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -731,18 +841,22 @@ class _FeedScreenState extends State<FeedScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 220),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        child: _interactionLocked
-            ? const SizedBox.shrink(key: ValueKey('feed-nav-hidden'))
-            : const BottomNavBar(
-                key: ValueKey('feed-nav-visible'),
-                currentIndex: 2,
-                variant: BottomNavVariant.dark,
-              ),
-      ),
+      // Mode scoped: tanpa bottom nav — halaman pushed dari profil, back
+      // kembali ke profil (bukan bagian tab navigation).
+      bottomNavigationBar: widget.isScoped
+          ? null
+          : AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              child: _interactionLocked
+                  ? const SizedBox.shrink(key: ValueKey('feed-nav-hidden'))
+                  : const BottomNavBar(
+                      key: ValueKey('feed-nav-visible'),
+                      currentIndex: 2,
+                      variant: BottomNavVariant.dark,
+                    ),
+            ),
     );
   }
 }

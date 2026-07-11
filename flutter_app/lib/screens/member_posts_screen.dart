@@ -306,6 +306,9 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
           post: posts[initialIndex],
           posts: posts,
           initialIndex: initialIndex,
+          // Untuk viewer feed scoped (tap video) — pagination lanjutan
+          // via /api/u/{username}.
+          authorUsername: memberStore.profile?.username,
         ),
       ),
     ).then((_) => _loadPosts());

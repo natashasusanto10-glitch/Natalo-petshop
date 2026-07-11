@@ -30,6 +30,7 @@ import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/post_likers_sheet.dart';
 import '../widgets/profile_avatar.dart';
 import '../shared/widgets/natalo_post_action_icon.dart';
+import 'feed_screen.dart';
 import 'public_profile_screen.dart';
 
 /// Detail Postingan style Instagram Feed — continuous vertical scroll list
@@ -68,6 +69,11 @@ class MemberPostDetailScreen extends StatefulWidget {
   /// yang bocor ke viewer non-owner.
   final bool isOwner;
 
+  /// Username author — dipakai viewer feed scoped (tap video → FeedScreen
+  /// .scoped) untuk pagination lanjutan via /api/u/{username}. Null →
+  /// scoped feed tetap jalan tanpa pagination.
+  final String? authorUsername;
+
   const MemberPostDetailScreen({
     super.key,
     required this.post,
@@ -77,6 +83,7 @@ class MemberPostDetailScreen extends StatefulWidget {
     this.authorPhotoUrl,
     this.authorInitial,
     this.isOwner = true,
+    this.authorUsername,
   });
 
   @override
@@ -531,6 +538,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
                     onShare: () => _shareNative(index),
                     onMenuTap:
                         widget.isOwner ? () => _openPostMenu(index) : null,
+                    onVideoTap: () => _openScopedFeed(post),
                   );
                 },
               ),
@@ -563,6 +571,27 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
       description: newCaption.isEmpty ? '' : newCaption,
       // Edit caption reset status ke PENDING_REVIEW per backend logic.
       status: 'PENDING_REVIEW',
+    );
+  }
+
+  /// Tap video → buka viewer feed imersif scoped ke postingan user ini
+  /// (ala IG Reels dari profil): mulai di post yang di-tap, swipe
+  /// atas/bawah hanya menggulir post user yang sama.
+  void _openScopedFeed(FeedPost post) {
+    final index = _posts.indexWhere((p) => p.id == post.id);
+    AppHaptics.tap();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FeedScreen.scoped(
+          posts: List<FeedPost>.from(_posts),
+          scopedInitialIndex: index < 0 ? 0 : index,
+          scopedAuthorUsername: widget.authorUsername ??
+              (post.author.username?.isNotEmpty == true
+                  ? post.author.username
+                  : null),
+        ),
+      ),
     );
   }
 }
@@ -599,6 +628,9 @@ class _PostFeedItem extends StatefulWidget {
   // Author row builder cek null untuk decide render trailing menu icon.
   final VoidCallback? onMenuTap;
 
+  /// Tap pada video → buka viewer feed scoped (ala IG Reels dari profil).
+  final VoidCallback? onVideoTap;
+
   const _PostFeedItem({
     super.key,
     required this.post,
@@ -612,6 +644,7 @@ class _PostFeedItem extends StatefulWidget {
     required this.onComment,
     required this.onShare,
     required this.onMenuTap,
+    this.onVideoTap,
   });
 
   @override
@@ -771,7 +804,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
           onDoubleTap: _handleDoubleTap,
           child: Stack(
             children: [
-              _PostMediaSurface(post: post),
+              _PostMediaSurface(post: post, onVideoTap: widget.onVideoTap),
               if (post.isVideo)
                 Positioned(
                   top: 0,
@@ -1423,9 +1456,11 @@ class _PostStatusBadge extends StatelessWidget {
 // ─── Media surface — switcher per content type ──────────────────────
 
 class _PostMediaSurface extends StatelessWidget {
+  final VoidCallback? onVideoTap;
+
   final FeedPost post;
 
-  const _PostMediaSurface({required this.post});
+  const _PostMediaSurface({required this.post, this.onVideoTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1450,12 +1485,14 @@ class _PostMediaSurface extends StatelessWidget {
             mediaUrl: post.videoPlaybackUrl,
             thumbnailUrl: post.thumbnailUrl,
             aspectRatio: aspectRatio,
+            onOpenFeed: onVideoTap,
           ),
         FeedContentType.carousel => Hero(
             tag: 'post-thumb-${post.id}',
             child: _CarouselSurface(
               post: post,
               aspectRatio: aspectRatio,
+              onVideoTap: onVideoTap,
             ),
           ),
         FeedContentType.photo => Hero(
@@ -1473,8 +1510,13 @@ class _PostMediaSurface extends StatelessWidget {
 class _CarouselSurface extends StatefulWidget {
   final FeedPost post;
   final double aspectRatio;
+  final VoidCallback? onVideoTap;
 
-  const _CarouselSurface({required this.post, required this.aspectRatio});
+  const _CarouselSurface({
+    required this.post,
+    required this.aspectRatio,
+    this.onVideoTap,
+  });
 
   @override
   State<_CarouselSurface> createState() => _CarouselSurfaceState();
@@ -1523,6 +1565,7 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
                 mediaUrl: item.mediaUrl,
                 thumbnailUrl: item.thumbnailUrl,
                 aspectRatio: widget.aspectRatio,
+                onOpenFeed: widget.onVideoTap,
               );
             }
             return _ImageSurface(
@@ -1821,7 +1864,7 @@ class _MediaPlaceholder extends StatelessWidget {
   }
 }
 
-// ─── Inline video player — auto-play muted in viewport, tap → fullscreen ─
+// ─── Inline video player — auto-play in viewport, tap → feed scoped ───
 
 class _InlineVideoPlayer extends StatefulWidget {
   final String postId;
@@ -1829,11 +1872,17 @@ class _InlineVideoPlayer extends StatefulWidget {
   final String? thumbnailUrl;
   final double aspectRatio;
 
+  /// Tap pada permukaan video → buka viewer feed scoped ala IG Reels.
+  /// Video inline di-pause DULU sebelum callback (cegah double-audio
+  /// dengan video yang sama di viewer — pola sama fix PR #95).
+  final VoidCallback? onOpenFeed;
+
   const _InlineVideoPlayer({
     required this.postId,
     required this.mediaUrl,
     required this.thumbnailUrl,
     required this.aspectRatio,
+    this.onOpenFeed,
   });
 
   @override
@@ -1952,6 +2001,14 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     setState(() => _muted = nextMuted);
   }
 
+  void _handleOpenFeed() {
+    // Pause SEBELUM navigasi — viewer scoped autoplay video yang sama;
+    // tanpa pause di sini dua controller bersuara bersamaan (jendela
+    // debounce VisibilityDetector, akar bug double-audio PR #95).
+    _controller?.pause();
+    widget.onOpenFeed?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
@@ -1959,8 +2016,9 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     return VisibilityDetector(
       key: ValueKey('inline-video-${widget.postId}'),
       onVisibilityChanged: _onVisibilityChanged,
-      child: AbsorbPointer(
-        absorbing: false,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onOpenFeed == null ? null : _handleOpenFeed,
         child: Stack(
           fit: StackFit.expand,
           children: [
