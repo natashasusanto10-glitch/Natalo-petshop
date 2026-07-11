@@ -7,14 +7,8 @@ import 'package:video_player/video_player.dart';
 
 import '../models/product.dart';
 import '../state/cart_store.dart';
-import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../widgets/app_product_image.dart';
-
-/// Brand blue lokal untuk `VideoProgressIndicator.playedColor` di
-/// [_PreviewVideoSlide]. `NataloColors.nataloBlue` = `NataloColors.primary`
-/// (0xFF1E5FBF) — jangan referensi private `_brandBlue` dari file lain.
-const _brandBlue = NataloColors.nataloBlue;
 
 /// Fullscreen image viewer dengan pinch-to-zoom.
 ///
@@ -996,18 +990,22 @@ class _PreviewVideoSlideState extends State<_PreviewVideoSlide>
                 ),
               ),
             ),
-            // Progress bar tipis, ditaruh di atas zona chrome viewer (Task 2
-            // render `_ProductMediaBar` + thumbnails + `_ProductMediaCounter`
-            // di atas slide). Counter ada di `bottom + 162` (top-nya ~+187),
-            // jadi +192 supaya scrub bar full-width TIDAK ketiban chip counter.
+            // Progress/scrub bar tipis — DI BAWAH tepat di atas bar beli
+            // (`_ProductMediaBar` tinggi ~68 + safe-area). Warna netral putih
+            // (bukan brand blue) supaya tak mencolok. Offset px bisa di-tune
+            // saat device-verify.
             Positioned(
               left: 0,
               right: 0,
-              bottom: MediaQuery.paddingOf(context).bottom + 192,
+              bottom: MediaQuery.paddingOf(context).bottom + 70,
               child: VideoProgressIndicator(
                 controller,
                 allowScrubbing: true,
-                colors: const VideoProgressColors(playedColor: _brandBlue),
+                colors: const VideoProgressColors(
+                  playedColor: Colors.white,
+                  bufferedColor: Color(0x55FFFFFF),
+                  backgroundColor: Color(0x33FFFFFF),
+                ),
               ),
             ),
           ],
