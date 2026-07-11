@@ -68,6 +68,11 @@ const NAV_GROUPS: NavGroup[] = [
         icon: <Glyph d="M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1ZM3 15l5-5 4 4 3-3 6 6" />,
       },
       {
+        href: "/admin/launch-popup",
+        label: "Popup Promo",
+        icon: <Glyph d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm3 15h4" />,
+      },
+      {
         href: "/admin/broadcast",
         label: "Broadcast Notifikasi",
         icon: <Glyph d="M3 11l18-8-5 18-4-9-9-1zM13 12l8-9" />,

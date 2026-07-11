@@ -2,6 +2,7 @@ import '../config/api_config.dart';
 import '../models/brand.dart';
 import '../models/home_banner.dart';
 import '../models/home_category.dart';
+import '../models/launch_popup.dart';
 import '../models/product.dart';
 import '../utils/read_only_mode.dart';
 import 'api_client.dart';
@@ -402,6 +403,21 @@ class ProductService {
           .toList();
     } catch (_) {
       return const [];
+    }
+  }
+
+  /// Popup promo bergambar cold start (admin-managed, gaya Shopee).
+  /// null = tidak ada popup aktif / API gagal → LaunchPromoGate skip total.
+  Future<LaunchPopup?> fetchLaunchPopup() async {
+    try {
+      final data = await apiClient.getJson('/api/launch-popup');
+      final map = _asMap(data);
+      final raw = map?['popup'];
+      if (raw is! Map<String, dynamic>) return null;
+      final popup = LaunchPopup.fromApiJson(raw);
+      return popup.imageUrl.isEmpty ? null : popup;
+    } catch (_) {
+      return null;
     }
   }
 

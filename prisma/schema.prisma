@@ -349,6 +349,28 @@ model HomeBanner {
   @@index([isActive, position])
 }
 
+/// Popup promo bergambar saat app cold start (gaya Shopee: satu gambar
+/// kreatif penuh + tombol X). Admin upload gambar (ideal 1080×1350 / 4:5),
+/// app Flutter fetch popup aktif via GET /api/launch-popup.
+/// linkType/linkValue = semantik SAMA dengan HomeBanner (lihat komentar di
+/// atas). audience: all = semua user, member = hanya user login.
+/// startsAt/endsAt opsional — null berarti tanpa batas sisi itu.
+model LaunchPopup {
+  id        String    @id @default(cuid())
+  imageUrl  String
+  imageAlt  String    @default("")
+  linkType  String    @default("none")
+  linkValue String?
+  audience  String    @default("member")
+  startsAt  DateTime?
+  endsAt    DateTime?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([isActive, startsAt, endsAt])
+}
+
 model Product {
   id                    String                      @id @default(cuid())
   name                  String
