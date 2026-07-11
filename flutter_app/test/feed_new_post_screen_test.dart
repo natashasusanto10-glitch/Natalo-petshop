@@ -110,4 +110,28 @@ void main() {
     expect(find.byKey(const ValueKey('slide-delete-0')), findsNothing);
     expect(find.byKey(const ValueKey('slide-0')), findsNothing);
   });
+
+  testWidgets(
+      'carousel: hapus slide sebelum slide aktif → slide aktif tetap dipertahankan',
+      (tester) async {
+    final files = makePhotoFiles(3);
+    await pumpCarouselScreen(tester, files);
+
+    // Swipe ke slide index 1 ("2/3") dulu.
+    await tester.drag(find.byType(PageView), const Offset(-400, 0));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.text('2/3'), findsOneWidget);
+
+    // Hapus slide index 0 (di depan slide aktif) — slide aktif (dulu index
+    // 1) harus tetap dipertahankan, sekarang jadi index 0 ("1/2"), bukan
+    // ikut ke slide index 1 yang baru ("2/2").
+    await tester.tap(find.byKey(const ValueKey('slide-delete-0')));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(find.text('1/2'), findsOneWidget);
+  });
 }

@@ -302,6 +302,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
     AppHaptics.selection();
     setState(() {
       _photoFiles.removeAt(index);
+      if (index < _photoIndex) _photoIndex -= 1;
       _photoIndex = _photoIndex.clamp(0, _photoFiles.length - 1);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -324,7 +325,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) => FeedPostPreviewScreen(
-          draft: widget.draft,
+          draft: _isVideo ? widget.draft : NewPostMediaDraft.photos(_photoFiles),
           videoDraft: _videoDraft,
           caption: caption,
           products: selected,
