@@ -2402,7 +2402,6 @@ class _ShortcutGrid extends StatelessWidget {
       _ShortcutItem(
         Icons.pets_rounded,
         'Makanan Kucing',
-        const Color(0xFFEAF5FF),
         const Color(0xFF0B7FEA),
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
@@ -2412,10 +2411,12 @@ class _ShortcutGrid extends StatelessWidget {
           ),
         ),
       ),
+      // cookie = biskuit anjing. Dulu cruelty_free_rounded yang sebenarnya
+      // icon KELINCI (salah makna, ketahuan di device) — Material tak punya
+      // icon anjing.
       _ShortcutItem(
-        Icons.cruelty_free_rounded,
+        Icons.cookie_rounded,
         'Makanan Anjing',
-        const Color(0xFFFFFBEB),
         const Color(0xFFF59E0B),
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
@@ -2428,7 +2429,6 @@ class _ShortcutGrid extends StatelessWidget {
       _ShortcutItem(
         Icons.set_meal_rounded,
         'Makanan Ikan',
-        const Color(0xFFECFEFF),
         const Color(0xFF0891B2),
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
@@ -2439,7 +2439,6 @@ class _ShortcutGrid extends StatelessWidget {
       _ShortcutItem(
         Icons.medication_rounded,
         'Obat & Suplemen',
-        const Color(0xFFFEF2F2),
         const Color(0xFFEF4444),
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
@@ -2451,7 +2450,6 @@ class _ShortcutGrid extends StatelessWidget {
       _ShortcutItem(
         Icons.local_fire_department_rounded,
         'Promo',
-        const Color(0xFFFFF1F2),
         const Color(0xFFE11D48),
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
@@ -2462,7 +2460,6 @@ class _ShortcutGrid extends StatelessWidget {
       _ShortcutItem(
         Icons.new_releases_rounded,
         'Produk Baru',
-        const Color(0xFFECFDF5),
         const Color(0xFF16A34A),
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
@@ -2473,14 +2470,12 @@ class _ShortcutGrid extends StatelessWidget {
       _ShortcutItem(
         Icons.local_offer_rounded,
         'Voucher',
-        const Color(0xFFFDF2F8),
         const Color(0xFFDB2777),
         onTap: (ctx) => Navigator.pushNamed(ctx, '/member/vouchers'),
       ),
       _ShortcutItem(
         Icons.stars_rounded,
         'Tukar Poin',
-        const Color(0xFFFFF7ED),
         const Color(0xFFEA580C),
         onTap: (ctx) => Navigator.pushNamed(ctx, '/member/loyalty'),
       ),
@@ -2500,15 +2495,17 @@ class _ShortcutGrid extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Kotak rounded-16 48px squircle soft-tint tanpa shadow; tap ≥48.
+            // Lingkaran 48px warna solid + icon PUTIH (redesign Jul 2026,
+            // gaya "circle warna" ala marketplace — dulu squircle soft-tint
+            // + icon berwarna yang terasa datar/pucat di device). Tap ≥48.
             Container(
               height: 48,
               width: 48,
               decoration: BoxDecoration(
-                color: item.background,
-                borderRadius: BorderRadius.circular(16),
+                color: item.color,
+                shape: BoxShape.circle,
               ),
-              child: Icon(item.icon, color: item.color, size: 24),
+              child: Icon(item.icon, color: Colors.white, size: 24),
             ),
             const SizedBox(height: 6),
             Text(
@@ -2617,12 +2614,14 @@ class _FlashSaleGrid extends StatelessWidget {
     final titleColor = isDark ? _titleDark : _titleLight;
 
     return Container(
-      // Celah 12: margin-atas abu (latar Beranda) memisahkan shortcut → pita
-      // Flash Sale. Dulu 0/"nempel" karena mengira celah abu itu bug; ternyata
-      // bug-nya tinggi HANTU GridView shortcut (sudah difix ke Column-of-Rows).
-      // Tanpa celah, dua section jadi terlalu rapat. Margin hanya di sini →
-      // tak memengaruhi tampilan saat Flash Sale kosong.
-      margin: const EdgeInsets.only(top: 12),
+      // Celah 20: margin-atas abu (latar Beranda) memisahkan shortcut → pita
+      // Flash Sale. Sejarah: 0 ("nempel") karena celah abu dikira bug; ternyata
+      // bug-nya tinggi HANTU GridView shortcut (difix ke Column-of-Rows), lalu
+      // 12 masih terasa rapat di device. Sekarang 20 = SAMA dengan ritme jarak
+      // section lain (Flash→Terlaris, Terlaris→Brand, Brand→Kategori — semua
+      // 20, keputusan user Jul 2026). Margin hanya di sini → tak memengaruhi
+      // tampilan saat Flash Sale kosong.
+      margin: const EdgeInsets.only(top: 20),
       padding: const EdgeInsets.fromLTRB(0, 12, 0, 14),
       color: isDark ? _bandDark : _bandLight,
       child: Column(
@@ -3911,18 +3910,21 @@ class _BrandChoiceSectionState extends State<_BrandChoiceSection> {
     }
 
     // Compute card height dari aspect ratio + screen width
-    // (childAspectRatio: 1.2 = width/height — kartu dibuat lebih tinggi dari
-    // sebelumnya (1.35) supaya logo, terutama yang KOTAK 1:1, punya ruang
-    // vertikal lebih besar; lihat patok tinggi 40 di BrandGridCard. HARUS
-    // sama dengan childAspectRatio gridDelegate di bawah.)
+    // (childAspectRatio: 0.8 = width/height — kartu "tile 1:1": area logo
+    // ~persegi memenuhi lebar kartu + nama di bawah, ala grid produk.
+    // Redesign Jul 2026 dari 1.2/patok-40: gambar logo yang di-upload berupa
+    // kotak putih 1024×1024 dengan ruang kosong internal, jadi patok tinggi
+    // berapapun tetap terasa kecil — solusinya logo mengisi SELURUH kartu.
+    // HARUS sama dengan childAspectRatio gridDelegate di bawah.)
     final screenWidth = MediaQuery.sizeOf(context).width;
     final innerWidth = screenWidth - 32; // 16 padding × 2
     final cardWidth = (innerWidth - 24) / 3; // 12 spacing × 2 between 3 cols
-    final cardHeight = cardWidth / 1.2;
+    final cardHeight = cardWidth / 0.8;
     final gridHeight = (cardHeight * 2) + 12; // 2 rows + mainAxisSpacing
 
     return Padding(
-      padding: const EdgeInsets.only(top: 22),
+      // 20 = ritme jarak antar-section seragam (lihat komentar _FlashSaleGrid).
+      padding: const EdgeInsets.only(top: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -3966,7 +3968,7 @@ class _BrandChoiceSectionState extends State<_BrandChoiceSection> {
                       crossAxisCount: 3,
                       mainAxisSpacing: 12,
                       crossAxisSpacing: 12,
-                      childAspectRatio: 1.2,
+                      childAspectRatio: 0.8,
                     ),
                     itemCount: pageBrands.length,
                     itemBuilder: (context, idx) {
@@ -4004,7 +4006,7 @@ class BrandGridCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
@@ -4019,17 +4021,19 @@ class BrandGridCard extends StatelessWidget {
             ],
           ),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Patok tinggi logo ke garis yang sama untuk semua brand —
-              // BoxFit.contain di ConstrainedBox mengepaskan ke TINGGI yang
-              // sama (bukan seluruh area kartu) biar logo banner lebar (Happy
-              // Dog, Royal Canin) tak melar mepet tepi. Cap 40 (naik dari 26)
-              // + kartu lebih tinggi (aspect 1.2) supaya logo KOTAK 1:1 (mis.
-              // 1024×1024) tampil cukup besar, tak lagi tenggelam kecil.
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 40),
-                child: BrandLogoImage(brand: brand),
+              // Tile 1:1 (redesign Jul 2026): logo mengisi SELURUH area kartu
+              // (Expanded + contain), bukan patok tinggi 26/40 — gambar brand
+              // di-upload sebagai kotak putih 1024×1024 dengan ruang kosong
+              // internal, sehingga slot kecil membuat logo efektif mini.
+              // Expanded (bukan AspectRatio) supaya kebal overflow saat
+              // textScale besar: area logo mengalah, nama selalu muat.
+              // BoxFit.contain → logo wordmark lebar pun tak pernah ke-crop.
+              Expanded(
+                child: SizedBox(
+                  width: double.infinity,
+                  child: BrandLogoImage(brand: brand),
+                ),
               ),
               const SizedBox(height: 4),
               Text(
@@ -4122,6 +4126,18 @@ class _CategorySection extends StatelessWidget {
 
   const _CategorySection({required this.categories, required this.onTap});
 
+  // Palet warna tile kategori — hue sama dengan shortcut grid biar serumpun.
+  static const _tileColors = <Color>[
+    Color(0xFF0B7FEA), // biru
+    Color(0xFFF59E0B), // amber
+    Color(0xFF0891B2), // cyan
+    Color(0xFFEF4444), // merah
+    Color(0xFF16A34A), // hijau
+    Color(0xFFDB2777), // pink
+    Color(0xFFEA580C), // oranye
+    Color(0xFF7C3AED), // ungu
+  ];
+
   // Map nama kategori → icon yang relevan. Fallback ke generic store icon.
   static IconData _iconFor(String name) {
     final lower = name.toLowerCase();
@@ -4168,7 +4184,8 @@ class _CategorySection extends StatelessWidget {
     final visible = sorted.take(8).toList();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 22),
+      // 20 = ritme jarak antar-section seragam (lihat komentar _FlashSaleGrid).
+      padding: const EdgeInsets.only(top: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -4206,6 +4223,9 @@ class _CategorySection extends StatelessWidget {
                 return _PopularCategoryCard(
                   category: category,
                   icon: _iconFor(category.name),
+                  // Warna bergilir per kategori (dulu semua biru seragam —
+                  // terasa datar). Palet sama dengan shortcut grid.
+                  color: _tileColors[index % _tileColors.length],
                   onTap: () => onTap(category.name),
                 );
               },
@@ -4222,11 +4242,13 @@ class _CategorySection extends StatelessWidget {
 class _PopularCategoryCard extends StatelessWidget {
   final HomeCategory category;
   final IconData icon;
+  final Color color;
   final VoidCallback onTap;
 
   const _PopularCategoryCard({
     required this.category,
     required this.icon,
+    required this.color,
     required this.onTap,
   });
 
@@ -4249,16 +4271,16 @@ class _PopularCategoryCard extends StatelessWidget {
           ),
           child: Row(
             children: [
+              // Lingkaran warna solid + icon putih — segaya dengan shortcut
+              // grid (redesign Jul 2026; dulu kotak tint biru seragam).
               Container(
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
-                      : const Color(0xFFEAF5FF),
-                  borderRadius: BorderRadius.circular(14),
+                  color: color,
+                  shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: const Color(0xFF0B7FEA), size: 23),
+                child: Icon(icon, color: Colors.white, size: 22),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -4360,7 +4382,8 @@ class _RecommendationGrid extends StatelessWidget {
 class _ShortcutItem {
   final IconData icon;
   final String label;
-  final Color background;
+  // Warna solid lingkaran tile (icon-nya putih) — redesign "circle warna"
+  // Jul 2026; field `background` tint lama dihapus bersama gaya squircle.
   final Color color;
   // Optional per-item handler. Kalau null, _ShortcutGrid pakai default
   // (onOpenProducts). Pattern ini supaya tiap shortcut bisa navigate ke
@@ -4370,7 +4393,6 @@ class _ShortcutItem {
   const _ShortcutItem(
     this.icon,
     this.label,
-    this.background,
     this.color, {
     this.onTap,
   });
