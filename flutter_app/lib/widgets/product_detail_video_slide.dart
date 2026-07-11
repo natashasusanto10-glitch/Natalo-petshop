@@ -27,8 +27,10 @@ const _brandBlue = NataloColors.nataloBlue;
 ///   play (bisu); TRANSISI ke tak-terlihat (<0.5) → `pauseIfPlaying()`. Dipicu
 ///   di transisi (bukan tiap event) supaya pause manual saat diam tidak
 ///   ditimpa.
-/// - App background (`WidgetsBindingObserver.paused`) → pause. Autoplay resume
-///   saat slide terlihat lagi.
+/// - App background (`WidgetsBindingObserver.paused`) → `_foreground=false` +
+///   pause (juga menggate `play()` kalau background mendarat saat init
+///   in-flight). `resumed` → `_foreground=true` + autoplay bisu resume kalau
+///   slide masih terlihat.
 /// - Parent (`_ProductHero`, Task 6) pegang `GlobalKey<ProductDetailVideoSlideState>`
 ///   dan panggil [ProductDetailVideoSlideState.pauseIfPlaying] saat user swipe ke
 ///   slide lain — makanya State class ini **publik** (private tak bisa direferensi
@@ -94,6 +96,14 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
   /// `_controller?.setVolume(_muted ? 0 : 1)`.
   bool _muted = true;
 
+  /// Apakah app di foreground. Gate autoplay BARENG `_visible`: kalau app
+  /// di-background SAAT `initialize()` in-flight, `pauseIfPlaying` (dari
+  /// `didChangeAppLifecycleState`) no-op (controller belum init) & `_visible`
+  /// tetap true → tanpa flag ini `play()` pasca-init jalan OFFSTAGE (buang
+  /// decoder). Branch `resumed` men-set `true` lagi + panggil `_ensureAndPlay`
+  /// saat masih terlihat (resume autoplay bisu).
+  bool _foreground = true;
+
   @override
   void initState() {
     super.initState();
@@ -123,9 +133,17 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden) {
-      // App ke background → pause. Autoplay bisu resume nanti lewat transisi
-      // visibility saat slide terlihat lagi.
+      // App ke background → tandai + pause. `_foreground=false` juga menggate
+      // `play()` pasca-init kalau background mendarat SAAT init in-flight
+      // (`pauseIfPlaying` no-op selama controller belum init).
+      _foreground = false;
       pauseIfPlaying();
+    } else if (state == AppLifecycleState.resumed) {
+      // Balik ke foreground → kalau slide masih terlihat, resume autoplay bisu.
+      // `_ensureAndPlay` no-op kalau sudah main; kalau controller ada tapi
+      // paused (mis. digate saat background) ia yang men-`play()`.
+      _foreground = true;
+      if (_visible) unawaited(_ensureAndPlay());
     }
   }
 
@@ -191,11 +209,12 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
         return;
       }
       controller.addListener(_onControllerTick);
-      // Slide sudah scroll-off selama init (`_visible=false` lewat transisi
-      // visibility<0.5)? JANGAN `play()` video yang tak terlihat — biarkan
-      // paused (frame-1, resumable saat terlihat lagi / via `_togglePlay`).
-      // Reset `_initializing` supaya UI keluar dari loading.
-      if (!_visible) {
+      // Slide sudah scroll-off (`_visible=false`) ATAU app di-background
+      // (`_foreground=false`) selama init? JANGAN `play()` video tak-terlihat /
+      // offstage — biarkan paused (frame-1, resumable saat terlihat lagi / via
+      // `_togglePlay` / branch `resumed`). Reset `_initializing` supaya UI
+      // keluar dari loading.
+      if (!_visible || !_foreground) {
         setState(() => _initializing = false);
         return;
       }
@@ -206,9 +225,10 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
         unawaited(controller.dispose());
         return;
       }
-      // Jadi tak-terlihat SELAMA `await play()` (yield point) → pause segera.
-      // Controller tetap initialized-tapi-paused (resumable), JANGAN dispose.
-      if (!_visible) {
+      // Jadi tak-terlihat / app-background SELAMA `await play()` (yield point)
+      // → pause segera. Controller tetap initialized-tapi-paused (resumable),
+      // JANGAN dispose.
+      if (!_visible || !_foreground) {
         unawaited(controller.pause());
         setState(() => _initializing = false);
         return;
