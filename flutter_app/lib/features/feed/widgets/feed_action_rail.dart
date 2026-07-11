@@ -1,35 +1,31 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/action_throttle.dart';
-import 'feed_colors.dart';
 
 const _feedActionForegroundColor = Color(0xFFFFFFFF);
 const _feedActionShadowColor = Color(0x99000000);
 const _feedActionTextShadowColor = Color(0xB3000000);
-// Ikon action rail — disetel setipis IG Reels: stroke 1.7 (dari 2.2) +
-// ukuran 30 (dari 32). Garis lebih halus/elegan, tidak lagi terlihat
-// "gemuk" di atas video.
+// Ikon action rail — proporsi ala IG Reels: ukuran 30 + stroke 2.2.
+// Sempat diturunkan ke 1.7 tapi terasa terlalu kurus di atas video;
+// kesan "gemuk" dulu datang dari count w900 (kini w600), bukan stroke.
 const _feedActionIconSize = 30.0;
-const _feedActionStrokeWidth = 1.7;
+const _feedActionStrokeWidth = 2.2;
 const _feedActionCountFontSize = 12.0;
-const _feedActionItemSpacing = 18.0;
+const _feedActionItemSpacing = 22.0;
 
-/// Rail aksi kanan feed video/foto — like, comment, share, cart, more.
-/// Ekstraksi 1:1 dari feed_screen (ikon CustomPaint 30px stroke 1.7,
-/// angka 12 w600 putih ber-shadow, spacing antar item 18).
+/// Rail aksi kanan feed video/foto — like, comment, share, more.
+/// Ekstraksi 1:1 dari feed_screen (ikon CustomPaint 30px stroke 2.2,
+/// angka 12 w600 putih ber-shadow, spacing antar item 22). Cart item
+/// DIHAPUS dari rail — duplikat dengan cart kanan-atas (satu-satunya
+/// pintu keranjang di feed, spec PR #78/#80 upstream).
 class FeedActionRail extends StatelessWidget {
   final int likeCount;
   final bool liked;
   final int commentCount;
   final int shareCount;
-  /// Tampilkan tombol cart (feed: hanya bila post punya produk).
-  final bool showCart;
-  /// Angka badge oranye di ikon cart (jumlah item keranjang).
-  final int cartBadgeCount;
   final VoidCallback? onLike;
   final VoidCallback? onComment;
   final VoidCallback? onShare;
-  final VoidCallback? onCart;
   final VoidCallback? onMore;
 
   const FeedActionRail({
@@ -38,12 +34,9 @@ class FeedActionRail extends StatelessWidget {
     required this.liked,
     required this.commentCount,
     required this.shareCount,
-    this.showCart = false,
-    this.cartBadgeCount = 0,
     this.onLike,
     this.onComment,
     this.onShare,
-    this.onCart,
     this.onMore,
   });
 
@@ -70,13 +63,6 @@ class FeedActionRail extends StatelessWidget {
           onTap: onShare ?? () {},
         ),
         const SizedBox(height: _feedActionItemSpacing),
-        if (showCart) ...[
-          _ReelsAction(
-            iconChild: _ReelsCartGlyph(count: cartBadgeCount),
-            onTap: onCart ?? () {},
-          ),
-          const SizedBox(height: _feedActionItemSpacing),
-        ],
         // More actions (Report/Block) — Google Play UGC policy.
         _ReelsAction(
           iconChild: const _ReelsMoreGlyph(),
@@ -144,6 +130,9 @@ class _ReelsActionState extends State<_ReelsAction>
 
   @override
   Widget build(BuildContext context) {
+    // Count 0 disembunyikan ala IG Reels — label baru muncul saat >0.
+    // Post baru tampil ikon bersih, tidak dipenuhi deretan angka "0".
+    final showCount = widget.count != null && widget.count! > 0;
     return SizedBox(
       width: 54,
       child: Material(
@@ -154,12 +143,12 @@ class _ReelsActionState extends State<_ReelsAction>
           child: ScaleTransition(
             scale: _tapPulseScale,
             child: SizedBox(
-              height: widget.count == null ? 44 : 60,
+              height: !showCount ? 44 : 60,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   widget.iconChild,
-                  if (widget.count != null) ...[
+                  if (showCount) ...[
                     const SizedBox(height: 2),
                     RepaintBoundary(
                       child: Text(
@@ -202,7 +191,15 @@ class _ReelsActionState extends State<_ReelsAction>
   }
 }
 
-class _ReelsHeartGlyph extends StatelessWidget {
+/// Heart rail — like toggle ala IG: heart TERISI merah, bukan ganti bentuk.
+///
+/// Dulu unliked = stroke / liked = fill pada path yang sama → siluet
+/// benar-benar berubah (stroke center mengembang keluar strokeWidth/2 dan
+/// round-join membulatkan ujung lancip; fill memakai path mentah yang lebih
+/// kecil + tajam) → tap terbaca "ganti bentuk". Sekarang stroke round-join
+/// digambar di KEDUA state (siluet identik piksel), dan fill merah masuk
+/// dengan animasi progress 0→1 (180ms) — stroke ikut lerp ke merah.
+class _ReelsHeartGlyph extends StatefulWidget {
   final bool liked;
 
   const _ReelsHeartGlyph({
@@ -210,28 +207,70 @@ class _ReelsHeartGlyph extends StatelessWidget {
   });
 
   @override
+  State<_ReelsHeartGlyph> createState() => _ReelsHeartGlyphState();
+}
+
+class _ReelsHeartGlyphState extends State<_ReelsHeartGlyph>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _fillController;
+  late final Animation<double> _fill;
+
+  @override
+  void initState() {
+    super.initState();
+    _fillController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+      value: widget.liked ? 1 : 0,
+    );
+    _fill = CurvedAnimation(
+      parent: _fillController,
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReelsHeartGlyph oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.liked != widget.liked) {
+      // Unlike balik lebih cepat (tanpa easing panjang) — IG juga begitu.
+      widget.liked ? _fillController.forward() : _fillController.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _fillController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: _feedActionIconSize,
       width: _feedActionIconSize,
-      child: CustomPaint(painter: _HeartGlyphPainter(liked: liked)),
+      child: CustomPaint(painter: _HeartGlyphPainter(fillProgress: _fill)),
     );
   }
 }
 
 class _HeartGlyphPainter extends CustomPainter {
-  final bool liked;
+  final Animation<double> fillProgress;
 
-  const _HeartGlyphPainter({
-    required this.liked,
-  });
+  _HeartGlyphPainter({
+    required this.fillProgress,
+  }) : super(repaint: fillProgress);
+
+  static const _likedRed = Color(0xFFEF4444);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final path = _buildHeartPath(size);
+    final t = fillProgress.value;
+    final path = buildFeedHeartPath(size);
+    // Shadow SELALU stroke — silhouette shadow konstan di kedua state.
     final shadowPaint = Paint()
       ..color = _feedActionShadowColor
-      ..style = liked ? PaintingStyle.fill : PaintingStyle.stroke
+      ..style = PaintingStyle.stroke
       ..strokeWidth = _feedActionStrokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
@@ -239,90 +278,104 @@ class _HeartGlyphPainter extends CustomPainter {
 
     canvas.drawPath(path.shift(const Offset(0, 1.2)), shadowPaint);
 
-    final paint = Paint()
-      ..color = liked ? const Color(0xFFEF4444) : _feedActionForegroundColor
-      ..style = liked ? PaintingStyle.fill : PaintingStyle.stroke
+    // Fill merah masuk di dalam stroke — opacity mengikuti progress.
+    if (t > 0) {
+      final fillPaint = Paint()
+        ..color = _likedRed.withValues(alpha: t)
+        ..style = PaintingStyle.fill;
+      canvas.drawPath(path, fillPaint);
+    }
+
+    // Stroke digambar TERAKHIR di kedua state — dialah siluet konstan.
+    // Warnanya lerp putih → merah supaya rim menyatu saat liked.
+    final strokePaint = Paint()
+      ..color = Color.lerp(_feedActionForegroundColor, _likedRed, t)!
+      ..style = PaintingStyle.stroke
       ..strokeWidth = _feedActionStrokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    canvas.drawPath(path, paint);
-  }
-
-  Path _buildHeartPath(Size size) {
-    return Path()
-      ..moveTo(size.width * 0.50, size.height * 0.844)
-      ..cubicTo(
-        size.width * 0.469,
-        size.height * 0.815,
-        size.width * 0.342,
-        size.height * 0.698,
-        size.width * 0.244,
-        size.height * 0.592,
-      )
-      ..cubicTo(
-        size.width * 0.158,
-        size.height * 0.498,
-        size.width * 0.129,
-        size.height * 0.425,
-        size.width * 0.129,
-        size.height * 0.346,
-      )
-      ..cubicTo(
-        size.width * 0.129,
-        size.height * 0.231,
-        size.width * 0.219,
-        size.height * 0.150,
-        size.width * 0.338,
-        size.height * 0.150,
-      )
-      ..cubicTo(
-        size.width * 0.406,
-        size.height * 0.150,
-        size.width * 0.460,
-        size.height * 0.179,
-        size.width * 0.500,
-        size.height * 0.231,
-      )
-      ..cubicTo(
-        size.width * 0.540,
-        size.height * 0.179,
-        size.width * 0.594,
-        size.height * 0.150,
-        size.width * 0.662,
-        size.height * 0.150,
-      )
-      ..cubicTo(
-        size.width * 0.781,
-        size.height * 0.150,
-        size.width * 0.871,
-        size.height * 0.231,
-        size.width * 0.871,
-        size.height * 0.346,
-      )
-      ..cubicTo(
-        size.width * 0.871,
-        size.height * 0.425,
-        size.width * 0.842,
-        size.height * 0.498,
-        size.width * 0.756,
-        size.height * 0.592,
-      )
-      ..cubicTo(
-        size.width * 0.658,
-        size.height * 0.698,
-        size.width * 0.531,
-        size.height * 0.815,
-        size.width * 0.50,
-        size.height * 0.844,
-      )
-      ..close();
+    canvas.drawPath(path, strokePaint);
   }
 
   @override
   bool shouldRepaint(covariant _HeartGlyphPainter oldDelegate) {
-    return oldDelegate.liked != liked;
+    return oldDelegate.fillProgress != fillProgress;
   }
+}
+
+/// Path heart bersama — dipakai rail glyph (stroke+fill) DAN burst
+/// double-tap (fill putih besar) di feed_screen.dart supaya seluruh feed
+/// satu bentuk hati. Exported (bukan private) supaya bisa dipakai lintas
+/// file.
+Path buildFeedHeartPath(Size size) {
+  return Path()
+    ..moveTo(size.width * 0.50, size.height * 0.844)
+    ..cubicTo(
+      size.width * 0.469,
+      size.height * 0.815,
+      size.width * 0.342,
+      size.height * 0.698,
+      size.width * 0.244,
+      size.height * 0.592,
+    )
+    ..cubicTo(
+      size.width * 0.158,
+      size.height * 0.498,
+      size.width * 0.129,
+      size.height * 0.425,
+      size.width * 0.129,
+      size.height * 0.346,
+    )
+    ..cubicTo(
+      size.width * 0.129,
+      size.height * 0.231,
+      size.width * 0.219,
+      size.height * 0.150,
+      size.width * 0.338,
+      size.height * 0.150,
+    )
+    ..cubicTo(
+      size.width * 0.406,
+      size.height * 0.150,
+      size.width * 0.460,
+      size.height * 0.179,
+      size.width * 0.500,
+      size.height * 0.231,
+    )
+    ..cubicTo(
+      size.width * 0.540,
+      size.height * 0.179,
+      size.width * 0.594,
+      size.height * 0.150,
+      size.width * 0.662,
+      size.height * 0.150,
+    )
+    ..cubicTo(
+      size.width * 0.781,
+      size.height * 0.150,
+      size.width * 0.871,
+      size.height * 0.231,
+      size.width * 0.871,
+      size.height * 0.346,
+    )
+    ..cubicTo(
+      size.width * 0.871,
+      size.height * 0.425,
+      size.width * 0.842,
+      size.height * 0.498,
+      size.width * 0.756,
+      size.height * 0.592,
+    )
+    ..cubicTo(
+      size.width * 0.658,
+      size.height * 0.698,
+      size.width * 0.531,
+      size.height * 0.815,
+      size.width * 0.50,
+      size.height * 0.844,
+    )
+    ..close();
 }
 
 class _ReelsCommentGlyph extends StatelessWidget {
@@ -514,58 +567,4 @@ class _MoreGlyphPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _ReelsCartGlyph extends StatelessWidget {
-  final int count;
-
-  const _ReelsCartGlyph({required this.count});
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        const Icon(
-          Icons.shopping_cart,
-          color: _feedActionForegroundColor,
-          size: _feedActionIconSize,
-          shadows: [
-            Shadow(
-              color: _feedActionShadowColor,
-              blurRadius: 4,
-              offset: Offset(0, 1),
-            ),
-          ],
-        ),
-        if (count > 0)
-          Positioned(
-            top: -5,
-            right: -7,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              decoration: BoxDecoration(
-                color: feedCommerceOrange,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  width: 1.2,
-                ),
-              ),
-              constraints: const BoxConstraints(minWidth: 17, minHeight: 17),
-              child: Text(
-                count > 99 ? '99+' : '$count',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w900,
-                  height: 1.2,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
 }

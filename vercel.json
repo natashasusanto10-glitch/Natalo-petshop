@@ -57,6 +57,10 @@
     {
       "path": "/api/cron/loyalty-points-reminder",
       "schedule": "0 3 * * 1"
+    },
+    {
+      "path": "/api/cron/product-video-gc",
+      "schedule": "30 3 * * 1"
     }
   ]
 }

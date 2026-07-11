@@ -77,7 +77,12 @@ export const USER_VIDEO_CONFIG = {
 
 export const ADMIN_VIDEO_CONFIG = {
   minDuration: 1,
-  maxDuration: 60,
+  // Admin boleh video lebih panjang dari user (60s) — untuk konten produk /
+  // penjelasan yang butuh durasi. Ini gate tunggal durasi feed admin: dipakai
+  // AdminFeedCreateClient (validasi + label) DAN webhook Bunny (menerima sampai
+  // batas ini untuk authorRole ADMIN). File besar tetap dibatasi
+  // MAX_SOURCE_VIDEO_SIZE (200MB) + Bunny transcode, bukan field size di bawah.
+  maxDuration: 90,
   resolution: 1080,
   videoBitrate: "3000k",
   fps: 30,

@@ -155,7 +155,9 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
   Future<void> _loadSuggestedUsers() async {
     setState(() => _suggestedLoading = true);
     try {
-      final users = await followService.fetchSuggestedUsers(limit: 12);
+      // 6 (dari 12) — state awal harus sparse ala IG, bukan langsung
+      // memenuhi layar sebelum user mengetik apa pun.
+      final users = await followService.fetchSuggestedUsers(limit: 6);
       if (!mounted) return;
       setState(() => _suggestedUsers = users);
     } catch (_) {
@@ -340,17 +342,19 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
         query: _query,
       );
     }
+    // Hasil pencarian ala IG: baris polos TANPA tombol follow + tanpa
+    // header section — follow dilakukan dari profil. Bikin hasil ringan.
     return ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
-        const _SectionHeader(title: 'Hasil pencarian'),
         for (final user in _items)
           _UserResultTile(
             user: user,
             busy: _busyUserIds.contains(user.id),
+            showFollow: false,
             onTap: () => _openProfile(user),
-            onFollowTap: user.isSelf ? null : () => _toggleFollow(user),
+            onFollowTap: null,
           ),
         if (_loading)
           const Padding(
@@ -374,26 +378,30 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
     final children = <Widget>[];
 
     if (_recentUsers.isNotEmpty) {
+      // Recent = rail avatar horizontal ala IG — hemat ruang vertikal
+      // supaya state awal tetap sparse. Tap avatar → profil, × kecil di
+      // pojok → hapus satu, "Hapus" di header → hapus semua.
       children
         ..add(
           _SectionHeader(
-            title: 'Recent',
+            title: 'Baru dilihat',
             actionLabel: 'Hapus',
             onAction: () => _clearRecentUsers(),
           ),
         )
-        ..addAll(
-          _recentUsers.map(
-            (user) => _UserResultTile(
-              user: user,
-              busy: _busyUserIds.contains(user.id),
-              onTap: () => _openProfile(user),
-              onFollowTap: user.isSelf ? null : () => _toggleFollow(user),
-              onRemove: () => _removeRecentUser(user),
-            ),
+        ..add(
+          _RecentUserRail(
+            users: _recentUsers,
+            onOpen: _openProfile,
+            onRemove: _removeRecentUser,
           ),
         )
-        ..add(const SizedBox(height: 14));
+        ..add(
+          const Padding(
+            padding: EdgeInsets.fromLTRB(18, 12, 18, 0),
+            child: Divider(height: 1, thickness: 0.5, color: _divider),
+          ),
+        );
     }
 
     if (_suggestedLoading && _suggestedUsers.isEmpty) {
@@ -456,7 +464,7 @@ class _SearchHeader extends StatelessWidget {
         children: [
           Expanded(
             child: Container(
-              height: 42,
+              height: 40,
               decoration: BoxDecoration(
                 color: _searchFill,
                 borderRadius: BorderRadius.circular(12),
@@ -472,8 +480,8 @@ class _SearchHeader extends StatelessWidget {
                 inputFormatters: [LengthLimitingTextInputFormatter(60)],
                 style: const TextStyle(
                   color: _text,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
                   height: 1.2,
                 ),
                 decoration: InputDecoration(
@@ -488,13 +496,13 @@ class _SearchHeader extends StatelessWidget {
                   hintText: 'Cari akun',
                   hintStyle: const TextStyle(
                     color: _muted,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400,
                   ),
                   prefixIcon: const Icon(
                     Icons.search_rounded,
                     color: _muted,
-                    size: 24,
+                    size: 22,
                   ),
                   suffixIcon: hasText
                       ? IconButton(
@@ -503,7 +511,7 @@ class _SearchHeader extends StatelessWidget {
                           icon: const Icon(
                             Icons.cancel_rounded,
                             color: _muted,
-                            size: 19,
+                            size: 18,
                           ),
                         )
                       : null,
@@ -521,8 +529,8 @@ class _SearchHeader extends StatelessWidget {
                 'Batal',
                 style: TextStyle(
                   color: _text,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
@@ -546,17 +554,19 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Header section muted kecil ala IG ("Suggested for you") — bukan
+    // judul putih besar w900 yang bikin halaman terasa berat.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 6),
       child: Row(
         children: [
           Expanded(
             child: Text(
               title,
               style: const TextStyle(
-                color: _text,
-                fontSize: 17,
-                fontWeight: FontWeight.w900,
+                color: _muted,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
                 height: 1.1,
               ),
             ),
@@ -572,7 +582,7 @@ class _SectionHeader extends StatelessWidget {
                   style: const TextStyle(
                     color: _brandBlue,
                     fontSize: 13,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -588,14 +598,17 @@ class _UserResultTile extends StatelessWidget {
   final bool busy;
   final VoidCallback onTap;
   final VoidCallback? onFollowTap;
-  final VoidCallback? onRemove;
+
+  /// false = baris polos ala hasil pencarian IG (tanpa tombol follow —
+  /// follow dilakukan dari profil). true = baris saran dengan tombol.
+  final bool showFollow;
 
   const _UserResultTile({
     required this.user,
     required this.busy,
     required this.onTap,
     required this.onFollowTap,
-    this.onRemove,
+    this.showFollow = true,
   });
 
   @override
@@ -609,11 +622,11 @@ class _UserResultTile extends StatelessWidget {
       splashColor: Colors.white.withValues(alpha: 0.06),
       highlightColor: Colors.white.withValues(alpha: 0.04),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
         child: Row(
           children: [
             _Avatar(user: user),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -624,52 +637,164 @@ class _UserResultTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: _text,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w600,
                       height: 1.15,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 3),
                   Text(
                     subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: _muted,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w400,
                       height: 1.15,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 12),
-            if (onRemove != null)
-              IconButton(
-                tooltip: 'Hapus dari recent',
-                onPressed: onRemove,
-                icon: const Icon(
-                  Icons.close_rounded,
-                  color: _muted,
-                  size: 22,
+            if (showFollow) ...[
+              const SizedBox(width: 12),
+              if (user.isSelf)
+                const Text(
+                  'Kamu',
+                  style: TextStyle(
+                    color: _muted,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                )
+              else
+                _FollowButton(
+                  following: user.isFollowing,
+                  busy: busy,
+                  onTap: onFollowTap,
                 ),
-              )
-            else if (user.isSelf)
-              const Text(
-                'Kamu',
-                style: TextStyle(
-                  color: _muted,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                ),
-              )
-            else
-              _FollowButton(
-                following: user.isFollowing,
-                busy: busy,
-                onTap: onFollowTap,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Rail horizontal "Baru dilihat" ala IG — avatar 50 + username di bawah,
+/// badge × kecil di pojok untuk hapus per item. Hemat ruang vertikal
+/// dibanding list (12 recent = 1 baris rail vs 12 baris list).
+class _RecentUserRail extends StatelessWidget {
+  final List<FollowUserSummary> users;
+  final void Function(FollowUserSummary user) onOpen;
+  final void Function(FollowUserSummary user) onRemove;
+
+  const _RecentUserRail({
+    required this.users,
+    required this.onOpen,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 84,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        itemCount: users.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 14),
+        itemBuilder: (context, index) {
+          final user = users[index];
+          return _RecentUserItem(
+            user: user,
+            onOpen: () => onOpen(user),
+            onRemove: () => onRemove(user),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _RecentUserItem extends StatelessWidget {
+  final FollowUserSummary user;
+  final VoidCallback onOpen;
+  final VoidCallback onRemove;
+
+  const _RecentUserItem({
+    required this.user,
+    required this.onOpen,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onOpen,
+      child: SizedBox(
+        width: 56,
+        child: Column(
+          children: [
+            SizedBox(
+              width: 54,
+              height: 54,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned(
+                    left: 2,
+                    top: 2,
+                    child: _Avatar(user: user, size: 50),
+                  ),
+                  // Badge × — hit-area 22px (badge visual 18) supaya tetap
+                  // gampang di-tap tanpa membesarkan visualnya.
+                  Positioned(
+                    top: -3,
+                    right: -3,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onRemove,
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: Center(
+                          child: Container(
+                            width: 18,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              color: _searchFill,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: _bg, width: 1.5),
+                            ),
+                            child: const Icon(
+                              Icons.close_rounded,
+                              color: Color(0xFFC4CCD6),
+                              size: 11,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              user.displayHandle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFFC4CCD6),
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                height: 1.1,
+              ),
+            ),
           ],
         ),
       ),
@@ -679,23 +804,24 @@ class _UserResultTile extends StatelessWidget {
 
 class _Avatar extends StatelessWidget {
   final FollowUserSummary user;
+  final double size;
 
-  const _Avatar({required this.user});
+  const _Avatar({required this.user, this.size = 44});
 
   @override
   Widget build(BuildContext context) {
     final url = user.profilePhotoUrl;
     return ClipOval(
       child: Container(
-        width: 56,
-        height: 56,
+        width: size,
+        height: size,
         color: const Color(0xFF1B2330),
         alignment: Alignment.center,
         child: url != null && url.isNotEmpty
             ? CachedNetworkImage(
                 imageUrl: url,
-                width: 56,
-                height: 56,
+                width: size,
+                height: size,
                 fit: BoxFit.cover,
                 placeholder: (_, __) => _Initial(initial: user.initial),
                 errorWidget: (_, __, ___) => _Initial(initial: user.initial),
@@ -717,8 +843,8 @@ class _Initial extends StatelessWidget {
       initial,
       style: const TextStyle(
         color: Colors.white,
-        fontSize: 20,
-        fontWeight: FontWeight.w900,
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
       ),
     );
   }
@@ -738,19 +864,22 @@ class _FollowButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = following ? 'Mengikuti' : 'Ikuti';
+    // "Mengikuti" = isi abu halus tanpa border (lebih tenang dari outline
+    // samar), "Ikuti" = biru brand. Bobot w600, tinggi 30 — ala IG.
     return SizedBox(
-      height: 34,
+      height: 30,
       child: following
-          ? OutlinedButton(
+          ? FilledButton(
               onPressed: busy ? null : onTap,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _text,
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.white.withValues(alpha: 0.08),
+                disabledBackgroundColor: Colors.white.withValues(alpha: 0.05),
+                foregroundColor: const Color(0xFFE3E8EF),
                 disabledForegroundColor: _muted,
-                side: BorderSide(color: Colors.white.withValues(alpha: 0.24)),
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 textStyle: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
                 ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -770,8 +899,8 @@ class _FollowButton extends StatelessWidget {
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 18),
                 textStyle: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
                 ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -837,15 +966,15 @@ class _MessageState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.white.withValues(alpha: 0.52), size: 44),
-            const SizedBox(height: 16),
+            Icon(icon, color: Colors.white.withValues(alpha: 0.52), size: 40),
+            const SizedBox(height: 14),
             Text(
               title,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: _text,
-                fontSize: 17,
-                fontWeight: FontWeight.w900,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 7),
@@ -855,7 +984,7 @@ class _MessageState extends StatelessWidget {
               style: const TextStyle(
                 color: _muted,
                 fontSize: 13,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w400,
                 height: 1.35,
               ),
             ),
@@ -896,18 +1025,18 @@ class _SkeletonRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: EdgeInsets.symmetric(horizontal: 18, vertical: 8),
       child: Row(
         children: [
           _SkeletonCircle(),
-          SizedBox(width: 14),
+          SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _SkeletonBar(width: 128),
-                SizedBox(height: 8),
-                _SkeletonBar(width: 190, opacity: 0.09),
+                _SkeletonBar(width: 118),
+                SizedBox(height: 7),
+                _SkeletonBar(width: 170, opacity: 0.09),
               ],
             ),
           ),
@@ -923,8 +1052,8 @@ class _SkeletonCircle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 56,
-      height: 56,
+      width: 44,
+      height: 44,
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.10),
         shape: BoxShape.circle,

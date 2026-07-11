@@ -47,8 +47,16 @@ import 'feed_media_picker_screen.dart';
 import '../widgets/moderation_action_sheet.dart';
 
 const _officialGold = Color(0xFFF4D47C);
-const _feedActionBottomInset = 24.0;
-const _feedActionRailRightInset = 4.0;
+// Duplikat dari feed_action_rail.dart — dipakai _FeedPlusGlyph (tombol
+// upload top-bar), yang tidak ikut diekstraksi karena bukan bagian rail.
+const _feedActionForegroundColor = Color(0xFFFFFFFF);
+const _feedActionShadowColor = Color(0x99000000);
+// Anchor bawah BERSAMA caption + action rail — SATU angka untuk foto DAN
+// video (jangan dibedakan per jenis post). Di video ini berarti overlap
+// 12px ke atas hit-area scrubber 28px (zona transparan) supaya caption/rail
+// duduk dekat garis progress ala IG, bukan melayang di atas seluruh box.
+const _feedOverlayBottomGap = 16.0;
+const _feedActionRailRightInset = 10.0;
 const _feedTopActionRightInset = 8.0;
 
 /// Jarak dasar overlay bawah feed (rail durasi / caption / action rail)
@@ -672,7 +680,7 @@ class _FeedScreenState extends State<FeedScreen> {
                         top: MediaQuery.paddingOf(context).top + 8,
                         left: 4,
                         child: _FeedTopIconButton(
-                          icon: Icons.add_rounded,
+                          iconChild: const _FeedPlusGlyph(),
                           onTap: _onUpload,
                           tooltip: 'Upload video',
                         ),
@@ -746,8 +754,10 @@ class _LoadingState extends StatelessWidget {
     // MediaQuery.padding.bottom SUDAH mencakup tinggi nav (extendBody) —
     // lihat _feedOverlayBaseInset. Jangan tambah kFloatingNavClearance.
     final base = _feedOverlayBaseInset(context);
-    final actionRailInset = _feedActionBottomInset + base;
-    final feedInfoInset = base + 12.0;
+    // Mirror anchor bersama caption/rail (foto + video) supaya transisi
+    // skeleton → konten tidak bikin elemen loncat posisi.
+    final actionRailInset = base + _feedOverlayBottomGap;
+    final feedInfoInset = base + _feedOverlayBottomGap;
 
     return Shimmer.fromColors(
       baseColor: _baseColor,
@@ -831,39 +841,42 @@ class _LoadingState extends StatelessWidget {
 /// icon putih dengan soft drop shadow biar tetap legible di atas video
 /// yang bright. Optional badgeCount untuk indikator jumlah keranjang.
 class _FeedTopIconButton extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconChild;
   final VoidCallback onTap;
   final String? tooltip;
   final int? badgeCount;
 
   const _FeedTopIconButton({
-    required this.icon,
+    this.icon,
+    this.iconChild,
     required this.onTap,
     this.tooltip,
     this.badgeCount,
-  });
+  }) : assert(icon != null || iconChild != null);
 
   @override
   Widget build(BuildContext context) {
     final iconWidget = Stack(
       clipBehavior: Clip.none,
       children: [
-        Icon(
-          icon,
-          color: Colors.white,
-          // 28px — sized untuk visibility tinggi di atas video terang/
-          // gelap. Beda dari home AppCartButton (24px) karena context
-          // berbeda: home header dense banyak icon, feed top icon harus
-          // prominent solo dengan soft drop shadow.
-          size: 28,
-          shadows: const [
-            Shadow(
-              color: Color(0xCC000000),
-              blurRadius: 10,
-              offset: Offset(0, 1),
+        iconChild ??
+            Icon(
+              icon,
+              color: Colors.white,
+              // 28px — sized untuk visibility tinggi di atas video terang/
+              // gelap. Beda dari home AppCartButton (24px) karena context
+              // berbeda: home header dense banyak icon, feed top icon harus
+              // prominent solo dengan soft drop shadow.
+              size: 28,
+              shadows: const [
+                Shadow(
+                  color: Color(0xCC000000),
+                  blurRadius: 10,
+                  offset: Offset(0, 1),
+                ),
+              ],
             ),
-          ],
-        ),
         if (badgeCount != null && badgeCount! > 0)
           Positioned(
             top: -4,
@@ -904,6 +917,52 @@ class _FeedTopIconButton extends StatelessWidget {
     if (tooltip == null) return button;
     return Tooltip(message: tooltip!, child: button);
   }
+}
+
+/// Glyph `+` upload — flat tanpa wadah, 32px stroke 2.6 supaya presence-nya
+/// setara tombol create IG/TikTok. Icons.add_rounded 28 terlalu kurus di
+/// atas video (weight glyph material tidak bisa ditebalkan).
+class _FeedPlusGlyph extends StatelessWidget {
+  const _FeedPlusGlyph();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      height: 32,
+      width: 32,
+      child: CustomPaint(painter: _PlusGlyphPainter()),
+    );
+  }
+}
+
+class _PlusGlyphPainter extends CustomPainter {
+  const _PlusGlyphPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()
+      ..moveTo(size.width * 0.5, size.height * 0.16)
+      ..lineTo(size.width * 0.5, size.height * 0.84)
+      ..moveTo(size.width * 0.16, size.height * 0.5)
+      ..lineTo(size.width * 0.84, size.height * 0.5);
+    final shadowPaint = Paint()
+      ..color = _feedActionShadowColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.6
+      ..strokeCap = StrokeCap.round
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.8);
+    final paint = Paint()
+      ..color = _feedActionForegroundColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.6
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawPath(path.shift(const Offset(0, 1.2)), shadowPaint);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 /// Helper skeleton circle (untuk action rail icons).
@@ -1593,10 +1652,10 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     // MediaQuery.padding.bottom SUDAH mencakup tinggi nav (extendBody) —
     // lihat _feedOverlayBaseInset. Jangan tambah kFloatingNavClearance.
     final navClearance = _feedOverlayBaseInset(context);
-    final actionRailInset = _feedActionBottomInset + navClearance;
-    // Foto carousel tidak punya rail durasi, jadi caption dirapatkan langsung
-    // ke atas nav (gap kecil) — konsisten "rapat" dengan video, tanpa void.
-    final feedInfoInset = navClearance + 8.0;
+    // Anchor BERSAMA dengan video post (_feedOverlayBottomGap) — posisi
+    // caption + rail WAJIB identik foto vs video, jangan dibedakan.
+    final actionRailInset = navClearance + _feedOverlayBottomGap;
+    final feedInfoInset = navClearance + _feedOverlayBottomGap;
 
     // Product chip — same rotation pattern dengan video post.
     final products = _rotatingProductsForPost(post);
@@ -1681,25 +1740,13 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                   }
 
                   final position = _heartBurstPosition;
-                  final progress = _heartBurstController.value;
+                  // Ala IG: putih, bentuk sama dengan heart rail, tegak —
+                  // pop overshoot lalu fade (tanpa tilt/naik gaya TikTok).
                   final heart = Opacity(
                     opacity: _heartOpacity.value,
-                    child: Transform.translate(
-                      offset: Offset(0, -14 * progress),
-                      child: Transform.scale(
-                        scale: _heartScale.value,
-                        child: Transform.rotate(
-                          angle: -0.08,
-                          child: const Icon(
-                            Icons.favorite_rounded,
-                            color: Color(0xFFEF4444),
-                            size: 128,
-                            shadows: [
-                              Shadow(color: Colors.black54, blurRadius: 28),
-                            ],
-                          ),
-                        ),
-                      ),
+                    child: Transform.scale(
+                      scale: _heartScale.value,
+                      child: const _BurstHeart(),
                     ),
                   );
                   if (position == null) {
@@ -1708,10 +1755,10 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                   return Stack(
                     children: [
                       Positioned(
-                        left: position.dx - 64,
-                        top: position.dy - 64,
-                        width: 128,
-                        height: 128,
+                        left: position.dx - 52,
+                        top: position.dy - 52,
+                        width: 104,
+                        height: 104,
                         child: Center(child: heart),
                       ),
                     ],
@@ -1770,34 +1817,18 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                 child: IgnorePointer(
                   ignoring:
                       _hideOverlayForLongPress || _hideOverlayForPinchZoom,
-                  child: products.isNotEmpty
-                      ? AnimatedBuilder(
-                          animation: cartStore,
-                          builder: (context, _) => FeedActionRail(
-                            likeCount: _likeCount,
-                            liked: _liked,
-                            commentCount: _commentCount,
-                            shareCount: _shareCount,
-                            showCart: true,
-                            cartBadgeCount: cartStore.totalQuantity,
-                            onLike: _onLikePressed,
-                            onComment: _onComment,
-                            onShare: _onShare,
-                            onCart: () =>
-                                Navigator.of(context).pushNamed('/cart'),
-                            onMore: () => _showMoreActionsSheet(),
-                          ),
-                        )
-                      : FeedActionRail(
-                          likeCount: _likeCount,
-                          liked: _liked,
-                          commentCount: _commentCount,
-                          shareCount: _shareCount,
-                          onLike: _onLikePressed,
-                          onComment: _onComment,
-                          onShare: _onShare,
-                          onMore: () => _showMoreActionsSheet(),
-                        ),
+                  // Cart di rail DIHAPUS — duplikat dengan cart kanan-atas
+                  // (satu-satunya pintu keranjang di feed).
+                  child: FeedActionRail(
+                    likeCount: _likeCount,
+                    liked: _liked,
+                    commentCount: _commentCount,
+                    shareCount: _shareCount,
+                    onLike: _onLikePressed,
+                    onComment: _onComment,
+                    onShare: _onShare,
+                    onMore: () => _showMoreActionsSheet(),
+                  ),
                 ),
               ),
             ),
@@ -1911,12 +1942,11 @@ class _FeedPostViewState extends State<_FeedPostView>
   Timer? _productRotationTimer;
   double _commentDragOffset = 0;
 
-  // End-of-video product CTA — slide-in card di 2.5s terakhir tiap loop
-  // supaya user yang nonton sampai abis lihat reminder produk dengan tombol
-  // "Beli" lebih prominent dari product chip kecil di bottom info yang selalu
-  // visible. Reset tiap loop wrap (position < 500ms), tapi sticky setelah
-  // user dismiss (per-session). Skip untuk post tanpa tagged products atau
-  // video <3 detik.
+  // Product CTA card — slide-in sekali di detik ~4 (min(4s, durasi/2))
+  // lalu menetap sampai user dismiss (gaya TikTok Shop). Tombol "Beli"
+  // lebih prominent dari product chip kecil di bottom info yang selalu
+  // visible. Dismiss sticky per post; reset saat swipe ke post lain.
+  // Skip untuk post tanpa tagged products.
   bool _endOfVideoCtaVisible = false;
   bool _endOfVideoCtaDismissed = false;
 
@@ -2031,37 +2061,34 @@ class _FeedPostViewState extends State<_FeedPostView>
     if (mounted) setState(() {});
   }
 
-  /// Listener position video → toggle end-of-video product CTA visibility.
+  /// Listener position video → trigger product CTA visibility.
   /// Dipanggil tiap frame video (puluhan kali/detik). Cepat-keluar untuk
   /// kondisi yang gak perlu re-render supaya gak ngabisin frame budget.
+  ///
+  /// Gaya TikTok Shop: kartu muncul SEKALI di detik ~4 (atau setengah
+  /// durasi untuk video pendek) lalu MENETAP sampai user dismiss — tidak
+  /// hilang saat loop. Pola lama (2.5 dtk terakhir tiap loop) tidak
+  /// efektif: mayoritas penonton swipe sebelum video habis, dan 2.5 dtk
+  /// tidak cukup untuk baca produk + harga.
   void _handleVideoPositionForCta() {
     final ctrl = _videoController;
     if (ctrl == null || !mounted) return;
+    if (_endOfVideoCtaVisible || _endOfVideoCtaDismissed) return;
     final value = ctrl.value;
     if (!value.isInitialized) return;
 
     final durMs = value.duration.inMilliseconds;
-    // Skip ultra-short clips (<3s) — gak ada window 2.5s yang masuk akal.
-    if (durMs < 3000) return;
+    if (durMs <= 0) return;
     final posMs = value.position.inMilliseconds;
 
-    // Detect loop wrap (position balik ke awal) — reset visibility supaya
-    // CTA muncul lagi di loop berikutnya. Dismissed flag tetap di-hormati.
-    if (posMs < 500 && _endOfVideoCtaVisible) {
-      setState(() => _endOfVideoCtaVisible = false);
-      return;
-    }
-
-    // Show window: 2.5 detik terakhir, kecuali 50ms terakhir (avoid flicker
-    // di loop boundary saat position mau wrap).
-    final remainingMs = durMs - posMs;
-    final inShowWindow = remainingMs > 50 && remainingMs <= 2500;
-    if (inShowWindow && !_endOfVideoCtaVisible && !_endOfVideoCtaDismissed) {
-      // Cek post punya tagged product yang valid sebelum trigger setState —
-      // hindari render kosong.
-      if (_rotatingProductsForPost(widget.post).isEmpty) return;
-      setState(() => _endOfVideoCtaVisible = true);
-    }
+    // Trigger: min(4 dtk, setengah durasi) — video 5 dtk tetap dapat
+    // kartu di ~2.5 dtk.
+    final showAtMs = durMs ~/ 2 < 4000 ? durMs ~/ 2 : 4000;
+    if (posMs < showAtMs) return;
+    // Cek post punya tagged product yang valid sebelum trigger setState —
+    // hindari render kosong.
+    if (_rotatingProductsForPost(widget.post).isEmpty) return;
+    setState(() => _endOfVideoCtaVisible = true);
   }
 
   void _dismissEndOfVideoCta() {
@@ -2994,11 +3021,16 @@ class _FeedPostViewState extends State<_FeedPostView>
           // Stack bawah rapat ala IG Reels (bawah → atas):
           //   nav → rail durasi (bottom: navClearance) → caption → nama.
           // Scrubber box 28px (hit-area), visual line 2px di DASAR box →
-          // line duduk tepat di atas floating nav. Caption di atas rail
-          // dengan gap kecil supaya tidak overlap hit-area scrub.
-          const railBand = 28.0;
-          final feedInfoInset = navClearance + railBand + 4.0;
-          final actionRailInset = _feedActionBottomInset + navClearance + railBand;
+          // line duduk tepat di atas floating nav.
+          //
+          // Caption + rail pakai anchor BERSAMA _feedOverlayBottomGap —
+          // SAMA dengan foto carousel (jangan bedakan foto vs video).
+          // Dulu video +32 (di atas seluruh box scrubber) → melayang jauh
+          // di atas garis progress, beda 28px dari foto. Sekarang overlap
+          // 12px ke atas hit-area scrub (zona transparan) — sisa 16px +
+          // area garis tetap bisa di-scrub, persis kompromi IG.
+          final feedInfoInset = navClearance + _feedOverlayBottomGap;
+          final actionRailInset = navClearance + _feedOverlayBottomGap;
           final minimized = _commentSheetOpen;
 
           return ColoredBox(
@@ -3128,32 +3160,15 @@ class _FeedPostViewState extends State<_FeedPostView>
                               }
 
                               final position = _heartBurstPosition;
-                              final progress = _heartBurstController.value;
+                              // Ala IG: putih, bentuk sama dengan heart
+                              // rail, tegak — pop overshoot lalu fade
+                              // (tanpa tilt/naik gaya TikTok). Shared
+                              // dengan versi foto carousel.
                               final heart = Opacity(
                                 opacity: _heartOpacity.value,
-                                child: Transform.translate(
-                                  offset: Offset(0, -18 * progress),
-                                  child: Transform.scale(
-                                    scale: _heartScale.value,
-                                    child: Transform.rotate(
-                                      angle: -0.08,
-                                      child: const Icon(
-                                        Icons.favorite_rounded,
-                                        color: Color(0xFFEF4444),
-                                        size: 128,
-                                        shadows: [
-                                          Shadow(
-                                            color: Colors.white54,
-                                            blurRadius: 2,
-                                          ),
-                                          Shadow(
-                                            color: Colors.black54,
-                                            blurRadius: 28,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
+                                child: Transform.scale(
+                                  scale: _heartScale.value,
+                                  child: const _BurstHeart(),
                                 ),
                               );
 
@@ -3164,10 +3179,10 @@ class _FeedPostViewState extends State<_FeedPostView>
                               return Stack(
                                 children: [
                                   Positioned(
-                                    left: position.dx - 64,
-                                    top: position.dy - 64,
-                                    width: 128,
-                                    height: 128,
+                                    left: position.dx - 52,
+                                    top: position.dy - 52,
+                                    width: 104,
+                                    height: 104,
                                     child: Center(child: heart),
                                   ),
                                 ],
@@ -3242,35 +3257,19 @@ class _FeedPostViewState extends State<_FeedPostView>
                               ignoring: _hideOverlayForLongPress ||
                                   _hideOverlayForPinchZoom ||
                                   _commentSheetOpen,
-                              child: products.isNotEmpty
-                                  ? AnimatedBuilder(
-                                      animation: cartStore,
-                                      builder: (context, _) => FeedActionRail(
-                                        likeCount: _likeCount,
-                                        liked: _liked,
-                                        commentCount: _commentCount,
-                                        shareCount: _shareCount,
-                                        showCart: true,
-                                        cartBadgeCount:
-                                            cartStore.totalQuantity,
-                                        onLike: _onLikePressed,
-                                        onComment: _onComment,
-                                        onShare: _onShare,
-                                        onCart: () => Navigator.of(context)
-                                            .pushNamed('/cart'),
-                                        onMore: _onMoreActions,
-                                      ),
-                                    )
-                                  : FeedActionRail(
-                                      likeCount: _likeCount,
-                                      liked: _liked,
-                                      commentCount: _commentCount,
-                                      shareCount: _shareCount,
-                                      onLike: _onLikePressed,
-                                      onComment: _onComment,
-                                      onShare: _onShare,
-                                      onMore: _onMoreActions,
-                                    ),
+                              // Cart di rail DIHAPUS — duplikat dengan cart
+                              // kanan-atas (satu-satunya pintu keranjang di
+                              // feed sekarang).
+                              child: FeedActionRail(
+                                likeCount: _likeCount,
+                                liked: _liked,
+                                commentCount: _commentCount,
+                                shareCount: _shareCount,
+                                onLike: _onLikePressed,
+                                onComment: _onComment,
+                                onShare: _onShare,
+                                onMore: _onMoreActions,
+                              ),
                             ),
                           ),
                         ),
@@ -3981,68 +3980,147 @@ class _PausedVideoControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Gaya IG Reels: play = lingkaran scrim 52px (glyph polos ditolak
+    // setelah device-verify; 80px lama terlalu berat), mute = lingkaran
+    // kecil 32px di atasnya. Keduanya pakai _PausedControlButton dengan
+    // feedback tekan pegas. Hit-area tetap lega via InkResponse radius.
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Material(
-          color: Colors.transparent,
-          shape: const CircleBorder(),
-          child: InkResponse(
-            onTap: onToggleMute,
-            radius: 22,
-            child: Container(
-              height: 38,
-              width: 38,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.46),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.16),
-                ),
-              ),
-              child: Icon(
-                muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                color: Colors.white,
-                size: 20,
-                shadows: const [
-                  Shadow(color: Colors.black87, blurRadius: 8),
-                ],
-              ),
-            ),
+        _PausedControlButton(
+          diameter: 32,
+          scrimAlpha: 0.42,
+          inkRadius: 22,
+          onTap: onToggleMute,
+          child: Icon(
+            muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+            color: Colors.white,
+            size: 17,
+            shadows: const [
+              Shadow(color: Colors.black87, blurRadius: 8),
+            ],
           ),
         ),
-        const SizedBox(height: 12),
-        Material(
-          color: Colors.transparent,
-          shape: const CircleBorder(),
-          child: InkResponse(
-            onTap: onTogglePlayPause,
-            radius: 42,
-            child: Container(
-              height: 80,
-              width: 80,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.45),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.12),
-                ),
-              ),
-              child: const Icon(
-                Icons.play_arrow_rounded,
-                color: Colors.white,
-                size: 46,
-                shadows: [
-                  Shadow(color: Colors.black87, blurRadius: 8),
-                ],
-              ),
-            ),
+        const SizedBox(height: 14),
+        // Play: lingkaran 52 — satu keluarga dengan mute (~1.6×), jauh
+        // dari 80px lama yang berat. Glyph polos tanpa lingkaran ditolak
+        // user setelah device-verify (kurang jelas sebagai tombol).
+        _PausedControlButton(
+          diameter: 52,
+          scrimAlpha: 0.40,
+          inkRadius: 36,
+          onTap: onTogglePlayPause,
+          child: const Icon(
+            Icons.play_arrow_rounded,
+            color: Colors.white,
+            size: 28,
+            shadows: [
+              Shadow(color: Colors.black54, blurRadius: 8),
+            ],
           ),
         ),
       ],
     );
   }
+}
+
+/// Tombol bundar kontrol pause (mute + play) dengan feedback tekan pegas —
+/// mengecil ke 0.86 saat jari turun (90ms) lalu membal balik easeOutBack
+/// (240ms). Tanpa ini toggle terasa kaku: state berubah tanpa ada respons
+/// fisik dari tombolnya.
+class _PausedControlButton extends StatefulWidget {
+  final double diameter;
+  final double scrimAlpha;
+  final double inkRadius;
+  final VoidCallback onTap;
+  final Widget child;
+
+  const _PausedControlButton({
+    required this.diameter,
+    required this.scrimAlpha,
+    required this.inkRadius,
+    required this.onTap,
+    required this.child,
+  });
+
+  @override
+  State<_PausedControlButton> createState() => _PausedControlButtonState();
+}
+
+class _PausedControlButtonState extends State<_PausedControlButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      shape: const CircleBorder(),
+      child: InkResponse(
+        onTap: widget.onTap,
+        radius: widget.inkRadius,
+        onHighlightChanged: (v) => setState(() => _pressed = v),
+        child: AnimatedScale(
+          scale: _pressed ? 0.86 : 1.0,
+          duration: Duration(milliseconds: _pressed ? 90 : 240),
+          curve: _pressed ? Curves.easeOut : Curves.easeOutBack,
+          child: Container(
+            height: widget.diameter,
+            width: widget.diameter,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: widget.scrimAlpha),
+              shape: BoxShape.circle,
+            ),
+            child: widget.child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Heart burst double-tap ala IG — fill PUTIH, bentuk sama dengan rail
+/// (path bersama dari `feed_action_rail.dart`), tegak tanpa tilt/naik.
+/// Sebelumnya merah + miring −0.08 + rise = resep TikTok, dan bentuknya
+/// (Icons.favorite_rounded) beda dari heart rail sehingga dua gestur like
+/// menampilkan dua hati berbeda.
+class _BurstHeart extends StatelessWidget {
+  const _BurstHeart();
+
+  // 104 (dari 128 Material) — IG sedikit lebih ramping; kedua render site
+  // (video + foto) memakai kotak 104 yang sama.
+  static const double size = 104;
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      height: size,
+      width: size,
+      child: CustomPaint(painter: _BurstHeartPainter()),
+    );
+  }
+}
+
+class _BurstHeartPainter extends CustomPainter {
+  const _BurstHeartPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = buildFeedHeartPath(size);
+    final shadowPaint = Paint()
+      ..color = Colors.black54
+      ..style = PaintingStyle.fill
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14);
+    canvas.drawPath(path.shift(const Offset(0, 3)), shadowPaint);
+
+    final fillPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(path, fillPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 /// Compact product pill — Final Lock Spec Feed Product Tag.

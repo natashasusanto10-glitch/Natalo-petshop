@@ -39,6 +39,7 @@ import '../widgets/flash_sale_countdown.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../features/feed/widgets/feed_upload_bar.dart';
+import '../widgets/product_grid_video.dart';
 import 'home_search_page.dart';
 import '../widgets/skeleton_product_card.dart';
 import 'package:shimmer/shimmer.dart';
@@ -2494,64 +2495,76 @@ class _ShortcutGrid extends StatelessWidget {
       ),
     ];
 
+    // Sel shortcut (ikon squircle 48 + label). Column min-height = konten.
+    Widget buildCell(_ShortcutItem item) {
+      return InkWell(
+        onTap: () {
+          if (item.onTap != null) {
+            item.onTap!(context);
+          } else {
+            onOpenProducts();
+          }
+        },
+        borderRadius: BorderRadius.circular(18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Kotak rounded-16 48px squircle soft-tint tanpa shadow; tap ≥48.
+            Container(
+              height: 48,
+              width: 48,
+              decoration: BoxDecoration(
+                color: item.background,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(item.icon, color: item.color, size: 24),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              item.label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                height: 1.12,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Grid 4-kolom AUTO-HEIGHT (Column-of-Rows). SEBELUMNYA GridView.builder
+    // shrinkWrap + mainAxisExtent 72 — di device iOS menyisakan tinggi HANTU
+    // (~1 baris ekstra) → celah abu besar shortcut → Flash Sale (dibuktikan
+    // border debug). Column-of-Rows: tinggi = konten persis, deterministik,
+    // tak ada kolong. Pola sama dgn _FlashSaleGrid + grid utama.
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: GridView.builder(
-        physics: const NeverScrollableScrollPhysics(),
-        shrinkWrap: true,
-        itemCount: items.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 4,
-          mainAxisSpacing: 6,
-          crossAxisSpacing: 8,
-          // 72 (dulu 84/92): konten sel (ikon 48 + gap 6 + label ~18) muat
-          // pas, whitespace atas-bawah minim → jarak ke section berikutnya
-          // (flash sale) tidak terkesan jauh.
-          mainAxisExtent: 72,
-        ),
-        itemBuilder: (context, index) {
-          final item = items[index];
-          return InkWell(
-            onTap: () {
-              if (item.onTap != null) {
-                item.onTap!(context);
-              } else {
-                onOpenProducts();
-              }
-            },
-            borderRadius: BorderRadius.circular(18),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+      child: Column(
+        children: [
+          for (var row = 0; row < (items.length + 3) ~/ 4; row++) ...[
+            if (row > 0) const SizedBox(height: 6),
+            Row(
+              // start (bukan stretch): kalau ada label 2 baris, sel lain
+              // tetap rata-atas, tak ikut memanjang.
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Kotak rounded-16 48px (redesign: dulu lingkaran 50 +
-                // shadow) — squircle soft-tint tanpa shadow, lebih tenang
-                // & premium; tap target tetap ≥48.
-                Container(
-                  height: 48,
-                  width: 48,
-                  decoration: BoxDecoration(
-                    color: item.background,
-                    borderRadius: BorderRadius.circular(16),
+                for (var col = 0; col < 4; col++) ...[
+                  if (col > 0) const SizedBox(width: 8),
+                  Expanded(
+                    child: row * 4 + col < items.length
+                        ? buildCell(items[row * 4 + col])
+                        : const SizedBox.shrink(),
                   ),
-                  child: Icon(item.icon, color: item.color, size: 24),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  item.label,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    height: 1.12,
-                  ),
-                ),
+                ],
               ],
             ),
-          );
-        },
+          ],
+        ],
       ),
     );
   }
@@ -2613,7 +2626,12 @@ class _FlashSaleGrid extends StatelessWidget {
     final titleColor = isDark ? _titleDark : _titleLight;
 
     return Container(
-      margin: const EdgeInsets.only(top: 6),
+      // Celah 12: margin-atas abu (latar Beranda) memisahkan shortcut → pita
+      // Flash Sale. Dulu 0/"nempel" karena mengira celah abu itu bug; ternyata
+      // bug-nya tinggi HANTU GridView shortcut (sudah difix ke Column-of-Rows).
+      // Tanpa celah, dua section jadi terlalu rapat. Margin hanya di sini →
+      // tak memengaruhi tampilan saat Flash Sale kosong.
+      margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.fromLTRB(0, 12, 0, 14),
       color: isDark ? _bandDark : _bandLight,
       child: Column(
@@ -2633,29 +2651,29 @@ class _FlashSaleGrid extends StatelessWidget {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                // Countdown chip inline — hanya kalau ada produk Tier 1
-                // (explicit flashSaleEndsAt). digitsOnly (angka tabular
-                // putih) di atas chip merah = tidak goyang tiap detik.
+                // Countdown kotak HH:MM:SS (Opsi B) — hanya kalau ada produk
+                // Tier 1 (explicit flashSaleEndsAt). 3 kotak merah + separator
+                // langsung di band = jelas "hitung mundur" (bukan pil tunggal
+                // yang mirip durasi biasa). FittedBox: menyusut mulus di layar
+                // sempit alih-alih overflow; Expanded mendorong "Lihat semua"
+                // ke kanan.
                 if (endsAt != null) ...[
                   const SizedBox(width: 8),
-                  Flexible(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE11D48),
-                        borderRadius: BorderRadius.circular(7),
-                      ),
-                      child: FlashSaleCountdown.digitsOnly(
-                        endsAt: endsAt,
-                        onExpired: onCountdownExpired,
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: FlashSaleCountdown.boxes(
+                          endsAt: endsAt,
+                          onExpired: onCountdownExpired,
+                        ),
                       ),
                     ),
                   ),
-                ],
-                const Spacer(),
+                ] else
+                  const Spacer(),
                 if (hasMore)
                   GestureDetector(
                     onTap: onSeeAll,
@@ -2989,6 +3007,11 @@ class _HomeProductCard extends StatelessWidget {
   // (_MiniProductCard "Terlaris" dst) yang me-reuse widget ini TIDAK ikut
   // berubah — cukup diaktifkan di call-site grid 2-kolom.
   final bool squareImage;
+  // Rail "ramping" (Terlaris): sembunyikan badge Hemat/Ongkir + harga-coret
+  // + repurchase badge → semua kartu seragam (foto + nama + harga + terjual)
+  // supaya rail fixed-height tak menyisakan kolong kosong di bawah kartu
+  // yang tak diskon. Default false: grid & rail lain tak berubah.
+  final bool railSlim;
 
   const _HomeProductCard({
     required this.product,
@@ -2998,6 +3021,7 @@ class _HomeProductCard extends StatelessWidget {
     this.priceFontSize = 16,
     this.compact = false,
     this.squareImage = false,
+    this.railSlim = false,
   });
 
   @override
@@ -3014,7 +3038,16 @@ class _HomeProductCard extends StatelessWidget {
     final imageStack = Stack(
       children: [
         squareImage
-            ? _HomeProductImageSquare(imageUrl: product.imageUrl)
+            // Video HANYA di grid utama Beranda, TIDAK pernah di rail. `railSlim`
+            // menandai kartu rail horizontal (Terlaris / carousel keranjang-kosong)
+            // yang tetap foto-only sesuai plan; kedua grid asli membiarkan
+            // `railSlim` default false → dapat video.
+            ? ((product.hasVideo && !railSlim)
+                ? ProductGridVideo(
+                    videoUrl: product.videoUrl!,
+                    imageUrl: product.imageUrl,
+                  )
+                : _HomeProductImageSquare(imageUrl: product.imageUrl))
             : _HomeProductImage(
                 imageUrl: product.imageUrl,
                 // Fallback non-square (tak ada caller aktif — semua grid/rail
@@ -3070,7 +3103,7 @@ class _HomeProductCard extends StatelessWidget {
       ),
       // Consumable repurchase badge — produk yang user pernah
       // beli dan sudah waktunya refill (food, pasir, vitamin, dst).
-      if (product.isRepurchaseCandidate) ...[
+      if (!railSlim && product.isRepurchaseCandidate) ...[
         SizedBox(height: compact ? 6 : 7),
         _HomeProductRepurchaseBadge(product: product),
       ],
@@ -3079,8 +3112,9 @@ class _HomeProductCard extends StatelessWidget {
         product: product,
         fontSize: priceFontSize,
         compact: compact,
+        finalPriceOnly: railSlim,
       ),
-      _HomeProductSavingBadge(product: product, compact: compact),
+      if (!railSlim) _HomeProductSavingBadge(product: product, compact: compact),
       _HomeProductRatingSoldRow(product: product, compact: compact),
     ];
 
@@ -3289,16 +3323,24 @@ class _HomeProductPriceRow extends StatelessWidget {
   final Product product;
   final double fontSize;
   final bool compact;
+  // Rail ramping (Terlaris): tampilkan HARGA AKHIR saja — harga coret asli
+  // disembunyikan supaya tinggi kartu seragam. Kalau produk diskon, harga
+  // akhir tetap merah (tetap terbaca sebagai harga promo).
+  final bool finalPriceOnly;
 
   const _HomeProductPriceRow({
     required this.product,
     required this.fontSize,
     required this.compact,
+    this.finalPriceOnly = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (!product.hasDiscount) {
+    if (!product.hasDiscount || finalPriceOnly) {
+      final color = product.hasDiscount
+          ? const Color(0xFFE11D48)
+          : Theme.of(context).colorScheme.onSurface;
       return Text(
         formatRupiah(product.finalPrice),
         maxLines: 1,
@@ -3306,7 +3348,7 @@ class _HomeProductPriceRow extends StatelessWidget {
         style: TextStyle(
           fontSize: fontSize,
           fontWeight: FontWeight.w900,
-          color: Theme.of(context).colorScheme.onSurface,
+          color: color,
           height: 1.1,
         ),
       );
@@ -3710,12 +3752,12 @@ class _HorizontalProductSection extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           SizedBox(
-            // 312: ListView horizontal butuh tinggi tetap (semua kartu
-            // sebaris = seragam). Foto kini 1:1 full-bleed (≈150 vs contain
-            // 112, +38) + kasus terburuk diskon (harga coret) + 2 badge
-            // (ongkir+hemat) + rating. (Bukan auto-height: horizontal wajib
-            // seragam.)
-            height: 312,
+            // 258: ListView horizontal butuh tinggi tetap (semua kartu
+            // sebaris = seragam). Kartu ramping (railSlim) = foto 1:1 (≈150)
+            // + nama 2 baris + harga akhir 1 baris + "X terjual", TANPA harga
+            // coret/badge → konten seragam, tinggi turun dari 312. (Bukan
+            // auto-height: horizontal wajib seragam.)
+            height: 258,
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               scrollDirection: Axis.horizontal,
@@ -3758,6 +3800,10 @@ class _MiniProductCard extends StatelessWidget {
       // Foto 1:1 cover full-bleed (spec grid) — rail Terlaris pun menonjol
       // ala Shopee. imageHeight diabaikan saat squareImage (pakai AspectRatio).
       squareImage: true,
+      // Ramping: cuma foto + nama + harga akhir + terjual (buang badge Hemat/
+      // Ongkir + harga coret) → semua kartu seragam, rail tak menyisakan
+      // kolong kosong di bawah kartu non-diskon.
+      railSlim: true,
       priceFontSize: 14,
       compact: true,
     );
@@ -3874,13 +3920,14 @@ class _BrandChoiceSectionState extends State<_BrandChoiceSection> {
     }
 
     // Compute card height dari aspect ratio + screen width
-    // (childAspectRatio: 1.35 = width/height — sedikit lebih tinggi dari
-    // sebelumnya (1.45) supaya logo kotak/tinggi punya ruang yang sama
-    // dengan logo banner lebar; lihat BrandLogoImage untuk patok tinggi).
+    // (childAspectRatio: 1.2 = width/height — kartu dibuat lebih tinggi dari
+    // sebelumnya (1.35) supaya logo, terutama yang KOTAK 1:1, punya ruang
+    // vertikal lebih besar; lihat patok tinggi 40 di BrandGridCard. HARUS
+    // sama dengan childAspectRatio gridDelegate di bawah.)
     final screenWidth = MediaQuery.sizeOf(context).width;
     final innerWidth = screenWidth - 32; // 16 padding × 2
     final cardWidth = (innerWidth - 24) / 3; // 12 spacing × 2 between 3 cols
-    final cardHeight = cardWidth / 1.35;
+    final cardHeight = cardWidth / 1.2;
     final gridHeight = (cardHeight * 2) + 12; // 2 rows + mainAxisSpacing
 
     return Padding(
@@ -3928,7 +3975,7 @@ class _BrandChoiceSectionState extends State<_BrandChoiceSection> {
                       crossAxisCount: 3,
                       mainAxisSpacing: 12,
                       crossAxisSpacing: 12,
-                      childAspectRatio: 1.35,
+                      childAspectRatio: 1.2,
                     ),
                     itemCount: pageBrands.length,
                     itemBuilder: (context, idx) {
@@ -3966,7 +4013,7 @@ class BrandGridCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
@@ -3984,13 +4031,13 @@ class BrandGridCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               // Patok tinggi logo ke garis yang sama untuk semua brand —
-              // ini yang menghentikan logo banner lebar (Happy Dog, Royal
-              // Canin) melar mepet tepi sementara logo kotak (Nexgard,
-              // Whiskas) tenggelam kecil. BoxFit.contain di dalam
-              // ConstrainedBox mengepaskan ke TINGGI yang sama, bukan ke
-              // seluruh area kartu.
+              // BoxFit.contain di ConstrainedBox mengepaskan ke TINGGI yang
+              // sama (bukan seluruh area kartu) biar logo banner lebar (Happy
+              // Dog, Royal Canin) tak melar mepet tepi. Cap 40 (naik dari 26)
+              // + kartu lebih tinggi (aspect 1.2) supaya logo KOTAK 1:1 (mis.
+              // 1024×1024) tampil cukup besar, tak lagi tenggelam kecil.
               ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 26),
+                constraints: const BoxConstraints(maxHeight: 40),
                 child: BrandLogoImage(brand: brand),
               ),
               const SizedBox(height: 4),

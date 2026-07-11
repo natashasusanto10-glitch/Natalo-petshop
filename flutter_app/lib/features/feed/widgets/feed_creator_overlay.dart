@@ -291,24 +291,34 @@ class _FeedExpandableCaptionState extends State<FeedExpandableCaption> {
 
     return GestureDetector(
       onTap: isLong ? () => setState(() => _expanded = !_expanded) : null,
-      child: Text.rich(
-        TextSpan(
-          style: baseStyle,
-          children: [
-            ...mentionSpans,
-            if (isLong)
-              TextSpan(
-                text: _expanded ? '  lebih sedikit' : 'selengkapnya',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.78),
-                  fontSize: 12.8,
-                  fontWeight: FontWeight.w800,
+      // AnimatedSize: caption panjang tidak snap terbuka — tinggi mengembang
+      // halus, dan karena bottom info di-anchor ke bawah (Positioned.bottom),
+      // nama kreator + product chip di atasnya ikut terdorong naik pelan.
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+        // topLeft: baris awal tetap terlihat (terangkat naik), baris baru
+        // tersingkap di bawahnya — terasa "membuka", bukan konten loncat.
+        alignment: Alignment.topLeft,
+        child: Text.rich(
+          TextSpan(
+            style: baseStyle,
+            children: [
+              ...mentionSpans,
+              if (isLong)
+                TextSpan(
+                  text: _expanded ? '  lebih sedikit' : 'selengkapnya',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.78),
+                    fontSize: 12.8,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
+          maxLines: _expanded ? null : 2,
+          overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
         ),
-        maxLines: _expanded ? null : 2,
-        overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
       ),
     );
   }

@@ -452,8 +452,19 @@ export async function POST(request: NextRequest) {
       continue;
     }
     if (!cartMatchesVoucherScope(voucher, cartProductInputs)) {
+      const scopeBrandName = formatVoucherBrandName(
+        voucher.eligibleBrandIds,
+        brandNamesById,
+      );
       unavailable.push(
-        normalizeUnavailable(voucher, "Voucher tidak berlaku untuk produk di keranjang", 0, brandNamesById),
+        normalizeUnavailable(
+          voucher,
+          scopeBrandName
+            ? `Belum ada produk brand ${scopeBrandName} di keranjang`
+            : "Voucher tidak berlaku untuk produk di keranjang",
+          0,
+          brandNamesById,
+        ),
       );
       continue;
     }

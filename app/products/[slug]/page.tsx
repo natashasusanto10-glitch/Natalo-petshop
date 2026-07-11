@@ -15,6 +15,7 @@ import { ProductFeedPostsSection } from "@/components/products/ProductFeedPostsS
 import { ProductViewTracker } from "@/components/product/ProductViewTracker";
 import { formatRupiah } from "@/lib/format";
 import { getProductBySlug, getProducts } from "@/lib/products";
+import { productVideoMp4 } from "@/lib/product/product-video-url";
 import { prisma } from "@/lib/prisma";
 import { ReviewForm } from "@/components/ReviewForm";
 import { ReviewList } from "@/components/ReviewList";
@@ -147,6 +148,19 @@ export default async function ProductDetailPage({
   const productImages = [product.imageUrl, ...(product.gallery ?? [])].filter(
     Boolean,
   ) as string[];
+  // Video produk (Bunny) — slide #1 galeri detail, manual play. mp4Url
+  // null kalau videoUrl kosong / bukan pola playlist Bunny; thumbnailUrl
+  // wajib ada supaya slide punya poster (guard di lib/products sudah
+  // memastikan videoUrl hanya terisi saat status "ready").
+  const detailVideoMp4 = productVideoMp4(product.videoUrl, 720);
+  const detailVideo =
+    detailVideoMp4 && product.videoThumbnailUrl
+      ? {
+          mp4Url: detailVideoMp4,
+          thumbnailUrl: product.videoThumbnailUrl,
+          durationSec: product.videoDurationSec ?? null,
+        }
+      : undefined;
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -209,6 +223,7 @@ export default async function ProductDetailPage({
             images={productImages}
             alt={product.name}
             transitionName={`nat-prod-${product.slug}`}
+            video={detailVideo}
           />
 
           <section className="bg-white px-4 py-4 md:rounded-3xl md:border md:border-gray-100 md:p-6">

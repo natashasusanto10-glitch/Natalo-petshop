@@ -255,7 +255,8 @@ class _AddedToCartSheetState extends State<_AddedToCartSheet> {
               duration: const Duration(milliseconds: 250),
               child: SizedBox(
                 key: ValueKey(_refreshed),
-                height: 296,
+                // 316: foto kini 1:1 (dari height 118) → kartu lebih tinggi.
+                height: 316,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: _related.length,
@@ -336,16 +337,15 @@ class _SheetRecommendationCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Foto 1:1 cover — isi kotak penuh (dari height 118 + tile
+                  // abu contain), menonjol ala Shopee.
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      height: 118,
-                      width: double.infinity,
-                      color: cs.surfaceContainerHighest,
-                      padding: const EdgeInsets.all(6),
+                    child: AspectRatio(
+                      aspectRatio: 1,
                       child: AppProductImage(
                         imageUrl: product.imageUrl,
-                        fit: BoxFit.contain,
+                        fit: BoxFit.cover,
                       ),
                     ),
                   ),

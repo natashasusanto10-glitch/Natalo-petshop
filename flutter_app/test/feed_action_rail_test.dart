@@ -22,18 +22,12 @@ void main() {
     expect(find.text('6'), findsOneWidget);
   });
 
-  testWidgets('cart hanya tampil saat showCart', (tester) async {
+  testWidgets('count 0 disembunyikan (label baru muncul saat >0)',
+      (tester) async {
     await tester.pumpWidget(_wrap(const FeedActionRail(
       likeCount: 0, liked: false, commentCount: 0, shareCount: 0,
     )));
-    expect(find.byIcon(Icons.shopping_cart), findsNothing);
-
-    await tester.pumpWidget(_wrap(const FeedActionRail(
-      likeCount: 0, liked: false, commentCount: 0, shareCount: 0,
-      showCart: true, cartBadgeCount: 2,
-    )));
-    expect(find.byIcon(Icons.shopping_cart), findsOneWidget);
-    expect(find.text('2'), findsOneWidget);
+    expect(find.text('0'), findsNothing);
   });
 
   testWidgets('format angka ribuan pakai K', (tester) async {

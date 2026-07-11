@@ -11,7 +11,6 @@ import '../../features/feed/widgets/feed_product_anchor_card.dart';
 import '../../models/feed_create_post_draft.dart';
 import '../../models/product.dart';
 import '../../services/app_analytics.dart';
-import '../../state/cart_store.dart';
 import '../../state/member_store.dart';
 import '../../state/settings_store.dart';
 import '../../utils/formatters.dart';
@@ -170,14 +169,12 @@ class _FeedPostPreviewScreenState extends State<FeedPostPreviewScreen> {
           Positioned(
             right: 4,
             bottom: bottomInset + _previewBottomBarHeight + _previewOverlayGap,
-            child: IgnorePointer(
+            child: const IgnorePointer(
               child: FeedActionRail(
                 likeCount: 0,
                 liked: false,
                 commentCount: 0,
                 shareCount: 0,
-                showCart: products.isNotEmpty,
-                cartBadgeCount: cartStore.totalQuantity,
               ),
             ),
           ),
