@@ -122,8 +122,9 @@ class FeedUploadStore extends ChangeNotifier {
   @visibleForTesting
   VideoCompressGate gate = videoCompressGate;
 
-  /// Injectable clock untuk unit test — dipakai cek window `authExpire`
-  /// TUS credentials tersimpan (resumePersisted).
+  /// Injectable clock untuk unit test — dipakai timestamp `savedAtMs` saat
+  /// persist task inflight (bukan lagi untuk cek window `authExpire`; video
+  /// resume sekarang selalu re-provision, lihat komentar `_runVideoUpload`).
   @visibleForTesting
   int Function() nowMs = () => DateTime.now().millisecondsSinceEpoch;
 
@@ -133,8 +134,11 @@ class FeedUploadStore extends ChangeNotifier {
   static const _pendingKey = 'natalo-feed-upload-inflight';
 
   /// Provision Bunny (postId + TUS creds) yang ikut ter-restore dari
-  /// persist — dipakai `resumePersisted` untuk skip provisionUpload kalau
-  /// masih dalam window `authExpire`.
+  /// persist — HANYA untuk diagnostik/persist, TIDAK dipakai untuk skip
+  /// provisionUpload. Resume video SELALU re-provision VideoId baru (lihat
+  /// komentar `_runVideoUpload` Step 3) karena file selalu di-recompress
+  /// ulang, jadi melanjutkan byte parsial di VideoId lama berisiko splice
+  /// byte → video korup.
   BunnyUploadProvision? _pendingProvision;
 
   /// Guard supaya `checkForResumableUpload` hanya efektif sekali per
@@ -214,11 +218,12 @@ class FeedUploadStore extends ChangeNotifier {
     required List<File> files,
     required String caption,
     List<String> productIds = const [],
+    String? localId,
   }) async {
     if (_uploading) return;
     if (files.isEmpty || files.length > 8) {
       _task = FeedUploadTask(
-        localId: _genId(),
+        localId: localId ?? _genId(),
         kind: FeedUploadKind.photo,
         caption: caption,
         productIds: productIds,
@@ -234,7 +239,7 @@ class FeedUploadStore extends ChangeNotifier {
     _cancelAutoDismiss();
     _cancelRequested = false;
     _task = FeedUploadTask(
-      localId: _genId(),
+      localId: localId ?? _genId(),
       kind: FeedUploadKind.photo,
       caption: caption,
       productIds: productIds,
@@ -492,28 +497,24 @@ class FeedUploadStore extends ChangeNotifier {
         feedService: feedService,
       );
       final caption = task.caption.trim();
-      // Resume path: kalau provision tersimpan masih dalam window
-      // `authExpire` (margin 60s), skip provisionUpload — reuse TUS creds
-      // + fingerprint file path yang sama supaya TusFileStore resume dari
-      // byte terakhir alih-alih dari 0%. Kadaluarsa / tidak ada → provision
-      // baru (LIMITASI: row FeedPost + Bunny guid lama jadi orphan
-      // server-side, tidak ada cleanup otomatis — sama seperti kasus
-      // failed/cancelled existing; di luar scope buat cleanup endpoint).
-      final reusable = resumeProvision;
-      final canReuse = reusable != null &&
-          reusable.tus != null &&
-          reusable.tus!.authExpire * 1000 > nowMs() + 60000;
-      final provision = canReuse
-          ? reusable
-          : await bunnyService.provisionUpload(
-              title: caption.isEmpty
-                  ? 'Postingan baru'
-                  : caption.substring(0, math.min(80, caption.length)),
-              description: caption.isEmpty ? null : caption,
-              videoDurationSec: draft.finalDuration?.inSeconds,
-              productIds: task.productIds,
-              thumbnailUrl: thumbnailUrl,
-            );
+      // Resume video SELALU re-provision (VideoId baru) — file di-recompress
+      // ulang tiap resume (trimmedVideoPath sengaja tidak dipersist), jadi
+      // tidak aman melanjutkan byte parsial di VideoId lama (risiko splice
+      // byte lama+baru → video korup di Bunny; TUS fingerprint cuma path
+      // file, tidak deteksi konten berubah). Konsekuensi: row FeedPost +
+      // Bunny guid sesi lama jadi orphan (keterbatasan terdokumentasi, tidak
+      // ada cleanup server di fase ini). Resume di sini = transfer diulang
+      // otomatis dari 0% dengan state edit/draft tetap tersimpan, BUKAN
+      // lanjut-dari-byte-terakhir.
+      final provision = await bunnyService.provisionUpload(
+        title: caption.isEmpty
+            ? 'Postingan baru'
+            : caption.substring(0, math.min(80, caption.length)),
+        description: caption.isEmpty ? null : caption,
+        videoDurationSec: draft.finalDuration?.inSeconds,
+        productIds: task.productIds,
+        thumbnailUrl: thumbnailUrl,
+      );
       // Update persist dengan provision final (postId/tus creds) supaya
       // kalau app di-kill SETELAH provision tapi SEBELUM TUS selesai,
       // resume berikutnya tidak perlu re-provision lagi.
@@ -737,9 +738,11 @@ class FeedUploadStore extends ChangeNotifier {
 
   /// User tap "Lanjutkan" di bar `resumable`. Foto: restart dari awal
   /// (murah, tidak ada progress byte untuk di-resume). Video: jalankan
-  /// ulang `_runVideoUpload` — provision tersimpan di-pass supaya bisa
-  /// di-reuse kalau masih dalam window `authExpire` (lihat komentar di
-  /// `_runVideoUpload`).
+  /// ulang `_runVideoUpload` — provision tersimpan tetap di-pass HANYA
+  /// untuk keperluan persist/diagnostik, TIDAK di-reuse untuk provisioning
+  /// (SELALU re-provision VideoId baru, lihat komentar di `_runVideoUpload`
+  /// Step 3 — file di-recompress ulang tiap resume sehingga melanjutkan
+  /// upload ke VideoId lama berisiko splice byte → video korup).
   Future<void> resumePersisted() async {
     final task = _task;
     if (task == null || task.status != FeedUploadStatus.resumable) return;
@@ -749,6 +752,7 @@ class FeedUploadStore extends ChangeNotifier {
       final files = task.photoFiles;
       final caption = task.caption;
       final productIds = task.productIds;
+      final localId = task.localId;
       _pendingProvision = null;
       _task = null;
       notifyListeners();
@@ -756,6 +760,7 @@ class FeedUploadStore extends ChangeNotifier {
         files: files,
         caption: caption,
         productIds: productIds,
+        localId: localId,
       );
       return;
     }
