@@ -34,6 +34,13 @@ import '../shared/widgets/natalo_post_action_icon.dart';
 import 'public_profile_screen.dart';
 import 'scoped_video_feed_screen.dart';
 
+/// Seam test-only untuk fetch post feed by ID di flow tap-video → scoped
+/// viewer. `feedService` adalah singleton hard-wired ke `http.get` (tidak
+/// injectable — lihat catatan di product_detail_screen_related_posts_test),
+/// jadi widget test override lewat sini. Production: null → feedService.
+@visibleForTesting
+Future<FeedPost?> Function(String id)? debugScopedFeedPostFetcher;
+
 /// Detail Postingan style Instagram Feed — continuous vertical scroll list
 /// of user's own posts (Postingan Saya).
 ///
@@ -566,6 +573,12 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
   /// [pushScaledVideoFeed] persis flow "Postingan Terkait", jadi visual &
   /// transisi seragam. Video yang di-tap jadi halaman awal; swipe hanya
   /// menampilkan video user ini (foto di-skip, ala IG Reels).
+  ///
+  /// Post yang ditampilkan adalah POST FEED ASLI (fetch by ID, sama
+  /// dengan flow Postingan Terkait) — bukan data mentah halaman profil
+  /// yang tidak membawa info author (tampil "User" generik + salah
+  /// munculkan tombol Ikuti). Postingan di profil = postingan feed;
+  /// yang diperbesar harus di-direct dari post feed-nya langsung.
   Future<void> _openScopedVideoFeed(
     int index,
     VideoPlayerController controller,
@@ -574,25 +587,66 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     final videoPosts = _posts.where((p) => p.isVideo).toList();
     if (videoPosts.isEmpty) return;
     final tapped = _posts[index];
-    final initialIndex =
-        videoPosts.indexWhere((p) => p.id == tapped.id).clamp(
-              0,
-              videoPosts.length - 1,
-            );
     // Pause inline player SEBELUM push — route scoped opaque, tanpa ini
     // sempat ada jendela double-suara (inline masih play di belakang).
     try {
       await controller.pause();
     } catch (_) {}
     if (!mounted) return;
+
+    final rootNav = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: 0.25),
+      builder: (_) => const Center(
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: CircularProgressIndicator(strokeWidth: 2.6),
+        ),
+      ),
+    );
+
+    // Fetch semua video user ini paralel (order-preserving) — pola sama
+    // dengan Postingan Terkait di product_detail_screen.
+    var anyFailed = false;
+    final fetchById = debugScopedFeedPostFetcher ?? feedService.fetchPostById;
+    final results = await Future.wait(
+      videoPosts.map((sibling) async {
+        try {
+          return await fetchById(sibling.id);
+        } catch (_) {
+          anyFailed = true;
+          return null;
+        }
+      }),
+    );
+    final fetched = results.whereType<FeedPost>().toList();
+
+    rootNav.pop(); // tutup loading dialog
+    if (!mounted) return;
+
+    if (fetched.isEmpty) {
+      AppToast.show(
+        context,
+        anyFailed
+            ? 'Postingan belum bisa dibuka. Coba lagi.'
+            : 'Postingan sudah tidak tersedia.',
+        kind: ToastKind.warning,
+      );
+      return;
+    }
+
+    final tappedIndex = fetched.indexWhere((fp) => fp.id == tapped.id);
     await pushScaledVideoFeed(
       context,
       thumbnailKey: anchorKey,
       thumbnailImageUrl: tapped.thumbnailUrl ?? '',
       thumbnailBorderRadius: 0,
       destinationBuilder: (_) => ScopedVideoFeedScreen(
-        posts: videoPosts,
-        initialIndex: initialIndex,
+        posts: fetched,
+        initialIndex: tappedIndex >= 0 ? tappedIndex : 0,
       ),
     );
   }

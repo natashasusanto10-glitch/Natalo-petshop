@@ -195,6 +195,15 @@ void main() {
     // test file runs in its own isolate, so there is nothing to restore.
     CachedVideoPlayerPlus.cacheManager = _NoopCacheManager();
     CachedVideoPlayerPlus.metadataStorage = _NoopMetadataStorage();
+
+    // Tap-video kini fetch post feed ASLI by ID sebelum membuka viewer
+    // (supaya author/like/komentar lengkap — data profil tidak bawa
+    // author). feedService tidak injectable, jadi pakai seam test-only.
+    debugScopedFeedPostFetcher = (id) async => _fakeVideoPost(id: id);
+  });
+
+  tearDown(() {
+    debugScopedFeedPostFetcher = null;
   });
 
   /// Pumps the screen with a single video post and waits (bounded — NOT
