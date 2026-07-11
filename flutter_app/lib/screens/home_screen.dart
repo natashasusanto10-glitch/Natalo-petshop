@@ -4139,37 +4139,50 @@ class _CategorySection extends StatelessWidget {
   ];
 
   // Map nama kategori → icon yang relevan. Fallback ke generic store icon.
+  // Icon FALLBACK — dipakai hanya saat kategori belum punya foto produk
+  // (imageUrl null). Mapping dirapikan Jul 2026: anjing dulu
+  // cruelty_free_rounded (icon KELINCI, salah makna — Material tak punya
+  // icon anjing) → cookie (biskuit, selaras shortcut grid); ikan
+  // water→set_meal (selaras shortcut); pasir box→grain (butiran);
+  // snack cookie→icecream (cookie pindah ke anjing); kandang home→fence;
+  // grooming spa→gunting; shampoo dipisah→sabun; aquarium dapat water.
   static IconData _iconFor(String name) {
     final lower = name.toLowerCase();
     if (lower.contains('kucing') && lower.contains('makanan')) {
       return Icons.pets_rounded;
     }
     if (lower.contains('anjing') && lower.contains('makanan')) {
-      return Icons.cruelty_free_rounded;
+      return Icons.cookie_rounded;
     }
     if (lower.contains('pasir') || lower.contains('litter')) {
-      return Icons.inventory_2_rounded;
+      return Icons.grain_rounded;
     }
     if (lower.contains('vitamin') || lower.contains('obat')) {
       return Icons.medication_liquid_rounded;
     }
     if (lower.contains('snack') || lower.contains('treat')) {
-      return Icons.cookie_rounded;
+      return Icons.icecream_rounded;
     }
     if (lower.contains('mainan') || lower.contains('toy')) {
       return Icons.toys_rounded;
     }
     if (lower.contains('kandang') || lower.contains('cage')) {
-      return Icons.home_rounded;
+      return Icons.fence_rounded;
     }
-    if (lower.contains('shampoo') || lower.contains('grooming')) {
-      return Icons.spa_rounded;
+    if (lower.contains('shampoo') || lower.contains('sabun')) {
+      return Icons.soap_rounded;
+    }
+    if (lower.contains('grooming')) {
+      return Icons.content_cut_rounded;
     }
     if (lower.contains('burung') || lower.contains('bird')) {
       return Icons.flutter_dash_rounded;
     }
-    if (lower.contains('ikan') || lower.contains('fish')) {
+    if (lower.contains('aquarium') || lower.contains('akuarium')) {
       return Icons.water_rounded;
+    }
+    if (lower.contains('ikan') || lower.contains('fish')) {
+      return Icons.set_meal_rounded;
     }
     return Icons.storefront_rounded;
   }
@@ -4262,7 +4275,7 @@ class _PopularCategoryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         child: Container(
           width: 168,
-          padding: const EdgeInsets.all(12),
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
@@ -4271,28 +4284,53 @@ class _PopularCategoryCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              // Lingkaran warna solid + icon putih — segaya dengan shortcut
-              // grid (redesign Jul 2026; dulu kotak tint biru seragam).
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: Colors.white, size: 22),
+              // Foto PRODUK kategori full tinggi kartu, edge-to-edge kiri
+              // (Opsi 2, Jul 2026) — server /api/categories kirim imageUrl =
+              // foto produk TERBARU per kategori, ala pola foto-1:1-cover di
+              // seluruh app. borderRadius.zero WAJIB (default AppProductImage
+              // radius 12 → bocor sudut); clip kartu via Clip.antiAlias.
+              // Fallback kategori tanpa foto: lingkaran icon warna (segaya
+              // shortcut grid).
+              SizedBox(
+                width: 64,
+                height: double.infinity,
+                child: category.imageUrl != null
+                    ? AppProductImage(
+                        imageUrl: category.imageUrl,
+                        borderRadius: BorderRadius.zero,
+                      )
+                    : ColoredBox(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest,
+                        child: Center(
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: color,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(icon,
+                                color: Colors.white, size: 21),
+                          ),
+                        ),
+                      ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  category.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontSize: 13,
-                    height: 1.2,
-                    fontWeight: FontWeight.w800,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Text(
+                    category.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontSize: 13,
+                      height: 1.2,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),
