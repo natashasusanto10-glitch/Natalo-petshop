@@ -152,11 +152,15 @@ export default async function ProductDetailPage({
   // null kalau videoUrl kosong / bukan pola playlist Bunny; thumbnailUrl
   // wajib ada supaya slide punya poster (guard di lib/products sudah
   // memastikan videoUrl hanya terisi saat status "ready").
-  const detailVideoMp4 = productVideoMp4(product.videoUrl, 720);
+  // Utamakan 1080p; kalau rendition itu belum ada (video lama belum
+  // di-re-encode Bunny), carousel fallback otomatis ke 720p on-error.
+  const detailVideoMp4 = productVideoMp4(product.videoUrl, 1080);
+  const detailVideoMp4Fallback = productVideoMp4(product.videoUrl, 720);
   const detailVideo =
     detailVideoMp4 && product.videoThumbnailUrl
       ? {
           mp4Url: detailVideoMp4,
+          mp4FallbackUrl: detailVideoMp4Fallback ?? undefined,
           thumbnailUrl: product.videoThumbnailUrl,
           durationSec: product.videoDurationSec ?? null,
         }
