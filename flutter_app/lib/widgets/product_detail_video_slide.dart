@@ -79,6 +79,17 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
   bool _showToggleIcon = false;
   Timer? _toggleIconTimer;
 
+  /// Niat main yang tertunda selama `initialize()` in-flight. Di-set `true` saat
+  /// user tap ▶ (`_startPlayback`), di-set `false` oleh SETIAP permintaan pause
+  /// lewat `pauseIfPlaying` (⛶ fullscreen, swipe-away parent Task 6,
+  /// visibility<0.5, app-background). Init HLS bisa 0.5–3s; `pauseIfPlaying`
+  /// no-op selama init (belum `isInitialized`/`isPlaying`), jadi TANPA flag ini
+  /// `controller.play()` pasca-init tetap jalan → suara inline bocor di belakang
+  /// viewer fullscreen (double-audio). Gate `if (!_playIntent) return;` sebelum
+  /// `play()` yang membatalkannya (controller dibiarkan initialized-tapi-paused,
+  /// resumable via `_togglePlay`).
+  bool _playIntent = false;
+
   @override
   void initState() {
     super.initState();
@@ -119,6 +130,10 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
   /// Pause kalau ada controller yang sedang main. Idempotent & aman dipanggil
   /// kapan saja (init in-flight / belum init / sudah pause → no-op).
   void pauseIfPlaying() {
+    // DULUAN: batalkan niat main yang tertunda. Kalau init masih in-flight,
+    // controller belum `isPlaying` → cek di bawah no-op, TAPI flag ini yang
+    // mencegah `_startPlayback` men-`play()` pasca-init (anti double-audio).
+    _playIntent = false;
     final controller = _controller;
     if (controller != null &&
         controller.value.isInitialized &&
@@ -134,6 +149,11 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
     if (_initializing || _controller != null) return; // cegah double.
     final url = widget.videoUrl.trim();
     if (url.isEmpty) return;
+
+    // Niat main: dipicu tap ▶. Selama init in-flight, `pauseIfPlaying`
+    // (⛶ / swipe-away / visibility / background) bisa membatalkannya → gate
+    // sebelum `play()` di bawah.
+    _playIntent = true;
 
     // Default options (bukan mixWithOthers): dipicu user & bersuara, boleh
     // duck musik latar.
@@ -157,6 +177,16 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
         return;
       }
       controller.addListener(_onControllerTick);
+      // Niat main dibatalkan selama init (⛶ fullscreen / swipe-away /
+      // visibility<0.5 / app-background lewat `pauseIfPlaying`). Controller
+      // SUDAH `isInitialized` → biarkan paused (frame-1 + ▶ overlay, resumable
+      // via `_togglePlay`), JANGAN `play()`. Kalau tetap play, suara inline
+      // bocor di belakang viewer fullscreen (double-audio). Reset `_initializing`
+      // supaya UI keluar dari state loading (bukan spinner selamanya).
+      if (!_playIntent) {
+        setState(() => _initializing = false);
+        return;
+      }
       await controller.play();
       if (!mounted || !identical(_controller, controller)) {
         _initializing = false;
