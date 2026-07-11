@@ -2617,8 +2617,12 @@ class _FlashSaleGrid extends StatelessWidget {
     final titleColor = isDark ? _titleDark : _titleLight;
 
     return Container(
-      // Celah 0: pita nempel langsung ke shortcut grid (padding bawahnya 0)
-      // — tak ada ruang kosong shortcut → Flash Sale (margin dibuang).
+      // Celah 12: margin-atas abu (latar Beranda) memisahkan shortcut → pita
+      // Flash Sale. Dulu 0/"nempel" karena mengira celah abu itu bug; ternyata
+      // bug-nya tinggi HANTU GridView shortcut (sudah difix ke Column-of-Rows).
+      // Tanpa celah, dua section jadi terlalu rapat. Margin hanya di sini →
+      // tak memengaruhi tampilan saat Flash Sale kosong.
+      margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.fromLTRB(0, 12, 0, 14),
       color: isDark ? _bandDark : _bandLight,
       child: Column(
