@@ -58,9 +58,11 @@ const _feedActionIconSize = 30.0;
 const _feedActionStrokeWidth = 2.2;
 const _feedActionCountFontSize = 12.0;
 const _feedActionItemSpacing = 22.0;
-// 4 (dari 24) — rail diturunkan supaya ikon terbawah sejajar dengan
-// dasar blok caption (feedInfoInset video = navClearance + railBand + 4).
-const _feedActionBottomInset = 4.0;
+// Anchor bawah BERSAMA caption + action rail — SATU angka untuk foto DAN
+// video (jangan dibedakan per jenis post). Di video ini berarti overlap
+// 12px ke atas hit-area scrubber 28px (zona transparan) supaya caption/rail
+// duduk dekat garis progress ala IG, bukan melayang di atas seluruh box.
+const _feedOverlayBottomGap = 16.0;
 const _feedActionRailRightInset = 10.0;
 // Aksen commerce oranye — dipakai untuk aksi tambah-keranjang (kartu anchor
 // + cart-pill rail). Tombol "Beli" utama tetap biru brand.
@@ -762,8 +764,10 @@ class _LoadingState extends StatelessWidget {
     // MediaQuery.padding.bottom SUDAH mencakup tinggi nav (extendBody) —
     // lihat _feedOverlayBaseInset. Jangan tambah kFloatingNavClearance.
     final base = _feedOverlayBaseInset(context);
-    final actionRailInset = _feedActionBottomInset + base;
-    final feedInfoInset = base + 12.0;
+    // Mirror anchor bersama caption/rail (foto + video) supaya transisi
+    // skeleton → konten tidak bikin elemen loncat posisi.
+    final actionRailInset = base + _feedOverlayBottomGap;
+    final feedInfoInset = base + _feedOverlayBottomGap;
 
     return Shimmer.fromColors(
       baseColor: _baseColor,
@@ -1659,10 +1663,10 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     // MediaQuery.padding.bottom SUDAH mencakup tinggi nav (extendBody) —
     // lihat _feedOverlayBaseInset. Jangan tambah kFloatingNavClearance.
     final navClearance = _feedOverlayBaseInset(context);
-    final actionRailInset = _feedActionBottomInset + navClearance;
-    // Foto carousel tidak punya rail durasi, jadi caption dirapatkan langsung
-    // ke atas nav (gap kecil) — konsisten "rapat" dengan video, tanpa void.
-    final feedInfoInset = navClearance + 8.0;
+    // Anchor BERSAMA dengan video post (_feedOverlayBottomGap) — posisi
+    // caption + rail WAJIB identik foto vs video, jangan dibedakan.
+    final actionRailInset = navClearance + _feedOverlayBottomGap;
+    final feedInfoInset = navClearance + _feedOverlayBottomGap;
 
     // Product chip — same rotation pattern dengan video post.
     final products = _rotatingProductsForPost(post);
@@ -3051,11 +3055,16 @@ class _FeedPostViewState extends State<_FeedPostView>
           // Stack bawah rapat ala IG Reels (bawah → atas):
           //   nav → rail durasi (bottom: navClearance) → caption → nama.
           // Scrubber box 28px (hit-area), visual line 2px di DASAR box →
-          // line duduk tepat di atas floating nav. Caption di atas rail
-          // dengan gap kecil supaya tidak overlap hit-area scrub.
-          const railBand = 28.0;
-          final feedInfoInset = navClearance + railBand + 4.0;
-          final actionRailInset = _feedActionBottomInset + navClearance + railBand;
+          // line duduk tepat di atas floating nav.
+          //
+          // Caption + rail pakai anchor BERSAMA _feedOverlayBottomGap —
+          // SAMA dengan foto carousel (jangan bedakan foto vs video).
+          // Dulu video +32 (di atas seluruh box scrubber) → melayang jauh
+          // di atas garis progress, beda 28px dari foto. Sekarang overlap
+          // 12px ke atas hit-area scrub (zona transparan) — sisa 16px +
+          // area garis tetap bisa di-scrub, persis kompromi IG.
+          final feedInfoInset = navClearance + _feedOverlayBottomGap;
+          final actionRailInset = navClearance + _feedOverlayBottomGap;
           final minimized = _commentSheetOpen;
 
           return ColoredBox(
