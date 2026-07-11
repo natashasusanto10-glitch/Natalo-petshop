@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show SystemUiOverlayStyle;
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // sample_brands + sample_products dihapus dari import — Home screen sekarang
@@ -2420,13 +2421,15 @@ class _ShortcutGrid extends StatelessWidget {
           ),
         ),
       ),
-      // cookie = biskuit anjing. Dulu cruelty_free_rounded yang sebenarnya
-      // icon KELINCI (salah makna, ketahuan di device) — Material tak punya
-      // icon anjing.
+      // TULANG (SVG custom) — Material Icons tak punya tulang/anjing; dulu
+      // cruelty_free_rounded (KELINCI, salah makna), lalu cookie (biskuit)
+      // masih kurang pas. iconAsset menang atas `icon`; cookie disimpan
+      // sebagai fallback kalau SVG gagal load.
       _ShortcutItem(
         Icons.cookie_rounded,
         'Makanan Anjing',
         const Color(0xFFF59E0B),
+        iconAsset: 'assets/icons/bone.svg',
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
           '/products',
@@ -2514,7 +2517,17 @@ class _ShortcutGrid extends StatelessWidget {
                 color: item.color,
                 shape: BoxShape.circle,
               ),
-              child: Icon(item.icon, color: Colors.white, size: 24),
+              child: item.iconAsset != null
+                  ? SvgPicture.asset(
+                      item.iconAsset!,
+                      width: 24,
+                      height: 24,
+                      colorFilter: const ColorFilter.mode(
+                        Colors.white,
+                        BlendMode.srcIn,
+                      ),
+                    )
+                  : Icon(item.icon, color: Colors.white, size: 24),
             ),
             const SizedBox(height: 6),
             Text(
@@ -2544,7 +2557,9 @@ class _ShortcutGrid extends StatelessWidget {
       child: Column(
         children: [
           for (var row = 0; row < (items.length + 3) ~/ 4; row++) ...[
-            if (row > 0) const SizedBox(height: 6),
+            // 14 (dulu 6): jarak antar-baris shortcut dulu = jarak icon→label
+            // dalam sel (6) → baris 1 & 2 terasa mepet. 14 memberi napas jelas.
+            if (row > 0) const SizedBox(height: 14),
             Row(
               // start (bukan stretch): kalau ada label 2 baris, sel lain
               // tetap rata-atas, tak ikut memanjang.
@@ -4432,6 +4447,11 @@ class _ShortcutItem {
   // Warna solid lingkaran tile (icon-nya putih) — redesign "circle warna"
   // Jul 2026; field `background` tint lama dihapus bersama gaya squircle.
   final Color color;
+  // Optional glyph SVG (putih) — dipakai kalau Material Icons TAK punya
+  // bentuk yang pas (mis. TULANG untuk Makanan Anjing; Material cuma punya
+  // kelinci/cookie). Kalau null → render `icon`. `icon` tetap wajib sbg
+  // fallback kalau aset SVG gagal load.
+  final String? iconAsset;
   // Optional per-item handler. Kalau null, _ShortcutGrid pakai default
   // (onOpenProducts). Pattern ini supaya tiap shortcut bisa navigate ke
   // destination berbeda tanpa harus refactor grid widget.
@@ -4441,6 +4461,7 @@ class _ShortcutItem {
     this.icon,
     this.label,
     this.color, {
+    this.iconAsset,
     this.onTap,
   });
 }
