@@ -1,90 +1,164 @@
 # Video nav smooth transitions — desain
 
-Status: disetujui (mockup) — siap masuk writing-plans.
+Status: disetujui (mockup + koreksi perilaku profil ala IG) — siap masuk writing-plans.
 
 ## Latar belakang
 
-Saat ini, tap thumbnail **video** di tiga tempat:
+Dua entry point dengan perilaku target BERBEDA (koreksi dari revisi pertama —
+user menunjukkan screenshot IG sebagai referensi perilaku profil):
 
-1. "Postingan Terkait" (`product_detail_screen.dart` → `_CustomerPostCard._openPost`)
-2. Grid post di halaman profil orang lain (`public_profile_screen.dart` → `_openPost`)
-3. Grid "Postingan Saya" (`member_screen.dart` → `_openPostDetail`, 3 tab: Semua/Video/Ditandai)
+1. **"Postingan Terkait"** (`product_detail_screen.dart` → `_CustomerPostCard._openPost`):
+   saat ini tap video membuka `MemberPostDetailScreen` (kartu terang, video muted,
+   slide-push standar). Target: **langsung** ke feed video imersif scoped.
+2. **Grid profil** (`public_profile_screen.dart` `_openPost` + `member_screen.dart`
+   `_openPostDetail`, 3 tab Semua/Video/Ditandai): saat ini tap thumbnail membuka
+   `MemberPostDetailScreen` (daftar post user, video autoplay inline muted) — ini
+   TETAP. Yang kurang: tap videonya seharusnya mengembang ke fullscreen imersif
+   (kode `_FullScreenVideoRoute` ada tapi dead — tidak pernah dipanggil), ala IG:
+   grid → daftar Posts → tap video → fullscreen Reels, video lanjut tanpa restart.
 
-...semuanya membuka `MemberPostDetailScreen`: halaman kartu bertema **terang** (app bar putih "Postingan / <author>"), video **auto-play tanpa suara**, transisi `MaterialPageRoute` slide-push standar. Ini terasa seperti "pindah ke halaman lain", bukan menonton video, dan berbeda total dari pengalaman `FeedScreen` (Reels-style: gelap, immersive, autoplay+suara, rail aksi kanan).
-
-Foto/carousel di layar yang sama SUDAH punya transisi mulus (Hero `post-thumb-${post.id}`) — jadi masalahnya spesifik ke video (Hero sengaja dilewati untuk `VideoPlayer`, sesuai komentar existing di kode).
+Foto/carousel TIDAK berubah di mana pun (Hero `post-thumb-${post.id}` existing
+sudah mulus).
 
 ## Tujuan
 
-Saat tap thumbnail **video** dari ketiga entry point di atas:
+### A. Postingan Terkait → langsung feed imersif
 
-1. Thumbnail membesar & menyatu (scale/morph transition, ~440ms ease-out) menjadi tampilan **video feed asli** — reuse komponen `FeedScreen` (gelap, autoplay+suara, rail like/comment/share/more, identitas kreator+badge official, caption, chip produk, progress bar), bukan replikasi terpisah.
-2. Vertical swipe di dalamnya berpindah antar video **dalam konteks entry point**, bukan seluruh feed komunitas global:
-   - Dari Postingan Terkait → video-video terkait produk itu saja.
-   - Dari grid profil (orang lain ATAU "Postingan Saya" sendiri) → video-video milik user itu saja.
-3. Foto/carousel TIDAK berubah — tetap Hero ke `MemberPostDetailScreen` seperti sekarang.
-4. `MemberPostDetailScreen` sendiri tetap ada (masih dipakai kalau post-nya foto), tapi tidak lagi jadi tujuan tap untuk **video** di ketiga entry point.
+1. Tap thumbnail **video** → thumbnail membesar & menyatu (scale/morph ~440ms
+   ease-out, gaya "Membesar dari thumbnail" yang dipilih dari mockup) menjadi
+   tampilan **video feed asli** — reuse komponen `FeedScreen` (gelap,
+   autoplay+suara, rail like/comment/share/more, identitas kreator+badge official,
+   caption, chip produk, progress bar), bukan replikasi.
+2. Swipe vertikal = antar **video terkait produk itu saja** (scoped), bukan feed
+   komunitas global.
+3. Tap **foto** → tetap `MemberPostDetailScreen` seperti sekarang.
+
+### B. Grid profil → daftar Postingan (tetap) → tap video → fullscreen mulus
+
+1. Tap thumbnail di grid → `MemberPostDetailScreen` **tetap seperti sekarang**
+   (daftar post user itu sendiri, tema existing, video autoplay inline muted,
+   Hero foto existing). Tidak ada perubahan visual di level ini.
+2. Tap **video yang sedang bermain** di daftar itu → video **mengembang mulus ke
+   fullscreen imersif** ala IG Reels:
+   - **Video TIDAK restart** — controller video yang sama dipakai terus
+     (syarat teknis keras); yang berubah hanya chrome: kartu → fullscreen
+     (rail aksi kanan, caption expandable, back kiri-atas, unmute).
+   - Back (chevron / swipe-down) → menyusut kembali ke posisi kartu di daftar,
+     video tetap lanjut (kembali muted mengikuti preferensi inline).
+3. Fullscreen dari profil menampilkan **video itu sendiri** (bukan PageView
+   scoped) — konteks daftarnya sudah di `MemberPostDetailScreen`; swipe
+   antar-post terjadi dengan scroll daftar, bukan di dalam fullscreen.
 
 ## Pendekatan
 
-### 1. Extract `_FeedPostView` jadi widget shared
+### 1. Extract `_FeedPostView` jadi widget shared (untuk A)
 
-`_FeedPostView` (dan dependensinya: preload/visibility/autoplay logic, `_managePreloadWindow` sliding-window controller) saat ini private di `feed_screen.dart:1881`. Extract jadi `FeedVideoPostView` publik di `lib/features/feed/widgets/feed_video_post_view.dart`, dengan kontrak yang sama seperti sekarang (`post`, `isActive`, `preloadedController`, `onOverlayStateChanged`, `onMediaZoomChanged`, `preloadedCachedPlayer`) ditambah callback untuk aksi (like/comment/share/more/follow/product-tap) supaya bisa dipakai di luar `_FeedScreenState` tanpa depend ke state privatenya.
+`_FeedPostView` (private di `feed_screen.dart:1881`) di-extract jadi
+`FeedVideoPostView` publik di `lib/features/feed/widgets/feed_video_post_view.dart`
+dengan kontrak sama (`post`, `isActive`, `preloadedController`,
+`onOverlayStateChanged`, `onMediaZoomChanged`, `preloadedCachedPlayer`) + callback
+aksi (like/comment/share/more/follow/product-tap) supaya tidak depend ke state
+private `_FeedScreenState`. `FeedScreen` di-refactor memakai widget shared ini
+(satu implementasi, tidak drift).
 
-`FeedScreen` sendiri di-refactor untuk memakai `FeedVideoPostView` yang baru (bukan duplikat) — supaya tidak ada 2 implementasi visual yang bisa drift.
+### 2. Layar baru `ScopedVideoFeedScreen` (untuk A)
 
-### 2. Layar baru: `ScopedVideoFeedScreen`
-
-Layar baru `lib/screens/scoped_video_feed_screen.dart`:
+`lib/screens/scoped_video_feed_screen.dart`:
 
 ```dart
 class ScopedVideoFeedScreen extends StatefulWidget {
-  final List<FeedPost> posts;       // hanya video (caller filter foto)
+  final List<FeedPost> posts;   // video-only, caller yang filter
   final int initialIndex;
-  final bool isOwner;               // true → tampilkan menu edit/hapus di rail (parity MemberPostDetailScreen)
-  const ScopedVideoFeedScreen({
-    required this.posts,
-    required this.initialIndex,
-    this.isOwner = false,
-  });
+  const ScopedVideoFeedScreen({required this.posts, required this.initialIndex});
 }
 ```
 
-- Isi: `PageView.builder` vertical (persis pola `FeedScreen`, `PageController(initialPage: initialIndex)`), item builder → `FeedVideoPostView` per index, preload window ±1 direplikasi dari `FeedScreen._managePreloadWindow`.
-- Like/comment/share/follow: panggil `feedService`/`feedStore` langsung (sama seperti `FeedScreen` dan `MemberPostDetailScreen` sekarang) — state like/comment count tetap sinkron lintas layar karena semua baca/tulis `feedStore`.
-- `isOwner`: saat true, rail "..." menampilkan Edit caption/Hapus (reuse action existing dari `MemberPostDetailScreen`, dipindah ke helper bersama bila perlu).
-- Tidak ada app bar terang — full immersive, tombol back (chevron) overlay kiri-atas seperti mockup.
+- `PageView.builder` vertical (pola `FeedScreen`, `PageController(initialPage:
+  initialIndex)`), item → `FeedVideoPostView`, preload window ±1 direplikasi dari
+  `FeedScreen._managePreloadWindow`.
+- Like/comment/share/follow via `feedService`/`feedStore` (sinkron lintas layar).
+- Full immersive, back chevron overlay kiri-atas.
+- `posts.length == 1` → render normal, swipe tidak berpindah.
 
-### 3. Transisi masuk: scale/morph dari thumbnail
+### 3. Transisi masuk A: scale/morph dari thumbnail
 
-Custom `PageRouteBuilder` (bukan `Hero`, karena `VideoPlayer` tidak valid sebagai Hero destination — masalah yang sama seperti kenapa Hero video dilewati sebelumnya):
+Custom `PageRouteBuilder` (bukan `Hero` — `VideoPlayer` bukan Hero destination
+yang valid, alasan yang sama kenapa Hero video di-skip di kode existing):
 
-- Ambil `RenderBox` thumbnail asal (posisi + ukuran di layar) saat tap.
-- Route baru masuk dengan `child` di-`Transform` dari rect-thumbnail → full-screen, `borderRadius` dari radius kartu (14) → 0, durasi ~440ms `Curves.easeOutCubic` (sama seperti mockup yang disetujui).
-- Selama animasi scale berjalan, tampilkan **snapshot gambar thumbnail** (bukan video-nya langsung) yang di-scale — video asli baru mulai render/autoplay begitu animasi scale selesai (~menghindari video "mengambang" aneh saat masih kecil, dan support MP4/HLS yang butuh waktu buffer awal).
-- Pola ini dibungkus helper reusable `pushScaledVideoFeed(context, {required GlobalKey thumbnailKey, required List<FeedPost> posts, required int initialIndex, bool isOwner})` supaya 1 implementasi dipakai oleh ketiga entry point (product detail, public profile, member screen tab manapun).
+- Ambil rect thumbnail asal (`RenderBox`) saat tap.
+- Route masuk: `Transform` rect-thumbnail → fullscreen, `borderRadius` 14 → 0,
+  ~440ms `Curves.easeOutCubic`.
+- Selama scale berjalan tampilkan **snapshot thumbnail** yang di-scale; video
+  mulai render/autoplay setelah animasi selesai (hindari video "mengambang" saat
+  kecil + beri waktu buffer MP4/HLS).
+- Dibungkus helper `pushScaledVideoFeed(context, {required GlobalKey thumbnailKey,
+  required List<FeedPost> posts, required int initialIndex})`.
 
-### 4. Perubahan di 3 entry point
+### 4. Transisi fullscreen B: expand in-place tanpa restart
 
-- **`product_detail_screen.dart`** (`_CustomerPostCard._openPost`): setelah fetch `FeedPost` by id (logic existing tetap, termasuk loading dialog), cek `post.isVideo` — kalau true, panggil `pushScaledVideoFeed` dengan `posts` = daftar video di antara `_ProductCustomerPost` yang sama (yang sudah di-fetch sebagai preview di section itu; foto di-exclude dari list ini tapi index tetap dihitung relatif ke video-only list); kalau false (foto), tetap `Navigator.push(MemberPostDetailScreen(...))` seperti sekarang.
-- **`public_profile_screen.dart`** (`_openPost`): filter `_posts` jadi video-only, hitung `initialIndex` relatif ke situ, panggil `pushScaledVideoFeed`. Kalau tap-nya foto, tetap ke `MemberPostDetailScreen` seperti sekarang (path existing tidak berubah untuk foto).
-- **`member_screen.dart`** (`_openPostDetail`, dipanggil dari 3 grid: Semua/Video/Ditandai): sama pola — video → `pushScaledVideoFeed(isOwner: true)`; foto → `MemberPostDetailScreen` existing.
+Di `member_post_detail_screen.dart`:
 
-Catatan index: karena `ScopedVideoFeedScreen` cuma menerima video, `initialIndex` yang dikirim adalah index post itu di dalam **sub-list video**, bukan index di grid campuran asli. Helper filter kecil (`posts.where((p) => p.isVideo).toList()` + cari index post yang di-tap di dalamnya) dipakai di ketiga caller.
+- `_InlineVideoPlayer` diberi `onTap` (area video, selain tombol mute) →
+  mengembang ke fullscreen.
+- **Controller di-share**: fullscreen menerima `CachedVideoPlayerPlus`/
+  `VideoPlayerController` yang SAMA dari inline player (bukan init baru) —
+  posisi playback lanjut persis. Inline player menandai controller sedang
+  "dipinjam" supaya `VisibilityDetector`-nya tidak mem-pause saat kartu keluar
+  viewport di belakang overlay.
+- Transisi: rect kartu video → fullscreen (scale/morph sama gaya A, ~440ms),
+  `PageRouteBuilder` transparan (`opaque: false`) supaya daftar tetap terlihat
+  di belakang selama animasi.
+- Masuk fullscreen: unmute (independen dari `appSettingsStore.feedMuted`,
+  perilaku sama seperti niat `_FullScreenVideoRoute` lama); keluar: kembalikan
+  volume mengikuti preferensi inline.
+- Chrome fullscreen: reuse `FeedVideoPostView` bila memungkinkan TANPA PageView
+  (single post), atau minimal komponen shared-nya (rail `FeedActionRail`,
+  `FeedCreatorIdentity`, `FeedExpandableCaption` dari `features/feed/widgets/`)
+  supaya visual identik feed.
+- Back: chevron + swipe-down → reverse morph ke rect kartu, kembalikan
+  controller ke inline player.
+- `_FullScreenVideoRoute` lama (dead code, init controller sendiri = restart)
+  dihapus/diganti implementasi baru ini.
+
+### 5. Perubahan entry point
+
+- **`product_detail_screen.dart`** (`_CustomerPostCard._openPost`): setelah fetch
+  `fetchPostById` (loading dialog existing tetap), `post.isVideo` → kumpulkan
+  video-only dari `_ProductCustomerPost` section itu → fetch/mapping ke `FeedPost`
+  → `pushScaledVideoFeed`; foto → `MemberPostDetailScreen` seperti sekarang.
+- **`public_profile_screen.dart`** & **`member_screen.dart`**: TIDAK berubah —
+  tetap push `MemberPostDetailScreen` seperti sekarang (perilaku baru B ada di
+  dalam `MemberPostDetailScreen` sendiri).
+
+Catatan index (A): `initialIndex` relatif ke sub-list video-only
+(`posts.where((p) => p.isVideo)`), bukan index list campuran.
 
 ## Yang TIDAK berubah
 
-- `MemberPostDetailScreen` tetap ada dan tetap jadi tujuan untuk **foto/carousel** di ketiga entry point (Hero existing dipertahankan).
-- `FeedScreen` (tab Feed utama) tetap sama perilakunya untuk user — cuma sumber `_FeedPostView`-nya sekarang dari widget shared, bukan definisi privatenya sendiri.
-- `_FullScreenVideoRoute` (dead code di `member_post_detail_screen.dart`) tidak disentuh/dipakai — di luar cakupan ini.
+- `MemberPostDetailScreen`: tetap tujuan tap grid profil & tujuan foto Postingan
+  Terkait; tema/layout-nya tidak berubah.
+- `FeedScreen` (tab utama): perilaku user sama; hanya sumber widget item jadi
+  shared.
+- Foto/carousel: Hero existing dipertahankan di semua path.
 
 ## Error handling
 
-- Sama seperti alur `_openPost` existing di product detail: kalau `feedService.fetchPostById` gagal/null, tampilkan `AppToast` warning, tidak lanjut push.
-- Kalau video di-tap ternyata satu-satunya di scope (`posts.length == 1`), `ScopedVideoFeedScreen` tetap render normal, cuma swipe atas/bawah tidak berpindah (sama seperti Reels saat feed cuma 1 item).
+- A: `fetchPostById` gagal/null → `AppToast` warning, tidak push (existing).
+- B: kalau controller inline belum siap (video masih buffering) saat di-tap →
+  fullscreen tetap terbuka dengan poster/thumbnail + spinner, lanjut play begitu
+  siap (controller tetap yang sama).
+- B: route fullscreen di-pop paksa (mis. deep link) → controller wajib
+  dikembalikan ke inline player (jangan dispose ganda / bocor).
 
 ## Testing
 
-- Widget test: tap video thumbnail di masing-masing 3 entry point → `ScopedVideoFeedScreen` termount dengan `initialIndex` benar (posts video-only, foto ter-exclude dari list tapi tidak error).
-- Widget test: tap foto di ketiga entry point tetap ke `MemberPostDetailScreen` (regresi existing).
-- Manual/device-verify: rasakan transisi scale (durasi, tidak ada frame video "telanjang" sebelum animasi selesai), swipe scope benar (tidak bocor ke video luar konteks), like/comment count sinkron antara `ScopedVideoFeedScreen` dan `FeedScreen`/`MemberPostDetailScreen` lain.
+- Widget test A: tap video di Postingan Terkait → `ScopedVideoFeedScreen`
+  termount, `initialIndex` benar (foto ter-exclude, tidak error); tap foto →
+  `MemberPostDetailScreen` (regresi).
+- Widget test B: tap area video inline di `MemberPostDetailScreen` → route
+  fullscreen muncul; pop → kembali tanpa exception; controller tidak di-dispose
+  ganda (tidak ada error "used after dispose").
+- Manual/device-verify: transisi scale halus dua arah, video B tidak restart
+  (posisi playback lanjut), unmute/mute benar saat masuk/keluar fullscreen,
+  like/comment sinkron lintas layar (feedStore), swipe scope A tidak bocor ke
+  video luar konteks.
