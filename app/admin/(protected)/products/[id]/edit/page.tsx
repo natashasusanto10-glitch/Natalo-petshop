@@ -79,7 +79,11 @@ export default async function AdminProductEditPage({
     const categoryId = String(formData.get("categoryId") || "").trim() || null;
     const brandId = String(formData.get("brandId") || "").trim() || null;
 
-    if (!name || !description || !price) return;
+    // Produk varian: field Harga di-`disabled` di UI → TIDAK terkirim di
+    // FormData → price=0. Jangan wajibkan price untuk produk varian (harga
+    // diatur per-varian), kalau tidak action `return` diam-diam: tak update,
+    // tak redirect. Harga tetap wajib untuk produk non-varian.
+    if (!name || !description || (!product?.hasVariants && !price)) return;
 
     // Capture stock SEBELUM update untuk detect transition 0 → >0
     // (restock trigger). Hanya fire push kalau stock memang naik dari 0.
