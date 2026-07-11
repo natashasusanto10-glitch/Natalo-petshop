@@ -114,8 +114,7 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
   void _maybeStartCopyTicker() {
     _copyTicker?.cancel();
     if (!_isUploadingPhase) return;
-    final seqLength =
-        widget.task.kind == FeedUploadKind.photo ? 3 : 2;
+    final seqLength = widget.task.kind == FeedUploadKind.photo ? 3 : 2;
     _copyTicker = Timer.periodic(const Duration(milliseconds: 2000), (_) {
       if (!mounted) return;
       setState(() => _copyIndex = (_copyIndex + 1) % seqLength);
@@ -232,8 +231,8 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 child: _buildRow(task, isFailed, showCancel, showBar),
               ),
             ],
@@ -253,70 +252,70 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
         task.status == FeedUploadStatus.waitingReview ||
         task.status == FeedUploadStatus.success;
     return Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            _Thumbnail(task: task, isTerminal: isTerminal, isFailed: isFailed),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: Text(
-                      _titleText(),
-                      key: ValueKey('${task.status}-$_copyIndex'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        height: 1.2,
-                      ),
-                    ),
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        _Thumbnail(task: task, isTerminal: isTerminal, isFailed: isFailed),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: Text(
+                  _titleText(),
+                  key: ValueKey('${task.status}-$_copyIndex'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
                   ),
-                  if (isFailed) ...[
-                    const SizedBox(height: 2),
-                    const Text(
-                      'Periksa koneksi lalu coba lagi',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Color(0xFFAEB7C7),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                  if (showBar) ...[
-                    const SizedBox(height: 6),
-                    _ProgressTrack(
-                      progress: _guardedProgress(task),
-                      sheenController: _sheenController,
-                      colorStart: _blue,
-                      colorEnd: _blueLight,
-                    ),
-                  ],
-                ],
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            _TrailingIndicator(
-              task: task,
-              waitingBlue: _waitingBlue,
-            ),
-            if (isFailed) ...[
-              const SizedBox(width: 8),
-              _RetryPill(onTap: () => feedUploadStore.retry()),
+              if (isFailed) ...[
+                const SizedBox(height: 2),
+                const Text(
+                  'Periksa koneksi lalu coba lagi',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Color(0xFFAEB7C7),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+              if (showBar) ...[
+                const SizedBox(height: 6),
+                _ProgressTrack(
+                  progress: _guardedProgress(task),
+                  sheenController: _sheenController,
+                  colorStart: _blue,
+                  colorEnd: _blueLight,
+                ),
+              ],
             ],
-            if (showCancel) ...[
-              const SizedBox(width: 6),
-              _CancelButton(onTap: () => feedUploadStore.cancelActive()),
-            ],
-          ],
-        );
+          ),
+        ),
+        const SizedBox(width: 8),
+        _TrailingIndicator(
+          task: task,
+          waitingBlue: _waitingBlue,
+        ),
+        if (isFailed) ...[
+          const SizedBox(width: 8),
+          _RetryPill(onTap: () => feedUploadStore.retry()),
+        ],
+        if (showCancel) ...[
+          const SizedBox(width: 6),
+          _CancelButton(onTap: () => feedUploadStore.cancelActive()),
+        ],
+      ],
+    );
   }
 }
 
@@ -352,7 +351,8 @@ class _Thumbnail extends StatelessWidget {
           child: Center(
             child: Icon(
               isFailed ? Icons.error_rounded : Icons.check_circle_rounded,
-              color: isFailed ? const Color(0xFFFF6B6B) : const Color(0xFF22C55E),
+              color:
+                  isFailed ? const Color(0xFFFF6B6B) : const Color(0xFF22C55E),
               size: 20,
             ),
           ),
@@ -380,8 +380,7 @@ class _VideoThumb extends StatelessWidget {
               Image.file(
                 File(path!),
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stack) =>
-                    const _ThumbFallback(),
+                errorBuilder: (context, error, stack) => const _ThumbFallback(),
               )
             else
               const _ThumbFallback(),
@@ -422,8 +421,7 @@ class _PhotoThumb extends StatelessWidget {
             ? Image.file(
                 file,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stack) =>
-                    const _ThumbFallback(),
+                errorBuilder: (context, error, stack) => const _ThumbFallback(),
               )
             : const _ThumbFallback(),
       ),
@@ -521,71 +519,94 @@ class _ProgressTrack extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final value = progress.clamp(0.0, 1.0);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(99),
-      child: SizedBox(
-        height: 4,
-        child: Stack(
-          children: [
-            Container(color: const Color.fromRGBO(255, 255, 255, 0.09)),
-            FractionallySizedBox(
-              alignment: Alignment.centerLeft,
-              widthFactor: value == 0 ? 0.02 : value,
-              child: Stack(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [colorStart, colorEnd],
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color.fromRGBO(30, 91, 255, 0.45),
-                          blurRadius: 6,
-                        ),
-                      ],
-                    ),
-                  ),
-                  AnimatedBuilder(
-                    animation: sheenController,
-                    builder: (context, _) {
-                      return LayoutBuilder(
-                        builder: (context, constraints) {
-                          final w = constraints.maxWidth;
-                          final t = sheenController.value;
-                          // Strip translasi kiri→kanan, lebar ~40% dari bar.
-                          final stripWidth = w * 0.4;
-                          final dx = (w + stripWidth) * t - stripWidth;
-                          return Stack(
-                            children: [
-                              Positioned(
-                                left: dx,
-                                top: 0,
-                                bottom: 0,
-                                width: stripWidth,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        Colors.white.withValues(alpha: 0),
-                                        Colors.white.withValues(alpha: 0.35),
-                                        Colors.white.withValues(alpha: 0),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      );
-                    },
+    final widthFactor = value == 0 ? 0.02 : value;
+    return SizedBox(
+      height: 4,
+      child: Stack(
+        children: [
+          // Layer glow — sengaja TANPA ClipRRect, supaya blur BoxShadow
+          // (blurRadius 6) tembus keluar ~6px dari tepi track. Duduk di
+          // bawah track terklip, lebar fraksional sama persis (widthFactor)
+          // supaya glow selalu pas mengikuti ujung fill.
+          FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: widthFactor,
+            child: Container(
+              height: 4,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: [colorStart, colorEnd]),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color.fromRGBO(30, 91, 255, 0.45),
+                    blurRadius: 6,
                   ),
                 ],
               ),
             ),
-          ],
-        ),
+          ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: SizedBox(
+              height: 4,
+              child: Stack(
+                children: [
+                  Container(color: const Color.fromRGBO(255, 255, 255, 0.09)),
+                  FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: widthFactor,
+                    child: Stack(
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [colorStart, colorEnd],
+                            ),
+                          ),
+                        ),
+                        AnimatedBuilder(
+                          animation: sheenController,
+                          builder: (context, _) {
+                            return LayoutBuilder(
+                              builder: (context, constraints) {
+                                final w = constraints.maxWidth;
+                                final t = sheenController.value;
+                                // Strip translasi kiri→kanan, lebar ~40% dari bar.
+                                final stripWidth = w * 0.4;
+                                final dx = (w + stripWidth) * t - stripWidth;
+                                return Stack(
+                                  children: [
+                                    Positioned(
+                                      left: dx,
+                                      top: 0,
+                                      bottom: 0,
+                                      width: stripWidth,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              Colors.white.withValues(alpha: 0),
+                                              Colors.white
+                                                  .withValues(alpha: 0.35),
+                                              Colors.white.withValues(alpha: 0),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -612,9 +633,9 @@ class _TrailingIndicator extends StatelessWidget {
       case FeedUploadStatus.processing:
         final photosTotal = task.photosTotal ?? task.photoFiles.length;
         if (task.kind == FeedUploadKind.photo && photosTotal > 1) {
-          final done = (task.photosDone ??
-                  (task.progress * photosTotal).round())
-              .clamp(0, photosTotal);
+          final done =
+              (task.photosDone ?? (task.progress * photosTotal).round())
+                  .clamp(0, photosTotal);
           return Text(
             'Foto $done/$photosTotal',
             style: const TextStyle(

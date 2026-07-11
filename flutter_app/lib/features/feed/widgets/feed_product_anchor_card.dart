@@ -3,11 +3,7 @@ import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-// Aksen commerce oranye — tombol tambah-keranjang di kartu anchor produk.
-// Sebelumnya `_feedCommerceOrange` di feed_screen.dart; setelah ekstraksi
-// ini jadi satu-satunya pemakai (feed_screen tidak lagi punya field lain
-// yang butuh warna ini).
-const _feedCommerceOrange = Color(0xFFFF7A00);
+import 'feed_colors.dart';
 
 /// Kartu produk anchor di atas identitas kreator (blur, bg black .52,
 /// border white .16, radius 14; harga merah #FF5A5F; tombol keranjang
@@ -220,7 +216,7 @@ class _AnchorCartButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: _feedCommerceOrange,
+      color: feedCommerceOrange,
       borderRadius: BorderRadius.circular(9),
       child: InkWell(
         onTap: onTap,

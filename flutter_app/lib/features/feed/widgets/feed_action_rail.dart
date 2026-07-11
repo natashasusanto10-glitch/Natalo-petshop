@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/action_throttle.dart';
+import 'feed_colors.dart';
 
 const _feedActionForegroundColor = Color(0xFFFFFFFF);
 const _feedActionShadowColor = Color(0x99000000);
@@ -12,10 +13,6 @@ const _feedActionIconSize = 30.0;
 const _feedActionStrokeWidth = 1.7;
 const _feedActionCountFontSize = 12.0;
 const _feedActionItemSpacing = 18.0;
-// Aksen commerce oranye — dipakai untuk badge cart di rail. Duplikat dari
-// `_feedCommerceOrange` di feed_screen.dart (tetap dipakai di tempat lain di
-// sana), sama persis nilainya supaya visual identik.
-const _feedActionCartBadgeOrange = Color(0xFFFF7A00);
 
 /// Rail aksi kanan feed video/foto — like, comment, share, cart, more.
 /// Ekstraksi 1:1 dari feed_screen (ikon CustomPaint 30px stroke 1.7,
@@ -548,7 +545,7 @@ class _ReelsCartGlyph extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
               decoration: BoxDecoration(
-                color: _feedActionCartBadgeOrange,
+                color: feedCommerceOrange,
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(
                   color: Colors.black.withValues(alpha: 0.35),

@@ -25,6 +25,11 @@ import '../feed_new_post_screen.dart' show NewPostMediaDraft, NewPostMediaType, 
 enum FeedPreviewResult { share, saveDraft }
 
 const _previewBlue = Color(0xFF1E5BFF);
+// Tinggi bar aksi bawah preview (share/simpan draft) + jarak aman ke
+// overlay rail/produk di atasnya — dipakai untuk offset `Positioned.bottom`
+// rail aksi & grup kiri-bawah (produk/kreator/caption).
+const _previewBottomBarHeight = 76.0;
+const _previewOverlayGap = 28.0;
 
 /// Layar Pratinjau — render chrome feed ASLI (widget bersama 2A) supaya
 /// benar-benar semirip mungkin dengan tampilan publik. Suara AKTIF
@@ -164,7 +169,7 @@ class _FeedPostPreviewScreenState extends State<FeedPostPreviewScreen> {
           // ── Rail kanan — chrome feed asli, non-interaktif ──
           Positioned(
             right: 4,
-            bottom: bottomInset + 76 + 28,
+            bottom: bottomInset + _previewBottomBarHeight + _previewOverlayGap,
             child: IgnorePointer(
               child: FeedActionRail(
                 likeCount: 0,
@@ -180,7 +185,7 @@ class _FeedPostPreviewScreenState extends State<FeedPostPreviewScreen> {
           Positioned(
             left: 16,
             right: 78,
-            bottom: bottomInset + 76 + 28,
+            bottom: bottomInset + _previewBottomBarHeight + _previewOverlayGap,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
