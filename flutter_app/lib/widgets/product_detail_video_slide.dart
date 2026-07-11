@@ -194,6 +194,18 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
         unawaited(controller.dispose());
         return;
       }
+      // Niat main dibatalkan SELAMA `await play()` (yield point): `pauseIfPlaying`
+      // sudah men-set `_playIntent=false` + issue `pause()` konkuren, tapi `play()`
+      // yang resolve belakangan bisa menyisakan blip suara sebelum pause itu
+      // landing. Re-check → pause segera (idempotent dengan pause konkuren).
+      // Controller tetap initialized-tapi-paused (resumable via `_togglePlay`),
+      // JANGAN dispose. Ini menutup sisa window single-native-round-trip; window
+      // init lebar sudah ditutup gate sebelum `play()`.
+      if (!_playIntent) {
+        unawaited(controller.pause());
+        setState(() => _initializing = false);
+        return;
+      }
       setState(() => _initializing = false);
     } catch (_) {
       // Init gagal (URL rusak / hiccup) → balik ke thumbnail + ▶ (retry),
