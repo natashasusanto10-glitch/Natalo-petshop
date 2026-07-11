@@ -862,10 +862,20 @@ class _ProductHeroState extends State<_ProductHero> {
                               height: 6,
                               width: active ? 18 : 6,
                               decoration: BoxDecoration(
+                                // Dot netral putih (bukan brand blue) supaya
+                                // tak mengganggu video/foto. Bayangan halus
+                                // biar tetap kelihatan di slide foto terang.
                                 color: active
-                                    ? _brandBlue
-                                    : _brandBlue.withValues(alpha: 0.30),
+                                    ? Colors.white
+                                    : Colors.white.withValues(alpha: 0.45),
                                 borderRadius: BorderRadius.circular(999),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x33000000),
+                                    blurRadius: 3,
+                                    offset: Offset(0, 1),
+                                  ),
+                                ],
                               ),
                             );
                           }),
