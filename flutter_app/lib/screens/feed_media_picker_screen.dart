@@ -14,6 +14,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../models/feed_create_post_draft.dart';
 import '../services/app_analytics.dart';
+import '../utils/fade_route.dart';
 import '../utils/haptics.dart';
 import 'feed_new_post_screen.dart';
 import 'feed_post/feed_video_edit_screen.dart';
@@ -525,6 +526,9 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     try {
       await controller.initialize();
       if (!mounted || _videoController != controller) return;
+      // Muted by design (ala IG) — ini preview lokal saat memilih klip di
+      // picker, bukan pemutaran feed; tidak perlu ikut appSettingsStore
+      // .feedMuted, selalu bisu supaya tidak mengagetkan saat scroll galeri.
       await controller.setVolume(0);
       await controller.setLooping(true);
       await controller.play();
@@ -811,8 +815,8 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
       await _videoController?.pause();
       final result = await Navigator.push<bool>(
         context,
-        MaterialPageRoute(
-          builder: (_) => FeedNewPostScreen(
+        fadeThroughRoute(
+          FeedNewPostScreen(
             draft: NewPostMediaDraft.photos(preparedFiles),
           ),
         ),
@@ -840,7 +844,7 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     // sendiri (tidak pernah pop dengan value), jadi wiring konsisten.
     final result = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => FeedVideoEditScreen(draft: draft)),
+      fadeThroughRoute(FeedVideoEditScreen(draft: draft)),
     );
     if (result == true && mounted) Navigator.pop(context, true);
   }
@@ -1517,20 +1521,29 @@ class _SelectionBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 22,
-      height: 22,
-      decoration: const BoxDecoration(
-        color: _natoloBlue,
-        shape: BoxShape.circle,
-      ),
-      child: Center(
-        child: Text(
-          '$order',
-          style: const TextStyle(
-            color: _textWhite,
-            fontSize: 11,
-            fontWeight: FontWeight.w900,
+    // Pop-in scale saat badge pertama muncul (foto baru dipilih) — element
+    // ini fresh setiap kali swap dari _UnselectedCircle, jadi animasi
+    // otomatis replay tiap seleksi baru tanpa perlu AnimationController.
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.6, end: 1.0),
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutBack,
+      builder: (_, scale, child) => Transform.scale(scale: scale, child: child),
+      child: Container(
+        width: 22,
+        height: 22,
+        decoration: const BoxDecoration(
+          color: _natoloBlue,
+          shape: BoxShape.circle,
+        ),
+        child: Center(
+          child: Text(
+            '$order',
+            style: const TextStyle(
+              color: _textWhite,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
           ),
         ),
       ),

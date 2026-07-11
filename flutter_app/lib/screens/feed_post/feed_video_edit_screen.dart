@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 import '../../models/feed_create_post_draft.dart';
 import '../../services/app_analytics.dart';
 import '../../state/settings_store.dart';
+import '../../utils/fade_route.dart';
 import '../../utils/haptics.dart';
 import '../../utils/video_frame_thumbs.dart';
 import '../../widgets/app_toast.dart';
@@ -281,8 +282,8 @@ class _FeedVideoEditScreenState extends State<FeedVideoEditScreen> {
     );
     final result = await Navigator.push<String>(
       context,
-      MaterialPageRoute(
-        builder: (_) => FeedCoverPickerScreen(
+      fadeThroughRoute(
+        FeedCoverPickerScreen(
           videoPath: path,
           rangeStart: rangeStart,
           rangeSpan: rangeSpan,
@@ -340,8 +341,8 @@ class _FeedVideoEditScreenState extends State<FeedVideoEditScreen> {
 
     await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => FeedNewPostScreen(
+      fadeThroughRoute(
+        FeedNewPostScreen(
           draft: NewPostMediaDraft.video(next),
         ),
       ),

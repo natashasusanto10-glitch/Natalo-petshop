@@ -11,6 +11,7 @@ import '../services/feed_service.dart';
 import '../state/feed_draft_store.dart';
 import '../state/feed_upload_store.dart';
 import '../utils/formatters.dart';
+import '../utils/fade_route.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_product_image.dart';
 import 'feed_caption_edit_screen.dart';
@@ -322,14 +323,14 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
     if (!mounted) return;
     final result = await Navigator.push<FeedPreviewResult>(
       context,
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => FeedPostPreviewScreen(
+      fadeThroughRoute(
+        FeedPostPreviewScreen(
           draft: _isVideo ? widget.draft : NewPostMediaDraft.photos(_photoFiles),
           videoDraft: _videoDraft,
           caption: caption,
           products: selected,
         ),
+        fullscreenDialog: true,
       ),
     );
     if (!mounted) return;
@@ -351,8 +352,8 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
     AppHaptics.tap();
     final selectedPath = await Navigator.push<String>(
       context,
-      MaterialPageRoute(
-        builder: (_) => FeedCoverPickerScreen(
+      fadeThroughRoute(
+        FeedCoverPickerScreen(
           videoPath: path,
           rangeStart: draft?.trimStart ?? Duration.zero,
           rangeSpan: span,
