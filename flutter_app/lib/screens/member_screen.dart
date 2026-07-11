@@ -15,7 +15,7 @@ import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_notification_button.dart';
 import '../widgets/bottom_nav.dart';
-import '../widgets/feed_upload_sheet.dart';
+import 'feed_media_picker_screen.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/profile_avatar.dart';
 import '../widgets/update_profile_photo_sheet.dart';
@@ -183,7 +183,7 @@ class _ProfilePageState extends State<_ProfilePage>
 
   Future<void> _openCreatePost() async {
     AppHaptics.tap();
-    final uploaded = await FeedUploadSheet.show(context);
+    final uploaded = await FeedMediaPickerScreen.open(context);
     if (uploaded == true && mounted) {
       await _loadAll();
     }

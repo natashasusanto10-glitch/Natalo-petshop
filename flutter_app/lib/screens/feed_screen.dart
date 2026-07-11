@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:flutter/gestures.dart';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +14,10 @@ import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../config/api_config.dart';
+import '../features/feed/widgets/feed_action_rail.dart';
+import '../features/feed/widgets/feed_creator_overlay.dart';
+import '../features/feed/widgets/feed_post_scrim.dart';
+import '../features/feed/widgets/feed_product_anchor_card.dart';
 import '../features/feed/widgets/feed_video_scrubber.dart';
 import '../models/cart_item.dart';
 import '../models/feed_post.dart';
@@ -37,36 +39,24 @@ import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/android_back_overlays.dart';
 import '../utils/formatters.dart';
-import '../utils/action_throttle.dart';
 import '../utils/haptics.dart';
-import '../utils/mention_text.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/feed_comment_sheet.dart';
-import '../widgets/feed_upload_sheet.dart';
+import 'feed_media_picker_screen.dart';
 import '../widgets/moderation_action_sheet.dart';
 
 const _officialGold = Color(0xFFF4D47C);
-const _feedBlue = Color(0xFF0B7FEA);
+// Duplikat dari feed_action_rail.dart — dipakai _FeedPlusGlyph (tombol
+// upload top-bar), yang tidak ikut diekstraksi karena bukan bagian rail.
 const _feedActionForegroundColor = Color(0xFFFFFFFF);
 const _feedActionShadowColor = Color(0x99000000);
-const _feedActionTextShadowColor = Color(0xB3000000);
-// Ikon action rail — proporsi ala IG Reels: ukuran 30 + stroke 2.2.
-// Sempat diturunkan ke 1.7 tapi terasa terlalu kurus di atas video;
-// kesan "gemuk" dulu datang dari count w900 (kini w600), bukan stroke.
-const _feedActionIconSize = 30.0;
-const _feedActionStrokeWidth = 2.2;
-const _feedActionCountFontSize = 12.0;
-const _feedActionItemSpacing = 22.0;
 // Anchor bawah BERSAMA caption + action rail — SATU angka untuk foto DAN
 // video (jangan dibedakan per jenis post). Di video ini berarti overlap
 // 12px ke atas hit-area scrubber 28px (zona transparan) supaya caption/rail
 // duduk dekat garis progress ala IG, bukan melayang di atas seluruh box.
 const _feedOverlayBottomGap = 16.0;
 const _feedActionRailRightInset = 10.0;
-// Aksen commerce oranye — dipakai untuk aksi tambah-keranjang (kartu anchor
-// + cart-pill rail). Tombol "Beli" utama tetap biru brand.
-const _feedCommerceOrange = Color(0xFFFF7A00);
 const _feedTopActionRightInset = 8.0;
 
 /// Jarak dasar overlay bawah feed (rail durasi / caption / action rail)
@@ -564,8 +554,8 @@ class _FeedScreenState extends State<FeedScreen> {
     AppHaptics.tap();
     _setFeedInteractionLocked(true);
     // Unified "Postingan baru" flow — push FeedMediaPickerScreen via
-    // FeedUploadSheet.show() yang juga dipakai oleh member_screen dan
-    // member_posts_screen. Picker IG-style (preview + gallery grid)
+    // FeedMediaPickerScreen.open() yang juga dipakai oleh member_screen
+    // dan member_posts_screen. Picker IG-style (preview + gallery grid)
     // handle photo + video di satu screen, lalu push FeedNewPostScreen
     // untuk caption + product tag + submit.
     //
@@ -573,7 +563,7 @@ class _FeedScreenState extends State<FeedScreen> {
     // dulu) → flow lama yang inkonsisten dengan akun entry. Sekarang
     // SEMUA "+" icon (feed + akun + postingan saya) lead ke flow yang
     // sama untuk konsistensi UX.
-    await FeedUploadSheet.show(context);
+    await FeedMediaPickerScreen.open(context);
     if (mounted) _setFeedInteractionLocked(false);
     if (!mounted) return;
     await _loadInitial();
@@ -1169,7 +1159,7 @@ class _FeedErrorState extends StatelessWidget {
 
 /// PHOTO_CAROUSEL post view — render 1-8 foto pakai PageView horizontal +
 /// dots indicator + heart burst + action rail. Reuse helper components
-/// (_ReelsAction, _FeedCreatorIdentity, _ExpandableCaption)
+/// (FeedActionRail, _FeedCreatorIdentity, FeedExpandableCaption)
 /// dari _FeedPostView via lokasi sama-file.
 ///
 /// Beda dari _FeedPostView:
@@ -1203,7 +1193,6 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   int _commentCount = 0;
   int _shareCount = 0;
   bool _likeBusy = false;
-  bool _captionExpanded = false;
   bool _hideOverlayForLongPress = false;
   bool _hideOverlayForPinchZoom = false;
 
@@ -1828,35 +1817,17 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                 child: IgnorePointer(
                   ignoring:
                       _hideOverlayForLongPress || _hideOverlayForPinchZoom,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _ReelsAction(
-                        iconChild: _ReelsHeartGlyph(liked: _liked),
-                        count: _likeCount,
-                        onTap: _onLikePressed,
-                      ),
-                      const SizedBox(height: _feedActionItemSpacing),
-                      _ReelsAction(
-                        iconChild: const _ReelsCommentGlyph(),
-                        count: _commentCount,
-                        onTap: _onComment,
-                      ),
-                      const SizedBox(height: _feedActionItemSpacing),
-                      _ReelsAction(
-                        iconChild: const _ReelsShareGlyph(),
-                        count: _shareCount,
-                        onTap: _onShare,
-                      ),
-                      const SizedBox(height: _feedActionItemSpacing),
-                      // Cart di rail DIHAPUS — duplikat dengan cart
-                      // kanan-atas (satu-satunya pintu keranjang di feed).
-                      // More actions (Report/Block) — Google Play UGC policy.
-                      _ReelsAction(
-                        iconChild: const _ReelsMoreGlyph(),
-                        onTap: () => _showMoreActionsSheet(),
-                      ),
-                    ],
+                  // Cart di rail DIHAPUS — duplikat dengan cart kanan-atas
+                  // (satu-satunya pintu keranjang di feed).
+                  child: FeedActionRail(
+                    likeCount: _likeCount,
+                    liked: _liked,
+                    commentCount: _commentCount,
+                    shareCount: _shareCount,
+                    onLike: _onLikePressed,
+                    onComment: _onComment,
+                    onShare: _onShare,
+                    onMore: () => _showMoreActionsSheet(),
                   ),
                 ),
               ),
@@ -1881,13 +1852,10 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                       // Reuse widget yang sama dengan _FeedPostView untuk
                       // consistency visual antar video post & photo carousel.
                       if (products.isNotEmpty) ...[
-                        _ProductAnchorCard(
-                          products: products,
-                          featuredProduct: featuredProduct!,
-                          featuredIndex:
-                              _featuredProductIndex % products.length,
+                        _feedProductAnchorCardFor(
+                          featuredProduct!,
                           onTap: () => _onProductsTap(products),
-                          onQuickAdd: () => _quickAddProduct(featuredProduct),
+                          onAddToCart: () => _quickAddProduct(featuredProduct),
                         ),
                         const SizedBox(height: 9),
                       ],
@@ -1896,11 +1864,10 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                         displayName: post.author.displayHandle,
                       ),
                       const SizedBox(height: 7),
-                      _ExpandableCaption(
+                      FeedExpandableCaption(
                         text: post.caption ?? '',
-                        expanded: _captionExpanded,
-                        onToggle: () => setState(
-                            () => _captionExpanded = !_captionExpanded),
+                        onMentionTap: (handle) => Navigator.of(context)
+                            .pushNamed('/u', arguments: handle),
                       ),
                     ],
                   ),
@@ -1965,7 +1932,6 @@ class _FeedPostViewState extends State<_FeedPostView>
   int _commentCount = 0;
   int _shareCount = 0;
   bool _isPaused = false;
-  bool _captionExpanded = false;
   bool _commentDrawerMounted = false;
   bool _commentSheetOpen = false;
   bool _videoLoadFailed = false;
@@ -3249,26 +3215,12 @@ class _FeedPostViewState extends State<_FeedPostView>
                         // (kalau perlu nanti) bisa di-trigger lewat
                         // long-press atau gesture, bukan dedicated button.
                         // ── Bottom gradient untuk text readability ──
-                        Positioned(
+                        const Positioned(
                           left: 0,
                           right: 0,
                           bottom: 0,
-                          height: 330,
                           child: IgnorePointer(
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Colors.transparent,
-                                    Colors.black.withValues(alpha: 0.24),
-                                    Colors.black.withValues(alpha: 0.76),
-                                  ],
-                                  stops: const [0, 0.54, 1],
-                                ),
-                              ),
-                            ),
+                            child: FeedPostScrim(),
                           ),
                         ),
                         if (_videoController != null)
@@ -3305,43 +3257,18 @@ class _FeedPostViewState extends State<_FeedPostView>
                               ignoring: _hideOverlayForLongPress ||
                                   _hideOverlayForPinchZoom ||
                                   _commentSheetOpen,
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  _ReelsAction(
-                                    iconChild: _ReelsHeartGlyph(liked: _liked),
-                                    count: _likeCount,
-                                    onTap: _onLikePressed,
-                                  ),
-                                  const SizedBox(
-                                      height: _feedActionItemSpacing),
-                                  _ReelsAction(
-                                    iconChild: const _ReelsCommentGlyph(),
-                                    count: _commentCount,
-                                    onTap: _onComment,
-                                  ),
-                                  const SizedBox(
-                                      height: _feedActionItemSpacing),
-                                  _ReelsAction(
-                                    iconChild: const _ReelsShareGlyph(),
-                                    count: _shareCount,
-                                    onTap: _onShare,
-                                  ),
-                                  const SizedBox(
-                                      height: _feedActionItemSpacing),
-                                  // Cart di rail DIHAPUS — duplikat dengan
-                                  // cart kanan-atas (satu-satunya pintu
-                                  // keranjang di feed sekarang).
-                                  // ── More actions (Report / Block) ──
-                                  // Google Play UGC policy requirement: setiap
-                                  // post UGC harus ada cara user laporkan +
-                                  // blokir kreator. Tanpa button ini, app
-                                  // ditolak Google saat submit Production.
-                                  _ReelsAction(
-                                    iconChild: const _ReelsMoreGlyph(),
-                                    onTap: _onMoreActions,
-                                  ),
-                                ],
+                              // Cart di rail DIHAPUS — duplikat dengan cart
+                              // kanan-atas (satu-satunya pintu keranjang di
+                              // feed sekarang).
+                              child: FeedActionRail(
+                                likeCount: _likeCount,
+                                liked: _liked,
+                                commentCount: _commentCount,
+                                shareCount: _shareCount,
+                                onLike: _onLikePressed,
+                                onComment: _onComment,
+                                onShare: _onShare,
+                                onMore: _onMoreActions,
                               ),
                             ),
                           ),
@@ -3366,10 +3293,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                                 children: [
                                   if (products.isNotEmpty) ...[
                                     _ProductCommerceOverlayGroup(
-                                      products: products,
                                       featuredProduct: featuredProduct!,
-                                      featuredIndex: _featuredProductIndex %
-                                          products.length,
                                       showProductCard: _endOfVideoCtaVisible &&
                                           !_commentSheetOpen,
                                       onTap: () => _onProductsTap(products),
@@ -3386,11 +3310,13 @@ class _FeedPostViewState extends State<_FeedPostView>
                                     displayName: post.author.displayHandle,
                                   ),
                                   const SizedBox(height: 7),
-                                  _ExpandableCaption(
+                                  FeedExpandableCaption(
                                     text: post.caption ?? '',
-                                    expanded: _captionExpanded,
-                                    onToggle: () => setState(() =>
-                                        _captionExpanded = !_captionExpanded),
+                                    onMentionTap: (handle) =>
+                                        Navigator.of(context).pushNamed(
+                                      '/u',
+                                      arguments: handle,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -3494,8 +3420,12 @@ class _CommentVideoFrame extends StatelessWidget {
   }
 }
 
-/// Caption dengan truncate 2 lines + "more" toggle — Reels pattern.
-class _FeedCreatorIdentity extends StatelessWidget {
+/// Menjembatani state reaktif (memberStore + followOverrides + follow
+/// service) dengan widget bersama `FeedCreatorIdentity`
+/// (features/feed/widgets/feed_creator_overlay.dart) — tetap di
+/// feed_screen.dart karena terikat langsung ke model FeedAuthor & service
+/// layer, bukan bagian widget presentasional yang di-share.
+class _FeedCreatorIdentity extends StatefulWidget {
   final FeedAuthor author;
   final String displayName;
 
@@ -3505,102 +3435,13 @@ class _FeedCreatorIdentity extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    // Identity tap-able buat user dengan username — buka public profile
-    // /u/{username}. Official account tetap non-tappable (admin = brand
-    // tunggal, gak ada profile page sendiri). User tanpa username
-    // (existing yang belum set) gak tappable juga supaya gak nge-route
-    // ke handle null.
-    final canOpenProfile = author.hasUsername;
-    final row = Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        _FeedCreatorAvatar(
-          name: displayName,
-          profilePhotoUrl: author.profilePhotoUrl,
-        ),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text(
-            displayName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: author.isOfficialAccount ? _officialGold : Colors.white,
-              // Setipis IG Reels: 13.5 + w600 (dari 15.5/w800) — nama lebih
-              // halus, tidak mendominasi over video.
-              fontSize: 13.5,
-              fontWeight: FontWeight.w600,
-              height: 1.1,
-              shadows: const [
-                Shadow(
-                  color: Colors.black54,
-                  blurRadius: 6,
-                  offset: Offset(0, 1),
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (author.isOfficialAccount) ...[
-          const SizedBox(width: 6),
-          const Icon(
-            Icons.verified_rounded,
-            color: _officialGold,
-            size: 17,
-            shadows: [
-              Shadow(
-                color: Colors.black54,
-                blurRadius: 5,
-              ),
-            ],
-          ),
-        ],
-        // Chip Ikuti/Mengikuti ala IG — di samping nama. Official account
-        // tidak dapat chip (brand tunggal, bukan akun sosial biasa);
-        // self juga tidak (tidak bisa follow diri sendiri).
-        if (!author.isOfficialAccount) ...[
-          const SizedBox(width: 10),
-          _FeedFollowChip(author: author),
-        ],
-      ],
-    );
-    if (!canOpenProfile) return row;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        AppHaptics.tap();
-        Navigator.pushNamed(
-          context,
-          '/u',
-          arguments: author.username!.toLowerCase(),
-        );
-      },
-      child: row,
-    );
-  }
+  State<_FeedCreatorIdentity> createState() => _FeedCreatorIdentityState();
 }
 
-/// Chip Ikuti/Mengikuti di samping nama kreator — IG Reels parity:
-/// pill transparan + border putih tipis, teks kecil bold.
-///
-/// State = override sesi (followOverrides, konsisten antar post dari
-/// author sama) ?? snapshot payload (author.isFollowing). Tap →
-/// optimistic toggle + call API; revert kalau gagal. Belum login → tap
-/// diarahkan ke halaman login (chip tetap tampil "Ikuti" ala IG).
-class _FeedFollowChip extends StatefulWidget {
-  final FeedAuthor author;
-
-  const _FeedFollowChip({required this.author});
-
-  @override
-  State<_FeedFollowChip> createState() => _FeedFollowChipState();
-}
-
-class _FeedFollowChipState extends State<_FeedFollowChip> {
+class _FeedCreatorIdentityState extends State<_FeedCreatorIdentity> {
   bool _busy = false;
 
-  Future<void> _toggle(bool currentlyFollowing) async {
+  Future<void> _toggleFollow(bool currentlyFollowing) async {
     if (_busy) return;
     AppHaptics.tap();
     if (!memberStore.isLoggedIn) {
@@ -3608,19 +3449,20 @@ class _FeedFollowChipState extends State<_FeedFollowChip> {
       return;
     }
     _busy = true;
+    final author = widget.author;
     final target = !currentlyFollowing;
     // Optimistic — chip (dan semua chip author sama di post lain)
     // langsung berubah; revert kalau API gagal.
-    setFollowOverride(widget.author.id, target);
+    setFollowOverride(author.id, target);
     try {
       if (target) {
-        await followService.follow(widget.author.id);
+        await followService.follow(author.id);
       } else {
-        await followService.unfollow(widget.author.id);
+        await followService.unfollow(author.id);
       }
     } catch (_) {
       if (mounted) {
-        setFollowOverride(widget.author.id, currentlyFollowing);
+        setFollowOverride(author.id, currentlyFollowing);
         AppToast.show(context, 'Gagal memperbarui. Coba lagi.');
       }
     } finally {
@@ -3630,237 +3472,59 @@ class _FeedFollowChipState extends State<_FeedFollowChip> {
 
   @override
   Widget build(BuildContext context) {
-    // Sembunyikan untuk diri sendiri — tidak bisa follow akun sendiri.
-    // AnimatedBuilder ke memberStore supaya chip hilang/muncul benar
-    // saat login state berubah tanpa perlu feed re-fetch.
+    final author = widget.author;
+    // Identity tap-able buat user dengan username — buka public profile
+    // /u/{username}. Official account tetap non-tappable (admin = brand
+    // tunggal, gak ada profile page sendiri). User tanpa username
+    // (existing yang belum set) gak tappable juga supaya gak nge-route
+    // ke handle null.
+    final canOpenProfile = author.hasUsername;
+    final trimmedName = widget.displayName.trim();
+    final avatarInitial =
+        trimmedName.isEmpty ? 'N' : trimmedName[0].toUpperCase();
+
+    // AnimatedBuilder ke memberStore + ValueListenableBuilder ke
+    // followOverrides supaya chip hilang/muncul & label berubah benar
+    // saat login state / follow state berubah tanpa perlu feed re-fetch.
     return AnimatedBuilder(
       animation: memberStore,
       builder: (context, _) {
         final selfId = memberStore.profile?.id;
-        if (selfId != null && selfId == widget.author.id) {
-          return const SizedBox.shrink();
-        }
+        final isSelf = selfId != null && selfId == author.id;
         return ValueListenableBuilder<Map<String, bool>>(
           valueListenable: followOverrides,
           builder: (context, overrides, _) {
-            final following =
-                overrides[widget.author.id] ?? widget.author.isFollowing;
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _toggle(following),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
-                decoration: BoxDecoration(
-                  // Transparan ala IG — cuma border, konten video tembus.
-                  borderRadius: BorderRadius.circular(9),
-                  border: Border.all(
-                    color: Colors.white.withValues(
-                      alpha: following ? 0.38 : 0.85,
-                    ),
-                    width: 1,
-                  ),
-                ),
-                child: Text(
-                  following ? 'Mengikuti' : 'Ikuti',
-                  style: TextStyle(
-                    color: following ? Colors.white70 : Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    height: 1,
-                    shadows: const [
-                      Shadow(color: Colors.black45, blurRadius: 4),
-                    ],
-                  ),
-                ),
-              ),
+            final following = overrides[author.id] ?? author.isFollowing;
+            // Official account tidak dapat chip (brand tunggal, bukan akun
+            // sosial biasa); self juga tidak (tidak bisa follow diri sendiri).
+            final followState = author.isOfficialAccount || isSelf
+                ? FeedFollowChipState.hidden
+                : (following
+                    ? FeedFollowChipState.following
+                    : FeedFollowChipState.none);
+            return FeedCreatorIdentity(
+              name: widget.displayName,
+              avatarInitial: avatarInitial,
+              avatarUrl: author.profilePhotoUrl,
+              isOfficial: author.isOfficialAccount,
+              followState: followState,
+              onFollowTap: followState == FeedFollowChipState.hidden
+                  ? null
+                  : () => _toggleFollow(following),
+              onProfileTap: canOpenProfile
+                  ? () {
+                      AppHaptics.tap();
+                      Navigator.pushNamed(
+                        context,
+                        '/u',
+                        arguments: author.username!.toLowerCase(),
+                      );
+                    }
+                  : null,
             );
           },
         );
       },
-    );
-  }
-}
-
-class _FeedCreatorAvatar extends StatelessWidget {
-  final String name;
-  final String? profilePhotoUrl;
-
-  const _FeedCreatorAvatar({
-    required this.name,
-    required this.profilePhotoUrl,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final url = profilePhotoUrl?.trim();
-    final hasPhoto = url != null && url.isNotEmpty;
-
-    return Container(
-      width: 34,
-      height: 34,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.88),
-          width: 1.4,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.30),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: ClipOval(
-        child: hasPhoto
-            ? CachedNetworkImage(
-                imageUrl: url,
-                fit: BoxFit.cover,
-                placeholder: (_, __) => _AvatarFallback(name: name),
-                errorWidget: (_, __, ___) => _AvatarFallback(name: name),
-              )
-            : _AvatarFallback(name: name),
-      ),
-    );
-  }
-}
-
-class _AvatarFallback extends StatelessWidget {
-  final String name;
-
-  const _AvatarFallback({required this.name});
-
-  @override
-  Widget build(BuildContext context) {
-    final trimmed = name.trim();
-    final initial = trimmed.isEmpty ? 'N' : trimmed[0].toUpperCase();
-    return Container(
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            _feedBlue.withValues(alpha: 0.92),
-            const Color(0xFF38BDF8).withValues(alpha: 0.86),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Text(
-        initial,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 13,
-          fontWeight: FontWeight.w900,
-          height: 1,
-        ),
-      ),
-    );
-  }
-}
-
-class _ExpandableCaption extends StatefulWidget {
-  final String text;
-  final bool expanded;
-  final VoidCallback onToggle;
-
-  const _ExpandableCaption({
-    required this.text,
-    required this.expanded,
-    required this.onToggle,
-  });
-
-  @override
-  State<_ExpandableCaption> createState() => _ExpandableCaptionState();
-}
-
-class _ExpandableCaptionState extends State<_ExpandableCaption> {
-  final List<TapGestureRecognizer> _recognizers = [];
-
-  @override
-  void dispose() {
-    for (final r in _recognizers) {
-      r.dispose();
-    }
-    _recognizers.clear();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final text = widget.text;
-    if (text.isEmpty) return const SizedBox.shrink();
-    const limit = 90;
-    final isLong = text.length > limit;
-    final visible = widget.expanded || !isLong
-        ? text
-        : '${text.substring(0, limit).trimRight()}... ';
-
-    // Dispose recognizers lama tiap rebuild — fresh per render.
-    for (final r in _recognizers) {
-      r.dispose();
-    }
-    _recognizers.clear();
-
-    const baseStyle = TextStyle(
-      color: Colors.white,
-      fontSize: 13.2,
-      fontWeight: FontWeight.w600,
-      height: 1.38,
-      shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
-    );
-    const mentionStyle = TextStyle(
-      color: Color(0xFF60A5FA),
-      fontSize: 13.2,
-      fontWeight: FontWeight.w900,
-      height: 1.38,
-      shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
-    );
-
-    final mentionSpans = buildMentionSpans(
-      visible,
-      onMentionTap: (handle) {
-        Navigator.of(context).pushNamed('/u', arguments: handle);
-      },
-      defaultStyle: baseStyle,
-      mentionStyle: mentionStyle,
-      collectRecognizers: _recognizers,
-    );
-
-    return GestureDetector(
-      onTap: isLong ? widget.onToggle : null,
-      // AnimatedSize: caption panjang tidak snap terbuka — tinggi mengembang
-      // halus, dan karena bottom info di-anchor ke bawah (Positioned.bottom),
-      // nama kreator + product chip di atasnya ikut terdorong naik pelan.
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 240),
-        curve: Curves.easeOutCubic,
-        // topLeft: baris awal tetap terlihat (terangkat naik), baris baru
-        // tersingkap di bawahnya — terasa "membuka", bukan konten loncat.
-        alignment: Alignment.topLeft,
-        child: Text.rich(
-          TextSpan(
-            style: baseStyle,
-            children: [
-              ...mentionSpans,
-              if (isLong)
-                TextSpan(
-                  text: widget.expanded ? '  lebih sedikit' : 'selengkapnya',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.78),
-                    fontSize: 12.8,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-            ],
-          ),
-          maxLines: widget.expanded ? null : 2,
-          overflow:
-              widget.expanded ? TextOverflow.visible : TextOverflow.ellipsis,
-        ),
-      ),
     );
   }
 }
@@ -4415,313 +4079,11 @@ class _PausedControlButtonState extends State<_PausedControlButton> {
   }
 }
 
-class _ReelsAction extends StatefulWidget {
-  final Widget iconChild;
-  final int? count;
-  final VoidCallback onTap;
-
-  const _ReelsAction({
-    required this.iconChild,
-    this.count,
-    required this.onTap,
-  });
-
-  @override
-  State<_ReelsAction> createState() => _ReelsActionState();
-}
-
-class _ReelsActionState extends State<_ReelsAction>
-    with SingleTickerProviderStateMixin {
-  late final ActionThrottle _throttle;
-  late final AnimationController _tapPulseController;
-  late final Animation<double> _tapPulseScale;
-
-  @override
-  void initState() {
-    super.initState();
-    _throttle = ActionThrottle(interval: const Duration(milliseconds: 220));
-    _tapPulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 180),
-    );
-    _tapPulseScale = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 1.18)
-            .chain(CurveTween(curve: Curves.easeOutCubic)),
-        weight: 45,
-      ),
-      TweenSequenceItem(
-        tween: Tween(begin: 1.18, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeOutCubic)),
-        weight: 55,
-      ),
-    ]).animate(_tapPulseController);
-  }
-
-  @override
-  void dispose() {
-    _tapPulseController.dispose();
-    super.dispose();
-  }
-
-  void _handleTap() {
-    final accepted = _throttle.run(widget.onTap);
-    if (!accepted) return;
-    _tapPulseController.forward(from: 0);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Count 0 disembunyikan ala IG Reels — label baru muncul saat >0.
-    // Post baru tampil ikon bersih, tidak dipenuhi deretan angka "0".
-    final showCount = widget.count != null && widget.count! > 0;
-    return SizedBox(
-      width: 54,
-      child: Material(
-        color: Colors.transparent,
-        child: InkResponse(
-          onTap: _handleTap,
-          radius: 28,
-          child: ScaleTransition(
-            scale: _tapPulseScale,
-            child: SizedBox(
-              height: !showCount ? 44 : 60,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  widget.iconChild,
-                  if (showCount) ...[
-                    const SizedBox(height: 2),
-                    RepaintBoundary(
-                      child: Text(
-                        _formatCount(widget.count!),
-                        style: const TextStyle(
-                          color: _feedActionForegroundColor,
-                          fontSize: _feedActionCountFontSize,
-                          // Ikut halus ala IG: w600 (dari w900). Shadow tetap
-                          // menjaga keterbacaan di atas video.
-                          fontWeight: FontWeight.w600,
-                          height: 1,
-                          shadows: [
-                            Shadow(
-                              color: _feedActionTextShadowColor,
-                              blurRadius: 2.4,
-                              offset: Offset(0, 0.8),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _formatCount(int count) {
-    if (count >= 1000000) {
-      return '${(count / 1000000).toStringAsFixed(1)}M';
-    }
-    if (count >= 1000) {
-      return '${(count / 1000).toStringAsFixed(1)}K';
-    }
-    return '$count';
-  }
-}
-
-/// Heart rail — like toggle ala IG: heart TERISI merah, bukan ganti bentuk.
-///
-/// Dulu unliked = stroke / liked = fill pada path yang sama → siluet
-/// benar-benar berubah (stroke center mengembang keluar strokeWidth/2 dan
-/// round-join membulatkan ujung lancip; fill memakai path mentah yang lebih
-/// kecil + tajam) → tap terbaca "ganti bentuk". Sekarang stroke round-join
-/// digambar di KEDUA state (siluet identik piksel), dan fill merah masuk
-/// dengan animasi progress 0→1 (180ms) — stroke ikut lerp ke merah.
-class _ReelsHeartGlyph extends StatefulWidget {
-  final bool liked;
-
-  const _ReelsHeartGlyph({
-    required this.liked,
-  });
-
-  @override
-  State<_ReelsHeartGlyph> createState() => _ReelsHeartGlyphState();
-}
-
-class _ReelsHeartGlyphState extends State<_ReelsHeartGlyph>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _fillController;
-  late final Animation<double> _fill;
-
-  @override
-  void initState() {
-    super.initState();
-    _fillController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 180),
-      value: widget.liked ? 1 : 0,
-    );
-    _fill = CurvedAnimation(
-      parent: _fillController,
-      curve: Curves.easeOutCubic,
-    );
-  }
-
-  @override
-  void didUpdateWidget(covariant _ReelsHeartGlyph oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.liked != widget.liked) {
-      // Unlike balik lebih cepat (tanpa easing panjang) — IG juga begitu.
-      widget.liked ? _fillController.forward() : _fillController.reverse();
-    }
-  }
-
-  @override
-  void dispose() {
-    _fillController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: _feedActionIconSize,
-      width: _feedActionIconSize,
-      child: CustomPaint(painter: _HeartGlyphPainter(fillProgress: _fill)),
-    );
-  }
-}
-
-class _HeartGlyphPainter extends CustomPainter {
-  final Animation<double> fillProgress;
-
-  _HeartGlyphPainter({
-    required this.fillProgress,
-  }) : super(repaint: fillProgress);
-
-  static const _likedRed = Color(0xFFEF4444);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final t = fillProgress.value;
-    final path = _buildFeedHeartPath(size);
-    // Shadow SELALU stroke — silhouette shadow konstan di kedua state.
-    final shadowPaint = Paint()
-      ..color = _feedActionShadowColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _feedActionStrokeWidth
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.8);
-
-    canvas.drawPath(path.shift(const Offset(0, 1.2)), shadowPaint);
-
-    // Fill merah masuk di dalam stroke — opacity mengikuti progress.
-    if (t > 0) {
-      final fillPaint = Paint()
-        ..color = _likedRed.withValues(alpha: t)
-        ..style = PaintingStyle.fill;
-      canvas.drawPath(path, fillPaint);
-    }
-
-    // Stroke digambar TERAKHIR di kedua state — dialah siluet konstan.
-    // Warnanya lerp putih → merah supaya rim menyatu saat liked.
-    final strokePaint = Paint()
-      ..color = Color.lerp(_feedActionForegroundColor, _likedRed, t)!
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _feedActionStrokeWidth
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    canvas.drawPath(path, strokePaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _HeartGlyphPainter oldDelegate) {
-    return oldDelegate.fillProgress != fillProgress;
-  }
-}
-
-/// Path heart bersama — dipakai rail glyph (stroke+fill) DAN burst
-/// double-tap (fill putih besar) supaya seluruh feed satu bentuk hati.
-Path _buildFeedHeartPath(Size size) {
-  return Path()
-      ..moveTo(size.width * 0.50, size.height * 0.844)
-      ..cubicTo(
-        size.width * 0.469,
-        size.height * 0.815,
-        size.width * 0.342,
-        size.height * 0.698,
-        size.width * 0.244,
-        size.height * 0.592,
-      )
-      ..cubicTo(
-        size.width * 0.158,
-        size.height * 0.498,
-        size.width * 0.129,
-        size.height * 0.425,
-        size.width * 0.129,
-        size.height * 0.346,
-      )
-      ..cubicTo(
-        size.width * 0.129,
-        size.height * 0.231,
-        size.width * 0.219,
-        size.height * 0.150,
-        size.width * 0.338,
-        size.height * 0.150,
-      )
-      ..cubicTo(
-        size.width * 0.406,
-        size.height * 0.150,
-        size.width * 0.460,
-        size.height * 0.179,
-        size.width * 0.500,
-        size.height * 0.231,
-      )
-      ..cubicTo(
-        size.width * 0.540,
-        size.height * 0.179,
-        size.width * 0.594,
-        size.height * 0.150,
-        size.width * 0.662,
-        size.height * 0.150,
-      )
-      ..cubicTo(
-        size.width * 0.781,
-        size.height * 0.150,
-        size.width * 0.871,
-        size.height * 0.231,
-        size.width * 0.871,
-        size.height * 0.346,
-      )
-      ..cubicTo(
-        size.width * 0.871,
-        size.height * 0.425,
-        size.width * 0.842,
-        size.height * 0.498,
-        size.width * 0.756,
-        size.height * 0.592,
-      )
-      ..cubicTo(
-        size.width * 0.658,
-        size.height * 0.698,
-        size.width * 0.531,
-        size.height * 0.815,
-        size.width * 0.50,
-        size.height * 0.844,
-      )
-      ..close();
-}
-
 /// Heart burst double-tap ala IG — fill PUTIH, bentuk sama dengan rail
-/// (path bersama), tegak tanpa tilt/naik. Sebelumnya merah + miring −0.08
-/// + rise = resep TikTok, dan bentuknya (Icons.favorite_rounded) beda dari
-/// heart rail sehingga dua gestur like menampilkan dua hati berbeda.
+/// (path bersama dari `feed_action_rail.dart`), tegak tanpa tilt/naik.
+/// Sebelumnya merah + miring −0.08 + rise = resep TikTok, dan bentuknya
+/// (Icons.favorite_rounded) beda dari heart rail sehingga dua gestur like
+/// menampilkan dua hati berbeda.
 class _BurstHeart extends StatelessWidget {
   const _BurstHeart();
 
@@ -4744,7 +4106,7 @@ class _BurstHeartPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final path = _buildFeedHeartPath(size);
+    final path = buildFeedHeartPath(size);
     final shadowPaint = Paint()
       ..color = Colors.black54
       ..style = PaintingStyle.fill
@@ -4755,197 +4117,6 @@ class _BurstHeartPainter extends CustomPainter {
       ..color = Colors.white
       ..style = PaintingStyle.fill;
     canvas.drawPath(path, fillPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _ReelsCommentGlyph extends StatelessWidget {
-  const _ReelsCommentGlyph();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      height: _feedActionIconSize,
-      width: _feedActionIconSize,
-      child: CustomPaint(painter: _CommentGlyphPainter()),
-    );
-  }
-}
-
-class _CommentGlyphPainter extends CustomPainter {
-  const _CommentGlyphPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final shadowPaint = Paint()
-      ..color = _feedActionShadowColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _feedActionStrokeWidth
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.8);
-    final paint = Paint()
-      ..color = _feedActionForegroundColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _feedActionStrokeWidth
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final path = Path()
-      ..moveTo(size.width * 0.519, size.height * 0.169)
-      ..cubicTo(
-        size.width * 0.731,
-        size.height * 0.169,
-        size.width * 0.879,
-        size.height * 0.300,
-        size.width * 0.879,
-        size.height * 0.469,
-      )
-      ..cubicTo(
-        size.width * 0.879,
-        size.height * 0.640,
-        size.width * 0.731,
-        size.height * 0.765,
-        size.width * 0.519,
-        size.height * 0.765,
-      )
-      ..cubicTo(
-        size.width * 0.473,
-        size.height * 0.765,
-        size.width * 0.431,
-        size.height * 0.758,
-        size.width * 0.392,
-        size.height * 0.746,
-      )
-      ..lineTo(size.width * 0.185, size.height * 0.850)
-      ..lineTo(size.width * 0.252, size.height * 0.660)
-      ..cubicTo(
-        size.width * 0.179,
-        size.height * 0.610,
-        size.width * 0.131,
-        size.height * 0.544,
-        size.width * 0.131,
-        size.height * 0.469,
-      )
-      ..cubicTo(
-        size.width * 0.131,
-        size.height * 0.300,
-        size.width * 0.279,
-        size.height * 0.169,
-        size.width * 0.519,
-        size.height * 0.169,
-      )
-      ..close();
-
-    canvas.drawPath(path.shift(const Offset(0, 1.2)), shadowPaint);
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _ReelsShareGlyph extends StatelessWidget {
-  const _ReelsShareGlyph();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      height: _feedActionIconSize,
-      width: _feedActionIconSize,
-      child: CustomPaint(painter: _ShareGlyphPainter()),
-    );
-  }
-}
-
-class _ShareGlyphPainter extends CustomPainter {
-  const _ShareGlyphPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final shadowPaint = Paint()
-      ..color = _feedActionShadowColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _feedActionStrokeWidth
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.8);
-    final paint = Paint()
-      ..color = _feedActionForegroundColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _feedActionStrokeWidth
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final path = Path()
-      ..moveTo(size.width * 0.167, size.height * 0.800)
-      ..cubicTo(
-        size.width * 0.183,
-        size.height * 0.512,
-        size.width * 0.350,
-        size.height * 0.333,
-        size.width * 0.563,
-        size.height * 0.333,
-      )
-      ..lineTo(size.width * 0.563, size.height * 0.154)
-      ..lineTo(size.width * 0.875, size.height * 0.433)
-      ..lineTo(size.width * 0.563, size.height * 0.713)
-      ..lineTo(size.width * 0.563, size.height * 0.538)
-      ..cubicTo(
-        size.width * 0.400,
-        size.height * 0.542,
-        size.width * 0.275,
-        size.height * 0.625,
-        size.width * 0.167,
-        size.height * 0.800,
-      );
-
-    canvas.drawPath(path.shift(const Offset(0, 1.2)), shadowPaint);
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _ReelsMoreGlyph extends StatelessWidget {
-  const _ReelsMoreGlyph();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      height: _feedActionIconSize,
-      width: _feedActionIconSize,
-      child: CustomPaint(painter: _MoreGlyphPainter()),
-    );
-  }
-}
-
-class _MoreGlyphPainter extends CustomPainter {
-  const _MoreGlyphPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final radius = size.width * 0.067;
-    final centers = [
-      Offset(size.width * 0.30, size.height * 0.50),
-      Offset(size.width * 0.50, size.height * 0.50),
-      Offset(size.width * 0.70, size.height * 0.50),
-    ];
-    final shadowPaint = Paint()
-      ..color = _feedActionShadowColor
-      ..style = PaintingStyle.fill
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.8);
-    final paint = Paint()
-      ..color = _feedActionForegroundColor
-      ..style = PaintingStyle.fill;
-
-    for (final center in centers) {
-      canvas.drawCircle(center.translate(0, 1.2), radius, shadowPaint);
-      canvas.drawCircle(center, radius, paint);
-    }
   }
 
   @override
@@ -4963,9 +4134,7 @@ class _MoreGlyphPainter extends CustomPainter {
 /// - Background: dark translucent (Colors.black 0.55) + backdrop blur.
 /// - No quick-add button (removed per spec) — full pill area tap-to-open.
 class _ProductCommerceOverlayGroup extends StatelessWidget {
-  final List<FeedProductLink> products;
   final FeedProductLink featuredProduct;
-  final int featuredIndex;
   final bool showProductCard;
   final VoidCallback onTap;
   final VoidCallback onBuy;
@@ -4973,9 +4142,7 @@ class _ProductCommerceOverlayGroup extends StatelessWidget {
   final VoidCallback onDismiss;
 
   const _ProductCommerceOverlayGroup({
-    required this.products,
     required this.featuredProduct,
-    required this.featuredIndex,
     required this.showProductCard,
     required this.onTap,
     required this.onBuy,
@@ -5018,12 +4185,10 @@ class _ProductCommerceOverlayGroup extends StatelessWidget {
                 )
               : const SizedBox.shrink(key: ValueKey('product-card-closed')),
         ),
-        _ProductAnchorCard(
-          products: products,
-          featuredProduct: featuredProduct,
-          featuredIndex: featuredIndex,
+        _feedProductAnchorCardFor(
+          featuredProduct,
           onTap: onTap,
-          onQuickAdd: onQuickAdd,
+          onAddToCart: onQuickAdd,
         ),
       ],
     );
@@ -5067,217 +4232,6 @@ class _DownArrowPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _ProductAnchorCard extends StatelessWidget {
-  final List<FeedProductLink> products;
-  final FeedProductLink featuredProduct;
-  final int featuredIndex;
-  final VoidCallback onTap;
-  final VoidCallback? onQuickAdd;
-
-  const _ProductAnchorCard({
-    required this.products,
-    required this.featuredProduct,
-    required this.featuredIndex,
-    required this.onTap,
-    this.onQuickAdd,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final product = featuredProduct;
-    final pricing = _feedProductPricing(product);
-    final badgeText = product.hasActiveDiscount
-        ? (product.isFlashSale
-            ? 'Flash Sale ${product.discountPercent}%'
-            : 'Diskon ${product.discountPercent}%')
-        : null;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (badgeText != null) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFF4D4F),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              badgeText,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 10.5,
-                fontWeight: FontWeight.w900,
-                height: 1,
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-        ],
-        Material(
-          color: Colors.transparent,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.52),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.16),
-                    width: 1,
-                  ),
-                ),
-                padding: const EdgeInsets.all(7),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        onTap: onTap,
-                        borderRadius: BorderRadius.circular(9),
-                        child: Row(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: SizedBox(
-                                width: 40,
-                                height: 40,
-                                child: (product.imageUrl != null &&
-                                        product.imageUrl!.isNotEmpty)
-                                    ? CachedNetworkImage(
-                                        imageUrl: product.imageUrl!,
-                                        fit: BoxFit.cover,
-                                        placeholder: (_, __) => Container(
-                                          color: Colors.white
-                                              .withValues(alpha: 0.08),
-                                        ),
-                                        errorWidget: (_, __, ___) => Container(
-                                          color: Colors.white
-                                              .withValues(alpha: 0.08),
-                                          child: const Icon(
-                                            Icons.image_not_supported_outlined,
-                                            color: Colors.white54,
-                                            size: 18,
-                                          ),
-                                        ),
-                                      )
-                                    : Container(
-                                        color: Colors.white
-                                            .withValues(alpha: 0.08),
-                                        child: const Icon(
-                                          Icons.shopping_bag_outlined,
-                                          color: Colors.white54,
-                                          size: 18,
-                                        ),
-                                      ),
-                              ),
-                            ),
-                            const SizedBox(width: 9),
-                            Expanded(
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 260),
-                                transitionBuilder: (child, animation) =>
-                                    FadeTransition(
-                                        opacity: animation, child: child),
-                                child: Column(
-                                  key: ValueKey(product.id),
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      product.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w800,
-                                        height: 1.15,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.baseline,
-                                      textBaseline: TextBaseline.alphabetic,
-                                      children: [
-                                        Text(
-                                          formatRupiah(pricing.displayPrice),
-                                          style: const TextStyle(
-                                            color: Color(0xFFFF5A5F),
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w900,
-                                            height: 1,
-                                          ),
-                                        ),
-                                        if (pricing.hasPromo) ...[
-                                          const SizedBox(width: 5),
-                                          Text(
-                                            formatRupiah(pricing.originalPrice),
-                                            style: TextStyle(
-                                              color: Colors.white
-                                                  .withValues(alpha: 0.5),
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w600,
-                                              height: 1,
-                                              decoration:
-                                                  TextDecoration.lineThrough,
-                                              decorationColor: Colors.white
-                                                  .withValues(alpha: 0.5),
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    _AnchorCartButton(onTap: onQuickAdd),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _AnchorCartButton extends StatelessWidget {
-  final VoidCallback? onTap;
-
-  const _AnchorCartButton({this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: _feedCommerceOrange,
-      borderRadius: BorderRadius.circular(9),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(9),
-        child: const SizedBox(
-          width: 34,
-          height: 34,
-          child: Icon(
-            Icons.add_shopping_cart_rounded,
-            color: Colors.white,
-            size: 18,
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _FeedTaggedProductsSheet extends StatelessWidget {
@@ -6469,6 +5423,32 @@ _FeedProductPricing _feedProductPricing(FeedProductLink product) {
   );
 }
 
+/// Bangun `FeedProductAnchorCard` (widget bersama, API primitif) dari
+/// `FeedProductLink` — memformat rupiah + teks badge diskon di sini,
+/// dipanggil dari `_PhotoCarouselPostViewState` & `_ProductCommerceOverlayGroup`.
+FeedProductAnchorCard _feedProductAnchorCardFor(
+  FeedProductLink product, {
+  required VoidCallback onTap,
+  VoidCallback? onAddToCart,
+}) {
+  final pricing = _feedProductPricing(product);
+  final badgeText = product.hasActiveDiscount
+      ? (product.isFlashSale
+          ? 'Flash Sale ${product.discountPercent}%'
+          : 'Diskon ${product.discountPercent}%')
+      : null;
+  return FeedProductAnchorCard(
+    title: product.name,
+    imageUrl: product.imageUrl,
+    priceText: formatRupiah(pricing.displayPrice),
+    strikePriceText:
+        pricing.hasPromo ? formatRupiah(pricing.originalPrice) : null,
+    discountBadgeText: badgeText,
+    onTap: onTap,
+    onAddToCart: onAddToCart,
+  );
+}
+
 Product _productFromFeedLink(FeedProductLink link) {
   final pricing = _feedProductPricing(link);
   return Product(
@@ -7166,6 +6146,6 @@ class _PopupCartButton extends StatelessWidget {
 Product? _typeHint() => null;
 
 // Note: _UploadChoiceSheet (split video/photo dulu) di-remove. Flow upload
-// sekarang unified via FeedUploadSheet.show() → FeedMediaPickerScreen
-// yang handle photo + video di satu picker IG-style. Konsisten dengan
-// entry point dari member_screen + member_posts_screen.
+// sekarang unified via FeedMediaPickerScreen.open() yang handle photo +
+// video di satu picker IG-style. Konsisten dengan entry point dari
+// member_screen + member_posts_screen.

@@ -19,6 +19,7 @@ import '../services/app_analytics.dart';
 import '../services/connectivity_service.dart';
 import '../services/search_service.dart';
 import '../services/product_service.dart';
+import '../state/feed_upload_store.dart';
 import '../state/recently_viewed_store.dart';
 import '../state/search_history_store.dart';
 import '../state/trending_placeholder_controller.dart';
@@ -37,8 +38,8 @@ import '../widgets/bottom_nav.dart';
 import '../widgets/flash_sale_countdown.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
+import '../features/feed/widgets/feed_upload_bar.dart';
 import '../widgets/product_grid_video.dart';
-import '../widgets/upload_relay_card.dart';
 import 'home_search_page.dart';
 import '../widgets/skeleton_product_card.dart';
 import 'package:shimmer/shimmer.dart';
@@ -146,6 +147,14 @@ class _HomeScreenState extends State<HomeScreen> {
           _globalNextRegenerateThreshold == 2 ? 3 : 2;
     }
     _exploreGeneration = _globalExploreGeneration;
+
+    // Cold-start resume check (Fase 2C-4) — bila ada upload feed yang
+    // sempat jalan lalu app di-kill, tawarkan "Lanjutkan" di FeedUploadBar.
+    // Post-frame supaya tidak block initState; idempotent (guard internal
+    // di store sekali per proses).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(feedUploadStore.checkForResumableUpload());
+    });
 
     _productsFuture = productService.fetchProducts(limit: 48);
     _scrollController.addListener(_onScroll);
@@ -672,7 +681,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         // Background upload relay card — visible HANYA saat ada
                         // upload feed post aktif. AnimatedSize handle collapse
                         // smooth saat task hilang (success auto-dismiss).
-                        const SliverToBoxAdapter(child: UploadRelayCard()),
+                        const SliverToBoxAdapter(child: FeedUploadBar()),
                         if (result?.fromApi == false)
                           const SliverToBoxAdapter(child: _ApiFallbackNotice()),
                         // Trust marquee SEKARANG bagian sticky header (ikut

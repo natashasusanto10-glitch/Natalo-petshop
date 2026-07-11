@@ -17,6 +17,7 @@ import '../services/report_service.dart';
 import '../state/feed_local_store.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
+import '../state/settings_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -1848,7 +1849,9 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
   VideoPlayerController? _controller;
   bool _initializing = false;
   String? _error;
-  bool _muted = true;
+  // Init dari preferensi mute global (sinkron dgn feed_screen) — bukan
+  // hardcode true, supaya konsisten dgn pilihan user di layar feed.
+  bool _muted = appSettingsStore.feedMuted;
   // Track viewport visibility to drive auto-play (≥60% visible).
   double _visibleFraction = 0;
 
@@ -1886,8 +1889,8 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
         return;
       }
       _controller = controller;
-      // Muted by default (Instagram-style auto-play). User unmute via
-      // sound button in the media corner.
+      // Muted state ikut preferensi global (appSettingsStore.feedMuted),
+      // sama seperti feed_screen — bukan selalu muted-by-default.
       await controller.setVolume(_muted ? 0 : 1);
       await controller.setLooping(true);
       setState(() => _initializing = false);
@@ -1941,6 +1944,9 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     if (controller == null || !controller.value.isInitialized) return;
     AppHaptics.tap();
     final nextMuted = !_muted;
+    // Write-back ke preferensi global (pola sama feed_screen :2947) —
+    // toggle mute di post detail ikut sinkron balik ke layar feed.
+    await appSettingsStore.setFeedMuted(nextMuted);
     await controller.setVolume(nextMuted ? 0 : 1);
     if (!mounted) return;
     setState(() => _muted = nextMuted);
@@ -2080,6 +2086,9 @@ class _FullScreenVideoRouteState extends State<_FullScreenVideoRoute> {
       await controller.initialize();
       if (!mounted) return;
       await controller.setLooping(true);
+      // Sengaja TIDAK ikut appSettingsStore.feedMuted — masuk fullscreen
+      // adalah aksi eksplisit user utk nonton dgn suara (ala IG tap-to-
+      // fullscreen), independen dari preferensi mute rail/inline feed.
       await controller.setVolume(1);
       await controller.play();
       setState(() => _initializing = false);

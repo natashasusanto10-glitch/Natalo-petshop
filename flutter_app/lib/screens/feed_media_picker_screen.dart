@@ -13,20 +13,29 @@ import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../models/feed_create_post_draft.dart';
+import '../services/app_analytics.dart';
+import '../utils/fade_route.dart';
 import '../utils/haptics.dart';
 import 'feed_new_post_screen.dart';
-import 'feed_video_upload_flow.dart';
+import 'feed_post/feed_video_edit_screen.dart';
 
 const int maxPhotoCarouselItems = 8;
 const int minVideoDurationSeconds = 1;
 const int maxVideoDurationSeconds = 60;
 
 const _bgBlack = Color(0xFF000000);
-const _natoloBlue = Color(0xFF2563EB);
+const _natoloBlue = Color(0xFF1E5BFF);
 const _textWhite = Color(0xFFFFFFFF);
 const _textMuted = Color(0xFF9CA3AF);
 const _selectedBorder = _natoloBlue;
 const _tileBg = Color(0xFF1F2937);
+
+/// Pesan format video tak didukung — dipakai saat VideoPlayerController
+/// gagal initialize (decode error) baik di preview (`_ensureVideoController`)
+/// maupun saat pick (`_selectVideo`), supaya user dapat pesan konsisten
+/// alih-alih spinner selamanya / "File belum bisa diproses" generik.
+const _unsupportedVideoFormatMessage =
+    'Format video ini belum didukung. Coba video lain atau rekam ulang dengan kamera.';
 
 // Saturation boost matrices DIHAPUS (v1.0.82) — bikin lag scroll grid
 // + lag swipe/pinch preview karena ColorFilter shader apply per-frame
@@ -247,6 +256,16 @@ class _PhotoCropTransform extends ChangeNotifier {
 class FeedMediaPickerScreen extends StatefulWidget {
   const FeedMediaPickerScreen({super.key});
 
+  /// Entry point flow posting — pengganti FeedUploadSheet.show() (dihapus).
+  static Future<bool?> open(BuildContext context) {
+    return Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => const FeedMediaPickerScreen(),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+
   @override
   State<FeedMediaPickerScreen> createState() => _FeedMediaPickerScreenState();
 }
@@ -272,6 +291,12 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   VideoPlayerController? _videoController;
   bool _videoControllerReady = false;
   String? _videoControllerPath;
+  /// Pesan error preview video (mis. format tak didukung / decode gagal
+  /// oleh VideoPlayerController). null = tidak ada error. Di-reset saat
+  /// ganti preview asset (`_setPreviewAsset`). Dipakai `_buildPreviewContent`
+  /// untuk render pesan inline (bukan spinner selamanya) + toast sekali
+  /// saat error pertama terjadi.
+  String? _previewVideoError;
 
   // Instagram-style preview frame:
   // - Default (fitOriginal=false): Frame 4:5, foto cover/fill (crop).
@@ -291,6 +316,10 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   Size? _previewImageSize;
   String? _previewImageSizeAssetId; // track asset yg size-nya sudah loaded.
   final Map<String, _PhotoCropTransform> _photoCropTransforms = {};
+  // Lookup asset by id — dipakai strip re-crop (Task 5B) untuk resolve
+  // AssetEntity dari id foto terpilih tanpa scan ulang _assets.
+  final Map<String, AssetEntity> _assetById = {};
+  bool _thumbStripHintShown = false;
 
   /// Computed preview aspect — 4:5 default, atau natural foto kalau
   /// fitOriginal mode aktif dan image size sudah loaded.
@@ -341,6 +370,9 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(
+      AppAnalytics.logEvent('feed_post_pick_opened', {'source': 'media_picker'}),
+    );
     _initPermissionAndLoad();
   }
 
@@ -434,6 +466,9 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   FeedPostContentType? _previewType;
 
   Future<void> _setPreviewAsset(AssetEntity asset) async {
+    // Defensif: pastikan lookup id→asset selalu up-to-date walau dipanggil
+    // dari path lain (bukan hanya _selectPhoto), mis. auto-preview initial.
+    _assetById[asset.id] = asset;
     final isVideo = asset.type == AssetType.video;
     // Pakai originFile (bukan asset.file) — preserve ICC color profile
     // bytes dari original photo (iPhone biasa simpan dengan P3 wide
@@ -456,6 +491,8 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         _previewImageSize = null;
         _previewImageSizeAssetId = null;
       }
+      // Reset error preview video — asset baru, error lama tidak relevan.
+      _previewVideoError = null;
     });
     if (isVideo) {
       // Generate thumbnail fallback (saat video belum ready).
@@ -489,16 +526,24 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     try {
       await controller.initialize();
       if (!mounted || _videoController != controller) return;
+      // Muted by design (ala IG) — ini preview lokal saat memilih klip di
+      // picker, bukan pemutaran feed; tidak perlu ikut appSettingsStore
+      // .feedMuted, selalu bisu supaya tidak mengagetkan saat scroll galeri.
       await controller.setVolume(0);
       await controller.setLooping(true);
       await controller.play();
-      setState(() => _videoControllerReady = true);
+      setState(() {
+        _videoControllerReady = true;
+        _previewVideoError = null;
+      });
     } catch (_) {
       await controller.dispose();
       if (!mounted || _videoController != controller) return;
       setState(() {
         _videoControllerReady = false;
+        _previewVideoError = _unsupportedVideoFormatMessage;
       });
+      _showToast(_unsupportedVideoFormatMessage);
     }
   }
 
@@ -636,6 +681,7 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         orderIndex: _selectedPhotos.length,
       );
       if (!mounted) return;
+      _assetById[asset.id] = asset;
       setState(() {
         _selectedPhotos = [..._selectedPhotos, item];
         _mode = FeedPostContentType.image;
@@ -663,7 +709,9 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     setState(() => _busyProcessing = true);
     try {
       final file = await asset.file;
-      if (file == null) throw 'no_file';
+      if (file == null) {
+        throw 'Video ini belum bisa dibuka. Coba pilih video lain.';
+      }
       final duration = asset.duration;
       if (duration < minVideoDurationSeconds) {
         throw 'Video terlalu pendek. Pilih video minimal 1 detik.';
@@ -686,10 +734,14 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _busyProcessing = false);
+      // error is String → pesan validasi kita sendiri (mis. durasi
+      // minimum) — tampilkan apa adanya. Selain itu (decode/plugin
+      // error lain, bukan String) → kemungkinan besar format video
+      // tak didukung; pakai pesan format yang konsisten dengan
+      // _ensureVideoController, bukan pesan generik "File belum bisa
+      // diproses" yang kurang actionable.
       _showToast(
-        error is String
-            ? error
-            : 'File belum bisa diproses. Coba pilih media lain.',
+        error is String ? error : _unsupportedVideoFormatMessage,
       );
     }
   }
@@ -730,6 +782,21 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     if (!_canProceed) return;
     AppHaptics.tap();
     if (_mode == FeedPostContentType.image) {
+      unawaited(
+        AppAnalytics.logEvent('feed_post_media_selected', {
+          'type': _selectedPhotos.length > 1 ? 'carousel' : 'photo',
+          'count': _selectedPhotos.length,
+        }),
+      );
+    } else if (_mode == FeedPostContentType.video) {
+      unawaited(
+        AppAnalytics.logEvent('feed_post_media_selected', {
+          'type': 'video',
+          'count': 1,
+        }),
+      );
+    }
+    if (_mode == FeedPostContentType.image) {
       // Prepare semua selected photos sesuai mode preview:
       // cover/fill → center-crop 4:5, fit/original → preserve rasio asli.
       setState(() => _busyProcessing = true);
@@ -748,8 +815,8 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
       await _videoController?.pause();
       final result = await Navigator.push<bool>(
         context,
-        MaterialPageRoute(
-          builder: (_) => FeedNewPostScreen(
+        fadeThroughRoute(
+          FeedNewPostScreen(
             draft: NewPostMediaDraft.photos(preparedFiles),
           ),
         ),
@@ -772,15 +839,12 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
       originalFilename: video.localPath.split(RegExp(r'[\\/]')).last,
       mimeType: _videoMimeType(video.localPath),
     );
-    // Video > 60 dtk → masuk Trim Video. <= 60 dtk → masuk Preview/Detail.
-    final needsTrim = duration.inSeconds > maxVideoDurationSeconds;
+    // Semua video (<=60s dan >60s) masuk Edit Video fullscreen tunggal
+    // (Fase 2B) — gabungan preview+trim, Next di sana push FeedNewPostScreen
+    // sendiri (tidak pernah pop dengan value), jadi wiring konsisten.
     final result = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(
-        builder: (_) => needsTrim
-            ? FeedVideoTrimScreen(draft: draft, returnResultOnNext: true)
-            : FeedVideoPreviewScreen(draft: draft),
-      ),
+      fadeThroughRoute(FeedVideoEditScreen(draft: draft)),
     );
     if (result == true && mounted) Navigator.pop(context, true);
   }
@@ -855,6 +919,8 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         // Diagonal button overlay toggle cover/fill <-> contain/fit,
         // seperti Instagram picker.
         SliverToBoxAdapter(child: _buildPreview()),
+        if (_mode == FeedPostContentType.image && _selectedPhotos.length >= 2)
+          SliverToBoxAdapter(child: _buildThumbStripSection()),
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
@@ -984,6 +1050,17 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
                           onTap: _togglePreviewFit,
                         ),
                       ),
+                    if (_mode == FeedPostContentType.image &&
+                        _selectedPhotos.length > 1 &&
+                        _previewAsset != null)
+                      Positioned(
+                        right: 10,
+                        top: 10,
+                        child: _PhotoCounterPill(
+                          current: _selectedPhotoOrderForCounter,
+                          total: _selectedPhotos.length,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -991,6 +1068,63 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
           ),
         );
       },
+    );
+  }
+
+  /// Urutan foto tersorot (1-based) di antara foto terpilih — untuk pill
+  /// counter "Foto X dari Y". Fallback 1 kalau tidak ketemu (mis. preview
+  /// sedang menampilkan foto belum terseleksi).
+  int get _selectedPhotoOrderForCounter {
+    final asset = _previewAsset;
+    if (asset == null) return 1;
+    final idx = _selectedPhotos.indexWhere((p) => p.id == asset.id);
+    return idx >= 0 ? idx + 1 : 1;
+  }
+
+  /// Tap thumbnail strip → bawa foto itu ke preview besar tanpa deselect
+  /// (setara re-crop carousel IG). [id] = SelectedMediaItem.id / AssetEntity.id.
+  Future<void> _recropSelectedPhoto(String id) async {
+    final asset = _assetById[id];
+    if (asset == null || _busyProcessing) return;
+    AppHaptics.selection();
+    await _setPreviewAsset(asset); // bawa ke preview besar; transform-nya ke-bind
+  }
+
+  /// Strip re-crop carousel (Task 5B) — tampil di bawah preview besar saat
+  /// mode foto & minimal 2 foto terpilih. Hint 1× muncul saat strip
+  /// pertama kali dirender di session ini.
+  Widget _buildThumbStripSection() {
+    final showHint = !_thumbStripHintShown;
+    if (showHint) {
+      // Set setelah build frame ini supaya hint hanya tampil sekali —
+      // hindari setState di dalam build().
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _thumbStripHintShown = true);
+      });
+    }
+    return Column(
+      children: [
+        const SizedBox(height: 12),
+        if (showHint)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Text(
+              'Ketuk foto untuk atur potongannya',
+              style: TextStyle(
+                color: _textMuted,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        _SelectedThumbStrip(
+          items: _selectedPhotos
+              .map((e) => (id: e.id, path: e.localPath))
+              .toList(),
+          activeId: _previewAsset?.id,
+          onTap: _recropSelectedPhoto,
+        ),
+      ],
     );
   }
 
@@ -1051,7 +1185,11 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
             Image.file(File(_previewThumb!), fit: BoxFit.cover)
           else
             const ColoredBox(color: _tileBg),
-          if (!ready)
+          // Spinner hanya selama masih ada harapan video bisa siap.
+          // Kalau sudah gagal init (_previewVideoError != null),
+          // spinner selamanya menyesatkan — tampilkan pesan inline
+          // sebagai gantinya (lihat cabang di bawah).
+          if (!ready && _previewVideoError == null)
             const Center(
               child: SizedBox(
                 width: 26,
@@ -1059,6 +1197,33 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
                 child: CircularProgressIndicator(
                   strokeWidth: 2.4,
                   color: _textWhite,
+                ),
+              ),
+            ),
+          if (!ready && _previewVideoError != null)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.videocam_off_rounded,
+                      color: _textMuted,
+                      size: 40,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      _previewVideoError!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: _textMuted,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1120,13 +1285,11 @@ class _MediaPickerHeader extends StatelessWidget {
       height: 52,
       child: Row(
         children: [
-          IconButton(
-            onPressed: onClose,
-            icon: const Icon(Icons.close_rounded, color: _textWhite, size: 26),
-          ),
+          const SizedBox(width: 14),
+          _HeaderCloseButton(onTap: onClose),
           const Expanded(
             child: Text(
-              'Buat Postingan',
+              'Post Baru',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: _textWhite,
@@ -1135,18 +1298,72 @@ class _MediaPickerHeader extends StatelessWidget {
               ),
             ),
           ),
-          TextButton(
-            onPressed: canProceed ? onNext : null,
-            child: Text(
-              'Next',
-              style: TextStyle(
-                color: canProceed ? _natoloBlue : _textMuted,
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-              ),
+          _HeaderNextButton(enabled: canProceed, onTap: onNext),
+          const SizedBox(width: 14),
+        ],
+      ),
+    );
+  }
+}
+
+/// Header close — lingkaran 36 frosted (match mockup v2).
+class _HeaderCloseButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _HeaderCloseButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.14),
+              width: 1,
             ),
           ),
-        ],
+          child: const Icon(Icons.close_rounded, color: _textWhite, size: 19),
+        ),
+      ),
+    );
+  }
+}
+
+/// Header next — lingkaran 36 biru solid, disabled = frosted + ikon muted.
+class _HeaderNextButton extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _HeaderNextButton({required this.enabled, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: enabled ? _natoloBlue : Colors.white.withValues(alpha: 0.08),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.chevron_right_rounded,
+            color: enabled ? _textWhite : _textMuted,
+            size: 22,
+          ),
+        ),
       ),
     );
   }
@@ -1304,20 +1521,29 @@ class _SelectionBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 22,
-      height: 22,
-      decoration: const BoxDecoration(
-        color: _natoloBlue,
-        shape: BoxShape.circle,
-      ),
-      child: Center(
-        child: Text(
-          '$order',
-          style: const TextStyle(
-            color: _textWhite,
-            fontSize: 11,
-            fontWeight: FontWeight.w900,
+    // Pop-in scale saat badge pertama muncul (foto baru dipilih) — element
+    // ini fresh setiap kali swap dari _UnselectedCircle, jadi animasi
+    // otomatis replay tiap seleksi baru tanpa perlu AnimationController.
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.6, end: 1.0),
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutBack,
+      builder: (_, scale, child) => Transform.scale(scale: scale, child: child),
+      child: Container(
+        width: 22,
+        height: 22,
+        decoration: const BoxDecoration(
+          color: _natoloBlue,
+          shape: BoxShape.circle,
+        ),
+        child: Center(
+          child: Text(
+            '$order',
+            style: const TextStyle(
+              color: _textWhite,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
           ),
         ),
       ),
@@ -1360,12 +1586,47 @@ class _DurationBadge extends StatelessWidget {
         color: Colors.black.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(6),
       ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.play_arrow_rounded, color: _textWhite, size: 9),
+          const SizedBox(width: 2),
+          Text(
+            '$mm:$ss',
+            style: const TextStyle(
+              color: _textWhite,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pill counter "Foto X dari Y" — top-right preview besar, tampil saat
+/// multi-foto (>1 selected).
+class _PhotoCounterPill extends StatelessWidget {
+  final int current;
+  final int total;
+
+  const _PhotoCounterPill({required this.current, required this.total});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(999),
+      ),
       child: Text(
-        '$mm:$ss',
+        'Foto $current dari $total',
         style: const TextStyle(
           color: _textWhite,
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
@@ -1774,6 +2035,70 @@ class _PhotoCropPreviewState extends State<_PhotoCropPreview> {
     );
   }
 }
+
+/// Strip thumbnail foto terpilih (carousel) — tap untuk membawa foto ke
+/// preview besar & atur crop-nya lagi. Presentasional murni.
+class _SelectedThumbStrip extends StatelessWidget {
+  final List<({String id, String path})> items; // urut = urutan slide
+  final String? activeId;                         // foto yang sedang di preview
+  final ValueChanged<String> onTap;               // tap thumbnail → recrop id
+  const _SelectedThumbStrip({
+    required this.items,
+    required this.activeId,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 60,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final item = items[index];
+          final active = item.id == activeId;
+          return GestureDetector(
+            key: ValueKey('thumb-${item.id}'),
+            onTap: () => onTap(item.id),
+            child: Container(
+              width: 44,
+              height: 56,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: active ? _natoloBlue : Colors.transparent,
+                  width: 2.5,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(7.5),
+                child: Image.file(
+                  File(item.path),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) =>
+                      const ColoredBox(color: _tileBg),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Seam untuk widget test — expose `_SelectedThumbStrip` tanpa perlu
+/// `photo_manager` (presentasional murni, testable terpisah).
+@visibleForTesting
+Widget debugSelectedThumbStrip({
+  required List<({String id, String path})> items,
+  required String? activeId,
+  required ValueChanged<String> onTap,
+}) =>
+    _SelectedThumbStrip(items: items, activeId: activeId, onTap: onTap);
 
 /// Floating fit/fill toggle button — IG-style icon di bottom-left preview.
 /// Tap = toggle cover/fill <-> contain/fit di frame 4:5 yang sama.
