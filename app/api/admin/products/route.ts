@@ -54,13 +54,19 @@ export async function GET(request: NextRequest) {
   );
   const q = sp.get("q")?.trim() ?? "";
   const categorySlug = sp.get("category")?.trim() ?? "";
-  const stockStatus = sp.get("stock_status")?.trim() ?? "";
 
-  const where: Prisma.ProductWhereInput = { hasVariants: false };
+  // This endpoint is used only for feed-post product tagging, so only
+  // active + in-stock products are taggable — including variant products
+  // that have at least one active, in-stock variant.
+  const where: Prisma.ProductWhereInput = {
+    isActive: true,
+    OR: [
+      { hasVariants: false, stock: { gt: 0 } },
+      { hasVariants: true, variants: { some: { isActive: true, stock: { gt: 0 } } } },
+    ],
+  };
   if (q) where.name = { contains: q, mode: "insensitive" };
   if (categorySlug) where.category = { slug: categorySlug };
-  if (stockStatus === "empty") where.stock = 0;
-  else if (stockStatus === "low") where.stock = { gt: 0, lte: 5 };
 
   const [products, total] = await Promise.all([
     prisma.product.findMany({
