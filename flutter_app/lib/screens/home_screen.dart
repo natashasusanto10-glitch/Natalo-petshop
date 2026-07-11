@@ -4311,20 +4311,17 @@ class _CategorySection extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           SizedBox(
-            height: 78,
+            height: 62,
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               scrollDirection: Axis.horizontal,
               itemCount: visible.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
               itemBuilder: (context, index) {
                 final category = visible[index];
                 return _PopularCategoryCard(
                   category: category,
                   icon: _iconFor(category.name),
-                  // Kartu 76% lebar layar → kartu berikutnya "peek" sebagai
-                  // affordance scroll (spec). Hard scroll-snap = follow-up.
-                  width: MediaQuery.sizeOf(context).width * 0.76,
                   onTap: () => onTap(category.name),
                 );
               },
@@ -4336,19 +4333,19 @@ class _CategorySection extends StatelessWidget {
   }
 }
 
-/// Kartu kategori horizontal (spec): thumbnail 58×58 foto produk (cover +
-/// overlay putih 12%) + nama; lebar kartu ~76% layar (peek). Fallback WAJIB:
-/// imageUrl null / gambar rusak → icon kategori di latar biru muda.
+/// Kartu kategori horizontal (Opsi A): chip HUG-CONTENT — lebar mengikuti
+/// teks (label pendek = kartu pendek) supaya beberapa kartu muat sekaligus
+/// tanpa ruang kosong. Thumbnail 46×46 foto produk (cover + overlay putih
+/// 12%) + nama. Fallback WAJIB: imageUrl null / gambar rusak → icon kategori
+/// di latar biru muda.
 class _PopularCategoryCard extends StatelessWidget {
   final HomeCategory category;
   final IconData icon;
-  final double width;
   final VoidCallback onTap;
 
   const _PopularCategoryCard({
     required this.category,
     required this.icon,
-    required this.width,
     required this.onTap,
   });
 
@@ -4385,47 +4382,50 @@ class _PopularCategoryCard extends StatelessWidget {
           )
         : fallback();
 
-    return SizedBox(
-      width: width,
-      child: Material(
-        color: scheme.surface,
+    return Material(
+      color: scheme.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: scheme.outlineVariant),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 58,
-                  height: 58,
-                  clipBehavior: Clip.antiAlias,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: scheme.outlineVariant),
-                  ),
-                  child: thumb,
+        child: Container(
+          // Padding kanan > kiri: teks tidak mepet tepi kartu.
+          padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: scheme.outlineVariant),
+          ),
+          // mainAxisSize.min = kartu hug-content (ikut lebar teks).
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: scheme.outlineVariant),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    category.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: scheme.onSurface,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
+                child: thumb,
+              ),
+              const SizedBox(width: 10),
+              // Cap lebar teks supaya nama sangat panjang tetap ellipsis
+              // (kartu tidak melebar tak terkendali) — mayoritas label pendek.
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 180),
+                child: Text(
+                  category.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
