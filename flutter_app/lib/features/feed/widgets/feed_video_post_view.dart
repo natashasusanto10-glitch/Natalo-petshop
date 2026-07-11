@@ -2070,12 +2070,6 @@ class _PausedControlButtonState extends State<_PausedControlButton> {
   }
 }
 
-/// Heart burst double-tap ala IG — fill PUTIH, bentuk sama dengan rail
-/// (path bersama dari `feed_action_rail.dart`), tegak tanpa tilt/naik.
-/// Sebelumnya merah + miring −0.08 + rise = resep TikTok, dan bentuknya
-/// (Icons.favorite_rounded) beda dari heart rail sehingga dua gestur like
-/// menampilkan dua hati berbeda.
-
 class _ProductCommerceOverlayGroup extends StatelessWidget {
   final FeedProductLink featuredProduct;
   final bool showProductCard;
