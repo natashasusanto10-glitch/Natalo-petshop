@@ -1,15 +1,14 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/feed_create_post_draft.dart';
 import '../models/product.dart';
 import '../services/app_analytics.dart';
 import '../services/feed_service.dart';
+import '../state/feed_draft_store.dart';
 import '../state/feed_upload_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -19,7 +18,6 @@ import 'feed_post/feed_cover_picker_screen.dart';
 import 'feed_post/feed_post_preview_screen.dart'
     show FeedPostPreviewScreen, FeedPreviewResult;
 
-const _newPostDraftKey = 'natalo-feed-upload-pending';
 const _newPostBlue = Color(0xFF1E5BFF);
 const _newPostInk = Color(0xFF101828);
 const _newPostMuted = Color(0xFF667085);
@@ -78,11 +76,18 @@ class FeedNewPostScreen extends StatefulWidget {
   /// pas resume draft. Empty = no products tagged.
   final List<String> prefilledProductIds;
 
+  /// Id draft (dari `FeedDraftStore`) yang sedang di-resume — bila layar
+  /// ini dibuka dari restore draft (bukan compose baru), simpan ulang
+  /// harus UPSERT ke id yang sama (bukan bikin draft duplikat), dan
+  /// publish sukses menghapus draft ini.
+  final String? resumeDraftId;
+
   const FeedNewPostScreen({
     super.key,
     required this.draft,
     this.prefilledCaption,
     this.prefilledProductIds = const [],
+    this.resumeDraftId,
   });
 
   @override
@@ -102,6 +107,12 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   bool _savingDraft = false;
   String? _error;
   int _photoIndex = 0;
+
+  /// Id draft aktif — null = belum pernah disimpan sebagai draft. Di-set
+  /// dari `widget.resumeDraftId` (kalau restore) atau dibuat baru saat
+  /// `_saveDraftAndExit` pertama kali dipanggil, supaya save berikutnya
+  /// UPSERT (bukan duplikat).
+  String? _draftId;
 
   bool get _isVideo => widget.draft.type == NewPostMediaType.video;
 
@@ -123,6 +134,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       }),
     );
     _videoDraft = widget.draft.videoDraft;
+    _draftId = widget.resumeDraftId;
     // Restore caption + tagged products dari draft (kalau ada).
     if (widget.prefilledCaption != null &&
         widget.prefilledCaption!.isNotEmpty) {
@@ -354,6 +366,8 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
         'type': 'video',
         'product_count': productIds.length,
       }));
+      final draftId = _draftId;
+      if (draftId != null) unawaited(feedDraftStore.remove(draftId));
       _goHome();
       return;
     }
@@ -375,6 +389,8 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       'type': files.length > 1 ? 'carousel' : 'photo',
       'product_count': productIds.length,
     }));
+    final draftId = _draftId;
+    if (draftId != null) unawaited(feedDraftStore.remove(draftId));
     _goHome();
   }
 
@@ -388,23 +404,28 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
     if (_savingDraft) return;
     AppHaptics.tap();
     setState(() => _savingDraft = true);
-    final prefs = await SharedPreferences.getInstance();
-    final payload = {
-      'type': _isVideo ? 'video' : 'image',
-      'caption': _captionController.text.trim(),
-      'productIds': _selectedProductIds.toList(),
-      'media': _isVideo
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // Keep id sama kalau ini resume/edit ulang draft — upsert bukan
+    // duplikat. Draft baru → id fresh, langsung di-keep di state supaya
+    // save berikutnya (atau remove saat publish sukses) pakai id yang sama.
+    final draftId = _draftId ?? 'draft-$now';
+    _draftId = draftId;
+    final draft = FeedDraft(
+      id: draftId,
+      type: _isVideo ? 'video' : 'image',
+      caption: _captionController.text.trim(),
+      productIds: _selectedProductIds.toList(),
+      mediaPaths: _isVideo
           ? [_videoDraft?.finalVideoPath].whereType<String>().toList()
           : widget.draft.photoFiles.map((file) => file.path).toList(),
-      'thumbnailPath': _videoDraft?.thumbnailPath,
-      'trimStartMs': _videoDraft?.trimStart?.inMilliseconds,
-      'userPickedCover': _videoDraft?.userPickedCover,
-      'savedAt': DateTime.now().millisecondsSinceEpoch,
-    };
-    await prefs.setString(
-      _newPostDraftKey,
-      'local|post-new|${jsonEncode(payload)}|${DateTime.now().millisecondsSinceEpoch}',
+      thumbnailPath: _videoDraft?.thumbnailPath,
+      trimStartMs: _videoDraft?.trimStart?.inMilliseconds,
+      trimmedDurationMs: _videoDraft?.trimmedDuration?.inMilliseconds,
+      originalDurationMs: _videoDraft?.originalDuration?.inMilliseconds,
+      userPickedCover: _videoDraft?.userPickedCover ?? false,
+      savedAtMs: now,
     );
+    await feedDraftStore.save(draft);
     if (!mounted) return;
     setState(() => _savingDraft = false);
     Navigator.pop(context, false);

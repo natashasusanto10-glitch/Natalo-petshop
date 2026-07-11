@@ -1,17 +1,18 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
+import '../models/feed_create_post_draft.dart';
 import '../models/feed_post.dart';
 import '../services/feed_service.dart';
+import '../state/feed_draft_store.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
+import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import 'feed_media_picker_screen.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
@@ -20,7 +21,6 @@ import 'feed_new_post_screen.dart';
 import 'member_post_detail_screen.dart';
 
 const _brandBlue = NataloColors.primary;
-const _draftPendingUploadKey = 'natalo-feed-upload-pending';
 
 class MemberPostsScreen extends StatefulWidget {
   const MemberPostsScreen({super.key});
@@ -31,10 +31,8 @@ class MemberPostsScreen extends StatefulWidget {
 
 class _MemberPostsScreenState extends State<MemberPostsScreen> {
   final _scrollController = ScrollController();
-  Timer? _draftAutoHideTimer;
   int _filterIndex = 0;
-  int _draftCount = 0;
-  bool _showDraftReminder = true;
+  List<FeedDraft> _drafts = const [];
   List<FeedPost> _allPosts = const [];
   bool _loading = true;
   // Pagination state:
@@ -67,18 +65,14 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
   @override
   void initState() {
     super.initState();
-    _scrollController
-      ..addListener(_hideDraftOnScroll)
-      ..addListener(_handleScrollLoadMore);
+    _scrollController.addListener(_handleScrollLoadMore);
     _loadPosts();
-    _loadLocalDrafts();
+    _loadDrafts();
   }
 
   @override
   void dispose() {
-    _draftAutoHideTimer?.cancel();
     _scrollController
-      ..removeListener(_hideDraftOnScroll)
       ..removeListener(_handleScrollLoadMore)
       ..dispose();
     super.dispose();
@@ -160,46 +154,15 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     }
   }
 
-  Future<void> _loadLocalDrafts() async {
+  Future<void> _loadDrafts() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_draftPendingUploadKey);
-      final hasRecentPendingUpload = _isRecentPendingDraft(raw);
+      final drafts = await feedDraftStore.load();
       if (!mounted) return;
-      setState(() {
-        _draftCount = hasRecentPendingUpload ? 1 : 0;
-        _showDraftReminder = true;
-      });
-      if (hasRecentPendingUpload) _scheduleDraftAutoHide();
+      setState(() => _drafts = drafts);
     } catch (_) {
       if (!mounted) return;
-      setState(() => _draftCount = 0);
+      setState(() => _drafts = const []);
     }
-  }
-
-  bool _isRecentPendingDraft(String? raw) {
-    if (raw == null || raw.trim().isEmpty) return false;
-    final parts = raw.split('|');
-    if (parts.length < 5) return true;
-    final savedAtMs = int.tryParse(parts.last);
-    if (savedAtMs == null) return true;
-    final savedAt = DateTime.fromMillisecondsSinceEpoch(savedAtMs);
-    return DateTime.now().difference(savedAt) < const Duration(hours: 24);
-  }
-
-  void _hideDraftOnScroll() {
-    if (_draftCount == 0 || !_showDraftReminder) return;
-    if (_scrollController.offset <= 10) return;
-    _draftAutoHideTimer?.cancel();
-    setState(() => _showDraftReminder = false);
-  }
-
-  void _scheduleDraftAutoHide() {
-    _draftAutoHideTimer?.cancel();
-    _draftAutoHideTimer = Timer(const Duration(seconds: 7), () {
-      if (!mounted || _draftCount == 0 || !_showDraftReminder) return;
-      setState(() => _showDraftReminder = false);
-    });
   }
 
   List<FeedPost> get _visiblePosts {
@@ -220,90 +183,113 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     if (uploaded == true) {
       await _loadPosts();
     }
-    await _loadLocalDrafts();
+    await _loadDrafts();
   }
 
-  Future<void> _openDraft() async {
-    AppHaptics.tap();
-    _draftAutoHideTimer?.cancel();
-    setState(() => _showDraftReminder = false);
-    // Try restore composer draft (caption + photos + tagged products).
-    // Kalau format-nya video-upload-pending (lain), fallback ke upload sheet.
-    final restored = await _tryRestoreComposerDraft();
-    if (restored) return;
-    await _openUpload();
-  }
-
-  /// Parse draft dari SharedPreferences, kalau format-nya composer draft
-  /// (`local|post-new|<json>|<ts>`), rekonstruksi File list + push langsung
-  /// ke FeedNewPostScreen dengan caption + tagged products pre-filled.
-  ///
-  /// Return true kalau sukses restore + nav ke editor. False kalau:
-  ///  - Tidak ada draft
-  ///  - Format-nya video-upload-pending (5 parts pipe-separated)
-  ///  - JSON corrupt
-  ///  - Semua file foto sudah hilang dari device (user delete di galeri)
-  ///  - Video draft (TODO: support resume video composer)
-  Future<bool> _tryRestoreComposerDraft() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_draftPendingUploadKey);
-      if (raw == null || !raw.startsWith('local|post-new|')) return false;
-
-      // Split: ["local", "post-new", "<jsonStr...>", "<ts>"]
-      // JSON itself bisa contain '|', jadi rejoin parts antara index 2
-      // sampai parts.length - 1 sebagai jsonStr.
-      final parts = raw.split('|');
-      if (parts.length < 4) return false;
-      final jsonStr = parts.sublist(2, parts.length - 1).join('|');
-      final payload = jsonDecode(jsonStr) as Map<String, dynamic>;
-
-      final type = payload['type'] as String?;
-      final caption = (payload['caption'] as String?) ?? '';
-      final productIds = (payload['productIds'] as List?)?.cast<String>() ??
-          const <String>[];
-      final mediaPaths = (payload['media'] as List?)?.cast<String>() ??
-          const <String>[];
-
-      // Photo composer drafts only — video drafts skip dulu (butuh
-      // FeedCreatePostDraft rekonstruksi yang lebih kompleks).
-      if (type != 'image' || mediaPaths.isEmpty) return false;
-
-      // Verify files masih ada — user mungkin sudah hapus dari galeri /
-      // temp dir di-clean OS. Kalau semua file hilang, clear draft.
-      final files = <File>[];
-      for (final path in mediaPaths) {
-        final file = File(path);
-        if (await file.exists()) files.add(file);
-      }
-      if (files.isEmpty) {
-        await prefs.remove(_draftPendingUploadKey);
-        return false;
-      }
-      if (!mounted) return false;
-
-      final result = await Navigator.push<bool>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => FeedNewPostScreen(
-            draft: NewPostMediaDraft.photos(files),
-            prefilledCaption: caption,
-            prefilledProductIds: productIds,
-          ),
-        ),
-      );
-      // Clear draft kalau user sukses publish (result == true). Kalau
-      // user save-draft-and-exit lagi, _saveDraftAndExit akan tulis ulang.
-      if (result == true) {
-        await prefs.remove(_draftPendingUploadKey);
-        await _loadPosts();
-      }
-      await _loadLocalDrafts();
-      return true;
-    } catch (_) {
-      // Parse error / IO error — silent fallback ke upload sheet.
-      return false;
+  /// Tap kartu draft sehat → rekonstruksi editor state + push
+  /// `FeedNewPostScreen` dengan `resumeDraftId` supaya save berikutnya
+  /// upsert (bukan duplikat). Setelah kembali (publish sukses / save
+  /// ulang / batal), reload daftar draft + postingan supaya grid & rail
+  /// sinkron.
+  Future<void> _openDraft(FeedDraft draft) async {
+    if (draft.broken) {
+      await _confirmDeleteDraft(draft);
+      return;
     }
+    AppHaptics.tap();
+    if (draft.type == 'video') {
+      await _restoreVideoDraft(draft);
+    } else {
+      await _restorePhotoDraft(draft);
+    }
+    await _loadPosts();
+    await _loadDrafts();
+  }
+
+  Future<void> _restorePhotoDraft(FeedDraft draft) async {
+    final files = <File>[];
+    for (final path in draft.mediaPaths) {
+      final file = File(path);
+      if (await file.exists()) files.add(file);
+    }
+    if (files.isEmpty || !mounted) return;
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FeedNewPostScreen(
+          draft: NewPostMediaDraft.photos(files),
+          prefilledCaption: draft.caption,
+          prefilledProductIds: draft.productIds,
+          resumeDraftId: draft.id,
+        ),
+      ),
+    );
+  }
+
+  /// Rekonstruksi `FeedCreatePostDraft` dari `FeedDraft` tersimpan —
+  /// menutup skip hardcoded video draft (dulu langsung `return false` di
+  /// _tryRestoreComposerDraft). `originalDurationMs`/`trimmedDurationMs`
+  /// disimpan sejak `_saveDraftAndExit` (feed_new_post_screen.dart) supaya
+  /// validasi durasi 1..60s + trim guard di `_upload` tetap jalan.
+  Future<void> _restoreVideoDraft(FeedDraft draft) async {
+    if (draft.mediaPaths.isEmpty) return;
+    final videoPath = draft.mediaPaths.first;
+    if (!await File(videoPath).exists() || !mounted) return;
+    final originalMs = draft.originalDurationMs;
+    final reconstructed = FeedCreatePostDraft(
+      localVideoPath: videoPath,
+      thumbnailPath: draft.thumbnailPath,
+      originalDuration:
+          originalMs != null ? Duration(milliseconds: originalMs) : null,
+      trimmedDuration: draft.trimmedDurationMs != null
+          ? Duration(milliseconds: draft.trimmedDurationMs!)
+          : null,
+      trimStart: draft.trimStartMs != null
+          ? Duration(milliseconds: draft.trimStartMs!)
+          : null,
+      caption: draft.caption,
+      taggedProductIds: draft.productIds,
+      userPickedCover: draft.userPickedCover,
+    );
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FeedNewPostScreen(
+          draft: NewPostMediaDraft.video(reconstructed),
+          prefilledCaption: draft.caption,
+          prefilledProductIds: draft.productIds,
+          resumeDraftId: draft.id,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteDraft(FeedDraft draft) async {
+    AppHaptics.tap();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Hapus draft?'),
+        content: Text(
+          draft.broken
+              ? 'Media draft ini sudah tidak ditemukan di perangkat. Hapus draft ini?'
+              : 'Draft yang dihapus tidak bisa dikembalikan.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await feedDraftStore.remove(draft.id);
+    await _loadDrafts();
   }
 
   void _onFilterChanged(int index) {
@@ -329,7 +315,6 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
   Widget build(BuildContext context) {
     final visiblePosts = _visiblePosts;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
-    final showDraft = _draftCount > 0 && _showDraftReminder;
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -368,7 +353,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
       body: NataloPawRefreshIndicator(
         onRefresh: () async {
           await _loadPosts();
-          await _loadLocalDrafts();
+          await _loadDrafts();
         },
         child: CustomScrollView(
           controller: _scrollController,
@@ -381,16 +366,12 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const _NlFeedIntro(),
-                    if (showDraft) ...[
-                      const SizedBox(height: 14),
-                      _DraftReminderBanner(
-                        count: _draftCount,
-                        onContinue: _openDraft,
-                        onClose: () {
-                          AppHaptics.tap();
-                          _draftAutoHideTimer?.cancel();
-                          setState(() => _showDraftReminder = false);
-                        },
+                    if (_drafts.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      _DraftSection(
+                        drafts: _drafts,
+                        onTap: _openDraft,
+                        onDelete: _confirmDeleteDraft,
                       ),
                     ],
                   ],
@@ -508,86 +489,228 @@ class _NlFeedIntro extends StatelessWidget {
   }
 }
 
-class _DraftReminderBanner extends StatelessWidget {
-  final int count;
-  final VoidCallback onContinue;
-  final VoidCallback onClose;
+/// Bagian "Draft" — header kecil + rail horizontal kartu draft. Muncul
+/// kalau `FeedDraftStore` punya ≥1 entry (maks 5, terlama tergeser di
+/// store). Setiap kartu 72×96 (thumbnail) + label tipe/umur di bawah.
+class _DraftSection extends StatelessWidget {
+  final List<FeedDraft> drafts;
+  final ValueChanged<FeedDraft> onTap;
+  final ValueChanged<FeedDraft> onDelete;
 
-  const _DraftReminderBanner({
-    required this.count,
-    required this.onContinue,
-    required this.onClose,
+  const _DraftSection({
+    required this.drafts,
+    required this.onTap,
+    required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onContinue,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF2F7FF),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFD9E9FF)),
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Draft (${drafts.length})',
+          style: TextStyle(
+            color: cs.onSurface,
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
           ),
-          child: Row(
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 130,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: drafts.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final draft = drafts[index];
+              return _DraftCard(
+                draft: draft,
+                onTap: () => onTap(draft),
+                onDelete: () => onDelete(draft),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DraftCard extends StatelessWidget {
+  final FeedDraft draft;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  const _DraftCard({
+    required this.draft,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  String? get _thumbPath {
+    if (draft.thumbnailPath != null && draft.thumbnailPath!.isNotEmpty) {
+      return draft.thumbnailPath;
+    }
+    if (draft.mediaPaths.isNotEmpty) return draft.mediaPaths.first;
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isVideo = draft.type == 'video';
+    final thumb = _thumbPath;
+    return SizedBox(
+      width: 78,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDDEBFF),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.folder_copy_rounded,
-                  color: _brandBlue,
-                  size: 21,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+              SizedBox(
+                width: 72,
+                height: 96,
+                child: Stack(
+                  fit: StackFit.expand,
                   children: [
-                    Text(
-                      'Ada $count draft yang bisa kamu lanjutkan',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF0F172A),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: thumb != null
+                          ? Image.file(
+                              File(thumb),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  const _DraftThumbFallback(),
+                            )
+                          : const _DraftThumbFallback(),
+                    ),
+                    if (draft.broken)
+                      Positioned.fill(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: ColoredBox(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            child: const Center(
+                              child: Icon(
+                                Icons.error_outline_rounded,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      left: 5,
+                      top: 5,
+                      child: _DraftTypeBadge(
+                        icon: isVideo
+                            ? Icons.videocam_rounded
+                            : Icons.photo_rounded,
+                        label: !isVideo && draft.mediaPaths.length > 1
+                            ? '${draft.mediaPaths.length} foto'
+                            : null,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Lanjutkan',
-                      style: TextStyle(
-                        color: _brandBlue,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
+                    Positioned(
+                      right: 3,
+                      top: 3,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: onDelete,
+                          borderRadius: BorderRadius.circular(999),
+                          child: Container(
+                            width: 22,
+                            height: 22,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.42),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.close_rounded,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-              IconButton(
-                onPressed: onClose,
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(
-                  Icons.close_rounded,
-                  color: Color(0xFF0F172A),
-                  size: 22,
+              const SizedBox(height: 5),
+              Text(
+                formatRelativeTime(
+                  DateTime.fromMillisecondsSinceEpoch(draft.savedAtMs),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Pill badge tipe media di pojok kartu draft — tint lembut, bukan fill
+/// saturated (match memory `design-subtle-badges`).
+class _DraftTypeBadge extends StatelessWidget {
+  final IconData icon;
+  final String? label;
+
+  const _DraftTypeBadge({required this.icon, this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 11),
+          if (label != null) ...[
+            const SizedBox(width: 3),
+            Text(
+              label!,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DraftThumbFallback extends StatelessWidget {
+  const _DraftThumbFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return const ColoredBox(
+      color: Color(0xFF161A24),
+      child: Center(
+        child: Icon(Icons.image_outlined, color: Colors.white38, size: 22),
       ),
     );
   }
