@@ -1,6 +1,4 @@
-import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
 
 import '../features/feed/widgets/feed_video_post_view.dart';
 import '../models/feed_post.dart';
@@ -27,8 +25,6 @@ class ScopedVideoFeedScreen extends StatefulWidget {
 class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
   late final PageController _pageController;
   late int _activeIndex;
-  final Map<String, VideoPlayerController> _preloadedControllers = {};
-  final Map<String, CachedVideoPlayerPlus> _preloadedCachedPlayers = {};
 
   @override
   void initState() {
@@ -41,16 +37,6 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
   @override
   void dispose() {
     _pageController.dispose();
-    for (final c in _preloadedCachedPlayers.values) {
-      c.dispose();
-    }
-    for (final c in _preloadedControllers.values) {
-      // Only dispose controllers that were never claimed by a
-      // CachedVideoPlayerPlus wrapper above (avoid double-dispose).
-      if (!_preloadedCachedPlayers.values.any((w) => w.controller == c)) {
-        c.dispose();
-      }
-    }
     super.dispose();
   }
 
@@ -76,8 +62,8 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
               return FeedVideoPostView(
                 post: post,
                 isActive: index == _activeIndex,
-                preloadedController: _preloadedControllers.remove(post.id),
-                preloadedCachedPlayer: _preloadedCachedPlayers.remove(post.id),
+                preloadedController: null,
+                preloadedCachedPlayer: null,
                 onOverlayStateChanged: (_) {},
                 onMediaZoomChanged: (_) {},
               );

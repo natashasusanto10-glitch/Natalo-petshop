@@ -777,15 +777,32 @@ class _PostFeedItemState extends State<_PostFeedItem>
                   final renderBox = anchorKey.currentContext?.findRenderObject() as RenderBox?;
                   if (renderBox == null) return;
                   final origin = renderBox.localToGlobal(Offset.zero) & renderBox.size;
-                  late OverlayEntry entry;
-                  entry = OverlayEntry(
-                    builder: (context) => _FullscreenInlineVideoOverlay(
-                      controller: controller,
-                      originRect: origin,
-                      onClose: () => entry.remove(),
+                  // Pushed as a transparent, zero-duration Navigator route
+                  // (not an OverlayEntry) so Android hardware-back closes
+                  // the fullscreen overlay first instead of popping the
+                  // underlying screen (which would dispose the shared
+                  // video controller while the overlay is still painting).
+                  Navigator.of(context).push(
+                    PageRouteBuilder<void>(
+                      opaque: false,
+                      barrierColor: Colors.transparent,
+                      transitionDuration: Duration.zero,
+                      reverseTransitionDuration: Duration.zero,
+                      // The overlay's own build returns a `Positioned` (for
+                      // the morph animation), which needs an immediate
+                      // `Stack` ancestor — the route content isn't placed
+                      // directly inside one, so provide it explicitly.
+                      pageBuilder: (context, animation, secondaryAnimation) =>
+                          Stack(
+                        children: [
+                          _FullscreenInlineVideoOverlay(
+                            controller: controller,
+                            originRect: origin,
+                          ),
+                        ],
+                      ),
                     ),
                   );
-                  Overlay.of(context, rootOverlay: true).insert(entry);
                 },
               ),
               if (post.isVideo)
@@ -2093,12 +2110,10 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
 class _FullscreenInlineVideoOverlay extends StatefulWidget {
   final VideoPlayerController controller;
   final Rect originRect;
-  final VoidCallback onClose;
 
   const _FullscreenInlineVideoOverlay({
     required this.controller,
     required this.originRect,
-    required this.onClose,
   });
 
   @override
@@ -2111,6 +2126,7 @@ class _FullscreenInlineVideoOverlayState extends State<_FullscreenInlineVideoOve
   late final Animation<double> _morph;
   double? _previousVolume;
   bool _muted = false;
+  bool _closing = false;
 
   @override
   void initState() {
@@ -2129,9 +2145,13 @@ class _FullscreenInlineVideoOverlayState extends State<_FullscreenInlineVideoOve
   }
 
   Future<void> _close() async {
+    if (_closing) return;
+    _closing = true;
     await _morphController.reverse();
+    if (!mounted) return;
     await widget.controller.setVolume(_previousVolume ?? 0);
-    widget.onClose();
+    if (!mounted) return;
+    Navigator.of(context).pop();
   }
 
   void _toggleMute() {
@@ -2148,6 +2168,16 @@ class _FullscreenInlineVideoOverlayState extends State<_FullscreenInlineVideoOve
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _close();
+      },
+      child: _buildMorph(context, screenSize),
+    );
+  }
+
+  Widget _buildMorph(BuildContext context, Size screenSize) {
     return AnimatedBuilder(
       animation: _morph,
       builder: (context, child) {

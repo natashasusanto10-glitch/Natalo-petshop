@@ -2411,16 +2411,21 @@ class _CustomerPostCard extends StatelessWidget {
     // Video path — fetch every video sibling in this "Postingan Terkait"
     // section so swipe stays scoped to videos tagged to this product.
     final videoSiblings = allPosts.where((p) => p.isVideo).toList();
-    final fetched = <FeedPost>[];
+    // Fetch all siblings in parallel (order-preserving) instead of a
+    // sequential await-loop — avoids N serial round-trips behind the
+    // modal spinner.
     var anyFailed = false;
-    for (final sibling in videoSiblings) {
-      try {
-        final fp = await feedService.fetchPostById(sibling.id);
-        if (fp != null) fetched.add(fp);
-      } catch (_) {
-        anyFailed = true;
-      }
-    }
+    final results = await Future.wait(
+      videoSiblings.map((sibling) async {
+        try {
+          return await feedService.fetchPostById(sibling.id);
+        } catch (_) {
+          anyFailed = true;
+          return null;
+        }
+      }),
+    );
+    final fetched = results.whereType<FeedPost>().toList();
 
     rootNav.pop();
     if (!context.mounted) return;
@@ -2436,6 +2441,9 @@ class _CustomerPostCard extends StatelessWidget {
       return;
     }
 
+    // If the tapped post specifically failed to fetch (or was filtered
+    // out as null), tappedIndex is -1 and we fall back to the first
+    // successfully-fetched video — a cosmetic edge case only.
     final tappedIndex = fetched.indexWhere((fp) => fp.id == post.id);
     await pushScaledVideoFeed(
       context,
