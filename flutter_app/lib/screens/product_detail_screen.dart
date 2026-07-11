@@ -2240,7 +2240,7 @@ class _ProductCustomerPostsSection extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'Postingan Pelanggan',
+                  'Postingan Terkait',
                   style: TextStyle(
                     color: cs.onSurface,
                     fontSize: 17,
@@ -2261,7 +2261,7 @@ class _ProductCustomerPostsSection extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Foto dan video dari pelanggan yang men-tag produk ini.',
+            'Foto dan video dari Natalo & pelanggan yang men-tag produk ini.',
             style: TextStyle(
               color: cs.onSurfaceVariant,
               fontSize: 12.5,
@@ -2311,6 +2311,10 @@ class _CustomerPostLoadingList extends StatelessWidget {
     );
   }
 }
+
+/// Warna official account — sengaja sama dengan `_officialGold` di
+/// feed_screen.dart (private per-library, tidak bisa di-import).
+const _customerPostOfficialGold = Color(0xFFF4D47C);
 
 class _CustomerPostCard extends StatelessWidget {
   final _ProductCustomerPost post;
@@ -2445,15 +2449,35 @@ class _CustomerPostCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      post.authorName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w900,
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            post.authorName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: post.authorIsOfficial
+                                  ? _customerPostOfficialGold
+                                  : Colors.white,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        if (post.authorIsOfficial) ...[
+                          const SizedBox(width: 3),
+                          const Icon(
+                            Icons.verified_rounded,
+                            color: _customerPostOfficialGold,
+                            size: 13,
+                            shadows: [
+                              Shadow(color: Colors.black54, blurRadius: 4),
+                            ],
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Row(
@@ -2754,6 +2778,7 @@ class _ProductCustomerPost {
   final int likeCount;
   final int commentCount;
   final String authorName;
+  final bool authorIsOfficial;
 
   const _ProductCustomerPost({
     required this.id,
@@ -2764,15 +2789,24 @@ class _ProductCustomerPost {
     required this.likeCount,
     required this.commentCount,
     required this.authorName,
+    required this.authorIsOfficial,
   });
 
   bool get isVideo => kind != 'PHOTO_CAROUSEL';
 
   factory _ProductCustomerPost.fromJson(Map<String, dynamic> json) {
     final author = json['author'];
-    final authorName = author is Map<String, dynamic>
-        ? (author['name'] ?? 'Pelanggan Natalo').toString()
-        : 'Pelanggan Natalo';
+    final authorMap = author is Map<String, dynamic> ? author : null;
+    // Konvensi sama dengan FeedAuthor.displayName: post akun official/admin
+    // tampil sebagai brand, bukan nama pribadi admin.
+    final isOfficial = authorMap != null &&
+        ((authorMap['role'] ?? '').toString().toUpperCase() == 'ADMIN' ||
+            authorMap['isAdmin'] == true ||
+            authorMap['isOfficial'] == true);
+    final rawName = (authorMap?['name'] ?? '').toString().trim();
+    final authorName = isOfficial
+        ? 'Natalo Petshop'
+        : (rawName.isEmpty ? 'Pelanggan Natalo' : rawName);
     return _ProductCustomerPost(
       id: (json['id'] ?? '').toString(),
       kind: (json['kind'] ?? 'USER_VIDEO').toString(),
@@ -2781,7 +2815,8 @@ class _ProductCustomerPost {
       durationSec: (json['videoDurationSec'] as num?)?.toInt() ?? 0,
       likeCount: (json['likeCount'] as num?)?.toInt() ?? 0,
       commentCount: (json['commentCount'] as num?)?.toInt() ?? 0,
-      authorName: authorName.trim().isEmpty ? 'Pelanggan Natalo' : authorName,
+      authorName: authorName,
+      authorIsOfficial: isOfficial,
     );
   }
 }
