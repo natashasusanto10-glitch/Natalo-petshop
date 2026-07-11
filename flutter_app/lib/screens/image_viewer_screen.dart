@@ -800,7 +800,8 @@ class _PreviewVideoSlide extends StatefulWidget {
   State<_PreviewVideoSlide> createState() => _PreviewVideoSlideState();
 }
 
-class _PreviewVideoSlideState extends State<_PreviewVideoSlide> {
+class _PreviewVideoSlideState extends State<_PreviewVideoSlide>
+    with WidgetsBindingObserver {
   VideoPlayerController? _controller;
 
   /// True selama `initialize()` in-flight (ada `await` belum selesai). Dipakai:
@@ -826,6 +827,7 @@ class _PreviewVideoSlideState extends State<_PreviewVideoSlide> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (widget.active) _ensure();
   }
 
@@ -852,6 +854,7 @@ class _PreviewVideoSlideState extends State<_PreviewVideoSlide> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _toggleIconTimer?.cancel();
     final controller = _controller;
     _controller = null;
@@ -862,6 +865,24 @@ class _PreviewVideoSlideState extends State<_PreviewVideoSlide> {
       controller.dispose();
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // App ke background / layar terkunci → pause supaya suara tidak lanjut di
+    // belakang (ExoPlayer Android terutama; preview ini autoplay BERSUARA).
+    // TIDAK auto-resume saat `resumed` — konservatif seperti slide detail
+    // (`ProductDetailVideoSlide`); user tap untuk lanjut.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      final controller = _controller;
+      if (controller != null &&
+          controller.value.isInitialized &&
+          controller.value.isPlaying) {
+        unawaited(controller.pause());
+      }
+    }
   }
 
   /// Pastikan ada controller yang main. Controller sudah ada → play. Belum →
@@ -978,12 +999,14 @@ class _PreviewVideoSlideState extends State<_PreviewVideoSlide> {
                 ),
               ),
             ),
-            // Progress bar tipis, ditaruh di atas zona `_ProductMediaBar` +
-            // thumbnails (Task 2 render chrome di atas slide) supaya tak ketiban.
+            // Progress bar tipis, ditaruh di atas zona chrome viewer (Task 2
+            // render `_ProductMediaBar` + thumbnails + `_ProductMediaCounter`
+            // di atas slide). Counter ada di `bottom + 162` (top-nya ~+187),
+            // jadi +192 supaya scrub bar full-width TIDAK ketiban chip counter.
             Positioned(
               left: 0,
               right: 0,
-              bottom: MediaQuery.paddingOf(context).bottom + 180,
+              bottom: MediaQuery.paddingOf(context).bottom + 192,
               child: VideoProgressIndicator(
                 controller,
                 allowScrubbing: true,
