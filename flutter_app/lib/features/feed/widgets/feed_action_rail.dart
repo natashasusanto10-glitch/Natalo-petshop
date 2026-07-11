@@ -49,6 +49,9 @@ class FeedActionRail extends StatelessWidget {
           iconChild: _ReelsHeartGlyph(liked: liked),
           count: likeCount,
           onTap: onLike ?? () {},
+          // Pop membal hanya saat LIKE — unlike cukup fill merah memudar
+          // (ala IG). `liked` di sini nilai saat build = state sebelum tap.
+          shouldPulse: () => !liked,
         ),
         const SizedBox(height: _feedActionItemSpacing),
         _ReelsAction(
@@ -78,10 +81,15 @@ class _ReelsAction extends StatefulWidget {
   final int? count;
   final VoidCallback onTap;
 
+  /// Dievaluasi tepat sebelum onTap — return false untuk melewatkan pulse
+  /// membal (mis. unlike: cukup fade, tanpa pop). Default: selalu pulse.
+  final bool Function()? shouldPulse;
+
   const _ReelsAction({
     required this.iconChild,
     this.count,
     required this.onTap,
+    this.shouldPulse,
   });
 
   @override
@@ -123,15 +131,21 @@ class _ReelsActionState extends State<_ReelsAction>
   }
 
   void _handleTap() {
+    // Evaluasi SEBELUM onTap — onTap bisa langsung flip state parent
+    // (optimistic) sehingga nilai sesudahnya sudah bukan state pra-tap.
+    final pulse = widget.shouldPulse?.call() ?? true;
     final accepted = _throttle.run(widget.onTap);
     if (!accepted) return;
-    _tapPulseController.forward(from: 0);
+    if (pulse) _tapPulseController.forward(from: 0);
   }
 
   @override
   Widget build(BuildContext context) {
     // Count 0 disembunyikan ala IG Reels — label baru muncul saat >0.
-    // Post baru tampil ikon bersih, tidak dipenuhi deretan angka "0".
+    // PENTING: slot count SELALU di-render (opacity 0 saat kosong) supaya
+    // tinggi item konstan — dulu 44↔60 bikin ikon tersentak naik 16px
+    // tepat saat like pertama ("ikon loncat dulu baru merah"). Sekarang
+    // ikon diam, angka fade-in ke ruang kosong di bawahnya (ala IG).
     final showCount = widget.count != null && widget.count! > 0;
     return SizedBox(
       width: 54,
@@ -143,30 +157,39 @@ class _ReelsActionState extends State<_ReelsAction>
           child: ScaleTransition(
             scale: _tapPulseScale,
             child: SizedBox(
-              height: !showCount ? 44 : 60,
+              height: widget.count == null ? 44 : 60,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   widget.iconChild,
-                  if (showCount) ...[
+                  if (widget.count != null) ...[
                     const SizedBox(height: 2),
-                    RepaintBoundary(
-                      child: Text(
-                        _formatCount(widget.count!),
-                        style: const TextStyle(
-                          color: _feedActionForegroundColor,
-                          fontSize: _feedActionCountFontSize,
-                          // Ikut halus ala IG: w600 (dari w900). Shadow tetap
-                          // menjaga keterbacaan di atas video.
-                          fontWeight: FontWeight.w600,
-                          height: 1,
-                          shadows: [
-                            Shadow(
-                              color: _feedActionTextShadowColor,
-                              blurRadius: 2.4,
-                              offset: Offset(0, 0.8),
-                            ),
-                          ],
+                    AnimatedOpacity(
+                      opacity: showCount ? 1 : 0,
+                      duration: const Duration(milliseconds: 150),
+                      child: RepaintBoundary(
+                        child: Text(
+                          // Saat 0 (invisible) tampilkan nilai terakhir yang
+                          // masuk akal (1) supaya fade-out unlike 1→0 tidak
+                          // sempat flash "0".
+                          _formatCount(
+                            widget.count! > 0 ? widget.count! : 1,
+                          ),
+                          style: const TextStyle(
+                            color: _feedActionForegroundColor,
+                            fontSize: _feedActionCountFontSize,
+                            // Ikut halus ala IG: w600 (dari w900). Shadow
+                            // tetap menjaga keterbacaan di atas video.
+                            fontWeight: FontWeight.w600,
+                            height: 1,
+                            shadows: [
+                              Shadow(
+                                color: _feedActionTextShadowColor,
+                                blurRadius: 2.4,
+                                offset: Offset(0, 0.8),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

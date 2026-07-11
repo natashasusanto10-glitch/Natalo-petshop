@@ -35,8 +35,12 @@ class FeedStore extends ChangeNotifier {
   final Map<String, FeedPost> _byId = {};
   final Map<String, DateTime> _lastLocalActionAt = {};
 
-  /// Cegah parallel toggle untuk post sama — double-tap protection.
+  /// Cegah parallel REQUEST untuk post sama — hanya satu request like di
+  /// jaringan per post. Tap tambahan dicatat sebagai intent, bukan dibuang.
   final Set<String> _likeInFlight = {};
+
+  /// Intent liked terakhir per post (lihat [toggleLike]).
+  final Map<String, bool> _likeDesired = {};
 
   /// Cegah parallel ensureLoaded untuk post sama (deep link spam).
   final Map<String, Future<FeedPost?>> _ensureInFlight = {};
@@ -188,13 +192,18 @@ class FeedStore extends ChangeNotifier {
 
   // ─── Async actions ───
 
-  /// Toggle like dengan optimistic update + API call + reconcile +
-  /// rollback on error. Mutex per-postId cegah double-tap spam bikin
-  /// out-of-order request.
+  /// Toggle like — UI flip optimistis INSTAN di setiap tap, jaringan
+  /// menyusul dengan model "intent terakhir menang":
   ///
-  /// Return final state dari server. Caller boleh ignore return value
-  /// kalau cuma butuh trigger animation — store sudah update internal +
-  /// notify listeners.
+  /// - Tap saat tidak ada request → flip optimistis + kirim request.
+  /// - Tap saat request in-flight → flip optimistis + catat intent;
+  ///   TIDAK dibuang (dulu di-drop → unlike butuh ditekan berkali-kali
+  ///   di jaringan lambat). Chain aktif kirim follow-up toggle sampai
+  ///   state server == intent terakhir.
+  /// - Error → rollback ke state server terakhir yang terkonfirmasi.
+  ///
+  /// Return state sesuai intent tap ini (optimistis kalau coalesced) —
+  /// caller boleh ignore; store sudah notify listeners.
   Future<FeedLikeResult> toggleLike(String postId) async {
     final oldPost = _byId[postId];
     if (oldPost == null) {
@@ -209,14 +218,6 @@ class FeedStore extends ChangeNotifier {
         rethrow;
       }
     }
-    if (_likeInFlight.contains(postId)) {
-      // Already toggling — return current state. Caller bisa abaikan.
-      return FeedLikeResult(
-        liked: oldPost.viewerLiked || oldPost.isLiked,
-        likeCount: oldPost.likeCount,
-      );
-    }
-    _likeInFlight.add(postId);
 
     final wasLiked = oldPost.viewerLiked || oldPost.isLiked;
     final newLiked = !wasLiked;
@@ -224,7 +225,8 @@ class FeedStore extends ChangeNotifier {
         ? oldPost.likeCount + 1
         : (oldPost.likeCount - 1).clamp(0, 999999);
 
-    // Optimistic.
+    // Optimistic SELALU — tiap tap langsung terasa (rasa IG), termasuk
+    // saat request sebelumnya masih jalan.
     _byId[postId] = oldPost.copyWith(
       isLiked: newLiked,
       viewerLiked: newLiked,
@@ -232,34 +234,75 @@ class FeedStore extends ChangeNotifier {
       recentLikers: _reconcileCurrentUserLiker(oldPost.recentLikers, newLiked),
     );
     _lastLocalActionAt[postId] = DateTime.now();
+    _likeDesired[postId] = newLiked;
     notifyListeners();
 
+    if (_likeInFlight.contains(postId)) {
+      // Chain aktif yang akan menyamakan server dengan intent terbaru.
+      return FeedLikeResult(liked: newLiked, likeCount: optimisticCount);
+    }
+    _likeInFlight.add(postId);
+
+    // State liked terakhir yang TERKONFIRMASI server. Sebelum request
+    // pertama sukses, itu adalah state sebelum tap ini.
+    var serverLiked = wasLiked;
+    FeedLikeResult? lastResult;
+
     try {
-      final result = await feedService.toggleLike(
-        postId,
-        currentlyLiked: wasLiked,
-      );
-      // Reconcile dengan source-of-truth dari server.
+      while (true) {
+        final desired = _likeDesired[postId];
+        if (desired == null || desired == serverLiked) break;
+        final result = await feedService.toggleLike(
+          postId,
+          currentlyLiked: serverLiked,
+        );
+        serverLiked = result.liked;
+        lastResult = result;
+      }
+
+      _likeDesired.remove(postId);
+      // Reconcile dengan source-of-truth server (kalau ada request yang
+      // benar-benar terkirim; kalau intent balik ke state awal sebelum
+      // request pertama, tidak ada yang perlu di-reconcile).
       final current = _byId[postId];
-      if (current != null) {
+      if (lastResult != null && current != null) {
         _byId[postId] = current.copyWith(
-          isLiked: result.liked,
-          viewerLiked: result.liked,
-          likeCount: result.likeCount,
-          recentLikers: result.recentLikers.isNotEmpty
-              ? result.recentLikers
+          isLiked: lastResult.liked,
+          viewerLiked: lastResult.liked,
+          likeCount: lastResult.likeCount,
+          recentLikers: lastResult.recentLikers.isNotEmpty
+              ? lastResult.recentLikers
               : _reconcileCurrentUserLiker(
                   current.recentLikers,
-                  result.liked,
+                  lastResult.liked,
                 ),
         );
         _lastLocalActionAt[postId] = DateTime.now();
         notifyListeners();
       }
-      return result;
+      return lastResult ??
+          FeedLikeResult(
+            liked: serverLiked,
+            likeCount: current?.likeCount ?? optimisticCount,
+          );
     } catch (e) {
-      // Rollback ke state sebelum toggle.
-      _byId[postId] = oldPost;
+      // Rollback ke state server terakhir yang terkonfirmasi (bukan buta
+      // ke oldPost — sebagian chain mungkin sudah tercatat di server).
+      _likeDesired.remove(postId);
+      final current = _byId[postId];
+      if (current != null) {
+        _byId[postId] = lastResult != null
+            ? current.copyWith(
+                isLiked: lastResult.liked,
+                viewerLiked: lastResult.liked,
+                likeCount: lastResult.likeCount,
+                recentLikers: _reconcileCurrentUserLiker(
+                  current.recentLikers,
+                  lastResult.liked,
+                ),
+              )
+            : oldPost;
+      }
       // Note: jangan reset _lastLocalActionAt — kalau ada concurrent
       // list-fetch yang sudah lewat, tetap ingin protect karena server
       // mungkin udah catat like ke-recorded sebagian. Conservative.

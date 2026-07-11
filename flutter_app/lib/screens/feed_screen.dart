@@ -1192,7 +1192,6 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   int _likeCount = 0;
   int _commentCount = 0;
   int _shareCount = 0;
-  bool _likeBusy = false;
   bool _hideOverlayForLongPress = false;
   bool _hideOverlayForPinchZoom = false;
 
@@ -1358,12 +1357,11 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   }
 
   Future<void> _onLikePressed() async {
-    if (_likeBusy) return;
+    // TANPA busy-guard — tiap tap langsung diteruskan ke store yang flip
+    // UI optimistis instan + coalesce request (intent terakhir menang).
+    // Dulu guard di sini menelan tap selama request jalan → unlike harus
+    // ditekan berkali-kali di jaringan lambat.
     AppHaptics.impact();
-    setState(() => _likeBusy = true);
-    // Delegate ke FeedStore: optimistic + API + reconcile + rollback +
-    // mutex semua di-handle di sana. Listener kita yang propagasi state
-    // ke local field via _onFeedStoreChanged → setState.
     try {
       final result = await feedStore.toggleLike(widget.post.id);
       feedLocalStore.setLiked(widget.post.id, result.liked);
@@ -1384,8 +1382,6 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
           kind: ToastKind.warning,
         );
       }
-    } finally {
-      if (mounted) setState(() => _likeBusy = false);
     }
   }
 
@@ -1935,7 +1931,6 @@ class _FeedPostViewState extends State<_FeedPostView>
   bool _commentDrawerMounted = false;
   bool _commentSheetOpen = false;
   bool _videoLoadFailed = false;
-  bool _likeBusy = false;
   bool _commentSheetClosingFromDrag = false;
   int _commentAddedCount = 0;
   int _featuredProductIndex = 0;
@@ -2414,12 +2409,11 @@ class _FeedPostViewState extends State<_FeedPostView>
   }
 
   Future<void> _onLikePressed() async {
-    if (_likeBusy) return;
+    // TANPA busy-guard — tiap tap langsung diteruskan ke store yang flip
+    // UI optimistis instan + coalesce request (intent terakhir menang).
+    // Dulu guard di sini menelan tap selama request jalan → unlike harus
+    // ditekan berkali-kali di jaringan lambat.
     AppHaptics.impact();
-    setState(() => _likeBusy = true);
-    // Delegate ke FeedStore — optimistic + API + reconcile + rollback +
-    // mutex semua handled di sana. Local field auto-update lewat
-    // _onFeedStoreChanged listener saat store notify.
     try {
       final result = await feedStore.toggleLike(widget.post.id);
       // Sync ke FeedLocalStore (SharedPreferences) supaya next launch
@@ -2448,8 +2442,6 @@ class _FeedPostViewState extends State<_FeedPostView>
           kind: ToastKind.warning,
         );
       }
-    } finally {
-      if (mounted) setState(() => _likeBusy = false);
     }
   }
 
