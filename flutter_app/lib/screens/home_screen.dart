@@ -201,7 +201,10 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final recs = await productService.fetchPersonalizedRecommendations(
         viewedIds: viewedIds,
-        limit: 10,
+        // Ambil kandidat lebih banyak dari yang ditampilkan (10) supaya
+        // rotasi harian di grid punya pool untuk digilir — lihat
+        // `_dailyRotatingPick` di builder _RecommendationGrid.
+        limit: 18,
       );
       if (!mounted) return;
       setState(() => _personalizedRecs = recs);
@@ -543,6 +546,60 @@ class _HomeScreenState extends State<HomeScreen> {
     return hash;
   }
 
+  // ── Rotasi harian rail "etalase" (Terlaris & Rekomendasi) ──
+  //
+  // Masalah: katalog Natalo relatif kecil → rail yang selalu ambil top-N
+  // dengan urutan sama membuat Beranda terkesan "produknya itu-itu saja".
+  // Solusi (client-only, tanpa ubah backend): gilir jendela produk kuat
+  // pakai SEED HARIAN. Efeknya sama dengan rail "Jelajahi" (seed
+  // generation): urutan STABIL sepanjang hari — user tidak disorientasi
+  // saat scroll balik / buka-tutup app — lalu berganti sendiri tiap hari.
+  //
+  // Bukan pengacakan bohong: `pinned` teratas (juara sejati) SELALU tampil
+  // dan seluruh kandidat berasal dari top-window yang memang kuat.
+
+  /// Angka tanggal lokal (YYYYMMDD) — sama sepanjang hari, ganti tengah malam.
+  int get _dailyRotationSeed {
+    final now = DateTime.now();
+    return now.year * 10000 + now.month * 100 + now.day;
+  }
+
+  /// Dari daftar `ranked` (sudah terurut, index kecil = paling kuat), ambil
+  /// `count` produk dengan rotasi harian: `pinned` teratas SELALU tampil,
+  /// sisanya dipilih bergilir tiap hari dari kandidat berikutnya. Hasil
+  /// di-sort ulang mengikuti urutan `ranked` supaya nomor #1..#N monoton.
+  List<Product> _dailyRotatingPick(
+    List<Product> ranked, {
+    required int pinned,
+    required int count,
+  }) {
+    if (ranked.length <= count) return ranked.take(count).toList();
+    final safePinned = pinned.clamp(0, count);
+    final pinnedItems = ranked.take(safePinned).toList();
+    final pool = ranked.sublist(safePinned);
+    final need = count - pinnedItems.length;
+
+    // Fisher-Yates ber-seed (LCG) — deterministik per hari, tanpa Random.
+    final order = List<int>.generate(pool.length, (i) => i);
+    var state = (_dailyRotationSeed & 0x7fffffff) | 1;
+    for (var i = order.length - 1; i > 0; i -= 1) {
+      state = (state * 1103515245 + 12345) & 0x7fffffff;
+      final j = state % (i + 1);
+      final tmp = order[i];
+      order[i] = order[j];
+      order[j] = tmp;
+    }
+    final picked = order.take(need).map((i) => pool[i]).toList();
+
+    final chosen = <Product>[...pinnedItems, ...picked];
+    final rankIndex = <String, int>{
+      for (var i = 0; i < ranked.length; i += 1) ranked[i].id: i,
+    };
+    chosen.sort((a, b) =>
+        (rankIndex[a.id] ?? 1 << 30).compareTo(rankIndex[b.id] ?? 1 << 30));
+    return chosen;
+  }
+
   /// Open fullscreen search page (BerandaSearchPage).
   ///
   /// Previously pakai `showModalBottomSheet` dengan transparent
@@ -634,15 +691,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   // Filter: utamakan products dengan soldCount > 0 di top — yang
                   // benar2 "laris" muncul lebih dulu. Kalau API belum return
                   // soldCount yang valid, section fallback ke review-based.
-                  final bestSellers = ([...products]..sort((a, b) {
-                          // Primary: soldCount desc (yang paling banyak terjual)
-                          final byCount = b.soldCount.compareTo(a.soldCount);
-                          if (byCount != 0) return byCount;
-                          // Tie-break: reviewCount desc
-                          return b.reviewCount.compareTo(a.reviewCount);
-                        }))
-                      .take(8)
-                      .toList();
+                  final rankedBySold = [...products]..sort((a, b) {
+                      // Primary: soldCount desc (yang paling banyak terjual)
+                      final byCount = b.soldCount.compareTo(a.soldCount);
+                      if (byCount != 0) return byCount;
+                      // Tie-break: reviewCount desc
+                      return b.reviewCount.compareTo(a.reviewCount);
+                    });
+                  // Rotasi harian: 3 juara sejati tetap tampil, 5 slot lain
+                  // digilir tiap hari dari kandidat kuat berikutnya (top ~24).
+                  // Nomor #1..#8 tetap monoton (di-sort ulang by soldCount).
+                  final bestSellers = _dailyRotatingPick(
+                    rankedBySold.take(24).toList(),
+                    pinned: 3,
+                    count: 8,
+                  );
                   return NataloPawRefreshIndicator(
                     onRefresh: _refreshAll,
                     // pinContent: konten diam total saat pull — tanpa ini bouncing
@@ -773,14 +836,22 @@ class _HomeScreenState extends State<HomeScreen> {
                                 child: AnimatedBuilder(
                                   animation: recentlyViewedStore,
                                   builder: (context, _) {
-                                    final recommendations =
+                                    final recPool =
                                         _personalizedRecs.isNotEmpty
                                             ? _personalizedRecs
                                             : _buildPersonalizedRecommendations(
                                                 products);
-                                    if (recommendations.isEmpty) {
+                                    if (recPool.isEmpty) {
                                       return const SizedBox.shrink();
                                     }
+                                    // Rotasi harian: 4 rekomendasi paling
+                                    // relevan tetap di atas, 6 sisanya digilir
+                                    // tiap hari dari kandidat (pool 18 server).
+                                    final recommendations = _dailyRotatingPick(
+                                      recPool,
+                                      pinned: 4,
+                                      count: 10,
+                                    );
                                     return _RecommendationGrid(
                                       products: recommendations,
                                       onTap: (product) =>
