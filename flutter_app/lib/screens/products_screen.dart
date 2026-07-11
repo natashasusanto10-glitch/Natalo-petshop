@@ -1066,6 +1066,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 child: CustomScrollView(
                   controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
+                  // User sudah ketik → hasil live tampil tanpa perlu tekan
+                  // tombol "search" keyboard. Begitu jari mulai men-drag
+                  // daftar, keyboard OTOMATIS turun (pola Shopee/Tokopedia)
+                  // supaya hasil kelihatan penuh tanpa harus tutup keyboard
+                  // manual dulu.
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   slivers: [
                     // ── Collapsing header katalog (spec Jul 2026) ──
                     // Judul "Produk Natalo"+cart PINDAH ke dalam pinned
