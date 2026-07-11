@@ -4117,18 +4117,21 @@ class BrandGridCard extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Spec: BOUNDING BOX logo tinggi 42dp, lebar maks 82% kartu,
-              // BoxFit.contain center. Full-tile (Expanded) dibuang — asset
-              // logo sekarang TRANSPARAN jadi ruang putih di sekeliling logo
-              // normal & rapi. Flexible + maxHeight 42: normal 42dp, tapi
-              // kalau ruang sempit (kartu 4:3 pendek / textScale besar) logo
-              // MENGALAH supaya nama tak overflow. FractionallySizedBox
-              // batasi lebar ke 82% biar wordmark lebar tak mepet tepi.
+              // Spec: BOUNDING BOX logo tinggi 42dp FIXED (bukan maxHeight) —
+              // tiap brand punya wordmark dgn aspect ratio beda-beda; kalau
+              // cuma maxHeight, logo pendek/lebar merender lebih pendek dari
+              // 42dp dan mendorong nama ke posisi vertikal berbeda antar
+              // kartu (kesan "nama loncat-loncat"). Fixed height + BoxFit
+              // .contain di dalamnya menjaga posisi nama selalu konsisten.
+              // Flexible tetap ada supaya kalau ruang sungguh sempit
+              // (textScale besar) box masih boleh mengalah, bukan overflow.
+              // FractionallySizedBox batasi lebar ke 82% biar wordmark lebar
+              // tak mepet tepi.
               Flexible(
                 child: FractionallySizedBox(
                   widthFactor: 0.82,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 42),
+                  child: SizedBox(
+                    height: 42,
                     child: BrandLogoImage(brand: brand),
                   ),
                 ),
