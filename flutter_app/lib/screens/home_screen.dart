@@ -2486,64 +2486,76 @@ class _ShortcutGrid extends StatelessWidget {
       ),
     ];
 
+    // Sel shortcut (ikon squircle 48 + label). Column min-height = konten.
+    Widget buildCell(_ShortcutItem item) {
+      return InkWell(
+        onTap: () {
+          if (item.onTap != null) {
+            item.onTap!(context);
+          } else {
+            onOpenProducts();
+          }
+        },
+        borderRadius: BorderRadius.circular(18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Kotak rounded-16 48px squircle soft-tint tanpa shadow; tap ≥48.
+            Container(
+              height: 48,
+              width: 48,
+              decoration: BoxDecoration(
+                color: item.background,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(item.icon, color: item.color, size: 24),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              item.label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                height: 1.12,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Grid 4-kolom AUTO-HEIGHT (Column-of-Rows). SEBELUMNYA GridView.builder
+    // shrinkWrap + mainAxisExtent 72 — di device iOS menyisakan tinggi HANTU
+    // (~1 baris ekstra) → celah abu besar shortcut → Flash Sale (dibuktikan
+    // border debug). Column-of-Rows: tinggi = konten persis, deterministik,
+    // tak ada kolong. Pola sama dgn _FlashSaleGrid + grid utama.
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: GridView.builder(
-        physics: const NeverScrollableScrollPhysics(),
-        shrinkWrap: true,
-        itemCount: items.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 4,
-          mainAxisSpacing: 6,
-          crossAxisSpacing: 8,
-          // 72 (dulu 84/92): konten sel (ikon 48 + gap 6 + label ~18) muat
-          // pas, whitespace atas-bawah minim → jarak ke section berikutnya
-          // (flash sale) tidak terkesan jauh.
-          mainAxisExtent: 72,
-        ),
-        itemBuilder: (context, index) {
-          final item = items[index];
-          return InkWell(
-            onTap: () {
-              if (item.onTap != null) {
-                item.onTap!(context);
-              } else {
-                onOpenProducts();
-              }
-            },
-            borderRadius: BorderRadius.circular(18),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+      child: Column(
+        children: [
+          for (var row = 0; row < (items.length + 3) ~/ 4; row++) ...[
+            if (row > 0) const SizedBox(height: 6),
+            Row(
+              // start (bukan stretch): kalau ada label 2 baris, sel lain
+              // tetap rata-atas, tak ikut memanjang.
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Kotak rounded-16 48px (redesign: dulu lingkaran 50 +
-                // shadow) — squircle soft-tint tanpa shadow, lebih tenang
-                // & premium; tap target tetap ≥48.
-                Container(
-                  height: 48,
-                  width: 48,
-                  decoration: BoxDecoration(
-                    color: item.background,
-                    borderRadius: BorderRadius.circular(16),
+                for (var col = 0; col < 4; col++) ...[
+                  if (col > 0) const SizedBox(width: 8),
+                  Expanded(
+                    child: row * 4 + col < items.length
+                        ? buildCell(items[row * 4 + col])
+                        : const SizedBox.shrink(),
                   ),
-                  child: Icon(item.icon, color: item.color, size: 24),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  item.label,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    height: 1.12,
-                  ),
-                ),
+                ],
               ],
             ),
-          );
-        },
+          ],
+        ],
       ),
     );
   }

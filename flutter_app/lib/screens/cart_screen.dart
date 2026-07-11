@@ -56,7 +56,6 @@ const _chromeAnimDuration = Duration(milliseconds: 340);
 const _chromeRevealDelay = Duration(milliseconds: 300);
 const _cartBossOpenCountKey = 'natalo_cart_boss_open_count_v1';
 const _cartBossWindowCount = 6;
-const _shippingVoucherCode = '__shipping_free__';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
@@ -112,7 +111,7 @@ class _CartScreenState extends State<CartScreen>
   // dipisah jadi 2 slot supaya match behavior checkout.
   MemberVoucher? _appliedDiscountVoucher;
   MemberVoucher? _appliedLoyaltyVoucher;
-  bool _appliedShippingVoucher = false;
+  MemberVoucher? _appliedShippingVoucher;
   bool _isManualVoucherSelected = false;
   String? _manualVoucherCode;
   int _lastVoucherSubtotal = -1;
@@ -468,8 +467,6 @@ class _CartScreenState extends State<CartScreen>
   double get _selectedSubtotal =>
       _selectedItems.fold<double>(0, (sum, item) => sum + item.lineTotal);
 
-  double get _shippingEstimate => _selectedItems.isEmpty ? 0 : 15000;
-
   double get _voucherDiscount {
     if (_selectedItems.isEmpty) return 0;
     // Sum product + loyalty discount, capped at subtotal supaya tidak
@@ -483,8 +480,9 @@ class _CartScreenState extends State<CartScreen>
   }
 
   double get _shippingDiscount {
-    if (_selectedItems.isEmpty || !_appliedShippingVoucher) return 0;
-    return _shippingEstimate;
+    final voucher = _appliedShippingVoucher;
+    if (_selectedItems.isEmpty || voucher == null) return 0;
+    return voucher.discount.toDouble();
   }
 
   // Cart cuma tampilkan saving dari voucher produk/loyalty (yang apply ke
@@ -493,15 +491,12 @@ class _CartScreenState extends State<CartScreen>
   // setelah pilih alamat + kurir). Gratis-ongkir saving muncul di checkout.
   double get _totalVoucherSaving => _voucherDiscount;
 
-  bool get _shippingVoucherEligible =>
-      _selectedItems.isNotEmpty && _selectedSubtotal >= 250000;
-
   /// Detect apakah voucher ini termasuk kategori shipping (gratis ongkir).
-  /// Cek 3 indicator dari backend response:
-  ///   1. Sentinel code `__shipping_free__` (UI-side internal voucher
-  ///      slot untuk free shipping system)
-  ///   2. `isFreeShipping` getter (type == 'PUBLIC_FREE_SHIPPING')
-  ///   3. `isShippingDiscount` getter (discountScope == 'SHIPPING')
+  /// Cek 2 indicator dari backend response:
+  ///   1. `isFreeShipping` getter (type == 'PUBLIC_FREE_SHIPPING')
+  ///   2. `isShippingDiscount` getter (discountScope == 'SHIPPING')
+  /// Fallback: cocokkan teks kode/judul/deskripsi voucher terhadap
+  /// 'ongkir', 'gratis kirim', atau 'free shipping'.
   /// Method ini dipakai untuk pisahkan slot shipping voucher vs discount
   /// voucher di dual-slot voucher UI (1 customer + 1 shipping).
   bool _isCartShippingVoucher(MemberVoucher voucher) {
@@ -529,7 +524,7 @@ class _CartScreenState extends State<CartScreen>
         _unavailableDiscountVouchers = const [];
         _appliedDiscountVoucher = null;
         _appliedLoyaltyVoucher = null;
-        _appliedShippingVoucher = false;
+        _appliedShippingVoucher = null;
         _isManualVoucherSelected = false;
         _manualVoucherCode = null;
         _lastVoucherSubtotal = 0;
@@ -566,45 +561,38 @@ class _CartScreenState extends State<CartScreen>
     // (1 ongkir + 1 produk + 1 reward poin). Pick best per type separately.
     final bestProduct = _bestProductVoucher(available);
     final bestLoyalty = _bestLoyaltyVoucher(available);
+    final bestShipping = _bestShippingVoucher(available);
     var nextProduct = _appliedDiscountVoucher;
     var nextLoyalty = _appliedLoyaltyVoucher;
-    var nextShipping = _appliedShippingVoucher && _shippingVoucherEligible;
+    var nextShipping = bestShipping;
     var manualStillEligible = false;
 
     if (_isManualVoucherSelected && _manualVoucherCode != null) {
-      if (_manualVoucherCode == _shippingVoucherCode &&
-          _shippingVoucherEligible) {
+      final manualVoucher = _findVoucherByCode(available, _manualVoucherCode!);
+      if (manualVoucher != null && _isCartShippingVoucher(manualVoucher)) {
         manualStillEligible = true;
-        nextShipping = true;
+        // Manual pick shipping (termasuk brand-exclusive) tetap dihormati.
+        nextShipping = manualVoucher;
         nextProduct = bestProduct;
         nextLoyalty = bestLoyalty;
-      } else {
-        final manualVoucher =
-            _findVoucherByCode(available, _manualVoucherCode!);
-        if (manualVoucher != null && _isCartShippingVoucher(manualVoucher)) {
-          manualStillEligible = true;
-          nextShipping = true;
+      } else if (manualVoucher != null) {
+        manualStillEligible = true;
+        // Manual override pick — replace slot yang sesuai type.
+        if (manualVoucher.isLoyaltyClaim) {
+          nextLoyalty = manualVoucher;
           nextProduct = bestProduct;
+        } else {
+          nextProduct = manualVoucher;
           nextLoyalty = bestLoyalty;
-        } else if (manualVoucher != null) {
-          manualStillEligible = true;
-          // Manual override pick — replace slot yang sesuai type.
-          if (manualVoucher.isLoyaltyClaim) {
-            nextLoyalty = manualVoucher;
-            nextProduct = bestProduct;
-          } else {
-            nextProduct = manualVoucher;
-            nextLoyalty = bestLoyalty;
-          }
-          nextShipping = _shippingVoucherEligible;
         }
+        nextShipping = bestShipping;
       }
     }
 
     if (!_isManualVoucherSelected || !manualStillEligible) {
       nextProduct = bestProduct;
       nextLoyalty = bestLoyalty;
-      nextShipping = _shippingVoucherEligible;
+      nextShipping = bestShipping;
     }
 
     if (!mounted) return;
@@ -640,6 +628,20 @@ class _CartScreenState extends State<CartScreen>
         .where(
           (voucher) => voucher.discount > 0 && voucher.isLoyaltyClaim,
         )
+        .toList();
+    if (eligible.isEmpty) return null;
+    eligible.sort((a, b) => b.discount.compareTo(a.discount));
+    return eligible.first;
+  }
+
+  /// Best real gratis-ongkir voucher untuk cart. Brand-exclusive ongkir
+  /// TIDAK auto-apply (user pilih manual) -- konsisten dgn checkout
+  /// _ensureAutoApplyFallback. Tidak filter discount>0 karena voucher
+  /// gratis-ongkir bisa discount=0 di konteks cart (dihitung di checkout).
+  MemberVoucher? _bestShippingVoucher(List<MemberVoucher> vouchers) {
+    final eligible = vouchers
+        .where((voucher) =>
+            _isCartShippingVoucher(voucher) && !voucher.isBrandExclusive)
         .toList();
     if (eligible.isEmpty) return null;
     eligible.sort((a, b) => b.discount.compareTo(a.discount));
@@ -744,15 +746,10 @@ class _CartScreenState extends State<CartScreen>
       builder: (context) => _CartVoucherSheet(
         availableDiscounts: _availableDiscountVouchers,
         unavailableDiscounts: _unavailableDiscountVouchers,
-        shippingEligible: _shippingVoucherEligible,
-        shippingDiscount: _shippingEstimate.round(),
         selectedDiscountCode: _appliedDiscountVoucher?.code,
         selectedLoyaltyCode: _appliedLoyaltyVoucher?.code,
-        selectedShippingCode:
-            _appliedShippingVoucher && _isManualVoucherSelected
-                ? _manualVoucherCode
-                : null,
-        shippingSelected: _appliedShippingVoucher,
+        selectedShippingCode: _appliedShippingVoucher?.code,
+        shippingSelected: _appliedShippingVoucher != null,
         isManual: _isManualVoucherSelected,
         loading: _loadingVouchers,
       ),
@@ -765,7 +762,7 @@ class _CartScreenState extends State<CartScreen>
       if (isRemove) {
         _appliedDiscountVoucher = null;
         _appliedLoyaltyVoucher = null;
-        _appliedShippingVoucher = false;
+        _appliedShippingVoucher = null;
         _isManualVoucherSelected = false;
         _manualVoucherCode = null;
         return;
@@ -780,7 +777,10 @@ class _CartScreenState extends State<CartScreen>
       _appliedDiscountVoucher = picked.discountVoucher;
       _appliedLoyaltyVoucher = picked.loyaltyVoucher;
       _appliedShippingVoucher =
-          picked.shippingSelected && _shippingVoucherEligible;
+          picked.shippingSelected && picked.shippingCode != null
+              ? _findVoucherByCode(
+                  _availableDiscountVouchers, picked.shippingCode!)
+              : null;
     });
     // Setelah Hapus Voucher, re-run auto-apply supaya 3 slot ke-isi
     // ulang dari best available (ongkir + diskon produk + reward poin).
@@ -1060,7 +1060,7 @@ class _CartScreenState extends State<CartScreen>
                                       voucherActive:
                                           _appliedDiscountVoucher != null ||
                                               _appliedLoyaltyVoucher != null ||
-                                              _appliedShippingVoucher,
+                                              _appliedShippingVoucher != null,
                                       onTap: _goToCheckout,
                                     ),
                                   ),
@@ -1081,8 +1081,12 @@ class _CartScreenState extends State<CartScreen>
                         loading: _loadingVouchers,
                         discountVoucher: _appliedDiscountVoucher,
                         discountAmount: _voucherDiscount,
-                        shippingSelected: _appliedShippingVoucher,
+                        shippingSelected: _appliedShippingVoucher != null,
                         shippingDiscount: _shippingDiscount,
+                        shippingText: _appliedShippingVoucher != null
+                            ? _shippingVoucherDisplayTitle(
+                                _appliedShippingVoucher!)
+                            : 'Gratis Ongkir',
                         onTap: _selectedItems.isEmpty
                             ? null
                             : () {
@@ -2470,7 +2474,6 @@ void _showCartDeleteSnackBar(
 }
 
 bool _isCartShippingVoucherData(MemberVoucher voucher) {
-  if (voucher.code == _shippingVoucherCode) return true;
   if (voucher.isFreeShipping || voucher.isShippingDiscount) return true;
 
   final searchableText = [
@@ -2499,6 +2502,17 @@ String _cartShippingVoucherSubtitle(
   }
 
   return 'Gratis ongkir untuk pesanan ini';
+}
+
+/// Judul display voucher gratis-ongkir. Brand-eksklusif -> "Gratis Ongkir
+/// dari {brand}" (pakai nama brand asli, bukan judul admin/kode); selain
+/// itu pakai judul voucher apa adanya.
+String _shippingVoucherDisplayTitle(MemberVoucher voucher) {
+  final brand = voucher.brandName?.trim();
+  if (voucher.isBrandExclusive && brand != null && brand.isNotEmpty) {
+    return 'Gratis Ongkir dari $brand';
+  }
+  return voucher.title;
 }
 
 bool _isCartShippingVoucher(MemberVoucher voucher) {
@@ -2556,6 +2570,7 @@ class _StickyVoucherBar extends StatelessWidget {
   final double discountAmount;
   final bool shippingSelected;
   final double shippingDiscount;
+  final String shippingText;
   final VoidCallback? onTap;
 
   const _StickyVoucherBar({
@@ -2565,6 +2580,7 @@ class _StickyVoucherBar extends StatelessWidget {
     required this.discountAmount,
     required this.shippingSelected,
     required this.shippingDiscount,
+    required this.shippingText,
     required this.onTap,
   });
 
@@ -2575,7 +2591,7 @@ class _StickyVoucherBar extends StatelessWidget {
     // di slot terpisah, jadi cuma cek total discount aja).
     final cs = Theme.of(context).colorScheme;
     final hasDiscount = discountAmount > 0;
-    final hasShipping = shippingSelected && shippingDiscount > 0;
+    final hasShipping = shippingSelected;
     final leadingColor = hasSelection ? _discountRed : cs.onSurfaceVariant;
     final leadingBackground =
         hasSelection ? _discountRedSoft : cs.surfaceContainerHighest;
@@ -2633,7 +2649,7 @@ class _StickyVoucherBar extends StatelessWidget {
                     alignment: Alignment.centerRight,
                     child: _VoucherBenefitChips(
                       hasShipping: hasShipping,
-                      shippingText: 'Gratis Ongkir',
+                      shippingText: shippingText,
                       hasDiscount: hasDiscount,
                       discountText: '-${formatRupiah(discountAmount)}',
                       loading: loading,
@@ -2760,8 +2776,6 @@ class _VoucherMiniChip extends StatelessWidget {
 class _CartVoucherSheet extends StatefulWidget {
   final List<MemberVoucher> availableDiscounts;
   final List<MemberVoucher> unavailableDiscounts;
-  final bool shippingEligible;
-  final int shippingDiscount;
   final String? selectedDiscountCode;
   final String? selectedLoyaltyCode;
   final String? selectedShippingCode;
@@ -2772,8 +2786,6 @@ class _CartVoucherSheet extends StatefulWidget {
   const _CartVoucherSheet({
     required this.availableDiscounts,
     required this.unavailableDiscounts,
-    required this.shippingEligible,
-    required this.shippingDiscount,
     required this.selectedDiscountCode,
     required this.selectedLoyaltyCode,
     required this.selectedShippingCode,
@@ -2840,7 +2852,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
     for (final voucher in widget.availableDiscounts) {
       if (_isCartShippingVoucher(voucher)) return voucher.code;
     }
-    return widget.shippingEligible ? _shippingVoucherCode : null;
+    return null;
   }
 
   /// Route pick ke slot yang sesuai type. Loyalty voucher masuk slot
@@ -2864,11 +2876,10 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
     });
   }
 
-  void _pickShipping([String? code]) {
-    final nextCode = code ?? _shippingVoucherCode;
+  void _pickShipping(String code) {
     setState(() {
       _selectedShippingCode =
-          _selectedShippingCode == nextCode ? null : nextCode;
+          _selectedShippingCode == code ? null : code;
     });
   }
 
@@ -2898,10 +2909,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
     final unavailableProductVouchers = widget.unavailableDiscounts
         .where((voucher) => !_isCartShippingVoucher(voucher))
         .toList();
-    final showSyntheticShipping =
-        widget.shippingEligible && availableShippingVouchers.isEmpty;
-    final hasAnyVoucher = showSyntheticShipping ||
-        availableShippingVouchers.isNotEmpty ||
+    final hasAnyVoucher = availableShippingVouchers.isNotEmpty ||
         availableProductVouchers.isNotEmpty;
 
     return DraggableScrollableSheet(
@@ -2963,29 +2971,10 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                   children: [
                     if (widget.loading)
                       const LinearProgressIndicator(minHeight: 3),
-                    if (showSyntheticShipping) ...[
-                      _CartVoucherCard(
-                        title: 'Gratis Ongkir',
-                        subtitle:
-                            'Potongan ongkir ${formatRupiah(widget.shippingDiscount)} · min. belanja Rp250rb',
-                        badge: 'Ongkir',
-                        icon: Icons.local_shipping_outlined,
-                        accent: _shippingGreen,
-                        background: _shippingGreenSoft,
-                        border: _shippingGreenBorder,
-                        selected: _selectedShippingCode == _shippingVoucherCode,
-                        enabled: true,
-                        onTap: _pickShipping,
-                      ),
-                      const SizedBox(height: 10),
-                    ],
                     for (final voucher in availableShippingVouchers) ...[
                       _CartVoucherCard(
-                        title: voucher.title,
-                        subtitle: _cartShippingVoucherSubtitle(
-                          voucher,
-                          widget.shippingDiscount,
-                        ),
+                        title: _shippingVoucherDisplayTitle(voucher),
+                        subtitle: _cartShippingVoucherSubtitle(voucher, 0),
                         badge: 'Ongkir',
                         brandExclusive: voucher.isBrandExclusive,
                         trailing: voucher.discount > 0
@@ -3073,10 +3062,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                         _CartVoucherCard(
                           title: voucher.title,
                           subtitle: voucher.disabledReason ??
-                              _cartShippingVoucherSubtitle(
-                                voucher,
-                                widget.shippingDiscount,
-                              ),
+                              _cartShippingVoucherSubtitle(voucher, 0),
                           badge: 'Ongkir',
                           brandExclusive: voucher.isBrandExclusive,
                           trailing: voucher.discount > 0
