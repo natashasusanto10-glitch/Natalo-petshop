@@ -92,8 +92,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
   void initState() {
     super.initState();
     // Total slide = foto + (video kalau ada). `initialIndex` = index SLIDE.
-    final total =
-        widget.hasVideo ? widget.list.length + 1 : widget.list.length;
+    final total = widget.hasVideo ? widget.list.length + 1 : widget.list.length;
     final maxIndex = total - 1;
     _index = widget.initialIndex.clamp(0, maxIndex < 0 ? 0 : maxIndex);
     _controller = PageController(initialPage: _index);
@@ -132,10 +131,6 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
     final totalSlides = hasVideo ? images.length + 1 : images.length;
     final product = widget.product;
     final showProductChrome = widget.productMediaViewer && product != null;
-    // Slide video (index 0, iff hasVideo) → sembunyikan filmstrip + counter
-    // (referensi Tokopedia: tampilan video bersih). "+ Keranjang" tetap
-    // tampil di semua slide (unconditional, lihat di bawah).
-    final onVideoSlide = hasVideo && _index == 0;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -150,90 +145,89 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-          // Guard: kalau images kosong (data tidak terkirim), jangan render
-          // PageView 0-item (layar hitam total + chrome nyangkut di pojok).
-          // Tampilkan placeholder eksplisit. Video-only (`hasVideo`) tetap
-          // punya 1 slide → jangan placeholder.
-          if (images.isEmpty && !hasVideo)
-            const Center(
-              child: Icon(
-                Icons.image_not_supported_outlined,
-                color: Colors.white38,
-                size: 48,
-              ),
-            )
-          else
-            Positioned.fill(
-              // Listener wrap PageView — count pointers manually di pre-arena
-              // layer (Listener runs BEFORE gesture recognizers). Begitu jari
-              // ke-2 nempel → _multiTouch=true → physics lock instan,
-              // InteractiveViewer panEnabled=true → pinch claim arena tanpa
-              // kompetisi dari PageView.HorizontalDrag.
-              child: Listener(
-                onPointerDown: _onPointerDown,
-                onPointerUp: _onPointerUp,
-                onPointerCancel: _onPointerUp,
-                behavior: HitTestBehavior.translucent,
-                child: PageView.builder(
-                  controller: _controller,
-                  itemCount: totalSlides,
-                  onPageChanged: (value) => setState(() => _index = value),
-                  physics: _lockSwipe
-                      ? const NeverScrollableScrollPhysics()
-                      : const PageScrollPhysics(),
-                  itemBuilder: (context, i) {
-                    // Slide #0 = video (kalau ada). Video BUKAN _ZoomableImage
-                    // — tak masuk mesin zoom/multitouch. `active` re-evaluasi
-                    // tiap build (onPageChanged → setState _index) → autoplay
-                    // hanya saat jadi slide aktif, pause saat pindah.
-                    if (hasVideo && i == 0) {
-                      return _PreviewVideoSlide(
-                        // Key stabil per-URL: pertahankan state controller
-                        // saat rebuild (onPageChanged) — resume instan.
-                        key: ValueKey('preview-video-${widget.videoUrl}'),
-                        videoUrl: widget.videoUrl!,
-                        thumbnailUrl: widget.videoThumbnailUrl,
-                        posterImageUrl: widget.posterImageUrl,
-                        active: _index == 0,
+            // Guard: kalau images kosong (data tidak terkirim), jangan render
+            // PageView 0-item (layar hitam total + chrome nyangkut di pojok).
+            // Tampilkan placeholder eksplisit. Video-only (`hasVideo`) tetap
+            // punya 1 slide → jangan placeholder.
+            if (images.isEmpty && !hasVideo)
+              const Center(
+                child: Icon(
+                  Icons.image_not_supported_outlined,
+                  color: Colors.white38,
+                  size: 48,
+                ),
+              )
+            else
+              Positioned.fill(
+                // Listener wrap PageView — count pointers manually di pre-arena
+                // layer (Listener runs BEFORE gesture recognizers). Begitu jari
+                // ke-2 nempel → _multiTouch=true → physics lock instan,
+                // InteractiveViewer panEnabled=true → pinch claim arena tanpa
+                // kompetisi dari PageView.HorizontalDrag.
+                child: Listener(
+                  onPointerDown: _onPointerDown,
+                  onPointerUp: _onPointerUp,
+                  onPointerCancel: _onPointerUp,
+                  behavior: HitTestBehavior.translucent,
+                  child: PageView.builder(
+                    controller: _controller,
+                    itemCount: totalSlides,
+                    onPageChanged: (value) => setState(() => _index = value),
+                    physics: _lockSwipe
+                        ? const NeverScrollableScrollPhysics()
+                        : const PageScrollPhysics(),
+                    itemBuilder: (context, i) {
+                      // Slide #0 = video (kalau ada). Video BUKAN _ZoomableImage
+                      // — tak masuk mesin zoom/multitouch. `active` re-evaluasi
+                      // tiap build (onPageChanged → setState _index) → autoplay
+                      // hanya saat jadi slide aktif, pause saat pindah.
+                      if (hasVideo && i == 0) {
+                        return _PreviewVideoSlide(
+                          // Key stabil per-URL: pertahankan state controller
+                          // saat rebuild (onPageChanged) — resume instan.
+                          key: ValueKey('preview-video-${widget.videoUrl}'),
+                          videoUrl: widget.videoUrl!,
+                          thumbnailUrl: widget.videoThumbnailUrl,
+                          posterImageUrl: widget.posterImageUrl,
+                          active: _index == 0,
+                        );
+                      }
+                      final imgI = i - (hasVideo ? 1 : 0);
+                      return _ZoomableImage(
+                        imageUrl: images[imgI],
+                        multiTouch: _multiTouch,
+                        onZoomChanged: _setZoomed,
                       );
-                    }
-                    final imgI = i - (hasVideo ? 1 : 0);
-                    return _ZoomableImage(
-                      imageUrl: images[imgI],
-                      multiTouch: _multiTouch,
-                      onZoomChanged: _setZoomed,
-                    );
-                  },
+                    },
+                  ),
                 ),
               ),
-            ),
-          // CRITICAL: Positioned wrap supaya SafeArea TIDAK ke-stretch ke
-          // fullscreen oleh StackFit.expand. Tanpa Positioned, SafeArea +
-          // IconButton dapat tight constraint full-stack → icon ke-center
-          // di tengah layar, dan IconButton hit-test cover SELURUH viewport
-          // → semua pinch/swipe/tap ke-consume jadi click back, gesture
-          // ke InteractiveViewer/PageView GAK PERNAH SAMPAI.
-          Positioned(
-            top: 0,
-            left: 0,
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 8, top: 8),
-                child: IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  tooltip: 'Kembali',
-                  icon: const Icon(
-                    Icons.arrow_back_rounded,
-                    color: Colors.white,
-                    size: 30,
+            // CRITICAL: Positioned wrap supaya SafeArea TIDAK ke-stretch ke
+            // fullscreen oleh StackFit.expand. Tanpa Positioned, SafeArea +
+            // IconButton dapat tight constraint full-stack → icon ke-center
+            // di tengah layar, dan IconButton hit-test cover SELURUH viewport
+            // → semua pinch/swipe/tap ke-consume jadi click back, gesture
+            // ke InteractiveViewer/PageView GAK PERNAH SAMPAI.
+            Positioned(
+              top: 0,
+              left: 0,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8, top: 8),
+                  child: IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    tooltip: 'Kembali',
+                    icon: const Icon(
+                      Icons.arrow_back_rounded,
+                      color: Colors.white,
+                      size: 30,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          if (showProductChrome) ...[
-            if (!onVideoSlide)
+            if (showProductChrome) ...[
               Positioned(
                 left: 16,
                 right: 16,
@@ -258,7 +252,6 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                   },
                 ),
               ),
-            if (!onVideoSlide)
               Positioned(
                 left: 16,
                 bottom: MediaQuery.paddingOf(context).bottom + 162,
@@ -267,20 +260,20 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                   total: totalSlides,
                 ),
               ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: _ProductMediaBar(
-                product: product,
-                selectedVariant: widget.selectedVariant,
-                needsVariantSelection: widget.needsVariantSelection,
-                onSelectVariant: widget.onSelectVariant,
-                onAddToCart: widget.onAddToCart,
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _ProductMediaBar(
+                  product: product,
+                  selectedVariant: widget.selectedVariant,
+                  needsVariantSelection: widget.needsVariantSelection,
+                  onSelectVariant: widget.onSelectVariant,
+                  onAddToCart: widget.onAddToCart,
+                ),
               ),
-            ),
+            ],
           ],
-        ],
         ),
       ),
     );
@@ -996,9 +989,7 @@ class _PreviewVideoSlideState extends State<_PreviewVideoSlide>
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Icon(
-                    _muted
-                        ? Icons.volume_off_rounded
-                        : Icons.volume_up_rounded,
+                    _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
                     color: Colors.white,
                     size: 22,
                   ),
