@@ -132,6 +132,10 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
     final totalSlides = hasVideo ? images.length + 1 : images.length;
     final product = widget.product;
     final showProductChrome = widget.productMediaViewer && product != null;
+    // Slide video (index 0, iff hasVideo) → sembunyikan filmstrip + counter
+    // (referensi Tokopedia: tampilan video bersih). "+ Keranjang" tetap
+    // tampil di semua slide (unconditional, lihat di bawah).
+    final onVideoSlide = hasVideo && _index == 0;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -229,38 +233,40 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
             ),
           ),
           if (showProductChrome) ...[
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: MediaQuery.paddingOf(context).bottom + 96,
-              child: _ProductMediaThumbnails(
-                images: images,
-                activeIndex: _index,
-                // `hasVideo` = SATU sumber kebenaran (sama dgn viewer/PageView,
-                // berbasis `videoUrl`). Strip menampilkan item video iff viewer
-                // punya slide video → cegah desync off-by-one. `videoThumbnailUrl`
-                // (thumbnail video → poster produk) HANYA gambar yg ditampilkan.
-                hasVideo: hasVideo,
-                videoThumbnailUrl:
-                    widget.videoThumbnailUrl ?? widget.posterImageUrl,
-                videoDurationSec: widget.videoDurationSec,
-                onTap: (index) {
-                  _controller.animateToPage(
-                    index,
-                    duration: const Duration(milliseconds: 220),
-                    curve: Curves.easeOutCubic,
-                  );
-                },
+            if (!onVideoSlide)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: MediaQuery.paddingOf(context).bottom + 96,
+                child: _ProductMediaThumbnails(
+                  images: images,
+                  activeIndex: _index,
+                  // `hasVideo` = SATU sumber kebenaran (sama dgn viewer/PageView,
+                  // berbasis `videoUrl`). Strip menampilkan item video iff viewer
+                  // punya slide video → cegah desync off-by-one. `videoThumbnailUrl`
+                  // (thumbnail video → poster produk) HANYA gambar yg ditampilkan.
+                  hasVideo: hasVideo,
+                  videoThumbnailUrl:
+                      widget.videoThumbnailUrl ?? widget.posterImageUrl,
+                  videoDurationSec: widget.videoDurationSec,
+                  onTap: (index) {
+                    _controller.animateToPage(
+                      index,
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                    );
+                  },
+                ),
               ),
-            ),
-            Positioned(
-              left: 16,
-              bottom: MediaQuery.paddingOf(context).bottom + 162,
-              child: _ProductMediaCounter(
-                current: _index + 1,
-                total: totalSlides,
+            if (!onVideoSlide)
+              Positioned(
+                left: 16,
+                bottom: MediaQuery.paddingOf(context).bottom + 162,
+                child: _ProductMediaCounter(
+                  current: _index + 1,
+                  total: totalSlides,
+                ),
               ),
-            ),
             Positioned(
               left: 0,
               right: 0,
