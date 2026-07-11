@@ -27,6 +27,20 @@ const _minEditVideoSeconds = 1;
 const _maxEditVideoSeconds = 60;
 const _editFrameCount = 10;
 
+/// True bila seleksi menutup video PENUH (mulai 0, akhir >= durasi asli) →
+/// draft diteruskan TANPA trimStart (store boleh fallback-original saat
+/// kompres gagal). Bandingkan detik PECAHAN (bukan yang dibulatkan) supaya
+/// klip pendek berdurasi pecahan (mis. 12.47s) tetap dianggap full-range,
+/// sementara klip >60s (range.end di-cap 60) tetap wajib trim.
+bool isFullRangeSelection({
+  required double startSec,
+  required double endSec,
+  required Duration originalDuration,
+}) {
+  if (startSec > 0.0001) return false;
+  return endSec * 1000 >= originalDuration.inMilliseconds;
+}
+
 /// Layar edit video fullscreen tunggal — gabungan Preview + Trim lama
 /// (Fase 2B). Video full-bleed edge-to-edge (tanpa radius/padding
 /// horizontal); timeline trim muncul otomatis untuk video >60s, atau via
@@ -303,10 +317,16 @@ class _FeedVideoEditScreenState extends State<FeedVideoEditScreen> {
     // Full-range hanya bila seleksi menutup durasi PENUH dalam
     // milliseconds — klip 60.5s dengan seleksi 60s BUKAN full range
     // (0.5s terpotong), jadi wajib masuk trimStart/trimmedDuration
-    // supaya kompresi benar-benar memotong. inSeconds (truncate) di sini
-    // sebelumnya bikin klip 60.x lolos dianggap "full" dan tidak di-trim.
-    final isFullRange = _range.start == 0 &&
-        selectedSeconds * 1000 >= _duration.inMilliseconds;
+    // supaya kompresi benar-benar memotong. Pakai detik pecahan
+    // (_range.end), BUKAN selectedSeconds yang dibulatkan — klip pendek
+    // berdurasi pecahan (mis. 12.47s) yang dibulatkan jadi 12 sebelumnya
+    // salah dianggap "tidak penuh" (12000 < 12470) padahal seleksi sudah
+    // menutup seluruh video.
+    final isFullRange = isFullRangeSelection(
+      startSec: _range.start,
+      endSec: _range.end,
+      originalDuration: _duration,
+    );
     var next = widget.draft;
     if (!isFullRange) {
       next = next.copyWith(

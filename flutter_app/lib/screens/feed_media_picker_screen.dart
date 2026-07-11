@@ -705,7 +705,9 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     setState(() => _busyProcessing = true);
     try {
       final file = await asset.file;
-      if (file == null) throw 'no_file';
+      if (file == null) {
+        throw 'Video ini belum bisa dibuka. Coba pilih video lain.';
+      }
       final duration = asset.duration;
       if (duration < minVideoDurationSeconds) {
         throw 'Video terlalu pendek. Pilih video minimal 1 detik.';
