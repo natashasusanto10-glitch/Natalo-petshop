@@ -39,12 +39,19 @@ class ProductDetailVideoSlide extends StatefulWidget {
   final String? posterImageUrl;
   final int? durationSec;
 
+  /// Dipanggil saat user tap tombol ⛶ (pojok kanan-bawah video). Task 4
+  /// men-supply callback ini (push viewer fullscreen). Sebelum callback
+  /// dipanggil, state ini sudah `pauseIfPlaying()` (lihat `_openFullscreen`)
+  /// supaya suara tidak dobel saat viewer fullscreen mulai main.
+  final VoidCallback? onOpenFullscreen;
+
   const ProductDetailVideoSlide({
     super.key,
     required this.videoUrl,
     required this.thumbnailUrl,
     this.posterImageUrl,
     this.durationSec,
+    this.onOpenFullscreen,
   });
 
   @override
@@ -208,6 +215,13 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
     }
   }
 
+  /// Handler tombol ⛶: pause inline dulu (cegah suara dobel saat viewer
+  /// fullscreen mulai main), baru serahkan ke Task 4 lewat callback parent.
+  void _openFullscreen() {
+    pauseIfPlaying();
+    widget.onOpenFullscreen?.call();
+  }
+
   void _togglePlay() {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
@@ -270,6 +284,9 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
             right: 12,
             child: _Capsule(text: _formatDuration(widget.durationSec!)),
           ),
+        // ⛶ pojok kanan-bawah — child TERAKHIR (topmost) supaya tap-nya
+        // menang lebih dulu daripada ▶ di tengah (lihat dok _FullscreenButton).
+        _FullscreenButton(onTap: _openFullscreen),
       ],
     );
   }
@@ -351,6 +368,13 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
               colors: const VideoProgressColors(playedColor: _brandBlue),
             ),
           ),
+          // ⛶ pojok kanan-bawah — child TERAKHIR (topmost) di Stack ini,
+          // yang jadi child dari GestureDetector luar (_togglePlay). Karena
+          // topmost, hit-test-nya duluan ketemu & memenangkan gesture arena
+          // duluan → tap ⛶ TIDAK jatuh ke _togglePlay (lihat dok
+          // _FullscreenButton). Posisi bottom:12 aman dari progress bar
+          // (tinggi ~9px, padding top 5 + LinearProgressIndicator 4).
+          _FullscreenButton(onTap: _openFullscreen),
         ],
       ),
     );
@@ -382,6 +406,45 @@ class _CircleGlyph extends StatelessWidget {
         shape: BoxShape.circle,
       ),
       child: Icon(icon, color: Colors.white, size: 36),
+    );
+  }
+}
+
+/// Tombol ⛶ pojok kanan-bawah video — buka viewer fullscreen (callback Task 4).
+/// Gaya kapsul sama dengan `_Capsule` (black 0.55 / radius 999), ikon
+/// `Icons.fullscreen_rounded` putih 20.
+///
+/// `GestureDetector` DISENGAJA terpisah dari `GestureDetector` play/pause di
+/// `_buildPlaying`/`_startPlayback` di `_buildThumbnail` — bukan `onTap`
+/// tunggal yang bercabang. Widget ini HARUS jadi child TERAKHIR di `Stack`
+/// pemanggilnya (poster & playing): Stack hit-test anak dari topmost (child
+/// terakhir) ke bawah, jadi tap di area ⛶ kena widget ini duluan & menang di
+/// gesture arena (recognizer yang duluan masuk arena menang saat sweep) —
+/// tap TIDAK diteruskan/jatuh ke GestureDetector ▶ / toggle di baliknya.
+class _FullscreenButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _FullscreenButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      right: 12,
+      bottom: 12,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.55),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: const Icon(
+            Icons.fullscreen_rounded,
+            color: Colors.white,
+            size: 20,
+          ),
+        ),
+      ),
     );
   }
 }
