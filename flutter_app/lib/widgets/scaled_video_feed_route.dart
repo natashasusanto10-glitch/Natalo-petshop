@@ -44,23 +44,30 @@ Future<void> pushScaledVideoFeed(
               ),
               child: child,
             ),
+            // NOTE: the AnimatedBuilder must sit DIRECTLY under the Stack so
+            // that its returned `Positioned` has the Stack as its render
+            // parent. Wrapping the Positioned in IgnorePointer (or any other
+            // RenderObjectWidget) breaks that — StackParentData would be
+            // applied to a non-Stack render object (asserts in debug, mis-
+            // positions in release). So IgnorePointer lives INSIDE the
+            // Positioned instead.
             if (origin != null)
-              IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: curved,
-                  builder: (context, _) {
-                    final t = curved.value;
-                    // Snapshot rect morphs from `origin` to fullscreen.
-                    final left = origin.left + (0 - origin.left) * t;
-                    final top = origin.top + (0 - origin.top) * t;
-                    final width = origin.width + (screenSize.width - origin.width) * t;
-                    final height = origin.height + (screenSize.height - origin.height) * t;
-                    final radius = thumbnailBorderRadius * (1 - t);
-                    return Positioned(
-                      left: left,
-                      top: top,
-                      width: width,
-                      height: height,
+              AnimatedBuilder(
+                animation: curved,
+                builder: (context, _) {
+                  final t = curved.value;
+                  // Snapshot rect morphs from `origin` to fullscreen.
+                  final left = origin.left + (0 - origin.left) * t;
+                  final top = origin.top + (0 - origin.top) * t;
+                  final width = origin.width + (screenSize.width - origin.width) * t;
+                  final height = origin.height + (screenSize.height - origin.height) * t;
+                  final radius = thumbnailBorderRadius * (1 - t);
+                  return Positioned(
+                    left: left,
+                    top: top,
+                    width: width,
+                    height: height,
+                    child: IgnorePointer(
                       child: Opacity(
                         // Snapshot fades OUT over the same interval the
                         // destination fades in, so there is no double-
@@ -78,9 +85,9 @@ Future<void> pushScaledVideoFeed(
                           ),
                         ),
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  );
+                },
               ),
           ],
         );

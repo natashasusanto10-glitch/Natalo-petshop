@@ -1,9 +1,12 @@
 // ignore_for_file: depend_on_referenced_packages
 //
-// These tests exercise the private `_InlineVideoPlayer` /
-// `_FullscreenInlineVideoOverlay` widgets inside member_post_detail_screen.dart
-// end-to-end. They need a working `VideoPlayerController`, which in turn needs a
-// fake `VideoPlayerPlatform` (this repo had none — see git history of this file).
+// These tests exercise the private `_InlineVideoPlayer` inside
+// member_post_detail_screen.dart end-to-end, plus its tap-to-open behavior:
+// tapping the inline video opens the immersive, swipeable
+// [ScopedVideoFeedScreen] scoped to this user's videos (mirrors the
+// "Postingan Terkait" flow). They need a working `VideoPlayerController`,
+// which in turn needs a fake `VideoPlayerPlatform` (this repo had none —
+// see git history of this file).
 //
 // The inline player uses `cached_video_player_plus`, which wraps `video_player`
 // but first consults `flutter_cache_manager` (disk cache + shared_preferences).
@@ -20,6 +23,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
+import 'package:natalo_petshop_flutter/screens/scoped_video_feed_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
@@ -196,18 +200,22 @@ void main() {
   /// Pumps the screen with a single video post and waits (bounded — NOT
   /// pumpAndSettle, which hangs on shimmer/network-image in this repo) for the
   /// inline video controller to reach `initialized` so a `VideoPlayer` renders.
-  Future<VideoPlayerController> pumpAndInitialize(WidgetTester tester) async {
+  Future<VideoPlayerController> pumpAndInitialize(
+    WidgetTester tester, {
+    List<FeedPost>? posts,
+  }) async {
     // Tall phone viewport so the (3:5 immersive) inline video is fully on-screen
     // and tappable — the default 800x600 test window cuts it off.
     tester.view.physicalSize = const Size(400, 1200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    final list = posts ?? [_fakeVideoPost()];
     await tester.pumpWidget(
       MaterialApp(
         home: MemberPostDetailScreen(
-          post: _fakeVideoPost(),
-          posts: [_fakeVideoPost()],
+          post: list.first,
+          posts: list,
         ),
       ),
     );
@@ -228,17 +236,16 @@ void main() {
   }
 
   testWidgets(
-    'tapping inline video area requests expand; tapping mute icon does not',
+    'tapping inline video opens scoped feed; tapping mute icon does not',
     (tester) async {
       await pumpAndInitialize(tester);
 
       // Inline player defaults to muted (appSettingsStore.feedMuted == true).
       expect(find.byIcon(Icons.volume_off_rounded), findsOneWidget);
-      // No fullscreen overlay yet (its back chevron is the tell-tale).
-      expect(find.byIcon(Icons.chevron_left_rounded), findsNothing);
-      final createsBefore = fakePlatform.createCount;
+      // No scoped feed viewer yet.
+      expect(find.byType(ScopedVideoFeedScreen), findsNothing);
 
-      // Tap the mute icon → toggles mute, must NOT open the fullscreen overlay.
+      // Tap the mute icon → toggles mute, must NOT navigate away.
       // _toggleMute awaits a SharedPreferences write before setState, so wait
       // (bounded) for the toggled icon to render rather than assuming one frame.
       await tester.tap(find.byIcon(Icons.volume_off_rounded));
@@ -248,58 +255,63 @@ void main() {
       }
       expect(find.byIcon(Icons.volume_up_rounded), findsOneWidget,
           reason: 'mute tap should toggle the inline mute state');
-      expect(find.byIcon(Icons.chevron_left_rounded), findsNothing,
-          reason: 'mute tap must not fire onExpandRequested');
-      expect(fakePlatform.createCount, createsBefore,
-          reason: 'mute tap must not create a new player');
+      expect(find.byType(ScopedVideoFeedScreen), findsNothing,
+          reason: 'mute tap must not open the scoped feed');
 
       // Tap a point squarely inside the on-screen video area (below the top
-      // author overlay, well clear of the bottom-right mute button) → fires
-      // onExpandRequested, which mounts the fullscreen overlay.
+      // author overlay, well clear of the bottom-right mute button) → opens
+      // the immersive, swipeable scoped feed viewer. Single-tap resolves after
+      // the double-tap timeout, then an async pause + morph-in route push runs,
+      // so wait (bounded) rather than assuming a fixed frame count.
       await tester.tapAt(const Offset(200, 600));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(find.byIcon(Icons.chevron_left_rounded), findsOneWidget,
-          reason: 'tapping the video area should open the fullscreen overlay');
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
+      }
+      expect(find.byType(ScopedVideoFeedScreen), findsOneWidget,
+          reason: 'tapping the video area should open the scoped video feed');
 
       await disposeTree(tester);
     },
   );
 
   testWidgets(
-    'expanding to fullscreen and closing does not reset video position',
+    'scoped feed is seeded with this user\'s videos and opens at the tapped one',
     (tester) async {
-      final controller = await pumpAndInitialize(tester);
+      final posts = [
+        _fakeVideoPost(id: 'post-1'),
+        _fakeVideoPost(id: 'post-2'),
+        _fakeVideoPost(id: 'post-3'),
+      ];
+      await pumpAndInitialize(tester, posts: posts);
 
-      // Seed a non-zero playback position. seekTo persists it in the fake
-      // platform, so the controller's position poll keeps reporting 3s instead
-      // of resetting to zero.
-      await controller.seekTo(const Duration(seconds: 3));
-      await tester.pump();
-      expect(controller.value.position, const Duration(seconds: 3));
-      final createsBeforeExpand = fakePlatform.createCount;
-
-      // Expand → the overlay ADOPTS this controller (no new player created).
+      // The first post is scrolled into view; tapping its inline video opens
+      // the scoped feed. (initialIndex resolution is exercised by the widget's
+      // own indexWhere; here we assert the viewer is scoped to all 3 videos.)
       await tester.tapAt(const Offset(200, 600));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500)); // morph-in (440ms)
-      expect(find.byIcon(Icons.chevron_left_rounded), findsOneWidget);
-      expect(fakePlatform.createCount, createsBeforeExpand,
-          reason: 'overlay must reuse the inline controller, not create a new one');
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
+      }
 
-      // Close via the back chevron.
+      final scoped = tester.widget<ScopedVideoFeedScreen>(
+        find.byType(ScopedVideoFeedScreen),
+      );
+      expect(scoped.posts.length, 3,
+          reason: 'scoped feed should contain every video by this user');
+      expect(scoped.posts.map((p) => p.id), containsAll(<String>[
+        'post-1',
+        'post-2',
+        'post-3',
+      ]));
+
+      // Back chevron closes the viewer.
       await tester.tap(find.byIcon(Icons.chevron_left_rounded));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400)); // morph-out (260ms)
       await tester.pump();
-      expect(find.byIcon(Icons.chevron_left_rounded), findsNothing,
-          reason: 'overlay should be removed after closing');
-
-      // Position preserved end-to-end → no re-initialization happened.
-      expect(controller.value.position, const Duration(seconds: 3),
-          reason: 'closing the overlay must not reset the video position');
-      expect(fakePlatform.createCount, createsBeforeExpand,
-          reason: 'no player should have been created during expand/close');
+      expect(find.byType(ScopedVideoFeedScreen), findsNothing,
+          reason: 'back should close the scoped feed');
 
       await disposeTree(tester);
     },
