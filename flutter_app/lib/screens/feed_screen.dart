@@ -1199,7 +1199,11 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   late final AnimationController _heartBurstController;
   late final Animation<double> _heartScale;
   late final Animation<double> _heartOpacity;
+  late final Animation<double> _heartTravel;
   Offset? _heartBurstPosition;
+  // Target "terbang ke rail" — pusat tombol like, di-capture saat gesture.
+  Offset? _heartBurstTarget;
+  final GlobalKey _likeButtonKey = GlobalKey();
 
   // Product chip rotation — sama pattern dengan _FeedPostView untuk video.
   // Tagged products di PHOTO_CAROUSEL/COMMUNITY post juga butuh chip
@@ -1258,6 +1262,11 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
         weight: 37,
       ),
     ]).animate(_heartBurstController);
+    // Terbang ke rail: mulai setelah pop (0.5) lalu melesat easeIn.
+    _heartTravel = CurvedAnimation(
+      parent: _heartBurstController,
+      curve: const Interval(0.5, 1.0, curve: Curves.easeInCubic),
+    );
 
     // Pre-cache thumbnail foto pertama supaya muncul instan.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1389,11 +1398,20 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     _heartBurstPosition = details.localPosition;
   }
 
+  /// Pusat tombol like rail dalam koordinat ~global (Stack mengisi layar
+  /// dari 0,0), untuk target "terbang ke rail". Null kalau belum ter-render.
+  Offset? _resolveLikeCenter() {
+    final box = _likeButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return box.localToGlobal(box.size.center(Offset.zero));
+  }
+
   void _onDoubleTapLike() {
     AppHaptics.impact();
     if (!_liked) {
       _onLikePressed();
     }
+    _heartBurstTarget = _resolveLikeCenter();
     _heartBurstController.forward(from: 0);
   }
 
@@ -1726,40 +1744,20 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                 },
               ),
             ),
-            // Heart burst overlay (double-tap signature) di titik jari.
+            // Heart burst double-tap — muncul di titik jari, MERAH, lalu
+            // terbang mengecil ke tombol like rail (target di-capture saat
+            // gesture; null → fade di tempat).
             IgnorePointer(
               child: AnimatedBuilder(
                 animation: _heartBurstController,
-                builder: (context, _) {
-                  if (_heartOpacity.value == 0) {
-                    return const SizedBox.shrink();
-                  }
-
-                  final position = _heartBurstPosition;
-                  // Ala IG: putih, bentuk sama dengan heart rail, tegak —
-                  // pop overshoot lalu fade (tanpa tilt/naik gaya TikTok).
-                  final heart = Opacity(
-                    opacity: _heartOpacity.value,
-                    child: Transform.scale(
-                      scale: _heartScale.value,
-                      child: const _BurstHeart(),
-                    ),
-                  );
-                  if (position == null) {
-                    return Center(child: heart);
-                  }
-                  return Stack(
-                    children: [
-                      Positioned(
-                        left: position.dx - 52,
-                        top: position.dy - 52,
-                        width: 104,
-                        height: 104,
-                        child: Center(child: heart),
-                      ),
-                    ],
-                  );
-                },
+                builder: (context, _) => _buildFlyingBurstHeart(
+                  tap: _heartBurstPosition,
+                  target: _heartBurstTarget,
+                  scale: _heartScale.value,
+                  opacity: _heartOpacity.value,
+                  travel: _heartTravel.value,
+                  screenSize: MediaQuery.sizeOf(context),
+                ),
               ),
             ),
             // Dots indicator (kalau >1 foto) — tengah atas, Instagram-style
@@ -1816,6 +1814,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                   // Cart di rail DIHAPUS — duplikat dengan cart kanan-atas
                   // (satu-satunya pintu keranjang di feed).
                   child: FeedActionRail(
+                    likeKey: _likeButtonKey,
                     likeCount: _likeCount,
                     liked: _liked,
                     commentCount: _commentCount,
@@ -1958,7 +1957,11 @@ class _FeedPostViewState extends State<_FeedPostView>
   late final AnimationController _heartBurstController;
   late final Animation<double> _heartScale;
   late final Animation<double> _heartOpacity;
+  late final Animation<double> _heartTravel;
   Offset? _heartBurstPosition;
+  // Target "terbang ke rail" — pusat tombol like, di-capture saat gesture.
+  Offset? _heartBurstTarget;
+  final GlobalKey _likeButtonKey = GlobalKey();
 
   @override
   void initState() {
@@ -2022,6 +2025,11 @@ class _FeedPostViewState extends State<_FeedPostView>
         weight: 37,
       ),
     ]).animate(_heartBurstController);
+    // Terbang ke rail: mulai setelah pop (0.5) lalu melesat easeIn.
+    _heartTravel = CurvedAnimation(
+      parent: _heartBurstController,
+      curve: const Interval(0.5, 1.0, curve: Curves.easeInCubic),
+    );
 
     _commentSheetController.addListener(_syncCommentSheetProgress);
 
@@ -2451,12 +2459,21 @@ class _FeedPostViewState extends State<_FeedPostView>
     _heartBurstPosition = details.localPosition;
   }
 
+  /// Pusat tombol like rail dalam koordinat ~global (Stack mengisi layar
+  /// dari 0,0), untuk target "terbang ke rail". Null kalau belum ter-render.
+  Offset? _resolveLikeCenter() {
+    final box = _likeButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return box.localToGlobal(box.size.center(Offset.zero));
+  }
+
   void _onDoubleTapLike() {
     if (!_liked) {
       _onLikePressed();
     } else {
       AppHaptics.impact();
     }
+    _heartBurstTarget = _resolveLikeCenter();
     _heartBurstController.forward(from: 0);
   }
 
@@ -3141,45 +3158,20 @@ class _FeedPostViewState extends State<_FeedPostView>
                             ),
                           ),
                         ),
-                      // ── Heart burst overlay (Reels double-tap signature) ──
+                      // ── Heart burst double-tap — MERAH, muncul di titik
+                      // jari lalu terbang mengecil ke tombol like rail ──
                       Positioned.fill(
                         child: IgnorePointer(
                           child: AnimatedBuilder(
                             animation: _heartBurstController,
-                            builder: (context, _) {
-                              if (_heartOpacity.value == 0) {
-                                return const SizedBox.shrink();
-                              }
-
-                              final position = _heartBurstPosition;
-                              // Ala IG: putih, bentuk sama dengan heart
-                              // rail, tegak — pop overshoot lalu fade
-                              // (tanpa tilt/naik gaya TikTok). Shared
-                              // dengan versi foto carousel.
-                              final heart = Opacity(
-                                opacity: _heartOpacity.value,
-                                child: Transform.scale(
-                                  scale: _heartScale.value,
-                                  child: const _BurstHeart(),
-                                ),
-                              );
-
-                              if (position == null) {
-                                return Center(child: heart);
-                              }
-
-                              return Stack(
-                                children: [
-                                  Positioned(
-                                    left: position.dx - 52,
-                                    top: position.dy - 52,
-                                    width: 104,
-                                    height: 104,
-                                    child: Center(child: heart),
-                                  ),
-                                ],
-                              );
-                            },
+                            builder: (context, _) => _buildFlyingBurstHeart(
+                              tap: _heartBurstPosition,
+                              target: _heartBurstTarget,
+                              scale: _heartScale.value,
+                              opacity: _heartOpacity.value,
+                              travel: _heartTravel.value,
+                              screenSize: MediaQuery.sizeOf(context),
+                            ),
                           ),
                         ),
                       ),
@@ -3253,6 +3245,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                               // kanan-atas (satu-satunya pintu keranjang di
                               // feed sekarang).
                               child: FeedActionRail(
+                                likeKey: _likeButtonKey,
                                 likeCount: _likeCount,
                                 liked: _liked,
                                 commentCount: _commentCount,
@@ -4071,11 +4064,9 @@ class _PausedControlButtonState extends State<_PausedControlButton> {
   }
 }
 
-/// Heart burst double-tap ala IG — fill PUTIH, bentuk sama dengan rail
-/// (path bersama dari `feed_action_rail.dart`), tegak tanpa tilt/naik.
-/// Sebelumnya merah + miring −0.08 + rise = resep TikTok, dan bentuknya
-/// (Icons.favorite_rounded) beda dari heart rail sehingga dua gestur like
-/// menampilkan dua hati berbeda.
+/// Heart burst double-tap — fill MERAH solid (0xFFEF4444, sama dengan heart
+/// rail saat liked), bentuk sama dengan rail (path bersama). Muncul di titik
+/// jari lalu TERBANG ke tombol like rail (lihat [_buildFlyingBurstHeart]).
 class _BurstHeart extends StatelessWidget {
   const _BurstHeart();
 
@@ -4106,13 +4097,56 @@ class _BurstHeartPainter extends CustomPainter {
     canvas.drawPath(path.shift(const Offset(0, 3)), shadowPaint);
 
     final fillPaint = Paint()
-      ..color = Colors.white
+      ..color = const Color(0xFFEF4444)
       ..style = PaintingStyle.fill;
     canvas.drawPath(path, fillPaint);
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Subtree overlay hati burst double-tap yang TERBANG ke tombol like rail.
+///
+/// - [tap]: titik jari (koordinat Stack ≈ global — media detector mengisi
+///   layar dari (0,0)). Null → tampil di tengah.
+/// - [target]: pusat tombol like rail; null (mis. key belum ter-render) →
+///   fade di tempat tanpa terbang.
+/// - [travel] 0→1: interpolasi posisi tap→target. [scale]/[opacity] dari
+///   TweenSequence burst (pop di titik jari, lalu mengecil + memudar saat
+///   melesat ke rail).
+///
+/// Return nested Stack supaya bisa jadi child langsung AnimatedBuilder
+/// (Positioned wajib punya Stack parent).
+Widget _buildFlyingBurstHeart({
+  required Offset? tap,
+  required Offset? target,
+  required double scale,
+  required double opacity,
+  required double travel,
+  required Size screenSize,
+}) {
+  if (opacity == 0) return const SizedBox.shrink();
+  final origin =
+      tap ?? Offset(screenSize.width / 2, screenSize.height / 2);
+  final pos = target != null ? Offset.lerp(origin, target, travel)! : origin;
+  return Stack(
+    children: [
+      Positioned(
+        left: pos.dx - _BurstHeart.size / 2,
+        top: pos.dy - _BurstHeart.size / 2,
+        width: _BurstHeart.size,
+        height: _BurstHeart.size,
+        child: Opacity(
+          opacity: opacity,
+          child: Transform.scale(
+            scale: scale,
+            child: const _BurstHeart(),
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
 /// Compact product pill — Final Lock Spec Feed Product Tag.
