@@ -160,6 +160,47 @@ void main() {
       expect(loaded.single.broken, true);
     });
 
+    test(
+        'draft video migrasi tanpa durasi → ditandai broken meski file media ada',
+        () async {
+      final photo = await makeFile('legacy-video.mp4');
+      final store = FeedDraftStore();
+      final draft = FeedDraft(
+        id: 'draft-no-duration',
+        type: 'video',
+        caption: 'video lama',
+        productIds: const [],
+        mediaPaths: [photo.path],
+        // originalDurationMs & trimmedDurationMs sengaja null — meniru
+        // draft slot-tunggal lama (Fase 2B) yang belum menyimpan durasi.
+        savedAtMs: 1000,
+      );
+      await store.save(draft);
+      final loaded = await store.load();
+
+      expect(loaded, hasLength(1));
+      expect(loaded.single.broken, true);
+    });
+
+    test('draft video dengan durasi ada → tidak ditandai broken', () async {
+      final photo = await makeFile('video-with-duration.mp4');
+      final store = FeedDraftStore();
+      final draft = FeedDraft(
+        id: 'draft-with-duration',
+        type: 'video',
+        caption: 'video baru',
+        productIds: const [],
+        mediaPaths: [photo.path],
+        originalDurationMs: 9000,
+        savedAtMs: 1000,
+      );
+      await store.save(draft);
+      final loaded = await store.load();
+
+      expect(loaded, hasLength(1));
+      expect(loaded.single.broken, false);
+    });
+
     test('remove menghapus draft by id', () async {
       final photo = await makeFile('photo1.jpg');
       final store = FeedDraftStore();

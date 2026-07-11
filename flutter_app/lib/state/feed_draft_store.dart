@@ -151,6 +151,16 @@ class FeedDraftStore {
     if (thumb != null && thumb.isNotEmpty && !await File(thumb).exists()) {
       return true;
     }
+    // Draft video migrasi dari slot lama (Fase 2B, sebelum durasi disimpan)
+    // tidak punya originalDurationMs/trimmedDurationMs sama sekali — tanpa
+    // durasi, validasi publish 1..60s tidak akan pernah lolos. Tandai
+    // broken (tawarkan hapus) daripada biarkan jadi kartu dead-end yang
+    // ketuknya gagal tanpa penjelasan.
+    if (draft.type == 'video' &&
+        draft.originalDurationMs == null &&
+        draft.trimmedDurationMs == null) {
+      return true;
+    }
     return false;
   }
 
