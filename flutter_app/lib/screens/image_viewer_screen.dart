@@ -33,6 +33,17 @@ class ImageViewerScreen extends StatefulWidget {
   final VoidCallback? onSelectVariant;
   final void Function(ProductVariant? variant, int quantity)? onAddToCart;
 
+  /// Video produk opsional. Saat non-kosong → video jadi SLIDE #0 (autoplay
+  /// bersuara), foto jadi slide 1+. `initialIndex` adalah index SLIDE
+  /// (video=0, foto=1+), bukan index foto.
+  final String? videoUrl;
+  final String? videoThumbnailUrl;
+  final int? videoDurationSec;
+
+  /// Poster fallback (biasanya `product.imageUrl`) diteruskan ke
+  /// [_PreviewVideoSlide] saat thumbnail video null/gagal.
+  final String? posterImageUrl;
+
   const ImageViewerScreen({
     super.key,
     this.images,
@@ -44,10 +55,17 @@ class ImageViewerScreen extends StatefulWidget {
     this.needsVariantSelection = false,
     this.onSelectVariant,
     this.onAddToCart,
+    this.videoUrl,
+    this.videoThumbnailUrl,
+    this.videoDurationSec,
+    this.posterImageUrl,
   }) : assert(images != null || url != null,
             'ImageViewerScreen butuh images atau url');
 
   List<String> get list => images ?? [url!];
+
+  /// True kalau ada video → viewer menampilkan video sebagai slide 0.
+  bool get hasVideo => (videoUrl ?? '').isNotEmpty;
 
   @override
   State<ImageViewerScreen> createState() => _ImageViewerScreenState();
@@ -73,7 +91,10 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
   @override
   void initState() {
     super.initState();
-    final maxIndex = widget.list.length - 1;
+    // Total slide = foto + (video kalau ada). `initialIndex` = index SLIDE.
+    final total =
+        widget.hasVideo ? widget.list.length + 1 : widget.list.length;
+    final maxIndex = total - 1;
     _index = widget.initialIndex.clamp(0, maxIndex < 0 ? 0 : maxIndex);
     _controller = PageController(initialPage: _index);
   }
@@ -106,6 +127,9 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
   @override
   Widget build(BuildContext context) {
     final images = widget.list;
+    final hasVideo = widget.hasVideo;
+    // Total slide: video (kalau ada) di depan, lalu foto.
+    final totalSlides = hasVideo ? images.length + 1 : images.length;
     final product = widget.product;
     final showProductChrome = widget.productMediaViewer && product != null;
 
@@ -124,8 +148,9 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
           children: [
           // Guard: kalau images kosong (data tidak terkirim), jangan render
           // PageView 0-item (layar hitam total + chrome nyangkut di pojok).
-          // Tampilkan placeholder eksplisit.
-          if (images.isEmpty)
+          // Tampilkan placeholder eksplisit. Video-only (`hasVideo`) tetap
+          // punya 1 slide → jangan placeholder.
+          if (images.isEmpty && !hasVideo)
             const Center(
               child: Icon(
                 Icons.image_not_supported_outlined,
@@ -147,16 +172,34 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                 behavior: HitTestBehavior.translucent,
                 child: PageView.builder(
                   controller: _controller,
-                  itemCount: images.length,
+                  itemCount: totalSlides,
                   onPageChanged: (value) => setState(() => _index = value),
                   physics: _lockSwipe
                       ? const NeverScrollableScrollPhysics()
                       : const PageScrollPhysics(),
-                  itemBuilder: (context, i) => _ZoomableImage(
-                    imageUrl: images[i],
-                    multiTouch: _multiTouch,
-                    onZoomChanged: _setZoomed,
-                  ),
+                  itemBuilder: (context, i) {
+                    // Slide #0 = video (kalau ada). Video BUKAN _ZoomableImage
+                    // — tak masuk mesin zoom/multitouch. `active` re-evaluasi
+                    // tiap build (onPageChanged → setState _index) → autoplay
+                    // hanya saat jadi slide aktif, pause saat pindah.
+                    if (hasVideo && i == 0) {
+                      return _PreviewVideoSlide(
+                        // Key stabil per-URL: pertahankan state controller
+                        // saat rebuild (onPageChanged) — resume instan.
+                        key: ValueKey('preview-video-${widget.videoUrl}'),
+                        videoUrl: widget.videoUrl!,
+                        thumbnailUrl: widget.videoThumbnailUrl,
+                        posterImageUrl: widget.posterImageUrl,
+                        active: _index == 0,
+                      );
+                    }
+                    final imgI = i - (hasVideo ? 1 : 0);
+                    return _ZoomableImage(
+                      imageUrl: images[imgI],
+                      multiTouch: _multiTouch,
+                      onZoomChanged: _setZoomed,
+                    );
+                  },
                 ),
               ),
             ),
@@ -193,6 +236,12 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
               child: _ProductMediaThumbnails(
                 images: images,
                 activeIndex: _index,
+                // Kalau ada video → thumbnail pertama = video (slide 0),
+                // sisanya foto (slide 1+). URL: thumbnail video → poster produk.
+                videoThumbnailUrl: hasVideo
+                    ? (widget.videoThumbnailUrl ?? widget.posterImageUrl)
+                    : null,
+                videoDurationSec: hasVideo ? widget.videoDurationSec : null,
                 onTap: (index) {
                   _controller.animateToPage(
                     index,
@@ -207,7 +256,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
               bottom: MediaQuery.paddingOf(context).bottom + 162,
               child: _ProductMediaCounter(
                 current: _index + 1,
-                total: images.length,
+                total: totalSlides,
               ),
             ),
             Positioned(
@@ -442,47 +491,145 @@ class _ProductMediaThumbnails extends StatelessWidget {
   final int activeIndex;
   final ValueChanged<int> onTap;
 
+  /// Non-null → ada video: thumbnail pertama = video (slide 0), sisanya foto.
+  /// URL sudah di-resolve caller (thumbnail video → poster produk).
+  final String? videoThumbnailUrl;
+  final int? videoDurationSec;
+
   const _ProductMediaThumbnails({
     required this.images,
     required this.activeIndex,
     required this.onTap,
+    this.videoThumbnailUrl,
+    this.videoDurationSec,
   });
+
+  bool get _hasVideo => videoThumbnailUrl != null;
 
   @override
   Widget build(BuildContext context) {
+    // Total item = foto + (video di depan kalau ada). Index item == index SLIDE
+    // (video=0, foto ke-k = k+1), jadi onTap(index) langsung ke slide benar.
+    final total = _hasVideo ? images.length + 1 : images.length;
     return SizedBox(
       height: 56,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: images.length,
+        itemCount: total,
         separatorBuilder: (_, __) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
           final active = index == activeIndex;
-          return GestureDetector(
-            onTap: () => onTap(index),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: 56,
-              height: 56,
-              padding: EdgeInsets.all(active ? 2 : 0),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: active ? Colors.white : Colors.white24,
-                  width: active ? 2 : 1,
-                ),
-              ),
-              child: AppProductImage(
-                imageUrl: images[index],
-                fit: BoxFit.cover,
-                borderRadius: BorderRadius.circular(active ? 7 : 9),
-              ),
+          if (_hasVideo && index == 0) {
+            return _thumbFrame(
+              active: active,
+              slideIndex: 0,
+              child: _videoThumbContent(active),
+            );
+          }
+          final imgI = index - (_hasVideo ? 1 : 0);
+          return _thumbFrame(
+            active: active,
+            slideIndex: index,
+            child: AppProductImage(
+              imageUrl: images[imgI],
+              fit: BoxFit.cover,
+              borderRadius: BorderRadius.zero,
             ),
           );
         },
       ),
     );
   }
+
+  /// Bingkai thumbnail 56x56 + border aktif (gaya existing). `child` di-clip
+  /// dengan radius yang sama supaya konten (foto / video) tak bocor sudut.
+  Widget _thumbFrame({
+    required bool active,
+    required int slideIndex,
+    required Widget child,
+  }) {
+    return GestureDetector(
+      onTap: () => onTap(slideIndex),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        width: 56,
+        height: 56,
+        padding: EdgeInsets.all(active ? 2 : 0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: active ? Colors.white : Colors.white24,
+            width: active ? 2 : 1,
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(active ? 7 : 9),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  /// Isi thumbnail video: poster + ▶ overlay + badge durasi (mm:ss unpadded).
+  Widget _videoThumbContent(bool active) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        AppProductImage(
+          imageUrl: videoThumbnailUrl ?? '',
+          fit: BoxFit.cover,
+          borderRadius: BorderRadius.zero,
+        ),
+        // Dim tipis biar ▶ + badge kebaca di atas thumbnail terang.
+        const ColoredBox(color: Color(0x33000000)),
+        Center(
+          child: Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.55),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.play_arrow_rounded,
+              color: Colors.white,
+              size: 15,
+            ),
+          ),
+        ),
+        if (videoDurationSec != null)
+          Positioned(
+            right: 2,
+            bottom: 2,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.68),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                _formatVideoDuration(videoDurationSec!),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Format durasi `mm:ss` dengan menit tak di-pad (mis. `0:32`, `1:05`).
+/// Mirror `ProductDetailVideoSlide._formatDuration` (file terpisah, private).
+String _formatVideoDuration(int totalSeconds) {
+  final s = totalSeconds < 0 ? 0 : totalSeconds;
+  final m = s ~/ 60;
+  final sec = s % 60;
+  return '$m:${sec.toString().padLeft(2, '0')}';
 }
 
 class _ProductMediaBar extends StatelessWidget {
