@@ -774,7 +774,18 @@ class _PostFeedItemState extends State<_PostFeedItem>
               _PostMediaSurface(
                 post: post,
                 onVideoExpandRequested: (controller, anchorKey) {
-                  // TODO(Task 6): open fullscreen overlay with `controller`.
+                  final renderBox = anchorKey.currentContext?.findRenderObject() as RenderBox?;
+                  if (renderBox == null) return;
+                  final origin = renderBox.localToGlobal(Offset.zero) & renderBox.size;
+                  late OverlayEntry entry;
+                  entry = OverlayEntry(
+                    builder: (context) => _FullscreenInlineVideoOverlay(
+                      controller: controller,
+                      originRect: origin,
+                      onClose: () => entry.remove(),
+                    ),
+                  );
+                  Overlay.of(context, rootOverlay: true).insert(entry);
                 },
               ),
               if (post.isVideo)
@@ -2072,181 +2083,148 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
   }
 }
 
-/// Fullscreen video player route — tap-to-toggle play/pause, swipe down
-/// untuk close. Audio enabled (unmute saat masuk fullscreen).
-class _FullScreenVideoRoute extends StatefulWidget {
-  final String mediaUrl;
-  final String? thumbnailUrl;
+/// Fullscreen video overlay that ADOPTS an already-playing
+/// [VideoPlayerController] — never creates its own, so playback position
+/// and buffered state are preserved exactly (no restart). Shown via
+/// [Overlay] (not Navigator.push) so the inline player beneath keeps its
+/// controller reference alive the whole time; on close, this overlay is
+/// simply removed and the inline player resumes normal visibility-driven
+/// play/pause + its own mute preference.
+class _FullscreenInlineVideoOverlay extends StatefulWidget {
+  final VideoPlayerController controller;
+  final Rect originRect;
+  final VoidCallback onClose;
 
-  const _FullScreenVideoRoute({
-    required this.mediaUrl,
-    required this.thumbnailUrl,
+  const _FullscreenInlineVideoOverlay({
+    required this.controller,
+    required this.originRect,
+    required this.onClose,
   });
 
   @override
-  State<_FullScreenVideoRoute> createState() => _FullScreenVideoRouteState();
+  State<_FullscreenInlineVideoOverlay> createState() => _FullscreenInlineVideoOverlayState();
 }
 
-class _FullScreenVideoRouteState extends State<_FullScreenVideoRoute> {
-  VideoPlayerController? _controller;
-  bool _initializing = true;
+class _FullscreenInlineVideoOverlayState extends State<_FullscreenInlineVideoOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _morphController;
+  late final Animation<double> _morph;
+  double? _previousVolume;
   bool _muted = false;
 
   @override
   void initState() {
     super.initState();
-    _initialize();
+    _morphController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 440),
+      reverseDuration: const Duration(milliseconds: 260),
+    );
+    _morph = CurvedAnimation(parent: _morphController, curve: Curves.easeOutCubic);
+    // Unmute on entry — explicit fullscreen intent, independent of the
+    // inline preference (same rationale the old dead code documented).
+    _previousVolume = widget.controller.value.volume;
+    widget.controller.setVolume(1);
+    _morphController.forward();
   }
 
-  Future<void> _initialize() async {
-    final controller = VideoPlayerController.networkUrl(
-      Uri.parse(widget.mediaUrl),
-    );
-    _controller = controller;
-    try {
-      await controller.initialize();
-      if (!mounted) return;
-      await controller.setLooping(true);
-      // Sengaja TIDAK ikut appSettingsStore.feedMuted — masuk fullscreen
-      // adalah aksi eksplisit user utk nonton dgn suara (ala IG tap-to-
-      // fullscreen), independen dari preferensi mute rail/inline feed.
-      await controller.setVolume(1);
-      await controller.play();
-      setState(() => _initializing = false);
-    } catch (_) {
-      await controller.dispose();
-      if (!mounted) return;
-      setState(() => _initializing = false);
-    }
+  Future<void> _close() async {
+    await _morphController.reverse();
+    await widget.controller.setVolume(_previousVolume ?? 0);
+    widget.onClose();
+  }
+
+  void _toggleMute() {
+    setState(() => _muted = !_muted);
+    widget.controller.setVolume(_muted ? 0 : 1);
   }
 
   @override
   void dispose() {
-    _controller?.pause();
-    _controller?.dispose();
+    _morphController.dispose();
     super.dispose();
   }
 
-  void _togglePlay() {
-    final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) return;
-    setState(() {
-      if (controller.value.isPlaying) {
-        controller.pause();
-      } else {
-        controller.play();
-      }
-    });
-  }
-
-  void _toggleMute() {
-    final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) return;
-    setState(() {
-      _muted = !_muted;
-      controller.setVolume(_muted ? 0 : 1);
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    final controller = _controller;
-    final ready = controller != null && controller.value.isInitialized;
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _togglePlay,
-            onVerticalDragEnd: (details) {
-              // Swipe down → close.
-              if ((details.primaryVelocity ?? 0) > 300) {
-                Navigator.maybePop(context);
-              }
-            },
-            child: Center(
-              child: ready
-                  ? AspectRatio(
-                      aspectRatio: controller.value.aspectRatio,
-                      child: VideoPlayer(controller),
-                    )
-                  : _initializing
-                      ? const SizedBox(
-                          width: 36,
-                          height: 36,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.8,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(
-                          Icons.error_outline_rounded,
-                          color: Colors.white60,
-                          size: 48,
-                        ),
-            ),
+    final screenSize = MediaQuery.of(context).size;
+    return AnimatedBuilder(
+      animation: _morph,
+      builder: (context, child) {
+        final t = _morph.value;
+        final origin = widget.originRect;
+        final left = origin.left * (1 - t);
+        final top = origin.top * (1 - t);
+        final width = origin.width + (screenSize.width - origin.width) * t;
+        final height = origin.height + (screenSize.height - origin.height) * t;
+        return Positioned(
+          left: left,
+          top: top,
+          width: width,
+          height: height,
+          child: ColoredBox(
+            color: Colors.black.withValues(alpha: t),
+            child: child,
           ),
-          // Top chrome — close button.
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Align(
-                alignment: Alignment.topLeft,
-                child: _RoundIconButton(
-                  icon: Icons.close_rounded,
-                  onTap: () => Navigator.maybePop(context),
+        );
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onVerticalDragEnd: (details) {
+          if ((details.primaryVelocity ?? 0) > 300) _close();
+        },
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Center(
+              child: AspectRatio(
+                aspectRatio: widget.controller.value.aspectRatio,
+                child: VideoPlayer(widget.controller),
+              ),
+            ),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: _close,
+                      child: const SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: Icon(Icons.chevron_left_rounded, color: Colors.white, size: 24),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-          // Mute toggle pojok kanan bawah.
-          if (ready)
             Positioned(
               right: 16,
               bottom: 32,
-              child: _RoundIconButton(
-                icon:
-                    _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                onTap: _toggleMute,
-              ),
-            ),
-          // Play indicator saat paused.
-          if (ready && !controller.value.isPlaying)
-            const IgnorePointer(
-              child: Center(
-                child: Icon(
-                  Icons.play_arrow_rounded,
-                  color: Colors.white,
-                  size: 72,
+              child: Material(
+                color: Colors.black.withValues(alpha: 0.45),
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: _toggleMute,
+                  child: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Icon(
+                      _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
                 ),
               ),
             ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RoundIconButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _RoundIconButton({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.black.withValues(alpha: 0.45),
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox(
-          width: 40,
-          height: 40,
-          child: Icon(icon, color: Colors.white, size: 20),
+          ],
         ),
       ),
     );

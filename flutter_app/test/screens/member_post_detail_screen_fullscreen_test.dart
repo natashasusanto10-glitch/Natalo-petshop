@@ -25,4 +25,20 @@ void main() {
     },
     skip: true, // no VideoPlayerPlatform fake available in this repo yet
   );
+
+  testWidgets(
+    'expanding to fullscreen and closing does not reset video position',
+    (tester) async {
+      // Arrange: pump with a fake VideoPlayerController seeded to a
+      // non-zero position (e.g. simulate 3 seconds played).
+      // Act: tap video area -> overlay appears (find _FullscreenInlineVideoOverlay
+      //      is private; assert via find.byType(VideoPlayer) count == 1,
+      //      i.e. still the SAME VideoPlayer widget instance/controller,
+      //      not a second one).
+      // Act: tap back chevron -> overlay removed.
+      // Assert: the fake controller's `.value.position` is UNCHANGED from
+      //         before expand (proves no re-initialization happened).
+    },
+    skip: true, // unskip once the fake VideoPlayerController from Task 5 is confirmed working
+  );
 }
