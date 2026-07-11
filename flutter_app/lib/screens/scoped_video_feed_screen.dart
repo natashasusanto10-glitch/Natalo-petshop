@@ -25,6 +25,13 @@ class ScopedVideoFeedScreen extends StatefulWidget {
 class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
   late final PageController _pageController;
   late int _activeIndex;
+  // Guard supaya overscroll-dismiss cuma pop SEKALI per gesture.
+  bool _dismissing = false;
+
+  /// Seberapa jauh (px) user harus menarik melewati batas atas (video
+  /// pertama) sebelum viewer menutup — ala IG Reels dari profil: tarik
+  /// turun di reel pertama = kembali ke halaman sebelumnya.
+  static const double _dismissOverscroll = 72;
 
   @override
   void initState() {
@@ -44,6 +51,23 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
     setState(() => _activeIndex = index);
   }
 
+  /// Tarik-turun melewati batas atas (BouncingScrollPhysics → pixels <
+  /// minScrollExtent) saat jari masih di layar (dragDetails != null,
+  /// supaya animasi bounce-back setelah lepas tidak ikut memicu) →
+  /// tutup viewer. Mentok bawah dibiarkan stuck (sesuai spec).
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (_dismissing) return false;
+    if (notification is ScrollUpdateNotification &&
+        notification.dragDetails != null) {
+      final metrics = notification.metrics;
+      if (metrics.pixels < metrics.minScrollExtent - _dismissOverscroll) {
+        _dismissing = true;
+        Navigator.maybePop(context);
+      }
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -51,23 +75,26 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          PageView.builder(
-            controller: _pageController,
-            scrollDirection: Axis.vertical,
-            physics: const PageScrollPhysics(parent: BouncingScrollPhysics()),
-            itemCount: widget.posts.length,
-            onPageChanged: _onPageChanged,
-            itemBuilder: (context, index) {
-              final post = widget.posts[index];
-              return FeedVideoPostView(
-                post: post,
-                isActive: index == _activeIndex,
-                preloadedController: null,
-                preloadedCachedPlayer: null,
-                onOverlayStateChanged: (_) {},
-                onMediaZoomChanged: (_) {},
-              );
-            },
+          NotificationListener<ScrollNotification>(
+            onNotification: _onScrollNotification,
+            child: PageView.builder(
+              controller: _pageController,
+              scrollDirection: Axis.vertical,
+              physics: const PageScrollPhysics(parent: BouncingScrollPhysics()),
+              itemCount: widget.posts.length,
+              onPageChanged: _onPageChanged,
+              itemBuilder: (context, index) {
+                final post = widget.posts[index];
+                return FeedVideoPostView(
+                  post: post,
+                  isActive: index == _activeIndex,
+                  preloadedController: null,
+                  preloadedCachedPlayer: null,
+                  onOverlayStateChanged: (_) {},
+                  onMediaZoomChanged: (_) {},
+                );
+              },
+            ),
           ),
           SafeArea(
             child: Padding(
@@ -83,7 +110,8 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
                     child: const SizedBox(
                       width: 40,
                       height: 40,
-                      child: Icon(Icons.chevron_left_rounded, color: Colors.white, size: 26),
+                      child: Icon(Icons.chevron_left_rounded,
+                          color: Colors.white, size: 26),
                     ),
                   ),
                 ),

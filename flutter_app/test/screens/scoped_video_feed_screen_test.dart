@@ -45,4 +45,47 @@ void main() {
     // video/image/shimmer surfaces render (never settles).
     await tester.pump(const Duration(milliseconds: 600));
   });
+
+  testWidgets('drag past top boundary on first video dismisses the viewer',
+      (tester) async {
+    final posts = [_fakeVideoPost('a'), _fakeVideoPost('b')];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        ScopedVideoFeedScreen(posts: posts, initialIndex: 0),
+                  ),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+
+    // Drag DOWN well past the 72px overscroll threshold while on the
+    // first video → viewer pops (ala IG Reels tarik-turun dari profil).
+    await tester.drag(find.byType(PageView), const Offset(0, 300));
+    // Pop fires immediately (NavigatorObserver confirms), but the exiting
+    // route stays in the overlay through the reverse transition + the
+    // overscroll ballistic settle (~600-800ms) — pump bounded until gone.
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
+    }
+    expect(find.byType(ScopedVideoFeedScreen), findsNothing,
+        reason: 'overscroll drag at the first video should close the viewer');
+
+    await tester.pump(const Duration(milliseconds: 600));
+  });
 }
