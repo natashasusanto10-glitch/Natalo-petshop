@@ -19,6 +19,7 @@ import '../services/app_analytics.dart';
 import '../services/connectivity_service.dart';
 import '../services/search_service.dart';
 import '../services/product_service.dart';
+import '../state/feed_upload_store.dart';
 import '../state/recently_viewed_store.dart';
 import '../state/search_history_store.dart';
 import '../state/trending_placeholder_controller.dart';
@@ -145,6 +146,14 @@ class _HomeScreenState extends State<HomeScreen> {
           _globalNextRegenerateThreshold == 2 ? 3 : 2;
     }
     _exploreGeneration = _globalExploreGeneration;
+
+    // Cold-start resume check (Fase 2C-4) — bila ada upload feed yang
+    // sempat jalan lalu app di-kill, tawarkan "Lanjutkan" di FeedUploadBar.
+    // Post-frame supaya tidak block initState; idempotent (guard internal
+    // di store sekali per proses).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(feedUploadStore.checkForResumableUpload());
+    });
 
     _productsFuture = productService.fetchProducts(limit: 48);
     _scrollController.addListener(_onScroll);

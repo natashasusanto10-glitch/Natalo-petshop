@@ -159,6 +159,8 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
         return 'Gagal mengunggah';
       case FeedUploadStatus.cancelled:
         return 'Upload dibatalkan';
+      case FeedUploadStatus.resumable:
+        return 'Uploadmu tadi belum selesai';
       case FeedUploadStatus.idle:
         return '';
     }
@@ -183,14 +185,17 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
     final isFailed = task.status == FeedUploadStatus.failed;
     final isWaitingReview = task.status == FeedUploadStatus.waitingReview;
     final isSuccess = task.status == FeedUploadStatus.success;
+    final isResumable = task.status == FeedUploadStatus.resumable;
     final isTerminal = isFailed || isWaitingReview || isSuccess;
     final showCancel = task.status == FeedUploadStatus.preparing ||
         task.status == FeedUploadStatus.uploading;
-    final showBar = !isTerminal && task.status != FeedUploadStatus.cancelled;
+    final showBar = !isTerminal &&
+        task.status != FeedUploadStatus.cancelled &&
+        !isResumable;
 
     Color bg = _cardBg;
     Color border = _hairline;
-    if (isWaitingReview || isSuccess) {
+    if (isWaitingReview || isSuccess || isResumable) {
       bg = _tintBlueBg;
       border = _tintBlueBorder;
     } else if (isFailed) {
@@ -251,6 +256,7 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
     final isTerminal = task.status == FeedUploadStatus.failed ||
         task.status == FeedUploadStatus.waitingReview ||
         task.status == FeedUploadStatus.success;
+    final isResumable = task.status == FeedUploadStatus.resumable;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -310,9 +316,17 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
           const SizedBox(width: 8),
           _RetryPill(onTap: () => feedUploadStore.retry()),
         ],
+        if (isResumable) ...[
+          const SizedBox(width: 8),
+          _ResumePill(onTap: () => feedUploadStore.resumePersisted()),
+        ],
         if (showCancel) ...[
           const SizedBox(width: 6),
           _CancelButton(onTap: () => feedUploadStore.cancelActive()),
+        ],
+        if (isResumable) ...[
+          const SizedBox(width: 6),
+          _CancelButton(onTap: () => feedUploadStore.dismissResumable()),
         ],
       ],
     );
@@ -661,6 +675,7 @@ class _TrailingIndicator extends StatelessWidget {
             color: Color(0xFF22C55E), size: 18);
       case FeedUploadStatus.failed:
       case FeedUploadStatus.cancelled:
+      case FeedUploadStatus.resumable:
       case FeedUploadStatus.idle:
         return const SizedBox.shrink();
     }
@@ -728,6 +743,37 @@ class _RetryPill extends StatelessWidget {
           'Coba lagi',
           style: TextStyle(
             color: Color(0xFFFF6B6B),
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Pill biru "Lanjutkan" — CTA di bar state `resumable` (Fase 2C-4).
+/// Match pattern visual `_RetryPill` (kapsul kecil, teks bold) tapi warna
+/// biru brand (bukan merah) supaya terasa "lanjut", bukan "error".
+class _ResumePill extends StatelessWidget {
+  final VoidCallback onTap;
+  const _ResumePill({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color.fromRGBO(91, 140, 255, 0.18),
+          borderRadius: BorderRadius.circular(99),
+        ),
+        child: const Text(
+          'Lanjutkan',
+          style: TextStyle(
+            color: Color(0xFF5B8CFF),
             fontSize: 12,
             fontWeight: FontWeight.w800,
           ),
