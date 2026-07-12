@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { MY_FEED_VISIBLE_STATUSES } from "@/lib/feed/my-posts";
 import { deleteFeedAssets } from "@/lib/feed/cleanup";
 import { signBunnyUrl } from "@/lib/feed/bunny";
+import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESC_LENGTH = 2000;
@@ -123,10 +124,11 @@ export async function GET(
     viewerLiked,
     author: {
       id: post.author.id,
-      name: post.author.name,
+      // Akun official (admin) → brand name + foto null (klien render logo).
+      name: brandDisplayName(post.author.role, post.author.name),
       username: post.author.username,
       role: post.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
-      profilePhotoUrl: post.author.profilePhotoUrl,
+      profilePhotoUrl: brandPhotoUrl(post.author.role, post.author.profilePhotoUrl),
     },
     media: post.media.map((m) => ({
       id: m.id,
@@ -138,11 +140,11 @@ export async function GET(
     })),
     recentLikers: post.likes.map((l) => ({
       id: l.user.id,
-      name: l.user.name,
+      name: brandDisplayName(l.user.role, l.user.name),
       username: l.user.username,
       role: l.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
-      profilePhotoUrl: l.user.profilePhotoUrl,
-      avatarUrl: l.user.profilePhotoUrl,
+      profilePhotoUrl: brandPhotoUrl(l.user.role, l.user.profilePhotoUrl),
+      avatarUrl: brandPhotoUrl(l.user.role, l.user.profilePhotoUrl),
     })),
   });
 }

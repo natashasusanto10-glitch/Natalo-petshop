@@ -21,6 +21,8 @@
     "db:wipe-orders-points:prod": "dotenv -e .env -- tsx scripts/wipe-orders-points.ts",
     "db:sync-product-text": "dotenv -e .env.local -- tsx scripts/sync-product-text.ts",
     "db:sync-product-text:prod": "dotenv -e .env -- tsx scripts/sync-product-text.ts",
+    "db:set-admin-username": "dotenv -e .env.local -- tsx scripts/set-admin-username.ts",
+    "db:set-admin-username:prod": "dotenv -e .env -- tsx scripts/set-admin-username.ts",
     "search:check": "dotenv -e .env.local -- node scripts/check-meilisearch.mjs",
     "search:check:prod": "dotenv -e .env -- node scripts/check-meilisearch.mjs",
     "search:setup": "dotenv -e .env.local -- node scripts/reindex-search.mjs --setup-only",

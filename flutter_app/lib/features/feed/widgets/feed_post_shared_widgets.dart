@@ -118,9 +118,10 @@ class _FeedPostCreatorIdentityState extends State<FeedPostCreatorIdentity> {
           valueListenable: followOverrides,
           builder: (context, overrides, _) {
             final following = overrides[author.id] ?? author.isFollowing;
-            // Official account tidak dapat chip (brand tunggal, bukan akun
-            // sosial biasa); self juga tidak (tidak bisa follow diri sendiri).
-            final followState = author.isOfficialAccount || isSelf
+            // Akun official KINI bisa di-follow (brand punya handle
+            // "natalopetshop"); hanya self yang tidak dapat chip (tak bisa
+            // follow diri sendiri).
+            final followState = isSelf
                 ? FeedFollowChipState.hidden
                 : (following
                     ? FeedFollowChipState.following

@@ -5,6 +5,7 @@ import '../theme/natalo_colors.dart';
 import '../screens/public_profile_screen.dart';
 import '../services/api_client.dart';
 import '../services/follow_service.dart';
+import 'official_brand_avatar.dart';
 import '../services/post_likers_service.dart';
 import '../utils/haptics.dart';
 
@@ -400,11 +401,12 @@ class _LikerRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            if (!liker.isSelf) _FollowButton(
-              isFollowing: liker.isFollowing,
-              busy: busy,
-              onPressed: onToggleFollow,
-            ),
+            if (!liker.isSelf)
+              _FollowButton(
+                isFollowing: liker.isFollowing,
+                busy: busy,
+                onPressed: onToggleFollow,
+              ),
           ],
         ),
       ),
@@ -421,6 +423,10 @@ class _Avatar extends StatelessWidget {
   Widget build(BuildContext context) {
     const size = 42.0;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Akun official → logo brand NL (server null-kan foto asli).
+    if (liker.isOfficial) {
+      return const OfficialBrandAvatar(size: size);
+    }
     final url = liker.profilePhotoUrl;
     if (url != null && url.isNotEmpty) {
       return ClipOval(

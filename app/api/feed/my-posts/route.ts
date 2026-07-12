@@ -23,6 +23,7 @@ import {
   normalizeMyFeedFilter,
 } from "@/lib/feed/my-posts";
 import { bunnyThumbnailUrl, signBunnyUrl } from "@/lib/feed/bunny";
+import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 
 export async function GET(request: NextRequest) {
   const session = await getSession("CUSTOMER");
@@ -253,11 +254,11 @@ export async function GET(request: NextRequest) {
         viewerLiked: viewerLikedIds.has(post.id),
         recentLikers: post.likes.map((like) => ({
           id: like.user.id,
-          name: like.user.name,
+          name: brandDisplayName(like.user.role, like.user.name),
           username: like.user.username,
           role: like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
-          profilePhotoUrl: like.user.profilePhotoUrl,
-          avatarUrl: like.user.profilePhotoUrl,
+          profilePhotoUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
+          avatarUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
         })),
         // Produk yang di-tag → Flutter FeedPost.fromJson baca `products`
         // → productIds non-empty → muncul di tab "Produk Ditag". Shape

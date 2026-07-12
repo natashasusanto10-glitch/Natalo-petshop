@@ -13,6 +13,7 @@ import type { FeedPostTab } from "@prisma/client";
 import { resolveActiveDiscount } from "@/lib/product-pricing";
 import { extractMentionHandles } from "./mentions";
 import { signBunnyUrl } from "./bunny";
+import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 import type {
   FeedCommentItem,
   FeedCommentsResponse,
@@ -460,25 +461,27 @@ export async function listFeedPosts({
     shareCount: p.shareCount,
     author: {
       id: p.author.id,
-      name: p.author.name,
+      // Akun official (admin) → brand "Natalo Petshop" + foto null (klien
+      // render logo). Nama asli/foto pemilik tidak boleh bocor.
+      name: brandDisplayName(p.author.role, p.author.name),
       username: p.author.username ?? null,
       role: (p.authorRole === "ADMIN" ? "ADMIN" : "CUSTOMER") as
         | "ADMIN"
         | "CUSTOMER",
-      profilePhotoUrl: p.author.profilePhotoUrl ?? null,
+      profilePhotoUrl: brandPhotoUrl(p.author.role, p.author.profilePhotoUrl),
       // Chip "Ikuti/Mengikuti" di feed app — snapshot saat fetch; toggle
       // selanjutnya di-track client-side (followOverrides).
       isFollowing: viewerFollowedAuthorIds.has(p.author.id),
     },
     recentLikers: p.likes.map((like) => ({
       id: like.user.id,
-      name: like.user.name,
+      name: brandDisplayName(like.user.role, like.user.name),
       username: like.user.username ?? null,
       role: (like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as
         | "ADMIN"
         | "CUSTOMER",
-      profilePhotoUrl: like.user.profilePhotoUrl ?? null,
-      avatarUrl: like.user.profilePhotoUrl ?? null,
+      profilePhotoUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
+      avatarUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
     })),
     publishedAt: p.publishedAt?.toISOString() ?? null,
     createdAt: p.createdAt.toISOString(),
@@ -556,12 +559,13 @@ function mapFeedComment(
     createdAt: c.createdAt.toISOString(),
     author: {
       id: c.author.id,
-      name: c.author.name,
+      // Akun official (admin) → brand name + foto null (klien render logo).
+      name: brandDisplayName(c.author.role, c.author.name),
       username: c.author.username ?? null,
       role: (c.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as
         | "ADMIN"
         | "CUSTOMER",
-      profilePhotoUrl: c.author.profilePhotoUrl ?? null,
+      profilePhotoUrl: brandPhotoUrl(c.author.role, c.author.profilePhotoUrl),
     },
     viewerLiked: viewerLikedIds.has(c.id),
     replies:

@@ -18,6 +18,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import {
+  brandDisplayName,
+  brandPhotoUrl,
+  isAdminRole,
+} from "@/lib/social/brand-user";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
@@ -104,6 +109,7 @@ export async function GET(
           id: true,
           name: true,
           username: true,
+          role: true,
           profilePhotoUrl: true,
           bio: true,
           followersCount: true,
@@ -139,14 +145,15 @@ export async function GET(
   return NextResponse.json({
     items: sliced.map((row) => ({
       id: row.user.id,
-      name: row.user.name,
+      name: brandDisplayName(row.user.role, row.user.name),
       username: row.user.username,
-      profilePhotoUrl: row.user.profilePhotoUrl,
-      bio: row.user.bio,
+      profilePhotoUrl: brandPhotoUrl(row.user.role, row.user.profilePhotoUrl),
+      bio: isAdminRole(row.user.role) ? null : row.user.bio,
       followersCount: row.user.followersCount,
       followingCount: row.user.followingCount,
       isFollowing: followedIds.has(row.user.id),
       isSelf: viewerUserId === row.user.id,
+      isOfficial: isAdminRole(row.user.role),
     })),
     nextCursor: hasMore
       ? `${sliced[sliced.length - 1].createdAt.toISOString()}_${

@@ -8,6 +8,7 @@ import '../services/follow_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
+import '../widgets/official_brand_avatar.dart';
 
 const _brandBlue = NataloColors.primary;
 
@@ -595,6 +596,10 @@ class _FollowAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Akun official → logo brand NL (server null-kan foto asli).
+    if (user.isOfficial) {
+      return const OfficialBrandAvatar(size: 52);
+    }
     final url = user.profilePhotoUrl;
     if (url != null && url.isNotEmpty) {
       return ClipOval(
