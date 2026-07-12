@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { syncProduct } from "@/lib/search";
+import { syncProduct, productSearchWhere } from "@/lib/search";
 import { putVariantsPayloadSchema } from "@/lib/validators/variant-schema";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
@@ -58,14 +58,25 @@ export async function GET(request: NextRequest) {
   // This endpoint is used only for feed-post product tagging, so only
   // active + in-stock products are taggable — including variant products
   // that have at least one active, in-stock variant.
+  //
+  // Search memakai productSearchWhere (fungsi yang sama dengan jalur DB
+  // search storefront/app): tokenisasi query lalu cocokkan tiap token ke
+  // nama + brand + SKU/opsi varian (AND antar-token, OR antar-field). Jauh
+  // lebih baik dari `name contains q` yang lama — multi-kata, urutan bebas,
+  // dan bisa cari by brand. Di-AND dengan filter tagging (aktif + ada stok).
+  const searchWhere = q ? productSearchWhere(q) : undefined;
   const where: Prisma.ProductWhereInput = {
     isActive: true,
-    OR: [
-      { hasVariants: false, stock: { gt: 0 } },
-      { hasVariants: true, variants: { some: { isActive: true, stock: { gt: 0 } } } },
+    AND: [
+      {
+        OR: [
+          { hasVariants: false, stock: { gt: 0 } },
+          { hasVariants: true, variants: { some: { isActive: true, stock: { gt: 0 } } } },
+        ],
+      },
+      ...(searchWhere ? [searchWhere] : []),
     ],
   };
-  if (q) where.name = { contains: q, mode: "insensitive" };
   if (categorySlug) where.category = { slug: categorySlug };
 
   const [products, total] = await Promise.all([
