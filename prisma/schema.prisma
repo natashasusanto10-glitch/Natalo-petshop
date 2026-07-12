@@ -1177,6 +1177,11 @@ model FeedPost {
   //   "failed"     — Bunny encode gagal, post tidak boleh tayang
   encodingStatus    String  @default("ready")
 
+  // Publish-push: opsi "Beri tahu pelanggan" saat admin publish.
+  notifyOnPublish   Boolean   @default(false)
+  pushSegment       String?   // "all" | "members" | "active30d"
+  publishPushSentAt DateTime? // guard idempoten — set saat push terkirim
+
   // Product linkage — nullable untuk VIDEO_ONLY + COMMUNITY tanpa tag.
   // COMMUNITY user yg tag produk: arahkan ke produk resmi (bukan toko user).
   productId String?
