@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { FiEdit2, FiTrash2 } from "react-icons/fi";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, EmptyState, Badge, AdminPage, Button } from "@/components/admin/ui";
 
@@ -50,52 +51,62 @@ export default async function AdminCategoriesPage() {
           />
         </div>
       ) : (
-        <div className="mt-6 space-y-3">
-          {categories.map((cat) => (
-            <div
-              key={cat.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white p-4 transition hover:border-zinc-300 hover:shadow-sm md:p-5"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="truncate font-black text-zinc-950">{cat.name}</p>
-                  <Badge variant={cat._count.products > 0 ? "info" : "neutral"}>
-                    {cat._count.products} produk
-                  </Badge>
+        <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+          <div className="divide-y divide-zinc-100">
+            {categories.map((cat) => (
+              <div
+                key={cat.id}
+                className="flex items-center gap-3 px-4 py-3 transition hover:bg-zinc-50/60"
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="truncate text-sm font-bold text-zinc-900">
+                    {cat.name}
+                  </span>
+                  <span className="ml-2 truncate text-xs text-zinc-400">
+                    /{cat.slug}
+                  </span>
                 </div>
-                <p className="mt-1 truncate text-xs text-zinc-500">
-                  /{cat.slug}
-                </p>
-              </div>
 
-              <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  href={`/admin/categories/${cat.id}/edit`}
-                  variant="secondary"
-                  size="md"
-                >
-                  ✏️ Edit
-                </Button>
+                <Badge variant={cat._count.products > 0 ? "info" : "neutral"}>
+                  {cat._count.products} produk
+                </Badge>
 
-                <form action={deleteCategory}>
-                  <input type="hidden" name="id" value={cat.id} />
+                <div className="flex shrink-0 items-center gap-1.5">
                   <Button
-                    type="submit"
-                    variant="dangerSoft"
-                    size="md"
-                    disabled={cat._count.products > 0}
-                    title={
-                      cat._count.products > 0
-                        ? "Hapus produk di kategori ini dulu"
-                        : "Hapus kategori"
-                    }
+                    href={`/admin/categories/${cat.id}/edit`}
+                    variant="secondary"
+                    size="sm"
+                    aria-label={`Edit ${cat.name}`}
+                    title="Edit"
                   >
-                    🗑️ Hapus
+                    <FiEdit2 className="h-3.5 w-3.5" />
                   </Button>
-                </form>
+
+                  <form action={deleteCategory}>
+                    <input type="hidden" name="id" value={cat.id} />
+                    <Button
+                      type="submit"
+                      variant="dangerSoft"
+                      size="sm"
+                      disabled={cat._count.products > 0}
+                      aria-label={
+                        cat._count.products > 0
+                          ? `Hapus ${cat.name} (nonaktif — masih ada produk)`
+                          : `Hapus ${cat.name}`
+                      }
+                      title={
+                        cat._count.products > 0
+                          ? "Hapus produk di kategori ini dulu"
+                          : "Hapus kategori"
+                      }
+                    >
+                      <FiTrash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </form>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </AdminPage>
