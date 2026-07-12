@@ -372,22 +372,40 @@ class _LikerRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    liker.username != null && liker.username!.isNotEmpty
-                        ? liker.username!
-                        : liker.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: cs.onSurface,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      height: 1.15,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          // Official → brand name "Natalo Petshop" (emas);
+                          // user biasa → username.
+                          liker.isOfficial
+                              ? liker.name
+                              : (liker.username != null &&
+                                      liker.username!.isNotEmpty
+                                  ? liker.username!
+                                  : liker.name),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: liker.isOfficial
+                                ? NataloColors.officialGoldOnLight
+                                : cs.onSurface,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            height: 1.15,
+                          ),
+                        ),
+                      ),
+                      if (liker.isOfficial) ...[
+                        const SizedBox(width: 4),
+                        const OfficialVerifiedBadge(size: 14),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    liker.name,
+                    liker.isOfficial ? 'Akun Resmi' : liker.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

@@ -2,13 +2,14 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../../../theme/natalo_colors.dart';
 import '../../../utils/formatters.dart';
 import '../../../utils/mention_text.dart';
 import '../../../widgets/official_brand_avatar.dart';
 
-// Duplikat dari `_officialGold` di feed_screen.dart (tetap dipakai di
-// tempat lain di sana) — sama persis nilainya supaya visual identik.
-const _officialGold = Color(0xFFF4D47C);
+// Emas identitas official — kini satu sumber di NataloColors.officialGold
+// (dipakai seragam di semua layar). Alias lokal supaya diff minimal.
+const _officialGold = NataloColors.officialGold;
 // Duplikat dari `_feedBlue` di feed_screen.dart — setelah ekstraksi ini
 // jadi satu-satunya pemakai gradient avatar fallback.
 const _feedBlue = Color(0xFF0B7FEA);
@@ -73,17 +74,7 @@ class FeedCreatorIdentity extends StatelessWidget {
         ),
         if (isOfficial) ...[
           const SizedBox(width: 6),
-          const Icon(
-            Icons.verified_rounded,
-            color: _officialGold,
-            size: 17,
-            shadows: [
-              Shadow(
-                color: Colors.black54,
-                blurRadius: 5,
-              ),
-            ],
-          ),
+          const OfficialVerifiedBadge(size: 17),
         ],
         // Chip Ikuti/Mengikuti ala IG — di samping nama. Caller sudah
         // resolve exclusion (official account / self) jadi `hidden`.
