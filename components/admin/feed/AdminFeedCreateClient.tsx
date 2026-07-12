@@ -91,6 +91,36 @@ export function AdminFeedCreateClient() {
   const [promoStarts, setPromoStarts] = useState("");
   const [promoEnds, setPromoEnds] = useState("");
 
+  // Push notification saat publish (Feed Publish Push). Default OFF —
+  // admin opt-in per post. pushInfo di-fetch sekali saat toggle pertama
+  // ON supaya tidak selalu hit server tiap render.
+  const [notifyOnPublish, setNotifyOnPublish] = useState(false);
+  const [pushSegment, setPushSegment] = useState<
+    "all" | "members" | "active30d"
+  >("members");
+  const [pushInfo, setPushInfo] = useState<{
+    counts: { all: number; members: number; active30d: number };
+    quota: { used: number; cap: number };
+  } | null>(null);
+  const [pushInfoLoading, setPushInfoLoading] = useState(false);
+  const [testState, setTestState] = useState<"idle" | "sending" | "sent">(
+    "idle",
+  );
+  const [testError, setTestError] = useState<string | null>(null);
+  // Guard setState setelah unmount — handleTestPush punya setTimeout 2s dan
+  // handleNotifyToggle fetch async, keduanya bisa resolve setelah admin
+  // navigasi pergi.
+  const mountedRef = useRef(true);
+  const testStateTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      if (testStateTimerRef.current !== null) {
+        window.clearTimeout(testStateTimerRef.current);
+      }
+    };
+  }, []);
+
   const [analyzing, setAnalyzing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState("");
@@ -309,6 +339,71 @@ export function AdminFeedCreateClient() {
     }
   }
 
+  // Toggle "Beri tahu pelanggan" ON → fetch push-info sekali (cache di
+  // state pushInfo). Kalau sudah pernah di-fetch, tidak fetch ulang.
+  async function handleNotifyToggle() {
+    const next = !notifyOnPublish;
+    setNotifyOnPublish(next);
+    if (next && !pushInfo && !pushInfoLoading) {
+      setPushInfoLoading(true);
+      try {
+        const res = await fetch("/api/admin/feed/push-info");
+        if (!mountedRef.current) return;
+        if (res.ok) {
+          const data = await res.json();
+          if (!mountedRef.current) return;
+          setPushInfo(data);
+          // Kuota sudah habis — jangan biarkan toggle nyala percuma
+          // (server tetap skip kirim push kalau cap tercapai).
+          if (data?.quota?.used >= data?.quota?.cap) {
+            setNotifyOnPublish(false);
+          }
+        }
+      } catch {
+        // Diamkan — counts tetap fallback "–", tidak blokir toggle.
+      } finally {
+        if (mountedRef.current) setPushInfoLoading(false);
+      }
+    }
+  }
+
+  const quotaExhausted =
+    !!pushInfo && pushInfo.quota.used >= pushInfo.quota.cap;
+
+  // Tes push ke HP admin sendiri — butuh title terisi supaya preview
+  // relevan. Tidak menyentuh cap/kuota publish-push yang sebenarnya.
+  async function handleTestPush() {
+    if (title.trim().length < 3) {
+      setTestError("Isi judul dulu (min 3 huruf) untuk tes push.");
+      return;
+    }
+    setTestError(null);
+    setTestState("sending");
+    try {
+      const res = await fetch("/api/admin/feed/push-info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setTestError(data?.error ?? "Gagal mengirim tes push.");
+        setTestState("idle");
+        return;
+      }
+      setTestState("sent");
+      testStateTimerRef.current = window.setTimeout(() => {
+        if (mountedRef.current) setTestState("idle");
+      }, 2000);
+    } catch {
+      setTestError("Network error saat kirim tes push.");
+      setTestState("idle");
+    }
+  }
+
   async function handleSubmit() {
     setError(null);
     if (title.trim().length < 3) {
@@ -389,6 +484,8 @@ export function AdminFeedCreateClient() {
           productPromos: kind === "PROMO" ? productPromosPayload : undefined,
           promoStartsAt: kind === "PROMO" && promoStarts ? promoStarts : null,
           promoEndsAt: kind === "PROMO" && promoEnds ? promoEnds : null,
+          notifyOnPublish,
+          pushSegment,
         };
         const provisionRes = await fetch("/api/feed/bunny/upload-url", {
           method: "POST",
@@ -553,6 +650,8 @@ export function AdminFeedCreateClient() {
         productPromos: kind === "PROMO" ? productPromosPayload : undefined,
         promoStartsAt: kind === "PROMO" && promoStarts ? promoStarts : null,
         promoEndsAt: kind === "PROMO" && promoEnds ? promoEnds : null,
+        notifyOnPublish,
+        pushSegment,
       };
       const res = await fetch("/api/feed/posts", {
         method: "POST",
@@ -771,6 +870,141 @@ export function AdminFeedCreateClient() {
             className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-natalo-500 focus:bg-white focus:outline-none"
           />
         </div>
+      </section>
+
+      {/* Beri tahu pelanggan — push notification opsional saat publish */}
+      <section className="rounded-2xl border border-gray-100 bg-white p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-extrabold text-gray-700">
+              Beri tahu pelanggan
+            </p>
+            <p className="mt-0.5 text-[11px] font-semibold text-gray-500">
+              {notifyOnPublish
+                ? "Push dikirim saat post ini tayang"
+                : "Post tayang tanpa notifikasi"}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={notifyOnPublish}
+            disabled={quotaExhausted}
+            onClick={() => void handleNotifyToggle()}
+            className={`relative h-[26px] w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              notifyOnPublish ? "bg-natalo-600" : "bg-gray-200"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-[22px] w-[22px] rounded-full bg-white shadow transition-transform ${
+                notifyOnPublish ? "translate-x-[22px]" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+        </div>
+
+        {notifyOnPublish && (
+          <div className="mt-3 space-y-3">
+            {pushInfoLoading && !pushInfo ? (
+              <p className="text-[11px] font-bold text-gray-400">
+                Memuat info kuota...
+              </p>
+            ) : (
+              <p
+                className={`rounded-xl px-3 py-2 text-[11px] font-bold ${
+                  quotaExhausted
+                    ? "bg-red-50 text-red-700"
+                    : "bg-green-50 text-green-700"
+                }`}
+              >
+                Kuota push hari ini:{" "}
+                {pushInfo
+                  ? `${Math.max(pushInfo.quota.cap - pushInfo.quota.used, 0)} dari ${pushInfo.quota.cap} tersisa`
+                  : "–"}
+              </p>
+            )}
+
+            <div className="space-y-2">
+              {(
+                [
+                  {
+                    v: "all",
+                    l: "Semua pelanggan",
+                    d: "Semua yang mengizinkan notifikasi. Untuk konten penting saja.",
+                  },
+                  {
+                    v: "members",
+                    l: "Member",
+                    d: "Pernah belanja — paling relevan untuk promo dan produk.",
+                    badge: "Disarankan",
+                  },
+                  {
+                    v: "active30d",
+                    l: "Aktif 30 hari",
+                    d: "Belanja dalam sebulan terakhir — paling kecil risiko ganggu.",
+                  },
+                ] as {
+                  v: "all" | "members" | "active30d";
+                  l: string;
+                  d: string;
+                  badge?: string;
+                }[]
+              ).map((opt) => (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => setPushSegment(opt.v)}
+                  className={`w-full rounded-xl border p-2.5 text-left transition ${
+                    pushSegment === opt.v
+                      ? "border-natalo-600 bg-natalo-50"
+                      : "border-gray-200 bg-white active:bg-gray-50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <p
+                      className={`text-xs font-extrabold ${
+                        pushSegment === opt.v ? "text-natalo-700" : "text-gray-700"
+                      }`}
+                    >
+                      {opt.l}
+                    </p>
+                    {opt.badge && (
+                      <span className="rounded-full bg-natalo-100 px-1.5 py-0.5 text-[9px] font-extrabold text-natalo-700">
+                        {opt.badge}
+                      </span>
+                    )}
+                    <span className="ml-auto shrink-0 text-[11px] font-bold text-gray-400">
+                      {pushInfo ? pushInfo.counts[opt.v] : "–"}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[10px] font-semibold text-gray-500">
+                    {opt.d}
+                  </p>
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleTestPush()}
+              disabled={testState === "sending"}
+              className="w-full rounded-xl border border-gray-200 bg-white py-2 text-xs font-extrabold text-gray-700 transition active:bg-gray-50 disabled:opacity-50"
+            >
+              {testState === "sent"
+                ? "Terkirim ke HP kamu ✓"
+                : testState === "sending"
+                  ? "Mengirim..."
+                  : "Tes ke HP saya dulu"}
+            </button>
+            {testError && (
+              <p className="text-[11px] font-bold text-red-600">{testError}</p>
+            )}
+
+            <p className="text-[10px] font-semibold text-gray-400">
+              Video dikirim setelah selesai diproses, bukan saat upload.
+            </p>
+          </div>
+        )}
       </section>
 
       {/* Product picker */}
