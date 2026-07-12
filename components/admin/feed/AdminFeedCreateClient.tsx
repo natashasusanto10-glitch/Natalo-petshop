@@ -68,6 +68,10 @@ export function AdminFeedCreateClient() {
   const [kind, setKind] = useState<Kind>("VIDEO_ONLY");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  // AI generate judul + caption (topik + produk tertaut → Claude API).
+  const [aiTopic, setAiTopic] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoMeta, setVideoMeta] = useState<VideoMetadata | null>(null);
   const [thumbBlob, setThumbBlob] = useState<Blob | null>(null);
@@ -155,6 +159,49 @@ export function AdminFeedCreateClient() {
 
   const selectedProductIds = selectedProducts.map((product) => product.id);
   const selectedProductIdSet = new Set(selectedProductIds);
+
+  // Generate judul + caption via AI dari topik + produk tertaut. Bisa jalan
+  // kalau topik terisi ATAU ada produk di-tag. Hasil menimpa Judul & Deskripsi
+  // (konfirmasi dulu kalau field sudah terisi) — admin tetap bisa edit.
+  async function handleAiGenerate() {
+    if (aiLoading) return;
+    if (aiTopic.trim().length < 3 && selectedProducts.length === 0) {
+      setAiError("Isi topik dulu (min 3 huruf) atau tag minimal satu produk.");
+      return;
+    }
+    if (
+      (title.trim() || description.trim()) &&
+      !window.confirm("Timpa Judul & Deskripsi yang ada dengan hasil AI?")
+    ) {
+      return;
+    }
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await fetch("/api/admin/feed/generate-post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: aiTopic.trim(),
+          kind,
+          productIds: selectedProductIds,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setAiError(data?.error ?? "Gagal generate. Coba lagi.");
+      } else {
+        setTitle(String(data?.title ?? "").slice(0, 200));
+        setDescription(String(data?.caption ?? "").slice(0, 2000));
+      }
+    } catch (err) {
+      setAiError(
+        err instanceof Error ? `Network error: ${err.message}` : "Network error",
+      );
+    } finally {
+      setAiLoading(false);
+    }
+  }
 
   // Debounced product search
   useEffect(() => {
@@ -658,6 +705,46 @@ export function AdminFeedCreateClient() {
 
       {/* Title + description */}
       <section className="space-y-3 rounded-2xl border border-gray-100 bg-white p-3">
+        {/* AI generate — topik + produk tertaut → judul & caption */}
+        <div className="rounded-xl border border-purple-200 bg-purple-50/60 p-2.5">
+          <label htmlFor="ai-topic" className="text-xs font-extrabold text-purple-800">
+            ✨ Bantu tulis dengan AI
+          </label>
+          <div className="mt-1.5 flex gap-2">
+            <input
+              id="ai-topic"
+              type="text"
+              value={aiTopic}
+              onChange={(e) => setAiTopic(e.target.value)}
+              placeholder="Topik singkat, mis. grooming kucing musim panas"
+              maxLength={120}
+              className="min-w-0 flex-1 rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => void handleAiGenerate()}
+              disabled={aiLoading}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-xs font-bold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-300"
+            >
+              {aiLoading ? (
+                <>
+                  <span
+                    className="h-3 w-3 animate-spin rounded-full border-2 border-white/70 border-t-transparent"
+                    aria-hidden
+                  />
+                  Membuat…
+                </>
+              ) : (
+                "Generate"
+              )}
+            </button>
+          </div>
+          <p className="mt-1 text-[11px] text-purple-700/80">
+            Dari topik + produk yang di-tag. Hasil bisa kamu edit sebelum publish.
+          </p>
+          {aiError && <p className="mt-1 text-[11px] text-red-600">⚠️ {aiError}</p>}
+        </div>
+
         <div>
           <label htmlFor="title" className="text-xs font-extrabold text-gray-700">
             Judul <span className="text-red-500">*</span>
