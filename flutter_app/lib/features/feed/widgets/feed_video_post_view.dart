@@ -1506,6 +1506,12 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                             child: GestureDetector(
                               behavior: HitTestBehavior.opaque,
                               onTap: () => _setCaptionExpanded(false),
+                              // Klaim drag vertikal supaya PageView feed di
+                              // atasnya tidak ikut pindah post saat user
+                              // menarik di area scrim (mode baca = modal
+                              // gesture). No-op: panel tetap, tidak paging.
+                              onVerticalDragStart: (_) {},
+                              onVerticalDragUpdate: (_) {},
                               child: AnimatedOpacity(
                                 opacity: _captionExpanded ? 1 : 0,
                                 duration: const Duration(milliseconds: 300),

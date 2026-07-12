@@ -81,6 +81,28 @@ void main() {
     ));
     await _settleBounded(tester);
     expect(find.byType(SingleChildScrollView), findsOneWidget);
+
+    // Parent menutup (mis. tap scrim) → panel hilang tanpa error; buka lagi
+    // (true→false→true) melewati didUpdateWidget reset-scroll tanpa crash.
+    await tester.pumpWidget(_host(
+      FeedExpandableCaption(
+        text: _longCaption,
+        expanded: false,
+        onExpandedChanged: (v) => reported = v,
+      ),
+    ));
+    await _settleBounded(tester);
+    expect(find.byType(SingleChildScrollView), findsNothing);
+
+    await tester.pumpWidget(_host(
+      FeedExpandableCaption(
+        text: _longCaption,
+        expanded: true,
+        onExpandedChanged: (v) => reported = v,
+      ),
+    ));
+    await _settleBounded(tester);
+    expect(find.byType(SingleChildScrollView), findsOneWidget);
   });
 
   testWidgets('tarik-turun melewati batas atas panel menutup caption',

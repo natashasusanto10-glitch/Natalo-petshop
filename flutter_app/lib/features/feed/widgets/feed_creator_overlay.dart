@@ -263,9 +263,48 @@ class _FeedExpandableCaptionState extends State<FeedExpandableCaption> {
 
   bool get _expanded => widget.expanded ?? _internalExpanded;
 
+  // Fade tepi HANYA ke arah yang masih bisa di-scroll: caption pendek (tak
+  // scroll) tidak diredupkan, dan tidak ada sinyal palsu "masih ada teks".
+  bool _canScrollUp = false;
+  bool _canScrollDown = false;
+
   /// Tarik-turun melewati batas atas scroll caption (jari masih di layar)
   /// menutup panel — konsisten dengan gesture tarik-tutup viewer video.
   static const double _dismissOverscroll = 48;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_recomputeFade);
+  }
+
+  @override
+  void didUpdateWidget(covariant FeedExpandableCaption oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Controlled mode: parent menutup panel (mis. tap scrim) tanpa lewat
+    // _setExpanded — reset posisi baca di sini supaya buka berikutnya
+    // mulai dari atas (jalur tap-scrim/komentar/swipe konsisten dengan
+    // "lebih sedikit"/overscroll). Aman: masih attached sebelum rebuild
+    // collapse melepas scroll view.
+    if (oldWidget.expanded == true &&
+        widget.expanded == false &&
+        _scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+  }
+
+  void _recomputeFade() {
+    if (!_scrollController.hasClients) return;
+    final p = _scrollController.position;
+    final up = p.pixels > p.minScrollExtent + 0.5;
+    final down = p.pixels < p.maxScrollExtent - 0.5;
+    if (up != _canScrollUp || down != _canScrollDown) {
+      setState(() {
+        _canScrollUp = up;
+        _canScrollDown = down;
+      });
+    }
+  }
 
   void _setExpanded(bool value) {
     if (_expanded == value) return;
@@ -295,6 +334,7 @@ class _FeedExpandableCaptionState extends State<FeedExpandableCaption> {
       r.dispose();
     }
     _recognizers.clear();
+    _scrollController.removeListener(_recomputeFade);
     _scrollController.dispose();
     super.dispose();
   }
@@ -364,9 +404,17 @@ class _FeedExpandableCaptionState extends State<FeedExpandableCaption> {
       body = richText;
     } else {
       // Panel baca ala IG: tinggi maks ~45% layar, isi ter-scroll dengan
-      // fade mask tepi atas+bawah (tanda masih ada teks), timestamp relatif
-      // di bawah. Author di parent tetap pinned di atas panel ini.
+      // fade mask tepi (HANYA ke arah yang masih bisa di-scroll), timestamp
+      // relatif di bawah. Author di parent tetap pinned di atas panel ini.
       final maxPanelHeight = MediaQuery.sizeOf(context).height * 0.45;
+      // Recompute flag fade setelah layout — metrics scroll baru diketahui
+      // pasca-frame (content bisa lebih pendek dari panel = tak scroll).
+      WidgetsBinding.instance.addPostFrameCallback((_) => _recomputeFade());
+      // Fade hanya di tepi yang punya konten tersembunyi ke arah itu:
+      // caption pendek → tanpa fade; di atas → hanya fade bawah; mentok
+      // bawah → hanya fade atas.
+      final topStop = _canScrollUp ? 0.045 : 0.0;
+      final bottomStop = _canScrollDown ? 0.955 : 1.0;
       body = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -374,16 +422,16 @@ class _FeedExpandableCaptionState extends State<FeedExpandableCaption> {
           ConstrainedBox(
             constraints: BoxConstraints(maxHeight: maxPanelHeight),
             child: ShaderMask(
-              shaderCallback: (rect) => const LinearGradient(
+              shaderCallback: (rect) => LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [
+                colors: const [
                   Colors.transparent,
                   Colors.white,
                   Colors.white,
                   Colors.transparent,
                 ],
-                stops: [0.0, 0.045, 0.955, 1.0],
+                stops: [0.0, topStop, bottomStop, 1.0],
               ).createShader(rect),
               blendMode: BlendMode.dstIn,
               child: NotificationListener<ScrollNotification>(

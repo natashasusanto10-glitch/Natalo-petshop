@@ -1773,6 +1773,10 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => _setCaptionExpanded(false),
+                  // Klaim drag vertikal supaya PageView feed tidak pindah
+                  // post saat user menarik di area scrim (mode baca modal).
+                  onVerticalDragStart: (_) {},
+                  onVerticalDragUpdate: (_) {},
                   child: AnimatedOpacity(
                     opacity: _captionExpanded ? 1 : 0,
                     duration: const Duration(milliseconds: 300),
