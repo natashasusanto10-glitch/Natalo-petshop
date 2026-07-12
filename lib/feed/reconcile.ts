@@ -127,6 +127,15 @@ export async function reconcileFeedPost(
       },
     });
     void sendFeedPendingReviewNotification({ postId: post.id });
+    // Publish-push — HARUS dipicu di sini juga, bukan cuma di webhook.
+    // Bunny webhook feed sering miss FINISHED (lihat komentar bunny-reconcile),
+    // jadi reconcile-lah yang biasanya menandai post "ready". Kalau trigger
+    // hanya di webhook, "Beri tahu pelanggan" tak pernah jalan untuk post yang
+    // di-ready via reconcile. Guard internal (admin/ACTIVE/notifyOnPublish/
+    // klaim atomik) memutuskan kirim atau tidak — aman dipanggil ganda.
+    void import("@/lib/feed/publish-push").then(({ sendFeedPublishPush }) =>
+      sendFeedPublishPush(post.id),
+    );
     // Pre-warm CDN edge — same alasan dengan webhook path.
     void preWarmBunnyAssets(post.videoGuid);
     return { action: "ready", postId };
