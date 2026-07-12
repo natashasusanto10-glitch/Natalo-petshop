@@ -2,11 +2,13 @@
  * Marketing/lifecycle push notifications — abandoned cart + back-in-stock.
  *
  * Dipisah dari push.ts supaya transactional push (order status) tetap clean.
- * Pakai existing sendPushToUser / sendApnsToUser / sendFcmToUser dispatch
- * sehingga otomatis multi-platform (Web Push + iOS APNs + Android FCM).
+ * Pakai existing sendPushToUser / sendFcmToUser dispatch — 2 channel (web +
+ * FCM, FCM cover Android+iOS). sendApnsToUser (direct APNs) SENGAJA tidak
+ * dipanggil bersamaan dgn sendFcmToUser — client iOS register token FCM
+ * DAN raw APNs sekaligus utk device yang sama; memanggil kedua fungsi
+ * mengirim 2 notifikasi native identik. Lihat komentar lib/fcm.ts.
  */
 import { prisma } from "./prisma";
-import { sendApnsToUser } from "./apns";
 import { sendFcmToUser } from "./fcm";
 import { sendPushToUser, type PushPayload } from "./push";
 
@@ -58,7 +60,6 @@ export async function sendAbandonedCartPush(
   try {
     await Promise.all([
       sendPushToUser(userId, payload),
-      sendApnsToUser(userId, payload),
       sendFcmToUser(userId, payload),
       prisma.announcement
         .create({
@@ -143,7 +144,6 @@ export async function sendBackInStockPush(
       };
       await Promise.all([
         sendPushToUser(sub.userId, payload),
-        sendApnsToUser(sub.userId, payload),
         sendFcmToUser(sub.userId, payload),
         prisma.announcement
           .create({

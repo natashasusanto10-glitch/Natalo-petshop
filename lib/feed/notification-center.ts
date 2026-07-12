@@ -1,4 +1,3 @@
-import { sendApnsToUser } from "@/lib/apns";
 import { sendFcmToUser } from "@/lib/fcm";
 import { prisma } from "@/lib/prisma";
 import { sendPushToUser, type PushPayload } from "@/lib/push";
@@ -127,9 +126,11 @@ export async function createFeedNotification(params: {
       category: deriveNotificationCategory(params.eventType),
     };
 
+    // 2 channel (web + FCM) — sendApnsToUser dihapus, lihat komentar di
+    // lib/fcm.ts (dobel notif iOS). category (action buttons) tetap
+    // jalan lewat sendFcmToUser -> aps.category.
     await Promise.all([
       sendPushToUser(params.userId, payload),
-      sendApnsToUser(params.userId, payload),
       sendFcmToUser(params.userId, payload),
       prisma.announcement.create({
         data: {

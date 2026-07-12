@@ -16,7 +16,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendPushToUser } from "@/lib/push";
-import { sendApnsToUser } from "@/lib/apns";
 import { sendFcmToUser } from "@/lib/fcm";
 import type { PushPayload } from "@/lib/push";
 import { findTomorrowBirthdayUsers } from "@/lib/birthday-voucher";
@@ -67,11 +66,12 @@ export async function GET(request: NextRequest) {
     };
 
     try {
-      // Fanout ke 3 channel + announcement. Push send first, then
-      // mark teaser year (atomic-ish — kalau push fail, retry next run).
+      // Fanout ke 2 channel (web + FCM — sendApnsToUser dihapus, FCM sudah
+      // cover iOS via APNs; dobel channel = dobel notif native di device
+      // yang sama) + announcement. Push send first, then mark teaser year
+      // (atomic-ish — kalau push fail, retry next run).
       await Promise.all([
         sendPushToUser(u.id, payload),
-        sendApnsToUser(u.id, payload),
         sendFcmToUser(u.id, payload),
         prisma.announcement
           .create({

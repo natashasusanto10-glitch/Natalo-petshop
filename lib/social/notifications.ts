@@ -1,4 +1,3 @@
-import { sendApnsToUser } from "@/lib/apns";
 import { sendFcmToUser } from "@/lib/fcm";
 import { prisma } from "@/lib/prisma";
 import { sendPushToUser, type PushPayload } from "@/lib/push";
@@ -81,9 +80,10 @@ export async function sendFollowNotification(params: {
       },
     };
 
+    // 2 channel (web + FCM) — sendApnsToUser dihapus, lihat komentar di
+    // lib/fcm.ts (dobel notif iOS).
     await Promise.allSettled([
       sendPushToUser(params.followingId, payload),
-      sendApnsToUser(params.followingId, payload),
       sendFcmToUser(params.followingId, payload),
       prisma.announcement.create({
         data: {
@@ -215,10 +215,11 @@ export async function sendNewPostToFollowersNotification(postId: string) {
     });
 
     // Push fan-out — paralel, error per-follower di-swallow oleh allSettled.
+    // 2 channel (web + FCM) — sendApnsToUser dihapus, lihat komentar di
+    // lib/fcm.ts (dobel notif iOS).
     await Promise.allSettled(
       followerIds.flatMap((fid) => [
         sendPushToUser(fid, payload),
-        sendApnsToUser(fid, payload),
         sendFcmToUser(fid, payload),
       ]),
     );

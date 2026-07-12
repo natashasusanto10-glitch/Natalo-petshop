@@ -14,9 +14,15 @@ import { normalizePemKey } from "./pem-utils";
  *
  * Token format: PushSubscription.endpoint = "apns:<HEX_TOKEN>"
  *
- * Plays well dengan existing webpush flow — sendOrderStatusPush() bisa
- * panggil BOTH sendPushToUser() (web) DAN sendApnsToUser() (iOS native),
- * masing-masing target subset subs.
+ * PENTING: fungsi ini SENGAJA TIDAK dipanggil dari fungsi notifikasi
+ * "real" manapun (sendOrderStatusPush, sendFeedPublishPush, dll) — semua
+ * itu kini hanya panggil sendPushToUser() (web) + sendFcmToUser()
+ * (Android+iOS, Firebase forward ke APNs Apple di baliknya). Client
+ * Flutter iOS register token FCM DAN raw APNs sekaligus untuk device yang
+ * sama ("diagnostic backup channel" — lihat push_notification_service.dart);
+ * memanggil sendApnsToUser() bersamaan sendFcmToUser() mengirim 2
+ * notifikasi native identik ke 1 perangkat. Fungsi ini masih ada untuk
+ * dipanggil manual/diagnostic saja (bukan dari dispatch path produksi).
  */
 
 let apnProvider: import("@parse/node-apn").Provider | null = null;

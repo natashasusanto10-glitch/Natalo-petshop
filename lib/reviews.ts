@@ -7,7 +7,6 @@
 
 import { prisma } from "@/lib/prisma";
 import type { Prisma, ReviewStatus } from "@prisma/client";
-import { sendApnsToUser } from "@/lib/apns";
 import { sendFcmToUser } from "@/lib/fcm";
 import { sendPushToUser, type PushPayload } from "@/lib/push";
 
@@ -575,9 +574,10 @@ async function notifyReviewReply(reviewId: string, content: string) {
       },
     };
 
+    // 2 channel (web + FCM) — sendApnsToUser dihapus, lihat komentar di
+    // lib/fcm.ts (dobel notif iOS).
     await Promise.allSettled([
       sendPushToUser(review.userId, payload),
-      sendApnsToUser(review.userId, payload),
       sendFcmToUser(review.userId, payload),
       prisma.announcement.create({
         data: {
