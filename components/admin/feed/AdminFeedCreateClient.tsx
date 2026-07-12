@@ -107,6 +107,19 @@ export function AdminFeedCreateClient() {
     "idle",
   );
   const [testError, setTestError] = useState<string | null>(null);
+  // Guard setState setelah unmount — handleTestPush punya setTimeout 2s dan
+  // handleNotifyToggle fetch async, keduanya bisa resolve setelah admin
+  // navigasi pergi.
+  const mountedRef = useRef(true);
+  const testStateTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      if (testStateTimerRef.current !== null) {
+        window.clearTimeout(testStateTimerRef.current);
+      }
+    };
+  }, []);
 
   const [analyzing, setAnalyzing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -335,8 +348,10 @@ export function AdminFeedCreateClient() {
       setPushInfoLoading(true);
       try {
         const res = await fetch("/api/admin/feed/push-info");
+        if (!mountedRef.current) return;
         if (res.ok) {
           const data = await res.json();
+          if (!mountedRef.current) return;
           setPushInfo(data);
           // Kuota sudah habis — jangan biarkan toggle nyala percuma
           // (server tetap skip kirim push kalau cap tercapai).
@@ -347,7 +362,7 @@ export function AdminFeedCreateClient() {
       } catch {
         // Diamkan — counts tetap fallback "–", tidak blokir toggle.
       } finally {
-        setPushInfoLoading(false);
+        if (mountedRef.current) setPushInfoLoading(false);
       }
     }
   }
@@ -380,7 +395,9 @@ export function AdminFeedCreateClient() {
         return;
       }
       setTestState("sent");
-      window.setTimeout(() => setTestState("idle"), 2000);
+      testStateTimerRef.current = window.setTimeout(() => {
+        if (mountedRef.current) setTestState("idle");
+      }, 2000);
     } catch {
       setTestError("Network error saat kirim tes push.");
       setTestState("idle");
