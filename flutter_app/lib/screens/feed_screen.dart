@@ -710,7 +710,7 @@ class _FeedScreenState extends State<FeedScreen> {
         duration: const Duration(milliseconds: 220),
         switchInCurve: Curves.easeOutCubic,
         switchOutCurve: Curves.easeInCubic,
-        child: _interactionLocked
+        child: (_interactionLocked || _mediaZooming)
             ? const SizedBox.shrink(key: ValueKey('feed-nav-hidden'))
             : const BottomNavBar(
                 key: ValueKey('feed-nav-visible'),

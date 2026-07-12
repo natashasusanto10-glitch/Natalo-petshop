@@ -207,7 +207,9 @@ class _FeedPostPreviewScreenState extends State<FeedPostPreviewScreen> {
                   name: profile?.displayHandle ?? 'Kamu',
                   avatarInitial: profile?.initial ?? 'U',
                   avatarUrl: profile?.profilePhotoUrl,
-                  isOfficial: false,
+                  // Admin login = brand Natalo → pratinjau tampil identitas
+                  // brand (logo NL), konsisten dgn feed asli.
+                  isOfficial: profile?.isAdmin ?? false,
                   followState: FeedFollowChipState.none,
                 ),
                 if (widget.caption.isNotEmpty) ...[

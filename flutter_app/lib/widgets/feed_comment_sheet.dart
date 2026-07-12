@@ -732,12 +732,16 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         // fallback ke initial bubble. Re-use _CommentAvatar yang
         // sudah handle Image.network + errorBuilder fallback ke
         // initial supaya konsisten dengan avatar di comment list.
+        // isOfficial: akun admin login = brand "Natalo Petshop" →
+        // _CommentAvatar render OfficialBrandAvatar (logo NL), konsisten
+        // dgn comment tile + creator overlay (server null-kan foto asli).
         Padding(
           padding: const EdgeInsets.only(bottom: 2),
           child: _CommentAvatar(
             size: 34,
             initial: initial,
             imageUrl: profile?.profilePhotoUrl,
+            isOfficial: profile?.isAdmin ?? false,
           ),
         ),
         const SizedBox(width: 10),
