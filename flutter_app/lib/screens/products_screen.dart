@@ -2714,19 +2714,29 @@ class _ProductRatingSoldRow extends StatelessWidget {
 String? _productSavingLabel(Product product) {
   final voucher = product.voucherPreview;
   final voucherSaving = voucher?.savingAmount ?? voucher?.discountAmount;
-  if (voucherSaving != null && voucherSaving > 0) {
-    return 'Hemat s.d. ${formatRupiah(voucherSaving)}';
+
+  // Diskon harga produk itu sendiri (mis. harga coret 30%).
+  final productSaving =
+      product.hasDiscount ? (product.price - product.finalPrice) : 0.0;
+
+  // Tampilkan NOMINAL terbesar antara diskon produk vs potongan voucher.
+  // Sebelumnya voucher SELALU menang walau nominalnya jauh lebih kecil,
+  // sehingga diskon produk yang besar tertutup (mis. voucher Rp15.000
+  // menyembunyikan diskon Rp260.100). Ambil yang paling besar saja.
+  var best = 0.0;
+  if (voucherSaving != null && voucherSaving > best) best = voucherSaving;
+  if (productSaving > best) best = productSaving;
+  if (best > 0) {
+    return 'Hemat s.d. ${formatRupiah(best)}';
   }
 
+  // Fallback: voucher hanya punya persen (tanpa nominal) & tanpa diskon produk.
   final voucherPercent = voucher?.discountPercent;
   if (voucherPercent != null && voucherPercent > 0) {
     return 'Hemat s.d. ${voucherPercent.round()}%';
   }
 
-  if (!product.hasDiscount) return null;
-  final savings = product.price - product.finalPrice;
-  if (savings <= 0) return null;
-  return 'Hemat s.d. ${formatRupiah(savings)}';
+  return null;
 }
 
 String? _productShippingLabel(Product product) {
