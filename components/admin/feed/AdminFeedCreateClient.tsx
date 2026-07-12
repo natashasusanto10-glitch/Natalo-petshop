@@ -673,18 +673,63 @@ export function AdminFeedCreateClient() {
     }
   }
 
+  // Kind options — dipakai baik oleh selector mobile (grid kartu) maupun
+  // desktop (segmented pill di header). Sumber tunggal supaya label/desc
+  // tidak drift antara dua tampilan.
+  const KIND_OPTIONS: { v: Kind; l: string; d: string }[] = [
+    { v: "VIDEO_ONLY", l: "Video Edukasi", d: "Tanpa produk" },
+    { v: "VIDEO_PRODUCT", l: "Video + Produk", d: "Konten jualan" },
+    { v: "PROMO", l: "Promo Produk", d: "Diskon per-produk" },
+  ];
+
+  // Pratinjau kartu feed (read-only) — dibaca dari state yang sama dengan
+  // form, tidak menambah state baru. Fallback thumbnail: video thumb >
+  // foto produk pertama > null (placeholder "NP").
+  const previewThumb = thumbPreviewUrl ?? selectedProducts[0]?.imageUrl ?? null;
+  const previewTitle = title.trim() || "Judul post akan tampil di sini";
+  const previewCaption = description.trim() || "Caption akan tampil di sini";
+  const previewDurationLabel =
+    videoMeta && Number.isFinite(videoMeta.durationSec)
+      ? `${Math.floor(videoMeta.durationSec / 60)}:${Math.round(videoMeta.durationSec % 60)
+          .toString()
+          .padStart(2, "0")}`
+      : null;
+
+  const publishButtonLabel = submitting ? progress || "Memproses..." : "Publish Post";
+
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
-      <header className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          aria-label="Kembali"
-          className="grid h-9 w-9 place-items-center rounded-full bg-white shadow-sm"
-        >
-          <FiArrowLeft className="h-4 w-4 text-gray-700" />
-        </button>
-        <h1 className="text-base font-black text-gray-900">Buat Post Feed</h1>
+    <div className="mx-auto max-w-6xl space-y-4">
+      <header className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            aria-label="Kembali"
+            className="grid h-9 w-9 place-items-center rounded-full bg-white shadow-sm"
+          >
+            <FiArrowLeft className="h-4 w-4 text-gray-700" />
+          </button>
+          <h1 className="text-base font-black text-gray-900">Buat Post Feed</h1>
+        </div>
+
+        {/* Jenis post — segmented pill, desktop only (mobile pakai kartu
+            grid di bawah, sama seperti sebelumnya). Sumber state sama. */}
+        <div className="hidden items-center gap-1 rounded-full bg-gray-100 p-1 lg:flex">
+          {KIND_OPTIONS.map((opt) => (
+            <button
+              key={opt.v}
+              type="button"
+              onClick={() => setKind(opt.v)}
+              className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
+                kind === opt.v
+                  ? "border border-natalo-200 bg-white text-natalo-700 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {opt.l}
+            </button>
+          ))}
+        </div>
       </header>
 
       {/* Pending upload banner — tampil kalau ada upload yg belum selesai
@@ -719,17 +764,14 @@ export function AdminFeedCreateClient() {
         </div>
       )}
 
-      {/* Kind selector */}
-      <section className="rounded-2xl border border-gray-100 bg-white p-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_300px] lg:items-start">
+      <div className="min-w-0 space-y-4">
+
+      {/* Kind selector — mobile only (desktop pakai pill di header). */}
+      <section className="rounded-2xl border border-gray-100 bg-white p-3 lg:hidden">
         <p className="mb-2 text-xs font-extrabold text-gray-700">Jenis post</p>
         <div className="grid grid-cols-2 gap-2">
-          {(
-            [
-              { v: "VIDEO_ONLY", l: "Video Edukasi", d: "Tanpa produk" },
-              { v: "VIDEO_PRODUCT", l: "Video + Produk", d: "Konten jualan" },
-              { v: "PROMO", l: "Promo Produk", d: "Diskon per-produk" },
-            ] as { v: Kind; l: string; d: string }[]
-          ).map((opt) => (
+          {KIND_OPTIONS.map((opt) => (
             <button
               key={opt.v}
               type="button"
@@ -1204,6 +1246,93 @@ export function AdminFeedCreateClient() {
         <p className="rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p>
       )}
 
+      {/* Publish — mobile only (desktop: tombol di panel kanan, sticky
+          di kolom). Handler + disabled state identik, cuma tampilan. */}
+      <button
+        type="button"
+        onClick={handleSubmit}
+        disabled={submitting}
+        className="sticky bottom-4 w-full rounded-full bg-natalo-600 py-3 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.98] disabled:bg-gray-300 lg:hidden"
+      >
+        {publishButtonLabel}
+      </button>
+
+      </div>
+
+      {/* Panel kanan — pratinjau hidup + status notifikasi + Publish
+          sticky. Desktop only; read-only (tidak ada state baru, semua
+          dibaca dari state form yang sama). Mobile tetap satu kolom
+          seperti sebelumnya (panel ini disembunyikan). */}
+      <div className="hidden flex-col gap-3 lg:sticky lg:top-4 lg:flex">
+        <p className="text-center text-[11px] font-bold uppercase tracking-wide text-gray-400">
+          Pratinjau langsung
+        </p>
+
+        <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
+          <div className="relative aspect-[4/3] w-full bg-gray-900">
+            {previewThumb ? (
+              <Image
+                src={previewThumb}
+                alt=""
+                fill
+                sizes="300px"
+                className="object-cover"
+                unoptimized={!!thumbPreviewUrl}
+              />
+            ) : (
+              <div className="grid h-full w-full place-items-center text-3xl font-black text-gray-600">
+                NP
+              </div>
+            )}
+            {needsVideo && (
+              <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-bold text-white">
+                {previewDurationLabel ?? "Video"}
+              </span>
+            )}
+          </div>
+          <div className="p-3">
+            <div className="mb-1.5 flex items-center gap-2">
+              <div className="grid h-5 w-5 place-items-center rounded-full bg-natalo-600 text-[10px] font-black text-white">
+                N
+              </div>
+              <span className="text-[11px] font-extrabold text-gray-800">
+                Natalo Petshop
+              </span>
+            </div>
+            <p className="line-clamp-2 text-xs font-extrabold text-gray-900">
+              {previewTitle}
+            </p>
+            <p className="mt-0.5 line-clamp-2 text-[11px] text-gray-500">
+              {previewCaption}
+            </p>
+            {needsProduct && selectedProducts.length > 0 && (
+              <p className="mt-2 text-[11px] font-bold text-natalo-600">
+                {selectedProducts.length} produk
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-white px-3 py-2">
+          <span className="text-[11px] font-bold text-gray-600">
+            Beri tahu pelanggan
+          </span>
+          <span className="ml-auto text-[11px] font-bold text-gray-400">
+            {notifyOnPublish ? "Nyala" : "Mati"}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={submitting}
+          className="w-full rounded-full bg-natalo-600 py-3 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.98] disabled:bg-gray-300"
+        >
+          {publishButtonLabel}
+        </button>
+      </div>
+      </div>
+
       {/* Loading overlay — full-screen blocker saat submitting. Kompres
           video di Bunny butuh 30s-2 menit, kalau user cuma lihat tombol
           disabled mereka kemungkinan close tab. Overlay ini bikin jelas:
@@ -1239,15 +1368,6 @@ export function AdminFeedCreateClient() {
           </div>
         </div>
       )}
-
-      <button
-        type="button"
-        onClick={handleSubmit}
-        disabled={submitting}
-        className="sticky bottom-4 w-full rounded-full bg-natalo-600 py-3 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.98] disabled:bg-gray-300"
-      >
-        {submitting ? progress || "Memproses..." : "Publish Post"}
-      </button>
     </div>
   );
 }

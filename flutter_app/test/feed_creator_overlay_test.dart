@@ -44,4 +44,26 @@ void main() {
     await tester.pump();
     expect(find.textContaining('lebih sedikit'), findsOneWidget);
   });
+
+  testWidgets(
+      'caption pendek (<=90 char) yang wrap 3+ baris di kolom sempit tetap dapat selengkapnya',
+      (tester) async {
+    // Kata-kata panjang biar wrap-nya lebar, bukan karakter yang banyak —
+    // total di bawah 90 karakter tapi di kolom sempit tetap >2 baris.
+    const shortButWrapping =
+        'Rekomendasi perlengkapan kucing kesayangan kamu bulan ini';
+    expect(shortButWrapping.length, lessThanOrEqualTo(90));
+
+    await tester.pumpWidget(_wrap(SizedBox(
+      width: 150,
+      child: FeedExpandableCaption(text: shortButWrapping),
+    )));
+
+    // Sebelum fix: isLong berbasis text.length > 90 bernilai false, jadi
+    // "selengkapnya" tidak pernah muncul walau baris ke-3 terpotong ellipsis.
+    expect(find.textContaining('selengkapnya'), findsOneWidget);
+    await tester.tap(find.textContaining('selengkapnya'));
+    await tester.pump();
+    expect(find.textContaining('lebih sedikit'), findsOneWidget);
+  });
 }

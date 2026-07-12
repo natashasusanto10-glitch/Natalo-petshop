@@ -339,145 +339,214 @@ class _FeedExpandableCaptionState extends State<FeedExpandableCaption> {
     super.dispose();
   }
 
+  static const _baseStyle = TextStyle(
+    color: Colors.white,
+    fontSize: 13.2,
+    fontWeight: FontWeight.w600,
+    height: 1.38,
+    shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
+  );
+  static const _mentionStyle = TextStyle(
+    color: Color(0xFF60A5FA),
+    fontSize: 13.2,
+    fontWeight: FontWeight.w900,
+    height: 1.38,
+    shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
+  );
+  static const _maxCollapsedLines = 2;
+
+  /// Ukur apakah `text` (spans-nya) melebihi 2 baris pada `maxWidth`.
+  /// Basis-baris ter-render — bukan jumlah karakter — supaya caption pendek
+  /// yang tetap wrap >2 baris di kolom sempit ikut terdeteksi "panjang".
+  bool _exceedsCollapsed(String text, double maxWidth, TextScaler scaler) {
+    final tp = _paint(_measureSpans(text), maxWidth, scaler);
+    final exceeded = tp.didExceedMaxLines;
+    tp.dispose();
+    return exceeded;
+  }
+
+  /// Cari panjang prefix terpanjang dari `text` yang, digabung dengan
+  /// "…  selengkapnya", masih muat dalam 2 baris pada `maxWidth`. Menjamin
+  /// affordance "selengkapnya" selalu terlihat (tak terdorong ke baris ke-3
+  /// lalu ter-ellipsis hilang).
+  int _fitCollapsedLength(String text, double maxWidth, TextScaler scaler) {
+    var lo = 0;
+    var hi = text.length;
+    var best = 0;
+    while (lo <= hi) {
+      final mid = (lo + hi) >> 1;
+      final candidate = '${text.substring(0, mid).trimRight()}…  selengkapnya';
+      final tp = _paint(_measureSpans(candidate), maxWidth, scaler);
+      final fits = !tp.didExceedMaxLines;
+      tp.dispose();
+      if (fits) {
+        best = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return best;
+  }
+
+  /// Spans khusus pengukuran — recognizer throwaway langsung di-dispose,
+  /// karena TextPainter cuma butuh geometri (recognizer tak memengaruhi
+  /// layout). Weight mention (w900) dipertahankan agar lebar akurat.
+  List<InlineSpan> _measureSpans(String text) {
+    final throwaway = <TapGestureRecognizer>[];
+    final spans = buildMentionSpans(
+      text,
+      onMentionTap: (_) {},
+      defaultStyle: _baseStyle,
+      mentionStyle: _mentionStyle,
+      collectRecognizers: throwaway,
+    );
+    for (final r in throwaway) {
+      r.dispose();
+    }
+    return spans;
+  }
+
+  TextPainter _paint(
+      List<InlineSpan> spans, double maxWidth, TextScaler scaler) {
+    return TextPainter(
+      text: TextSpan(style: _baseStyle, children: spans),
+      maxLines: _maxCollapsedLines,
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+    )..layout(maxWidth: maxWidth);
+  }
+
   @override
   Widget build(BuildContext context) {
     final text = widget.text;
     if (text.isEmpty) return const SizedBox.shrink();
-    const limit = 90;
-    final isLong = text.length > limit;
-    final expanded = _expanded && isLong;
-    final visible = expanded || !isLong
-        ? text
-        : '${text.substring(0, limit).trimRight()}... ';
+    final scaler = MediaQuery.textScalerOf(context);
 
-    // Dispose recognizers lama tiap rebuild — fresh per render.
-    for (final r in _recognizers) {
-      r.dispose();
-    }
-    _recognizers.clear();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        // Deteksi overflow berbasis baris ter-render, bukan jumlah karakter.
+        final isLong =
+            maxWidth.isFinite && _exceedsCollapsed(text, maxWidth, scaler);
+        final expanded = _expanded && isLong;
+        final visible = expanded || !isLong
+            ? text
+            : '${text.substring(0, _fitCollapsedLength(text, maxWidth, scaler)).trimRight()}…  ';
 
-    const baseStyle = TextStyle(
-      color: Colors.white,
-      fontSize: 13.2,
-      fontWeight: FontWeight.w600,
-      height: 1.38,
-      shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
-    );
-    const mentionStyle = TextStyle(
-      color: Color(0xFF60A5FA),
-      fontSize: 13.2,
-      fontWeight: FontWeight.w900,
-      height: 1.38,
-      shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
-    );
+        // Dispose recognizers lama tiap rebuild — fresh per render.
+        for (final r in _recognizers) {
+          r.dispose();
+        }
+        _recognizers.clear();
 
-    final mentionSpans = buildMentionSpans(
-      visible,
-      onMentionTap: (handle) => widget.onMentionTap?.call(handle),
-      defaultStyle: baseStyle,
-      mentionStyle: mentionStyle,
-      collectRecognizers: _recognizers,
-    );
+        final mentionSpans = buildMentionSpans(
+          visible,
+          onMentionTap: (handle) => widget.onMentionTap?.call(handle),
+          defaultStyle: _baseStyle,
+          mentionStyle: _mentionStyle,
+          collectRecognizers: _recognizers,
+        );
 
-    final richText = Text.rich(
-      TextSpan(
-        style: baseStyle,
-        children: [
-          ...mentionSpans,
-          if (isLong)
-            TextSpan(
-              text: expanded ? '  lebih sedikit' : 'selengkapnya',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.78),
-                fontSize: 12.8,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-        ],
-      ),
-      maxLines: expanded ? null : 2,
-      overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
-    );
-
-    Widget body;
-    if (!expanded) {
-      body = richText;
-    } else {
-      // Panel baca ala IG: tinggi maks ~45% layar, isi ter-scroll dengan
-      // fade mask tepi (HANYA ke arah yang masih bisa di-scroll), timestamp
-      // relatif di bawah. Author di parent tetap pinned di atas panel ini.
-      final maxPanelHeight = MediaQuery.sizeOf(context).height * 0.45;
-      // Recompute flag fade setelah layout — metrics scroll baru diketahui
-      // pasca-frame (content bisa lebih pendek dari panel = tak scroll).
-      WidgetsBinding.instance.addPostFrameCallback((_) => _recomputeFade());
-      // Fade hanya di tepi yang punya konten tersembunyi ke arah itu:
-      // caption pendek → tanpa fade; di atas → hanya fade bawah; mentok
-      // bawah → hanya fade atas.
-      final topStop = _canScrollUp ? 0.045 : 0.0;
-      final bottomStop = _canScrollDown ? 0.955 : 1.0;
-      body = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: maxPanelHeight),
-            child: ShaderMask(
-              shaderCallback: (rect) => LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: const [
-                  Colors.transparent,
-                  Colors.white,
-                  Colors.white,
-                  Colors.transparent,
-                ],
-                stops: [0.0, topStop, bottomStop, 1.0],
-              ).createShader(rect),
-              blendMode: BlendMode.dstIn,
-              child: NotificationListener<ScrollNotification>(
-                onNotification: _onScrollNotification,
-                child: SingleChildScrollView(
-                  controller: _scrollController,
-                  physics: const AlwaysScrollableScrollPhysics(
-                    parent: BouncingScrollPhysics(),
+        final richText = Text.rich(
+          TextSpan(
+            style: _baseStyle,
+            children: [
+              ...mentionSpans,
+              if (isLong)
+                TextSpan(
+                  text: expanded ? '  lebih sedikit' : 'selengkapnya',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.78),
+                    fontSize: 12.8,
+                    fontWeight: FontWeight.w800,
                   ),
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: richText,
                 ),
-              ),
-            ),
+            ],
           ),
-          if (widget.createdAt != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 5),
-              child: Text(
-                formatRelativeTime(widget.createdAt!),
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.62),
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                  height: 1.1,
+          maxLines: expanded ? null : _maxCollapsedLines,
+          overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+        );
+
+        Widget body;
+        if (!expanded) {
+          body = richText;
+        } else {
+          // Panel baca ala IG: tinggi maks ~45% layar, isi ter-scroll dengan
+          // fade mask tepi (HANYA ke arah yang masih bisa di-scroll),
+          // timestamp relatif di bawah. Author di parent tetap pinned.
+          final maxPanelHeight = MediaQuery.sizeOf(context).height * 0.45;
+          // Recompute flag fade setelah layout — metrics scroll baru
+          // diketahui pasca-frame (content bisa lebih pendek dari panel).
+          WidgetsBinding.instance.addPostFrameCallback((_) => _recomputeFade());
+          // Fade hanya di tepi yang punya konten tersembunyi ke arah itu:
+          // caption pendek → tanpa fade; di atas → hanya fade bawah; mentok
+          // bawah → hanya fade atas.
+          final topStop = _canScrollUp ? 0.045 : 0.0;
+          final bottomStop = _canScrollDown ? 0.955 : 1.0;
+          body = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxPanelHeight),
+                child: ShaderMask(
+                  shaderCallback: (rect) => LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: const [
+                      Colors.transparent,
+                      Colors.white,
+                      Colors.white,
+                      Colors.transparent,
+                    ],
+                    stops: [0.0, topStop, bottomStop, 1.0],
+                  ).createShader(rect),
+                  blendMode: BlendMode.dstIn,
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: _onScrollNotification,
+                    child: SingleChildScrollView(
+                      controller: _scrollController,
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: richText,
+                    ),
+                  ),
                 ),
               ),
-            ),
-        ],
-      );
-    }
+              if (widget.createdAt != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 5),
+                  child: Text(
+                    formatRelativeTime(widget.createdAt!),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.62),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      height: 1.1,
+                    ),
+                  ),
+                ),
+            ],
+          );
+        }
 
-    return GestureDetector(
-      onTap: isLong ? () => _setExpanded(!expanded) : null,
-      // AnimatedSize: caption tidak snap buka/tutup — tinggi mengembang
-      // halus, dan karena bottom info di-anchor ke bawah (Positioned.bottom),
-      // nama kreator di atasnya ikut terangkat pelan sebagai satu gerakan.
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 320),
-        reverseDuration: const Duration(milliseconds: 260),
-        curve: Curves.easeOutCubic,
-        // topLeft: baris awal tetap terlihat (terangkat naik), baris baru
-        // tersingkap di bawahnya — terasa "membuka", bukan konten loncat.
-        alignment: Alignment.topLeft,
-        child: body,
-      ),
+        return GestureDetector(
+          onTap: isLong ? () => _setExpanded(!expanded) : null,
+          // AnimatedSize: caption tidak snap buka/tutup — tinggi mengembang
+          // halus; nama kreator di atasnya ikut terangkat sebagai satu
+          // gerakan.
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 320),
+            reverseDuration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topLeft,
+            child: body,
+          ),
+        );
+      },
     );
   }
 }
