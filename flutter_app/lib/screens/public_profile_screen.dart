@@ -322,6 +322,19 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           surfaceTintColor: isOfficial ? NataloColors.heroTop : cs.surface,
           elevation: 0,
           scrolledUnderElevation: isOfficial ? 0 : 0.5,
+          // Official: matikan SEMUA sumber garis pemisah di bawah AppBar —
+          // shadow/tint saat scroll bisa muncul sebagai hairline halus yang
+          // memutus AppBar heroTop dari hero gradient di bawahnya.
+          shadowColor: isOfficial ? Colors.transparent : null,
+          bottom: isOfficial
+              // Strip 1px warna heroTop menutup celah subpixel antara
+              // AppBar dan sliver header (anti garis halus di device
+              // dengan pixel ratio non-integer).
+              ? PreferredSize(
+                  preferredSize: const Size.fromHeight(1),
+                  child: Container(height: 1, color: NataloColors.heroTop),
+                )
+              : null,
           centerTitle: false,
           titleSpacing: 0,
           leading: IconButton(
@@ -385,7 +398,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       return AppErrorState(description: _errorText!, onRetry: _load);
     }
     final profile = _profile!;
-    return NataloPawRefreshIndicator(
+    final scrollView = NataloPawRefreshIndicator(
       onRefresh: _refresh,
       child: CustomScrollView(
         controller: _scrollController,
@@ -455,6 +468,37 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
       ),
+    );
+    if (!profile.isOfficial) return scrollView;
+    // Official: lapisan navy heroTop di belakang puncak scroll — saat
+    // overscroll/pull-to-refresh, header tertarik turun dan area di
+    // atasnya menyingkap latar. Tanpa lapisan ini yang tersingkap putih
+    // (cs.surface) → terlihat seperti garis/celah memutus hero dari
+    // AppBar. Hanya tampil saat scroll dekat puncak — kalau selalu ada,
+    // navy mengintip lewat celah 1.5px antar tile grid saat grid
+    // ter-scroll ke region backdrop.
+    return Stack(
+      children: [
+        // Positioned WAJIB anak langsung Stack (ParentData) — kondisi
+        // show/hide lewat AnimatedBuilder DI DALAM Positioned.
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 220,
+          child: AnimatedBuilder(
+            animation: _scrollController,
+            builder: (context, _) {
+              final show = !_scrollController.hasClients ||
+                  _scrollController.offset < 40;
+              return show
+                  ? const ColoredBox(color: NataloColors.heroTop)
+                  : const SizedBox.shrink();
+            },
+          ),
+        ),
+        Positioned.fill(child: scrollView),
+      ],
     );
   }
 }
