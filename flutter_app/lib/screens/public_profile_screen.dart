@@ -1,7 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/natalo_colors.dart';
 import 'package:share_plus/share_plus.dart';
+import '../widgets/official_brand_avatar.dart';
 
 import '../config/api_config.dart';
 import '../models/feed_post.dart';
@@ -296,60 +298,73 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      backgroundColor: cs.surface,
-      appBar: AppBar(
+    // Akun official → hero biru premium: AppBar transparan menumpang di atas
+    // gradient hero, ikon + judul putih, status bar ikon terang. Konsisten
+    // dgn pola hero-blue halaman lain (Akun/Beranda) + AnnotatedRegion.
+    final isOfficial = _profile?.isOfficial ?? false;
+    final onAppBar = isOfficial ? Colors.white : cs.onSurface;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: isOfficial
+          ? SystemUiOverlayStyle.light
+          : (Theme.of(context).brightness == Brightness.dark
+              ? SystemUiOverlayStyle.light
+              : SystemUiOverlayStyle.dark),
+      child: Scaffold(
         backgroundColor: cs.surface,
-        surfaceTintColor: cs.surface,
-        elevation: 0,
-        scrolledUnderElevation: 0.5,
-        centerTitle: false,
-        titleSpacing: 0,
-        leading: IconButton(
-          onPressed: () => Navigator.maybePop(context),
-          icon: Icon(
-            Icons.arrow_back_rounded,
-            color: cs.onSurface,
-            size: 26,
-          ),
-          tooltip: 'Kembali',
-        ),
-        title: Text(
-          // Akun official (Natalo Petshop): AppBar tampil nama brand, BUKAN
-          // username "natasha" (identitas pemilik). displayHandle untuk akun
-          // official = username karena username ter-set → bocor nama asli.
-          // Konsisten dgn branding Opsi B (body profil sudah override).
-          (_profile?.isOfficial ?? false)
-              ? (_profile?.name ?? 'Natalo Petshop')
-              : (_profile?.displayHandle ?? widget.username),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: cs.onSurface,
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            height: 1.1,
-          ),
-        ),
-        actions: [
-          // Menu moderasi (Laporkan / Blokir) — wajib Google Play UGC.
-          // Hanya tampil untuk profil orang lain (bukan diri sendiri) dan
-          // bukan akun official (brand tak bisa dilaporkan/diblokir).
-          if (_profile != null &&
-              !(_profile!.isOwner) &&
-              !(_profile!.isOfficial))
-            IconButton(
-              onPressed: _openModeration,
-              icon: Icon(
-                Icons.more_vert_rounded,
-                color: cs.onSurface,
-                size: 24,
-              ),
-              tooltip: 'Opsi lainnya',
+        extendBodyBehindAppBar: isOfficial,
+        appBar: AppBar(
+          backgroundColor: isOfficial ? Colors.transparent : cs.surface,
+          surfaceTintColor: isOfficial ? Colors.transparent : cs.surface,
+          elevation: 0,
+          scrolledUnderElevation: isOfficial ? 0 : 0.5,
+          centerTitle: false,
+          titleSpacing: 0,
+          leading: IconButton(
+            onPressed: () => Navigator.maybePop(context),
+            icon: Icon(
+              Icons.arrow_back_rounded,
+              color: onAppBar,
+              size: 26,
             ),
-        ],
+            tooltip: 'Kembali',
+          ),
+          title: Text(
+            // Akun official (Natalo Petshop): AppBar tampil nama brand, BUKAN
+            // username "natasha" (identitas pemilik). displayHandle untuk akun
+            // official = username karena username ter-set → bocor nama asli.
+            // Konsisten dgn branding Opsi B (body profil sudah override).
+            isOfficial
+                ? (_profile?.name ?? 'Natalo Petshop')
+                : (_profile?.displayHandle ?? widget.username),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: onAppBar,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              height: 1.1,
+            ),
+          ),
+          actions: [
+            // Menu moderasi (Laporkan / Blokir) — wajib Google Play UGC.
+            // Hanya tampil untuk profil orang lain (bukan diri sendiri) dan
+            // bukan akun official (brand tak bisa dilaporkan/diblokir).
+            if (_profile != null &&
+                !(_profile!.isOwner) &&
+                !(_profile!.isOfficial))
+              IconButton(
+                onPressed: _openModeration,
+                icon: Icon(
+                  Icons.more_vert_rounded,
+                  color: onAppBar,
+                  size: 24,
+                ),
+                tooltip: 'Opsi lainnya',
+              ),
+          ],
+        ),
+        body: _buildBody(),
       ),
-      body: _buildBody(),
     );
   }
 
@@ -411,7 +426,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     );
                   } catch (_) {
                     return ColoredBox(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color:
+                          Theme.of(context).colorScheme.surfaceContainerHighest,
                     );
                   }
                 },
@@ -459,6 +475,18 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // Akun official → header hero biru premium (brand store), konsisten
+    // token hero-blue app. User biasa tetap layout IG standar di bawah.
+    if (profile.isOfficial) {
+      return _OfficialHeader(
+        profile: profile,
+        followBusy: followBusy,
+        onFollowToggle: onFollowToggle,
+        onFollowersTap: onFollowersTap,
+        onFollowingTap: onFollowingTap,
+        onShareProfile: onShareProfile,
+      );
+    }
     return Container(
       width: double.infinity,
       color: cs.surface,
@@ -655,6 +683,295 @@ class _Header extends StatelessWidget {
           busy: followBusy,
           spinnerColor: Colors.white,
         ),
+      ),
+    );
+  }
+}
+
+/// Header premium akun official — hero biru brand (token app), logo NL,
+/// badge resmi, kartu statistik putih mengambang, tombol Ikuti + Bagikan.
+/// Warna/spacing pakai token NataloColors supaya konsisten dgn halaman
+/// hero lain (Akun/Beranda).
+class _OfficialHeader extends StatelessWidget {
+  final PublicProfile profile;
+  final bool followBusy;
+  final VoidCallback? onFollowToggle;
+  final VoidCallback? onFollowersTap;
+  final VoidCallback? onFollowingTap;
+  final VoidCallback? onShareProfile;
+
+  const _OfficialHeader({
+    required this.profile,
+    required this.followBusy,
+    this.onFollowToggle,
+    this.onFollowersTap,
+    this.onFollowingTap,
+    this.onShareProfile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Hero menembus di belakang AppBar transparan → beri ruang status bar
+    // + toolbar supaya konten tidak tertutup tombol back/judul.
+    final topInset = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(gradient: NataloColors.heroGradientV),
+      padding: EdgeInsets.fromLTRB(20, topInset + 6, 20, 18),
+      child: Column(
+        children: [
+          // Logo brand — ring putih + shadow lembut, premium.
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: 0.95),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.22),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: const OfficialBrandAvatar(size: 88),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Text(
+                  profile.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    height: 1.1,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 5),
+              const Icon(
+                Icons.verified_rounded,
+                color: Color(0xFFBFE0FF),
+                size: 19,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Pill "Akun Resmi" — chip di atas hero (token heroChip).
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.shield_rounded, color: Colors.white, size: 13),
+                const SizedBox(width: 5),
+                Text(
+                  profile.bio?.isNotEmpty == true
+                      ? 'Akun Resmi'
+                      : 'Akun Resmi Natalo Petshop',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.0,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (profile.bio != null && profile.bio!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              profile.bio!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: NataloColors.onHeroBright,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.4,
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          // Kartu statistik putih mengambang.
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.10),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _OfficialStat(
+                    value: profile.postCount,
+                    label: 'Postingan',
+                  ),
+                ),
+                _statDivider(),
+                Expanded(
+                  child: _OfficialStat(
+                    value: profile.followersCount,
+                    label: 'Pengikut',
+                    onTap: onFollowersTap,
+                  ),
+                ),
+                _statDivider(),
+                Expanded(
+                  child: _OfficialStat(
+                    value: profile.likedCount,
+                    label: 'Disukai',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(child: _buildFollowButton()),
+              if (onShareProfile != null) ...[
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 40,
+                  width: 46,
+                  child: OutlinedButton(
+                    onPressed: onShareProfile,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.55),
+                      ),
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Icon(Icons.ios_share_rounded, size: 18),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statDivider() => Container(
+        width: 0.5,
+        height: 30,
+        color: NataloColors.grey200,
+      );
+
+  Widget _buildFollowButton() {
+    const shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.all(Radius.circular(10)),
+    );
+    if (profile.isFollowing) {
+      // Sudah follow → outline putih di atas hero.
+      return SizedBox(
+        height: 40,
+        child: OutlinedButton(
+          onPressed: onFollowToggle,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: BorderSide(color: Colors.white.withValues(alpha: 0.55)),
+            textStyle:
+                const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+            shape: shape,
+          ),
+          child: _FollowButtonContent(
+            label: 'Mengikuti',
+            busy: followBusy,
+            spinnerColor: Colors.white,
+          ),
+        ),
+      );
+    }
+    // Belum follow → tombol putih solid, teks biru hero (kontras premium).
+    return SizedBox(
+      height: 40,
+      child: FilledButton(
+        onPressed: onFollowToggle,
+        style: FilledButton.styleFrom(
+          backgroundColor: Colors.white,
+          foregroundColor: NataloColors.heroBottom,
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+          shape: shape,
+        ),
+        child: _FollowButtonContent(
+          label: 'Ikuti',
+          busy: followBusy,
+          spinnerColor: NataloColors.heroBottom,
+        ),
+      ),
+    );
+  }
+}
+
+class _OfficialStat extends StatelessWidget {
+  final int value;
+  final String label;
+  final VoidCallback? onTap;
+
+  const _OfficialStat({
+    required this.value,
+    required this.label,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          formatCountCompact(value),
+          style: const TextStyle(
+            color: Color(0xFF0F2A4A),
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            height: 1.08,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF6B7A90),
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+            height: 1.08,
+          ),
+        ),
+      ],
+    );
+    if (onTap == null) return content;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: content,
       ),
     );
   }
@@ -1057,4 +1374,3 @@ class _NotFoundView extends StatelessWidget {
     );
   }
 }
-

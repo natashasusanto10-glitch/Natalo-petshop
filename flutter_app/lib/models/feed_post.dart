@@ -57,8 +57,11 @@ class FeedAuthor {
     return (u != null && u.isNotEmpty) ? u : name;
   }
 
-  bool get hasUsername =>
-      !isOfficialAccount && username != null && username!.isNotEmpty;
+  // Official account KINI punya username kanonik brand ("natalopetshop"),
+  // jadi profilnya bisa dituju /u/{username} & di-follow — sama seperti
+  // user biasa. Server mengembalikan username brand (bukan nama pemilik),
+  // jadi tidak ada kebocoran identitas.
+  bool get hasUsername => username != null && username!.isNotEmpty;
 
   String get initial =>
       name.trim().isEmpty ? 'N' : name.trim().substring(0, 1).toUpperCase();

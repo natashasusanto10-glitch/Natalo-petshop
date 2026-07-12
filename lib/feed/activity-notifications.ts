@@ -18,6 +18,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { isAdminRole, OFFICIAL_BRAND_NAME } from "@/lib/social/brand-user";
 import {
   createFeedNotification,
   feedPostOwnerUrl,
@@ -58,9 +59,12 @@ export async function sendCommentNotification(params: {
 
     const actor = await prisma.user.findUnique({
       where: { id: params.actorUserId },
-      select: { name: true },
+      select: { name: true, role: true },
     });
-    const actorName = actor?.name?.trim() || "Seseorang";
+    // Akun official (admin) → brand name; nama asli pemilik tak boleh bocor.
+    const actorName = isAdminRole(actor?.role)
+      ? OFFICIAL_BRAND_NAME
+      : actor?.name?.trim() || "Seseorang";
 
     await createFeedNotification({
       userId: post.authorId,
@@ -103,9 +107,11 @@ export async function sendReplyNotification(params: {
 
     const actor = await prisma.user.findUnique({
       where: { id: params.actorUserId },
-      select: { name: true },
+      select: { name: true, role: true },
     });
-    const actorName = actor?.name?.trim() || "Seseorang";
+    const actorName = isAdminRole(actor?.role)
+      ? OFFICIAL_BRAND_NAME
+      : actor?.name?.trim() || "Seseorang";
 
     const post = await prisma.feedPost.findUnique({
       where: { id: params.postId },
@@ -155,7 +161,7 @@ export async function sendMentionNotifications(params: {
     const [actor, post] = await Promise.all([
       prisma.user.findUnique({
         where: { id: params.actorUserId },
-        select: { name: true, username: true },
+        select: { name: true, username: true, role: true },
       }),
       prisma.feedPost.findUnique({
         where: { id: params.postId },
@@ -165,9 +171,10 @@ export async function sendMentionNotifications(params: {
     if (!post) return;
     // IG/TikTok pattern: notif title pakai bare username sebagai
     // identity label, bukan `@username`. Konsisten dengan rule
-    // "identity = no @, mention in text = @".
-    const actorName =
-      actor?.username && actor.username.length > 0
+    // "identity = no @, mention in text = @". Akun official → brand name.
+    const actorName = isAdminRole(actor?.role)
+      ? OFFICIAL_BRAND_NAME
+      : actor?.username && actor.username.length > 0
         ? actor.username
         : actor?.name?.trim() || "Seseorang";
 

@@ -12,6 +12,7 @@ import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { listFeedComments } from "@/lib/feed/queries";
+import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 import {
   sendCommentNotification,
   sendMentionNotifications,
@@ -268,13 +269,18 @@ export async function POST(
       createdAt: result.createdAt.toISOString(),
       author: {
         id: result.author.id,
-        name: result.author.name,
+        // Akun official (admin) → brand name + foto null (klien render
+        // logo). Nama asli/foto pemilik tidak boleh bocor di komentar.
+        name: brandDisplayName(result.author.role, result.author.name),
         username: result.author.username ?? null,
         role: (result.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as "ADMIN" | "CUSTOMER",
         // Include profilePhotoUrl di response — match shape dengan GET
         // listing supaya Flutter dapat tampil avatar foto user yang
         // benar saat comment baru pertama kali muncul di drawer.
-        profilePhotoUrl: result.author.profilePhotoUrl ?? null,
+        profilePhotoUrl: brandPhotoUrl(
+          result.author.role,
+          result.author.profilePhotoUrl,
+        ),
       },
       viewerLiked: false,
     },

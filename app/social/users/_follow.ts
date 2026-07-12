@@ -16,6 +16,11 @@ import { Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendFollowNotification } from "@/lib/social/notifications";
+import {
+  brandDisplayName,
+  brandPhotoUrl,
+  isAdminRole,
+} from "@/lib/social/brand-user";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
@@ -346,6 +351,9 @@ const publicUserSelect = {
   id: true,
   name: true,
   username: true,
+  // role WAJIB di-select supaya identitas admin bisa di-brandify (kalau
+  // tidak, nama asli + foto pemilik bocor di daftar Pengikut/Mengikuti).
+  role: true,
   profilePhotoUrl: true,
   bio: true,
   followersCount: true,
@@ -362,14 +370,17 @@ function mapPublicUser(
   const isSelf = Boolean(viewer?.viewerUserId && viewer.viewerUserId === user.id);
   return {
     id: user.id,
-    name: user.name,
+    // Akun official (admin) → brand name + foto null (klien render logo).
+    name: brandDisplayName(user.role, user.name),
     username: user.username,
-    profilePhotoUrl: user.profilePhotoUrl,
-    bio: user.bio,
+    profilePhotoUrl: brandPhotoUrl(user.role, user.profilePhotoUrl),
+    bio: isAdminRole(user.role) ? null : user.bio,
     followersCount: user.followersCount,
     followingCount: user.followingCount,
     isFollowing: isSelf ? false : viewer?.isFollowing === true,
     isSelf,
+    // Klien render logo brand utk avatar akun official.
+    isOfficial: isAdminRole(user.role),
   };
 }
 

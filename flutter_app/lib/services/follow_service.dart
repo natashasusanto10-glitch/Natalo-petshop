@@ -46,6 +46,10 @@ class FollowUserSummary {
   final bool isFollowing;
   final bool isSelf;
 
+  /// Akun official (admin) → klien render logo brand sebagai avatar
+  /// (server null-kan foto asli + kirim name "Natalo Petshop").
+  final bool isOfficial;
+
   const FollowUserSummary({
     required this.id,
     required this.name,
@@ -56,6 +60,7 @@ class FollowUserSummary {
     this.followingCount = 0,
     this.isFollowing = false,
     this.isSelf = false,
+    this.isOfficial = false,
   });
 
   String get initial =>
@@ -79,6 +84,7 @@ class FollowUserSummary {
       followingCount: (json['followingCount'] as num?)?.toInt() ?? 0,
       isFollowing: json['isFollowing'] == true,
       isSelf: json['isSelf'] == true,
+      isOfficial: json['isOfficial'] == true,
     );
   }
 
@@ -92,6 +98,7 @@ class FollowUserSummary {
         'followingCount': followingCount,
         'isFollowing': isFollowing,
         'isSelf': isSelf,
+        'isOfficial': isOfficial,
       };
 
   FollowUserSummary copyWith({
@@ -110,6 +117,7 @@ class FollowUserSummary {
       followingCount: followingCount ?? this.followingCount,
       isFollowing: isFollowing ?? this.isFollowing,
       isSelf: isSelf ?? this.isSelf,
+      isOfficial: isOfficial,
     );
   }
 }

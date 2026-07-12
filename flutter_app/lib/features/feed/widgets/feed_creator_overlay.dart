@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../utils/formatters.dart';
 import '../../../utils/mention_text.dart';
+import '../../../widgets/official_brand_avatar.dart';
 
 // Duplikat dari `_officialGold` di feed_screen.dart (tetap dipakai di
 // tempat lain di sana) — sama persis nilainya supaya visual identik.
@@ -45,6 +46,7 @@ class FeedCreatorIdentity extends StatelessWidget {
         _FeedCreatorAvatar(
           name: avatarInitial,
           profilePhotoUrl: avatarUrl,
+          isOfficial: isOfficial,
         ),
         const SizedBox(width: 8),
         Flexible(
@@ -148,10 +150,12 @@ class _FeedFollowChip extends StatelessWidget {
 class _FeedCreatorAvatar extends StatelessWidget {
   final String name;
   final String? profilePhotoUrl;
+  final bool isOfficial;
 
   const _FeedCreatorAvatar({
     required this.name,
     required this.profilePhotoUrl,
+    this.isOfficial = false,
   });
 
   @override
@@ -176,16 +180,19 @@ class _FeedCreatorAvatar extends StatelessWidget {
           ),
         ],
       ),
-      child: ClipOval(
-        child: hasPhoto
-            ? CachedNetworkImage(
-                imageUrl: url,
-                fit: BoxFit.cover,
-                placeholder: (_, __) => _AvatarFallback(name: name),
-                errorWidget: (_, __, ___) => _AvatarFallback(name: name),
-              )
-            : _AvatarFallback(name: name),
-      ),
+      child: isOfficial
+          // Akun official → logo brand NL (server null-kan foto asli).
+          ? const OfficialBrandAvatar(size: 34)
+          : ClipOval(
+              child: hasPhoto
+                  ? CachedNetworkImage(
+                      imageUrl: url,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => _AvatarFallback(name: name),
+                      errorWidget: (_, __, ___) => _AvatarFallback(name: name),
+                    )
+                  : _AvatarFallback(name: name),
+            ),
     );
   }
 }

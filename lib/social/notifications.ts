@@ -1,6 +1,11 @@
 import { sendFcmToUser } from "@/lib/fcm";
 import { prisma } from "@/lib/prisma";
 import { sendPushToUser, type PushPayload } from "@/lib/push";
+import {
+  brandPhotoUrl,
+  isAdminRole,
+  OFFICIAL_BRAND_NAME,
+} from "@/lib/social/brand-user";
 
 export const SOCIAL_NOTIFICATION_SOURCE = "social";
 
@@ -30,12 +35,18 @@ export async function sendFollowNotification(params: {
         id: true,
         name: true,
         username: true,
+        role: true,
         profilePhotoUrl: true,
       },
     });
     if (!follower) return;
 
-    const actorName = displayName(follower);
+    // Akun official (admin) → brand name + foto null di notif (jangan
+    // bocorkan nama asli/foto pemilik ke user yang di-follow admin).
+    const actorName = isAdminRole(follower.role)
+      ? OFFICIAL_BRAND_NAME
+      : displayName(follower);
+    const actorPhoto = brandPhotoUrl(follower.role, follower.profilePhotoUrl);
     const url = follower.username
       ? `/u/${encodeURIComponent(follower.username)}`
       : "/notifications";
@@ -70,7 +81,7 @@ export async function sendFollowNotification(params: {
       body,
       url,
       tag: `${eventType}-${params.followerId}-${params.followingId}`,
-      imageUrl: follower.profilePhotoUrl ?? null,
+      imageUrl: actorPhoto,
       data: {
         source: SOCIAL_NOTIFICATION_SOURCE,
         type: eventType,
@@ -94,7 +105,7 @@ export async function sendFollowNotification(params: {
           type: SOCIAL_NOTIFICATION_SOURCE,
           source: SOCIAL_NOTIFICATION_SOURCE,
           eventType,
-          thumbnailUrl: follower.profilePhotoUrl ?? null,
+          thumbnailUrl: actorPhoto,
           ctaLabel: "Lihat Profil",
           publishedAt: new Date(),
           targetUserId: params.followingId,

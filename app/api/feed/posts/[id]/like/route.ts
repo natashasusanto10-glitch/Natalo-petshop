@@ -17,6 +17,7 @@ import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { sendLikeNotification } from "@/lib/feed/activity-notifications";
+import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 
 export async function POST(
   request: NextRequest,
@@ -122,11 +123,11 @@ export async function POST(
     likeCount: result.likeCount,
     recentLikers: recentLikes.map((like) => ({
       id: like.user.id,
-      name: like.user.name,
+      name: brandDisplayName(like.user.role, like.user.name),
       username: like.user.username,
       role: like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
-      profilePhotoUrl: like.user.profilePhotoUrl,
-      avatarUrl: like.user.profilePhotoUrl,
+      profilePhotoUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
+      avatarUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
     })),
   });
 }

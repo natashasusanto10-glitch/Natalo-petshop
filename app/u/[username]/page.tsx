@@ -18,6 +18,7 @@ import { notFound } from "next/navigation";
 
 import { resolveUserByUsername } from "@/lib/username";
 import { prisma } from "@/lib/prisma";
+import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL || "https://natalopetshop.com";
@@ -40,18 +41,22 @@ export async function generateMetadata({
   }
 
   const handle = user.username ?? username.toLowerCase();
+  // Akun official (admin) → brand name + foto null; nama asli/foto pemilik
+  // tidak boleh bocor di metadata/OG halaman web.
+  const safeName = brandDisplayName(user.role, user.name);
+  const safePhoto = brandPhotoUrl(user.role, user.profilePhotoUrl);
   // Title handle bare (no `@`) — IG/TikTok pattern, identity label gak
   // pakai `@`. `@` cuma untuk mention di dalam body text.
-  const titleHandle = user.username ?? user.name;
+  const titleHandle = user.username ?? safeName;
   const description = user.bio
     ? user.bio.replace(/\s+/g, " ").trim().slice(0, 160)
-    : `Lihat profil ${user.name} di Natalo Petshop — komunitas pet lovers Medan.`;
+    : `Lihat profil ${safeName} di Natalo Petshop — komunitas pet lovers Medan.`;
 
   const canonical = `${siteUrl}/u/${handle}`;
-  const ogImage = user.profilePhotoUrl
-    ? (user.profilePhotoUrl.startsWith("http")
-      ? user.profilePhotoUrl
-      : `${siteUrl}${user.profilePhotoUrl}`)
+  const ogImage = safePhoto
+    ? (safePhoto.startsWith("http")
+      ? safePhoto
+      : `${siteUrl}${safePhoto}`)
     : `${siteUrl}/icon.svg`;
 
   return {
@@ -122,17 +127,20 @@ export default async function PublicProfilePage({ params }: PageProps) {
   ]);
 
   const handle = user.username ?? username.toLowerCase();
-  const initial = user.name.trim().charAt(0).toUpperCase() || "N";
+  // Brand-safe identity — akun official tak boleh bocorkan nama/foto asli.
+  const safeName = brandDisplayName(user.role, user.name);
+  const safePhoto = brandPhotoUrl(user.role, user.profilePhotoUrl);
+  const initial = safeName.trim().charAt(0).toUpperCase() || "N";
 
   return (
     <div className="mx-auto min-h-screen w-full max-w-3xl px-4 pb-16 pt-6 sm:px-6">
       {/* Header */}
       <header className="flex flex-col items-start gap-5 sm:flex-row sm:items-center">
         <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-blue-100 to-blue-200 ring-4 ring-white shadow-md sm:h-28 sm:w-28">
-          {user.profilePhotoUrl ? (
+          {safePhoto ? (
             <Image
-              src={user.profilePhotoUrl}
-              alt={user.name}
+              src={safePhoto}
+              alt={safeName}
               fill
               sizes="112px"
               className="object-cover"
@@ -149,9 +157,9 @@ export default async function PublicProfilePage({ params }: PageProps) {
             <h1 className="text-2xl font-black text-slate-900">
               {handle}
             </h1>
-            {user.username && user.name !== user.username && (
+            {user.username && safeName !== user.username && (
               <span className="text-sm font-medium text-slate-500">
-                {user.name}
+                {safeName}
               </span>
             )}
           </div>

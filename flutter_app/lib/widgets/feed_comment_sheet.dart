@@ -10,6 +10,7 @@ import '../services/report_service.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
+import 'official_brand_avatar.dart';
 import '../utils/haptics.dart';
 import '../utils/mention_text.dart';
 import 'app_toast.dart';
@@ -876,6 +877,7 @@ class _CaptionTile extends StatelessWidget {
                 size: 36,
                 initial: initial,
                 imageUrl: avatarUrl,
+                isOfficial: author.isOfficialAccount,
               ),
             ),
             const SizedBox(width: 10),
@@ -1033,6 +1035,7 @@ class _CommentTile extends StatelessWidget {
                 size: avatarSize,
                 initial: initial,
                 imageUrl: avatarUrl,
+                isOfficial: author.isOfficialAccount,
               ),
             ),
             const SizedBox(width: 10),
@@ -1190,15 +1193,21 @@ class _CommentAvatar extends StatelessWidget {
   final double size;
   final String initial;
   final String? imageUrl;
+  final bool isOfficial;
 
   const _CommentAvatar({
     required this.size,
     required this.initial,
     this.imageUrl,
+    this.isOfficial = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Akun official → logo brand NL (server null-kan foto asli).
+    if (isOfficial) {
+      return OfficialBrandAvatar(size: size);
+    }
     final url = imageUrl?.trim();
     if (url != null && url.isNotEmpty && url.startsWith('http')) {
       return ClipOval(

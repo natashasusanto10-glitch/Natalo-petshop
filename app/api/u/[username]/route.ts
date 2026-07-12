@@ -24,6 +24,7 @@ import { prisma } from "@/lib/prisma";
 import { resolveUserByUsername } from "@/lib/username";
 import { getSession } from "@/lib/auth";
 import { signBunnyUrl } from "@/lib/feed/bunny";
+import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 
 // Postingan customer biasa: video komunitas + foto carousel.
 const VISIBLE_KINDS: FeedPostKind[] = ["COMMUNITY", "PHOTO_CAROUSEL"];
@@ -228,11 +229,11 @@ export async function GET(
       viewerLiked: viewerLikedIds.has(p.id),
       recentLikers: p.likes.map((like) => ({
         id: like.user.id,
-        name: like.user.name,
+        name: brandDisplayName(like.user.role, like.user.name),
         username: like.user.username,
         role: like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
-        profilePhotoUrl: like.user.profilePhotoUrl,
-        avatarUrl: like.user.profilePhotoUrl,
+        profilePhotoUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
+        avatarUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
       })),
       media: p.media.map((m) => ({
         id: m.id,
