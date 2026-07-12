@@ -67,10 +67,12 @@ CommentSnapTarget commentSnapTargetFor({
   if (velocity < -flingVelocity) {
     return CommentSnapTarget.max;
   }
-  // Melewati posisi resting awal (initial) → lanjutkan ke full; di bawahnya
-  // → kembali ke initial. Simetris dengan IG: begitu jari lewat titik
-  // resting, momentum dianggap mengarah expand, bukan menengah lagi.
-  return size > initial ? CommentSnapTarget.max : CommentSnapTarget.initial;
+  // Kecepatan hampir nol → snap ke detent terdekat (titik tengah antara
+  // initial dan max), bukan direction-blind ke initial/max berdasar posisi
+  // relatif thd initial saja (itu bikin lepas di 0.65 sesudah drag turun
+  // dari full nyangkut balik ke full).
+  final expandThreshold = (initial + maxExtent) / 2;
+  return size >= expandThreshold ? CommentSnapTarget.max : CommentSnapTarget.initial;
 }
 
 /// Pure helper — apakah video harus di-pause karena comment sheet sudah
@@ -893,6 +895,23 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       _commentAddedCount = 0;
       _commentDragOffset = 0;
     });
+    // Resume video segera saat close dari FULL extent (barrier-tap/Android
+    // back) — jangan tunggu delayed jumpTo di bawah, itu bikin jeda diam
+    // ~280ms yang kelihatan. Guard sama persis dengan resume branch di
+    // _syncCommentSheetProgress: hanya resume kalau kita yang pause tadi
+    // (bukan user pause manual).
+    final ctrl = _videoController;
+    if (_pausedByCommentSheet) {
+      _pausedByCommentSheet = false;
+      if (mounted &&
+          widget.isActive &&
+          !_isPaused &&
+          _shouldAutoplay &&
+          ctrl != null &&
+          ctrl.value.isInitialized) {
+        ctrl.play();
+      }
+    }
     Future<void>.delayed(const Duration(milliseconds: 280), () {
       if (!mounted || _commentSheetOpen) return;
       _commentSheetExtent.value = _commentSheetInitialExtent;

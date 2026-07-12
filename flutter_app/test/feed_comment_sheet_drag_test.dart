@@ -28,9 +28,24 @@ void main() {
       );
     });
 
-    test('size 0.75 with max 0.93 snaps to max', () {
+    test('size 0.75 with max 0.93 (below midpoint 0.765) snaps to initial',
+        () {
       expect(
         commentSnapTargetFor(size: 0.75, velocity: 0, maxExtent: 0.93),
+        CommentSnapTarget.initial,
+      );
+    });
+
+    test('size 0.65, velocity 0 snaps to initial (drag down from max)', () {
+      expect(
+        commentSnapTargetFor(size: 0.65, velocity: 0, maxExtent: 0.93),
+        CommentSnapTarget.initial,
+      );
+    });
+
+    test('size 0.80 (above midpoint 0.765), velocity 0 snaps to max', () {
+      expect(
+        commentSnapTargetFor(size: 0.80, velocity: 0, maxExtent: 0.93),
         CommentSnapTarget.max,
       );
     });
