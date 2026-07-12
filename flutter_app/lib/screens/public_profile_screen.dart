@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/natalo_colors.dart';
@@ -183,6 +184,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           authorName: profile?.name,
           authorPhotoUrl: profile?.profilePhotoUrl,
           authorInitial: profile?.initial,
+          // Official → detail render identitas brand (logo + emas +
+          // rosette) di author row, caption, dan subtitle AppBar.
+          authorIsOfficial: profile?.isOfficial ?? false,
           isOwner: profile?.isOwner ?? false,
         ),
       ),
@@ -298,9 +302,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // Akun official → hero biru premium: AppBar transparan menumpang di atas
-    // gradient hero, ikon + judul putih, status bar ikon terang. Konsisten
-    // dgn pola hero-blue halaman lain (Akun/Beranda) + AnnotatedRegion.
+    // Akun official → hero biru premium: AppBar SOLID heroTop (bukan
+    // transparan + extendBodyBehindAppBar — inset math di dalam sliver
+    // rapuh, logo pernah overlap judul di device). Header body pakai
+    // heroGradientV (heroTop→heroMid) → menyambung mulus dgn AppBar tanpa
+    // hitung inset. Sesuai pola hero-blue halaman lain (Akun/Transaksi).
     final isOfficial = _profile?.isOfficial ?? false;
     final onAppBar = isOfficial ? Colors.white : cs.onSurface;
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -311,12 +317,24 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               : SystemUiOverlayStyle.dark),
       child: Scaffold(
         backgroundColor: cs.surface,
-        extendBodyBehindAppBar: isOfficial,
         appBar: AppBar(
-          backgroundColor: isOfficial ? Colors.transparent : cs.surface,
-          surfaceTintColor: isOfficial ? Colors.transparent : cs.surface,
+          backgroundColor: isOfficial ? NataloColors.heroTop : cs.surface,
+          surfaceTintColor: isOfficial ? NataloColors.heroTop : cs.surface,
           elevation: 0,
           scrolledUnderElevation: isOfficial ? 0 : 0.5,
+          // Official: matikan SEMUA sumber garis pemisah di bawah AppBar —
+          // shadow/tint saat scroll bisa muncul sebagai hairline halus yang
+          // memutus AppBar heroTop dari hero gradient di bawahnya.
+          shadowColor: isOfficial ? Colors.transparent : null,
+          bottom: isOfficial
+              // Strip 1px warna heroTop menutup celah subpixel antara
+              // AppBar dan sliver header (anti garis halus di device
+              // dengan pixel ratio non-integer).
+              ? PreferredSize(
+                  preferredSize: const Size.fromHeight(1),
+                  child: Container(height: 1, color: NataloColors.heroTop),
+                )
+              : null,
           centerTitle: false,
           titleSpacing: 0,
           leading: IconButton(
@@ -380,7 +398,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       return AppErrorState(description: _errorText!, onRetry: _load);
     }
     final profile = _profile!;
-    return NataloPawRefreshIndicator(
+    final scrollView = NataloPawRefreshIndicator(
       onRefresh: _refresh,
       child: CustomScrollView(
         controller: _scrollController,
@@ -450,6 +468,37 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
       ),
+    );
+    if (!profile.isOfficial) return scrollView;
+    // Official: lapisan navy heroTop di belakang puncak scroll — saat
+    // overscroll/pull-to-refresh, header tertarik turun dan area di
+    // atasnya menyingkap latar. Tanpa lapisan ini yang tersingkap putih
+    // (cs.surface) → terlihat seperti garis/celah memutus hero dari
+    // AppBar. Hanya tampil saat scroll dekat puncak — kalau selalu ada,
+    // navy mengintip lewat celah 1.5px antar tile grid saat grid
+    // ter-scroll ke region backdrop.
+    return Stack(
+      children: [
+        // Positioned WAJIB anak langsung Stack (ParentData) — kondisi
+        // show/hide lewat AnimatedBuilder DI DALAM Positioned.
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 220,
+          child: AnimatedBuilder(
+            animation: _scrollController,
+            builder: (context, _) {
+              final show = !_scrollController.hasClients ||
+                  _scrollController.offset < 40;
+              return show
+                  ? const ColoredBox(color: NataloColors.heroTop)
+                  : const SizedBox.shrink();
+            },
+          ),
+        ),
+        Positioned.fill(child: scrollView),
+      ],
     );
   }
 }
@@ -712,13 +761,13 @@ class _OfficialHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Hero menembus di belakang AppBar transparan → beri ruang status bar
-    // + toolbar supaya konten tidak tertutup tombol back/judul.
-    final topInset = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    // AppBar solid heroTop di atas; header ini mulai tepat di bawahnya
+    // dengan gradient heroTop→heroMid → menyatu tanpa hitung inset (inset
+    // manual di dalam sliver terbukti rapuh: logo overlap judul di device).
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(gradient: NataloColors.heroGradientV),
-      padding: EdgeInsets.fromLTRB(20, topInset + 6, 20, 18),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
       child: Column(
         children: [
           // Logo brand — ring putih + shadow lembut, premium.
@@ -1290,8 +1339,23 @@ class _SafeNetworkImage extends StatelessWidget {
         imageUrl: url,
         fit: BoxFit.cover,
         placeholder: (_, __) => ColoredBox(color: cs.surfaceContainerHighest),
-        errorWidget: (_, __, ___) =>
-            ColoredBox(color: cs.surfaceContainerHighest),
+        // Error → ikon broken-image (BUKAN kotak polos yang tak bisa
+        // dibedakan dari placeholder loading) + log debug. Investigasi
+        // "grid profil blank": CDN terbukti 200 dari server-side, jadi
+        // kalau ini muncul di device = kegagalan runtime yang perlu log.
+        errorWidget: (_, failedUrl, error) {
+          if (kDebugMode) {
+            debugPrint('[profile-grid] thumb GAGAL: $error | $failedUrl');
+          }
+          return ColoredBox(
+            color: cs.surfaceContainerHighest,
+            child: Icon(
+              Icons.broken_image_outlined,
+              size: 22,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.55),
+            ),
+          );
+        },
       );
     } catch (_) {
       return ColoredBox(color: cs.surfaceContainerHighest);

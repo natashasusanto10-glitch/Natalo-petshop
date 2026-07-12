@@ -27,6 +27,7 @@ import '../widgets/emoji_picker_panel.dart';
 import '../widgets/mention_picker.dart';
 import '../widgets/moderation_action_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
+import '../widgets/official_brand_avatar.dart';
 import '../widgets/post_likers_sheet.dart';
 import '../widgets/profile_avatar.dart';
 import '../widgets/scaled_video_feed_route.dart';
@@ -71,6 +72,11 @@ class MemberPostDetailScreen extends StatefulWidget {
   final String? authorPhotoUrl;
   final String? authorInitial;
 
+  /// Author = akun official (Natalo Petshop) → render identitas brand:
+  /// logo NL sebagai avatar + nama emas + rosette emas (seragam dgn
+  /// feed/komentar/profil). Di-pass dari public profile (isOfficial).
+  final bool authorIsOfficial;
+
   /// Owner mode flag. True (default) untuk "Postingan Saya" — show
   /// Edit/Delete menu di "...". False saat view post user lain — sembunyikan
   /// menu owner-only (edit caption + hapus), supaya tidak ada aksi destructive
@@ -85,6 +91,7 @@ class MemberPostDetailScreen extends StatefulWidget {
     this.authorName,
     this.authorPhotoUrl,
     this.authorInitial,
+    this.authorIsOfficial = false,
     this.isOwner = true,
   });
 
@@ -480,16 +487,30 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
               ),
             ),
             const SizedBox(height: 3),
-            Text(
-              _memberName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                height: 1.05,
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    _memberName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      // Official → emas identitas brand (sheet putih).
+                      color: widget.authorIsOfficial
+                          ? NataloColors.officialGoldOnLight
+                          : cs.onSurfaceVariant,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      height: 1.05,
+                    ),
+                  ),
+                ),
+                if (widget.authorIsOfficial) ...[
+                  const SizedBox(width: 3),
+                  const OfficialVerifiedBadge(size: 12),
+                ],
+              ],
             ),
           ],
         ),
@@ -528,6 +549,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
                     memberName: _memberName,
                     memberInitial: _memberInitial,
                     memberPhotoUrl: _memberPhotoUrl,
+                    memberIsOfficial: widget.authorIsOfficial,
                     liked: _likedCache[post.id] ?? false,
                     // Hide ... menu ketika viewing post user lain — tidak ada
                     // edit/delete option untuk non-owner. (Bisa ekspansi nanti
@@ -676,6 +698,9 @@ class _PostFeedItem extends StatefulWidget {
   final String memberName;
   final String memberInitial;
   final String? memberPhotoUrl;
+
+  /// Author = akun official → logo NL + nama emas + rosette di author row.
+  final bool memberIsOfficial;
   final bool liked;
   final bool showMenu;
   // Status badge (Menunggu review / Ditolak) hanya relevan untuk owner —
@@ -705,6 +730,7 @@ class _PostFeedItem extends StatefulWidget {
     required this.memberName,
     required this.memberInitial,
     required this.memberPhotoUrl,
+    this.memberIsOfficial = false,
     required this.liked,
     this.showMenu = true,
     this.showStatusBadge = true,
@@ -859,6 +885,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
             memberName: memberName,
             memberInitial: memberInitial,
             memberPhotoUrl: memberPhotoUrl,
+            isOfficial: widget.memberIsOfficial,
             onMenuTap: widget.onMenuTap,
           ),
         // Double-tap detector wrap media: signature Instagram-feel "tap
@@ -884,9 +911,11 @@ class _PostFeedItemState extends State<_PostFeedItem>
                     openScoped(controller, anchorKey);
                     return;
                   }
-                  final renderBox = anchorKey.currentContext?.findRenderObject() as RenderBox?;
+                  final renderBox = anchorKey.currentContext?.findRenderObject()
+                      as RenderBox?;
                   if (renderBox == null) return;
-                  final origin = renderBox.localToGlobal(Offset.zero) & renderBox.size;
+                  final origin =
+                      renderBox.localToGlobal(Offset.zero) & renderBox.size;
                   // Pushed as a transparent, zero-duration Navigator route
                   // (not an OverlayEntry) so Android hardware-back closes
                   // the fullscreen overlay first instead of popping the
@@ -924,6 +953,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
                     memberName: memberName,
                     memberInitial: memberInitial,
                     memberPhotoUrl: memberPhotoUrl,
+                    isOfficial: widget.memberIsOfficial,
                     onMenuTap: widget.onMenuTap,
                   ),
                 ),
@@ -1047,7 +1077,11 @@ class _PostFeedItemState extends State<_PostFeedItem>
           const SizedBox(height: 6),
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
-            child: _PostCaption(memberName: memberName, caption: post.caption!),
+            child: _PostCaption(
+              memberName: memberName,
+              caption: post.caption!,
+              isOfficial: widget.memberIsOfficial,
+            ),
           ),
         ],
         // Tanggal — hybrid format: relative untuk < 7 hari, absolute lebih lama.
@@ -1072,6 +1106,9 @@ class _PostAuthorRow extends StatelessWidget {
   final String memberName;
   final String memberInitial;
   final String? memberPhotoUrl;
+
+  /// Akun official → logo NL + nama emas + rosette (identitas brand).
+  final bool isOfficial;
   // Nullable — non-owner viewer tidak punya menu actions di sini.
   final VoidCallback? onMenuTap;
 
@@ -1079,6 +1116,7 @@ class _PostAuthorRow extends StatelessWidget {
     required this.memberName,
     required this.memberInitial,
     required this.memberPhotoUrl,
+    this.isOfficial = false,
     required this.onMenuTap,
   });
 
@@ -1090,24 +1128,41 @@ class _PostAuthorRow extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
       child: Row(
         children: [
-          ProfileAvatar(
-            initial: memberInitial,
-            imageUrl: memberPhotoUrl,
-            size: 36,
-            fontSize: 15,
-          ),
+          if (isOfficial)
+            const OfficialBrandAvatar(size: 36)
+          else
+            ProfileAvatar(
+              initial: memberInitial,
+              imageUrl: memberPhotoUrl,
+              size: 36,
+              fontSize: 15,
+            ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              memberName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: cs.onSurface,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                height: 1.15,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    memberName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      // Official → emas identitas (latar putih).
+                      color: isOfficial
+                          ? NataloColors.officialGoldOnLight
+                          : cs.onSurface,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      height: 1.15,
+                    ),
+                  ),
+                ),
+                if (isOfficial) ...[
+                  const SizedBox(width: 4),
+                  const OfficialVerifiedBadge(size: 15),
+                ],
+              ],
             ),
           ),
           if (onMenuTap != null)
@@ -1134,10 +1189,14 @@ class _VideoPostAuthorOverlay extends StatelessWidget {
   // Nullable — non-owner viewer tidak punya menu actions di sini.
   final VoidCallback? onMenuTap;
 
+  /// Akun official → logo NL + nama emas + rosette (identitas brand).
+  final bool isOfficial;
+
   const _VideoPostAuthorOverlay({
     required this.memberName,
     required this.memberInitial,
     required this.memberPhotoUrl,
+    this.isOfficial = false,
     required this.onMenuTap,
   });
 
@@ -1159,27 +1218,44 @@ class _VideoPostAuthorOverlay extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 10, 6, 28),
         child: Row(
           children: [
-            ProfileAvatar(
-              initial: memberInitial,
-              imageUrl: memberPhotoUrl,
-              size: 36,
-              fontSize: 15,
-            ),
+            if (isOfficial)
+              const OfficialBrandAvatar(size: 36)
+            else
+              ProfileAvatar(
+                initial: memberInitial,
+                imageUrl: memberPhotoUrl,
+                size: 36,
+                fontSize: 15,
+              ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                memberName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  height: 1.15,
-                  shadows: [
-                    Shadow(color: Colors.black54, blurRadius: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      memberName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        // Official → emas identitas (overlay gelap).
+                        color: isOfficial
+                            ? NataloColors.officialGold
+                            : Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        height: 1.15,
+                        shadows: const [
+                          Shadow(color: Colors.black54, blurRadius: 10),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (isOfficial) ...[
+                    const SizedBox(width: 4),
+                    const OfficialVerifiedBadge(size: 15),
                   ],
-                ),
+                ],
               ),
             ),
             if (onMenuTap != null)
@@ -1481,7 +1557,14 @@ class _PostCaption extends StatelessWidget {
   final String memberName;
   final String caption;
 
-  const _PostCaption({required this.memberName, required this.caption});
+  /// Akun official → nama author di prefix caption pakai emas identitas.
+  final bool isOfficial;
+
+  const _PostCaption({
+    required this.memberName,
+    required this.caption,
+    this.isOfficial = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1490,7 +1573,10 @@ class _PostCaption extends StatelessWidget {
         children: [
           TextSpan(
             text: '$memberName ',
-            style: const TextStyle(fontWeight: FontWeight.w900),
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              color: isOfficial ? NataloColors.officialGoldOnLight : null,
+            ),
           ),
           TextSpan(text: caption.trim()),
         ],
@@ -2118,92 +2204,92 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
             ? () => widget.onExpandRequested!(controller, _anchorKey)
             : null,
         child: AbsorbPointer(
-        absorbing: false,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Container(color: Colors.black),
-            if (ready)
-              ClipRect(
-                child: FittedBox(
-                  fit: BoxFit.cover,
+          absorbing: false,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Container(color: Colors.black),
+              if (ready)
+                ClipRect(
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: controller.value.size.width > 0
+                          ? controller.value.size.width
+                          : 100,
+                      height: controller.value.size.height > 0
+                          ? controller.value.size.height
+                          : 100,
+                      child: VideoPlayer(controller),
+                    ),
+                  ),
+                )
+              else if (widget.thumbnailUrl != null &&
+                  widget.thumbnailUrl!.trim().isNotEmpty)
+                _ImageSurface(
+                  imageUrl: widget.thumbnailUrl!,
+                  placeholderIcon: Icons.video_collection_outlined,
+                )
+              else
+                const _MediaPlaceholder(icon: Icons.video_collection_outlined),
+              if (_initializing)
+                const Center(
                   child: SizedBox(
-                    width: controller.value.size.width > 0
-                        ? controller.value.size.width
-                        : 100,
-                    height: controller.value.size.height > 0
-                        ? controller.value.size.height
-                        : 100,
-                    child: VideoPlayer(controller),
-                  ),
-                ),
-              )
-            else if (widget.thumbnailUrl != null &&
-                widget.thumbnailUrl!.trim().isNotEmpty)
-              _ImageSurface(
-                imageUrl: widget.thumbnailUrl!,
-                placeholderIcon: Icons.video_collection_outlined,
-              )
-            else
-              const _MediaPlaceholder(icon: Icons.video_collection_outlined),
-            if (_initializing)
-              const Center(
-                child: SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.4,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            if (_error != null)
-              Center(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.55),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    _error!,
-                    style: const TextStyle(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
                       color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-              ),
-            // Muted indicator pojok kanan bawah — visual cue bahwa video
-            // bisa di-tap untuk mute/unmute. Sembunyi saat error/loading.
-            if (ready && _error == null)
-              Positioned(
-                right: 10,
-                bottom: 10,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _toggleMute,
+              if (_error != null)
+                Center(
                   child: Container(
-                    width: 32,
-                    height: 32,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.55),
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(999),
                     ),
-                    child: Icon(
-                      _muted
-                          ? Icons.volume_off_rounded
-                          : Icons.volume_up_rounded,
-                      color: Colors.white,
-                      size: 16,
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
-        ),
+              // Muted indicator pojok kanan bawah — visual cue bahwa video
+              // bisa di-tap untuk mute/unmute. Sembunyi saat error/loading.
+              if (ready && _error == null)
+                Positioned(
+                  right: 10,
+                  bottom: 10,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _toggleMute,
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        _muted
+                            ? Icons.volume_off_rounded
+                            : Icons.volume_up_rounded,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -2227,10 +2313,12 @@ class _FullscreenInlineVideoOverlay extends StatefulWidget {
   });
 
   @override
-  State<_FullscreenInlineVideoOverlay> createState() => _FullscreenInlineVideoOverlayState();
+  State<_FullscreenInlineVideoOverlay> createState() =>
+      _FullscreenInlineVideoOverlayState();
 }
 
-class _FullscreenInlineVideoOverlayState extends State<_FullscreenInlineVideoOverlay>
+class _FullscreenInlineVideoOverlayState
+    extends State<_FullscreenInlineVideoOverlay>
     with SingleTickerProviderStateMixin {
   late final AnimationController _morphController;
   late final Animation<double> _morph;
@@ -2246,7 +2334,8 @@ class _FullscreenInlineVideoOverlayState extends State<_FullscreenInlineVideoOve
       duration: const Duration(milliseconds: 440),
       reverseDuration: const Duration(milliseconds: 260),
     );
-    _morph = CurvedAnimation(parent: _morphController, curve: Curves.easeOutCubic);
+    _morph =
+        CurvedAnimation(parent: _morphController, curve: Curves.easeOutCubic);
     // Unmute on entry — explicit fullscreen intent, independent of the
     // inline preference (same rationale the old dead code documented).
     _previousVolume = widget.controller.value.volume;
@@ -2336,7 +2425,8 @@ class _FullscreenInlineVideoOverlayState extends State<_FullscreenInlineVideoOve
                       child: const SizedBox(
                         width: 40,
                         height: 40,
-                        child: Icon(Icons.chevron_left_rounded, color: Colors.white, size: 24),
+                        child: Icon(Icons.chevron_left_rounded,
+                            color: Colors.white, size: 24),
                       ),
                     ),
                   ),
@@ -2356,7 +2446,9 @@ class _FullscreenInlineVideoOverlayState extends State<_FullscreenInlineVideoOve
                     width: 40,
                     height: 40,
                     child: Icon(
-                      _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                      _muted
+                          ? Icons.volume_off_rounded
+                          : Icons.volume_up_rounded,
                       color: Colors.white,
                       size: 20,
                     ),
