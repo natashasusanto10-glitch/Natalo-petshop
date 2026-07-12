@@ -85,9 +85,73 @@ class _Bubble extends StatelessWidget {
     );
   }
 
+  /// Teks pesan dengan jam+status menempel INLINE di kanan-bawah baris
+  /// terakhir (ala WhatsApp / paritas chat internal NLCATTER `_textWithMeta`).
+  /// Trik "ruang cadangan": salinan [meta] TAK TERLIHAT disisipkan sebagai
+  /// WidgetSpan di akhir teks supaya baris terakhir menyisakan ruang selebar
+  /// meta; meta asli lalu di-`Positioned` mepet kanan-bawah. Kalau tak muat
+  /// sebaris, meta otomatis turun ke bawahnya. Ini yang bikin bubble rapat
+  /// hug-content (jam tidak lagi di baris terpisah yang memaksa bubble melebar).
+  Widget _textWithMeta(String text, Widget meta) {
+    final textColor =
+        isCustomer ? NataloColors.white : NataloColors.textPrimary;
+    return Stack(
+      children: [
+        Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: text,
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 14,
+                  height: 1.35,
+                ),
+              ),
+              WidgetSpan(
+                alignment: PlaceholderAlignment.bottom,
+                child: Opacity(
+                  opacity: 0,
+                  // Celah teks→jam ala WhatsApp.
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 14),
+                    child: meta,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Positioned(right: 0, bottom: 0, child: meta),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final text = message.text ?? '';
+    final hasReply = message.replyTo != null;
+    final meta =
+        _MetaRow(message: message, isCustomer: isCustomer, onRetry: onRetry);
+
+    // Dengan kutipan: IntrinsicWidth → bubble menyusut ke isi TERLEBAR
+    // (kutipan/teks), kutipan dibuat full-width selebar itu (ala WA). Tanpa
+    // kutipan: Stack `_textWithMeta` sudah hug-content sendiri, tak butuh
+    // IntrinsicWidth (hindari biaya intrinsic tiap bubble teks biasa).
+    final Widget inner = hasReply
+        ? IntrinsicWidth(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _ReplyQuote(reply: message.replyTo!, isCustomer: isCustomer),
+                const SizedBox(height: 5),
+                _textWithMeta(text, meta),
+              ],
+            ),
+          )
+        : _textWithMeta(text, meta);
+
     return ConstrainedBox(
       constraints: BoxConstraints(
         maxWidth: MediaQuery.sizeOf(context).width * 0.78,
@@ -102,33 +166,7 @@ class _Bubble extends StatelessWidget {
           borderRadius: _radius,
           border: isCustomer ? null : Border.all(color: NataloColors.border),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (message.replyTo != null) ...[
-              _ReplyQuote(reply: message.replyTo!, isCustomer: isCustomer),
-              const SizedBox(height: 5),
-            ],
-            if (text.isNotEmpty)
-              Text(
-                text,
-                style: TextStyle(
-                  color: isCustomer
-                      ? NataloColors.white
-                      : NataloColors.textPrimary,
-                  fontSize: 14,
-                  height: 1.35,
-                ),
-              ),
-            const SizedBox(height: 2),
-            Align(
-              alignment: Alignment.centerRight,
-              child: _MetaRow(
-                  message: message, isCustomer: isCustomer, onRetry: onRetry),
-            ),
-          ],
-        ),
+        child: inner,
       ),
     );
   }
