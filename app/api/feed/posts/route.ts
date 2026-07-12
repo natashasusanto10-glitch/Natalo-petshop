@@ -94,6 +94,10 @@ type CreatePostBody = {
   productPromos?: Record<string, number | null>;
   // Admin-only: tentukan tab tujuan (REKOMENDASI vs PROMO). User auto-KOMUNITAS.
   tab?: string;
+  // Admin-only: kirim push notification ke pelanggan saat post publish.
+  // Diabaikan kalau bukan admin (customer post selalu PENDING_REVIEW dulu).
+  notifyOnPublish?: boolean;
+  pushSegment?: string;
   // PHOTO_CAROUSEL kind: array of 1-8 image objects yang sudah ter-upload
   // ke UploadThing via /api/feed/upload-photo. Server stores sebagai
   // FeedMedia rows dengan sortOrder mengikuti urutan array.
@@ -444,6 +448,17 @@ export async function POST(request: NextRequest) {
   const status = isAdmin ? "ACTIVE" : "PENDING_REVIEW";
   const publishedAt = isAdmin ? new Date() : null;
 
+  // Admin-only: opsi "beri tahu pelanggan" via push saat post publish.
+  // Customer request diabaikan sepenuhnya — post mereka masuk PENDING_REVIEW,
+  // jadi tidak pernah lolos guard `sendFeedPublishPush` (status ACTIVE) lagi pula.
+  const VALID_PUSH_SEGMENTS: ReadonlyArray<string> = ["all", "members", "active30d"];
+  const notifyOnPublish = isAdmin && body.notifyOnPublish === true;
+  const pushSegment = notifyOnPublish
+    ? VALID_PUSH_SEGMENTS.includes(String(body.pushSegment))
+      ? String(body.pushSegment)
+      : "members"
+    : null;
+
   const post = await prisma.$transaction(async (tx) => {
     const created = await tx.feedPost.create({
       data: {
@@ -479,6 +494,8 @@ export async function POST(request: NextRequest) {
         promoStartsAt,
         promoEndsAt,
         publishedAt,
+        notifyOnPublish,
+        pushSegment,
       },
       select: {
         id: true,
@@ -545,6 +562,13 @@ export async function POST(request: NextRequest) {
       });
     });
   }
+
+  // Publish-push — guard internal (admin/ACTIVE/ready/notifyOnPublish/
+  // not-yet-sent/daily-cap) memutuskan sendiri; no-op kalau post video
+  // admin masih `uploading` (webhook Bunny yang trigger nanti saat ready).
+  void import("@/lib/feed/publish-push").then(({ sendFeedPublishPush }) =>
+    sendFeedPublishPush(post.id),
+  );
 
   // @mention notification — caption (title + description) di-parse,
   // user yang di-mention dapat notif "@actor menyebut kamu di

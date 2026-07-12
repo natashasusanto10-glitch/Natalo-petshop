@@ -172,6 +172,11 @@ export async function POST(request: NextRequest) {
     },
   });
   void sendFeedPendingReviewNotification({ postId: post.id });
+  // Publish-push — guard internal memutuskan (admin post yang tadi masih
+  // `uploading` sekarang `ready`; kalau notifyOnPublish=true, kirim di sini).
+  void import("@/lib/feed/publish-push").then(({ sendFeedPublishPush }) =>
+    sendFeedPublishPush(post.id),
+  );
   // Fire-and-forget CDN edge pre-warm — fetch first 256KB MP4 + thumbnail
   // dari server supaya edge POP terdekat sudah cache file sebelum user
   // pertama buka. Tanpa ini, user pertama selalu kena cold-cache latency
