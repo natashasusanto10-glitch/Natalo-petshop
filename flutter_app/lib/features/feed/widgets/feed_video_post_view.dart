@@ -1691,37 +1691,36 @@ class _MediaBackground extends StatelessWidget {
     this.compactPreview = false,
   });
 
+  /// Aturan fit ala IG Reels: full-bleed cover HANYA kalau crop-nya tipis
+  /// (video ±9:16 = 0.5625 di layar 19.5:9 cuma kepotong ~9% per sisi).
+  /// Video yang lebih "pendek" (4:5, square, landscape) kalau di-cover
+  /// terpotong 30-50% → terasa zoom; IG me-letterbox-nya (fit-lebar,
+  /// bar hitam atas/bawah). 0.68 = titik tengah 9:16 (0.5625) dan 4:5
+  /// (0.8) supaya tidak ada kasus ambang yang goyah.
+  static const double _coverMaxAspect = 0.68;
+
+  static BoxFit _fitForAspect(double aspect) =>
+      aspect <= _coverMaxAspect ? BoxFit.cover : BoxFit.contain;
+
   @override
   Widget build(BuildContext context) {
     final ctrl = videoController;
 
     if (ctrl != null && ctrl.value.isInitialized) {
       final size = ctrl.value.size;
-      if (compactPreview) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            const ColoredBox(color: Colors.black),
-            Center(
-              child: FittedBox(
-                fit: BoxFit.contain,
-                child: SizedBox(
-                  width: size.width,
-                  height: size.height,
-                  child: VideoPlayer(ctrl),
-                ),
-              ),
-            ),
-          ],
-        );
-      }
-
+      // Rasio dari dimensi AKTUAL player (metadata server bisa salah).
+      final aspect = size.height > 0 ? size.width / size.height : 9 / 16;
+      final fit =
+          compactPreview ? BoxFit.contain : _fitForAspect(aspect);
       return Stack(
         fit: StackFit.expand,
         children: [
           const ColoredBox(color: Colors.black),
+          // StackFit.expand → constraint tight fullscreen; FittedBox
+          // memusatkan sendiri (contain = letterbox, cover = crop).
           FittedBox(
-            fit: BoxFit.cover,
+            fit: fit,
+            clipBehavior: Clip.hardEdge,
             child: SizedBox(
               width: size.width,
               height: size.height,
@@ -1733,30 +1732,19 @@ class _MediaBackground extends StatelessWidget {
     }
     final thumb = post.thumbnailUrl;
     if (thumb != null) {
-      if (compactPreview) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            const ColoredBox(color: Colors.black),
-            Center(
-              child: CachedNetworkImage(
-                imageUrl: thumb,
-                fit: BoxFit.contain,
-                placeholder: (_, __) => const SizedBox.shrink(),
-                errorWidget: (_, __, ___) => const SizedBox.shrink(),
-              ),
-            ),
-          ],
-        );
-      }
-
+      // Pakai aspectRatio post supaya thumbnail mengikuti aturan yang
+      // sama dengan videonya — tidak ada lompatan cover→contain saat
+      // player siap.
+      final fit = compactPreview
+          ? BoxFit.contain
+          : _fitForAspect(post.aspectRatio);
       return Stack(
         fit: StackFit.expand,
         children: [
           const ColoredBox(color: Colors.black),
           CachedNetworkImage(
             imageUrl: thumb,
-            fit: BoxFit.cover,
+            fit: fit,
             placeholder: (_, __) => const SizedBox.shrink(),
             errorWidget: (_, __, ___) => const SizedBox.shrink(),
           ),
