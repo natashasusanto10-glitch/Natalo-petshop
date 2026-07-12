@@ -18,7 +18,6 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { sendApnsToUser } from "@/lib/apns";
 import { sendFcmToUser } from "@/lib/fcm";
 import { sendPushToUser, type PushPayload } from "@/lib/push";
 import { LOYALTY_TIERS } from "@/lib/loyalty-tiers";
@@ -118,9 +117,10 @@ export async function GET(request: NextRequest) {
     };
 
     try {
+      // 2 channel (web + FCM) — sendApnsToUser dihapus, lihat komentar di
+      // lib/push.ts sendOrderStatusPush utk alasan (dobel notif iOS).
       await Promise.allSettled([
         sendPushToUser(b.userId, payload),
-        sendApnsToUser(b.userId, payload),
         sendFcmToUser(b.userId, payload),
         prisma.announcement.create({
           data: {

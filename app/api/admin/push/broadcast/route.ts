@@ -31,7 +31,6 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendPushToUser, type PushPayload } from "@/lib/push";
-import { sendApnsToUser } from "@/lib/apns";
 import { sendFcmToUser } from "@/lib/fcm";
 import { assertSameOrigin } from "@/lib/csrf";
 
@@ -209,27 +208,29 @@ async function handle(request: NextRequest) {
   let sent = 0;
   let failed = 0;
 
-  const CHANNELS_PER_USER = 3; // web + apns + fcm
+  // 2 channel: web push + FCM. sendApnsToUser DIHAPUS — FCM sudah
+  // mengirim ke iOS via APNs Apple di baliknya; client Flutter register
+  // KEDUA token (FCM + raw APNs "diagnostic") untuk device iOS yang sama,
+  // jadi memanggil sendApnsToUser + sendFcmToUser sekaligus mengirim 2
+  // notifikasi native identik ke 1 perangkat. Root cause dobel-notifikasi
+  // di seluruh sistem push (order/feed/marketing/dll), bukan cuma broadcast.
+  const CHANNELS_PER_USER = 2; // web + fcm
   for (let i = 0; i < targetUserIds.length; i += BATCH_SIZE) {
     const batch = targetUserIds.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
       batch.flatMap((userId) => [
         sendPushToUser(userId, payload),
-        sendApnsToUser(userId, payload),
         sendFcmToUser(userId, payload),
       ]),
     );
-    // Hitung per user (3 channel — anggap success kalau salah satu sukses).
+    // Hitung per user (2 channel — anggap success kalau salah satu sukses).
     // User yg gak punya subscription di channel tertentu tetap "fulfilled"
     // dgn return undefined — channel resolver skip silently jika no subs.
     for (let j = 0; j < batch.length; j++) {
       const webResult = results[j * CHANNELS_PER_USER];
-      const apnsResult = results[j * CHANNELS_PER_USER + 1];
-      const fcmResult = results[j * CHANNELS_PER_USER + 2];
+      const fcmResult = results[j * CHANNELS_PER_USER + 1];
       const userOk =
-        webResult.status === "fulfilled" ||
-        apnsResult.status === "fulfilled" ||
-        fcmResult.status === "fulfilled";
+        webResult.status === "fulfilled" || fcmResult.status === "fulfilled";
       if (userOk) sent++;
       else failed++;
     }

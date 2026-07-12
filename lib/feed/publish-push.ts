@@ -11,7 +11,6 @@
 
 import { prisma } from "@/lib/prisma";
 import { sendPushToUser, type PushPayload } from "@/lib/push";
-import { sendApnsToUser } from "@/lib/apns";
 import { sendFcmToUser } from "@/lib/fcm";
 import { buildFeedPushPayload } from "@/lib/feed/publish-push-payload";
 
@@ -145,10 +144,11 @@ export async function sendFeedPublishPush(postId: string): Promise<void> {
 
     for (let i = 0; i < targetUserIds.length; i += BATCH_SIZE) {
       const batch = targetUserIds.slice(i, i + BATCH_SIZE);
+      // 2 channel (web + FCM) — sendApnsToUser dihapus, lihat komentar di
+      // lib/fcm.ts (dobel notif iOS).
       await Promise.allSettled(
         batch.flatMap((userId) => [
           sendPushToUser(userId, payload),
-          sendApnsToUser(userId, payload),
           sendFcmToUser(userId, payload),
         ]),
       );
@@ -185,7 +185,6 @@ export async function sendFeedPublishTestPush(params: {
 
     await Promise.allSettled([
       sendPushToUser(params.userId, payload),
-      sendApnsToUser(params.userId, payload),
       sendFcmToUser(params.userId, payload),
     ]);
   } catch (err) {

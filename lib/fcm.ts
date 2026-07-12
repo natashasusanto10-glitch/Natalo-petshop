@@ -16,9 +16,14 @@ import { normalizePemKey } from "./pem-utils";
  *
  * Token format: PushSubscription.endpoint = "fcm:<DEVICE_TOKEN>"
  *
- * Plays well dengan existing webpush + APNs — sendOrderStatusPush() panggil
- * sendPushToUser() (web), sendApnsToUser() (iOS), DAN sendFcmToUser()
- * (Android), masing-masing target subset subs berdasarkan endpoint prefix.
+ * FCM juga menangani iOS (Firebase forward token "fcm:..." ke APNs Apple
+ * di baliknya) — client Flutter register token FCM di KEDUA platform.
+ * sendOrderStatusPush() dkk hanya panggil sendPushToUser() (web) DAN
+ * sendFcmToUser() (Android+iOS). sendApnsToUser() (lib/apns.ts, direct
+ * APNs) SENGAJA TIDAK dipanggil bersamaan — client iOS juga register raw
+ * APNs token sebagai channel diagnostic terpisah; memanggil kedua fungsi
+ * sekaligus mengirim 2 notifikasi native identik ke 1 perangkat iOS yang
+ * sama (root cause bug "sering double notifikasi").
  */
 
 let fcmApp: import("firebase-admin/app").App | null = null;
@@ -78,6 +83,14 @@ export type FcmPayload = {
   /** Image URL — Android BigPictureStyle preview di notification tray.
    *  Wajib HTTPS. Format JPEG/PNG. */
   imageUrl?: string | null;
+  /** Notification category — diteruskan ke `aps.category` di payload iOS
+   *  (Firebase forward FCM → APNs). Match dengan UNNotificationCategory
+   *  yang di-register di iOS AppDelegate, trigger action buttons (mis.
+   *  "Lihat"/"Tolak" untuk admin moderation). Sebelumnya field ini hanya
+   *  jalan lewat sendApnsToUser (direct APNs) — channel itu dihapus (dobel
+   *  notif iOS), jadi category WAJIB diteruskan di sini supaya tombol aksi
+   *  tidak hilang senyap di iOS. */
+  category?: string | null;
 };
 
 /**
@@ -166,6 +179,9 @@ export async function sendFcmToUser(userId: string, payload: FcmPayload) {
             // di banner. Hanya set kalau ada imageUrl supaya text-only notif
             // tidak overhead extension launch.
             "mutable-content": payload.imageUrl ? 1 : 0,
+            // category → trigger action buttons (mis. admin moderation
+            // "Lihat"/"Tolak"). Match UNNotificationCategory di AppDelegate.
+            ...(payload.category ? { category: payload.category } : {}),
           },
         },
         // fcm_options.image → Firebase iOS SDK NSE auto-fetch image dan

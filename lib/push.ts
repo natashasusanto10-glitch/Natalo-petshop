@@ -1,7 +1,6 @@
 import webpush from "web-push";
 import { prisma } from "./prisma";
 import { buildOrderDetailPath } from "./order-detail";
-import { sendApnsToUser } from "./apns";
 import { sendFcmToUser } from "./fcm";
 
 function getVapidConfig() {
@@ -294,10 +293,14 @@ export async function sendOrderStatusPush(
     },
   };
 
-  // Kirim ke 3 channel push paralel + insert Announcement personal:
+  // Kirim ke 2 channel push paralel + insert Announcement personal:
   // - Web Push (PWA Safari, Chrome Android, desktop browsers) via VAPID
-  // - APNs   (iOS native app via TestFlight/App Store) via @parse/node-apn
-  // - FCM    (Android native app via Play Store) via firebase-admin
+  // - FCM    (Android + iOS native app) via firebase-admin — Firebase
+  //   forward token iOS ke APNs Apple di baliknya. sendApnsToUser (direct
+  //   APNs) SENGAJA TIDAK dipanggil bersamaan — client iOS register token
+  //   FCM DAN raw APNs sekaligus utk device yang sama; memanggil dua-duanya
+  //   mengirim 2 notifikasi native identik ke 1 perangkat (root cause bug
+  //   "sering double notifikasi", lihat komentar lib/fcm.ts).
   // - Announcement (in-app notification center / bell icon) — targetUserId
   //   = order.userId supaya CUMA user ini yg lihat (bukan broadcast).
   //
@@ -305,7 +308,6 @@ export async function sendOrderStatusPush(
   // tetap bisa lihat update status di /notifications saat buka app.
   await Promise.all([
     sendPushToUser(order.userId, payload),
-    sendApnsToUser(order.userId, payload),
     sendFcmToUser(order.userId, payload),
     prisma.announcement
       .create({
@@ -366,9 +368,10 @@ export async function sendConfirmReminderPush(input: {
   };
 
   try {
+    // 2 channel (web + FCM) — sendApnsToUser dihapus, lihat komentar
+    // sendOrderStatusPush di atas (dobel notif iOS).
     await Promise.all([
       sendPushToUser(input.userId, payload),
-      sendApnsToUser(input.userId, payload),
       sendFcmToUser(input.userId, payload),
       prisma.announcement
         .create({
