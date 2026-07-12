@@ -63,7 +63,7 @@ export default async function AdminEditFeedPostPage({ params }: PageProps) {
     }));
 
   return (
-    <AdminPage maxWidth="md">
+    <AdminPage maxWidth="lg">
       <AdminEditFeedPostClient
         postId={post.id}
         initialTitle={post.title}
