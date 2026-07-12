@@ -250,76 +250,148 @@ class _FeedExpandableCaptionState extends State<FeedExpandableCaption> {
     super.dispose();
   }
 
+  static const _baseStyle = TextStyle(
+    color: Colors.white,
+    fontSize: 13.2,
+    fontWeight: FontWeight.w600,
+    height: 1.38,
+    shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
+  );
+  static const _mentionStyle = TextStyle(
+    color: Color(0xFF60A5FA),
+    fontSize: 13.2,
+    fontWeight: FontWeight.w900,
+    height: 1.38,
+    shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
+  );
+  static const _maxCollapsedLines = 2;
+
+  /// Ukur apakah `text` (spans-nya) melebihi 2 baris pada `maxWidth`.
+  /// Basis-baris ter-render — bukan jumlah karakter — supaya caption pendek
+  /// yang tetap wrap >2 baris di kolom sempit ikut terdeteksi "panjang".
+  bool _exceedsCollapsed(String text, double maxWidth, TextScaler scaler) {
+    final tp = _paint(_measureSpans(text), maxWidth, scaler);
+    final exceeded = tp.didExceedMaxLines;
+    tp.dispose();
+    return exceeded;
+  }
+
+  /// Cari panjang prefix terpanjang dari `text` yang, digabung dengan
+  /// "…  selengkapnya", masih muat dalam 2 baris pada `maxWidth`. Menjamin
+  /// affordance "selengkapnya" selalu terlihat (tak terdorong ke baris ke-3
+  /// lalu ter-ellipsis hilang).
+  int _fitCollapsedLength(String text, double maxWidth, TextScaler scaler) {
+    var lo = 0;
+    var hi = text.length;
+    var best = 0;
+    while (lo <= hi) {
+      final mid = (lo + hi) >> 1;
+      final candidate = '${text.substring(0, mid).trimRight()}…  selengkapnya';
+      final tp = _paint(_measureSpans(candidate), maxWidth, scaler);
+      final fits = !tp.didExceedMaxLines;
+      tp.dispose();
+      if (fits) {
+        best = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return best;
+  }
+
+  /// Spans khusus pengukuran — recognizer throwaway langsung di-dispose,
+  /// karena TextPainter cuma butuh geometri (recognizer tak memengaruhi
+  /// layout). Weight mention (w900) dipertahankan agar lebar akurat.
+  List<InlineSpan> _measureSpans(String text) {
+    final throwaway = <TapGestureRecognizer>[];
+    final spans = buildMentionSpans(
+      text,
+      onMentionTap: (_) {},
+      defaultStyle: _baseStyle,
+      mentionStyle: _mentionStyle,
+      collectRecognizers: throwaway,
+    );
+    for (final r in throwaway) {
+      r.dispose();
+    }
+    return spans;
+  }
+
+  TextPainter _paint(List<InlineSpan> spans, double maxWidth, TextScaler scaler) {
+    return TextPainter(
+      text: TextSpan(style: _baseStyle, children: spans),
+      maxLines: _maxCollapsedLines,
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+    )..layout(maxWidth: maxWidth);
+  }
+
   @override
   Widget build(BuildContext context) {
     final text = widget.text;
     if (text.isEmpty) return const SizedBox.shrink();
-    const limit = 90;
-    final isLong = text.length > limit;
-    final visible = _expanded || !isLong
-        ? text
-        : '${text.substring(0, limit).trimRight()}... ';
 
-    // Dispose recognizers lama tiap rebuild — fresh per render.
-    for (final r in _recognizers) {
-      r.dispose();
-    }
-    _recognizers.clear();
+    final scaler = MediaQuery.textScalerOf(context);
 
-    const baseStyle = TextStyle(
-      color: Colors.white,
-      fontSize: 13.2,
-      fontWeight: FontWeight.w600,
-      height: 1.38,
-      shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
-    );
-    const mentionStyle = TextStyle(
-      color: Color(0xFF60A5FA),
-      fontSize: 13.2,
-      fontWeight: FontWeight.w900,
-      height: 1.38,
-      shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
-    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        // Deteksi overflow berbasis baris ter-render, bukan jumlah karakter.
+        final isLong = maxWidth.isFinite &&
+            _exceedsCollapsed(text, maxWidth, scaler);
+        final visible = _expanded || !isLong
+            ? text
+            : '${text.substring(0, _fitCollapsedLength(text, maxWidth, scaler)).trimRight()}…  ';
 
-    final mentionSpans = buildMentionSpans(
-      visible,
-      onMentionTap: (handle) => widget.onMentionTap?.call(handle),
-      defaultStyle: baseStyle,
-      mentionStyle: mentionStyle,
-      collectRecognizers: _recognizers,
-    );
+        // Dispose recognizers lama tiap rebuild — fresh per render.
+        for (final r in _recognizers) {
+          r.dispose();
+        }
+        _recognizers.clear();
 
-    return GestureDetector(
-      onTap: isLong ? () => setState(() => _expanded = !_expanded) : null,
-      // AnimatedSize: caption panjang tidak snap terbuka — tinggi mengembang
-      // halus, dan karena bottom info di-anchor ke bawah (Positioned.bottom),
-      // nama kreator + product chip di atasnya ikut terdorong naik pelan.
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 240),
-        curve: Curves.easeOutCubic,
-        // topLeft: baris awal tetap terlihat (terangkat naik), baris baru
-        // tersingkap di bawahnya — terasa "membuka", bukan konten loncat.
-        alignment: Alignment.topLeft,
-        child: Text.rich(
-          TextSpan(
-            style: baseStyle,
-            children: [
-              ...mentionSpans,
-              if (isLong)
-                TextSpan(
-                  text: _expanded ? '  lebih sedikit' : 'selengkapnya',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.78),
-                    fontSize: 12.8,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-            ],
+        final mentionSpans = buildMentionSpans(
+          visible,
+          onMentionTap: (handle) => widget.onMentionTap?.call(handle),
+          defaultStyle: _baseStyle,
+          mentionStyle: _mentionStyle,
+          collectRecognizers: _recognizers,
+        );
+
+        return GestureDetector(
+          onTap: isLong ? () => setState(() => _expanded = !_expanded) : null,
+          // AnimatedSize: caption panjang tidak snap terbuka — tinggi mengembang
+          // halus, dan karena bottom info di-anchor ke bawah (Positioned.bottom),
+          // nama kreator + product chip di atasnya ikut terdorong naik pelan.
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            // topLeft: baris awal tetap terlihat (terangkat naik), baris baru
+            // tersingkap di bawahnya — terasa "membuka", bukan konten loncat.
+            alignment: Alignment.topLeft,
+            child: Text.rich(
+              TextSpan(
+                style: _baseStyle,
+                children: [
+                  ...mentionSpans,
+                  if (isLong)
+                    TextSpan(
+                      text: _expanded ? '  lebih sedikit' : 'selengkapnya',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.78),
+                        fontSize: 12.8,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                ],
+              ),
+              maxLines: _expanded ? null : _maxCollapsedLines,
+              overflow:
+                  _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            ),
           ),
-          maxLines: _expanded ? null : 2,
-          overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
-        ),
-      ),
+        );
+      },
     );
   }
 }
