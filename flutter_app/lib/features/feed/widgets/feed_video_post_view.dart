@@ -110,6 +110,19 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   bool _endOfVideoCtaVisible = false;
   bool _endOfVideoCtaDismissed = false;
 
+  // Panel caption ala IG: saat terbuka, scrim gelap naik + pill produk
+  // fade menghilang (mode baca fokus). State di-lift ke sini supaya semua
+  // elemen ber-transisi serempak dan tap area video bisa menutup panel.
+  bool _captionExpanded = false;
+
+  void _setCaptionExpanded(bool value) {
+    if (_captionExpanded == value || !mounted) return;
+    setState(() => _captionExpanded = value);
+    // Card CTA pop-up otomatis tertutup saat caption naik — jangan ada
+    // dua permukaan commerce beradu di mode baca.
+    if (value && _endOfVideoCtaVisible) _dismissEndOfVideoCta();
+  }
+
   // Delayed loading spinner — sebagian besar video load <1s (preloaded
   // controller siap instan, fresh init biasanya 400-900ms). Spinner yang
   // muncul instant bikin user anxiety ("kok lama?"). Delay 800ms supaya
@@ -425,6 +438,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         // chance (dismissed flag clear, visible flag clear).
         _endOfVideoCtaVisible = false;
         _endOfVideoCtaDismissed = false;
+        // Panel caption ikut tertutup — post berikutnya mulai collapsed.
+        _captionExpanded = false;
         // Reset long-press state (paused / 2x speed) + scrubber state.
         // Defensive — pastikan video tidak stuck di 2x atau paused saat
         // user swipe ke post lain di tengah long-press.
@@ -761,6 +776,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       _commentAddedCount = 0;
       _commentSheetClosingFromDrag = false;
       _commentDragOffset = 0;
+      // Panel caption tertutup saat komentar dibuka — dua panel baca
+      // tidak boleh tumpang tindih.
+      _captionExpanded = false;
     });
     _commentSheetExtent.value = _commentSheetInitialExtent;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1433,7 +1451,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                         child: IgnorePointer(
                           child: AnimatedBuilder(
                             animation: _heartBurstController,
-                            builder: (context, _) => feedPostBuildFlyingBurstHeart(
+                            builder: (context, _) =>
+                                feedPostBuildFlyingBurstHeart(
                               tap: _heartBurstPosition,
                               target: _heartBurstTarget,
                               scale: _heartScale.value,
@@ -1474,6 +1493,40 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                           bottom: 0,
                           child: IgnorePointer(
                             child: FeedPostScrim(),
+                          ),
+                        ),
+                        // ── Scrim panel caption (mode baca ala IG) ──
+                        // Saat caption expand: gradien gelap naik menutupi
+                        // ~2/3 bawah layar supaya teks putih terbaca di atas
+                        // video terang; tap di mana pun area ini menutup
+                        // panel. Saat tertutup: sepenuhnya tembus sentuhan.
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            ignoring: !_captionExpanded,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => _setCaptionExpanded(false),
+                              child: AnimatedOpacity(
+                                opacity: _captionExpanded ? 1 : 0,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeOutCubic,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        Colors.transparent,
+                                        Colors.black.withValues(alpha: 0.30),
+                                        Colors.black.withValues(alpha: 0.66),
+                                        Colors.black.withValues(alpha: 0.72),
+                                      ],
+                                      stops: const [0.18, 0.40, 0.72, 1.0],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                         if (_videoController != null)
@@ -1545,20 +1598,60 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  if (products.isNotEmpty) ...[
-                                    _ProductCommerceOverlayGroup(
-                                      featuredProduct: featuredProduct!,
-                                      showProductCard: _endOfVideoCtaVisible &&
-                                          !_commentSheetOpen,
-                                      onTap: () => _onProductsTap(products),
-                                      onBuy: () =>
-                                          _quickAddProduct(featuredProduct),
-                                      onQuickAdd: () =>
-                                          _quickAddProduct(featuredProduct),
-                                      onDismiss: _dismissEndOfVideoCta,
+                                  if (products.isNotEmpty)
+                                    // Pill produk "tenggelam ke belakang
+                                    // caption" saat panel naik: tinggi
+                                    // mengempis (AnimatedAlign heightFactor)
+                                    // + fade-out + turun tipis, serempak
+                                    // dengan scrim; muncul kembali saat
+                                    // panel diturunkan.
+                                    ClipRect(
+                                      child: AnimatedAlign(
+                                        alignment: Alignment.bottomLeft,
+                                        heightFactor: _captionExpanded ? 0 : 1,
+                                        duration:
+                                            const Duration(milliseconds: 300),
+                                        curve: Curves.easeOutCubic,
+                                        child: AnimatedSlide(
+                                          offset: _captionExpanded
+                                              ? const Offset(0, 0.12)
+                                              : Offset.zero,
+                                          duration:
+                                              const Duration(milliseconds: 300),
+                                          curve: Curves.easeOutCubic,
+                                          child: AnimatedOpacity(
+                                            opacity: _captionExpanded ? 0 : 1,
+                                            duration: const Duration(
+                                                milliseconds: 220),
+                                            curve: Curves.easeOut,
+                                            child: IgnorePointer(
+                                              ignoring: _captionExpanded,
+                                              child: Padding(
+                                                padding: const EdgeInsets.only(
+                                                    bottom: 12),
+                                                child:
+                                                    _ProductCommerceOverlayGroup(
+                                                  featuredProduct:
+                                                      featuredProduct!,
+                                                  showProductCard:
+                                                      _endOfVideoCtaVisible &&
+                                                          !_commentSheetOpen,
+                                                  onTap: () =>
+                                                      _onProductsTap(products),
+                                                  onBuy: () => _quickAddProduct(
+                                                      featuredProduct),
+                                                  onQuickAdd: () =>
+                                                      _quickAddProduct(
+                                                          featuredProduct),
+                                                  onDismiss:
+                                                      _dismissEndOfVideoCta,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                    const SizedBox(height: 12),
-                                  ],
                                   FeedPostCreatorIdentity(
                                     author: post.author,
                                     displayName: post.author.displayHandle,
@@ -1566,6 +1659,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                                   const SizedBox(height: 7),
                                   FeedExpandableCaption(
                                     text: post.caption ?? '',
+                                    createdAt: post.createdAt,
+                                    expanded: _captionExpanded,
+                                    onExpandedChanged: _setCaptionExpanded,
                                     onMentionTap: (handle) =>
                                         Navigator.of(context).pushNamed(
                                       '/u',
@@ -1710,8 +1806,7 @@ class _MediaBackground extends StatelessWidget {
       final size = ctrl.value.size;
       // Rasio dari dimensi AKTUAL player (metadata server bisa salah).
       final aspect = size.height > 0 ? size.width / size.height : 9 / 16;
-      final fit =
-          compactPreview ? BoxFit.contain : _fitForAspect(aspect);
+      final fit = compactPreview ? BoxFit.contain : _fitForAspect(aspect);
       return Stack(
         fit: StackFit.expand,
         children: [
@@ -1735,9 +1830,8 @@ class _MediaBackground extends StatelessWidget {
       // Pakai aspectRatio post supaya thumbnail mengikuti aturan yang
       // sama dengan videonya — tidak ada lompatan cover→contain saat
       // player siap.
-      final fit = compactPreview
-          ? BoxFit.contain
-          : _fitForAspect(post.aspectRatio);
+      final fit =
+          compactPreview ? BoxFit.contain : _fitForAspect(post.aspectRatio);
       return Stack(
         fit: StackFit.expand,
         children: [
@@ -1904,7 +1998,6 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
     );
   }
 }
-
 
 class _VideoRetryButton extends StatelessWidget {
   final VoidCallback onRetry;
@@ -2158,7 +2251,6 @@ class _DownArrowPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
-
 
 class _FeedCartSheet extends StatelessWidget {
   final VoidCallback onOpenFullCart;
@@ -2504,7 +2596,6 @@ class _FeedCartItemTile extends StatelessWidget {
     );
   }
 }
-
 
 class _EndOfVideoProductCta extends StatelessWidget {
   final FeedProductLink product;

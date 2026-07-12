@@ -1184,6 +1184,15 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   bool _hideOverlayForLongPress = false;
   bool _hideOverlayForPinchZoom = false;
 
+  // Panel caption ala IG (paritas FeedVideoPostView): scrim gelap naik +
+  // chip produk fade menghilang saat caption dibuka.
+  bool _captionExpanded = false;
+
+  void _setCaptionExpanded(bool value) {
+    if (_captionExpanded == value || !mounted) return;
+    setState(() => _captionExpanded = value);
+  }
+
   // Heart burst (sama dengan FeedVideoPostView) — posisi mengikuti double tap.
   late final AnimationController _heartBurstController;
   late final Animation<double> _heartScale;
@@ -1281,6 +1290,12 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     } else if (oldWidget.isActive != widget.isActive) {
       // Pause rotation saat post tidak aktif (out of viewport).
       _syncProductRotation();
+    }
+    // Panel caption ikut tertutup saat swipe ke post lain / ganti post.
+    if ((oldWidget.post.id != widget.post.id ||
+            (oldWidget.isActive && !widget.isActive)) &&
+        _captionExpanded) {
+      _captionExpanded = false;
     }
   }
 
@@ -1749,6 +1764,38 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                 ),
               ),
             ),
+            // ── Scrim panel caption (mode baca ala IG) — paritas dengan
+            // FeedVideoPostView: gradien gelap naik saat caption expand,
+            // tap area mana pun menutup panel; tembus saat tertutup. ──
+            Positioned.fill(
+              child: IgnorePointer(
+                ignoring: !_captionExpanded,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _setCaptionExpanded(false),
+                  child: AnimatedOpacity(
+                    opacity: _captionExpanded ? 1 : 0,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutCubic,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.30),
+                            Colors.black.withValues(alpha: 0.66),
+                            Colors.black.withValues(alpha: 0.72),
+                          ],
+                          stops: const [0.18, 0.40, 0.72, 1.0],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
             // Dots indicator (kalau >1 foto) — tengah atas, Instagram-style
             // pill background semi-transparent. Active dot widen ke 16px.
             if (photos.length > 1 &&
@@ -1835,14 +1882,41 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                       // Product chip — only when post has tagged products.
                       // Reuse widget yang sama dengan FeedVideoPostView untuk
                       // consistency visual antar video post & photo carousel.
-                      if (products.isNotEmpty) ...[
-                        feedPostProductAnchorCardFor(
-                          featuredProduct!,
-                          onTap: () => _onProductsTap(products),
-                          onAddToCart: () => _quickAddProduct(featuredProduct),
+                      // Saat caption expand: chip "tenggelam" (fade + turun +
+                      // tinggi mengempis) — paritas video post.
+                      if (products.isNotEmpty)
+                        ClipRect(
+                          child: AnimatedAlign(
+                            alignment: Alignment.bottomLeft,
+                            heightFactor: _captionExpanded ? 0 : 1,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOutCubic,
+                            child: AnimatedSlide(
+                              offset: _captionExpanded
+                                  ? const Offset(0, 0.12)
+                                  : Offset.zero,
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOutCubic,
+                              child: AnimatedOpacity(
+                                opacity: _captionExpanded ? 0 : 1,
+                                duration: const Duration(milliseconds: 220),
+                                curve: Curves.easeOut,
+                                child: IgnorePointer(
+                                  ignoring: _captionExpanded,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(bottom: 9),
+                                    child: feedPostProductAnchorCardFor(
+                                      featuredProduct!,
+                                      onTap: () => _onProductsTap(products),
+                                      onAddToCart: () =>
+                                          _quickAddProduct(featuredProduct),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                        const SizedBox(height: 9),
-                      ],
                       FeedPostCreatorIdentity(
                         author: post.author,
                         displayName: post.author.displayHandle,
@@ -1850,6 +1924,9 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                       const SizedBox(height: 7),
                       FeedExpandableCaption(
                         text: post.caption ?? '',
+                        createdAt: post.createdAt,
+                        expanded: _captionExpanded,
+                        onExpandedChanged: _setCaptionExpanded,
                         onMentionTap: (handle) => Navigator.of(context)
                             .pushNamed('/u', arguments: handle),
                       ),
@@ -1864,4 +1941,3 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     );
   }
 }
-

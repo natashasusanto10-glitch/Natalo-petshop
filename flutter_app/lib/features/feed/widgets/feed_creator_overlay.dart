@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../../../utils/formatters.dart';
 import '../../../utils/mention_text.dart';
 
 // Duplikat dari `_officialGold` di feed_screen.dart (tetap dipakai di
@@ -231,7 +232,25 @@ class FeedExpandableCaption extends StatefulWidget {
   final String text;
   final void Function(String username)? onMentionTap;
 
-  const FeedExpandableCaption({super.key, required this.text, this.onMentionTap});
+  /// Waktu posting — bila diisi, saat expanded tampil timestamp relatif
+  /// ("2 hari lalu") di bawah caption, ala IG.
+  final DateTime? createdAt;
+
+  /// Controlled mode: bila non-null, state expand dikelola parent (supaya
+  /// parent bisa fade scrim + pill produk serempak, dan menutup lewat tap
+  /// area video). Bila null, widget kelola sendiri (back-compat pemakai
+  /// lama, mis. layar preview posting).
+  final bool? expanded;
+  final ValueChanged<bool>? onExpandedChanged;
+
+  const FeedExpandableCaption({
+    super.key,
+    required this.text,
+    this.onMentionTap,
+    this.createdAt,
+    this.expanded,
+    this.onExpandedChanged,
+  });
 
   @override
   State<FeedExpandableCaption> createState() => _FeedExpandableCaptionState();
@@ -239,7 +258,36 @@ class FeedExpandableCaption extends StatefulWidget {
 
 class _FeedExpandableCaptionState extends State<FeedExpandableCaption> {
   final List<TapGestureRecognizer> _recognizers = [];
-  bool _expanded = false;
+  final ScrollController _scrollController = ScrollController();
+  bool _internalExpanded = false;
+
+  bool get _expanded => widget.expanded ?? _internalExpanded;
+
+  /// Tarik-turun melewati batas atas scroll caption (jari masih di layar)
+  /// menutup panel — konsisten dengan gesture tarik-tutup viewer video.
+  static const double _dismissOverscroll = 48;
+
+  void _setExpanded(bool value) {
+    if (_expanded == value) return;
+    if (widget.expanded == null) {
+      setState(() => _internalExpanded = value);
+    }
+    widget.onExpandedChanged?.call(value);
+    if (!value && _scrollController.hasClients) {
+      // Reset posisi baca supaya buka berikutnya mulai dari atas.
+      _scrollController.jumpTo(0);
+    }
+  }
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollUpdateNotification &&
+        notification.dragDetails != null &&
+        notification.metrics.pixels <
+            notification.metrics.minScrollExtent - _dismissOverscroll) {
+      _setExpanded(false);
+    }
+    return false;
+  }
 
   @override
   void dispose() {
@@ -247,6 +295,7 @@ class _FeedExpandableCaptionState extends State<FeedExpandableCaption> {
       r.dispose();
     }
     _recognizers.clear();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -256,7 +305,8 @@ class _FeedExpandableCaptionState extends State<FeedExpandableCaption> {
     if (text.isEmpty) return const SizedBox.shrink();
     const limit = 90;
     final isLong = text.length > limit;
-    final visible = _expanded || !isLong
+    final expanded = _expanded && isLong;
+    final visible = expanded || !isLong
         ? text
         : '${text.substring(0, limit).trimRight()}... ';
 
@@ -289,36 +339,96 @@ class _FeedExpandableCaptionState extends State<FeedExpandableCaption> {
       collectRecognizers: _recognizers,
     );
 
+    final richText = Text.rich(
+      TextSpan(
+        style: baseStyle,
+        children: [
+          ...mentionSpans,
+          if (isLong)
+            TextSpan(
+              text: expanded ? '  lebih sedikit' : 'selengkapnya',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.78),
+                fontSize: 12.8,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+        ],
+      ),
+      maxLines: expanded ? null : 2,
+      overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+    );
+
+    Widget body;
+    if (!expanded) {
+      body = richText;
+    } else {
+      // Panel baca ala IG: tinggi maks ~45% layar, isi ter-scroll dengan
+      // fade mask tepi atas+bawah (tanda masih ada teks), timestamp relatif
+      // di bawah. Author di parent tetap pinned di atas panel ini.
+      final maxPanelHeight = MediaQuery.sizeOf(context).height * 0.45;
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxPanelHeight),
+            child: ShaderMask(
+              shaderCallback: (rect) => const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.white,
+                  Colors.white,
+                  Colors.transparent,
+                ],
+                stops: [0.0, 0.045, 0.955, 1.0],
+              ).createShader(rect),
+              blendMode: BlendMode.dstIn,
+              child: NotificationListener<ScrollNotification>(
+                onNotification: _onScrollNotification,
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: richText,
+                ),
+              ),
+            ),
+          ),
+          if (widget.createdAt != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 5),
+              child: Text(
+                formatRelativeTime(widget.createdAt!),
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.62),
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.1,
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
     return GestureDetector(
-      onTap: isLong ? () => setState(() => _expanded = !_expanded) : null,
-      // AnimatedSize: caption panjang tidak snap terbuka — tinggi mengembang
+      onTap: isLong ? () => _setExpanded(!expanded) : null,
+      // AnimatedSize: caption tidak snap buka/tutup — tinggi mengembang
       // halus, dan karena bottom info di-anchor ke bawah (Positioned.bottom),
-      // nama kreator + product chip di atasnya ikut terdorong naik pelan.
+      // nama kreator di atasnya ikut terangkat pelan sebagai satu gerakan.
       child: AnimatedSize(
-        duration: const Duration(milliseconds: 240),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 260),
         curve: Curves.easeOutCubic,
         // topLeft: baris awal tetap terlihat (terangkat naik), baris baru
         // tersingkap di bawahnya — terasa "membuka", bukan konten loncat.
         alignment: Alignment.topLeft,
-        child: Text.rich(
-          TextSpan(
-            style: baseStyle,
-            children: [
-              ...mentionSpans,
-              if (isLong)
-                TextSpan(
-                  text: _expanded ? '  lebih sedikit' : 'selengkapnya',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.78),
-                    fontSize: 12.8,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-            ],
-          ),
-          maxLines: _expanded ? null : 2,
-          overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
-        ),
+        child: body,
       ),
     );
   }
