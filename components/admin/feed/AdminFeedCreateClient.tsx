@@ -101,6 +101,9 @@ export function AdminFeedCreateClient() {
   const [pushInfo, setPushInfo] = useState<{
     counts: { all: number; members: number; active30d: number };
     quota: { used: number; cap: number };
+    // Jumlah perangkat push milik akun admin yang login — untuk hint jujur
+    // di tombol "Tes ke HP saya" (0 = tes tak akan sampai ke mana pun).
+    self?: { devices: number };
   } | null>(null);
   const [pushInfoLoading, setPushInfoLoading] = useState(false);
   const [testState, setTestState] = useState<"idle" | "sending" | "sent">(
@@ -1040,6 +1043,13 @@ export function AdminFeedCreateClient() {
             </button>
             {testError && (
               <p className="text-[11px] font-bold text-red-600">{testError}</p>
+            )}
+            {pushInfo?.self && pushInfo.self.devices === 0 && (
+              <p className="rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
+                Akun admin ini belum punya perangkat terdaftar — tombol tes
+                tidak akan sampai ke mana pun. Login app di HP dengan akun
+                ini, atau uji lewat publish ke segmen yang memuat akun HP-mu.
+              </p>
             )}
 
             <p className="text-[10px] font-semibold text-gray-400">
