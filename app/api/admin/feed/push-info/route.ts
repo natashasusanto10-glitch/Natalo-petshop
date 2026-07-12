@@ -28,17 +28,48 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [all, members, active30d, used, selfDevices] = await Promise.all([
-    resolveSegmentUserIds("all"),
-    resolveSegmentUserIds("members"),
-    resolveSegmentUserIds("active30d"),
-    countRecentPublishPush(),
-    // Jumlah perangkat/langganan push milik AKUN ADMIN yang login ini —
-    // dipakai tombol "Tes ke HP saya" untuk jujur bila 0 (tes akan no-op).
-    // Gotcha nyata: admin login web pakai akun admin, HP pakai akun
-    // customer → tes "sukses" tapi tak pernah sampai ke mana pun.
-    prisma.pushSubscription.count({ where: { userId: session.sub } }),
-  ]);
+  const [all, members, active30d, used, selfDevices, recentPosts] =
+    await Promise.all([
+      resolveSegmentUserIds("all"),
+      resolveSegmentUserIds("members"),
+      resolveSegmentUserIds("active30d"),
+      countRecentPublishPush(),
+      // Jumlah perangkat/langganan push milik AKUN ADMIN yang login ini —
+      // dipakai tombol "Tes ke HP saya" untuk jujur bila 0 (tes akan no-op).
+      // Gotcha nyata: admin login web pakai akun admin, HP pakai akun
+      // customer → tes "sukses" tapi tak pernah sampai ke mana pun.
+      prisma.pushSubscription.count({ where: { userId: session.sub } }),
+      // DIAGNOSTIK: 5 post notify terakhir + segmen yang BENAR-BENAR
+      // tersimpan + apakah sudah di-klaim kirim. Read-only, untuk memastikan
+      // "kirim ke Semua" beneran segment=all, dan push benar-benar terpicu.
+      prisma.feedPost.findMany({
+        where: { notifyOnPublish: true },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          title: true,
+          pushSegment: true,
+          publishPushSentAt: true,
+          encodingStatus: true,
+          status: true,
+          authorRole: true,
+        },
+      }),
+    ]);
+
+  // Untuk tiap post notify, cek apakah Announcement lonceng-nya dibuat
+  // (url = /feed/{id}) + segmen Announcement-nya. Kalau publishPushSentAt
+  // terisi TAPI Announcement tak ada → ada error tertelan setelah klaim.
+  const feedUrls = recentPosts.map((p) => `/feed/${p.id}`);
+  const announcements =
+    feedUrls.length > 0
+      ? await prisma.announcement.findMany({
+          where: { url: { in: feedUrls } },
+          select: { url: true, segment: true },
+        })
+      : [];
+  const annByUrl = new Map(announcements.map((a) => [a.url, a.segment]));
 
   return NextResponse.json({
     counts: {
@@ -48,6 +79,15 @@ export async function GET() {
     },
     quota: { used, cap: FEED_PUSH_DAILY_CAP },
     self: { devices: selfDevices },
+    recent: recentPosts.map((p) => ({
+      title: p.title.slice(0, 40),
+      segmentTersimpan: p.pushSegment,
+      status: p.status,
+      encoding: p.encodingStatus,
+      pushTerpicu: p.publishPushSentAt != null,
+      announcementDibuat: annByUrl.has(`/feed/${p.id}`),
+      announcementSegment: annByUrl.get(`/feed/${p.id}`) ?? null,
+    })),
   });
 }
 
