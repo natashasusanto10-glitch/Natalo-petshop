@@ -34,6 +34,9 @@ import { ADMIN_VIDEO_CONFIG, USER_VIDEO_CONFIG } from "@/lib/feed/video-config";
 // window or a service-worker bust.
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+// Fan-out publish-push kini di-await di handler POST — beri ruang seperti
+// broadcast route (default 10s bisa kurang saat kirim ke banyak user).
+export const maxDuration = 60;
 
 const VALID_TABS: ReadonlyArray<FeedPostTab> = ["REKOMENDASI", "PROMO", "KOMUNITAS"];
 const CUSTOMER_MIN_VIDEO_DURATION_SEC = USER_VIDEO_CONFIG.minDuration;
@@ -566,7 +569,9 @@ export async function POST(request: NextRequest) {
   // Publish-push — guard internal (admin/ACTIVE/ready/notifyOnPublish/
   // not-yet-sent/daily-cap) memutuskan sendiri; no-op kalau post video
   // admin masih `uploading` (webhook Bunny yang trigger nanti saat ready).
-  void import("@/lib/feed/publish-push").then(({ sendFeedPublishPush }) =>
+  // WAJIB await — void promise bisa dibekukan Vercel sebelum jalan
+  // (lihat komentar di lib/feed/reconcile.ts). Error ditelan internal.
+  await import("@/lib/feed/publish-push").then(({ sendFeedPublishPush }) =>
     sendFeedPublishPush(post.id),
   );
 
