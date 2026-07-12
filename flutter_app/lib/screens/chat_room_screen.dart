@@ -277,6 +277,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       // (fix C2 Plan 2) — sinkronkan badge lokal.
       chatStore.setUnread(0);
       _scrollToBottom(animate: false);
+      // Re-pin bertahap: kejar tinggi konten yang tumbuh saat gambar (kartu
+      // produk/chip/foto) selesai load supaya buka pertama benar-benar mendarat
+      // di pesan TERAKHIR, bukan di tengah (isu "chat awal bukan yang paling
+      // akhir").
+      _settleInitialScroll();
       _startPolling();
     } catch (e) {
       if (kDebugMode) debugPrint('[ChatRoomScreen] fetchMessages gagal: $e');
@@ -686,6 +691,30 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
         _scrollController.jumpTo(target);
       }
     });
+  }
+
+  /// Re-pin ke bawah beberapa kali selama ~700ms SETELAH initial load —
+  /// `maxScrollExtent` saat frame pertama sering masih PENDEK karena tinggi
+  /// sejumlah item (kartu produk, chip konteks 64×64, foto) baru diketahui
+  /// setelah gambarnya selesai load; satu `jumpTo(maxScrollExtent)` tunggal
+  /// jadi mendarat di TENGAH (bukan di pesan terakhir). Beberapa jump
+  /// terjadwal mengejar tinggi yang tumbuh itu sampai stabil.
+  ///
+  /// Guard `_isNearBottom(threshold: 240)`: tiap re-pin cuma jalan kalau
+  /// pandangan MASIH dekat bawah — toleransi 240px menyerap pertumbuhan
+  /// tinggi gambar, tapi kalau user SENGAJA scroll ke atas baca riwayat
+  /// (menjauh >240px) re-pin berhenti (tak menarik paksa). Dipakai HANYA
+  /// saat buka (bukan poll/keyboard), jadi tak mengganggu logika auto-scroll
+  /// pesan-masuk yang sudah ada.
+  void _settleInitialScroll() {
+    const delaysMs = [120, 260, 450, 700];
+    for (final ms in delaysMs) {
+      Future<void>.delayed(Duration(milliseconds: ms), () {
+        if (!mounted || !_scrollController.hasClients) return;
+        if (!_isNearBottom(threshold: 240)) return;
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      });
+    }
   }
 
   /// Guard kill-switch di titik kirim (F7) — `_buildFooter` sudah
