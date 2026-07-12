@@ -41,6 +41,47 @@ import 'feed_post_scrim.dart';
 import 'feed_post_shared_widgets.dart';
 import 'feed_video_scrubber.dart';
 
+/// Target hasil drag comment sheet saat gesture berakhir (dipakai oleh
+/// [commentSnapTargetFor] — pure function supaya bisa di-unit-test tanpa
+/// widget tree).
+enum CommentSnapTarget { close, initial, max }
+
+/// Pure decision function untuk `_onCommentDragEnd` — menentukan target
+/// snap sheet komentar berdasar posisi + kecepatan gesture saat lepas jari.
+/// Diekstrak supaya bisa di-unit-test langsung (lihat
+/// test/feed_comment_sheet_drag_test.dart) tanpa perlu widget test yang
+/// butuh video controller.
+CommentSnapTarget commentSnapTargetFor({
+  required double size,
+  required double velocity,
+  required double maxExtent,
+  double dismissBelow = 0.30,
+  double flingVelocity = 520,
+  double initial = 0.60,
+}) {
+  // Fling ke bawah cukup cepat → tutup langsung, di posisi mana pun.
+  if (velocity > flingVelocity || size <= dismissBelow) {
+    return CommentSnapTarget.close;
+  }
+  // Fling ke atas cukup cepat → favor expand ke full, ala IG Reels.
+  if (velocity < -flingVelocity) {
+    return CommentSnapTarget.max;
+  }
+  // Melewati posisi resting awal (initial) → lanjutkan ke full; di bawahnya
+  // → kembali ke initial. Simetris dengan IG: begitu jari lewat titik
+  // resting, momentum dianggap mengarah expand, bukan menengah lagi.
+  return size > initial ? CommentSnapTarget.max : CommentSnapTarget.initial;
+}
+
+/// Pure helper — apakah video harus di-pause karena comment sheet sudah
+/// (hampir) full-screen. Diekstrak untuk unit test langsung.
+bool shouldPauseForCommentExtent({
+  required double extent,
+  required double maxExtent,
+}) {
+  return extent >= maxExtent - 0.02;
+}
+
 /// Satu fullscreen page Reels-style — video/thumbnail + Reels overlay.
 class FeedVideoPostView extends StatefulWidget {
   final FeedPost post;
@@ -71,9 +112,8 @@ class FeedVideoPostView extends StatefulWidget {
 
 class _FeedVideoPostViewState extends State<FeedVideoPostView>
     with TickerProviderStateMixin, RouteAware, WidgetsBindingObserver {
-  static const double _commentSheetMinExtent = 0.22;
+  static const double _commentSheetMinExtent = 0.0;
   static const double _commentSheetInitialExtent = 0.60;
-  static const double _commentSheetMaxExtentCap = 0.82;
   static const double _commentSheetDismissExtent = 0.30;
 
   VideoPlayerController? _videoController;
@@ -610,18 +650,52 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     super.dispose();
   }
 
+  /// True kalau kita sudah men-pause video karena comment sheet ditarik
+  /// sampai (hampir) full-screen. Dipakai supaya resume hanya terjadi
+  /// kalau kita yang men-pause (bukan user pause manual sebelumnya).
+  bool _pausedByCommentSheet = false;
+
   void _syncCommentSheetProgress() {
     if (!_commentSheetController.isAttached) return;
     final hostHeight = _commentSheetHostHeight(context);
-    final maxExtent = _commentSheetMaxExtentFor(hostHeight);
+    final maxExtent = _commentSheetMaxExtentFor(context, hostHeight);
     final size = _commentSheetController.size;
     final extent = size.clamp(_commentSheetMinExtent, maxExtent).toDouble();
     if ((_commentSheetExtent.value - extent).abs() > 0.002) {
       _commentSheetExtent.value = extent;
     }
+
+    // Pause/resume video ala IG Reels — full-screen comment sheet berarti
+    // video harus hilang dari layar dan berhenti (bukan cuma tersembunyi).
+    final shouldPause =
+        shouldPauseForCommentExtent(extent: extent, maxExtent: maxExtent);
+    final ctrl = _videoController;
+    if (shouldPause &&
+        !_pausedByCommentSheet &&
+        ctrl != null &&
+        ctrl.value.isInitialized &&
+        ctrl.value.isPlaying) {
+      _pausedByCommentSheet = true;
+      ctrl.pause();
+    } else if (!shouldPause && _pausedByCommentSheet) {
+      _pausedByCommentSheet = false;
+      if (mounted &&
+          widget.isActive &&
+          !_isPaused &&
+          _shouldAutoplay &&
+          ctrl != null &&
+          ctrl.value.isInitialized) {
+        ctrl.play();
+      }
+    }
+
+    // Drag menutup sheet sampai (hampir) 0 — finalisasi close TANPA
+    // AnimatedSlide (sheet sudah visually di posisi 0 lewat drag/animateTo,
+    // lihat _settleCommentDragClose). Guard _commentSheetClosingFromDrag
+    // cegah double-run.
     if (_commentSheetOpen &&
         !_commentSheetClosingFromDrag &&
-        size <= _commentSheetMinExtent + 0.012) {
+        size <= 0.005) {
       _commentSheetClosingFromDrag = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _closeComments();
@@ -635,15 +709,15 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     return math.max(1.0, screenHeight - keyboardInset);
   }
 
-  double _commentMinVideoHeightFor(double hostHeight) {
-    return (hostHeight * 0.30).clamp(220.0, 280.0).toDouble();
-  }
-
-  double _commentSheetMaxExtentFor(double hostHeight) {
-    final minVideoHeight = _commentMinVideoHeightFor(hostHeight);
-    final extent = 1 - (minVideoHeight / math.max(1.0, hostHeight));
+  /// Full-height ala IG: sheet naik sampai top hampir menyentuh status
+  /// bar (respect top safe area). Clamp bawah tetap di initial extent
+  /// (0.60) untuk safety kalau top inset sangat besar (mis. notch device
+  /// aneh / testing environment).
+  double _commentSheetMaxExtentFor(BuildContext context, double hostHeight) {
+    final topSafeArea = MediaQuery.paddingOf(context).top;
+    final extent = 1 - (topSafeArea / math.max(1.0, hostHeight));
     return extent
-        .clamp(_commentSheetInitialExtent, _commentSheetMaxExtentCap)
+        .clamp(_commentSheetInitialExtent, 1.0)
         .toDouble();
   }
 
@@ -836,9 +910,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     if (!_commentSheetController.isAttached || delta == 0) return;
     final screenHeight = math.max(1.0, MediaQuery.sizeOf(context).height);
     final maxExtent =
-        _commentSheetMaxExtentFor(_commentSheetHostHeight(context));
+        _commentSheetMaxExtentFor(context, _commentSheetHostHeight(context));
+    // Tracking penuh 0..maxExtent — jari mengikuti sheet sepanjang seluruh
+    // rentang (ala IG Reels), tidak berhenti di suatu extent minimum.
     final nextSize = (_commentSheetController.size - (delta / screenHeight))
-        .clamp(_commentSheetMinExtent, maxExtent)
+        .clamp(0.0, maxExtent)
         .toDouble();
     _commentSheetController.jumpTo(nextSize);
   }
@@ -849,17 +925,51 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         ? _commentSheetController.size
         : _commentSheetInitialExtent;
     final maxExtent =
-        _commentSheetMaxExtentFor(_commentSheetHostHeight(context));
-    if (velocity > 520 || size <= _commentSheetDismissExtent) {
+        _commentSheetMaxExtentFor(context, _commentSheetHostHeight(context));
+    final target = commentSnapTargetFor(
+      size: size,
+      velocity: velocity,
+      maxExtent: maxExtent,
+      dismissBelow: _commentSheetDismissExtent,
+      initial: _commentSheetInitialExtent,
+    );
+    switch (target) {
+      case CommentSnapTarget.close:
+        _settleCommentDragClose();
+      case CommentSnapTarget.max:
+        _commentSheetController.animateTo(
+          maxExtent,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+        );
+      case CommentSnapTarget.initial:
+        _commentSheetController.animateTo(
+          _commentSheetInitialExtent,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+        );
+    }
+  }
+
+  /// Close driven oleh drag/fling — BEDA dengan [_closeComments]
+  /// (barrier tap / Android back / setelah posting) yang langsung
+  /// men-toggle AnimatedSlide dari posisi initial extent.
+  ///
+  /// Di sini sheet SUDAH sedang di-drag turun oleh jari; kita lanjutkan
+  /// gerakan itu secara mulus sampai extent 0 (bukan teleport/detach),
+  /// lalu [_syncCommentSheetProgress] mendeteksi extent ≈0 dan menjalankan
+  /// cleanup yang sama via [_closeComments] — haptic + count-sync terjadi
+  /// di titik itu (close sungguhan), bukan di tengah gesture.
+  void _settleCommentDragClose() {
+    if (!_commentSheetController.isAttached) {
       _closeComments();
       return;
     }
-    final expandThreshold = (_commentSheetInitialExtent + maxExtent) / 2;
-    final target =
-        size >= expandThreshold ? maxExtent : _commentSheetInitialExtent;
+    final size = _commentSheetController.size;
+    final durationMs = (size * 300).clamp(120, 300).round();
     _commentSheetController.animateTo(
-      target,
-      duration: const Duration(milliseconds: 220),
+      0.0,
+      duration: Duration(milliseconds: durationMs),
       curve: Curves.easeOutCubic,
     );
   }
@@ -1306,7 +1416,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
           final commentSheetHostHeight =
               math.max(1.0, constraints.biggest.height - keyboard);
           final commentSheetMaxExtent =
-              _commentSheetMaxExtentFor(commentSheetHostHeight);
+              _commentSheetMaxExtentFor(context, commentSheetHostHeight);
           // Cache media area width untuk zone detection di long-press
           // handler (left/center/right 2x speed vs pause).
           _mediaAreaWidth = constraints.maxWidth;
