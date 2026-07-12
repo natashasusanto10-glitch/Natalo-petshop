@@ -92,7 +92,6 @@ export async function sendFeedPublishPush(postId: string): Promise<void> {
         notifyOnPublish: true,
         pushSegment: true,
         publishPushSentAt: true,
-        thumbnailUrl: true,
       },
     });
     if (!post) return;
@@ -166,10 +165,17 @@ export async function sendFeedPublishTestPush(params: {
   description: string | null;
 }): Promise<void> {
   try {
+    // Reuse buildFeedPushPayload untuk truncation title/body + fallback body
+    // yang sama persis dengan publish-push asli, lalu override url/tag
+    // supaya test push tidak menyentuh post id nyata.
+    const { title, body } = buildFeedPushPayload(
+      "test",
+      params.title,
+      params.description,
+    );
     const payload: PushPayload = {
-      title: params.title.slice(0, 60),
-      body:
-        params.description?.trim().slice(0, 120) || "Ada konten baru di Natalo 🎥",
+      title,
+      body,
       url: "/feed",
       tag: `feed-publish-test-${params.userId}`,
     };

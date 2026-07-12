@@ -121,6 +121,10 @@ export async function POST(request: NextRequest) {
     // Per-product promo pricing. Map productId → discountPrice. null =
     // no discount untuk produk itu (display harga normal).
     productPromos?: Record<string, number | null>;
+    // Admin-only: kirim push notification ke pelanggan saat post publish
+    // (setelah video ready). Diabaikan kalau bukan admin.
+    notifyOnPublish?: boolean;
+    pushSegment?: string;
   };
   // Caption (mapped ke `title` di DB) sekarang opsional sesuai flow baru —
   // kalau user tidak isi caption, kita pakai placeholder "Postingan baru"
@@ -252,6 +256,17 @@ export async function POST(request: NextRequest) {
   const promoEndsAt =
     isAdmin && body.promoEndsAt ? new Date(body.promoEndsAt) : null;
 
+  // Admin-only: opsi "beri tahu pelanggan" via push saat post publish
+  // (dipicu nanti oleh webhook Bunny saat encodingStatus=ready). Sama
+  // persis dengan gating di app/api/feed/posts/route.ts.
+  const VALID_PUSH_SEGMENTS: ReadonlyArray<string> = ["all", "members", "active30d"];
+  const notifyOnPublish = isAdmin && body.notifyOnPublish === true;
+  const pushSegment = notifyOnPublish
+    ? VALID_PUSH_SEGMENTS.includes(String(body.pushSegment))
+      ? String(body.pushSegment)
+      : "members"
+    : null;
+
   // Insert FeedPost row in uploading state. videoUrl + thumbnailUrl filled
   // when webhook reports "ready" (encodingStatus=ready). Until then the
   // feed list query excludes this row.
@@ -284,6 +299,8 @@ export async function POST(request: NextRequest) {
         promoDiscountPrice,
         promoStartsAt: promoStartsAt && !Number.isNaN(promoStartsAt.getTime()) ? promoStartsAt : null,
         promoEndsAt: promoEndsAt && !Number.isNaN(promoEndsAt.getTime()) ? promoEndsAt : null,
+        notifyOnPublish,
+        pushSegment,
       },
       select: { id: true },
     });
