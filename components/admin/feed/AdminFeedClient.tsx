@@ -16,15 +16,15 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  FiCheckSquare,
   FiEdit2,
   FiExternalLink,
   FiPlus,
   FiRefreshCw,
-  FiSquare,
   FiTrash2,
   FiX,
 } from "react-icons/fi";
+import { Badge, Button, PageHeader } from "@/components/admin/ui";
+import type { BadgeVariant } from "@/components/admin/ui";
 
 type AdminFilter =
   | "all"
@@ -99,7 +99,7 @@ export function AdminFeedClient() {
   const [actionBusy, setActionBusy] = useState<string | null>(null); // post id
   const [syncBusy, setSyncBusy] = useState(false);
 
-  // Bulk selection — set of postId yang user centang. Floating action bar
+  // Bulk selection — set of postId yang user centang. Action bar inline
   // muncul saat ≥1 row selected. Reset saat filter berubah (post mungkin
   // sudah tidak match filter baru).
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -386,41 +386,36 @@ export function AdminFeedClient() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
-      {/* Header */}
-      <header className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-black text-gray-900">Feed</h1>
-          <p className="text-xs font-semibold text-gray-500">
-            Total {counts.total} post · {counts.pending} menunggu review
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={syncBunny}
-            disabled={syncBusy}
-            title="Polling Bunny untuk post yang nyangkut encoding (webhook miss)"
-            className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-2 text-[11px] font-extrabold text-gray-700 shadow-sm transition active:bg-gray-50 disabled:opacity-50"
-          >
-            <FiRefreshCw className={`h-3.5 w-3.5 ${syncBusy ? "animate-spin" : ""}`} />
-            {syncBusy ? "Sync…" : "Sync Bunny"}
-          </button>
-          <Link
-            href="/admin/feed/new"
-            className="inline-flex items-center gap-1.5 rounded-full bg-natalo-600 px-4 py-2 text-xs font-extrabold text-white shadow-sm transition active:scale-95"
-          >
-            <FiPlus className="h-4 w-4" />
-            Buat Post
-          </Link>
-        </div>
-      </header>
+    <div className="space-y-4">
+      <PageHeader
+        title="Feed"
+        subtitle={`${counts.total} post · ${counts.pending} menunggu review`}
+        actions={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={syncBunny}
+              disabled={syncBusy}
+              title="Polling Bunny untuk post yang nyangkut encoding (webhook miss)"
+            >
+              <FiRefreshCw className={`h-3.5 w-3.5 ${syncBusy ? "animate-spin" : ""}`} />
+              {syncBusy ? "Sync…" : "Sync Bunny"}
+            </Button>
+            <Button href="/admin/feed/new" size="sm">
+              <FiPlus className="h-4 w-4" />
+              Buat post
+            </Button>
+          </>
+        }
+      />
 
       {/* Filter tabs */}
       <nav
         role="tablist"
         aria-label="Filter feed admin"
-        className="-mx-1 mb-4 flex gap-1.5 overflow-x-auto px-1 py-1"
+        className="-mx-1 flex gap-1.5 overflow-x-auto px-1 py-1"
       >
         {FILTERS.map((f) => {
           const active = filter === f.value;
@@ -433,10 +428,10 @@ export function AdminFeedClient() {
               role="tab"
               aria-selected={active}
               onClick={() => setFilter(f.value)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-extrabold transition ${
+              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition ${
                 active
                   ? "border-natalo-600 bg-natalo-600 text-white"
-                  : "border-gray-200 bg-white text-gray-700 active:bg-gray-100"
+                  : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50"
               }`}
             >
               {f.label}
@@ -454,36 +449,8 @@ export function AdminFeedClient() {
         })}
       </nav>
 
-      {/* Select-all toolbar — muncul saat ada item di list. Tap untuk
-          select semua visible (yg sudah di-load), tap lagi untuk clear. */}
-      {!loading && items.length > 0 && (
-        <div className="mb-2 flex items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 text-xs font-bold text-gray-600 shadow-sm">
-          <button
-            type="button"
-            onClick={toggleSelectAllVisible}
-            disabled={bulkBusy}
-            className="inline-flex items-center gap-1.5 transition active:scale-95 disabled:opacity-50"
-          >
-            {allVisibleSelected ? (
-              <FiCheckSquare className="h-4 w-4 text-natalo-600" />
-            ) : (
-              <FiSquare className="h-4 w-4 text-gray-400" />
-            )}
-            <span>
-              {allVisibleSelected
-                ? `${items.length} terpilih`
-                : "Pilih semua"}
-            </span>
-          </button>
-          {selectedIds.size > 0 && (
-            <span className="text-natalo-600">{selectedIds.size} dipilih</span>
-          )}
-        </div>
-      )}
-
-      {/* List */}
       {loading && (
-        <p className="py-12 text-center text-xs font-bold text-gray-400">Memuat...</p>
+        <p className="py-12 text-center text-xs font-bold text-zinc-400">Memuat...</p>
       )}
       {error && (
         <p className="rounded-2xl bg-red-50 p-3 text-center text-sm font-bold text-red-700">
@@ -491,107 +458,123 @@ export function AdminFeedClient() {
         </p>
       )}
       {!loading && !error && items.length === 0 && (
-        <p className="rounded-3xl border border-dashed border-gray-200 bg-white p-8 text-center text-xs font-bold text-gray-500">
+        <p className="rounded-2xl border border-dashed border-zinc-200 bg-white p-8 text-center text-xs font-bold text-zinc-500">
           Tidak ada post di kategori ini.
         </p>
       )}
 
-      <div className={`space-y-3 ${selectedIds.size > 0 ? "pb-24" : ""}`}>
-        {items.map((p) => (
-          <AdminFeedRow
-            key={p.id}
-            post={p}
-            busy={actionBusy === p.id}
-            isTrashView={isTrashView}
-            selected={selectedIds.has(p.id)}
-            onToggleSelect={() => toggleSelected(p.id)}
-            onModerate={(action) => moderate(p.id, action)}
-            onDelete={() => deletePost(p.id)}
-          />
-        ))}
-      </div>
+      {/* List — satu kartu dense berisi baris ber-border (bukan kartu
+          bertumpuk terpisah), sejalan dengan halaman admin lain. */}
+      {!loading && !error && items.length > 0 && (
+        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+          <div className="flex items-center gap-2 border-b border-zinc-100 bg-zinc-50 px-3 py-2">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={toggleSelectAllVisible}
+              disabled={bulkBusy}
+              className="h-4 w-4 rounded border-zinc-300 text-natalo-600 focus:ring-natalo-400 disabled:opacity-50"
+            />
+            <span className="text-xs font-semibold text-zinc-600">
+              {selectedIds.size > 0 ? `${selectedIds.size} dipilih` : "Pilih semua"}
+            </span>
+          </div>
+          <div className="divide-y divide-zinc-100">
+            {items.map((p) => (
+              <AdminFeedRow
+                key={p.id}
+                post={p}
+                busy={actionBusy === p.id}
+                isTrashView={isTrashView}
+                selected={selectedIds.has(p.id)}
+                onToggleSelect={() => toggleSelected(p.id)}
+                onModerate={(action) => moderate(p.id, action)}
+                onDelete={() => deletePost(p.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {hasMore && !loading && (
         <button
           type="button"
           onClick={() => loadMore()}
           disabled={loadingMore}
-          className="mt-4 w-full rounded-full border border-gray-200 bg-white py-3 text-xs font-extrabold text-gray-700 transition active:bg-gray-50 disabled:opacity-50"
+          className="w-full rounded-full border border-zinc-200 bg-white py-3 text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
         >
           {loadingMore ? "Memuat..." : "Muat lebih banyak"}
         </button>
       )}
 
-      {/* Floating bulk action bar — sticky di bawah viewport saat ada
-          selection. Actions tergantung view: trash view → Restore /
-          Hapus Permanen. View lain → Approve/Reject (untuk PENDING-heavy),
-          Hide, Pindah ke Sampah. Admin pilih action yang relevan. */}
+      {/* Bulk action bar — inline di dalam alur konten (mengikuti lebar
+          halaman), BUKAN lagi melayang full-width di bawah viewport. Actions
+          tergantung view: trash view → Restore / Hapus Permanen. View lain
+          → Approve/Reject, Hide, Pindah ke Sampah. */}
       {selectedIds.size > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
-          <div className="mx-auto flex max-w-4xl items-center gap-2 overflow-x-auto px-3 py-3">
-            <button
-              type="button"
-              onClick={() => setSelectedIds(new Set())}
-              disabled={bulkBusy}
-              aria-label="Batalkan seleksi"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gray-100 text-gray-600 transition active:bg-gray-200 disabled:opacity-50"
-            >
-              <FiX className="h-4 w-4" />
-            </button>
-            <span className="shrink-0 text-[11px] font-extrabold text-gray-700">
-              {selectedIds.size} dipilih
-            </span>
-            <div className="ml-1 flex gap-1.5">
-              {isTrashView ? (
-                <>
-                  <BulkBtn
-                    label="Restore"
-                    tone="green"
-                    onClick={() => bulkAction("restore")}
-                    busy={bulkBusy}
-                  />
-                  <BulkBtn
-                    label="Hapus Permanen"
-                    tone="red"
-                    onClick={() => bulkAction("hard-delete")}
-                    busy={bulkBusy}
-                  />
-                </>
-              ) : (
-                <>
-                  <BulkBtn
-                    label="Setujui"
-                    tone="green"
-                    onClick={() => bulkAction("approve")}
-                    busy={bulkBusy}
-                  />
-                  <BulkBtn
-                    label="Tolak"
-                    tone="red"
-                    onClick={() => bulkAction("reject")}
-                    busy={bulkBusy}
-                  />
-                  <BulkBtn
-                    label="Sembunyikan"
-                    tone="gray"
-                    onClick={() => bulkAction("hide")}
-                    busy={bulkBusy}
-                  />
-                  <BulkBtn
-                    label="Tampilkan"
-                    tone="gray"
-                    onClick={() => bulkAction("unhide")}
-                    busy={bulkBusy}
-                  />
-                  <BulkBtn
-                    label="Ke Sampah"
-                    tone="red"
-                    onClick={() => bulkAction("soft-delete")}
-                    busy={bulkBusy}
-                  />
-                </>
-              )}
-            </div>
+        <div className="sticky bottom-4 z-10 flex flex-wrap items-center gap-2 rounded-2xl border border-natalo-200 bg-white px-3 py-2.5 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setSelectedIds(new Set())}
+            disabled={bulkBusy}
+            aria-label="Batalkan seleksi"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 disabled:opacity-50"
+          >
+            <FiX className="h-4 w-4" />
+          </button>
+          <span className="shrink-0 text-xs font-bold text-natalo-700">
+            {selectedIds.size} dipilih
+          </span>
+          <div className="ml-auto flex flex-wrap gap-1.5">
+            {isTrashView ? (
+              <>
+                <BulkBtn
+                  label="Restore"
+                  tone="green"
+                  onClick={() => bulkAction("restore")}
+                  busy={bulkBusy}
+                />
+                <BulkBtn
+                  label="Hapus Permanen"
+                  tone="red"
+                  onClick={() => bulkAction("hard-delete")}
+                  busy={bulkBusy}
+                />
+              </>
+            ) : (
+              <>
+                <BulkBtn
+                  label="Setujui"
+                  tone="green"
+                  onClick={() => bulkAction("approve")}
+                  busy={bulkBusy}
+                />
+                <BulkBtn
+                  label="Tolak"
+                  tone="red"
+                  onClick={() => bulkAction("reject")}
+                  busy={bulkBusy}
+                />
+                <BulkBtn
+                  label="Sembunyikan"
+                  tone="gray"
+                  onClick={() => bulkAction("hide")}
+                  busy={bulkBusy}
+                />
+                <BulkBtn
+                  label="Tampilkan"
+                  tone="gray"
+                  onClick={() => bulkAction("unhide")}
+                  busy={bulkBusy}
+                />
+                <BulkBtn
+                  label="Ke Sampah"
+                  tone="red"
+                  onClick={() => bulkAction("soft-delete")}
+                  busy={bulkBusy}
+                />
+              </>
+            )}
           </div>
         </div>
       )}
@@ -612,21 +595,44 @@ function BulkBtn({
 }) {
   const cls =
     tone === "green"
-      ? "bg-green-100 text-green-800 active:bg-green-200"
+      ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
       : tone === "red"
-        ? "bg-red-100 text-red-800 active:bg-red-200"
-        : "bg-gray-100 text-gray-700 active:bg-gray-200";
+        ? "bg-red-50 text-red-700 hover:bg-red-100"
+        : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200";
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={busy}
-      className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-extrabold transition disabled:opacity-50 ${cls}`}
+      className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-50 ${cls}`}
     >
       {label}
     </button>
   );
 }
+
+const KIND_LABEL: Record<string, string> = {
+  VIDEO_PRODUCT: "Video produk",
+  USER_VIDEO: "Video",
+  VIDEO_ONLY: "Video",
+  PHOTO_CAROUSEL: "Foto",
+  COMMUNITY: "Diskusi",
+  PRODUCT_ONLY: "Produk",
+  PROMO: "Promo",
+};
+
+const STATUS_META: Record<string, { text: string; variant: BadgeVariant }> = {
+  PENDING_REVIEW: { text: "Menunggu review", variant: "warning" },
+  ACTIVE: { text: "Aktif", variant: "success" },
+  REJECTED: { text: "Ditolak", variant: "danger" },
+  HIDDEN: { text: "Disembunyikan", variant: "neutral" },
+};
+
+const ENCODING_META: Record<string, { text: string; variant: BadgeVariant }> = {
+  uploading: { text: "Upload…", variant: "info" },
+  processing: { text: "Encoding…", variant: "info" },
+  failed: { text: "Encoding gagal", variant: "danger" },
+};
 
 function AdminFeedRow({
   post,
@@ -647,284 +653,186 @@ function AdminFeedRow({
   ) => void;
   onDelete: () => void;
 }) {
-  const statusLabel: Record<string, { text: string; cls: string }> = {
-    PENDING_REVIEW: {
-      text: "Menunggu Review",
-      cls: "bg-amber-100 text-amber-800",
-    },
-    ACTIVE: { text: "Aktif", cls: "bg-green-100 text-green-800" },
-    REJECTED: { text: "Ditolak", cls: "bg-red-100 text-red-800" },
-    HIDDEN: { text: "Disembunyikan", cls: "bg-gray-200 text-gray-700" },
-  };
-  const meta = statusLabel[post.status] ?? {
+  const statusMeta = STATUS_META[post.status] ?? {
     text: post.status,
-    cls: "bg-gray-100 text-gray-700",
+    variant: "neutral" as BadgeVariant,
   };
-
   // Encoding badge — sembunyi kalau sudah "ready" (90% kasus). Yang penting
   // ditampilkan adalah state non-terminal/error supaya admin tahu kenapa
   // tombol Approve disabled atau kenapa post tidak muncul di feed.
-  const encodingMeta: Record<string, { text: string; cls: string }> = {
-    uploading: { text: "Upload…", cls: "bg-sky-100 text-sky-800" },
-    processing: { text: "Encoding…", cls: "bg-sky-100 text-sky-800" },
-    failed: { text: "Encoding gagal", cls: "bg-red-100 text-red-800" },
-  };
-  const encoding = encodingMeta[post.encodingStatus];
+  const encodingMeta = ENCODING_META[post.encodingStatus];
   const isApprovable = post.encodingStatus === "ready";
 
+  const thumb = post.thumbnailUrl || post.firstMediaUrl;
+  const isVideo =
+    post.kind === "VIDEO_PRODUCT" ||
+    post.kind === "USER_VIDEO" ||
+    post.kind === "VIDEO_ONLY";
+  const isPhoto = post.kind === "PHOTO_CAROUSEL";
+  const kindLabel = KIND_LABEL[post.kind] ?? post.kind;
+
   return (
-    <article
-      className={`overflow-hidden rounded-2xl border bg-white transition ${
-        selected
-          ? "border-natalo-500 ring-2 ring-natalo-200"
-          : "border-gray-100"
+    <div
+      className={`flex flex-col gap-3 px-3 py-3 transition md:flex-row md:items-center md:gap-4 ${
+        selected ? "bg-natalo-50/60" : "hover:bg-zinc-50/60"
       }`}
     >
-      <div className="flex gap-3 p-3">
-        {/* Bulk select checkbox — tap area besar (40x40) supaya mudah
-            di-tap di mobile. Tap di mana saja di area thumbnail-side
-            juga toggle selection (label wrap implicit via onClick). */}
-        <button
-          type="button"
-          onClick={onToggleSelect}
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
           disabled={busy}
           aria-label={selected ? "Batal pilih post" : "Pilih post"}
-          aria-pressed={selected}
-          className="grid h-10 w-10 shrink-0 place-items-center self-center rounded-full text-gray-400 transition active:bg-gray-100 disabled:opacity-50"
-        >
-          {selected ? (
-            <FiCheckSquare className="h-5 w-5 text-natalo-600" />
-          ) : (
-            <FiSquare className="h-5 w-5" />
-          )}
-        </button>
+          className="h-4 w-4 shrink-0 rounded border-zinc-300 text-natalo-600 focus:ring-natalo-400 disabled:opacity-50"
+        />
 
         {/* Thumbnail kecil — fallback chain:
             1. thumbnailUrl (video poster, Bunny generate)
             2. firstMediaUrl (PHOTO_CAROUSEL first image)
             3. Placeholder dengan icon kind */}
-        {(() => {
-          const thumb = post.thumbnailUrl || post.firstMediaUrl;
-          const isVideo = post.kind === "VIDEO_PRODUCT" ||
-            post.kind === "USER_VIDEO" ||
-            post.kind === "VIDEO_ONLY";
-          const isPhoto = post.kind === "PHOTO_CAROUSEL";
-          const ringClass = isVideo
-            ? "ring-2 ring-blue-200"
-            : isPhoto
-              ? "ring-2 ring-emerald-200"
-              : "ring-1 ring-gray-200";
-          return (
-            <div
-              className={`relative h-24 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100 ${ringClass}`}
-            >
-              {thumb ? (
-                <>
-                  <Image
-                    src={thumb}
-                    alt=""
-                    fill
-                    sizes="64px"
-                    className="object-cover"
-                  />
-                  {/* Play icon overlay untuk video — visual cue thumbnail = video */}
-                  {isVideo && (
-                    <div className="absolute inset-0 grid place-items-center bg-black/20">
-                      <div className="grid h-7 w-7 place-items-center rounded-full bg-white/90">
-                        <svg
-                          className="h-3.5 w-3.5 text-gray-900"
-                          fill="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path d="M8 5v14l11-7z" />
-                        </svg>
-                      </div>
-                    </div>
-                  )}
-                  {/* Counter badge untuk multi-photo */}
-                  {isPhoto && post.mediaCount > 1 && (
-                    <div className="absolute right-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                      {post.mediaCount}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="grid h-full place-items-center text-gray-300">
-                  {isPhoto ? (
-                    <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                      <rect x="3" y="3" width="18" height="18" rx="2" />
-                      <circle cx="8.5" cy="8.5" r="1.5" />
-                      <path d="m21 15-5-5L5 21" />
+        <div className="relative h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
+          {thumb ? (
+            <>
+              <Image src={thumb} alt="" fill sizes="44px" className="object-cover" />
+              {/* Play icon overlay untuk video — visual cue thumbnail = video */}
+              {isVideo && (
+                <div className="absolute inset-0 grid place-items-center bg-black/20">
+                  <div className="grid h-5 w-5 place-items-center rounded-full bg-white/90">
+                    <svg className="h-2.5 w-2.5 text-zinc-900" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z" />
                     </svg>
-                  ) : isVideo ? (
-                    <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                      <rect x="3" y="6" width="14" height="12" rx="2" />
-                      <path d="m17 10 4-2v8l-4-2" />
-                    </svg>
-                  ) : (
-                    <span className="text-[10px] font-bold">No thumb</span>
-                  )}
+                  </div>
                 </div>
               )}
+              {/* Counter badge untuk multi-photo */}
+              {isPhoto && post.mediaCount > 1 && (
+                <div className="absolute right-0.5 top-0.5 rounded-full bg-black/70 px-1 py-0.5 text-[8px] font-bold text-white">
+                  {post.mediaCount}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="grid h-full place-items-center text-[9px] font-bold text-zinc-300">
+              No thumb
             </div>
-          );
-        })()}
+          )}
+        </div>
 
         {/* Info */}
         <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="line-clamp-2 text-sm font-extrabold text-gray-900">
-              {post.title}
-            </h3>
-            <div className="flex shrink-0 flex-col items-end gap-1">
-              <span
-                className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${meta.cls}`}
-              >
-                {meta.text}
-              </span>
-              {encoding && (
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${encoding.cls}`}
-                >
-                  {encoding.text}
-                </span>
-              )}
-            </div>
-          </div>
-          {/* Kind badge dengan icon + Indonesian label */}
-          <div className="mt-1 flex items-center gap-1.5 text-[11px] font-semibold text-gray-500">
-            <span className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 font-bold text-gray-700">
-              {(() => {
-                switch (post.kind) {
-                  case "VIDEO_PRODUCT":
-                    return <>🎥 Video Produk</>;
-                  case "USER_VIDEO":
-                  case "VIDEO_ONLY":
-                    return <>🎥 Video</>;
-                  case "PHOTO_CAROUSEL":
-                    return (
-                      <>
-                        📷 Foto
-                        {post.mediaCount > 1 && ` (${post.mediaCount})`}
-                      </>
-                    );
-                  case "COMMUNITY":
-                    return <>💬 Diskusi</>;
-                  case "PRODUCT_ONLY":
-                    return <>🏷️ Produk</>;
-                  case "PROMO":
-                    return <>🎁 Promo</>;
-                  default:
-                    return <>{post.kind}</>;
-                }
-              })()}
-            </span>
-            <span>·</span>
-            <span className="truncate">
-              {post.author.role === "ADMIN" ? "Admin" : "User"} {post.author.name}
-            </span>
-            <span>·</span>
-            <span className="shrink-0">
-              {new Date(post.createdAt).toLocaleDateString("id-ID", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-              })}
-            </span>
-          </div>
-          <p className="mt-0.5 text-[11px] font-bold text-gray-500">
+          <h3 className="truncate text-sm font-bold text-zinc-900">{post.title}</h3>
+          <p className="mt-0.5 truncate text-[11px] text-zinc-500">
+            {kindLabel} · {post.author.role === "ADMIN" ? "Admin" : "User"}{" "}
+            {post.author.name} ·{" "}
+            {new Date(post.createdAt).toLocaleDateString("id-ID", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            })}
+          </p>
+          <p className="mt-0.5 text-[11px] text-zinc-400">
             ♥ {post.likeCount} · 💬 {post.commentCount} · 👁 {post.viewCount}
           </p>
           {post.moderationNote && (
-            <p className="mt-1 line-clamp-2 rounded-lg bg-gray-50 px-2 py-1 text-[10px] italic text-gray-600">
+            <p className="mt-1 line-clamp-2 rounded-lg bg-zinc-50 px-2 py-1 text-[10px] italic text-zinc-500">
               Catatan: {post.moderationNote}
             </p>
           )}
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex flex-wrap items-center gap-1.5 border-t border-gray-100 bg-gray-50 px-3 py-2">
-        {/* Di trash view, post sudah soft-deleted. Sembunyikan dulu semua
-            moderation buttons (Approve/Reject/Hide/Unhide) yang tidak make
-            sense untuk row yang di sampah — tampilkan tombol Restore saja
-            untuk lift soft-delete + Hapus untuk purge permanen. */}
-        {!isTrashView && post.status === "PENDING_REVIEW" && (
-          <>
+      {/* Badges + actions — kolom kanan pada desktop, baris tersendiri di mobile. */}
+      <div className="flex shrink-0 items-center gap-2 pl-7 md:pl-0">
+        <div className="flex shrink-0 flex-col items-start gap-1 md:items-end">
+          <Badge variant={statusMeta.variant}>{statusMeta.text}</Badge>
+          {encodingMeta && <Badge variant={encodingMeta.variant}>{encodingMeta.text}</Badge>}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          {!isTrashView && post.status === "PENDING_REVIEW" && (
+            <>
+              <ActionButton
+                label="Setujui"
+                tone="green"
+                onClick={() => onModerate("approve")}
+                busy={busy}
+                disabled={!isApprovable}
+                title={
+                  isApprovable
+                    ? undefined
+                    : post.encodingStatus === "failed"
+                      ? "Video gagal di-encode — tolak / hapus saja"
+                      : "Tunggu sampai encoding selesai"
+                }
+              />
+              <ActionButton
+                label="Tolak"
+                tone="red"
+                onClick={() => onModerate("reject")}
+                busy={busy}
+              />
+            </>
+          )}
+          {!isTrashView && post.status === "ACTIVE" && (
             <ActionButton
-              label="Setujui"
+              label="Sembunyikan"
+              tone="gray"
+              onClick={() => onModerate("hide")}
+              busy={busy}
+            />
+          )}
+          {!isTrashView && post.status === "HIDDEN" && (
+            <ActionButton
+              label="Tampilkan"
               tone="green"
-              onClick={() => onModerate("approve")}
+              onClick={() => onModerate("unhide")}
               busy={busy}
-              disabled={!isApprovable}
-              title={
-                isApprovable
-                  ? undefined
-                  : post.encodingStatus === "failed"
-                    ? "Video gagal di-encode — tolak / hapus saja"
-                    : "Tunggu sampai encoding selesai"
-              }
             />
+          )}
+          {isTrashView && (
             <ActionButton
-              label="Tolak"
-              tone="red"
-              onClick={() => onModerate("reject")}
+              label="Restore"
+              tone="green"
+              onClick={() => onModerate("restore")}
               busy={busy}
             />
-          </>
-        )}
-        {!isTrashView && post.status === "ACTIVE" && (
-          <ActionButton
-            label="Sembunyikan"
-            tone="gray"
-            onClick={() => onModerate("hide")}
-            busy={busy}
-          />
-        )}
-        {!isTrashView && post.status === "HIDDEN" && (
-          <ActionButton
-            label="Tampilkan"
-            tone="green"
-            onClick={() => onModerate("unhide")}
-            busy={busy}
-          />
-        )}
-        {isTrashView && (
-          <ActionButton
-            label="Restore"
-            tone="green"
-            onClick={() => onModerate("restore")}
-            busy={busy}
-          />
-        )}
-        {!isTrashView && post.author.role === "ADMIN" && (
-          <Link
-            href={`/admin/feed/${post.id}/edit`}
-            className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1.5 text-[11px] font-extrabold text-blue-700 transition active:bg-blue-100"
+          )}
+          {!isTrashView && post.author.role === "ADMIN" && (
+            <Link
+              href={`/admin/feed/${post.id}/edit`}
+              aria-label="Edit"
+              title="Edit"
+              className="grid h-7 w-7 place-items-center rounded-full bg-blue-50 text-blue-700 transition hover:bg-blue-100"
+            >
+              <FiEdit2 className="h-3.5 w-3.5" />
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={busy}
+            aria-label={isTrashView ? "Hapus permanen" : "Hapus"}
+            title={isTrashView ? "Hapus permanen" : "Hapus"}
+            className="grid h-7 w-7 place-items-center rounded-full bg-red-50 text-red-700 transition hover:bg-red-100 disabled:opacity-50"
           >
-            <FiEdit2 className="h-3 w-3" /> Edit
-          </Link>
-        )}
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={busy}
-          className="inline-flex items-center gap-1 rounded-full bg-red-50 px-3 py-1.5 text-[11px] font-extrabold text-red-700 transition active:bg-red-100 disabled:opacity-50"
-        >
-          <FiTrash2 className="h-3 w-3" /> {isTrashView ? "Hapus Permanen" : "Hapus"}
-        </button>
-        {post.videoUrl && (
-          <a
-            href={post.videoUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ml-auto inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-[11px] font-extrabold text-gray-700 transition active:bg-gray-100"
-          >
-            <FiExternalLink className="h-3 w-3" /> Buka video
-          </a>
-        )}
+            <FiTrash2 className="h-3.5 w-3.5" />
+          </button>
+          {post.videoUrl && (
+            <a
+              href={post.videoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Buka video"
+              title="Buka video"
+              className="grid h-7 w-7 place-items-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200"
+            >
+              <FiExternalLink className="h-3.5 w-3.5" />
+            </a>
+          )}
+        </div>
       </div>
-    </article>
+    </div>
   );
 }
 
@@ -944,9 +852,9 @@ function ActionButton({
   title?: string;
 }) {
   const cls = {
-    green: "bg-green-600 text-white active:bg-green-700",
-    red: "bg-red-600 text-white active:bg-red-700",
-    gray: "bg-gray-200 text-gray-700 active:bg-gray-300",
+    green: "bg-emerald-600 text-white hover:bg-emerald-700",
+    red: "bg-red-600 text-white hover:bg-red-700",
+    gray: "bg-zinc-200 text-zinc-700 hover:bg-zinc-300",
   }[tone];
   return (
     <button
@@ -954,7 +862,7 @@ function ActionButton({
       onClick={onClick}
       disabled={busy || disabled}
       title={title}
-      className={`rounded-full px-3 py-1.5 text-[11px] font-extrabold transition disabled:cursor-not-allowed disabled:opacity-50 ${cls}`}
+      className={`rounded-full px-2.5 py-1.5 text-[11px] font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${cls}`}
     >
       {label}
     </button>

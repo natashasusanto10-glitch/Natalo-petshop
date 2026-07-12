@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AdminFeedClient } from "@/components/admin/feed/AdminFeedClient";
+import { AdminPage } from "@/components/admin/ui";
 
 export const metadata: Metadata = {
   title: "Feed — Admin Natalo",
@@ -7,8 +8,8 @@ export const metadata: Metadata = {
 
 export default function AdminFeedPage() {
   return (
-    <main className="min-h-[100dvh] bg-slate-50 px-4 pb-24 pt-4">
+    <AdminPage maxWidth="lg">
       <AdminFeedClient />
-    </main>
+    </AdminPage>
   );
 }
