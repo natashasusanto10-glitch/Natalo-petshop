@@ -159,6 +159,11 @@ export async function POST(request: NextRequest) {
         },
       });
       void sendFeedPendingReviewNotification({ postId: post.id });
+      // Publish-push — samakan dengan webhook + reconcile.ts. Guard internal
+      // (admin/ACTIVE/notifyOnPublish/klaim atomik) yang memutuskan.
+      void import("@/lib/feed/publish-push").then(({ sendFeedPublishPush }) =>
+        sendFeedPublishPush(post.id),
+      );
       results.push({ postId: post.id, action: "ready" });
     } else if (meta.status === BUNNY_VIDEO_STATUS.ERROR) {
       await prisma.feedPost.update({
