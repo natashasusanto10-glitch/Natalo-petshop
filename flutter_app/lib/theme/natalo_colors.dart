@@ -23,6 +23,18 @@ class NataloColors {
   static const Color accentSoft = Color(0xFFFFF1EB);
   static const Color accentDark = Color(0xFFE55520);
 
+  // ── Identitas akun official (Natalo Petshop) ──
+  // Satu keluarga emas premium dipakai SERAGAM di semua layar (feed,
+  // komentar, likers, follow list, profil) untuk nama + centang rosette.
+  // [officialGold] untuk latar gelap/hero; [officialGoldOnLight] (lebih
+  // pekat) untuk sheet putih supaya tetap terbaca. Gradasi rosette metalik
+  // di widget OfficialVerifiedBadge.
+  static const Color officialGold = Color(0xFFF3D88E);
+  static const Color officialGoldOnLight = Color(0xFFA9781F);
+  static const Color officialRosetteTop = Color(0xFFF6E19A);
+  static const Color officialRosetteMid = Color(0xFFE3B84C);
+  static const Color officialRosetteBottom = Color(0xFFB8862B);
+
   /// Alias `primary` untuk legacy reference `NataloColors.nataloBlue`.
   static const Color nataloBlue = primary;
 

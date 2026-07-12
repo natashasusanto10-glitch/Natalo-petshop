@@ -895,8 +895,12 @@ class _CaptionTile extends StatelessWidget {
                             name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              // Official → emas identitas (latar komentar
+                              // gelap); user biasa putih.
+                              color: author.isOfficialAccount
+                                  ? NataloColors.officialGold
+                                  : Colors.white,
                               fontWeight: FontWeight.w800,
                               fontSize: 12.5,
                             ),
@@ -904,11 +908,7 @@ class _CaptionTile extends StatelessWidget {
                         ),
                         if (author.isOfficialAccount) ...[
                           const SizedBox(width: 4),
-                          const Icon(
-                            Icons.verified_rounded,
-                            size: 13,
-                            color: NataloColors.primary,
-                          ),
+                          const OfficialVerifiedBadge(size: 13),
                         ],
                       ],
                     ),
@@ -1058,10 +1058,12 @@ class _CommentTile extends StatelessWidget {
                                   name,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    // White untuk dark drawer (was 0xFF111111
-                                    // dark text di dark bg → poor contrast.
-                                    color: Colors.white,
+                                  style: TextStyle(
+                                    // Official → emas identitas; user biasa
+                                    // putih (dark drawer).
+                                    color: author.isOfficialAccount
+                                        ? NataloColors.officialGold
+                                        : Colors.white,
                                     fontWeight: FontWeight.w800,
                                     fontSize: 12.5,
                                   ),
@@ -1069,11 +1071,7 @@ class _CommentTile extends StatelessWidget {
                               ),
                               if (author.isOfficialAccount) ...[
                                 const SizedBox(width: 4),
-                                const Icon(
-                                  Icons.verified_rounded,
-                                  size: 13,
-                                  color: NataloColors.primary,
-                                ),
+                                const OfficialVerifiedBadge(size: 13),
                               ],
                             ],
                           ),

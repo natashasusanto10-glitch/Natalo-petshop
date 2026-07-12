@@ -195,6 +195,18 @@ export async function POST(request: Request) {
 
   try {
     const customerSession = await getSession("CUSTOMER");
+    // Akun official (admin) hanya untuk berinteraksi (like/komentar/follow),
+    // TIDAK boleh checkout/beli. getSession("CUSTOMER") menerima ADMIN via
+    // privilege-elevation, jadi guard eksplisit di sini.
+    if (customerSession?.role === "ADMIN") {
+      return NextResponse.json(
+        {
+          message:
+            "Akun admin tidak dapat melakukan pembelian. Gunakan akun pelanggan.",
+        },
+        { status: 403 },
+      );
+    }
     const sessionUserId = customerSession?.sub ?? null;
     const { effectiveUserId } = await resolveOrderIdentity({
       sessionUserId,

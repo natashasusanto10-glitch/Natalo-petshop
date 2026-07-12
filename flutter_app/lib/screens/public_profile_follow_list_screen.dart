@@ -460,16 +460,31 @@ class _FollowUserTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    user.name.isEmpty ? user.displayHandle : user.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: cs.onSurface,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      height: 1.2,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          user.name.isEmpty ? user.displayHandle : user.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            // Official → emas identitas (sheet putih); user
+                            // biasa → warna teks normal.
+                            color: user.isOfficial
+                                ? NataloColors.officialGoldOnLight
+                                : cs.onSurface,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            height: 1.2,
+                          ),
+                        ),
+                      ),
+                      if (user.isOfficial) ...[
+                        const SizedBox(width: 4),
+                        const OfficialVerifiedBadge(size: 14),
+                      ],
+                    ],
                   ),
                   if (subtitle.isNotEmpty) ...[
                     const SizedBox(height: 3),

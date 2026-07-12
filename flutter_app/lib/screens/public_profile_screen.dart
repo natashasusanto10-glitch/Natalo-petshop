@@ -339,7 +339,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: onAppBar,
+              // Judul official → emas identitas; ikon tetap putih (chrome).
+              color: isOfficial ? NataloColors.officialGold : onAppBar,
               fontSize: 18,
               fontWeight: FontWeight.w800,
               height: 1.1,
@@ -746,42 +747,45 @@ class _OfficialHeader extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Colors.white,
+                    // Emas identitas official — seragam dgn feed/komentar.
+                    color: NataloColors.officialGold,
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
                     height: 1.1,
                   ),
                 ),
               ),
-              const SizedBox(width: 5),
-              const Icon(
-                Icons.verified_rounded,
-                color: Color(0xFFBFE0FF),
-                size: 19,
-              ),
+              const SizedBox(width: 6),
+              const OfficialVerifiedBadge(size: 20),
             ],
           ),
           const SizedBox(height: 8),
-          // Pill "Akun Resmi" — chip di atas hero (token heroChip).
+          // Pill "Akun Resmi" — aksen emas identitas (tint + border emas).
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.16),
+              color: NataloColors.officialGold.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: NataloColors.officialGold.withValues(alpha: 0.45),
+                width: 0.5,
+              ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.shield_rounded, color: Colors.white, size: 13),
+                const Icon(Icons.shield_rounded,
+                    color: NataloColors.officialGold, size: 13),
                 const SizedBox(width: 5),
                 Text(
                   profile.bio?.isNotEmpty == true
-                      ? 'Akun Resmi'
-                      : 'Akun Resmi Natalo Petshop',
+                      ? 'AKUN RESMI'
+                      : 'AKUN RESMI NATALO PETSHOP',
                   style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11.5,
+                    color: NataloColors.officialGold,
+                    fontSize: 11,
                     fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
                     height: 1.0,
                   ),
                 ),
