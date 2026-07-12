@@ -76,6 +76,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _imagePicker = ImagePicker();
 
+  /// True begitu user MENYENTUH & MENGGERAKKAN list secara nyata (drag
+  /// gesture asli, `ScrollStartNotification.dragDetails != null` — bukan
+  /// `jumpTo`/`animateTo` terprogram, keduanya juga memicu notification
+  /// tapi `dragDetails == null`). Dipakai [_settleInitialScroll] sebagai
+  /// SATU-SATUNYA alasan berhenti re-pin ke bawah saat buka pertama.
+  bool _userTouchedScroll = false;
+
   /// Pesan yang sedang dibalas (null = tidak membalas). Di-set oleh swipe /
   /// long-press "Balas", dibersihkan setelah kirim atau tekan ✕.
   ChatMessage? _replyingTo;
@@ -693,25 +700,32 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     });
   }
 
-  /// Re-pin ke bawah beberapa kali selama ~700ms SETELAH initial load —
-  /// `maxScrollExtent` saat frame pertama sering masih PENDEK karena tinggi
-  /// sejumlah item (kartu produk, chip konteks 64×64, foto) baru diketahui
-  /// setelah gambarnya selesai load; satu `jumpTo(maxScrollExtent)` tunggal
-  /// jadi mendarat di TENGAH (bukan di pesan terakhir). Beberapa jump
-  /// terjadwal mengejar tinggi yang tumbuh itu sampai stabil.
+  /// Re-pin ke bawah beberapa kali selama ~1.8s SETELAH initial load —
+  /// `ListView.builder` LAZY: `maxScrollExtent` saat `jumpTo` pertama cuma
+  /// ESTIMASI dari sedikit item yang sempat dibangun (belum tahu tinggi
+  /// pasti seluruh riwayat, apalagi thread panjang dgn variasi tinggi
+  /// bubble/kartu produk/foto). Estimasi itu DIKOREKSI beberapa frame
+  /// berikutnya begitu Flutter benar-benar membangun item ekor — koreksi
+  /// itu bisa menggeser `maxScrollExtent` jauh dari jumpTo pertama. Beberapa
+  /// jump terjadwal mengejar koreksi itu sampai stabil.
   ///
-  /// Guard `_isNearBottom(threshold: 240)`: tiap re-pin cuma jalan kalau
-  /// pandangan MASIH dekat bawah — toleransi 240px menyerap pertumbuhan
-  /// tinggi gambar, tapi kalau user SENGAJA scroll ke atas baca riwayat
-  /// (menjauh >240px) re-pin berhenti (tak menarik paksa). Dipakai HANYA
-  /// saat buka (bukan poll/keyboard), jadi tak mengganggu logika auto-scroll
-  /// pesan-masuk yang sudah ada.
+  /// **Guard = sentuhan user NYATA, BUKAN jarak-ke-bawah.** Percobaan
+  /// pertama guard pakai `_isNearBottom(threshold: 240)` — SALAH ARAH:
+  /// justru saat koreksi ekstensi besar (posisi jadi jauh dari bawah versi
+  /// lama), itulah momen re-pin PALING dibutuhkan, tapi guard jarak
+  /// menghentikannya duluan sebelum sempat mengejar. `_userTouchedScroll`
+  /// (di-set oleh `ScrollStartNotification` BERGERAK dari jari sungguhan,
+  /// lihat `_buildBody`) satu-satunya alasan sah untuk berhenti — user
+  /// belum mungkin sempat scroll manual dalam ~1.8 detik pertama layar
+  /// terbuka. Dipakai HANYA saat buka (bukan poll/keyboard), jadi tak
+  /// mengganggu logika auto-scroll pesan-masuk yang sudah ada.
   void _settleInitialScroll() {
-    const delaysMs = [120, 260, 450, 700];
+    _userTouchedScroll = false;
+    const delaysMs = [120, 260, 450, 700, 1000, 1400, 1800];
     for (final ms in delaysMs) {
       Future<void>.delayed(Duration(milliseconds: ms), () {
         if (!mounted || !_scrollController.hasClients) return;
-        if (!_isNearBottom(threshold: 240)) return;
+        if (_userTouchedScroll) return;
         _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       });
     }
@@ -1292,20 +1306,33 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     // pola sama dgn layar lain yang pakai widget ini (mis. wishlist_screen).
     return NataloPawRefreshIndicator(
       onRefresh: _onPullToRefresh,
-      child: ListView.builder(
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        itemCount: itemCount,
-        itemBuilder: (context, index) {
-          if (showResolvedNote && index == _messages.length) {
-            return const _ResolvedNote();
-          }
-          return Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: _buildMessageItem(_messages[index]),
-          );
+      // NotificationListener DALAM NataloPawRefreshIndicator sendiri
+      // (yang juga NotificationListener) — nested listener aman, keduanya
+      // sama-sama return false (tidak menghentikan notification bubble ke
+      // parent). Tandai sentuhan NYATA (`dragDetails != null` — bukan
+      // jumpTo/animateTo terprogram dari _settleInitialScroll/_scrollToBottom)
+      // supaya re-pin ke bawah saat buka pertama berhenti begitu user betul2
+      // mulai scroll manual, lihat docstring `_userTouchedScroll`.
+      child: NotificationListener<ScrollStartNotification>(
+        onNotification: (n) {
+          if (n.dragDetails != null) _userTouchedScroll = true;
+          return false;
         },
+        child: ListView.builder(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          itemCount: itemCount,
+          itemBuilder: (context, index) {
+            if (showResolvedNote && index == _messages.length) {
+              return const _ResolvedNote();
+            }
+            return Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: _buildMessageItem(_messages[index]),
+            );
+          },
+        ),
       ),
     );
   }

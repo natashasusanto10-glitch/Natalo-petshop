@@ -4,10 +4,58 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../models/feed_post.dart';
 import '../screens/member_post_detail_screen.dart';
+import '../screens/scoped_video_feed_screen.dart';
+import '../widgets/scaled_video_feed_route.dart';
 import 'feed_service.dart';
 import 'order_service.dart';
 import 'product_service.dart';
+
+/// Buka satu postingan feed dengan tujuan yang TEPAT sesuai jenis kontennya
+/// — video langsung ke player fullscreen (bukan berhenti di layar detail
+/// yang butuh tap kedua), non-video tetap ke [MemberPostDetailScreen]
+/// seperti biasa. Dipakai bersama oleh [DeepLinkService] (push notification
+/// HP) dan `NotificationsScreen` (list notifikasi dalam-app) supaya kedua
+/// jalur konsisten.
+///
+/// [ScopedVideoFeedScreen] di-push dengan daftar SATU post saja (bukan
+/// semua video author itu) — notifikasi memang menunjuk SATU postingan
+/// spesifik, beda dari alur "tap video di profil" yang scoped ke semua
+/// video user tsb. `GlobalKey()` baru (tak pernah attached ke widget apa
+/// pun) dipakai sebagai `thumbnailKey` — [pushScaledVideoFeed] null-safe
+/// terhadap ini (origin null → fade-in polos tanpa morph-scale), karena
+/// tidak ada thumbnail nyata di layar sumber (list notifikasi/cold-start).
+Future<void> openFeedPostSmart(
+  BuildContext context,
+  FeedPost post, {
+  bool isOwner = false,
+}) async {
+  if (post.isVideo) {
+    await pushScaledVideoFeed(
+      context,
+      thumbnailKey: GlobalKey(),
+      thumbnailImageUrl: post.thumbnailUrl ?? '',
+      thumbnailBorderRadius: 0,
+      destinationBuilder: (_) => ScopedVideoFeedScreen(
+        posts: [post],
+        initialIndex: 0,
+      ),
+    );
+    return;
+  }
+  await Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => MemberPostDetailScreen(
+        post: post,
+        authorName: post.author.displayName,
+        authorPhotoUrl: post.author.profilePhotoUrl,
+        authorInitial: post.author.initial,
+        isOwner: isOwner,
+      ),
+    ),
+  );
+}
 
 /// Deep link handler — terima link share (mis. wa.me share product) dari
 /// native intent → buka langsung ke screen yang sesuai.
@@ -157,10 +205,11 @@ class DeepLinkService {
     }
   }
 
-  /// Fetch postingan by ID lalu buka MemberPostDetailScreen sebagai viewer
-  /// (isOwner: false → sembunyikan menu edit/hapus, pakai author info dari
-  /// post bukan memberStore). Fallback ke /feed kalau post tidak ada
-  /// (dihapus / belum tayang) atau fetch gagal.
+  /// Fetch postingan by ID lalu buka tujuan yang tepat — video langsung ke
+  /// player fullscreen, non-video ke MemberPostDetailScreen (isOwner: false
+  /// → sembunyikan menu edit/hapus, pakai author info dari post bukan
+  /// memberStore). Fallback ke /feed kalau post tidak ada (dihapus / belum
+  /// tayang) atau fetch gagal.
   Future<void> _openPostById(NavigatorState nav, String postId) async {
     try {
       final post = await feedService.fetchPostById(postId);
@@ -168,17 +217,11 @@ class DeepLinkService {
         nav.pushNamed('/feed');
         return;
       }
-      nav.push(
-        MaterialPageRoute(
-          builder: (_) => MemberPostDetailScreen(
-            post: post,
-            authorName: post.author.displayName,
-            authorPhotoUrl: post.author.profilePhotoUrl,
-            authorInitial: post.author.initial,
-            isOwner: false,
-          ),
-        ),
-      );
+      // `nav` = State<Navigator> — `mounted` guard SEBELUM pakai `nav.context`
+      // lagi setelah await (fetchPostById), cegah lint use_build_context_
+      // synchronously (route/navigator bisa saja sudah di-dispose selama fetch).
+      if (!nav.mounted) return;
+      await openFeedPostSmart(nav.context, post);
     } catch (e) {
       if (kDebugMode) debugPrint('[DeepLink] fetchPostById failed: $e');
       nav.pushNamed('/feed');

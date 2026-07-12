@@ -7,6 +7,7 @@ import '../models/app_notification.dart';
 import '../models/feed_post.dart';
 import '../models/product.dart';
 import '../services/api_client.dart';
+import '../services/deep_link_service.dart' show openFeedPostSmart;
 import '../services/feed_service.dart';
 import '../services/notification_service.dart';
 import '../services/product_service.dart';
@@ -18,7 +19,6 @@ import '../widgets/app_ui.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import 'announcement_detail_screen.dart';
 import 'in_app_browser_screen.dart';
-import 'member_post_detail_screen.dart';
 
 const _brandBlue = NataloColors.primary;
 
@@ -161,6 +161,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return;
     }
 
+    // Notif terkait 1 postingan spesifik (punya feedPostId, mis. "X posting
+    // baru", komentar, like, mention, ATAU broadcast feed dari admin) →
+    // buka postingan itu LANGSUNG (video ke player, non-video ke layar
+    // detail) — reuse infra deep-link `openFeedPostSmart`, BUKAN fallback
+    // generic AnnouncementDetailScreen. Dicek SEBELUM
+    // _isAnnouncementNotification/_isPromoDetailNotification: notifikasi
+    // feed dari admin (mis. postingan video "broadcast") server-set
+    // category/type mengandung kata "broadcast" yang ke-tangkap duluan
+    // oleh _isAnnouncementNotification kalau urutan tak dibalik — akibatnya
+    // postingan video tak pernah terbuka sama sekali, cuma mendarat di
+    // layar teks pengumuman generik (bug: video notif → "Detail
+    // Pengumuman", bukan video-nya).
+    final feedPostId = item.feedPostId?.trim() ?? '';
+    if (feedPostId.isNotEmpty) {
+      await _openFeedPostInApp(feedPostId);
+      return;
+    }
+
     if (_isShopPromoNotification(item)) {
       await Navigator.pushNamed(
         context,
@@ -250,17 +268,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return;
     }
 
-    // Notif terkait 1 postingan spesifik (punya feedPostId, mis. "X
-    // posting baru", komentar, like, mention) → buka postingan itu
-    // langsung di dalam app, BUKAN feed utama / webview. Reuse infra
-    // fetchPostById + MemberPostDetailScreen. Fallback ke feed kalau
-    // postId kosong / fetch gagal.
-    final feedPostId = item.feedPostId?.trim() ?? '';
-    if (feedPostId.isNotEmpty) {
-      await _openFeedPostInApp(feedPostId);
-      return;
-    }
-
     if (url.contains('/feed') || _NotificationFilter.feed.matches(item)) {
       await Navigator.pushNamed(context, '/feed');
       return;
@@ -291,10 +298,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  /// Fetch postingan by ID lalu buka MemberPostDetailScreen di dalam app.
-  /// isOwner dihitung dari apakah viewer == author (post sendiri → bisa
-  /// edit/hapus; post orang → viewer). Spinner saat fetch; fallback ke
-  /// feed kalau postingan tidak ada / fetch gagal. Reuse infra deep-link.
+  /// Fetch postingan by ID lalu buka tujuan yang tepat — video langsung ke
+  /// player fullscreen, non-video ke MemberPostDetailScreen (reuse
+  /// `openFeedPostSmart`, sama dgn jalur push notification HP di
+  /// `DeepLinkService`, supaya kedua jalur konsisten). isOwner dihitung
+  /// dari apakah viewer == author (post sendiri → bisa edit/hapus; post
+  /// orang → viewer biasa). Spinner saat fetch; fallback ke feed kalau
+  /// postingan tidak ada / fetch gagal.
   Future<void> _openFeedPostInApp(String postId) async {
     final rootNav = Navigator.of(context, rootNavigator: true);
     showDialog<void>(
@@ -328,17 +338,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     final myId = memberStore.profile?.id;
     final isOwner = myId != null && myId == post.author.id;
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => MemberPostDetailScreen(
-          post: post!,
-          authorName: post.author.displayName,
-          authorPhotoUrl: post.author.profilePhotoUrl,
-          authorInitial: post.author.initial,
-          isOwner: isOwner,
-        ),
-      ),
-    );
+    await openFeedPostSmart(context, post, isOwner: isOwner);
   }
 
   /// Handler untuk notif "Toko membalas ulasanmu" (eventType=review_reply).
