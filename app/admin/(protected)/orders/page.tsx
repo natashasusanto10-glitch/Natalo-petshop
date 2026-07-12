@@ -190,36 +190,17 @@ export default async function AdminOrdersPage({
         }
       />
 
-      {/* Type tabs — pill style natalo blue saat aktif */}
+      {/* Status tabs — filter UTAMA (alur kerja harian), satu aksen natalo
+          blue konsisten. Dulu bersaing dgn Type (biru) + Payment (hitam)
+          jadi 3 warna aktif berbeda; kini SATU aksen di seluruh halaman. */}
       <div className="-mx-4 mt-5 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:mt-6 md:flex-wrap md:overflow-visible md:px-0">
-        {[
-          { key: "ALL", label: "Semua" },
-          { key: "DELIVERY", label: "Delivery" },
-          { key: "SELF_PICKUP", label: "Self Pick Up" },
-        ].map((tab) => (
-          <Link
-            key={tab.key}
-            href={buildUrl({ type: tab.key })}
-            className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition ${
-              activeType === tab.key
-                ? "bg-natalo-600 text-white shadow-[0_4px_12px_-2px_rgba(30,95,191,0.4)]"
-                : "border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
-            }`}
-          >
-            {tab.label}
-          </Link>
-        ))}
-      </div>
-
-      {/* Status tabs — dark zinc saat aktif (clear hierarchy vs type tabs) */}
-      <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:mt-4 md:flex-wrap md:overflow-visible md:px-0">
         {tabs.map((tab) => (
           <Link
             key={tab.key}
             href={buildUrl({ status: tab.key })}
             className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition ${
               activeStatus === tab.key
-                ? "bg-zinc-950 text-white shadow-sm"
+                ? "bg-natalo-600 text-white shadow-[0_4px_12px_-2px_rgba(30,95,191,0.4)]"
                 : "border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
             }`}
           >
@@ -237,26 +218,49 @@ export default async function AdminOrdersPage({
         ))}
       </div>
 
-      {/* Payment filter — smaller pills, secondary axis */}
-      <div className="-mx-4 mt-3 flex items-center gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:mt-4 md:flex-wrap md:overflow-visible md:px-0">
-        <span className="shrink-0 text-xs font-semibold text-zinc-500">
-          Pembayaran:
-        </span>
-        {(["ALL", "WAITING", "UNPAID", "PENDING", "PAID", "FAILED", "EXPIRED"] as const).map(
-          (p) => (
+      {/* Type + Payment — filter SEKUNDER, digabung jadi 1 baris ringan
+          (dulu 2 baris terpisah dgn bobot visual sama besar dgn Status).
+          Type jadi segmented-control kecil, Payment jadi pill tenang. */}
+      <div className="-mx-4 mt-3 flex flex-wrap items-center gap-2 px-4 pb-1 md:mx-0 md:mt-3 md:px-0">
+        <div className="inline-flex shrink-0 gap-0.5 rounded-full border border-zinc-200 bg-white p-1">
+          {[
+            { key: "ALL", label: "Semua" },
+            { key: "DELIVERY", label: "Delivery" },
+            { key: "SELF_PICKUP", label: "Self Pick Up" },
+          ].map((tab) => (
             <Link
-              key={p}
-              href={buildUrl({ pay: p })}
-              className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition ${
-                activePay === p
-                  ? "bg-zinc-950 text-white"
-                  : "border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
+              key={tab.key}
+              href={buildUrl({ type: tab.key })}
+              className={`rounded-full px-3 py-1 text-xs font-bold transition ${
+                activeType === tab.key
+                  ? "bg-zinc-100 text-zinc-900"
+                  : "text-zinc-500 hover:text-zinc-700"
               }`}
             >
-              {p === "ALL" ? "Semua" : paymentStatusLabel(p)}
+              {tab.label}
             </Link>
-          ),
-        )}
+          ))}
+        </div>
+
+        <span className="hidden h-4 w-px shrink-0 bg-zinc-200 md:block" />
+
+        <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto">
+          {(["ALL", "WAITING", "UNPAID", "PENDING", "PAID", "FAILED", "EXPIRED"] as const).map(
+            (p) => (
+              <Link
+                key={p}
+                href={buildUrl({ pay: p })}
+                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
+                  activePay === p
+                    ? "bg-natalo-50 text-natalo-700"
+                    : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-700"
+                }`}
+              >
+                {p === "ALL" ? "Semua pembayaran" : paymentStatusLabel(p)}
+              </Link>
+            ),
+          )}
+        </div>
       </div>
 
       {/* Empty state */}
