@@ -39,6 +39,9 @@ import { ADMIN_VIDEO_CONFIG, USER_VIDEO_CONFIG } from "@/lib/feed/video-config";
 import { generateBlurhashFromUrl } from "@/lib/feed/blurhash";
 
 export const dynamic = "force-dynamic";
+// Fan-out publish-push kini di-await di handler — beri ruang seperti
+// broadcast route (default 10s bisa kurang saat kirim ke banyak user).
+export const maxDuration = 60;
 
 type WebhookPayload = {
   VideoLibraryId?: number;
@@ -174,7 +177,9 @@ export async function POST(request: NextRequest) {
   void sendFeedPendingReviewNotification({ postId: post.id });
   // Publish-push — guard internal memutuskan (admin post yang tadi masih
   // `uploading` sekarang `ready`; kalau notifyOnPublish=true, kirim di sini).
-  void import("@/lib/feed/publish-push").then(({ sendFeedPublishPush }) =>
+  // WAJIB await — void promise bisa dibekukan Vercel sebelum jalan
+  // (lihat komentar di lib/feed/reconcile.ts). Error ditelan internal.
+  await import("@/lib/feed/publish-push").then(({ sendFeedPublishPush }) =>
     sendFeedPublishPush(post.id),
   );
   // Fire-and-forget CDN edge pre-warm — fetch first 256KB MP4 + thumbnail

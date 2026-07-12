@@ -25,6 +25,9 @@ import {
 import { sendFeedPendingReviewNotification } from "@/lib/feed/notifications";
 
 export const dynamic = "force-dynamic";
+// Fan-out publish-push kini di-await di handler — beri ruang seperti
+// broadcast route (default 10s bisa kurang saat kirim ke banyak user).
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   const csrfReject = assertSameOrigin(request);
@@ -161,7 +164,9 @@ export async function POST(request: NextRequest) {
       void sendFeedPendingReviewNotification({ postId: post.id });
       // Publish-push — samakan dengan webhook + reconcile.ts. Guard internal
       // (admin/ACTIVE/notifyOnPublish/klaim atomik) yang memutuskan.
-      void import("@/lib/feed/publish-push").then(({ sendFeedPublishPush }) =>
+      // WAJIB await — void promise bisa dibekukan Vercel sebelum jalan
+      // (lihat komentar di lib/feed/reconcile.ts). Error ditelan internal.
+      await import("@/lib/feed/publish-push").then(({ sendFeedPublishPush }) =>
         sendFeedPublishPush(post.id),
       );
       results.push({ postId: post.id, action: "ready" });

@@ -133,7 +133,11 @@ export async function reconcileFeedPost(
     // hanya di webhook, "Beri tahu pelanggan" tak pernah jalan untuk post yang
     // di-ready via reconcile. Guard internal (admin/ACTIVE/notifyOnPublish/
     // klaim atomik) memutuskan kirim atau tidak — aman dipanggil ganda.
-    void import("@/lib/feed/publish-push").then(({ sendFeedPublishPush }) =>
+    // WAJIB di-await: Vercel serverless membekukan function begitu response
+    // terkirim — promise yang di-void bisa tak pernah jalan (akar bug push
+    // tak terkirim padahal broadcast manual — yang meng-await — selalu jalan).
+    // Aman: sendFeedPublishPush menelan semua error internal.
+    await import("@/lib/feed/publish-push").then(({ sendFeedPublishPush }) =>
       sendFeedPublishPush(post.id),
     );
     // Pre-warm CDN edge — same alasan dengan webhook path.
