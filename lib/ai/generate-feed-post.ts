@@ -19,7 +19,12 @@ const SYSTEM_PROMPT = `Kamu penulis konten sosial feed untuk Natalo Petshop (tok
 
 Aturan judul: Bahasa Indonesia, 4-9 kata, memikat & jelas (ini juga dipakai sebagai headline notifikasi), TANPA tanda kutip, TANPA emoji berlebihan (maks 1 emoji, boleh tanpa emoji).
 
-Aturan caption: Bahasa Indonesia, 1-3 kalimat pendek, ramah & mengajak, boleh 1-3 emoji relevan, boleh 1-3 hashtag di akhir (mis. #NataloPetshop). Kalau ada produk, sebut manfaat/ajakan yang wajar. JANGAN mengarang klaim medis/kesehatan yang tak pasti, harga/diskon yang tak diberikan, atau janji berlebihan.
+Aturan caption — PENTING, judul & caption TAMPIL BERSAMA (kartu feed DAN notifikasi push: judul jadi headline, caption jadi isi):
+- JANGAN mengulang atau menggemakan judul dengan cara apa pun (bukan parafrase, bukan versi "hook", bukan diawali tanda "#" ala heading). Caption HARUS berdiri sendiri sebagai info TAMBAHAN yang beda dari judul — anggap pembaca SUDAH baca judulnya.
+- 1-3 kalimat pendek saja, Bahasa Indonesia, ramah & mengajak.
+- Boleh 1-3 emoji relevan (bukan di judul lagi).
+- Hashtag OPSIONAL, TEGAS MAKSIMAL 3, dan HANYA di baris paling akhir setelah kalimat caption — TIDAK PERNAH lebih dari 3, TIDAK PERNAH di awal atau tengah caption.
+- Kalau ada produk, sebut manfaat/ajakan yang wajar. JANGAN mengarang klaim medis/kesehatan yang tak pasti, harga/diskon yang tak diberikan, atau janji berlebihan.
 
 Output WAJIB JSON valid persis: {"title": "...", "caption": "..."} — tanpa markdown fence, tanpa teks lain.`;
 
@@ -42,6 +47,43 @@ export class GenerateFeedPostError extends Error {
     super(message);
     this.name = "GenerateFeedPostError";
   }
+}
+
+/**
+ * Jaring pengaman deterministik — model kadang melanggar instruksi prompt
+ * (bug nyata: caption dibuka dengan "# <judul ulang> <emoji>" gaya heading
+ * IG, lalu ditutup belasan hashtag → notifikasi push jadi 3x lipat panjang
+ * judul+heading+hashtag-spam). Dua perbaikan:
+ * 1. Baris pertama "# " (hash+spasi, gaya heading markdown — BUKAN hashtag
+ *    asli yang tanpa spasi seperti #NataloPetshop) dibuang beserta baris
+ *    kosong sesudahnya.
+ * 2. Hashtag asli (#kata, tanpa spasi) dibatasi maks 3 — sisanya dibuang.
+ */
+export function sanitizeCaption(raw: string): string {
+  let text = raw.trim();
+
+  const lines = text.split("\n");
+  if (/^#\s/.test(lines[0])) {
+    lines.shift();
+    while (lines.length > 0 && lines[0].trim() === "") lines.shift();
+    text = lines.join("\n").trim();
+  }
+
+  const hashtagRe = /#[\p{L}\p{N}_]+/gu;
+  const matches = text.match(hashtagRe) ?? [];
+  if (matches.length > 3) {
+    let seen = 0;
+    text = text
+      .replace(hashtagRe, (m) => {
+        seen++;
+        return seen <= 3 ? m : "";
+      })
+      .replace(/[ \t]{2,}/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  return text;
 }
 
 function kindLabel(kind: GenerateFeedPostInput["kind"]): string {
@@ -133,7 +175,8 @@ export async function generateFeedPost(
 
   const obj = parsed as { title?: unknown; caption?: unknown };
   const title = typeof obj.title === "string" ? obj.title.trim() : "";
-  const caption = typeof obj.caption === "string" ? obj.caption.trim() : "";
+  const caption =
+    typeof obj.caption === "string" ? sanitizeCaption(obj.caption) : "";
 
   if (!title || !caption) {
     throw new GenerateFeedPostError(
