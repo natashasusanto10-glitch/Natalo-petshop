@@ -546,10 +546,11 @@ export async function markAsCancelled(orderId: string) {
   }
 
   // Push notif user — auto-refund jadi instant feedback ke customer.
-  // Fire-and-forget: kalau push service down, cancel tetap tercatat.
-  // Kirim hanya kalau ada auto-refund (kalau cuma cancel PENDING tanpa
-  // bayar, user gak perlu notif refund — sudah dapat notif cancel via
-  // sendOrderStatusPush di atas).
+  // WAJIB await — void promise bisa dibekukan Vercel sebelum jalan →
+  // notif refund hilang; kalau push service down, cancel tetap tercatat
+  // (helper menelan error). Kirim hanya kalau ada auto-refund (kalau cuma
+  // cancel PENDING tanpa bayar, user gak perlu notif refund — sudah dapat
+  // notif cancel via sendOrderStatusPush di atas).
   if (
     didCancel &&
     autoRefundedAmount > 0 &&
@@ -561,7 +562,7 @@ export async function markAsCancelled(orderId: string) {
       select: { userId: true },
     });
     if (orderInfo?.userId) {
-      void sendRefundIssuedPush({
+      await sendRefundIssuedPush({
         userId: orderInfo.userId,
         // RefundCase.id, BUKAN orderId — deep link /member/refund-detail
         // resolve via GET /api/member/refund-cases/{id} yang cari by
@@ -838,9 +839,10 @@ export async function issueRefundToWallet(
       },
     });
 
-    // Push notification ke user — fire-and-forget supaya admin action
-    // tidak block kalau push service down. Fetch item name kalau partial
-    // refund (untuk display di notif body).
+    // Push notification ke user — WAJIB await, void promise bisa dibekukan
+    // Vercel sebelum jalan → notif refund hilang. Helper menelan error
+    // sendiri, jadi push service down tidak mem-block admin action. Fetch
+    // item name kalau partial refund (untuk display di notif body).
     let itemName: string | null = null;
     if (itemId) {
       const item = await prisma.orderItem
@@ -851,7 +853,7 @@ export async function issueRefundToWallet(
         .catch(() => null);
       itemName = item?.name ?? null;
     }
-    void sendRefundIssuedPush({
+    await sendRefundIssuedPush({
       userId: refundUserId,
       caseId: refundCase.id,
       amount,
@@ -1084,7 +1086,8 @@ export async function markItemPartiallyOutOfStock(
       },
     });
 
-    void sendRefundIssuedPush({
+    // WAJIB await — alasan sama dengan refund push di atas.
+    await sendRefundIssuedPush({
       userId: refundUserId,
       caseId: refundCase.id,
       amount,
@@ -1229,11 +1232,13 @@ export async function rejectCancellationRequest(
     },
   });
 
-  // Push notif ke user — informasi reject + alasan. Fire-and-forget,
-  // kalau gagal admin action tetap commit. User juga akan lihat banner
-  // reject di order detail saat refresh (defense-in-depth).
+  // Push notif ke user — informasi reject + alasan. WAJIB await — void
+  // promise bisa dibekukan Vercel sebelum jalan → notif hilang; kalau
+  // gagal admin action tetap commit (helper menelan error). User juga
+  // akan lihat banner reject di order detail saat refresh
+  // (defense-in-depth).
   if (current.userId) {
-    void sendCancellationRejectedPush({
+    await sendCancellationRejectedPush({
       userId: current.userId,
       orderId,
       orderNumber: current.orderNumber,

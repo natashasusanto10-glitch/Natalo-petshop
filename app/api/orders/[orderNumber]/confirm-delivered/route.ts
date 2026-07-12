@@ -26,7 +26,7 @@
  * scan QR di toko.
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { assertSameOrigin } from "@/lib/csrf";
@@ -144,8 +144,10 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 409 });
   }
 
-  // Email + push notif. Fire-and-forget supaya response cepat, error
-  // dari mailer tidak block client.
+  // Email + push notif via after() — response tetap cepat, error dari
+  // mailer tidak block client, TAPI eksekusi dijamin. Sebelumnya `void`
+  // promise yang bisa dibekukan Vercel sebelum jalan → email/push
+  // DELIVERED tidak pernah terkirim.
   const emailCtx = {
     orderNumber: order.orderNumber,
     trackingToken: order.trackingToken,
@@ -158,9 +160,11 @@ export async function POST(
     courierService: order.courierService,
     paymentUrl: order.paymentUrl,
   };
-  void sendOrderStatusEmail("DELIVERED", emailCtx).catch(() => {});
-  void sendOrderStatusPush(order.id, order.orderNumber, "DELIVERED").catch(
-    () => {},
+  after(() => sendOrderStatusEmail("DELIVERED", emailCtx).catch(() => {}));
+  after(() =>
+    sendOrderStatusPush(order.id, order.orderNumber, "DELIVERED").catch(
+      () => {},
+    ),
   );
 
   return NextResponse.json({

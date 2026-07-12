@@ -11,8 +11,11 @@
  *   - Feed customer post PENDING_REVIEW — `sendAdminFeedPendingPush()`
  *   - Abuse flag HIGH severity — `sendAdminAbuseFlagPush()`
  *
- * Fire-and-forget — caller tidak boleh await karena event utama (create
- * order, dll) tidak boleh blocked oleh push delivery. Pakai `void`.
+ * WAJIB di-await (atau dibungkus `after()` dari next/server) oleh caller —
+ * Vercel membekukan function begitu response terkirim, jadi promise yang
+ * di-`void` bisa tak pernah jalan (lihat lib/feed/reconcile.ts). Aman
+ * di-await: semua error delivery ditelan internal (allSettled + catch),
+ * tidak pernah menggagalkan event utama (create order, dll).
  */
 import { prisma } from "@/lib/prisma";
 import { sendFcmToUser } from "@/lib/fcm";
@@ -50,12 +53,12 @@ async function sendToAllAdmins(payload: AdminPushPayload) {
   );
 }
 
-export function sendAdminOrderNewPush(args: {
+export async function sendAdminOrderNewPush(args: {
   orderNumber: string;
   customerName: string;
   total: number;
-}): void {
-  void sendToAllAdmins({
+}): Promise<void> {
+  await sendToAllAdmins({
     title: '🛒 Order baru!',
     body: `${args.customerName} — ${formatRp(args.total)} (${args.orderNumber})`,
     url: `/admin/orders/${args.orderNumber}`,
@@ -67,12 +70,12 @@ export function sendAdminOrderNewPush(args: {
   });
 }
 
-export function sendAdminCancellationRequestPush(args: {
+export async function sendAdminCancellationRequestPush(args: {
   orderNumber: string;
   customerName: string;
   reason: string | null;
-}): void {
-  void sendToAllAdmins({
+}): Promise<void> {
+  await sendToAllAdmins({
     title: '⚠️ Permintaan pembatalan',
     body: `${args.customerName} minta cancel ${args.orderNumber}${
       args.reason ? ' — ' + truncate(args.reason, 60) : ''
@@ -86,12 +89,12 @@ export function sendAdminCancellationRequestPush(args: {
   });
 }
 
-export function sendAdminFeedPendingPush(args: {
+export async function sendAdminFeedPendingPush(args: {
   postId: string;
   authorName: string;
   title: string;
-}): void {
-  void sendToAllAdmins({
+}): Promise<void> {
+  await sendToAllAdmins({
     title: '📸 Post komunitas baru',
     body: `${args.authorName}: ${truncate(args.title, 60)}`,
     url: `/admin/feed/${args.postId}`,
@@ -103,15 +106,15 @@ export function sendAdminFeedPendingPush(args: {
   });
 }
 
-export function sendAdminAbuseFlagPush(args: {
+export async function sendAdminAbuseFlagPush(args: {
   flagId: string;
   ruleCode: string;
   severity: string;
   userName: string;
-}): void {
+}): Promise<void> {
   // Hanya untuk HIGH severity supaya admin tidak terganggu noise.
   if (args.severity !== 'HIGH') return;
-  void sendToAllAdmins({
+  await sendToAllAdmins({
     title: '🚨 Abuse flag baru',
     body: `${args.userName} — ${args.ruleCode}`,
     url: `/admin/abuse-flags`,

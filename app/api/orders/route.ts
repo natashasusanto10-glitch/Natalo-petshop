@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -875,10 +875,13 @@ export async function POST(request: Request) {
     // status update berikutnya (PAID, SHIPPED, dst.) lewat sendOrderStatusPush
     // di route lain. WA Fonnte sekarang reserved khusus untuk OTP.
 
-    // Push notif ke admin — fire-and-forget supaya tidak block response.
-    // Admin akan dapat banner "Order baru!" dgn quick action ke detail.
-    void import("@/lib/push-admin").then(({ sendAdminOrderNewPush }) => {
-      sendAdminOrderNewPush({
+    // Push notif ke admin via after() — checkout response tetap cepat,
+    // tapi eksekusi dijamin. Sebelumnya `void` promise yang bisa dibekukan
+    // Vercel sebelum jalan → admin tidak dapat banner "Order baru!" dan
+    // telat memproses pesanan.
+    after(async () => {
+      const { sendAdminOrderNewPush } = await import("@/lib/push-admin");
+      await sendAdminOrderNewPush({
         orderNumber,
         customerName: input.customerName,
         total,

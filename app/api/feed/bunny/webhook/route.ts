@@ -174,7 +174,8 @@ export async function POST(request: NextRequest) {
       videoSizeBytes: meta?.storageSize ?? null,
     },
   });
-  void sendFeedPendingReviewNotification({ postId: post.id });
+  // WAJIB await — alasan sama dengan publish-push di bawah.
+  await sendFeedPendingReviewNotification({ postId: post.id });
   // Publish-push — guard internal memutuskan (admin post yang tadi masih
   // `uploading` sekarang `ready`; kalau notifyOnPublish=true, kirim di sini).
   // WAJIB await — void promise bisa dibekukan Vercel sebelum jalan
@@ -186,6 +187,8 @@ export async function POST(request: NextRequest) {
   // dari server supaya edge POP terdekat sudah cache file sebelum user
   // pertama buka. Tanpa ini, user pertama selalu kena cold-cache latency
   // 2-5 detik (TTFB lambat). Lihat preWarmBunnyAssets() di lib/feed/bunny.ts.
+  // SENGAJA tetap void (pengecualian dari aturan await): boleh hilang kalau
+  // function keburu dibekukan — dampak cuma cold-cache untuk user pertama.
   void preWarmBunnyAssets(guid);
 
   return NextResponse.json({ ok: true, encoded: "ready" });

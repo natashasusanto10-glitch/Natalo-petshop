@@ -27,13 +27,17 @@
  * supaya 1 row error tidak rollback semua. Audit log (FeedModerationLog)
  * tetap di-record per item.
  */
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import type { FeedPostStatus } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { deleteFeedAssets } from "@/lib/feed/cleanup";
 import { sendNewPostToFollowersNotification } from "@/lib/social/notifications";
+
+// Cleanup asset + fan-out follower dijadwalkan via after() per item —
+// tetap dihitung ke durasi invocation, beri ruang untuk batch besar.
+export const maxDuration = 60;
 
 type BulkAction =
   | "approve"
@@ -168,12 +172,17 @@ export async function POST(request: NextRequest) {
     try {
       if (action === "hard-delete") {
         await prisma.feedPost.delete({ where: { id: postId } });
-        void deleteFeedAssets({
-          videoUrl: post.videoUrl,
-          thumbnailUrl: post.thumbnailUrl,
-          videoGuid: post.videoGuid,
-          context: `bulk hard-delete ${postId}`,
-        });
+        // Via after() (bukan void) — void promise bisa dibekukan Vercel
+        // sebelum jalan → orphan asset; after() dijamin eksekusi tanpa
+        // menahan respons bulk.
+        after(() =>
+          deleteFeedAssets({
+            videoUrl: post.videoUrl,
+            thumbnailUrl: post.thumbnailUrl,
+            videoGuid: post.videoGuid,
+            context: `bulk hard-delete ${postId}`,
+          }),
+        );
         results.push({ postId, status: "applied" });
         continue;
       }
@@ -208,12 +217,15 @@ export async function POST(request: NextRequest) {
             },
           }),
         ]);
-        void deleteFeedAssets({
-          videoUrl: post.videoUrl,
-          thumbnailUrl: post.thumbnailUrl,
-          videoGuid: post.videoGuid,
-          context: `bulk soft-delete ${postId}`,
-        });
+        // Via after() — alasan sama dengan hard-delete di atas.
+        after(() =>
+          deleteFeedAssets({
+            videoUrl: post.videoUrl,
+            thumbnailUrl: post.thumbnailUrl,
+            videoGuid: post.videoGuid,
+            context: `bulk soft-delete ${postId}`,
+          }),
+        );
         results.push({ postId, status: "applied" });
         continue;
       }
@@ -336,18 +348,22 @@ export async function POST(request: NextRequest) {
 
       // Reject = terminal → free Bunny asset (sama spt single endpoint).
       if (action === "reject") {
-        void deleteFeedAssets({
-          videoUrl: post.videoUrl,
-          thumbnailUrl: post.thumbnailUrl,
-          videoGuid: post.videoGuid,
-          context: `bulk reject ${postId}`,
-        });
+        // Via after() — alasan sama dengan hard-delete di atas.
+        after(() =>
+          deleteFeedAssets({
+            videoUrl: post.videoUrl,
+            thumbnailUrl: post.thumbnailUrl,
+            videoGuid: post.videoGuid,
+            context: `bulk reject ${postId}`,
+          }),
+        );
       }
 
       // Notif follower saat APPROVE (PENDING_REVIEW → ACTIVE), bukan unhide.
-      // Helper dedup internal + skip author admin. Fire-and-forget.
+      // Helper dedup internal + skip author admin. Via after() (bukan void)
+      // — void promise bisa dibekukan Vercel → notif follower hilang.
       if (action === "approve" && post.status === "PENDING_REVIEW") {
-        void sendNewPostToFollowersNotification(postId);
+        after(() => sendNewPostToFollowersNotification(postId));
       }
 
       results.push({ postId, status: "applied" });

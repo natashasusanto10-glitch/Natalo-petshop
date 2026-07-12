@@ -7,7 +7,7 @@
  * Admin reply (parentCommentId set, isAdminOfficial=true) belum di-implement
  * dalam endpoint ini — admin akan reply via /api/admin/feed/* di F5.
  */
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
@@ -204,32 +204,39 @@ export async function POST(
     return comment;
   });
 
-  // Fire-and-forget activity notification. Reply path goes to the parent
-  // comment's author; top-level comment goes to the post author. Helpers
-  // skip self-notify + admin-authored posts internally.
+  // Activity notification via `after()` (bukan `void`) — void promise bisa
+  // dibekukan Vercel sebelum jalan → notif hilang; after() dijamin eksekusi
+  // setelah response tanpa menahan komentar muncul. Reply path goes to the
+  // parent comment's author; top-level comment goes to the post author.
+  // Helpers skip self-notify + admin-authored posts internally.
   if (parentCommentId) {
-    void sendReplyNotification({
-      parentCommentId,
-      replyCommentId: result.id,
-      postId,
-      actorUserId: session.sub,
-      content,
-    });
+    after(() =>
+      sendReplyNotification({
+        parentCommentId,
+        replyCommentId: result.id,
+        postId,
+        actorUserId: session.sub,
+        content,
+      }),
+    );
   } else {
-    void sendCommentNotification({
-      postId,
-      commentId: result.id,
-      actorUserId: session.sub,
-      content,
-    });
+    after(() =>
+      sendCommentNotification({
+        postId,
+        commentId: result.id,
+        actorUserId: session.sub,
+        content,
+      }),
+    );
   }
 
   // @mention notification — separate dari reply/comment notif supaya user
   // yang di-mention dapat alert spesifik "@asiong menyebut kamu", bukan
   // notif post-author generic. Fire ke SEMUA user yang di-mention di
   // text. Dedup via tag di sendMentionNotifications. Skip kalau actor
-  // sendiri ada di list (self-mention).
-  void (async () => {
+  // sendiri ada di list (self-mention). Via after() — bukan void IIFE
+  // yang bisa dibekukan Vercel sebelum jalan.
+  after(async () => {
     try {
       const handles = extractMentionHandles(content);
       if (handles.size === 0) return;
@@ -246,7 +253,7 @@ export async function POST(
     } catch (err) {
       console.warn("[comments] mention notif failed:", err);
     }
-  })();
+  });
 
   return NextResponse.json({
     ok: true,

@@ -125,8 +125,12 @@ export async function GET(request: NextRequest) {
         courierService: order.courierService,
         paymentUrl: order.paymentUrl,
       };
-      void sendOrderStatusEmail("DELIVERED", emailCtx).catch(() => {});
-      void sendOrderStatusPush(order.id, order.orderNumber, "DELIVERED").catch(
+      // WAJIB await — void promise bisa dibekukan Vercel begitu response
+      // cron terkirim → email/push DELIVERED untuk order di akhir loop
+      // tidak pernah jalan. Error tetap ditelan (.catch) supaya satu
+      // mailer gagal tidak menggagalkan order lain.
+      await sendOrderStatusEmail("DELIVERED", emailCtx).catch(() => {});
+      await sendOrderStatusPush(order.id, order.orderNumber, "DELIVERED").catch(
         () => {},
       );
 

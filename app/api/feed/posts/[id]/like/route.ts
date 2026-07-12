@@ -12,7 +12,7 @@
  * Auth wajib — anon tidak boleh like. Rate limit skip dulu (per-user
  * action, monitorable; kalau ada spam pattern bisa add limit nanti).
  */
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
@@ -85,13 +85,18 @@ export async function POST(
     };
   });
 
-  // Fire-and-forget; helper batches recent likes and skips self/admin cases.
+  // Non-blocking via `after()` (bukan `void`) — void promise bisa dibekukan
+  // Vercel sebelum jalan → notif like hilang; after() dijamin eksekusi
+  // setelah response, jadi like tetap terasa instan. Helper batches recent
+  // likes and skips self/admin cases; error ditelan internal.
   if (result.liked) {
-    void sendLikeNotification({
-      postId,
-      actorUserId: session.sub,
-      likeCount: result.likeCount,
-    });
+    after(() =>
+      sendLikeNotification({
+        postId,
+        actorUserId: session.sub,
+        likeCount: result.likeCount,
+      }),
+    );
   }
 
   const recentLikes = await prisma.feedLike.findMany({

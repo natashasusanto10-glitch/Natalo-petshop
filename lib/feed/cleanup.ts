@@ -7,8 +7,10 @@
  * last segment of the ufsUrl (https://{appId}.ufs.sh/f/{key}), so we
  * extract it from the saved url string.
  *
- * Fire-and-forget by design: a storage delete failure must never roll
- * back the moderation transition the admin just made.
+ * Never-throw by design: a storage delete failure must never roll back
+ * the moderation transition the admin just made. Callers should still
+ * await it (or wrap in `after()`) — a `void`-ed promise can be frozen by
+ * Vercel before it runs, leaving orphan assets that keep billing storage.
  */
 
 import { utapi } from "@/lib/uploadthing";
@@ -51,8 +53,11 @@ export async function deleteFeedAssets(params: {
   // Bunny Stream — delete the whole video record (covers playlist + every
   // bitrate variant + auto thumbnails). This is the primary path for new
   // customer uploads going forward.
+  // Di-await (bukan void) — Vercel bisa membekukan function sebelum
+  // promise void jalan, meninggalkan orphan video yang terus menagih
+  // storage. deleteBunnyVideo tidak pernah throw (return false on error).
   if (params.videoGuid) {
-    void deleteBunnyVideo(params.videoGuid);
+    await deleteBunnyVideo(params.videoGuid);
   }
 
   // UploadThing keys — collect dari semua source:

@@ -4,7 +4,7 @@
  * Toggle like comment — pattern identik dengan post like (transaction,
  * idempotent dari sisi UI). Spec 10.8 — optimistic update.
  */
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
@@ -66,15 +66,19 @@ export async function POST(
   });
 
   // Notif ke author komentar — hanya saat LIKE baru (bukan unlike).
-  // Fire-and-forget; self-like + admin di-guard di dalam fungsi.
+  // Non-blocking via `after()` (bukan `void`) — void promise bisa dibekukan
+  // Vercel sebelum jalan → notif hilang. Self-like + admin di-guard di
+  // dalam fungsi; error ditelan internal.
   if (result.liked) {
-    void sendCommentLikeNotification({
-      commentId,
-      postId: comment.postId,
-      commentAuthorId: comment.authorId,
-      actorUserId: session.sub,
-      likeCount: result.likeCount,
-    });
+    after(() =>
+      sendCommentLikeNotification({
+        commentId,
+        postId: comment.postId,
+        commentAuthorId: comment.authorId,
+        actorUserId: session.sub,
+        likeCount: result.likeCount,
+      }),
+    );
   }
 
   return NextResponse.json({ ok: true, ...result });

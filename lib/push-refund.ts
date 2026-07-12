@@ -145,10 +145,10 @@ const CANCEL_REJECT_TAG_PREFIX = "cancel-rejected-";
  * pesanan. User lihat alasan langsung di push body — gak perlu buka app
  * untuk tahu kenapa cancel-nya ditolak.
  *
- * Trigger: dipanggil dari rejectCancellationRequest server action di
+ * Trigger: dipanggil (di-await — void promise bisa dibekukan Vercel
+ * sebelum jalan) dari rejectCancellationRequest server action di
  * app/admin/(protected)/orders/[id]/actions.ts setelah status di-set
- * REJECTED. Fire-and-forget supaya admin action gak block kalau push
- * service down.
+ * REJECTED. Never-throw: push service down tidak mem-block admin action.
  *
  * Tap notif → deep link ke order detail supaya user bisa lihat reject
  * reason lengkap di banner (kalau push body terpotong).

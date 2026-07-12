@@ -532,8 +532,10 @@ export async function upsertAdminReply(
   });
 
   // Notif push ke author ulasan — kasih tahu toko sudah membalas review
-  // mereka. Fire-and-forget; error di-swallow supaya tidak gagalkan reply.
-  void notifyReviewReply(reviewId, content.trim());
+  // mereka. Error di-swallow supaya tidak gagalkan reply.
+  // WAJIB await — void promise bisa dibekukan Vercel sebelum jalan
+  // (lihat komentar di lib/feed/reconcile.ts), notif balasan hilang.
+  await notifyReviewReply(reviewId, content.trim());
 
   return reply;
 }

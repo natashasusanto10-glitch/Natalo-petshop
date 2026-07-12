@@ -23,6 +23,10 @@ import { sendNewPostToFollowersNotification } from "@/lib/social/notifications";
 import { deleteFeedAssets } from "@/lib/feed/cleanup";
 import { reconcileFeedPost } from "@/lib/feed/reconcile";
 
+// Notif moderasi + fan-out follower kini di-await di handler — beri ruang
+// seperti broadcast route (default bisa kurang saat follower banyak).
+export const maxDuration = 60;
+
 type ModerationAction = "approve" | "reject" | "hide" | "unhide" | "restore";
 const VALID_ACTIONS: ModerationAction[] = [
   "approve",
@@ -194,11 +198,13 @@ export async function PATCH(
     }),
   ]);
 
-  // Notify the post author via push + notification center. Fire-and-forget
-  // by design — Notification helper swallows its own errors so a failure
-  // here can never roll back the moderation transition the admin just made.
-  // Restore goes through handleRestore() above and isn't handled here.
-  void sendFeedModerationNotification({
+  // Notify the post author via push + notification center. Notification
+  // helper swallows its own errors so a failure here can never roll back
+  // the moderation transition the admin just made. WAJIB await — void
+  // promise bisa dibekukan Vercel sebelum jalan (lihat komentar di
+  // lib/feed/reconcile.ts). Restore goes through handleRestore() above
+  // and isn't handled here.
+  await sendFeedModerationNotification({
     postId,
     action: action as Exclude<ModerationAction, "restore">,
     note: noteStr || null,
@@ -207,9 +213,10 @@ export async function PATCH(
   // Notif ke follower author saat postingan APPROVE (PENDING_REVIEW →
   // ACTIVE). Hanya pada "approve" — bukan "unhide" (HIDDEN → ACTIVE)
   // supaya hide/unhide postingan lama tidak re-notify. Helper dedup
-  // internal + skip author admin. Fire-and-forget.
+  // internal + skip author admin. WAJIB await — void promise bisa
+  // dibekukan Vercel sebelum jalan; error ditelan internal.
   if (action === "approve") {
-    void sendNewPostToFollowersNotification(postId);
+    await sendNewPostToFollowersNotification(postId);
   }
 
   // Storage cleanup. Reject is terminal — free the video + thumbnail from
@@ -218,8 +225,10 @@ export async function PATCH(
   // trip leaves an ACTIVE post with no playable video. The weekly storage
   // GC cron (/api/cron/feed-storage-gc) catches truly orphan hidden posts
   // after they sit untouched for a while.
+  // Di-await — void promise bisa dibekukan Vercel sebelum jalan →
+  // orphan asset terus menagih storage. deleteFeedAssets never throws.
   if (action === "reject") {
-    void deleteFeedAssets({
+    await deleteFeedAssets({
       videoUrl: post.videoUrl,
       thumbnailUrl: post.thumbnailUrl,
       videoGuid: post.videoGuid,
@@ -290,7 +299,8 @@ export async function DELETE(
     // audit log) and free storage. Audit trail is lost — only use when
     // truly purging.
     await prisma.feedPost.delete({ where: { id: postId } });
-    void deleteFeedAssets({
+    // Di-await — alasan sama dengan cleanup di PATCH (freeze → orphan).
+    await deleteFeedAssets({
       videoUrl: existing.videoUrl,
       thumbnailUrl: existing.thumbnailUrl,
       videoGuid: existing.videoGuid,
@@ -329,7 +339,8 @@ export async function DELETE(
     }),
   ]);
 
-  void deleteFeedAssets({
+  // Di-await — alasan sama dengan cleanup di PATCH (freeze → orphan).
+  await deleteFeedAssets({
     videoUrl: existing.videoUrl,
     thumbnailUrl: existing.thumbnailUrl,
     videoGuid: existing.videoGuid,

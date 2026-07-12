@@ -161,7 +161,8 @@ export async function POST(request: NextRequest) {
           videoSizeBytes: meta.storageSize ?? null,
         },
       });
-      void sendFeedPendingReviewNotification({ postId: post.id });
+      // WAJIB await — alasan sama dengan publish-push di bawah.
+      await sendFeedPendingReviewNotification({ postId: post.id });
       // Publish-push — samakan dengan webhook + reconcile.ts. Guard internal
       // (admin/ACTIVE/notifyOnPublish/klaim atomik) yang memutuskan.
       // WAJIB await — void promise bisa dibekukan Vercel sebelum jalan

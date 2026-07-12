@@ -6,7 +6,7 @@
  * Variant yang sudah pernah di-order akan di-soft-delete (bukan hard-delete).
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
@@ -185,9 +185,14 @@ export async function PUT(
       }
     });
 
-    syncProduct(productId).catch((error) => {
-      console.error("[variants PUT syncProduct]", error);
-    });
+    // Via after() — fire-and-forget promise bisa dibekukan Vercel sebelum
+    // jalan → index pencarian basi (harga/stok lama). Pola sama dengan
+    // bulk route.
+    after(() =>
+      syncProduct(productId).catch((error) => {
+        console.error("[variants PUT syncProduct]", error);
+      }),
+    );
 
     // Restock trigger — kalau Product.stock berubah dari 0 ke >0
     // (aggregate dari sum variant stocks di transaction), notify
@@ -201,9 +206,15 @@ export async function PUT(
         select: { stock: true },
       });
       if (refreshed && refreshed.stock > 0) {
-        const { sendBackInStockPush } = await import("@/lib/push-marketing");
-        sendBackInStockPush(productId, null).catch((err) => {
-          console.warn("[variants PUT back-in-stock]:", err);
+        // Via after() — fire-and-forget promise bisa dibekukan Vercel
+        // sebelum jalan → subscriber "Ingatkan saya" tidak pernah dapat
+        // push stok-kembali. Fan-out ke banyak subscriber, jangan tahan
+        // response admin.
+        after(async () => {
+          const { sendBackInStockPush } = await import("@/lib/push-marketing");
+          await sendBackInStockPush(productId, null).catch((err) => {
+            console.warn("[variants PUT back-in-stock]:", err);
+          });
         });
       }
     }

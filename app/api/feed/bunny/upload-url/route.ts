@@ -337,8 +337,9 @@ export async function POST(request: NextRequest) {
     // Prisma transaction gagal padahal Bunny placeholder sudah dibuat.
     // Tanpa cleanup, placeholder jadi orphan video kosong di Bunny library
     // (lihat 2 video "Created" 0x0 yang muncul saat user pertama gagal
-    // upload). Fire-and-forget delete supaya library bersih.
-    void deleteBunnyVideo(bunnyCreated.guid).catch((delErr) => {
+    // upload). Di-await — void promise bisa dibekukan Vercel sebelum jalan
+    // (error path, latensi tak penting; deleteBunnyVideo tidak throw).
+    await deleteBunnyVideo(bunnyCreated.guid).catch((delErr) => {
       console.warn("[upload-url] orphan cleanup failed:", delErr);
     });
     console.error("[upload-url] prisma transaction failed:", err);

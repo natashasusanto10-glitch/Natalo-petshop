@@ -92,7 +92,9 @@ export async function reconcileFeedPost(
           moderationNote: `Video gagal di-upload ke Bunny (tidak ditemukan setelah ${Math.round(stuckMinutes)} menit).`,
         },
       });
-      void sendFeedEncodingFailedNotification({
+      // WAJIB await — void promise bisa dibekukan Vercel sebelum jalan
+      // (lihat komentar panjang di bawah). Error ditelan internal.
+      await sendFeedEncodingFailedNotification({
         postId: post.id,
         reason: "Upload tidak selesai",
       });
@@ -126,7 +128,8 @@ export async function reconcileFeedPost(
         videoSizeBytes: meta.storageSize ?? null,
       },
     });
-    void sendFeedPendingReviewNotification({ postId: post.id });
+    // WAJIB await — alasan sama dengan publish-push di bawah.
+    await sendFeedPendingReviewNotification({ postId: post.id });
     // Publish-push — HARUS dipicu di sini juga, bukan cuma di webhook.
     // Bunny webhook feed sering miss FINISHED (lihat komentar bunny-reconcile),
     // jadi reconcile-lah yang biasanya menandai post "ready". Kalau trigger
@@ -140,7 +143,10 @@ export async function reconcileFeedPost(
     await import("@/lib/feed/publish-push").then(({ sendFeedPublishPush }) =>
       sendFeedPublishPush(post.id),
     );
-    // Pre-warm CDN edge — same alasan dengan webhook path.
+    // Pre-warm CDN edge — same alasan dengan webhook path. SENGAJA tetap
+    // void (satu-satunya pengecualian): boleh hilang kalau function keburu
+    // dibekukan — dampaknya cuma user pertama kena cold-cache CDN, dan
+    // meng-await fetch 256KB × N asset menahan response tanpa manfaat user.
     void preWarmBunnyAssets(post.videoGuid);
     return { action: "ready", postId };
   }
@@ -153,7 +159,8 @@ export async function reconcileFeedPost(
         moderationNote: "Encoding error di Bunny Stream.",
       },
     });
-    void sendFeedEncodingFailedNotification({
+    // WAJIB await — void promise bisa dibekukan Vercel (lihat atas).
+    await sendFeedEncodingFailedNotification({
       postId: post.id,
       reason: "Encoding error",
     });
@@ -171,7 +178,8 @@ export async function reconcileFeedPost(
         moderationNote: `Encoding stuck di Bunny lebih dari ${Math.round(stuckMinutes)} menit (status ${meta.status}).`,
       },
     });
-    void sendFeedEncodingFailedNotification({
+    // WAJIB await — void promise bisa dibekukan Vercel (lihat atas).
+    await sendFeedEncodingFailedNotification({
       postId: post.id,
       reason: "Encoding timeout",
     });

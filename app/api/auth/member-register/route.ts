@@ -253,9 +253,11 @@ export async function POST(request: NextRequest) {
     });
 
     // Welcome voucher — auto-grant Rp25k (min belanja Rp100k) ke user
-    // baru. Fire-and-forget — kalau grant gagal, register tetap sukses,
-    // user bisa dapat voucher manual nanti via admin grant.
-    void grantWelcomeVoucher(createdUser.id);
+    // baru. WAJIB await — void promise bisa dibekukan Vercel sebelum
+    // jalan → user baru tidak pernah dapat voucher selamat datang.
+    // Kalau grant gagal, register tetap sukses (helper menelan error +
+    // return null), user bisa dapat voucher manual nanti via admin grant.
+    await grantWelcomeVoucher(createdUser.id);
 
     return NextResponse.json({
       ok: true,
