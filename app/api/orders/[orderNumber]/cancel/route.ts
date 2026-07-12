@@ -159,15 +159,16 @@ export async function POST(
 
       // Push notif ke admin — supaya admin tidak perlu polling, langsung
       // tahu ada cancel request masuk dan bisa respond cepat.
-      void import("@/lib/push-admin").then(
-        ({ sendAdminCancellationRequestPush }) => {
-          sendAdminCancellationRequestPush({
-            orderNumber: order.orderNumber,
-            customerName: order.customerName,
-            reason: reason || null,
-          });
-        },
+      // WAJIB await — void promise bisa dibekukan Vercel sebelum jalan
+      // (lihat komentar di lib/feed/reconcile.ts). Error ditelan internal.
+      const { sendAdminCancellationRequestPush } = await import(
+        "@/lib/push-admin"
       );
+      await sendAdminCancellationRequestPush({
+        orderNumber: order.orderNumber,
+        customerName: order.customerName,
+        reason: reason || null,
+      });
 
       return NextResponse.json({
         ok: true,
@@ -343,13 +344,15 @@ export async function POST(
       }
     });
 
-    // Push notif user — auto-refund jadi instant feedback. Fire-and-forget.
+    // Push notif user — auto-refund jadi instant feedback. WAJIB await —
+    // void promise bisa dibekukan Vercel sebelum jalan → notif refund
+    // hilang; helper menelan error internal.
     // caseId WAJIB RefundCase.id (bukan order.id) supaya tap notif →
     // /member/refund-detail?caseId=... resolve di GET /api/member/refund-
     // cases/{id}. Guard autoRefundCaseId non-null (pasti ke-set kalau
     // autoRefundedAmount > 0, tapi defensive).
     if (autoRefundedAmount > 0 && order.userId && autoRefundCaseId != null) {
-      void sendRefundIssuedPush({
+      await sendRefundIssuedPush({
         userId: order.userId,
         caseId: autoRefundCaseId,
         amount: autoRefundedAmount,

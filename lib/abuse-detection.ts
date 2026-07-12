@@ -59,13 +59,14 @@ async function createFlagIfMissing(input: FlagInput): Promise<boolean> {
   });
   // Push notif ke admin — hanya untuk HIGH severity supaya tidak noisy.
   // Helper internal-side filter severity, kita kirim saja.
-  void import("@/lib/push-admin").then(({ sendAdminAbuseFlagPush }) => {
-    sendAdminAbuseFlagPush({
-      flagId: flag.id,
-      ruleCode: input.ruleCode,
-      severity: input.severity,
-      userName: flag.user.name || flag.user.email || "User",
-    });
+  // WAJIB await — void promise bisa dibekukan Vercel sebelum jalan
+  // (lihat komentar di lib/feed/reconcile.ts). Error ditelan internal.
+  const { sendAdminAbuseFlagPush } = await import("@/lib/push-admin");
+  await sendAdminAbuseFlagPush({
+    flagId: flag.id,
+    ruleCode: input.ruleCode,
+    severity: input.severity,
+    userName: flag.user.name || flag.user.email || "User",
   });
   return true;
 }

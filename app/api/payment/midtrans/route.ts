@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { createBiteshipShipmentIfReady } from "@/lib/biteship";
@@ -7,6 +7,10 @@ import { SELF_PICKUP_METHOD } from "@/lib/self-pickup";
 // Notifikasi payment confirmed via WhatsApp dihapus — customer dapat
 // konfirmasi via email + push (sendOrderStatusPush) saja. Fonnte sekarang
 // hanya untuk OTP register & login.
+
+// Booking Biteship + push status dijadwalkan via after() — tetap dihitung
+// ke durasi invocation, beri ruang di atas ack webhook yang cepat.
+export const maxDuration = 30;
 
 type MidtransNotification = {
   order_id: string;
@@ -120,23 +124,32 @@ export async function POST(request: NextRequest) {
     },
   });
 
+  // Booking Biteship + push status via after() — ack webhook ke Midtrans
+  // tetap cepat, TAPI eksekusi dijamin setelah response. Sebelumnya
+  // fire-and-forget promise yang bisa dibekukan Vercel sebelum jalan →
+  // shipment TIDAK PERNAH dibooking + user tidak dapat push PAID padahal
+  // sudah bayar (kelas bug yang sama dengan feed publish-push).
   if (paymentStatus === "PAID" && order.paymentStatus !== "PAID") {
     if (updatedOrder.orderType !== SELF_PICKUP_METHOD) {
-      createBiteshipShipmentIfReady(updatedOrder.id).catch(() => {});
+      after(() => createBiteshipShipmentIfReady(updatedOrder.id));
     }
-    sendOrderStatusPush(
-      updatedOrder.id,
-      updatedOrder.orderNumber,
-      "PAID"
-    ).catch(() => {});
+    after(() =>
+      sendOrderStatusPush(
+        updatedOrder.id,
+        updatedOrder.orderNumber,
+        "PAID"
+      ).catch(() => {})
+    );
   }
 
   if (paymentStatus === "REFUNDED" && order.paymentStatus !== "REFUNDED") {
-    sendOrderStatusPush(
-      updatedOrder.id,
-      updatedOrder.orderNumber,
-      "REFUNDED"
-    ).catch(() => {});
+    after(() =>
+      sendOrderStatusPush(
+        updatedOrder.id,
+        updatedOrder.orderNumber,
+        "REFUNDED"
+      ).catch(() => {})
+    );
   }
 
   // Pembayaran kadaluarsa/gagal (deny/cancel/expire dari Midtrans) →
@@ -145,11 +158,13 @@ export async function POST(request: NextRequest) {
   // tidak dikasih tahu → bingung "kok order hilang". Guard transition
   // supaya tidak re-push kalau webhook FAILED datang berkali-kali.
   if (paymentStatus === "FAILED" && order.paymentStatus !== "FAILED") {
-    sendOrderStatusPush(
-      updatedOrder.id,
-      updatedOrder.orderNumber,
-      "FAILED"
-    ).catch(() => {});
+    after(() =>
+      sendOrderStatusPush(
+        updatedOrder.id,
+        updatedOrder.orderNumber,
+        "FAILED"
+      ).catch(() => {})
+    );
   }
 
   return NextResponse.json({ message: "OK" });

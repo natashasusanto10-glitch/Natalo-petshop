@@ -17,7 +17,7 @@
  * Return shape mirip FeedListResponse tapi exposed full status + moderation
  * fields supaya admin bisa decide action.
  */
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import type { FeedPostKind, FeedPostStatus, Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -123,8 +123,10 @@ export async function GET(request: NextRequest) {
 
   // Self-heal: kalau ada post yang nyangkut di "uploading" / "processing"
   // padahal Bunny webhook seharusnya udah firing, polling Bunny secara
-  // background. Fire-and-forget (tidak await) supaya admin list response
-  // tetap cepat. Cap 10 row per request supaya tidak abuse Bunny API
+  // background via after() — admin list response tetap cepat TAPI reconcile
+  // dijamin jalan. Sebelumnya fire-and-forget `void` yang bisa dibekukan
+  // Vercel sebelum selesai (post nyangkut terus + publish-push tak jalan).
+  // Cap 10 row per request supaya tidak abuse Bunny API
   // bahkan saat ada banyak post stuck. Admin refresh halaman → row yang
   // udah selesai re-render sebagai "ready".
   // Hanya di-trigger untuk first page (cursor null) supaya pagination tidak
@@ -136,11 +138,13 @@ export async function GET(request: NextRequest) {
         (p.encodingStatus === "uploading" || p.encodingStatus === "processing"),
     );
     if (stuck.length > 0) {
-      for (const p of stuck.slice(0, 10)) {
-        void reconcileFeedPost(p.id).catch((err) => {
-          console.warn("[admin-list] reconcile failed:", p.id, err);
-        });
-      }
+      after(async () => {
+        for (const p of stuck.slice(0, 10)) {
+          await reconcileFeedPost(p.id).catch((err) => {
+            console.warn("[admin-list] reconcile failed:", p.id, err);
+          });
+        }
+      });
     }
   }
 

@@ -13,7 +13,7 @@
  * Returns the post's new shareCount so the client can reconcile its
  * optimistic update.
  */
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/csrf";
 import { sendShareNotification } from "@/lib/feed/activity-notifications";
 import { prisma } from "@/lib/prisma";
@@ -51,7 +51,12 @@ export async function POST(
       select: { shareCount: true },
     });
 
-    void sendShareNotification({ postId: post.id, shareCount: updated.shareCount });
+    // Non-blocking via `after()` (bukan `void`) — void promise bisa
+    // dibekukan Vercel sebelum jalan → notif share hilang. Error ditelan
+    // internal oleh helper.
+    after(() =>
+      sendShareNotification({ postId: post.id, shareCount: updated.shareCount }),
+    );
 
     return NextResponse.json({ ok: true, shareCount: updated.shareCount });
   } catch {

@@ -179,7 +179,9 @@ export async function GET(request: NextRequest) {
         });
       });
 
-      void sendOrderStatusPush(
+      // WAJIB await — void promise bisa dibekukan Vercel begitu response
+      // cron terkirim → push CANCELLED tidak pernah jalan. Error ditelan.
+      await sendOrderStatusPush(
         order.id,
         order.orderNumber,
         "CANCELLED",

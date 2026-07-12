@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { syncProduct, productSearchWhere } from "@/lib/search";
@@ -339,10 +339,15 @@ export async function POST(request: NextRequest) {
     return product;
   });
 
-  // Sync search index (non-blocking).
-  syncProduct(created.id).catch((err) => {
-    console.error("[admin/products POST syncProduct]", err);
-  });
+  // Sync search index non-blocking via after() — sebelumnya fire-and-forget
+  // promise yang bisa dibekukan Vercel sebelum jalan → produk baru tidak
+  // muncul di pencarian sampai sync berikutnya (index basi). Sama dengan
+  // pola di bulk route.
+  after(() =>
+    syncProduct(created.id).catch((err) => {
+      console.error("[admin/products POST syncProduct]", err);
+    }),
+  );
 
   return NextResponse.json(created, { status: 201 });
 }

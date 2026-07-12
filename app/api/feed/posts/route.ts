@@ -555,14 +555,15 @@ export async function POST(request: NextRequest) {
   });
 
   if (!isAdmin && post.status === "PENDING_REVIEW") {
-    void sendFeedPendingReviewNotification({ postId: post.id });
+    // WAJIB await — void promise bisa dibekukan Vercel sebelum jalan
+    // (lihat komentar di lib/feed/reconcile.ts). Error ditelan internal.
+    await sendFeedPendingReviewNotification({ postId: post.id });
     // Push notif ke semua admin — review queue jadi cepat ditindak.
-    void import("@/lib/push-admin").then(({ sendAdminFeedPendingPush }) => {
-      sendAdminFeedPendingPush({
-        postId: post.id,
-        authorName: session.name ?? "Customer",
-        title: title,
-      });
+    const { sendAdminFeedPendingPush } = await import("@/lib/push-admin");
+    await sendAdminFeedPendingPush({
+      postId: post.id,
+      authorName: session.name ?? "Customer",
+      title: title,
     });
   }
 
@@ -580,7 +581,9 @@ export async function POST(request: NextRequest) {
   // postingan". Fire kalau post ACTIVE (admin auto-publish) atau pending
   // tetap (defer notif sampai approved? Untuk simplicity fire sekarang —
   // user yang di-mention bisa lihat profile actor + post saat di-approve).
-  void (async () => {
+  // Di-await (bukan void IIFE) — alasan sama dengan publish-push di atas;
+  // try/catch internal menjamin error tidak menggagalkan create post.
+  await (async () => {
     try {
       const captionText = `${title} ${description}`.trim();
       const handles = extractMentionHandles(captionText);

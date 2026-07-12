@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
@@ -521,16 +521,20 @@ export async function DELETE(
 
   // Cleanup Bunny Stream video record (HLS + MP4 variants + thumbnail
   // auto-generated) + UploadThing asset (legacy video + PHOTO_CAROUSEL
-  // media). Fire-and-forget — kalau Bunny unreachable, soft-delete tetap
-  // commit; weekly storage GC cron (/api/cron/feed-storage-gc) catch
-  // orphan nanti.
-  void deleteFeedAssets({
-    videoUrl: post.videoUrl,
-    thumbnailUrl: post.thumbnailUrl,
-    videoGuid: post.videoGuid,
-    mediaItems: post.media,
-    context: `user-delete ${postId}`,
-  });
+  // media). Via `after()` (bukan `void`) — void promise bisa dibekukan
+  // Vercel sebelum jalan → orphan asset terus menagih storage; after()
+  // dijamin eksekusi tanpa menahan response delete. Kalau Bunny
+  // unreachable, soft-delete tetap commit; weekly storage GC cron
+  // (/api/cron/feed-storage-gc) catch orphan nanti.
+  after(() =>
+    deleteFeedAssets({
+      videoUrl: post.videoUrl,
+      thumbnailUrl: post.thumbnailUrl,
+      videoGuid: post.videoGuid,
+      mediaItems: post.media,
+      context: `user-delete ${postId}`,
+    }),
+  );
 
   return NextResponse.json({ ok: true });
 }

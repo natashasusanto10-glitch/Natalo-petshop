@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
@@ -115,9 +115,13 @@ export async function PATCH(
     return { updated, aggregate: { price: minPrice, stock: totalStock } };
   });
 
-  syncProduct(productId).catch((error) => {
-    console.error("[variants bulk PATCH syncProduct]", error);
-  });
+  // Via after() — fire-and-forget promise bisa dibekukan Vercel sebelum
+  // jalan → index pencarian basi. Pola sama dengan bulk products route.
+  after(() =>
+    syncProduct(productId).catch((error) => {
+      console.error("[variants bulk PATCH syncProduct]", error);
+    }),
+  );
 
   return NextResponse.json(result);
 }

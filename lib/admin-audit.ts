@@ -19,6 +19,7 @@
  * (e.g. compliance-mandatory action). Default: fire-and-forget via
  * `logAdminAction()`.
  */
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -70,17 +71,29 @@ export type AdminAuditParams = {
 };
 
 /**
- * Fire-and-forget logging. Tidak block caller — error di-swallow +
+ * Non-blocking logging. Tidak block caller — error di-swallow +
  * console.warn. Pakai ini di mayoritas admin action.
+ *
+ * Dijadwalkan via `after()` (bukan `void` promise) — Vercel membekukan
+ * function begitu response terkirim, jadi promise yang di-`void` bisa
+ * tak pernah jalan dan baris audit hilang diam-diam. `after()` dijamin
+ * tetap dieksekusi setelah response. Fallback `void` hanya untuk call
+ * di luar request scope (mis. script), di mana freeze tidak berlaku.
  */
 export function logAdminAction(params: AdminAuditParams): void {
-  void recordAdminAction(params).catch((err) => {
-    console.warn("[admin-audit] log failed:", {
-      action: params.action,
-      targetId: params.targetId,
-      error: err instanceof Error ? err.message : String(err),
+  const write = () =>
+    recordAdminAction(params).catch((err) => {
+      console.warn("[admin-audit] log failed:", {
+        action: params.action,
+        targetId: params.targetId,
+        error: err instanceof Error ? err.message : String(err),
+      });
     });
-  });
+  try {
+    after(write);
+  } catch {
+    void write();
+  }
 }
 
 /**
