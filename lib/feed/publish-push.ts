@@ -17,8 +17,11 @@ import { buildFeedPushPayload } from "@/lib/feed/publish-push-payload";
 
 export type PushSegment = "all" | "members" | "active30d";
 
-/** Batas kirim publish-push per hari — cegah spam kalau admin publish beruntun. */
-export const FEED_PUSH_DAILY_CAP = 2;
+/** Batas kirim publish-push per hari — cegah spam kalau admin publish beruntun.
+ *  SEMENTARA dinaikkan 2→5: dua klaim kuota hari ini terbakar oleh bug
+ *  emoji-truncation (push tak pernah terkirim) — beri ruang uji ulang.
+ *  Kembalikan ke 2 setelah verifikasi selesai. */
+export const FEED_PUSH_DAILY_CAP = 5;
 
 const BATCH_SIZE = 50;
 

@@ -37,3 +37,46 @@ test("buildFeedPushPayload: title dan body pendek tidak dipotong", () => {
   assert.equal(result.title, "Judul pendek");
   assert.equal(result.body, "Deskripsi pendek");
 });
+
+// Regresi bug prod: judul diawali emoji, slice(0,60) per code-unit membelah
+// surrogate pair tepat di batas → lone surrogate → Prisma tolak INSERT
+// ("unexpected end of hex escape") → announcement + push mati senyap.
+function hasLoneSurrogate(s: string): boolean {
+  // Iterasi per code unit; surrogate tinggi (D800-DBFF) harus diikuti
+  // surrogate rendah (DC00-DFFF), dan surrogate rendah tak boleh berdiri
+  // sendiri.
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c >= 0xd800 && c <= 0xdbff) {
+      const next = s.charCodeAt(i + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
+      i++;
+    } else if (c >= 0xdc00 && c <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
+test("buildFeedPushPayload: emoji di batas potong TIDAK terbelah (title)", () => {
+  // 59 huruf + emoji (2 code unit) → batas 60 jatuh di TENGAH emoji.
+  const title = "A".repeat(59) + "🐱" + "ekstra";
+  const result = buildFeedPushPayload("post1", title, "deskripsi");
+  assert.equal(hasLoneSurrogate(result.title), false);
+  // Emoji ikut utuh (potong per code point: 59 huruf + 🐱 = 60 code point).
+  assert.equal(result.title, "A".repeat(59) + "🐱");
+});
+
+test("buildFeedPushPayload: emoji di batas potong TIDAK terbelah (body)", () => {
+  const body = "B".repeat(119) + "🐾" + "ekstra";
+  const result = buildFeedPushPayload("post1", "Judul", body);
+  assert.equal(hasLoneSurrogate(result.body), false);
+  assert.equal(result.body, "B".repeat(119) + "🐾");
+});
+
+test("buildFeedPushPayload: judul penuh emoji dipotong utuh per code point", () => {
+  const title = "🐱".repeat(70); // 140 code unit, 70 code point
+  const result = buildFeedPushPayload("post1", title, "x");
+  assert.equal(hasLoneSurrogate(result.title), false);
+  assert.equal(Array.from(result.title).length, 60);
+});
