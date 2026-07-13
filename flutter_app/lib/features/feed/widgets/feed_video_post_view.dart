@@ -386,6 +386,14 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
   void _resumeFromCover() {
     if (_managed) {
+      // BLOCKER: guard isActive — view origin yang MASIH mounted tapi INACTIVE
+      // (user sudah swipe ke sibling di fullscreen; sibling tak pernah
+      // setActive → coordinator.activePostId nyangkut di origin) TIDAK boleh
+      // minta resume. Tanpa guard ini, app-foreground / didPopNext memanggil
+      // onRequestPlay → resumeAll() memutar origin tersembunyi di belakang
+      // sibling = dua suara (audio hantu). Hanya origin yang benar-benar AKTIF
+      // (user di halaman origin) yang meminta resume.
+      if (!mounted || !widget.isActive) return;
       widget.onRequestPlay?.call();
       return;
     }

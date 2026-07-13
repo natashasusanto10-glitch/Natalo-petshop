@@ -649,6 +649,113 @@ void main() {
     });
   });
 
+  // ── BLOCKER — audio hantu: guard isActive di managed _resumeFromCover ──
+  // Di fullscreen, view ORIGIN yang sudah di-swipe-lewati tetap MOUNTED tapi
+  // isActive:false. Coordinator.activePostId nyangkut di origin (sibling tak
+  // pernah setActive). Resume apa pun (app-foreground / didPopNext) di view
+  // origin mounted-inactive TIDAK boleh minta onRequestPlay → resumeAll,
+  // karena itu memutar origin tersembunyi di belakang sibling = dua suara.
+  group('BLOCKER managed resume guard (audio hantu)', () {
+    late _FakeVideoPlayerPlatform fakePlatform;
+
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      VisibilityDetectorController.instance.updateInterval = Duration.zero;
+      CachedVideoPlayerPlus.cacheManager = _NoopCacheManager();
+      CachedVideoPlayerPlus.metadataStorage = _NoopMetadataStorage();
+      fakePlatform = _FakeVideoPlayerPlatform();
+      VideoPlayerPlatform.instance = fakePlatform;
+    });
+
+    Widget host({
+      required bool isActive,
+      required List<void> playCalls,
+      required List<CoverPauseReason> pauseCalls,
+    }) {
+      return MaterialApp(
+        home: FeedVideoPostView(
+          key: const ValueKey('feed-video-post-1'),
+          post: _fakeVideoPost(hls: true),
+          isActive: isActive,
+          preloadedController: null,
+          ownsController: false,
+          playbackManagedExternally: true,
+          onRequestPause: pauseCalls.add,
+          onRequestPlay: () => playCalls.add(null),
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      );
+    }
+
+    testWidgets(
+        'managed inactive: app-resume TIDAK memanggil onRequestPlay '
+        '(origin di belakang sibling)', (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final playCalls = <void>[];
+      final pauseCalls = <CoverPauseReason>[];
+      await tester.pumpWidget(
+          host(isActive: false, playCalls: playCalls, pauseCalls: pauseCalls));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      // App ke background lalu foreground → _resumeFromCover (managed).
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(playCalls, isEmpty,
+          reason: 'view mounted-inactive TIDAK boleh minta resume '
+              '(cegah audio hantu origin di belakang sibling)');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    testWidgets(
+        'managed active: app-resume MEMANGGIL onRequestPlay (kasus benar)',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final playCalls = <void>[];
+      final pauseCalls = <CoverPauseReason>[];
+      await tester.pumpWidget(
+          host(isActive: true, playCalls: playCalls, pauseCalls: pauseCalls));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(playCalls, isNotEmpty,
+          reason: 'origin AKTIF + foreground → resume benar (onRequestPlay)');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+  });
+
   // ── D1 — mute LIVE di Feed utama (jalur non-managed/legacy) ──
   // Controller feed yang SUDAH hidup harus ikut perubahan feedMuted secara
   // live (§2.2): HANYA controller AKTIF yang naik ke volume 1 saat unmute
