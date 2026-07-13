@@ -338,6 +338,16 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // fire untuk lifecycle app, hanya untuk perubahan layout.
     WidgetsBinding.instance.addObserver(this);
 
+    // D1 (§2.2) — mute LIVE di Feed utama (jalur non-managed/legacy). Controller
+    // feed yang SUDAH hidup harus ikut perubahan `feedMuted` (mis. user mute
+    // dari layar lain / Postingan) secara live, bukan cuma saat init/adopt.
+    // HANYA controller AKTIF yang mengikuti feedMuted (0/1); non-aktif tetap 0.
+    // Managed (coordinator) tidak pakai listener ini — coordinator yang urus
+    // volume controller pinjaman (§2.1).
+    if (!_managed) {
+      appSettingsStore.addListener(_onFeedMutedChangedLive);
+    }
+
     _adoptPreloadedController();
     _maybeInitVideo();
     _syncProductRotation();
@@ -427,6 +437,25 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   /// Playback dikendalikan coordinator (§2.1) — semua kontrol internal jadi
   /// laporan intent, bukan panggilan langsung ke controller.
   bool get _managed => widget.playbackManagedExternally;
+
+  /// D1 (§2.2) — re-apply volume LIVE saat `feedMuted` berubah (jalur legacy
+  /// non-managed). Aturan aktif-saja: HANYA controller post yang sedang tampil
+  /// (`widget.isActive`) yang naik ke volume 1 saat unmute global; controller
+  /// background/inactive TETAP volume 0 (unmute global tidak boleh membocorkan
+  /// audio video di belakang). Dipanggil dari listener `appSettingsStore`;
+  /// listener itu juga fire untuk setting lain (theme/haptics/quality) — apply
+  /// volume di sini idempoten dan tak berbahaya untuk trigger tersebut.
+  void _onFeedMutedChangedLive() {
+    if (_managed || !mounted) return;
+    final ctrl = _videoController;
+    if (ctrl == null || !ctrl.value.isInitialized) return;
+    if (!widget.isActive) {
+      // Non-aktif: pastikan tetap senyap (biasanya sudah 0).
+      ctrl.setVolume(0);
+      return;
+    }
+    ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+  }
 
   /// Guard in-flight untuk [_maybeInitVideo] (fix A4): true selama sebuah
   /// init sedang berjalan supaya panggilan kedua (mis. tap saat loading)
@@ -790,6 +819,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   void dispose() {
     appRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
+    // D1: lepas listener feedMuted live (hanya terpasang di jalur non-managed).
+    if (!_managed) {
+      appSettingsStore.removeListener(_onFeedMutedChangedLive);
+    }
     feedStore.removeListener(_onFeedStoreChanged);
     _loadingSpinnerDelay?.cancel();
     _stopProductRotation();

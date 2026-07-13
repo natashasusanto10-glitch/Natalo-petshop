@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_post_view.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_scrubber.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
+import 'package:natalo_petshop_flutter/state/settings_store.dart';
 import 'package:natalo_petshop_flutter/utils/app_route_observer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
@@ -31,6 +32,9 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   int playCount = 0;
   int pauseCount = 0;
   int setSpeedCount = 0;
+  // D1: rekam setiap setVolume supaya test bisa memverifikasi controller
+  // aktif mengikuti feedMuted (0/1) secara live + inactive tetap 0.
+  final List<double> volumes = [];
 
   @override
   Future<void> init() async {}
@@ -90,7 +94,9 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   Future<void> setLooping(int playerId, bool looping) async {}
 
   @override
-  Future<void> setVolume(int playerId, double volume) async {}
+  Future<void> setVolume(int playerId, double volume) async {
+    volumes.add(volume);
+  }
 
   @override
   Future<void> setPlaybackSpeed(int playerId, double speed) async {
@@ -638,6 +644,134 @@ void main() {
       expect(reasons.last, CoverPauseReason.appBackground,
           reason: 'app background → reason appBackground (T3 pauseAll)');
 
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+  });
+
+  // ── D1 — mute LIVE di Feed utama (jalur non-managed/legacy) ──
+  // Controller feed yang SUDAH hidup harus ikut perubahan feedMuted secara
+  // live (§2.2): HANYA controller AKTIF yang naik ke volume 1 saat unmute
+  // global; controller inactive/background TETAP volume 0.
+  group('D1 mute live (non-managed)', () {
+    late _FakeVideoPlayerPlatform fakePlatform;
+
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      VisibilityDetectorController.instance.updateInterval = Duration.zero;
+      CachedVideoPlayerPlus.cacheManager = _NoopCacheManager();
+      CachedVideoPlayerPlus.metadataStorage = _NoopMetadataStorage();
+      fakePlatform = _FakeVideoPlayerPlatform();
+      VideoPlayerPlatform.instance = fakePlatform;
+    });
+
+    Widget host({
+      required bool isActive,
+      required VideoPlayerController preloaded,
+    }) {
+      return MaterialApp(
+        home: FeedVideoPostView(
+          key: const ValueKey('feed-video-post-1'),
+          post: _fakeVideoPost(hls: true),
+          isActive: isActive,
+          preloadedController: preloaded,
+          // Jalur legacy: default ownsController:true, managed:false.
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      );
+    }
+
+    testWidgets(
+        'post aktif: setFeedMuted live → controller.setVolume(0) lalu (1)',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      // Autoplay OFF: hindari play() (yang memulai timer posisi periodik →
+      // "pending timer" saat teardown). Live-mute tak bergantung playing;
+      // listener meng-set volume selama controller aktif + initialized.
+      await appSettingsStore.setFeedAutoplay(false);
+      addTearDown(() => appSettingsStore.setFeedAutoplay(true));
+      // Mulai dari state diketahui.
+      await appSettingsStore.setFeedMuted(true);
+
+      final borrowed = VideoPlayerController.networkUrl(
+        Uri.parse('https://example.com/d1-active.mp4'),
+      );
+      await tester.runAsync(() => borrowed.initialize());
+      // ownsController default true → widget yang men-dispose borrowed saat
+      // unmount (jangan addTearDown dispose = double-dispose).
+
+      await tester.pumpWidget(host(isActive: true, preloaded: borrowed));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      // Isolasi dari volume adopt-time — uji hanya efek transisi live.
+      fakePlatform.volumes.clear();
+
+      // Sudah muted → set false = unmute global saat controller SUDAH hidup.
+      await appSettingsStore.setFeedMuted(false);
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.volumes.last, 1,
+          reason: 'post aktif unmute live → setVolume(1)');
+
+      fakePlatform.volumes.clear();
+      // Mute global lagi → controller aktif turun ke 0 secara live.
+      await appSettingsStore.setFeedMuted(true);
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.volumes.last, 0,
+          reason: 'post aktif mute live → setVolume(0)');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    testWidgets(
+        'post TIDAK aktif: unmute global TIDAK menaikkan volume (tetap 0)',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      // Mulai muted.
+      await appSettingsStore.setFeedMuted(true);
+
+      final borrowed = VideoPlayerController.networkUrl(
+        Uri.parse('https://example.com/d1-inactive.mp4'),
+      );
+      await tester.runAsync(() => borrowed.initialize());
+
+      await tester.pumpWidget(host(isActive: false, preloaded: borrowed));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      // Isolasi dari volume adopt-time.
+      fakePlatform.volumes.clear();
+
+      // Unmute global sementara post ini TIDAK aktif → volume TIDAK boleh naik
+      // ke 1 (unmute tak boleh membocorkan audio video background).
+      await appSettingsStore.setFeedMuted(false);
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.volumes.contains(1), isFalse,
+          reason: 'post inactive → unmute global tidak menaikkan volume ke 1');
+      expect(fakePlatform.volumes.last, 0,
+          reason: 'post inactive tetap senyap (volume 0)');
+
+      // Rapikan state global untuk test lain.
+      await appSettingsStore.setFeedMuted(true);
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(milliseconds: 50));
     });
