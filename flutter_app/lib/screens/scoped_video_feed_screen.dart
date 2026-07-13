@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../features/feed/video/post_video_coordinator.dart';
+import '../features/feed/video/video_player_session.dart';
 import '../features/feed/widgets/feed_video_post_view.dart';
 import '../models/feed_post.dart';
 import '../state/feed_store.dart';
@@ -18,16 +19,19 @@ class ScopedVideoFeedScreen extends StatefulWidget {
   /// ([originPostId]) meminjam controller coordinator (tanpa init ulang →
   /// instan). Kalau null → perilaku lama (tiap item init controller sendiri).
   ///
-  /// TODO(T3b): integrasi penuh — attach item asal ke sesi coordinator
-  /// (`ownsController:false, playbackManagedExternally:true`), pakai slot
-  /// preload untuk item next, dan laporkan item aktif + route visibility ke
-  /// coordinator. Di T3a param ini SEKADAR seam: viewer masih fallback
-  /// (init controller sendiri) walau param di-set.
+  /// T3b (integrasi bertahap, aman): HANYA item ASAL ([originPostId]) yang
+  /// di-handoff lewat coordinator — ia dibangun dengan
+  /// `ownsController:false, playbackManagedExternally:true` dan meminjam
+  /// controller yang SUDAH init dari `coordinator.sessionFor(originPostId)`
+  /// (via `preloadedController`) → tap→fullscreen instan, kembali di
+  /// timestamp sama, nol audio hantu. Item lain TETAP own-controller
+  /// (perilaku lama) — swipe berikutnya boleh loading singkat (diizinkan
+  /// acceptance). Tanpa coordinator/originPostId → semua item fallback lama.
   final PostVideoCoordinator? coordinator;
 
   /// Id post video ASAL (yang di-tap di Postingan) — pinned di coordinator
   /// selama viewer terbuka. Null kalau bukan alur Postingan. Lihat
-  /// [coordinator]. Dipakai penuh di T3b.
+  /// [coordinator].
   final String? originPostId;
 
   const ScopedVideoFeedScreen({
@@ -88,6 +92,74 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
     return false;
   }
 
+  /// Bangun satu page. Item ASAL (handoff coordinator) → managed borrow
+  /// controller (instan); lainnya → own-controller (perilaku lama).
+  Widget _buildItem(int index) {
+    final post = widget.posts[index];
+    final coordinator = widget.coordinator;
+    final originId = widget.originPostId;
+    final isOrigin =
+        coordinator != null && originId != null && post.id == originId;
+
+    if (!isOrigin) {
+      return FeedVideoPostView(
+        post: post,
+        isActive: index == _activeIndex,
+        preloadedController: null,
+        preloadedCachedPlayer: null,
+        onOverlayStateChanged: (_) {},
+        onMediaZoomChanged: (_) {},
+      );
+    }
+
+    // Item ASAL: pinjam controller yang SUDAH init dari sesi coordinator —
+    // tanpa init ulang → instan. Sesi origin adalah [VideoPlayerSession]
+    // nyata; sesi fake (test) tak punya controller (preloadedController null),
+    // widget tetap merender managed dan melapor intent (cukup untuk
+    // memverifikasi wiring handoff tanpa plugin).
+    final session = coordinator.sessionFor(originId);
+    final videoSession = session is VideoPlayerSession ? session : null;
+    return FeedVideoPostView(
+      // Key stabil supaya state managed tidak dibangun ulang saat swipe
+      // bolak-balik ke origin (re-attach controller SAMA, bukan sesi baru).
+      key: ValueKey('scoped-origin-$originId'),
+      post: post,
+      isActive: index == _activeIndex,
+      // §2.1 KUNCI USER: coordinator pemilik controller (dispose) + pengendali
+      // playback. Widget hanya merender + melapor intent.
+      ownsController: false,
+      playbackManagedExternally: true,
+      preloadedController: videoSession?.controller,
+      preloadedCachedPlayer: null,
+      onOverlayStateChanged: (_) {},
+      onMediaZoomChanged: (_) {},
+      // Visibilitas → intent ke coordinator. Terlihat + jadi halaman aktif →
+      // setActive (mainkan controller SAMA, instan); kalau sudah aktif cukup
+      // reportVisible (resume). Tak terlihat → reportHidden (pause, tetap
+      // pinned via origin untuk resume timestamp saat kembali, §2.6).
+      onVisibleChanged: (visible) {
+        if (visible) {
+          if (coordinator.activePostId != originId) {
+            coordinator.setActive(originId);
+          } else {
+            coordinator.reportVisible(originId);
+          }
+        } else {
+          coordinator.reportHidden(originId);
+        }
+      },
+      // Tap play/pause → satu-satunya sumber user-pause eksplisit.
+      onRequestUserTogglePlay: coordinator.userTogglePlay,
+      // Cover hilang (route pop / app foreground / comment sheet turun) →
+      // resume sesi aktif (guard suspend/user-pause ada di coordinator).
+      onRequestPlay: coordinator.resumeAll,
+      // Cover (D5): appBackground / commentSheetFull / routePush (route lain
+      // di ATAS fullscreen) → pause semua. pauseAll idempoten dengan observer
+      // level-halaman Postingan; controller origin tetap hidup + pinned.
+      onRequestPause: (_) => coordinator.pauseAll(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -103,17 +175,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
               physics: const PageScrollPhysics(parent: BouncingScrollPhysics()),
               itemCount: widget.posts.length,
               onPageChanged: _onPageChanged,
-              itemBuilder: (context, index) {
-                final post = widget.posts[index];
-                return FeedVideoPostView(
-                  post: post,
-                  isActive: index == _activeIndex,
-                  preloadedController: null,
-                  preloadedCachedPlayer: null,
-                  onOverlayStateChanged: (_) {},
-                  onMediaZoomChanged: (_) {},
-                );
-              },
+              itemBuilder: (context, index) => _buildItem(index),
             ),
           ),
           SafeArea(

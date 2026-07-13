@@ -45,6 +45,10 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   /// Total number of players created across this platform's lifetime.
   int createCount = 0;
 
+  /// Per-player dispose counts — a value >1 for any id proves a double
+  /// dispose of the same underlying controller.
+  final Map<int, int> disposeCounts = {};
+
   @override
   Future<void> init() async {}
 
@@ -71,6 +75,7 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
 
   @override
   Future<void> dispose(int playerId) async {
+    disposeCounts[playerId] = (disposeCounts[playerId] ?? 0) + 1;
     await _streams.remove(playerId)?.close();
     _positions.remove(playerId);
   }
@@ -322,6 +327,99 @@ void main() {
       expect(find.byType(ScopedVideoFeedScreen), findsNothing,
           reason: 'back should close the scoped feed');
 
+      await disposeTree(tester);
+    },
+  );
+
+  // ── T3b — handoff origin INSTAN via coordinator ──────────────────────
+
+  Future<void> openScopedFeed(WidgetTester tester) async {
+    await tester.tapAt(const Offset(200, 600));
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
+    }
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+  }
+
+  testWidgets(
+    'T3b: opening fullscreen ADOPTS the origin controller — no new player '
+    'created (instant handoff), and closing does NOT dispose it',
+    (tester) async {
+      await pumpAndInitialize(tester);
+      // Inline created exactly one underlying player.
+      expect(fakePlatform.createCount, 1,
+          reason: 'inline origin should create exactly one controller');
+
+      await openScopedFeed(tester);
+      // Fullscreen origin item is managed (ownsController:false) and borrows
+      // the SAME controller via preloadedController → NO second player.
+      expect(fakePlatform.createCount, 1,
+          reason:
+              'fullscreen origin must reuse the existing controller, not init a '
+              'new session');
+
+      // Close the viewer → origin controller must survive (re-attach inline at
+      // the same timestamp). No dispose of the shared player yet.
+      await tester.tap(find.byIcon(Icons.chevron_left_rounded));
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
+      }
+      expect(find.byType(ScopedVideoFeedScreen), findsNothing);
+      expect(fakePlatform.createCount, 1,
+          reason: 'closing fullscreen must not re-create the origin controller');
+      expect(
+        fakePlatform.disposeCounts.values.where((c) => c > 0).length,
+        0,
+        reason: 'origin controller must NOT be disposed when fullscreen closes',
+      );
+      // Inline still renders the (same) video after return.
+      expect(find.byType(VideoPlayer), findsWidgets);
+
+      // Page dispose → coordinator disposes the origin session exactly ONCE
+      // (zero double-dispose).
+      await disposeTree(tester);
+      for (final entry in fakePlatform.disposeCounts.entries) {
+        expect(entry.value, lessThanOrEqualTo(1),
+            reason: 'player ${entry.key} disposed ${entry.value}x — expected ≤1 '
+                '(no double-dispose)');
+      }
+    },
+  );
+
+  testWidgets(
+    'T3b hardening: fetch-fail while app is backgrounded → handoff does NOT '
+    'resume (no ghost audio)',
+    (tester) async {
+      // Fetch returns nothing → scoped feed never opens → _endHandoff(resume).
+      debugScopedFeedPostFetcher = (id) async => null;
+      final controller = await pumpAndInitialize(tester);
+
+      // Background the app (page observer pauses all sessions).
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump(const Duration(milliseconds: 20));
+      expect(controller.value.isPlaying, isFalse,
+          reason: 'background must pause the origin controller');
+
+      // Tap the inline video → handoff starts, fetch fails (empty), finally
+      // runs _endHandoff(resume:true) — but lifecycle is paused, so the guard
+      // must SKIP resumeAll (otherwise ghost audio behind a backgrounded app).
+      await tester.tapAt(const Offset(200, 600));
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.byType(ScopedVideoFeedScreen), findsNothing,
+          reason: 'empty fetch must not open the viewer');
+      expect(controller.value.isPlaying, isFalse,
+          reason:
+              'resume must be skipped while backgrounded (fetch-fail path)');
+
+      // Empty-fetch shows an AppToast that auto-dismisses via a Timer — flush
+      // it so the binding doesn't flag a pending timer at teardown.
+      for (var i = 0; i < 60; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
       await disposeTree(tester);
     },
   );

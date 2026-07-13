@@ -134,6 +134,13 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   /// sessionId ini masuk mode DORMANT (frozen frame, berhenti lapor
   /// visibilitas) supaya tidak mengadu playback dengan fullscreen.
   String? _handoffSessionId;
+
+  /// Lifecycle app terkini (level halaman, §2.5). Dipakai untuk memutuskan
+  /// apakah `_endHandoff` boleh `resumeAll`: kalau app sedang TIDAK resumed
+  /// (mis. user background-kan app saat fetch handoff gagal), JANGAN resume —
+  /// biarkan transisi ke `resumed` nanti yang memicu resume, supaya tak ada
+  /// audio hantu di jalur fetch-fail-while-backgrounded.
+  AppLifecycleState _lastLifecycle = AppLifecycleState.resumed;
   // Track liked state per post id — optimistic toggle, source-of-truth
   // sampai backend respons confirm.
   final Map<String, bool> _likedCache = {};
@@ -278,6 +285,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lastLifecycle = state;
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
@@ -737,79 +745,90 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     _videoCoordinator.reportHidden(sessionId);
     if (mounted) setState(() => _handoffSessionId = sessionId);
 
-    final rootNav = Navigator.of(context, rootNavigator: true);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.black.withValues(alpha: 0.25),
-      builder: (_) => const Center(
-        child: SizedBox(
-          width: 44,
-          height: 44,
-          child: CircularProgressIndicator(strokeWidth: 2.6),
+    // Hardening (review): SELALU akhiri handoff lewat `finally` supaya flag
+    // `_handoffInProgress`/`_handoffSessionId` TAK PERNAH nyangkut walau ada
+    // throw di masa depan (pushScaledVideoFeed dll). Semantik resume:
+    // normal/return = resume true; unmounted = resume false.
+    var resume = true;
+    try {
+      final rootNav = Navigator.of(context, rootNavigator: true);
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.black.withValues(alpha: 0.25),
+        builder: (_) => const Center(
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: CircularProgressIndicator(strokeWidth: 2.6),
+          ),
         ),
-      ),
-    );
-
-    // Fetch semua video user ini paralel (order-preserving) — pola sama
-    // dengan Postingan Terkait di product_detail_screen.
-    var anyFailed = false;
-    final fetchById = debugScopedFeedPostFetcher ?? feedService.fetchPostById;
-    final results = await Future.wait(
-      videoPosts.map((sibling) async {
-        try {
-          return await fetchById(sibling.id);
-        } catch (_) {
-          anyFailed = true;
-          return null;
-        }
-      }),
-    );
-    final fetched = results.whereType<FeedPost>().toList();
-
-    rootNav.pop(); // tutup loading dialog
-    if (!mounted) {
-      _endHandoff(resume: false);
-      return;
-    }
-
-    if (fetched.isEmpty) {
-      AppToast.show(
-        context,
-        anyFailed
-            ? 'Postingan belum bisa dibuka. Coba lagi.'
-            : 'Postingan sudah tidak tersedia.',
-        kind: ToastKind.warning,
       );
-      // Fullscreen tak jadi dibuka → batalkan dormant + resume inline.
-      _endHandoff(resume: true);
-      return;
-    }
 
-    final tappedIndex = fetched.indexWhere((fp) => fp.id == tapped.id);
-    await pushScaledVideoFeed(
-      context,
-      thumbnailKey: anchorKey,
-      thumbnailImageUrl: tapped.thumbnailUrl ?? '',
-      thumbnailBorderRadius: 0,
-      destinationBuilder: (_) => ScopedVideoFeedScreen(
-        posts: fetched,
-        initialIndex: tappedIndex >= 0 ? tappedIndex : 0,
-        // Seam handoff (§2.6) — integrasi penuh (borrow controller) di T3b.
-        coordinator: _videoCoordinator,
-        originPostId: sessionId,
-      ),
-    );
-    // ── Handoff selesai (kembali dari fullscreen) ──
-    // Urutan §2.6: re-attach/resume video asal DULU, baru setOrigin(null).
-    _endHandoff(resume: true);
+      // Fetch semua video user ini paralel (order-preserving) — pola sama
+      // dengan Postingan Terkait di product_detail_screen.
+      var anyFailed = false;
+      final fetchById = debugScopedFeedPostFetcher ?? feedService.fetchPostById;
+      final results = await Future.wait(
+        videoPosts.map((sibling) async {
+          try {
+            return await fetchById(sibling.id);
+          } catch (_) {
+            anyFailed = true;
+            return null;
+          }
+        }),
+      );
+      final fetched = results.whereType<FeedPost>().toList();
+
+      rootNav.pop(); // tutup loading dialog
+      if (!mounted) {
+        resume = false;
+        return;
+      }
+
+      if (fetched.isEmpty) {
+        AppToast.show(
+          context,
+          anyFailed
+              ? 'Postingan belum bisa dibuka. Coba lagi.'
+              : 'Postingan sudah tidak tersedia.',
+          kind: ToastKind.warning,
+        );
+        // Fullscreen tak jadi dibuka → batalkan dormant + resume inline.
+        return;
+      }
+
+      final tappedIndex = fetched.indexWhere((fp) => fp.id == tapped.id);
+      await pushScaledVideoFeed(
+        context,
+        thumbnailKey: anchorKey,
+        thumbnailImageUrl: tapped.thumbnailUrl ?? '',
+        thumbnailBorderRadius: 0,
+        destinationBuilder: (_) => ScopedVideoFeedScreen(
+          posts: fetched,
+          initialIndex: tappedIndex >= 0 ? tappedIndex : 0,
+          // Handoff §2.6: item ASAL pinjam controller coordinator (instan).
+          coordinator: _videoCoordinator,
+          originPostId: sessionId,
+        ),
+      );
+    } finally {
+      // ── Handoff selesai (kembali dari fullscreen / batal) ──
+      // Urutan §2.6: re-attach/resume video asal DULU, baru setOrigin(null).
+      _endHandoff(resume: resume);
+    }
   }
 
   /// Akhiri transisi handoff fullscreen: clear flag, resume video asal
   /// (kalau [resume]) SEBELUM unpin origin (§2.6), lalu keluar mode dormant.
   void _endHandoff({required bool resume}) {
     _handoffInProgress = false;
-    if (resume) {
+    // Hardening (review): jangan resume kalau app sedang TIDAK resumed (mis.
+    // user background-kan app saat fetch handoff gagal) — biarkan transisi ke
+    // `resumed` nanti (didChangeAppLifecycleState) yang memicu resumeAll. Ini
+    // menutup ghost-audio di jalur fetch-fail-while-backgrounded.
+    if (resume && _lastLifecycle == AppLifecycleState.resumed) {
       _videoCoordinator.resumeAll();
     }
     _videoCoordinator.setOrigin(null);
