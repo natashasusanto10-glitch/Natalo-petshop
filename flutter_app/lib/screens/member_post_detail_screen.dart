@@ -1,6 +1,7 @@
 // ignore_for_file: use_build_context_synchronously
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
@@ -9,6 +10,8 @@ import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../config/api_config.dart';
+import '../features/feed/video/post_video_coordinator.dart';
+import '../features/feed/video/video_player_session.dart';
 import '../models/feed_comment.dart';
 import '../models/feed_post.dart';
 import '../services/api_client.dart';
@@ -19,6 +22,7 @@ import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../theme/natalo_colors.dart';
+import '../utils/app_route_observer.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../utils/mention_text.dart';
@@ -41,6 +45,13 @@ import 'scoped_video_feed_screen.dart';
 /// jadi widget test override lewat sini. Production: null → feedService.
 @visibleForTesting
 Future<FeedPost?> Function(String id)? debugScopedFeedPostFetcher;
+
+/// Seam test-only untuk factory pembuat [PlaybackSession] milik coordinator
+/// halaman (T3a). Produksi: null → [VideoPlayerSession] nyata (butuh plugin
+/// video_player). Test menyuntik fake session (tanpa plugin native) untuk
+/// memverifikasi wiring inline↔coordinator (attach/setActive/dormant/D3).
+@visibleForTesting
+PlaybackSessionFactory? debugPostVideoSessionFactory;
 
 /// Detail Postingan style Instagram Feed — continuous vertical scroll list
 /// of user's own posts (Postingan Saya).
@@ -99,9 +110,44 @@ class MemberPostDetailScreen extends StatefulWidget {
   State<MemberPostDetailScreen> createState() => _MemberPostDetailScreenState();
 }
 
-class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
+class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
+    with WidgetsBindingObserver, RouteAware {
   late final ScrollController _scrollController;
   late List<FeedPost> _posts;
+
+  // ── Playback coordinator (T3a, plan 2026-07-13) ─────────────────────
+  // Coordinator memiliki SEMUA controller video di halaman ini + fullscreen
+  // handoff. Lifecycle (background/foreground + route push/pop) didaftarkan
+  // SEKALI di sini (§2.5), bukan per _InlineVideoPlayer.
+  late final PostVideoCoordinator _videoCoordinator;
+
+  /// Seam test-only: verifikasi wiring handoff (mis. `_endHandoff`
+  /// re-aktifkan origin, bukan active B basi). Produksi tidak memakainya.
+  @visibleForTesting
+  PostVideoCoordinator get debugVideoCoordinator => _videoCoordinator;
+
+  /// URL video per sessionId (== post.id untuk video utama; compound
+  /// `${post.id}-$index` untuk item carousel). Diisi di initState untuk video
+  /// utama + di-register on-demand oleh inline (carousel). Factory sesi baca
+  /// dari sini — coordinator sendiri plugin-free & tak tahu URL.
+  final Map<String, String> _videoUrls = {};
+
+  /// True selama transisi buka/tutup fullscreen scoped (§2.6 + D5). Selama
+  /// ini, cover-pause route-push TIDAK memicu `pauseAll` (controller asal
+  /// tetap pinned + posisinya dijaga untuk resume instan saat kembali).
+  bool _handoffInProgress = false;
+
+  /// SessionId video ASAL yang sedang di-handoff ke fullscreen. Inline dengan
+  /// sessionId ini masuk mode DORMANT (frozen frame, berhenti lapor
+  /// visibilitas) supaya tidak mengadu playback dengan fullscreen.
+  String? _handoffSessionId;
+
+  /// Lifecycle app terkini (level halaman, §2.5). Dipakai untuk memutuskan
+  /// apakah `_endHandoff` boleh `resumeAll`: kalau app sedang TIDAK resumed
+  /// (mis. user background-kan app saat fetch handoff gagal), JANGAN resume —
+  /// biarkan transisi ke `resumed` nanti yang memicu resume, supaya tak ada
+  /// audio hantu di jalur fetch-fail-while-backgrounded.
+  AppLifecycleState _lastLifecycle = AppLifecycleState.resumed;
   // Track liked state per post id — optimistic toggle, source-of-truth
   // sampai backend respons confirm.
   final Map<String, bool> _likedCache = {};
@@ -120,6 +166,27 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
         : List<FeedPost>.from(source);
     _postKeys = List.generate(_posts.length, (_) => GlobalKey());
     _scrollController = ScrollController();
+    // Prapopulasi URL video utama tiap post (video item non-carousel).
+    for (final post in _posts) {
+      if (post.isVideo) {
+        _videoUrls[post.id] = post.videoPlaybackUrl;
+      }
+    }
+    // Coordinator dimiliki halaman: factory bikin sesi VideoPlayerSession
+    // nyata (atau fake via seam test). Listener feedMuted hidup di coordinator.
+    _videoCoordinator = PostVideoCoordinator(
+      sessionFactory: debugPostVideoSessionFactory ??
+          (sessionId) => VideoPlayerSession(
+                url: _videoUrls[sessionId] ?? '',
+                // D4: refresh signed URL expired best-effort — re-fetch post
+                // dari API yang meng-sign ulang URL Bunny tiap request.
+                urlRefresher: () => _refreshVideoUrl(sessionId),
+              ),
+    );
+    // Lifecycle app (background/foreground) — pause/resume SEMUA sesi (§2.5),
+    // menutup audio hantu #2. Route visibility didaftarkan di
+    // didChangeDependencies (butuh context).
+    WidgetsBinding.instance.addObserver(this);
     // Hydrate _likedCache dari backend `viewerLiked` field — tanpa ini,
     // post yang sudah di-like sebelumnya tampil grey di icon, dan tap
     // pertama bakal accidentally UN-LIKE (backend toggle berdasar DB,
@@ -218,8 +285,113 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // RouteAware SEKALI di level halaman (§2.5) — pause deterministik saat
+    // route lain (opaque) menutup halaman, resume saat kembali.
+    final route = ModalRoute.of(context);
+    if (route != null) {
+      appRouteObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lastLifecycle = state;
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+        _videoCoordinator.pauseAll();
+      case AppLifecycleState.resumed:
+        // Selama handoff, fullscreen di atas yang mengurus playback; jangan
+        // resume video asal di belakang (akan bersuara di balik fullscreen).
+        if (!_handoffInProgress) {
+          _videoCoordinator.resumeAll();
+        }
+      case AppLifecycleState.detached:
+        break;
+    }
+  }
+
+  @override
+  void didPushNext() {
+    // Route opaque didorong di atas halaman → pause semua sesi. DIKECUALIKAN
+    // saat handoff fullscreen (§2.6 + D5): video asal tetap pinned & posisinya
+    // dijaga; `_openScopedVideoFeed` sudah men-pause inline via reportHidden
+    // tanpa men-suspend coordinator, supaya resume saat kembali instan.
+    if (_handoffInProgress) return;
+    if (lastPushedRouteIsOpaque()) {
+      _videoCoordinator.pauseAll();
+    }
+  }
+
+  @override
+  void didPopNext() {
+    // Kembali ke halaman dari route non-handoff (mis. detail produk) →
+    // resume. Untuk handoff, resume diurus di `_openScopedVideoFeed` setelah
+    // await push selesai (urutan re-attach → setOrigin(null), §2.6).
+    if (_handoffInProgress) return;
+    _videoCoordinator.resumeAll();
+  }
+
+  /// Dipanggil inline saat hendak attach — mendaftarkan URL sessionId supaya
+  /// factory coordinator bisa membuat sesi (dipakai item carousel dengan
+  /// compound id; video utama sudah diprapopulasi di initState).
+  void _registerVideoUrl(String sessionId, String url) {
+    _videoUrls[sessionId] = url;
+  }
+
+  /// D4 — ambil URL video bertanda-tangan SEGAR untuk [sessionId] dari API
+  /// (`GET /api/feed/posts/:id` → `signBunnyUrl`, sign ulang tiap request).
+  /// Dipanggil oleh [VideoPlayerSession] hanya saat init gagal DAN URL lama
+  /// bertanda-tangan (kemungkinan expired). Best-effort: null bila gagal /
+  /// tak ada URL — caller jatuh ke tombol "Coba lagi".
+  ///
+  /// `sessionId` untuk video utama == post.id; item carousel == `${id}-$idx`.
+  Future<String?> _refreshVideoUrl(String sessionId) async {
+    // Turunkan post.id nyata: kalau sessionId dikenal langsung (video utama)
+    // pakai apa adanya; kalau tidak, kupas sufiks `-<index>` (carousel).
+    var postId = sessionId;
+    int? carouselIndex;
+    if (!_posts.any((p) => p.id == sessionId)) {
+      final dash = sessionId.lastIndexOf('-');
+      if (dash > 0) {
+        final maybeIndex = int.tryParse(sessionId.substring(dash + 1));
+        if (maybeIndex != null) {
+          postId = sessionId.substring(0, dash);
+          carouselIndex = maybeIndex;
+        }
+      }
+    }
+    try {
+      final fresh = await feedService.fetchPostById(postId);
+      if (fresh == null) return null;
+      String? url;
+      if (carouselIndex != null &&
+          carouselIndex >= 0 &&
+          carouselIndex < fresh.mediaItems.length) {
+        final item = fresh.mediaItems[carouselIndex];
+        url = item.mediaUrl.trim().isNotEmpty ? item.mediaUrl : null;
+      } else {
+        url = fresh.videoPlaybackUrl.trim().isNotEmpty
+            ? fresh.videoPlaybackUrl
+            : null;
+      }
+      if (url == null || url.trim().isEmpty) return null;
+      _videoUrls[sessionId] = url;
+      return url;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
   void dispose() {
     feedStore.removeListener(_onFeedStoreChanged);
+    appRouteObserver.unsubscribe(this);
+    WidgetsBinding.instance.removeObserver(this);
+    _videoCoordinator.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -546,6 +718,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
                     // ke post target saat initial open dari grid.
                     key: _postKeys[index],
                     post: post,
+                    coordinator: _videoCoordinator,
+                    registerVideoUrl: _registerVideoUrl,
+                    handoffSessionId: _handoffSessionId,
                     memberName: _memberName,
                     memberInitial: _memberInitial,
                     memberPhotoUrl: _memberPhotoUrl,
@@ -562,8 +737,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
                     onShare: () => _shareNative(index),
                     onMenuTap:
                         widget.isOwner ? () => _openPostMenu(index) : null,
-                    onOpenScopedFeed: (controller, anchorKey) =>
-                        _openScopedVideoFeed(index, controller, anchorKey),
+                    onOpenScopedFeed: (sessionId, anchorKey) =>
+                        _openScopedVideoFeed(index, sessionId, anchorKey),
                   );
                 },
               ),
@@ -603,74 +778,136 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
   /// yang diperbesar harus di-direct dari post feed-nya langsung.
   Future<void> _openScopedVideoFeed(
     int index,
-    VideoPlayerController controller,
+    String sessionId,
     GlobalKey anchorKey,
   ) async {
     final videoPosts = _posts.where((p) => p.isVideo).toList();
     if (videoPosts.isEmpty) return;
     final tapped = _posts[index];
-    // Pause inline player SEBELUM push — route scoped opaque, tanpa ini
-    // sempat ada jendela double-suara (inline masih play di belakang).
+
+    // ── Handoff mulai (§2.6 + D5) ──
+    // 1. Pin video asal di coordinator (origin) — tak akan dieviction selama
+    //    fullscreen terbuka.
+    // 2. Tandai handoff berlangsung → cover-pause route-push (didPushNext)
+    //    TIDAK memicu pauseAll (D5); video asal tetap pinned + posisinya
+    //    dijaga untuk resume instan.
+    // 3. Set _handoffSessionId → inline masuk mode DORMANT (frozen frame).
+    // 4. Pause inline via reportHidden (BUKAN pauseAll) — hentikan audio di
+    //    belakang tanpa men-suspend coordinator, supaya reportVisible/resume
+    //    saat kembali langsung jalan. Pause TIDAK mereset posisi (timestamp
+    //    lanjut saat kembali).
+    _handoffInProgress = true;
+    _videoCoordinator.setOrigin(sessionId);
+    _videoCoordinator.reportHidden(sessionId);
+    if (mounted) setState(() => _handoffSessionId = sessionId);
+
+    // Hardening (review): SELALU akhiri handoff lewat `finally` supaya flag
+    // `_handoffInProgress`/`_handoffSessionId` TAK PERNAH nyangkut walau ada
+    // throw di masa depan (pushScaledVideoFeed dll). Semantik resume:
+    // normal/return = resume true; unmounted = resume false.
+    var resume = true;
     try {
-      await controller.pause();
-    } catch (_) {}
-    if (!mounted) return;
-
-    final rootNav = Navigator.of(context, rootNavigator: true);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.black.withValues(alpha: 0.25),
-      builder: (_) => const Center(
-        child: SizedBox(
-          width: 44,
-          height: 44,
-          child: CircularProgressIndicator(strokeWidth: 2.6),
+      final rootNav = Navigator.of(context, rootNavigator: true);
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.black.withValues(alpha: 0.25),
+        builder: (_) => const Center(
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: CircularProgressIndicator(strokeWidth: 2.6),
+          ),
         ),
-      ),
-    );
-
-    // Fetch semua video user ini paralel (order-preserving) — pola sama
-    // dengan Postingan Terkait di product_detail_screen.
-    var anyFailed = false;
-    final fetchById = debugScopedFeedPostFetcher ?? feedService.fetchPostById;
-    final results = await Future.wait(
-      videoPosts.map((sibling) async {
-        try {
-          return await fetchById(sibling.id);
-        } catch (_) {
-          anyFailed = true;
-          return null;
-        }
-      }),
-    );
-    final fetched = results.whereType<FeedPost>().toList();
-
-    rootNav.pop(); // tutup loading dialog
-    if (!mounted) return;
-
-    if (fetched.isEmpty) {
-      AppToast.show(
-        context,
-        anyFailed
-            ? 'Postingan belum bisa dibuka. Coba lagi.'
-            : 'Postingan sudah tidak tersedia.',
-        kind: ToastKind.warning,
       );
-      return;
-    }
 
-    final tappedIndex = fetched.indexWhere((fp) => fp.id == tapped.id);
-    await pushScaledVideoFeed(
-      context,
-      thumbnailKey: anchorKey,
-      thumbnailImageUrl: tapped.thumbnailUrl ?? '',
-      thumbnailBorderRadius: 0,
-      destinationBuilder: (_) => ScopedVideoFeedScreen(
-        posts: fetched,
-        initialIndex: tappedIndex >= 0 ? tappedIndex : 0,
-      ),
-    );
+      // Fetch semua video user ini paralel (order-preserving) — pola sama
+      // dengan Postingan Terkait di product_detail_screen.
+      var anyFailed = false;
+      final fetchById = debugScopedFeedPostFetcher ?? feedService.fetchPostById;
+      final results = await Future.wait(
+        videoPosts.map((sibling) async {
+          try {
+            return await fetchById(sibling.id);
+          } catch (_) {
+            anyFailed = true;
+            return null;
+          }
+        }),
+      );
+      final fetched = results.whereType<FeedPost>().toList();
+
+      rootNav.pop(); // tutup loading dialog
+      if (!mounted) {
+        resume = false;
+        return;
+      }
+
+      if (fetched.isEmpty) {
+        AppToast.show(
+          context,
+          anyFailed
+              ? 'Postingan belum bisa dibuka. Coba lagi.'
+              : 'Postingan sudah tidak tersedia.',
+          kind: ToastKind.warning,
+        );
+        // Fullscreen tak jadi dibuka → batalkan dormant + resume inline.
+        return;
+      }
+
+      final tappedIndex = fetched.indexWhere((fp) => fp.id == tapped.id);
+      await pushScaledVideoFeed(
+        context,
+        thumbnailKey: anchorKey,
+        thumbnailImageUrl: tapped.thumbnailUrl ?? '',
+        thumbnailBorderRadius: 0,
+        destinationBuilder: (_) => ScopedVideoFeedScreen(
+          posts: fetched,
+          initialIndex: tappedIndex >= 0 ? tappedIndex : 0,
+          // Handoff §2.6: item ASAL pinjam controller coordinator (instan).
+          coordinator: _videoCoordinator,
+          originPostId: sessionId,
+        ),
+      );
+    } finally {
+      // ── Handoff selesai (kembali dari fullscreen / batal) ──
+      // Urutan §2.6: re-attach/resume video asal DULU, baru setOrigin(null).
+      _endHandoff(resume: resume);
+    }
+  }
+
+  /// Akhiri transisi handoff fullscreen: clear flag, re-aktifkan video asal
+  /// (kalau [resume]) SEBELUM unpin origin (§2.6), lalu keluar mode dormant.
+  void _endHandoff({required bool resume}) {
+    _handoffInProgress = false;
+    final origin = _handoffSessionId;
+    final resumed = _lastLifecycle == AppLifecycleState.resumed;
+    // BUG FIX (T7-integrasi): saat user swipe menjauh di fullscreen, active
+    // coordinator jadi B/C — dan B kini OFFSCREEN. Kalau kita cuma
+    // `resumeAll()`, ia memutar active BASI (B) → audio hantu (unmuted) /
+    // video salah main tak terlihat (acceptance "nol audio hantu"). Jadi:
+    // SEBELUM resume, re-point active ke origin kalau sudah menjauh.
+    if (resume && origin != null && _videoCoordinator.activePostId != origin) {
+      // setActive(origin): pause + mute active lama (B), jadikan origin active,
+      // lalu play SEKALI di timestamp-nya. (Bukan resumeAll — itu akan memutar
+      // B basi.)
+      _videoCoordinator.setActive(origin);
+      // Hormati guard lifecycle (hardening T3b): kalau app TIDAK resumed,
+      // origin tak boleh berbunyi sekarang. Ia sudah jadi active, jadi
+      // suspend lagi — transisi ke `resumed` nanti (didChangeAppLifecycleState)
+      // yang memutar origin (bukan B basi).
+      if (!resumed) _videoCoordinator.pauseAll();
+    } else if (resume && resumed) {
+      // No-swipe (active == origin): resume instan seperti sebelum — origin
+      // langsung main lagi, tidak ada regresi / double play.
+      _videoCoordinator.resumeAll();
+    }
+    _videoCoordinator.setOrigin(null);
+    if (mounted) {
+      setState(() => _handoffSessionId = null);
+    } else {
+      _handoffSessionId = null;
+    }
   }
 
   FeedPost _withCaption(FeedPost post, String newCaption) {
@@ -695,6 +932,19 @@ bool _sameLikerIds(List<FeedAuthor> a, List<FeedAuthor> b) {
 
 class _PostFeedItem extends StatefulWidget {
   final FeedPost post;
+
+  /// Coordinator playback milik halaman (T3a) — inline video meminjam sesi
+  /// darinya alih-alih membuat controller sendiri.
+  final PostVideoCoordinator coordinator;
+
+  /// Daftarkan URL sessionId ke halaman supaya factory coordinator bisa
+  /// membuat sesi (item carousel dengan compound id).
+  final void Function(String sessionId, String url) registerVideoUrl;
+
+  /// SessionId yang sedang di-handoff ke fullscreen → inline dengan id ini
+  /// masuk mode dormant (frozen frame). Null = tak ada handoff.
+  final String? handoffSessionId;
+
   final String memberName;
   final String memberInitial;
   final String? memberPhotoUrl;
@@ -719,14 +969,16 @@ class _PostFeedItem extends StatefulWidget {
   final VoidCallback? onMenuTap;
   // Tap video → buka viewer feed scoped (swipeable) berisi HANYA video
   // milik user ini. State yang punya list `_posts` menyuplai callback ini
-  // (butuh live controller utk pause anti double-suara + anchorKey utk
-  // transisi morph-scale). Null → fallback ke overlay fullscreen lama.
-  final void Function(VideoPlayerController controller, GlobalKey anchorKey)?
-      onOpenScopedFeed;
+  // (sessionId video asal utk handoff coordinator + anchorKey utk transisi
+  // morph-scale).
+  final void Function(String sessionId, GlobalKey anchorKey)? onOpenScopedFeed;
 
   const _PostFeedItem({
     super.key,
     required this.post,
+    required this.coordinator,
+    required this.registerVideoUrl,
+    required this.handoffSessionId,
     required this.memberName,
     required this.memberInitial,
     required this.memberPhotoUrl,
@@ -901,47 +1153,14 @@ class _PostFeedItemState extends State<_PostFeedItem>
             children: [
               _PostMediaSurface(
                 post: post,
-                onVideoExpandRequested: (controller, anchorKey) {
-                  // Preferensi: buka viewer feed scoped (swipeable) ke
-                  // semua video user ini — konsisten dgn flow "Postingan
-                  // Terkait". Fallback ke overlay fullscreen lama kalau
-                  // state tak menyuplai callback (mis. deep-link 1 post).
-                  final openScoped = widget.onOpenScopedFeed;
-                  if (openScoped != null) {
-                    openScoped(controller, anchorKey);
-                    return;
-                  }
-                  final renderBox = anchorKey.currentContext?.findRenderObject()
-                      as RenderBox?;
-                  if (renderBox == null) return;
-                  final origin =
-                      renderBox.localToGlobal(Offset.zero) & renderBox.size;
-                  // Pushed as a transparent, zero-duration Navigator route
-                  // (not an OverlayEntry) so Android hardware-back closes
-                  // the fullscreen overlay first instead of popping the
-                  // underlying screen (which would dispose the shared
-                  // video controller while the overlay is still painting).
-                  Navigator.of(context).push(
-                    PageRouteBuilder<void>(
-                      opaque: false,
-                      barrierColor: Colors.transparent,
-                      transitionDuration: Duration.zero,
-                      reverseTransitionDuration: Duration.zero,
-                      // The overlay's own build returns a `Positioned` (for
-                      // the morph animation), which needs an immediate
-                      // `Stack` ancestor — the route content isn't placed
-                      // directly inside one, so provide it explicitly.
-                      pageBuilder: (context, animation, secondaryAnimation) =>
-                          Stack(
-                        children: [
-                          _FullscreenInlineVideoOverlay(
-                            controller: controller,
-                            originRect: origin,
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
+                coordinator: widget.coordinator,
+                registerVideoUrl: widget.registerVideoUrl,
+                handoffSessionId: widget.handoffSessionId,
+                // Tap video → buka viewer feed scoped (swipeable) ke semua
+                // video user ini (konsisten dgn flow "Postingan Terkait").
+                // Coordinator handoff (§2.6) diurus di level halaman.
+                onVideoExpandRequested: (sessionId, anchorKey) {
+                  widget.onOpenScopedFeed?.call(sessionId, anchorKey);
                 },
               ),
               if (post.isVideo)
@@ -1653,10 +1872,19 @@ class _PostStatusBadge extends StatelessWidget {
 
 class _PostMediaSurface extends StatelessWidget {
   final FeedPost post;
-  final void Function(VideoPlayerController controller, GlobalKey anchorKey)?
+  final PostVideoCoordinator coordinator;
+  final void Function(String sessionId, String url) registerVideoUrl;
+  final String? handoffSessionId;
+  final void Function(String sessionId, GlobalKey anchorKey)?
       onVideoExpandRequested;
 
-  const _PostMediaSurface({required this.post, this.onVideoExpandRequested});
+  const _PostMediaSurface({
+    required this.post,
+    required this.coordinator,
+    required this.registerVideoUrl,
+    required this.handoffSessionId,
+    this.onVideoExpandRequested,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1676,6 +1904,9 @@ class _PostMediaSurface extends StatelessWidget {
       child: switch (post.contentType) {
         FeedContentType.video => _InlineVideoPlayer(
             postId: post.id,
+            coordinator: coordinator,
+            registerVideoUrl: registerVideoUrl,
+            dormant: handoffSessionId == post.id,
             // videoPlaybackUrl (videoUrl-first), BUKAN previewMediaUrl
             // (yang thumbnail-first → JPG → player gagal initialize).
             mediaUrl: post.videoPlaybackUrl,
@@ -1688,6 +1919,9 @@ class _PostMediaSurface extends StatelessWidget {
             child: _CarouselSurface(
               post: post,
               aspectRatio: aspectRatio,
+              coordinator: coordinator,
+              registerVideoUrl: registerVideoUrl,
+              handoffSessionId: handoffSessionId,
             ),
           ),
         FeedContentType.photo => Hero(
@@ -1705,8 +1939,17 @@ class _PostMediaSurface extends StatelessWidget {
 class _CarouselSurface extends StatefulWidget {
   final FeedPost post;
   final double aspectRatio;
+  final PostVideoCoordinator coordinator;
+  final void Function(String sessionId, String url) registerVideoUrl;
+  final String? handoffSessionId;
 
-  const _CarouselSurface({required this.post, required this.aspectRatio});
+  const _CarouselSurface({
+    required this.post,
+    required this.aspectRatio,
+    required this.coordinator,
+    required this.registerVideoUrl,
+    required this.handoffSessionId,
+  });
 
   @override
   State<_CarouselSurface> createState() => _CarouselSurfaceState();
@@ -1750,8 +1993,12 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
           itemBuilder: (context, index) {
             final item = items[index];
             if (item.isVideo) {
+              final sessionId = '${widget.post.id}-$index';
               return _InlineVideoPlayer(
-                postId: '${widget.post.id}-$index',
+                postId: sessionId,
+                coordinator: widget.coordinator,
+                registerVideoUrl: widget.registerVideoUrl,
+                dormant: widget.handoffSessionId == sessionId,
                 mediaUrl: item.mediaUrl,
                 thumbnailUrl: item.thumbnailUrl,
                 aspectRatio: widget.aspectRatio,
@@ -2053,21 +2300,43 @@ class _MediaPlaceholder extends StatelessWidget {
   }
 }
 
-// ─── Inline video player — auto-play muted in viewport, tap → fullscreen ─
+// ─── Inline video player — borrow controller from PostVideoCoordinator ─
 
+/// Inline video di list Postingan (T3a). TIDAK lagi membuat/mendispose
+/// controllernya sendiri: ia MEMINJAM sesi dari [PostVideoCoordinator]
+/// (attach saat jadi item video terlihat aktif; detach saat keluar).
+/// Lifecycle app/route didaftarkan SEKALI di level halaman (§2.5) — inline
+/// hanya melaporkan visibilitas + intent.
+///
+/// Aturan (plan 2026-07-13):
+///  - Autoplay TETAP saat terlihat ≥60% (ala IG). D3: kalau
+///    `appSettingsStore.feedAutoplay == false`, JANGAN auto-main — tampilkan
+///    thumbnail + tombol play; play hanya saat user tap.
+///  - Mute mengikuti coordinator (feedMuted) — tombol mute menulis ke
+///    `appSettingsStore.setFeedMuted`, coordinator re-apply ke sesi aktif.
+///  - Dormant (fullscreen terbuka utk sesi ini): berhenti lapor visibilitas,
+///    tampilkan frozen frame/thumbnail; JANGAN sentuh controller (dimiliki
+///    coordinator & dipakai fullscreen).
 class _InlineVideoPlayer extends StatefulWidget {
   final String postId;
+  final PostVideoCoordinator coordinator;
+  final void Function(String sessionId, String url) registerVideoUrl;
+
+  /// Fullscreen sedang terbuka untuk sesi ini → mode dormant (frozen frame).
+  final bool dormant;
   final String mediaUrl;
   final String? thumbnailUrl;
   final double aspectRatio;
-  final void Function(VideoPlayerController controller, GlobalKey anchorKey)?
-      onExpandRequested;
+  final void Function(String sessionId, GlobalKey anchorKey)? onExpandRequested;
 
   const _InlineVideoPlayer({
     required this.postId,
+    required this.coordinator,
+    required this.registerVideoUrl,
     required this.mediaUrl,
     required this.thumbnailUrl,
     required this.aspectRatio,
+    this.dormant = false,
     this.onExpandRequested,
   });
 
@@ -2076,89 +2345,91 @@ class _InlineVideoPlayer extends StatefulWidget {
 }
 
 class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
-  // Wrapper CachedVideoPlayerPlus — handle HLS (.m3u8) Bunny + disk cache.
-  // Sama seperti Reels feed (lihat feed_screen.dart). Plain
-  // VideoPlayerController.networkUrl kurang reliable untuk HLS signed URL;
-  // wrapper ini expose .controller (underlying VideoPlayerController).
-  CachedVideoPlayerPlus? _cachedPlayer;
-  VideoPlayerController? _controller;
-  bool _initializing = false;
-  String? _error;
-  // Init dari preferensi mute global (sinkron dgn feed_screen) — bukan
-  // hardcode true, supaya konsisten dgn pilihan user di layar feed.
-  bool _muted = appSettingsStore.feedMuted;
-  // Track viewport visibility to drive auto-play (≥60% visible).
+  late final String _viewId =
+      'inline-${widget.postId}-${identityHashCode(this)}';
+
+  bool _attached = false;
   double _visibleFraction = 0;
-  // Stable key so Task 6's fullscreen overlay can anchor to this exact
-  // inline player's position when expanding.
+
+  /// Autoplay OFF (D3): true begitu user tap tombol play — sesudah itu inline
+  /// berperilaku seperti autoplay (attach + setActive saat terlihat).
+  bool _userStarted = false;
+
+  /// Sesi yang sedang di-bind (untuk listen revision → rebuild saat init
+  /// selesai/gagal). Hanya [VideoPlayerSession] yang punya controller; sesi
+  /// fake (test) tidak — inline merender thumbnail untuk itu.
+  VideoPlayerSession? _boundSession;
+
+  // Stable key supaya transisi morph-scale fullscreen bisa anchor ke posisi
+  // inline ini.
   final GlobalKey _anchorKey = GlobalKey();
+
+  PostVideoCoordinator get _coordinator => widget.coordinator;
+
+  bool get _shouldAutoplay => appSettingsStore.feedAutoplay;
 
   @override
   void initState() {
     super.initState();
-    _initialize();
+    // Rebuild saat mute/autoplay berubah (ikon mute + gating D3).
+    appSettingsStore.addListener(_onSettingsChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _InlineVideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.dormant != widget.dormant && !widget.dormant) {
+      // Keluar dormant (fullscreen tutup) → adopt origin SEGERA.
+      // Masuk dormant: cukup berhenti berperan; sesi tetap pinned via origin.
+      _adoptOriginAfterDormant();
+    }
+  }
+
+  /// Kembali dari fullscreen (dormant → aktif). JANGAN andalkan
+  /// [_applyVisibility] dengan `_visibleFraction` BASI (= 0, karena
+  /// VisibilityDetector belum re-fire — throttle ~500ms) yang akan
+  /// men-DETACH origin lalu menampilkan thumbnail (KEDIP). Origin sudah
+  /// di-`setActive` oleh `_endHandoff` (bagian 1); di sini inline cukup
+  /// re-attach + adopt sesi di timestamp — TANPA `setActive` lagi (hindari
+  /// double activate/play).
+  void _adoptOriginAfterDormant() {
+    if (!mounted) return;
+    // Scroll tak berubah selama fullscreen → origin kembali terlihat penuh.
+    // Set fraction ke nilai benar supaya VisibilityDetector re-fire berikutnya
+    // tidak salah menganggap tersembunyi sebelum sempat update.
+    _visibleFraction = 1.0;
+    if (_coordinator.activePostId == widget.postId) {
+      // Origin sudah aktif (di-setActive di _endHandoff). Re-attach + bind sesi
+      // (adopt controller yang sama, di timestamp) TANPA setActive ulang.
+      // reportVisible = no-op kalau sudah main, resume kalau perlu. Tidak perlu
+      // setState: didUpdateWidget berjalan sebelum build() di frame yang sama,
+      // jadi _boundSession baru langsung terbaca.
+      _ensureAttached();
+      _coordinator.reportVisible(widget.postId);
+    } else {
+      // Origin belum aktif (mis. app tidak resumed saat tutup, resume dilewati
+      // guard lifecycle) → jalur visibilitas normal; tetap tak kedip karena
+      // _visibleFraction sudah 1.0 (tak akan men-detach).
+      _applyVisibility();
+    }
   }
 
   @override
   void dispose() {
-    _disposeController();
+    appSettingsStore.removeListener(_onSettingsChanged);
+    _unbindSession();
+    if (_attached) {
+      // Lepas attachment — coordinator yang memutuskan dispose sesi (LRU).
+      _coordinator.detach(_viewId, widget.postId);
+      _attached = false;
+    }
     super.dispose();
   }
 
-  Future<void> _initialize() async {
-    if (widget.mediaUrl.trim().isEmpty) {
-      if (mounted) setState(() => _error = 'Video tidak tersedia');
-      return;
-    }
-    setState(() {
-      _initializing = true;
-      _error = null;
-    });
-    final wrapper = CachedVideoPlayerPlus.networkUrl(
-      Uri.parse(widget.mediaUrl),
-      invalidateCacheIfOlderThan: const Duration(days: 7),
-    );
-    _cachedPlayer = wrapper;
-    try {
-      await wrapper.initialize();
-      final controller = wrapper.controller;
-      if (!mounted || _cachedPlayer != wrapper) {
-        await wrapper.dispose();
-        return;
-      }
-      _controller = controller;
-      // Muted state ikut preferensi global (appSettingsStore.feedMuted),
-      // sama seperti feed_screen — bukan selalu muted-by-default.
-      await controller.setVolume(_muted ? 0 : 1);
-      await controller.setLooping(true);
-      setState(() => _initializing = false);
-      // Apply current visibility — kalau sudah visible saat init selesai,
-      // langsung play.
-      _applyVisibility();
-    } catch (_) {
-      await wrapper.dispose();
-      if (!mounted || _cachedPlayer != wrapper) return;
-      setState(() {
-        _cachedPlayer = null;
-        _controller = null;
-        _initializing = false;
-        _error = 'Video belum bisa diputar';
-      });
-    }
-  }
-
-  Future<void> _disposeController() async {
-    final wrapper = _cachedPlayer;
-    final controller = _controller;
-    _cachedPlayer = null;
-    _controller = null;
-    // Dispose via wrapper — handle underlying controller + cache reference.
-    await controller?.pause();
-    if (wrapper != null) {
-      await wrapper.dispose();
-    } else {
-      await controller?.dispose();
-    }
+  void _onSettingsChanged() {
+    if (!mounted) return;
+    setState(() {});
+    _applyVisibility();
   }
 
   void _onVisibilityChanged(VisibilityInfo info) {
@@ -2167,295 +2438,260 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
   }
 
   void _applyVisibility() {
-    final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) return;
-    final shouldPlay = _visibleFraction >= 0.6;
-    if (shouldPlay && !controller.value.isPlaying) {
-      controller.play();
-    } else if (!shouldPlay && controller.value.isPlaying) {
-      controller.pause();
+    if (!mounted || widget.dormant) return;
+    final visible = _visibleFraction >= 0.6;
+    if (visible) {
+      if (!_shouldAutoplay && !_userStarted) {
+        // D3: autoplay off + belum di-start user → tampilkan thumbnail + play,
+        // JANGAN attach/putar.
+        return;
+      }
+      _ensureAttached();
+      // Jadikan aktif (autoplay ala IG) — coordinator yang play + set volume
+      // sesuai feedMuted. Kalau sudah aktif, cukup lapor terlihat (resume).
+      if (_coordinator.activePostId != widget.postId) {
+        _coordinator.setActive(widget.postId);
+      } else {
+        _coordinator.reportVisible(widget.postId);
+      }
+    } else if (_visibleFraction <= 0.0) {
+      // Keluar viewport sepenuhnya → detach (coordinator urus nasib sesi).
+      if (_attached) {
+        _coordinator.detach(_viewId, widget.postId);
+        _attached = false;
+        _unbindSession();
+      }
+    } else {
+      // Sebagian terlihat (<60%) tapi masih di layar → pause, tetap attached.
+      if (_attached) {
+        _coordinator.reportHidden(widget.postId);
+      }
     }
   }
 
+  void _ensureAttached() {
+    if (_attached) {
+      _bindSession();
+      return;
+    }
+    // Daftarkan URL supaya factory coordinator bisa membuat sesi.
+    widget.registerVideoUrl(widget.postId, widget.mediaUrl);
+    _coordinator.attach(_viewId, widget.postId);
+    _attached = true;
+    _bindSession();
+  }
+
+  void _bindSession() {
+    final session = _coordinator.sessionFor(widget.postId);
+    final videoSession = session is VideoPlayerSession ? session : null;
+    if (identical(videoSession, _boundSession)) return;
+    _unbindSession();
+    _boundSession = videoSession;
+    videoSession?.revision.addListener(_onSessionRevision);
+  }
+
+  void _unbindSession() {
+    _boundSession?.revision.removeListener(_onSessionRevision);
+    _boundSession = null;
+  }
+
+  void _onSessionRevision() {
+    if (mounted) setState(() {});
+  }
+
   Future<void> _toggleMute() async {
-    final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) return;
     AppHaptics.tap();
-    final nextMuted = !_muted;
-    // Write-back ke preferensi global (pola sama feed_screen :2947) —
-    // toggle mute di post detail ikut sinkron balik ke layar feed.
-    await appSettingsStore.setFeedMuted(nextMuted);
-    await controller.setVolume(nextMuted ? 0 : 1);
-    if (!mounted) return;
-    setState(() => _muted = nextMuted);
+    // Tulis ke preferensi global — coordinator listener re-apply ke sesi
+    // aktif (mute konsisten di semua permukaan, §2.2).
+    await appSettingsStore.setFeedMuted(!appSettingsStore.feedMuted);
+  }
+
+  void _onUserPlay() {
+    AppHaptics.tap();
+    setState(() => _userStarted = true);
+    _applyVisibility();
+  }
+
+  /// Tombol "Coba lagi" — init ulang manual (reset budget retry di sesi).
+  /// Sesi tetap dimiliki coordinator; kita hanya minta re-init dari view.
+  void _onRetry() {
+    AppHaptics.tap();
+    final session = _coordinator.sessionFor(widget.postId);
+    if (session is VideoPlayerSession) {
+      unawaited(session.retry());
+    }
+  }
+
+  void _onTapVideo() {
+    // Video siap → buka fullscreen scoped (handoff coordinator di level
+    // halaman). Kalau belum siap (autoplay off / masih init), tap = intent
+    // start play.
+    if (_boundSession?.controller?.value.isInitialized ?? false) {
+      widget.onExpandRequested?.call(widget.postId, _anchorKey);
+    } else if (!_shouldAutoplay && !_userStarted) {
+      _onUserPlay();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = _controller;
+    final controller = _boundSession?.controller;
     final ready = controller != null && controller.value.isInitialized;
+    final hasError = _boundSession?.hasError ?? false;
+    final muted = appSettingsStore.feedMuted;
+    // D3: autoplay off + belum start → tampilkan thumbnail + tombol play.
+    final showPlayButton = !ready && !_shouldAutoplay && !_userStarted;
+    // Spinner hanya saat kita memang sedang memuat (attached, belum ready,
+    // tanpa error, bukan mode "tunggu tap play").
+    final loading = _attached && !ready && !hasError && !showPlayButton;
+
     return VisibilityDetector(
       key: ValueKey('inline-video-${widget.postId}'),
       onVisibilityChanged: _onVisibilityChanged,
       child: GestureDetector(
         key: _anchorKey,
         behavior: HitTestBehavior.opaque,
-        onTap: ready && widget.onExpandRequested != null
-            ? () => widget.onExpandRequested!(controller, _anchorKey)
-            : null,
-        child: AbsorbPointer(
-          absorbing: false,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Container(color: Colors.black),
-              if (ready)
-                ClipRect(
-                  child: FittedBox(
-                    fit: BoxFit.cover,
-                    child: SizedBox(
-                      width: controller.value.size.width > 0
-                          ? controller.value.size.width
-                          : 100,
-                      height: controller.value.size.height > 0
-                          ? controller.value.size.height
-                          : 100,
-                      child: VideoPlayer(controller),
-                    ),
-                  ),
-                )
-              else if (widget.thumbnailUrl != null &&
-                  widget.thumbnailUrl!.trim().isNotEmpty)
-                _ImageSurface(
-                  imageUrl: widget.thumbnailUrl!,
-                  placeholderIcon: Icons.video_collection_outlined,
-                )
-              else
-                const _MediaPlaceholder(icon: Icons.video_collection_outlined),
-              if (_initializing)
-                const Center(
-                  child: SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.4,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              if (_error != null)
-                Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      _error!,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-              // Muted indicator pojok kanan bawah — visual cue bahwa video
-              // bisa di-tap untuk mute/unmute. Sembunyi saat error/loading.
-              if (ready && _error == null)
-                Positioned(
-                  right: 10,
-                  bottom: 10,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _toggleMute,
-                    child: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        _muted
-                            ? Icons.volume_off_rounded
-                            : Icons.volume_up_rounded,
-                        color: Colors.white,
-                        size: 16,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Fullscreen video overlay that ADOPTS an already-playing
-/// [VideoPlayerController] — never creates its own, so playback position
-/// and buffered state are preserved exactly (no restart). Shown via
-/// [Overlay] (not Navigator.push) so the inline player beneath keeps its
-/// controller reference alive the whole time; on close, this overlay is
-/// simply removed and the inline player resumes normal visibility-driven
-/// play/pause + its own mute preference.
-class _FullscreenInlineVideoOverlay extends StatefulWidget {
-  final VideoPlayerController controller;
-  final Rect originRect;
-
-  const _FullscreenInlineVideoOverlay({
-    required this.controller,
-    required this.originRect,
-  });
-
-  @override
-  State<_FullscreenInlineVideoOverlay> createState() =>
-      _FullscreenInlineVideoOverlayState();
-}
-
-class _FullscreenInlineVideoOverlayState
-    extends State<_FullscreenInlineVideoOverlay>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _morphController;
-  late final Animation<double> _morph;
-  double? _previousVolume;
-  bool _muted = false;
-  bool _closing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _morphController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 440),
-      reverseDuration: const Duration(milliseconds: 260),
-    );
-    _morph =
-        CurvedAnimation(parent: _morphController, curve: Curves.easeOutCubic);
-    // Unmute on entry — explicit fullscreen intent, independent of the
-    // inline preference (same rationale the old dead code documented).
-    _previousVolume = widget.controller.value.volume;
-    widget.controller.setVolume(1);
-    _morphController.forward();
-  }
-
-  Future<void> _close() async {
-    if (_closing) return;
-    _closing = true;
-    await _morphController.reverse();
-    if (!mounted) return;
-    await widget.controller.setVolume(_previousVolume ?? 0);
-    if (!mounted) return;
-    Navigator.of(context).pop();
-  }
-
-  void _toggleMute() {
-    setState(() => _muted = !_muted);
-    widget.controller.setVolume(_muted ? 0 : 1);
-  }
-
-  @override
-  void dispose() {
-    _morphController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _close();
-      },
-      child: _buildMorph(context, screenSize),
-    );
-  }
-
-  Widget _buildMorph(BuildContext context, Size screenSize) {
-    return AnimatedBuilder(
-      animation: _morph,
-      builder: (context, child) {
-        final t = _morph.value;
-        final origin = widget.originRect;
-        final left = origin.left * (1 - t);
-        final top = origin.top * (1 - t);
-        final width = origin.width + (screenSize.width - origin.width) * t;
-        final height = origin.height + (screenSize.height - origin.height) * t;
-        return Positioned(
-          left: left,
-          top: top,
-          width: width,
-          height: height,
-          child: ColoredBox(
-            color: Colors.black.withValues(alpha: t),
-            child: child,
-          ),
-        );
-      },
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onVerticalDragEnd: (details) {
-          if ((details.primaryVelocity ?? 0) > 300) _close();
-        },
+        onTap: widget.dormant ? null : _onTapVideo,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Center(
-              child: AspectRatio(
-                aspectRatio: widget.controller.value.aspectRatio,
-                child: VideoPlayer(widget.controller),
+            Container(color: Colors.black),
+            if (ready)
+              ClipRect(
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: controller.value.size.width > 0
+                        ? controller.value.size.width
+                        : 100,
+                    height: controller.value.size.height > 0
+                        ? controller.value.size.height
+                        : 100,
+                    child: VideoPlayer(controller),
+                  ),
+                ),
+              )
+            else if (widget.thumbnailUrl != null &&
+                widget.thumbnailUrl!.trim().isNotEmpty)
+              _ImageSurface(
+                imageUrl: widget.thumbnailUrl!,
+                placeholderIcon: Icons.video_collection_outlined,
+              )
+            else
+              const _MediaPlaceholder(icon: Icons.video_collection_outlined),
+            if (loading)
+              const Center(
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: Colors.white,
+                  ),
+                ),
               ),
-            ),
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Align(
-                  alignment: Alignment.topLeft,
-                  child: Material(
-                    color: Colors.black.withValues(alpha: 0.45),
-                    shape: const CircleBorder(),
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: _close,
-                      child: const SizedBox(
-                        width: 40,
-                        height: 40,
-                        child: Icon(Icons.chevron_left_rounded,
-                            color: Colors.white, size: 24),
+            if (hasError && !widget.dormant)
+              Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(999),
                       ),
+                      child: const Text(
+                        'Video belum bisa diputar',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _onRetry,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.55),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.refresh_rounded,
+                                color: Colors.white, size: 16),
+                            SizedBox(width: 6),
+                            Text(
+                              'Coba lagi',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            // Tombol play besar (D3 autoplay off, belum di-start).
+            if (showPlayButton && !widget.dormant)
+              Center(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _onUserPlay,
+                  child: Container(
+                    width: 62,
+                    height: 62,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 40,
                     ),
                   ),
                 ),
               ),
-            ),
-            Positioned(
-              right: 16,
-              bottom: 32,
-              child: Material(
-                color: Colors.black.withValues(alpha: 0.45),
-                shape: const CircleBorder(),
-                child: InkWell(
-                  customBorder: const CircleBorder(),
+            // Ikon mute pojok kanan bawah — mengikuti feedMuted global.
+            if (ready && !hasError && !widget.dormant)
+              Positioned(
+                right: 10,
+                bottom: 10,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: _toggleMute,
-                  child: SizedBox(
-                    width: 40,
-                    height: 40,
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      shape: BoxShape.circle,
+                    ),
                     child: Icon(
-                      _muted
+                      muted
                           ? Icons.volume_off_rounded
                           : Icons.volume_up_rounded,
                       color: Colors.white,
-                      size: 20,
+                      size: 16,
                     ),
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),

@@ -31,11 +31,21 @@ class FeedVideoScrubber extends StatefulWidget {
   final bool isCurrent;
   final ValueChanged<bool> onScrubbingChanged;
 
+  /// Kontrak §2.1 (KUNCI USER) — `true` saat playback dikuasai coordinator
+  /// (controller pinjaman). Dalam mode ini scrubber HANYA seek: TIDAK
+  /// memanggil `pause()`/`play()` langsung ke controller. Alasannya: pause
+  /// saat drag lalu app ke background (coordinator set `_suspended`) lalu
+  /// lepas drag → `play()` menembus suspend = audio hantu di background.
+  /// Seek tetap aman (coordinator baca posisi live). Default `false` =
+  /// perilaku lama (pause-saat-drag + resume-setelah-drag), nol perubahan.
+  final bool managed;
+
   const FeedVideoScrubber({
     super.key,
     required this.controller,
     required this.isCurrent,
     required this.onScrubbingChanged,
+    this.managed = false,
   });
 
   @override
@@ -65,8 +75,10 @@ class _FeedVideoScrubberState extends State<FeedVideoScrubber> {
     if (!ctrl.value.isInitialized) return;
     if (ctrl.value.duration <= Duration.zero) return;
 
+    // Managed: JANGAN pause controller (coordinator pemilik). Biarkan video
+    // tetap jalan saat scrub — hanya seek. Nol ctrl.pause/play dari scrubber.
     _wasPlayingBeforeScrub = ctrl.value.isPlaying;
-    if (_wasPlayingBeforeScrub) {
+    if (!widget.managed && _wasPlayingBeforeScrub) {
       ctrl.pause();
     }
     setState(() => _isScrubbing = true);
@@ -99,7 +111,9 @@ class _FeedVideoScrubberState extends State<FeedVideoScrubber> {
 
     try {
       await ctrl.seekTo(target);
-      if (wasPlaying && mounted) {
+      // Managed: jangan resume — video tak pernah di-pause oleh scrubber, dan
+      // resume di sini bisa menembus suspend coordinator (audio hantu).
+      if (!widget.managed && wasPlaying && mounted) {
         await ctrl.play();
       }
     } catch (_) {
@@ -121,7 +135,9 @@ class _FeedVideoScrubberState extends State<FeedVideoScrubber> {
     final wasPlaying = ctrl.value.isPlaying;
 
     ctrl.seekTo(target).then((_) {
-      if (wasPlaying && mounted) ctrl.play();
+      // Managed: seek-only, jangan play (lihat _endScrub) — coordinator
+      // pemilik playback, resume langsung bisa menembus suspend.
+      if (!widget.managed && wasPlaying && mounted) ctrl.play();
     }).catchError((_) {});
   }
 

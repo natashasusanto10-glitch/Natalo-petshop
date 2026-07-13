@@ -140,6 +140,26 @@ class _FeedScreenState extends State<FeedScreen> {
     super.dispose();
   }
 
+  /// Fix A5 — handoff preload TERKONFIRMASI. Dipanggil state
+  /// FeedVideoPostView di initState (adopt), bukan dari build() screen.
+  /// Remove atomik dari kedua map paralel: begitu diklaim, satu-satunya
+  /// pemilik adalah state pengklaim (yang dispose); yang tidak pernah
+  /// diklaim tetap di map dan di-dispose oleh screen (eviction window /
+  /// dispose()). MP4 in-flight: wrapper sudah di map tapi controller
+  /// belum → claim mengembalikan wrapper-saja; guard di _managePreloadWindow
+  /// (`_preloadedCachedPlayers[id] != cachedPlayer`) mencegah controller
+  /// hasil init masuk kembali ke map sebagai zombie, dan state pengklaim
+  /// men-dispose wrapper orphan itu.
+  PreloadedVideoClaim? _claimPreloadedVideo(String postId) {
+    final controller = _preloadedControllers.remove(postId);
+    final cachedPlayer = _preloadedCachedPlayers.remove(postId);
+    if (controller == null && cachedPlayer == null) return null;
+    return PreloadedVideoClaim(
+      controller: controller,
+      cachedPlayer: cachedPlayer,
+    );
+  }
+
   /// Cache hasil filter — re-compute hanya saat _posts berubah atau
   /// blocklist berubah. PERF: sebelumnya `_visiblePosts` getter
   /// re-filter O(n) di setiap build (page swipe, like tap, comment
@@ -638,12 +658,18 @@ class _FeedScreenState extends State<FeedScreen> {
                         key: ValueKey('feed-video-${post.id}'),
                         post: post,
                         isActive: index == _activeIndex,
-                        preloadedController:
-                            _preloadedControllers.remove(post.id),
-                        // Pass wrapper juga — child butuh wrapper untuk
-                        // dispose proper (release cache reference).
-                        preloadedCachedPlayer:
-                            _preloadedCachedPlayers.remove(post.id),
+                        // Fix A5: JANGAN remove() dari map di build().
+                        // Kalau parent rebuild tapi state ber-key sama masih
+                        // hidup (initState tidak jalan lagi), controller yang
+                        // di-remove di sini tidak pernah diadopsi siapa pun →
+                        // yatim: tak pernah di-dispose, kandidat audio hantu.
+                        // Handoff terkonfirmasi: state penerima mengklaim
+                        // sendiri via callback di initState — remove dari map
+                        // terjadi di sana. Wrapper cache ikut dalam claim
+                        // (child tetap butuh wrapper untuk dispose proper).
+                        preloadedController: null,
+                        claimPreloadedVideo: () =>
+                            _claimPreloadedVideo(post.id),
                         onOverlayStateChanged: _setFeedInteractionLocked,
                         onMediaZoomChanged: _setFeedMediaZooming,
                       );

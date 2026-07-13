@@ -45,6 +45,10 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   /// Total number of players created across this platform's lifetime.
   int createCount = 0;
 
+  /// Per-player dispose counts — a value >1 for any id proves a double
+  /// dispose of the same underlying controller.
+  final Map<int, int> disposeCounts = {};
+
   @override
   Future<void> init() async {}
 
@@ -71,6 +75,7 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
 
   @override
   Future<void> dispose(int playerId) async {
+    disposeCounts[playerId] = (disposeCounts[playerId] ?? 0) + 1;
     await _streams.remove(playerId)?.close();
     _positions.remove(playerId);
   }
@@ -321,6 +326,199 @@ void main() {
       await tester.pump();
       expect(find.byType(ScopedVideoFeedScreen), findsNothing,
           reason: 'back should close the scoped feed');
+
+      await disposeTree(tester);
+    },
+  );
+
+  // ── T3b — handoff origin INSTAN via coordinator ──────────────────────
+
+  Future<void> openScopedFeed(WidgetTester tester) async {
+    await tester.tapAt(const Offset(200, 600));
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
+    }
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+  }
+
+  testWidgets(
+    'T3b: opening fullscreen ADOPTS the origin controller — no new player '
+    'created (instant handoff), and closing does NOT dispose it',
+    (tester) async {
+      await pumpAndInitialize(tester);
+      // Inline created exactly one underlying player.
+      expect(fakePlatform.createCount, 1,
+          reason: 'inline origin should create exactly one controller');
+
+      await openScopedFeed(tester);
+      // Fullscreen origin item is managed (ownsController:false) and borrows
+      // the SAME controller via preloadedController → NO second player.
+      expect(fakePlatform.createCount, 1,
+          reason:
+              'fullscreen origin must reuse the existing controller, not init a '
+              'new session');
+
+      // Close the viewer → origin controller must survive (re-attach inline at
+      // the same timestamp). No dispose of the shared player yet.
+      await tester.tap(find.byIcon(Icons.chevron_left_rounded));
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
+      }
+      expect(find.byType(ScopedVideoFeedScreen), findsNothing);
+      expect(fakePlatform.createCount, 1,
+          reason: 'closing fullscreen must not re-create the origin controller');
+      expect(
+        fakePlatform.disposeCounts.values.where((c) => c > 0).length,
+        0,
+        reason: 'origin controller must NOT be disposed when fullscreen closes',
+      );
+      // Inline still renders the (same) video after return.
+      expect(find.byType(VideoPlayer), findsWidgets);
+
+      // Page dispose → coordinator disposes the origin session exactly ONCE
+      // (zero double-dispose).
+      await disposeTree(tester);
+      for (final entry in fakePlatform.disposeCounts.entries) {
+        expect(entry.value, lessThanOrEqualTo(1),
+            reason: 'player ${entry.key} disposed ${entry.value}x — expected ≤1 '
+                '(no double-dispose)');
+      }
+    },
+  );
+
+  testWidgets(
+    'T3b hardening: fetch-fail while app is backgrounded → handoff does NOT '
+    'resume (no ghost audio)',
+    (tester) async {
+      // Fetch returns nothing → scoped feed never opens → _endHandoff(resume).
+      debugScopedFeedPostFetcher = (id) async => null;
+      final controller = await pumpAndInitialize(tester);
+
+      // Background the app (page observer pauses all sessions).
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump(const Duration(milliseconds: 20));
+      expect(controller.value.isPlaying, isFalse,
+          reason: 'background must pause the origin controller');
+
+      // Tap the inline video → handoff starts, fetch fails (empty), finally
+      // runs _endHandoff(resume:true) — but lifecycle is paused, so the guard
+      // must SKIP resumeAll (otherwise ghost audio behind a backgrounded app).
+      await tester.tapAt(const Offset(200, 600));
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.byType(ScopedVideoFeedScreen), findsNothing,
+          reason: 'empty fetch must not open the viewer');
+      expect(controller.value.isPlaying, isFalse,
+          reason:
+              'resume must be skipped while backgrounded (fetch-fail path)');
+
+      // Empty-fetch shows an AppToast that auto-dismisses via a Timer — flush
+      // it so the binding doesn't flag a pending timer at teardown.
+      for (var i = 0; i < 60; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await disposeTree(tester);
+    },
+  );
+
+  // ── T7-integrasi — kembali-dari-fullscreen re-aktifkan ORIGIN ────────────
+
+  testWidgets(
+    'T7: swipe away in fullscreen then close re-activates ORIGIN (not stale B); '
+    'B is paused (no ghost playback) and origin is not re-created',
+    (tester) async {
+      final posts = [
+        _fakeVideoPost(id: 'post-1'),
+        _fakeVideoPost(id: 'post-2'),
+        _fakeVideoPost(id: 'post-3'),
+      ];
+      await pumpAndInitialize(tester, posts: posts);
+
+      final state = tester.state(find.byType(MemberPostDetailScreen));
+      final dynamic coordinator = (state as dynamic).debugVideoCoordinator;
+
+      await openScopedFeed(tester);
+
+      // Tapped post-1 → origin pinned + active on open (deterministic; with
+      // multiple videos on-screen the pre-open active is scroll-dependent).
+      expect(coordinator.originPostId, 'post-1',
+          reason: 'tapped video is the handoff origin');
+      expect(coordinator.activePostId, 'post-1',
+          reason: 'fullscreen opens with origin active');
+
+      // Simulate the user swiping to the next video (B = post-2). The scoped
+      // viewer's onPageChanged calls setActive(next); drive the coordinator
+      // directly to be deterministic (no reliance on PageView fling timing).
+      coordinator.setActive('post-2');
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(coordinator.activePostId, 'post-2',
+          reason: 'swiping made B (post-2) the active session');
+
+      // Close fullscreen → _endHandoff must re-point active back to ORIGIN A.
+      final beforeClose = fakePlatform.createCount;
+      await tester.tap(find.byIcon(Icons.chevron_left_rounded));
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
+      }
+      expect(find.byType(ScopedVideoFeedScreen), findsNothing);
+
+      expect(coordinator.activePostId, 'post-1',
+          reason: 'closing fullscreen must re-activate origin A, NOT resume '
+              'the stale active B');
+
+      // B (post-2) must be paused — no ghost audio/playback in the background.
+      final dynamic bSession = coordinator.sessionFor('post-2');
+      final dynamic bController = bSession?.controller;
+      if (bController != null) {
+        expect(bController.value.isPlaying, isFalse,
+            reason: 'stale B must not be playing after return to Postingan');
+      }
+
+      // No re-init on return (instant re-attach, no thumbnail blink path).
+      expect(fakePlatform.createCount, beforeClose,
+          reason: 'returning must not re-create any controller');
+      expect(find.byType(VideoPlayer), findsWidgets,
+          reason: 'origin inline still renders the same video after return');
+
+      await disposeTree(tester);
+    },
+  );
+
+  testWidgets(
+    'T7: no-swipe close keeps origin active and resumes it (no regression)',
+    (tester) async {
+      final controller = await pumpAndInitialize(tester); // single post-1
+
+      final state = tester.state(find.byType(MemberPostDetailScreen));
+      final dynamic coordinator = (state as dynamic).debugVideoCoordinator;
+      expect(coordinator.activePostId, 'post-1');
+
+      await openScopedFeed(tester);
+      // No swipe — origin stays the active session throughout.
+      expect(coordinator.activePostId, 'post-1',
+          reason: 'no-swipe: origin remains active in fullscreen');
+
+      final beforeClose = fakePlatform.createCount;
+      await tester.tap(find.byIcon(Icons.chevron_left_rounded));
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
+      }
+      expect(find.byType(ScopedVideoFeedScreen), findsNothing);
+
+      expect(coordinator.activePostId, 'post-1',
+          reason: 'no-swipe: origin stays active after close');
+      expect(fakePlatform.createCount, beforeClose,
+          reason: 'no-swipe close must not re-create controllers');
+      // Origin resumes (plays) after returning — unchanged behavior.
+      expect(controller.value.isPlaying, isTrue,
+          reason: 'origin should resume playing after returning from '
+              'fullscreen (no-swipe path)');
+      expect(find.byType(VideoPlayer), findsWidgets);
 
       await disposeTree(tester);
     },

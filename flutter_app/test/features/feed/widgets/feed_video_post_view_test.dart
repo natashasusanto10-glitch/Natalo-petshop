@@ -1,16 +1,259 @@
+// ignore_for_file: depend_on_referenced_packages
+
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/features/feed/video/post_video_coordinator.dart';
+import 'package:natalo_petshop_flutter/features/feed/video/video_player_session.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_post_view.dart';
+import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_scrubber.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
+import 'package:natalo_petshop_flutter/state/settings_store.dart';
+import 'package:natalo_petshop_flutter/utils/app_route_observer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:video_player/video_player.dart';
+import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
-FeedPost _fakeVideoPost({String id = 'post-1', double aspectRatio = 0.5625}) {
+/// In-memory [VideoPlayerPlatform]. `manualInit` mode holds the
+/// `initialized` event until [emitInitialized] is called — this lets a test
+/// keep a controller "loading" while it probes the double-init guard (A4).
+/// `createCount` proves how many native players were ever spun up.
+class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
+  _FakeVideoPlayerPlatform({this.manualInit = false});
+
+  final bool manualInit;
+  final Map<int, StreamController<VideoEvent>> _streams = {};
+  final Map<int, Duration> _positions = {};
+  int _nextId = 0;
+  int createCount = 0;
+  int playCount = 0;
+  int pauseCount = 0;
+  int setSpeedCount = 0;
+  // D1: rekam setiap setVolume supaya test bisa memverifikasi controller
+  // aktif mengikuti feedMuted (0/1) secara live + inactive tetap 0.
+  final List<double> volumes = [];
+
+  @override
+  Future<void> init() async {}
+
+  @override
+  Future<int?> create(DataSource dataSource) => _create();
+
+  @override
+  Future<int?> createWithOptions(VideoCreationOptions options) => _create();
+
+  Future<int?> _create() async {
+    createCount++;
+    final id = _nextId++;
+    final stream = StreamController<VideoEvent>();
+    _streams[id] = stream;
+    if (!manualInit) {
+      stream.add(VideoEvent(
+        eventType: VideoEventType.initialized,
+        size: const Size(720, 1280),
+        duration: const Duration(seconds: 10),
+      ));
+    }
+    return id;
+  }
+
+  /// Release the held `initialized` event for every live player.
+  void emitInitialized() {
+    for (final stream in _streams.values) {
+      stream.add(VideoEvent(
+        eventType: VideoEventType.initialized,
+        size: const Size(720, 1280),
+        duration: const Duration(seconds: 10),
+      ));
+    }
+  }
+
+  @override
+  Future<void> dispose(int playerId) async {
+    await _streams.remove(playerId)?.close();
+    _positions.remove(playerId);
+  }
+
+  @override
+  Stream<VideoEvent> videoEventsFor(int playerId) => _streams[playerId]!.stream;
+
+  @override
+  Future<void> play(int playerId) async {
+    playCount++;
+  }
+
+  @override
+  Future<void> pause(int playerId) async {
+    pauseCount++;
+  }
+
+  @override
+  Future<void> setLooping(int playerId, bool looping) async {}
+
+  @override
+  Future<void> setVolume(int playerId, double volume) async {
+    volumes.add(volume);
+  }
+
+  @override
+  Future<void> setPlaybackSpeed(int playerId, double speed) async {
+    setSpeedCount++;
+  }
+
+  @override
+  Future<void> setMixWithOthers(bool mixWithOthers) async {}
+
+  @override
+  Future<void> seekTo(int playerId, Duration position) async {
+    _positions[playerId] = position;
+  }
+
+  @override
+  Future<Duration> getPosition(int playerId) async =>
+      _positions[playerId] ?? Duration.zero;
+
+  @override
+  Widget buildView(int playerId) => const SizedBox.shrink();
+}
+
+/// Fake platform yang GAGAL membuat player untuk [failUntil] percobaan pertama
+/// (create ke-1..failUntil lempar) lalu SUKSES sesudahnya. Dipakai T8 untuk
+/// membawa [VideoPlayerSession] ke keadaan error (init awal + 1 auto-retry
+/// gagal) lalu membuktikan `retry()` melahirkan controller BARU yang sukses.
+class _FailThenSucceedPlatform extends VideoPlayerPlatform {
+  _FailThenSucceedPlatform({required this.failUntil});
+
+  final int failUntil;
+  final Map<int, StreamController<VideoEvent>> _streams = {};
+  int _nextId = 0;
+  int createCount = 0;
+  int disposeCount = 0;
+
+  @override
+  Future<void> init() async {}
+
+  @override
+  Future<int?> create(DataSource dataSource) => _create();
+
+  @override
+  Future<int?> createWithOptions(VideoCreationOptions options) => _create();
+
+  Future<int?> _create() async {
+    createCount++;
+    if (createCount <= failUntil) {
+      throw Exception('network down (create #$createCount)');
+    }
+    final id = _nextId++;
+    final stream = StreamController<VideoEvent>();
+    _streams[id] = stream;
+    stream.add(VideoEvent(
+      eventType: VideoEventType.initialized,
+      size: const Size(720, 1280),
+      duration: const Duration(seconds: 10),
+    ));
+    return id;
+  }
+
+  @override
+  Future<void> dispose(int playerId) async {
+    disposeCount++;
+    await _streams.remove(playerId)?.close();
+  }
+
+  @override
+  Stream<VideoEvent> videoEventsFor(int playerId) => _streams[playerId]!.stream;
+
+  @override
+  Future<void> play(int playerId) async {}
+
+  @override
+  Future<void> pause(int playerId) async {}
+
+  @override
+  Future<void> setLooping(int playerId, bool looping) async {}
+
+  @override
+  Future<void> setVolume(int playerId, double volume) async {}
+
+  @override
+  Future<void> setPlaybackSpeed(int playerId, double speed) async {}
+
+  @override
+  Future<void> setMixWithOthers(bool mixWithOthers) async {}
+
+  @override
+  Future<void> seekTo(int playerId, Duration position) async {}
+
+  @override
+  Future<Duration> getPosition(int playerId) async => Duration.zero;
+
+  @override
+  Widget buildView(int playerId) => const SizedBox.shrink();
+}
+
+/// Pretends nothing is cached so `cached_video_player_plus` falls straight
+/// through to `VideoPlayerController.networkUrl` (our fake platform).
+class _NoopCacheManager implements CacheManager {
+  @override
+  Future<FileInfo?> getFileFromCache(String key,
+          {bool ignoreMemCache = false}) async =>
+      null;
+
+  @override
+  Future<FileInfo> downloadFile(String url,
+          {String? key, Map<String, String>? authHeaders, bool force = false}) =>
+      Completer<FileInfo>().future;
+
+  @override
+  Future<void> removeFile(String key) async {}
+
+  @override
+  Future<void> emptyCache() async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopMetadataStorage implements IVideoPlayerMetadataStorage {
+  final Map<String, int> _store = {};
+
+  @override
+  Set<String> get keys => _store.keys.toSet();
+
+  @override
+  Future<int?> read(String key) async => _store[key];
+
+  @override
+  Future<void> write(String key, int value) async => _store[key] = value;
+
+  @override
+  Future<void> remove(String key) async => _store.remove(key);
+
+  @override
+  Future<void> erase() async => _store.clear();
+}
+
+FeedPost _fakeVideoPost({
+  String id = 'post-1',
+  double aspectRatio = 0.5625,
+  bool hls = false,
+}) {
   return FeedPost.fromJson({
     'id': id,
     'slug': id,
     'kind': 'USER_VIDEO',
-    'videoUrl': 'https://example.com/$id.mp4',
+    // HLS (.m3u8) sengaja BYPASS cache wrapper (feed_video_post_view :isHls)
+    // → plain VideoPlayerController.networkUrl → langsung ke fake platform.
+    // MP4 lewat CachedVideoPlayerPlus yang download-gated (tak cocok untuk
+    // menguji jalur init controller di widget test).
+    'videoUrl': hls
+        ? 'https://example.com/$id.m3u8'
+        : 'https://example.com/$id.mp4',
     'thumbnailUrl': 'https://example.com/$id.jpg',
     'durationSec': 10,
     'aspectRatio': aspectRatio,
@@ -94,5 +337,813 @@ void main() {
       (tester) async {
     final fit = await pumpAndReadThumbFit(tester, 0.8);
     expect(fit, BoxFit.contain);
+  });
+
+  // Fix A5 — handoff preload terkonfirmasi: klaim dari map pemilik hanya
+  // terjadi saat state mengadopsi (initState), BUKAN tiap build parent.
+  // Regresi lama: remove() di build() → rebuild parent dengan state
+  // ber-key sama masih hidup menjatuhkan controller dari map tanpa pernah
+  // diadopsi (yatim, tak pernah di-dispose).
+  testWidgets(
+      'claimPreloadedVideo dipanggil sekali di initState, '
+      'tidak dipanggil ulang saat parent rebuild', (tester) async {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    var claimCalls = 0;
+    Widget buildHost({required bool isActive}) {
+      return MaterialApp(
+        home: FeedVideoPostView(
+          key: const ValueKey('feed-video-post-1'),
+          post: _fakeVideoPost(),
+          isActive: isActive,
+          preloadedController: null,
+          claimPreloadedVideo: () {
+            claimCalls++;
+            return null; // tidak ada preload siap — jalur fresh-init.
+          },
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildHost(isActive: false));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(claimCalls, 1);
+
+    // Parent rebuild (props berubah) dengan key sama → state lama tetap
+    // hidup, initState tidak jalan lagi → klaim TIDAK boleh terjadi lagi.
+    await tester.pumpWidget(buildHost(isActive: true));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpWidget(buildHost(isActive: false));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(claimCalls, 1);
+  });
+
+  // ── T2 — kontrak ownsController + playbackManagedExternally, fix A1/A4 ──
+  group('T2 playback contracts', () {
+    late _FakeVideoPlayerPlatform fakePlatform;
+
+    void installPlatform({bool manualInit = false}) {
+      fakePlatform = _FakeVideoPlayerPlatform(manualInit: manualInit);
+      VideoPlayerPlatform.instance = fakePlatform;
+    }
+
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      VisibilityDetectorController.instance.updateInterval = Duration.zero;
+      // Neutralize the caching layer so the wrapper reaches our fake platform.
+      CachedVideoPlayerPlus.cacheManager = _NoopCacheManager();
+      CachedVideoPlayerPlus.metadataStorage = _NoopMetadataStorage();
+    });
+
+    Widget host({
+      required bool isActive,
+      VideoPlayerController? preloaded,
+      bool ownsController = true,
+      bool playbackManagedExternally = false,
+      ValueChanged<bool>? onVisibleChanged,
+      VoidCallback? onRequestUserTogglePlay,
+      ValueChanged<CoverPauseReason>? onRequestPause,
+      VoidCallback? onRequestPlay,
+    }) {
+      return MaterialApp(
+        home: FeedVideoPostView(
+          key: const ValueKey('feed-video-post-1'),
+          post: _fakeVideoPost(hls: true),
+          isActive: isActive,
+          preloadedController: preloaded,
+          ownsController: ownsController,
+          playbackManagedExternally: playbackManagedExternally,
+          onVisibleChanged: onVisibleChanged,
+          onRequestUserTogglePlay: onRequestUserTogglePlay,
+          onRequestPause: onRequestPause,
+          onRequestPlay: onRequestPlay,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      );
+    }
+
+    // Fix A1: video yang selesai init saat inactive lalu jadi active WAJIB
+    // autoplay — bukan stuck karena _isPaused salah diturunkan dari !isPlaying.
+    testWidgets('A1: init saat inactive lalu jadi active → autoplay',
+        (tester) async {
+      installPlatform();
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(host(isActive: false));
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.byType(VideoPlayer).evaluate().isNotEmpty) break;
+      }
+      expect(find.byType(VideoPlayer), findsWidgets,
+          reason: 'video harus init walau inactive');
+      final ctrl =
+          tester.widget<VideoPlayer>(find.byType(VideoPlayer).first).controller;
+      expect(ctrl.value.isPlaying, isFalse,
+          reason: 'inactive → belum diputar');
+
+      // Jadi aktif → didUpdateWidget harus play (gate !_isPaused benar).
+      await tester.pumpWidget(host(isActive: true));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (ctrl.value.isPlaying) break;
+      }
+      expect(ctrl.value.isPlaying, isTrue,
+          reason: 'video tidak boleh stuck diam saat jadi aktif (fix A1)');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    // Fix A4: tap saat loading tidak boleh memulai init/controller kedua.
+    testWidgets('A4: tap saat loading → satu controller / satu init',
+        (tester) async {
+      installPlatform(manualInit: true); // tahan initialized supaya "loading"
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(host(isActive: true));
+      // Biarkan init dari initState mulai (create → createCount 1), tetap
+      // in-flight karena initialized ditahan.
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.createCount, 1,
+          reason: 'init pertama membuat satu player');
+
+      // Tap area media beberapa kali saat masih loading → _onTapMedia dgn
+      // ctrl==null memanggil _maybeInitVideo lagi, harus no-op (guard A4).
+      for (var t = 0; t < 3; t++) {
+        await tester.tapAt(const Offset(200, 600));
+        await tester.pump(const Duration(milliseconds: 350)); // lewati double-tap
+      }
+      expect(fakePlatform.createCount, 1,
+          reason: 'tap saat loading tidak boleh memulai controller kedua (A4)');
+
+      // Selesaikan init lalu bongkar tree bersih.
+      fakePlatform.emitInitialized();
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    // playbackManagedExternally: VisibilityDetector + tap TIDAK menyentuh
+    // controller, tapi melapor lewat callback ke coordinator (T3).
+    testWidgets(
+        'managed: visibilitas + tap jadi callback, controller tak disentuh',
+        (tester) async {
+      installPlatform();
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      // Controller "milik coordinator" — sudah initialized, tetap paused.
+      // initialize() di-drive lewat runAsync (real async) supaya event
+      // `initialized` dari fake platform terkirim; bare await di zona
+      // FakeAsync testWidgets tidak pernah selesai (hang).
+      final borrowed = VideoPlayerController.networkUrl(
+        Uri.parse('https://example.com/managed.mp4'),
+      );
+      await tester.runAsync(() => borrowed.initialize());
+      addTearDown(borrowed.dispose);
+      expect(borrowed.value.isPlaying, isFalse);
+
+      final visibleReports = <bool>[];
+      var toggleCalls = 0;
+
+      await tester.pumpWidget(host(
+        isActive: true,
+        preloaded: borrowed,
+        ownsController: false,
+        playbackManagedExternally: true,
+        onVisibleChanged: visibleReports.add,
+        onRequestUserTogglePlay: () => toggleCalls++,
+      ));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      // VisibilityDetector melapor visible=true, TANPA memutar controller.
+      expect(visibleReports, isNotEmpty,
+          reason: 'managed → visibilitas dilaporkan via callback');
+      expect(visibleReports.last, isTrue);
+      expect(borrowed.value.isPlaying, isFalse,
+          reason: 'managed → widget tidak play() controller langsung');
+
+      // Tap → user-toggle callback, bukan pause/play langsung.
+      await tester.tapAt(const Offset(200, 600));
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(toggleCalls, greaterThanOrEqualTo(1),
+          reason: 'managed → tap melapor userTogglePlay');
+      expect(borrowed.value.isPlaying, isFalse,
+          reason: 'managed → tap tidak mengubah playback controller');
+
+      // Bongkar tree: ownsController=false → borrowed TIDAK di-dispose oleh
+      // widget (dibuktikan borrowed masih usable + di-dispose oleh tearDown).
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(borrowed.value.isInitialized, isTrue,
+          reason: 'ownsController:false → controller tidak di-dispose widget');
+    });
+
+    // FIX 1 (T2 review): scrubber di managed mode TIDAK boleh play/pause
+    // controller pinjaman — hanya seek. Cegah race scrub-pause → background
+    // → lepas scrub → play() menembus suspend = audio hantu.
+    testWidgets('managed: scrub drag TIDAK memanggil controller play/pause',
+        (tester) async {
+      installPlatform();
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final borrowed = VideoPlayerController.networkUrl(
+        Uri.parse('https://example.com/managed-scrub.mp4'),
+      );
+      await tester.runAsync(() => borrowed.initialize());
+      await tester.runAsync(() => borrowed.play());
+      addTearDown(borrowed.dispose);
+      expect(borrowed.value.isPlaying, isTrue);
+
+      await tester.pumpWidget(host(
+        isActive: true,
+        preloaded: borrowed,
+        ownsController: false,
+        playbackManagedExternally: true,
+      ));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(find.byType(FeedVideoScrubber), findsOneWidget,
+          reason: 'scrubber harus ter-render untuk controller aktif');
+
+      final playBefore = fakePlatform.playCount;
+      final pauseBefore = fakePlatform.pauseCount;
+
+      // Drag horizontal di scrubber (start → update → end).
+      await tester.drag(
+        find.byType(FeedVideoScrubber),
+        const Offset(120, 0),
+        warnIfMissed: false,
+      );
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(fakePlatform.pauseCount, pauseBefore,
+          reason: 'managed → scrub start tidak boleh pause controller');
+      expect(fakePlatform.playCount, playBefore,
+          reason: 'managed → scrub end tidak boleh play/resume controller');
+      expect(borrowed.value.isPlaying, isTrue,
+          reason: 'managed → video tetap jalan saat scrub (seek-only)');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    // FIX 2 (T2 review): long-press peek-pause / 2x-speed di managed mode
+    // di-nonaktifkan — tak ada ctrl.pause/play/setPlaybackSpeed langsung.
+    testWidgets(
+        'managed: long-press TIDAK memanggil play/pause/setPlaybackSpeed',
+        (tester) async {
+      installPlatform();
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final borrowed = VideoPlayerController.networkUrl(
+        Uri.parse('https://example.com/managed-lp.mp4'),
+      );
+      await tester.runAsync(() => borrowed.initialize());
+      await tester.runAsync(() => borrowed.play());
+      addTearDown(borrowed.dispose);
+      expect(borrowed.value.isPlaying, isTrue);
+
+      await tester.pumpWidget(host(
+        isActive: true,
+        preloaded: borrowed,
+        ownsController: false,
+        playbackManagedExternally: true,
+      ));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      final playBefore = fakePlatform.playCount;
+      final pauseBefore = fakePlatform.pauseCount;
+      final speedBefore = fakePlatform.setSpeedCount;
+
+      // Long-press center (pause zone) lalu release.
+      await tester.longPressAt(const Offset(200, 600));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(fakePlatform.pauseCount, pauseBefore,
+          reason: 'managed → long-press tidak boleh pause controller');
+      expect(fakePlatform.playCount, playBefore,
+          reason: 'managed → long-press release tidak boleh play controller');
+      expect(fakePlatform.setSpeedCount, speedBefore,
+          reason: 'managed → long-press tidak boleh setPlaybackSpeed (nol 2x)');
+      expect(borrowed.value.isPlaying, isTrue);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    // FIX 3 (T2 review, gap D5): onRequestPause membawa CoverPauseReason yang
+    // benar dari sumber berbeda — routePush (route opaque didorong) vs
+    // appBackground (lifecycle). T3 pakai reason untuk drop routePush saat
+    // handoff.
+    testWidgets('managed: onRequestPause membawa reason sesuai sumber',
+        (tester) async {
+      installPlatform();
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final reasons = <CoverPauseReason>[];
+      await tester.pumpWidget(MaterialApp(
+        navigatorObservers: [appRouteObserver],
+        home: FeedVideoPostView(
+          key: const ValueKey('feed-video-post-1'),
+          post: _fakeVideoPost(hls: true),
+          isActive: true,
+          preloadedController: null,
+          ownsController: false,
+          playbackManagedExternally: true,
+          onRequestPause: reasons.add,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      // Sumber 1: push route opaque → didPushNext → reason routePush.
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      navigator.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: SizedBox()),
+      ));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(reasons, contains(CoverPauseReason.routePush),
+          reason: 'route opaque didorong → reason routePush (T3 drop saat handoff)');
+      expect(reasons.last, CoverPauseReason.routePush);
+
+      // Sumber 2: app ke background → lifecycle → reason appBackground.
+      tester.binding
+          .handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(reasons.last, CoverPauseReason.appBackground,
+          reason: 'app background → reason appBackground (T3 pauseAll)');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+  });
+
+  // ── BLOCKER — audio hantu: guard isActive di managed _resumeFromCover ──
+  // Di fullscreen, view ORIGIN yang sudah di-swipe-lewati tetap MOUNTED tapi
+  // isActive:false. Coordinator.activePostId nyangkut di origin (sibling tak
+  // pernah setActive). Resume apa pun (app-foreground / didPopNext) di view
+  // origin mounted-inactive TIDAK boleh minta onRequestPlay → resumeAll,
+  // karena itu memutar origin tersembunyi di belakang sibling = dua suara.
+  group('BLOCKER managed resume guard (audio hantu)', () {
+    late _FakeVideoPlayerPlatform fakePlatform;
+
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      VisibilityDetectorController.instance.updateInterval = Duration.zero;
+      CachedVideoPlayerPlus.cacheManager = _NoopCacheManager();
+      CachedVideoPlayerPlus.metadataStorage = _NoopMetadataStorage();
+      fakePlatform = _FakeVideoPlayerPlatform();
+      VideoPlayerPlatform.instance = fakePlatform;
+    });
+
+    Widget host({
+      required bool isActive,
+      required List<void> playCalls,
+      required List<CoverPauseReason> pauseCalls,
+    }) {
+      return MaterialApp(
+        home: FeedVideoPostView(
+          key: const ValueKey('feed-video-post-1'),
+          post: _fakeVideoPost(hls: true),
+          isActive: isActive,
+          preloadedController: null,
+          ownsController: false,
+          playbackManagedExternally: true,
+          onRequestPause: pauseCalls.add,
+          onRequestPlay: () => playCalls.add(null),
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      );
+    }
+
+    testWidgets(
+        'managed inactive: app-resume TIDAK memanggil onRequestPlay '
+        '(origin di belakang sibling)', (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final playCalls = <void>[];
+      final pauseCalls = <CoverPauseReason>[];
+      await tester.pumpWidget(
+          host(isActive: false, playCalls: playCalls, pauseCalls: pauseCalls));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      // App ke background lalu foreground → _resumeFromCover (managed).
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(playCalls, isEmpty,
+          reason: 'view mounted-inactive TIDAK boleh minta resume '
+              '(cegah audio hantu origin di belakang sibling)');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    testWidgets(
+        'managed active: app-resume MEMANGGIL onRequestPlay (kasus benar)',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final playCalls = <void>[];
+      final pauseCalls = <CoverPauseReason>[];
+      await tester.pumpWidget(
+          host(isActive: true, playCalls: playCalls, pauseCalls: pauseCalls));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(playCalls, isNotEmpty,
+          reason: 'origin AKTIF + foreground → resume benar (onRequestPlay)');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+  });
+
+  // ── D1 — mute LIVE di Feed utama (jalur non-managed/legacy) ──
+  // Controller feed yang SUDAH hidup harus ikut perubahan feedMuted secara
+  // live (§2.2): HANYA controller AKTIF yang naik ke volume 1 saat unmute
+  // global; controller inactive/background TETAP volume 0.
+  group('D1 mute live (non-managed)', () {
+    late _FakeVideoPlayerPlatform fakePlatform;
+
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      VisibilityDetectorController.instance.updateInterval = Duration.zero;
+      CachedVideoPlayerPlus.cacheManager = _NoopCacheManager();
+      CachedVideoPlayerPlus.metadataStorage = _NoopMetadataStorage();
+      fakePlatform = _FakeVideoPlayerPlatform();
+      VideoPlayerPlatform.instance = fakePlatform;
+    });
+
+    Widget host({
+      required bool isActive,
+      required VideoPlayerController preloaded,
+    }) {
+      return MaterialApp(
+        home: FeedVideoPostView(
+          key: const ValueKey('feed-video-post-1'),
+          post: _fakeVideoPost(hls: true),
+          isActive: isActive,
+          preloadedController: preloaded,
+          // Jalur legacy: default ownsController:true, managed:false.
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      );
+    }
+
+    testWidgets(
+        'post aktif: setFeedMuted live → controller.setVolume(0) lalu (1)',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      // Autoplay OFF: hindari play() (yang memulai timer posisi periodik →
+      // "pending timer" saat teardown). Live-mute tak bergantung playing;
+      // listener meng-set volume selama controller aktif + initialized.
+      await appSettingsStore.setFeedAutoplay(false);
+      addTearDown(() => appSettingsStore.setFeedAutoplay(true));
+      // Mulai dari state diketahui.
+      await appSettingsStore.setFeedMuted(true);
+
+      final borrowed = VideoPlayerController.networkUrl(
+        Uri.parse('https://example.com/d1-active.mp4'),
+      );
+      await tester.runAsync(() => borrowed.initialize());
+      // ownsController default true → widget yang men-dispose borrowed saat
+      // unmount (jangan addTearDown dispose = double-dispose).
+
+      await tester.pumpWidget(host(isActive: true, preloaded: borrowed));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      // Isolasi dari volume adopt-time — uji hanya efek transisi live.
+      fakePlatform.volumes.clear();
+
+      // Sudah muted → set false = unmute global saat controller SUDAH hidup.
+      await appSettingsStore.setFeedMuted(false);
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.volumes.last, 1,
+          reason: 'post aktif unmute live → setVolume(1)');
+
+      fakePlatform.volumes.clear();
+      // Mute global lagi → controller aktif turun ke 0 secara live.
+      await appSettingsStore.setFeedMuted(true);
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.volumes.last, 0,
+          reason: 'post aktif mute live → setVolume(0)');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    testWidgets(
+        'post TIDAK aktif: unmute global TIDAK menaikkan volume (tetap 0)',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      // Mulai muted.
+      await appSettingsStore.setFeedMuted(true);
+
+      final borrowed = VideoPlayerController.networkUrl(
+        Uri.parse('https://example.com/d1-inactive.mp4'),
+      );
+      await tester.runAsync(() => borrowed.initialize());
+
+      await tester.pumpWidget(host(isActive: false, preloaded: borrowed));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      // Isolasi dari volume adopt-time.
+      fakePlatform.volumes.clear();
+
+      // Unmute global sementara post ini TIDAK aktif → volume TIDAK boleh naik
+      // ke 1 (unmute tak boleh membocorkan audio video background).
+      await appSettingsStore.setFeedMuted(false);
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.volumes.contains(1), isFalse,
+          reason: 'post inactive → unmute global tidak menaikkan volume ke 1');
+      expect(fakePlatform.volumes.last, 0,
+          reason: 'post inactive tetap senyap (volume 0)');
+
+      // Rapikan state global untuk test lain.
+      await appSettingsStore.setFeedMuted(true);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+  });
+
+  // ── T8 — retry di fullscreen (managed view) ──
+  // Saat sesi coordinator ERROR di managed view: tampil surface error +
+  // tombol "Coba lagi" → session.retry() (reset budget). Retry mengganti
+  // controller DI DALAM sesi yang sama (identitas sesi tetap, revision bump)
+  // → view WAJIB re-adopt controller BARU via listener REVISION (bukan
+  // registry) dan merender langsung, tanpa kembali ke Postingan. Widget tak
+  // pernah men-dispose controller (coordinator pemilik).
+  group('T8 retry di fullscreen (managed)', () {
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    });
+
+    Widget host({
+      required PostVideoCoordinator coordinator,
+      required FeedPost post,
+      required bool isActive,
+    }) {
+      return MaterialApp(
+        home: FeedVideoPostView(
+          key: const ValueKey('feed-video-post-managed'),
+          post: post,
+          isActive: isActive,
+          preloadedController: null,
+          ownsController: false,
+          playbackManagedExternally: true,
+          coordinator: coordinator,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      );
+    }
+
+    Future<void> flushAsync(WidgetTester tester) async {
+      await tester.runAsync(() async {
+        for (var i = 0; i < 12; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+      });
+    }
+
+    // (a) + (b): sesi error → tombol "Coba lagi"; tap → session.retry().
+    // Pakai seam debugInitAttempt (tanpa plugin) — controller selalu null,
+    // sesi selalu error → cukup untuk memverifikasi surface + panggilan retry.
+    testWidgets('sesi error → tampil "Coba lagi"; tap → retry() dipanggil',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final post = _fakeVideoPost();
+      var attempts = 0;
+      final coordinator = PostVideoCoordinator(
+        sessionFactory: (postId) => VideoPlayerSession(
+          url: 'https://cdn/$postId.mp4',
+          userQualityPreference: 'auto',
+          debugDelay: (_) async {},
+          debugInitAttempt: (_) async {
+            attempts++;
+            throw Exception('network down');
+          },
+        ),
+      );
+      addTearDown(coordinator.dispose);
+
+      // Buat sesi + drive init (awal + 1 auto-retry) sampai error.
+      coordinator.attach('view-1', post.id);
+      await flushAsync(tester);
+      final session = coordinator.sessionFor(post.id) as VideoPlayerSession;
+      expect(session.hasError, isTrue);
+      expect(attempts, 2, reason: 'init awal + tepat 1 auto-retry');
+
+      await tester.pumpWidget(host(
+        coordinator: coordinator,
+        post: post,
+        isActive: true,
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(find.text('Coba lagi'), findsOneWidget,
+          reason: 'managed + sesi error → surface error dgn tombol Coba lagi');
+      expect(find.byType(VideoPlayer), findsNothing);
+
+      // Tap Coba lagi → session.retry() (reset budget → init ulang).
+      await tester.tap(find.text('Coba lagi'));
+      await tester.pump();
+      await flushAsync(tester);
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(attempts, greaterThan(2),
+          reason: 'tap "Coba lagi" memicu session.retry() → init ulang');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    // (c) + (d): retry SUKSES (create ke-3) → sesi melahirkan controller BARU
+    // (revision bump) → view re-adopt + render VideoPlayer (bukan thumbnail
+    // diam). Controller tak pernah di-dispose oleh widget saat unmount.
+    testWidgets(
+        'retry sukses → re-adopt controller baru via revision + render',
+        (tester) async {
+      final platform = _FailThenSucceedPlatform(failUntil: 2);
+      VideoPlayerPlatform.instance = platform;
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      // HLS → bypass cache wrapper → plain VideoPlayerController → fake platform.
+      final post = _fakeVideoPost(hls: true);
+      final coordinator = PostVideoCoordinator(
+        sessionFactory: (postId) => VideoPlayerSession(
+          url: 'https://example.com/$postId.m3u8',
+          userQualityPreference: 'auto',
+          debugDelay: (_) async {},
+        ),
+      );
+      addTearDown(coordinator.dispose);
+
+      // Buat sesi (init awal + auto-retry pakai create #1 & #2 → keduanya
+      // gagal) + jadikan aktif (desired play + volume, poin 4).
+      coordinator.attach('view-1', post.id);
+      coordinator.setActive(post.id);
+      await flushAsync(tester);
+      final session = coordinator.sessionFor(post.id) as VideoPlayerSession;
+      expect(session.hasError, isTrue,
+          reason: 'dua create pertama gagal → sesi error');
+      expect(platform.createCount, 2);
+
+      await tester.pumpWidget(host(
+        coordinator: coordinator,
+        post: post,
+        isActive: true,
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.text('Coba lagi'), findsOneWidget);
+      expect(find.byType(VideoPlayer), findsNothing,
+          reason: 'error → belum ada controller dirender');
+
+      // Tap Coba lagi → retry → create #3 SUKSES → controller baru.
+      await tester.tap(find.text('Coba lagi'));
+      await tester.pump();
+      await flushAsync(tester);
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(session.hasError, isFalse);
+      expect(session.isInitialized, isTrue);
+      expect(session.controller, isNotNull);
+      expect(find.byType(VideoPlayer), findsWidgets,
+          reason: 're-adopt controller baru pasca-retry → VideoPlayer render');
+      expect(find.text('Coba lagi'), findsNothing,
+          reason: 'surface error hilang setelah retry sukses');
+      // Poin 4: desired play dipertahankan pada controller baru (view aktif).
+      expect(session.controller!.value.isPlaying, isTrue,
+          reason: 'retry mempertahankan desired play state (view aktif)');
+
+      final controller = session.controller!;
+      final disposesBefore = platform.disposeCount;
+
+      // (d) Unmount widget → ownsController:false → TIDAK men-dispose.
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(platform.disposeCount, disposesBefore,
+          reason: 'widget managed tak pernah men-dispose controller pinjaman');
+      expect(controller.value.isInitialized, isTrue,
+          reason: 'controller tetap hidup — coordinator pemilik');
+
+      // Bersihkan: coordinator (pemilik) men-dispose sesi → controller,
+      // menghentikan timer posisi periodik yang jalan selama playing.
+      await tester.runAsync(() async {
+        coordinator.dispose();
+        await Future<void>.delayed(Duration.zero);
+      });
+    });
   });
 }
