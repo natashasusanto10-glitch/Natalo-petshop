@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
@@ -88,7 +89,9 @@ CommentSnapTarget commentSnapTargetFor({
   // relatif thd initial saja (itu bikin lepas di 0.65 sesudah drag turun
   // dari full nyangkut balik ke full).
   final expandThreshold = (initial + maxExtent) / 2;
-  return size >= expandThreshold ? CommentSnapTarget.max : CommentSnapTarget.initial;
+  return size >= expandThreshold
+      ? CommentSnapTarget.max
+      : CommentSnapTarget.initial;
 }
 
 /// Pure helper — apakah video harus di-pause karena comment sheet sudah
@@ -227,12 +230,18 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   CachedVideoPlayerPlus? _cachedPlayer;
   final DraggableScrollableController _commentSheetController =
       DraggableScrollableController();
-  final ValueNotifier<double> _commentSheetExtent =
-      ValueNotifier<double>(_commentSheetInitialExtent);
+  final ValueNotifier<double> _commentSheetExtent = ValueNotifier<double>(
+    _commentSheetInitialExtent,
+  );
   bool _liked = false;
   int _likeCount = 0;
   int _commentCount = 0;
   int _shareCount = 0;
+  bool _shareInFlight = false;
+  Timer? _mediaTapWindow;
+  DateTime? _firstMediaTapAt;
+  Offset? _firstMediaTapPosition;
+  bool? _playingBeforeFirstTap;
   bool _isPaused = false;
   bool _commentDrawerMounted = false;
   bool _commentSheetOpen = false;
@@ -309,39 +318,48 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     );
     _heartScale = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween(begin: 0.35, end: 1.42)
-            .chain(CurveTween(curve: Curves.easeOutBack)),
+        tween: Tween(
+          begin: 0.35,
+          end: 1.42,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
         weight: 34,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 1.42, end: 1.00)
-            .chain(CurveTween(curve: Curves.easeInOut)),
+        tween: Tween(
+          begin: 1.42,
+          end: 1.00,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
         weight: 22,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 1.00, end: 0.82)
-            .chain(CurveTween(curve: Curves.easeOutCubic)),
+        tween: Tween(
+          begin: 1.00,
+          end: 0.82,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
         weight: 18,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 0.82, end: 0.0)
-            .chain(CurveTween(curve: Curves.easeIn)),
+        tween: Tween(
+          begin: 0.82,
+          end: 0.0,
+        ).chain(CurveTween(curve: Curves.easeIn)),
         weight: 26,
       ),
     ]).animate(_heartBurstController);
     _heartOpacity = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween(begin: 0.0, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeOut)),
+        tween: Tween(
+          begin: 0.0,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeOut)),
         weight: 25,
       ),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 38),
       TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 1.0),
-        weight: 38,
-      ),
-      TweenSequenceItem(
-        tween:
-            Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)),
+        tween: Tween(
+          begin: 1.0,
+          end: 0.0,
+        ).chain(CurveTween(curve: Curves.easeIn)),
         weight: 37,
       ),
     ]).animate(_heartBurstController);
@@ -372,8 +390,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // muncul), bukan preloadedController statis. Tanpa coordinator → jalur lama
     // (managed via preloadedController statis, atau non-managed fresh-init).
     if (_managed && widget.coordinator != null) {
-      widget.coordinator!.registryListenable
-          .addListener(_onCoordinatorRegistryChanged);
+      widget.coordinator!.registryListenable.addListener(
+        _onCoordinatorRegistryChanged,
+      );
       _syncManagedSession();
     } else {
       _adoptPreloadedController();
@@ -1107,6 +1126,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
   @override
   void dispose() {
+    _mediaTapWindow?.cancel();
     appRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
     // D1: lepas listener feedMuted live (hanya terpasang di jalur non-managed).
@@ -1115,8 +1135,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     }
     // T7: lepas listener registry + revision sesi (managed-source dinamis).
     if (_managed && widget.coordinator != null) {
-      widget.coordinator!.registryListenable
-          .removeListener(_onCoordinatorRegistryChanged);
+      widget.coordinator!.registryListenable.removeListener(
+        _onCoordinatorRegistryChanged,
+      );
     }
     _managedSession?.revision.removeListener(_onManagedSessionRevision);
     _managedSession = null;
@@ -1168,8 +1189,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
     // Pause/resume video ala IG Reels — full-screen comment sheet berarti
     // video harus hilang dari layar dan berhenti (bukan cuma tersembunyi).
-    final shouldPause =
-        shouldPauseForCommentExtent(extent: extent, maxExtent: maxExtent);
+    final shouldPause = shouldPauseForCommentExtent(
+      extent: extent,
+      maxExtent: maxExtent,
+    );
     if (_managed) {
       // Managed (§2.1): comment sheet full = cover → lapor pause/resume ke
       // coordinator, jangan sentuh controller. Pakai flag lokal untuk
@@ -1203,9 +1226,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // AnimatedSlide (sheet sudah visually di posisi 0 lewat drag/animateTo,
     // lihat _settleCommentDragClose). Guard _commentSheetClosingFromDrag
     // cegah double-run.
-    if (_commentSheetOpen &&
-        !_commentSheetClosingFromDrag &&
-        size <= 0.005) {
+    if (_commentSheetOpen && !_commentSheetClosingFromDrag && size <= 0.005) {
       _commentSheetClosingFromDrag = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _closeComments();
@@ -1226,9 +1247,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   double _commentSheetMaxExtentFor(BuildContext context, double hostHeight) {
     final topSafeArea = MediaQuery.paddingOf(context).top;
     final extent = 1 - (topSafeArea / math.max(1.0, hostHeight));
-    return extent
-        .clamp(_commentSheetInitialExtent, 1.0)
-        .toDouble();
+    return extent.clamp(_commentSheetInitialExtent, 1.0).toDouble();
   }
 
   List<FeedProductLink> _rotatingProductsForPost(FeedPost post) {
@@ -1246,15 +1265,14 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     _stopProductRotation();
     final products = _rotatingProductsForPost(widget.post);
     if (!widget.isActive || products.length <= 1) return;
-    _productRotationTimer = Timer.periodic(
-      const Duration(milliseconds: 2500),
-      (_) {
-        if (!mounted || !widget.isActive) return;
-        setState(() {
-          _featuredProductIndex = (_featuredProductIndex + 1) % products.length;
-        });
-      },
-    );
+    _productRotationTimer = Timer.periodic(const Duration(milliseconds: 2500), (
+      _,
+    ) {
+      if (!mounted || !widget.isActive) return;
+      setState(() {
+        _featuredProductIndex = (_featuredProductIndex + 1) % products.length;
+      });
+    });
   }
 
   void _stopProductRotation() {
@@ -1323,10 +1341,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
   /// Double-tap → like (kalau belum) + heart burst di posisi jari.
   /// Instagram Reels signature gesture.
-  void _rememberHeartBurstPosition(TapDownDetails details) {
-    _heartBurstPosition = details.localPosition;
-  }
-
   /// Pusat tombol like rail dalam koordinat ~global (Stack mengisi layar
   /// dari 0,0), untuk target "terbang ke rail". Null kalau belum ter-render.
   Offset? _resolveLikeCenter() {
@@ -1413,7 +1427,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       _pausedByCommentSheet = false;
       if (_managed) {
         widget.onRequestPlay?.call();
-      } else if (_canAutoplayNow() && ctrl != null && ctrl.value.isInitialized) {
+      } else if (_canAutoplayNow() &&
+          ctrl != null &&
+          ctrl.value.isInitialized) {
         _logPlay('comment-close-full');
         ctrl.play();
       }
@@ -1434,8 +1450,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     final delta = details.primaryDelta ?? 0;
     if (!_commentSheetController.isAttached || delta == 0) return;
     final screenHeight = math.max(1.0, MediaQuery.sizeOf(context).height);
-    final maxExtent =
-        _commentSheetMaxExtentFor(context, _commentSheetHostHeight(context));
+    final maxExtent = _commentSheetMaxExtentFor(
+      context,
+      _commentSheetHostHeight(context),
+    );
     // Tracking penuh 0..maxExtent — jari mengikuti sheet sepanjang seluruh
     // rentang (ala IG Reels), tidak berhenti di suatu extent minimum.
     final nextSize = (_commentSheetController.size - (delta / screenHeight))
@@ -1449,8 +1467,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     final size = _commentSheetController.isAttached
         ? _commentSheetController.size
         : _commentSheetInitialExtent;
-    final maxExtent =
-        _commentSheetMaxExtentFor(context, _commentSheetHostHeight(context));
+    final maxExtent = _commentSheetMaxExtentFor(
+      context,
+      _commentSheetHostHeight(context),
+    );
     final target = commentSnapTargetFor(
       size: size,
       velocity: velocity,
@@ -1523,6 +1543,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   }
 
   Future<void> _onShare() async {
+    if (_shareInFlight) return;
+    _shareInFlight = true;
     AppHaptics.tap();
     final url =
         '${ApiConfig.publicSiteUrl}/feed/${Uri.encodeComponent(widget.post.id)}';
@@ -1531,15 +1553,59 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         : 'Lihat di Natalo Petshop:\n$url';
     final box = context.findRenderObject() as RenderBox?;
     try {
-      await Share.share(
+      final result = await Share.share(
         caption,
         sharePositionOrigin:
             box != null ? box.localToGlobal(Offset.zero) & box.size : null,
       );
-      if (!mounted) return;
-      setState(() => _shareCount += 1);
-      await feedService.trackShare(widget.post.id);
-    } catch (_) {}
+      if (result.status != ShareResultStatus.success || !mounted) return;
+      feedStore.incrementShareCount(widget.post.id);
+      final serverCount = await feedService.trackShare(widget.post.id);
+      if (serverCount != null) {
+        feedStore.setShareCount(widget.post.id, serverCount);
+      }
+    } catch (_) {
+      // Native share dibatalkan/gagal.
+    } finally {
+      _shareInFlight = false;
+    }
+  }
+
+  void _onMediaTapUp(TapUpDetails details) {
+    final now = DateTime.now();
+    final firstAt = _firstMediaTapAt;
+    final firstPosition = _firstMediaTapPosition;
+    final isDoubleTap = firstAt != null &&
+        firstPosition != null &&
+        now.difference(firstAt) <= kDoubleTapTimeout &&
+        (details.localPosition - firstPosition).distance <= kDoubleTapSlop;
+    if (isDoubleTap) {
+      _heartBurstPosition = details.localPosition;
+      final wasPlaying = _playingBeforeFirstTap;
+      if (wasPlaying != null &&
+          (_videoController?.value.isPlaying ?? false) != wasPlaying) {
+        unawaited(_onTapMedia());
+      }
+      _clearMediaTapWindow();
+      _onDoubleTapLike();
+      return;
+    }
+    _firstMediaTapAt = now;
+    _firstMediaTapPosition = details.localPosition;
+    _playingBeforeFirstTap = _videoController?.value.isPlaying;
+    unawaited(_onTapMedia());
+    _mediaTapWindow?.cancel();
+    _mediaTapWindow = Timer(kDoubleTapTimeout, _clearMediaTapWindow);
+  }
+
+  void _clearMediaTapWindow() {
+    final hadActiveWindow = _mediaTapWindow != null;
+    _mediaTapWindow?.cancel();
+    _mediaTapWindow = null;
+    _firstMediaTapAt = null;
+    _firstMediaTapPosition = null;
+    _playingBeforeFirstTap = null;
+    if (mounted && hadActiveWindow) setState(() {});
   }
 
   void _openCart({bool fromFeed = false}) {
@@ -1644,10 +1710,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     _addFeedLinkToCart(link);
   }
 
-  void _addFeedLinkToCart(
-    FeedProductLink link, {
-    int quantity = 1,
-  }) {
+  void _addFeedLinkToCart(FeedProductLink link, {int quantity = 1}) {
     if (!link.isAvailable || link.stock <= 0) {
       _showProductUnavailable();
       return;
@@ -1669,10 +1732,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     );
   }
 
-  void _buyFeedLinkNow(
-    FeedProductLink link, {
-    int quantity = 1,
-  }) {
+  void _buyFeedLinkNow(FeedProductLink link, {int quantity = 1}) {
     if (!link.isAvailable || link.stock <= 0) {
       _showProductUnavailable();
       return;
@@ -1725,10 +1785,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     Navigator.pushNamed(context, '/product-detail', arguments: product);
   }
 
-  void _addProductToCart(
-    Product product, {
-    int quantity = 1,
-  }) {
+  void _addProductToCart(Product product, {int quantity = 1}) {
     if (product.stock <= 0) {
       _showProductUnavailable();
       return;
@@ -1747,10 +1804,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     );
   }
 
-  void _buyProductNow(
-    Product product, {
-    int quantity = 1,
-  }) {
+  void _buyProductNow(Product product, {int quantity = 1}) {
     if (product.stock <= 0) {
       _showProductUnavailable();
       return;
@@ -1985,10 +2039,14 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       child: LayoutBuilder(
         builder: (context, constraints) {
           final keyboard = MediaQuery.viewInsetsOf(context).bottom;
-          final commentSheetHostHeight =
-              math.max(1.0, constraints.biggest.height - keyboard);
-          final commentSheetMaxExtent =
-              _commentSheetMaxExtentFor(context, commentSheetHostHeight);
+          final commentSheetHostHeight = math.max(
+            1.0,
+            constraints.biggest.height - keyboard,
+          );
+          final commentSheetMaxExtent = _commentSheetMaxExtentFor(
+            context,
+            commentSheetHostHeight,
+          );
           // Cache media area width untuk zone detection di long-press
           // handler (left/center/right 2x speed vs pause).
           _mediaAreaWidth = constraints.maxWidth;
@@ -2081,9 +2139,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                         top: 0,
                         bottom: 0,
                         child: GestureDetector(
-                          onTap: _onTapMedia,
-                          onDoubleTapDown: _rememberHeartBurstPosition,
-                          onDoubleTap: _onDoubleTapLike,
+                          onTapUp: _onMediaTapUp,
                           // Sprint 4 #1 — Long-press signature gesture.
                           onLongPressStart: _onLongPressStart,
                           onLongPressEnd: _onLongPressEnd,
@@ -2182,10 +2238,13 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                           !minimized &&
                           !_commentSheetOpen)
                         Center(
-                          child: _PausedVideoControls(
-                            muted: appSettingsStore.feedMuted,
-                            onToggleMute: _toggleMuteWhilePaused,
-                            onTogglePlayPause: _onTapMedia,
+                          child: IgnorePointer(
+                            ignoring: _mediaTapWindow != null,
+                            child: _PausedVideoControls(
+                              muted: appSettingsStore.feedMuted,
+                              onToggleMute: _toggleMuteWhilePaused,
+                              onTogglePlayPause: _onTapMedia,
+                            ),
                           ),
                         ),
                       if (!minimized) ...[
@@ -2199,9 +2258,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                           left: 0,
                           right: 0,
                           bottom: 0,
-                          child: IgnorePointer(
-                            child: FeedPostScrim(),
-                          ),
+                          child: IgnorePointer(child: FeedPostScrim()),
                         ),
                         // ── Scrim panel caption (mode baca ala IG) ──
                         // Saat caption expand: gradien gelap naik menutupi
@@ -2327,26 +2384,30 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                                       child: AnimatedAlign(
                                         alignment: Alignment.bottomLeft,
                                         heightFactor: _captionExpanded ? 0 : 1,
-                                        duration:
-                                            const Duration(milliseconds: 300),
+                                        duration: const Duration(
+                                          milliseconds: 300,
+                                        ),
                                         curve: Curves.easeOutCubic,
                                         child: AnimatedSlide(
                                           offset: _captionExpanded
                                               ? const Offset(0, 0.12)
                                               : Offset.zero,
-                                          duration:
-                                              const Duration(milliseconds: 300),
+                                          duration: const Duration(
+                                            milliseconds: 300,
+                                          ),
                                           curve: Curves.easeOutCubic,
                                           child: AnimatedOpacity(
                                             opacity: _captionExpanded ? 0 : 1,
                                             duration: const Duration(
-                                                milliseconds: 220),
+                                              milliseconds: 220,
+                                            ),
                                             curve: Curves.easeOut,
                                             child: IgnorePointer(
                                               ignoring: _captionExpanded,
                                               child: Padding(
                                                 padding: const EdgeInsets.only(
-                                                    bottom: 12),
+                                                  bottom: 12,
+                                                ),
                                                 child:
                                                     _ProductCommerceOverlayGroup(
                                                   featuredProduct:
@@ -2354,13 +2415,16 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                                                   showProductCard:
                                                       _endOfVideoCtaVisible &&
                                                           !_commentSheetOpen,
-                                                  onTap: () =>
-                                                      _onProductsTap(products),
+                                                  onTap: () => _onProductsTap(
+                                                    products,
+                                                  ),
                                                   onBuy: () => _quickAddProduct(
-                                                      featuredProduct),
+                                                    featuredProduct,
+                                                  ),
                                                   onQuickAdd: () =>
                                                       _quickAddProduct(
-                                                          featuredProduct),
+                                                    featuredProduct,
+                                                  ),
                                                   onDismiss:
                                                       _dismissEndOfVideoCta,
                                                 ),
@@ -2380,11 +2444,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                                     createdAt: post.createdAt,
                                     expanded: _captionExpanded,
                                     onExpandedChanged: _setCaptionExpanded,
-                                    onMentionTap: (handle) =>
-                                        Navigator.of(context).pushNamed(
-                                      '/u',
-                                      arguments: handle,
-                                    ),
+                                    onMentionTap: (handle) => Navigator.of(
+                                      context,
+                                    ).pushNamed('/u', arguments: handle),
                                   ),
                                 ],
                               ),
@@ -2596,16 +2658,21 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
     // Set immersive mode — hide status bar + nav bar untuk true cinema feel.
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _scheduleHideControls();
-    // Unmute video di cinema mode (default feed muted).
-    widget.controller.setVolume(1.0);
+    appSettingsStore.addListener(_onAppSettingsChanged);
+    widget.controller.setVolume(appSettingsStore.feedMuted ? 0 : 1);
     if (!widget.controller.value.isPlaying) {
       widget.controller.play();
     }
   }
 
+  void _onAppSettingsChanged() {
+    unawaited(widget.controller.setVolume(appSettingsStore.feedMuted ? 0 : 1));
+  }
+
   @override
   void dispose() {
     _hideControlsTimer?.cancel();
+    appSettingsStore.removeListener(_onAppSettingsChanged);
     // Restore system UI saat exit fullscreen.
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     // Mute back saat balik ke feed (feed default mute).
@@ -2778,6 +2845,7 @@ class _PausedVideoControls extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         _PausedControlButton(
+          semanticLabel: muted ? 'Aktifkan suara' : 'Matikan suara',
           diameter: 32,
           scrimAlpha: 0.42,
           inkRadius: 22,
@@ -2786,9 +2854,7 @@ class _PausedVideoControls extends StatelessWidget {
             muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
             color: Colors.white,
             size: 17,
-            shadows: const [
-              Shadow(color: Colors.black87, blurRadius: 8),
-            ],
+            shadows: const [Shadow(color: Colors.black87, blurRadius: 8)],
           ),
         ),
         const SizedBox(height: 14),
@@ -2796,6 +2862,7 @@ class _PausedVideoControls extends StatelessWidget {
         // dari 80px lama yang berat. Glyph polos tanpa lingkaran ditolak
         // user setelah device-verify (kurang jelas sebagai tombol).
         _PausedControlButton(
+          semanticLabel: 'Putar video',
           diameter: 52,
           scrimAlpha: 0.40,
           inkRadius: 36,
@@ -2804,9 +2871,7 @@ class _PausedVideoControls extends StatelessWidget {
             Icons.play_arrow_rounded,
             color: Colors.white,
             size: 28,
-            shadows: [
-              Shadow(color: Colors.black54, blurRadius: 8),
-            ],
+            shadows: [Shadow(color: Colors.black54, blurRadius: 8)],
           ),
         ),
       ],
@@ -2819,6 +2884,7 @@ class _PausedVideoControls extends StatelessWidget {
 /// (240ms). Tanpa ini toggle terasa kaku: state berubah tanpa ada respons
 /// fisik dari tombolnya.
 class _PausedControlButton extends StatefulWidget {
+  final String semanticLabel;
   final double diameter;
   final double scrimAlpha;
   final double inkRadius;
@@ -2826,6 +2892,7 @@ class _PausedControlButton extends StatefulWidget {
   final Widget child;
 
   const _PausedControlButton({
+    required this.semanticLabel,
     required this.diameter,
     required this.scrimAlpha,
     required this.inkRadius,
@@ -2842,26 +2909,37 @@ class _PausedControlButtonState extends State<_PausedControlButton> {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      shape: const CircleBorder(),
-      child: InkResponse(
-        onTap: widget.onTap,
-        radius: widget.inkRadius,
-        onHighlightChanged: (v) => setState(() => _pressed = v),
-        child: AnimatedScale(
-          scale: _pressed ? 0.86 : 1.0,
-          duration: Duration(milliseconds: _pressed ? 90 : 240),
-          curve: _pressed ? Curves.easeOut : Curves.easeOutBack,
-          child: Container(
-            height: widget.diameter,
-            width: widget.diameter,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: widget.scrimAlpha),
-              shape: BoxShape.circle,
+    final tapSize = math.max(48.0, widget.diameter);
+    return Semantics(
+      button: true,
+      label: widget.semanticLabel,
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        child: InkResponse(
+          onTap: widget.onTap,
+          radius: widget.inkRadius,
+          onHighlightChanged: (v) => setState(() => _pressed = v),
+          child: AnimatedScale(
+            scale: _pressed ? 0.86 : 1.0,
+            duration: Duration(milliseconds: _pressed ? 90 : 240),
+            curve: _pressed ? Curves.easeOut : Curves.easeOutBack,
+            child: SizedBox(
+              height: tapSize,
+              width: tapSize,
+              child: Center(
+                child: Container(
+                  height: widget.diameter,
+                  width: widget.diameter,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: widget.scrimAlpha),
+                    shape: BoxShape.circle,
+                  ),
+                  child: widget.child,
+                ),
+              ),
             ),
-            child: widget.child,
           ),
         ),
       ),
@@ -2936,10 +3014,7 @@ class _ProductCardArrowPointer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const CustomPaint(
-      size: Size(22, 10),
-      painter: _DownArrowPainter(),
-    );
+    return const CustomPaint(size: Size(22, 10), painter: _DownArrowPainter());
   }
 }
 
@@ -2973,9 +3048,7 @@ class _DownArrowPainter extends CustomPainter {
 class _FeedCartSheet extends StatelessWidget {
   final VoidCallback onOpenFullCart;
 
-  const _FeedCartSheet({
-    required this.onOpenFullCart,
-  });
+  const _FeedCartSheet({required this.onOpenFullCart});
 
   @override
   Widget build(BuildContext context) {
@@ -3379,9 +3452,11 @@ class _EndOfVideoProductCta extends StatelessWidget {
                                     imageUrl: imageUrl,
                                     fit: BoxFit.cover,
                                     placeholder: (_, __) => Container(
-                                        color: const Color(0xFF2A2F36)),
+                                      color: const Color(0xFF2A2F36),
+                                    ),
                                     errorWidget: (_, __, ___) => Container(
-                                        color: const Color(0xFF2A2F36)),
+                                      color: const Color(0xFF2A2F36),
+                                    ),
                                   )
                                 : Container(color: const Color(0xFF2A2F36)),
                           ),
@@ -3458,8 +3533,9 @@ class _EndOfVideoProductCta extends StatelessWidget {
                                     Text(
                                       formatRupiah(pricing.originalPrice),
                                       style: TextStyle(
-                                        color: Colors.white
-                                            .withValues(alpha: 0.45),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.45,
+                                        ),
                                         fontSize: 10.5,
                                         fontWeight: FontWeight.w700,
                                         decoration: TextDecoration.lineThrough,
@@ -3554,10 +3630,7 @@ class _CtaBuyButton extends StatelessWidget {
               ? const LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFF5FBFFF),
-                    Color(0xFF1E87FF),
-                  ],
+                  colors: [Color(0xFF5FBFFF), Color(0xFF1E87FF)],
                 )
               : null,
           color: enabled ? null : Colors.white.withValues(alpha: 0.08),
@@ -3599,8 +3672,9 @@ class _PopupCartButton extends StatelessWidget {
               : Colors.white.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: const Color(0xFF1E5BFF)
-                .withValues(alpha: enabled ? 0.65 : 0.15),
+            color: const Color(
+              0xFF1E5BFF,
+            ).withValues(alpha: enabled ? 0.65 : 0.15),
             width: 1.4,
           ),
         ),

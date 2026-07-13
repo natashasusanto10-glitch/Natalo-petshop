@@ -12,6 +12,7 @@ import '../services/feed_service.dart';
 import '../state/feed_draft_store.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
+import '../state/settings_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import 'feed_media_picker_screen.dart';
@@ -1227,7 +1228,16 @@ class _PreviewVideoPlayerState extends State<_PreviewVideoPlayer> {
   @override
   void initState() {
     super.initState();
+    appSettingsStore.addListener(_onSettingsChanged);
     _initVideo();
+  }
+
+  void _onSettingsChanged() {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    unawaited(
+      controller.setVolume(appSettingsStore.feedMuted ? 0 : 1),
+    );
   }
 
   Future<void> _initVideo() async {
@@ -1246,6 +1256,7 @@ class _PreviewVideoPlayerState extends State<_PreviewVideoPlayer> {
       await controller.initialize();
       if (!mounted || _controller != controller) return;
       await controller.setLooping(true);
+      await controller.setVolume(appSettingsStore.feedMuted ? 0 : 1);
       setState(() => _loading = false);
     } catch (_) {
       await controller.dispose();
@@ -1267,6 +1278,7 @@ class _PreviewVideoPlayerState extends State<_PreviewVideoPlayer> {
 
   @override
   void dispose() {
+    appSettingsStore.removeListener(_onSettingsChanged);
     _controller?.dispose();
     super.dispose();
   }

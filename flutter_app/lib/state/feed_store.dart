@@ -126,7 +126,8 @@ class FeedStore extends ChangeNotifier {
           productsInVideo: incoming.productsInVideo,
           taggedProducts: incoming.taggedProducts,
           viewCount: incoming.viewCount,
-          shareCount: incoming.shareCount,
+          // SKIP shareCount juga: share yang selesai setelah request list
+          // dimulai tidak boleh ditimpa snapshot server yang lebih lama.
           mediaItems: incoming.mediaItems,
           status: incoming.status,
           rejectionReason: incoming.rejectionReason,
@@ -168,6 +169,29 @@ class FeedStore extends ChangeNotifier {
     _byId[postId] = p.copyWith(commentCount: newCount < 0 ? 0 : newCount);
     _lastLocalActionAt[postId] = DateTime.now();
     notifyListeners();
+  }
+
+  /// Optimistic/reconciled share count untuk seluruh layar feed.
+  ///
+  /// Share sebelumnya hanya dinaikkan di State widget. Saat PageView
+  /// rebuild atau user swipe balik, model lama menimpa angka itu menjadi
+  /// 0/1. Menaruhnya di store membuat Feed, Postingan, dan Profile membaca
+  /// sumber yang sama serta mendapat stale-write protection.
+  void setShareCount(String postId, int newCount) {
+    final p = _byId[postId];
+    if (p == null) return;
+    final normalized = newCount < 0 ? 0 : newCount;
+    if (p.shareCount == normalized) return;
+    _byId[postId] = p.copyWith(shareCount: normalized);
+    _lastLocalActionAt[postId] = DateTime.now();
+    notifyListeners();
+  }
+
+  int incrementShareCount(String postId) {
+    final current = _byId[postId]?.shareCount ?? 0;
+    final next = current + 1;
+    setShareCount(postId, next);
+    return next;
   }
 
   /// Manual set like state — escape hatch untuk caller yang punya source

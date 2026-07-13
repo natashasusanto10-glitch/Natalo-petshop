@@ -1,8 +1,9 @@
 // ignore_for_file: depend_on_referenced_packages
 //
 // These tests exercise the private `_InlineVideoPlayer` inside
-// member_post_detail_screen.dart end-to-end, plus its tap-to-open behavior:
-// tapping the inline video opens the immersive, swipeable
+// member_post_detail_screen.dart end-to-end, plus its pause-to-open behavior:
+// tapping the inline video pauses it, then the fullscreen control opens the
+// immersive, swipeable
 // [ScopedVideoFeedScreen] scoped to this user's videos (mirrors the
 // "Postingan Terkait" flow). They need a working `VideoPlayerController`,
 // which in turn needs a fake `VideoPlayerPlatform` (this repo had none —
@@ -126,7 +127,9 @@ class _NoopCacheManager implements CacheManager {
 
   @override
   Future<FileInfo> downloadFile(String url,
-          {String? key, Map<String, String>? authHeaders, bool force = false}) =>
+          {String? key,
+          Map<String, String>? authHeaders,
+          bool force = false}) =>
       Completer<FileInfo>().future; // intentionally never completes
 
   @override
@@ -239,7 +242,9 @@ void main() {
     }
     expect(find.byType(VideoPlayer), findsWidgets,
         reason: 'inline video should initialize via the fake platform');
-    return tester.widget<VideoPlayer>(find.byType(VideoPlayer).first).controller;
+    return tester
+        .widget<VideoPlayer>(find.byType(VideoPlayer).first)
+        .controller;
   }
 
   /// Tears down the widget tree so the video controller's periodic position
@@ -250,34 +255,34 @@ void main() {
   }
 
   testWidgets(
-    'tapping inline video opens scoped feed; tapping mute icon does not',
+    'tap pauses inline video; fullscreen control opens scoped feed',
     (tester) async {
       await pumpAndInitialize(tester);
 
-      // Inline player defaults to muted (appSettingsStore.feedMuted == true).
-      expect(find.byIcon(Icons.volume_off_rounded), findsOneWidget);
       // No scoped feed viewer yet.
       expect(find.byType(ScopedVideoFeedScreen), findsNothing);
 
-      // Tap the mute icon → toggles mute, must NOT navigate away.
-      // _toggleMute awaits a SharedPreferences write before setState, so wait
-      // (bounded) for the toggled icon to render rather than assuming one frame.
-      await tester.tap(find.byIcon(Icons.volume_off_rounded));
-      for (var i = 0; i < 20; i++) {
-        await tester.pump(const Duration(milliseconds: 20));
-        if (find.byIcon(Icons.volume_up_rounded).evaluate().isNotEmpty) break;
-      }
-      expect(find.byIcon(Icons.volume_up_rounded), findsOneWidget,
-          reason: 'mute tap should toggle the inline mute state');
+      // Tap the media itself: the first tap must pause immediately and reveal
+      // the controls. Navigation is an explicit action so media gestures stay
+      // responsive and predictable.
+      await tester.tapAt(const Offset(200, 600));
+      await tester.pump();
+      expect(find.bySemanticsLabel('Putar video'), findsOneWidget);
+      expect(find.bySemanticsLabel('Buka layar penuh'), findsOneWidget);
+      expect(find.byType(ScopedVideoFeedScreen), findsNothing);
+
+      // Wait until the double-tap window closes before interacting with a
+      // paused control. Inline defaults to globally muted.
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(find.bySemanticsLabel('Aktifkan suara'), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel('Aktifkan suara'));
+      await tester.pump();
+      expect(find.bySemanticsLabel('Matikan suara'), findsOneWidget,
+          reason: 'mute tap should update immediately');
       expect(find.byType(ScopedVideoFeedScreen), findsNothing,
           reason: 'mute tap must not open the scoped feed');
 
-      // Tap a point squarely inside the on-screen video area (below the top
-      // author overlay, well clear of the bottom-right mute button) → opens
-      // the immersive, swipeable scoped feed viewer. Single-tap resolves after
-      // the double-tap timeout, then an async pause + morph-in route push runs,
-      // so wait (bounded) rather than assuming a fixed frame count.
-      await tester.tapAt(const Offset(200, 600));
+      await tester.tap(find.bySemanticsLabel('Buka layar penuh'));
       for (var i = 0; i < 30; i++) {
         await tester.pump(const Duration(milliseconds: 50));
         if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
@@ -299,10 +304,12 @@ void main() {
       ];
       await pumpAndInitialize(tester, posts: posts);
 
-      // The first post is scrolled into view; tapping its inline video opens
-      // the scoped feed. (initialIndex resolution is exercised by the widget's
-      // own indexWhere; here we assert the viewer is scoped to all 3 videos.)
+      // The first post is scrolled into view; pause it, then open its explicit
+      // fullscreen action. initialIndex resolution is exercised by the
+      // widget's own indexWhere; here we assert the viewer has all 3 videos.
       await tester.tapAt(const Offset(200, 600));
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.tap(find.bySemanticsLabel('Buka layar penuh'));
       for (var i = 0; i < 30; i++) {
         await tester.pump(const Duration(milliseconds: 50));
         if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
@@ -313,11 +320,13 @@ void main() {
       );
       expect(scoped.posts.length, 3,
           reason: 'scoped feed should contain every video by this user');
-      expect(scoped.posts.map((p) => p.id), containsAll(<String>[
-        'post-1',
-        'post-2',
-        'post-3',
-      ]));
+      expect(
+          scoped.posts.map((p) => p.id),
+          containsAll(<String>[
+            'post-1',
+            'post-2',
+            'post-3',
+          ]));
 
       // Back chevron closes the viewer.
       await tester.tap(find.byIcon(Icons.chevron_left_rounded));
@@ -335,6 +344,8 @@ void main() {
 
   Future<void> openScopedFeed(WidgetTester tester) async {
     await tester.tapAt(const Offset(200, 600));
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.tap(find.bySemanticsLabel('Buka layar penuh'));
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 50));
       if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
@@ -368,7 +379,8 @@ void main() {
       }
       expect(find.byType(ScopedVideoFeedScreen), findsNothing);
       expect(fakePlatform.createCount, 1,
-          reason: 'closing fullscreen must not re-create the origin controller');
+          reason:
+              'closing fullscreen must not re-create the origin controller');
       expect(
         fakePlatform.disposeCounts.values.where((c) => c > 0).length,
         0,
@@ -382,7 +394,8 @@ void main() {
       await disposeTree(tester);
       for (final entry in fakePlatform.disposeCounts.entries) {
         expect(entry.value, lessThanOrEqualTo(1),
-            reason: 'player ${entry.key} disposed ${entry.value}x — expected ≤1 '
+            reason:
+                'player ${entry.key} disposed ${entry.value}x — expected ≤1 '
                 '(no double-dispose)');
       }
     },

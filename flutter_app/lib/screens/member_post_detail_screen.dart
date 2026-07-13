@@ -151,6 +151,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   // Track liked state per post id — optimistic toggle, source-of-truth
   // sampai backend respons confirm.
   final Map<String, bool> _likedCache = {};
+  final Set<String> _shareInFlight = <String>{};
   // GlobalKey per post supaya initial scroll bisa pakai
   // Scrollable.ensureVisible — akurat 100% vs estimate-based offset yang
   // dulu sering "lari" (mendarat di posisi salah karena chrome/separator
@@ -175,13 +176,14 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     // Coordinator dimiliki halaman: factory bikin sesi VideoPlayerSession
     // nyata (atau fake via seam test). Listener feedMuted hidup di coordinator.
     _videoCoordinator = PostVideoCoordinator(
-      sessionFactory: debugPostVideoSessionFactory ??
+      sessionFactory:
+          debugPostVideoSessionFactory ??
           (sessionId) => VideoPlayerSession(
-                url: _videoUrls[sessionId] ?? '',
-                // D4: refresh signed URL expired best-effort — re-fetch post
-                // dari API yang meng-sign ulang URL Bunny tiap request.
-                urlRefresher: () => _refreshVideoUrl(sessionId),
-              ),
+            url: _videoUrls[sessionId] ?? '',
+            // D4: refresh signed URL expired best-effort — re-fetch post
+            // dari API yang meng-sign ulang URL Bunny tiap request.
+            urlRefresher: () => _refreshVideoUrl(sessionId),
+          ),
     );
     // Lifecycle app (background/foreground) — pause/resume SEMUA sesi (§2.5),
     // menutup audio hantu #2. Route visibility didaftarkan di
@@ -222,6 +224,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       if (cached != freshLiked ||
           post.likeCount != fresh.likeCount ||
           post.commentCount != fresh.commentCount ||
+          post.shareCount != fresh.shareCount ||
           !_sameLikerIds(post.recentLikers, fresh.recentLikers)) {
         _likedCache[post.id] = freshLiked;
         _posts[i] = _withInteractionUpdate(
@@ -229,6 +232,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
           likeCount: fresh.likeCount,
           liked: freshLiked,
           commentCount: fresh.commentCount,
+          shareCount: fresh.shareCount,
           recentLikers: fresh.recentLikers,
         );
         anyChanged = true;
@@ -452,22 +456,30 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   }
 
   Future<void> _shareNative(int index) async {
-    AppHaptics.tap();
     final post = _posts[index];
+    if (!_shareInFlight.add(post.id)) return;
+    AppHaptics.tap();
     final url = '${ApiConfig.publicSiteUrl}/feed/${post.slug}';
     final captionSnippet = (post.caption ?? '').trim();
-    final text =
-        captionSnippet.isEmpty ? url : '${truncate(captionSnippet, 120)}\n$url';
+    final text = captionSnippet.isEmpty
+        ? url
+        : '${truncate(captionSnippet, 120)}\n$url';
     try {
       final box = context.findRenderObject() as RenderBox?;
-      await Share.share(
+      final result = await Share.share(
         text,
-        sharePositionOrigin:
-            box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+        sharePositionOrigin: box != null
+            ? box.localToGlobal(Offset.zero) & box.size
+            : null,
       );
-      feedService.trackShare(post.id);
+      if (result.status != ShareResultStatus.success || !mounted) return;
+      feedStore.incrementShareCount(post.id);
+      final serverCount = await feedService.trackShare(post.id);
+      if (serverCount != null) feedStore.setShareCount(post.id, serverCount);
     } catch (_) {
       // Fail silent — user cancelled / share sheet error.
+    } finally {
+      _shareInFlight.remove(post.id);
     }
   }
 
@@ -531,14 +543,13 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     final syncedTitle = newCaption.isEmpty
         ? 'Postingan baru'
         : newCaption.substring(
-            0, newCaption.length > 80 ? 80 : newCaption.length);
+            0,
+            newCaption.length > 80 ? 80 : newCaption.length,
+          );
     try {
       await apiClient.patchJson(
         '/api/feed/posts/${Uri.encodeComponent(post.id)}',
-        body: {
-          'title': syncedTitle,
-          'description': newCaption,
-        },
+        body: {'title': syncedTitle, 'description': newCaption},
       );
       if (!mounted) return;
       final updated = _withCaption(post, newCaption);
@@ -572,8 +583,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            style:
-                TextButton.styleFrom(foregroundColor: const Color(0xFFDC2626)),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFDC2626),
+            ),
             child: const Text('Hapus'),
           ),
         ],
@@ -604,9 +616,11 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   /// (network / sudah dihapus) tetap pakai data lama.
   Future<void> _refreshPosts() async {
     final results = await Future.wait(
-      _posts.map((p) => feedService.fetchPostById(p.id).catchError((_) {
-            return null;
-          })),
+      _posts.map(
+        (p) => feedService.fetchPostById(p.id).catchError((_) {
+          return null;
+        }),
+      ),
     );
     if (!mounted) return;
     var anyChanged = false;
@@ -639,11 +653,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
           // (arrow_back_rounded) tidak punya strokeWidth — rendering dari
           // icon font, weight fixed. Visual thickness sudah mirip stroke
           // 2.5 di NataloPostActionIcon karena rounded variant Material.
-          icon: Icon(
-            Icons.arrow_back_rounded,
-            color: cs.onSurface,
-            size: 26,
-          ),
+          icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface, size: 26),
         ),
         centerTitle: true,
         title: Column(
@@ -735,8 +745,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                     onLike: () => _toggleLike(index),
                     onComment: () => _openComments(index),
                     onShare: () => _shareNative(index),
-                    onMenuTap:
-                        widget.isOwner ? () => _openPostMenu(index) : null,
+                    onMenuTap: widget.isOwner
+                        ? () => _openPostMenu(index)
+                        : null,
                     onOpenScopedFeed: (sessionId, anchorKey) =>
                         _openScopedVideoFeed(index, sessionId, anchorKey),
                   );
@@ -754,11 +765,13 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     required int likeCount,
     required bool liked,
     required int commentCount,
+    int? shareCount,
     List<FeedAuthor>? recentLikers,
   }) {
     return post.copyWith(
       likeCount: likeCount,
       commentCount: commentCount,
+      shareCount: shareCount,
       viewerLiked: liked,
       isLiked: liked,
       recentLikers: recentLikers,
@@ -1021,13 +1034,17 @@ class _PostFeedItemState extends State<_PostFeedItem>
     );
     _heartScale = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 1.32)
-            .chain(CurveTween(curve: Curves.easeOutBack)),
+        tween: Tween(
+          begin: 1.0,
+          end: 1.32,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
         weight: 45,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 1.32, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeInOutCubic)),
+        tween: Tween(
+          begin: 1.32,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeInOutCubic)),
         weight: 55,
       ),
     ]).animate(_heartScaleController);
@@ -1038,36 +1055,48 @@ class _PostFeedItemState extends State<_PostFeedItem>
     );
     _burstScale = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween(begin: 0.35, end: 1.42)
-            .chain(CurveTween(curve: Curves.easeOutBack)),
+        tween: Tween(
+          begin: 0.35,
+          end: 1.42,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
         weight: 34,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 1.42, end: 1.00)
-            .chain(CurveTween(curve: Curves.easeInOut)),
+        tween: Tween(
+          begin: 1.42,
+          end: 1.00,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
         weight: 22,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 1.00, end: 0.82)
-            .chain(CurveTween(curve: Curves.easeOutCubic)),
+        tween: Tween(
+          begin: 1.00,
+          end: 0.82,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
         weight: 18,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 0.82, end: 0.0)
-            .chain(CurveTween(curve: Curves.easeIn)),
+        tween: Tween(
+          begin: 0.82,
+          end: 0.0,
+        ).chain(CurveTween(curve: Curves.easeIn)),
         weight: 26,
       ),
     ]).animate(_heartBurstController);
     _burstOpacity = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween(begin: 0.0, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeOut)),
+        tween: Tween(
+          begin: 0.0,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeOut)),
         weight: 25,
       ),
       TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 38),
       TweenSequenceItem(
-        tween:
-            Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)),
+        tween: Tween(
+          begin: 1.0,
+          end: 0.0,
+        ).chain(CurveTween(curve: Curves.easeIn)),
         weight: 37,
       ),
     ]).animate(_heartBurstController);
@@ -1147,8 +1176,8 @@ class _PostFeedItemState extends State<_PostFeedItem>
         // jalan karena swipe ≠ tap gesture.
         GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onDoubleTapDown: _rememberHeartBurstPosition,
-          onDoubleTap: _handleDoubleTap,
+          onDoubleTapDown: post.isVideo ? null : _rememberHeartBurstPosition,
+          onDoubleTap: post.isVideo ? null : _handleDoubleTap,
           child: Stack(
             children: [
               _PostMediaSurface(
@@ -1162,6 +1191,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
                 onVideoExpandRequested: (sessionId, anchorKey) {
                   widget.onOpenScopedFeed?.call(sessionId, anchorKey);
                 },
+                onVideoDoubleTap: _handleDoubleTap,
               ),
               if (post.isVideo)
                 Positioned(
@@ -1201,10 +1231,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
                                 color: Color(0xFFEF4444),
                                 size: 128,
                                 shadows: [
-                                  Shadow(
-                                    color: Colors.black54,
-                                    blurRadius: 28,
-                                  ),
+                                  Shadow(color: Colors.black54, blurRadius: 28),
                                 ],
                               ),
                             ),
@@ -1286,9 +1313,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
           const SizedBox(height: 2),
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
-            child: _LikedByLine(
-              post: post,
-            ),
+            child: _LikedByLine(post: post),
           ),
         ],
         // Caption — kalau ada saja.
@@ -1388,10 +1413,7 @@ class _PostAuthorRow extends StatelessWidget {
             IconButton(
               onPressed: onMenuTap,
               visualDensity: VisualDensity.compact,
-              icon: Icon(
-                Icons.more_horiz_rounded,
-                color: cs.onSurface,
-              ),
+              icon: Icon(Icons.more_horiz_rounded, color: cs.onSurface),
             )
           else
             const SizedBox(width: 8),
@@ -1484,9 +1506,7 @@ class _VideoPostAuthorOverlay extends StatelessWidget {
                 icon: const Icon(
                   Icons.more_horiz_rounded,
                   color: Colors.white,
-                  shadows: [
-                    Shadow(color: Colors.black54, blurRadius: 10),
-                  ],
+                  shadows: [Shadow(color: Colors.black54, blurRadius: 10)],
                 ),
               )
             else
@@ -1519,9 +1539,7 @@ String _hybridDateLabel(DateTime created) {
 class _LikedByLine extends StatefulWidget {
   final FeedPost post;
 
-  const _LikedByLine({
-    required this.post,
-  });
+  const _LikedByLine({required this.post});
 
   @override
   State<_LikedByLine> createState() => _LikedByLineState();
@@ -1564,13 +1582,14 @@ class _LikedByLineState extends State<_LikedByLine> {
     final primaryName = primary == null
         ? 'beberapa orang'
         : primaryIsSelf
-            ? 'Anda'
-            : primary.displayName;
+        ? 'Anda'
+        : primary.displayName;
     // Primary tappable kalau ada primary + bukan official admin + punya
     // username yang valid (atau adalah viewer = "Anda"; tap "Anda" buka
     // profile sendiri). "Anda" tetap tappable supaya consistent dengan
     // tap @mention di feed.
-    final canTapPrimary = primary != null &&
+    final canTapPrimary =
+        primary != null &&
         !primary.isOfficialAccount &&
         ((primary.username?.isNotEmpty ?? false) || primaryIsSelf);
     final othersCount = widget.post.likeCount - 1;
@@ -1660,10 +1679,7 @@ class _LikedAvatarStack extends StatelessWidget {
   final List<FeedAuthor> likers;
   final int likeCount;
 
-  const _LikedAvatarStack({
-    required this.likers,
-    required this.likeCount,
-  });
+  const _LikedAvatarStack({required this.likers, required this.likeCount});
 
   @override
   Widget build(BuildContext context) {
@@ -1695,7 +1711,8 @@ class _LikedAvatarStack extends StatelessWidget {
             child: visible.isNotEmpty
                 ? _MiniAvatar.member(
                     initial: visible.first.initial,
-                    photoUrl: visible.first.profilePhotoUrl ??
+                    photoUrl:
+                        visible.first.profilePhotoUrl ??
                         visible.first.avatarUrl,
                     size: size,
                   )
@@ -1724,14 +1741,13 @@ class _MiniAvatar extends StatelessWidget {
     required String initial,
     required String? photoUrl,
     required double size,
-  }) =>
-      _MiniAvatar(size: size, photoUrl: photoUrl, initial: initial);
+  }) => _MiniAvatar(size: size, photoUrl: photoUrl, initial: initial);
 
   factory _MiniAvatar.placeholder({required double size}) => _MiniAvatar(
-        size: size,
-        backgroundColor: const Color(0xFFD1D5DB),
-        initial: '+',
-      );
+    size: size,
+    backgroundColor: const Color(0xFFD1D5DB),
+    initial: '+',
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -1823,8 +1839,8 @@ class _PostStatusBadge extends StatelessWidget {
     final label = rejected ? 'Ditolak' : 'Menunggu review';
     final text = rejected
         ? (post.rejectionReason?.trim().isNotEmpty == true
-            ? 'Postingan ditolak: ${post.rejectionReason}'
-            : 'Postingan ditolak oleh admin.')
+              ? 'Postingan ditolak: ${post.rejectionReason}'
+              : 'Postingan ditolak oleh admin.')
         : 'Postingan sedang diperiksa admin sebelum tayang publik.';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1876,7 +1892,8 @@ class _PostMediaSurface extends StatelessWidget {
   final void Function(String sessionId, String url) registerVideoUrl;
   final String? handoffSessionId;
   final void Function(String sessionId, GlobalKey anchorKey)?
-      onVideoExpandRequested;
+  onVideoExpandRequested;
+  final VoidCallback? onVideoDoubleTap;
 
   const _PostMediaSurface({
     required this.post,
@@ -1884,6 +1901,7 @@ class _PostMediaSurface extends StatelessWidget {
     required this.registerVideoUrl,
     required this.handoffSessionId,
     this.onVideoExpandRequested,
+    this.onVideoDoubleTap,
   });
 
   @override
@@ -1903,34 +1921,35 @@ class _PostMediaSurface extends StatelessWidget {
       aspectRatio: aspectRatio,
       child: switch (post.contentType) {
         FeedContentType.video => _InlineVideoPlayer(
-            postId: post.id,
+          postId: post.id,
+          coordinator: coordinator,
+          registerVideoUrl: registerVideoUrl,
+          dormant: handoffSessionId == post.id,
+          // videoPlaybackUrl (videoUrl-first), BUKAN previewMediaUrl
+          // (yang thumbnail-first → JPG → player gagal initialize).
+          mediaUrl: post.videoPlaybackUrl,
+          thumbnailUrl: post.thumbnailUrl,
+          aspectRatio: aspectRatio,
+          onExpandRequested: onVideoExpandRequested,
+          onDoubleTap: onVideoDoubleTap,
+        ),
+        FeedContentType.carousel => Hero(
+          tag: 'post-thumb-${post.id}',
+          child: _CarouselSurface(
+            post: post,
+            aspectRatio: aspectRatio,
             coordinator: coordinator,
             registerVideoUrl: registerVideoUrl,
-            dormant: handoffSessionId == post.id,
-            // videoPlaybackUrl (videoUrl-first), BUKAN previewMediaUrl
-            // (yang thumbnail-first → JPG → player gagal initialize).
-            mediaUrl: post.videoPlaybackUrl,
-            thumbnailUrl: post.thumbnailUrl,
-            aspectRatio: aspectRatio,
-            onExpandRequested: onVideoExpandRequested,
+            handoffSessionId: handoffSessionId,
           ),
-        FeedContentType.carousel => Hero(
-            tag: 'post-thumb-${post.id}',
-            child: _CarouselSurface(
-              post: post,
-              aspectRatio: aspectRatio,
-              coordinator: coordinator,
-              registerVideoUrl: registerVideoUrl,
-              handoffSessionId: handoffSessionId,
-            ),
-          ),
+        ),
         FeedContentType.photo => Hero(
-            tag: 'post-thumb-${post.id}',
-            child: _ImageSurface(
-              imageUrl: post.previewMediaUrl,
-              placeholderIcon: Icons.image_outlined,
-            ),
+          tag: 'post-thumb-${post.id}',
+          child: _ImageSurface(
+            imageUrl: post.previewMediaUrl,
+            placeholderIcon: Icons.image_outlined,
           ),
+        ),
       },
     );
   }
@@ -1964,8 +1983,9 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
     // source), untuk photo pakai previewMediaUrl (thumbnail/image). Jangan
     // kasih thumbnail JPG ke item video → player gagal.
     final isVideo = widget.post.isVideo;
-    final fallbackUrl =
-        isVideo ? widget.post.videoPlaybackUrl : widget.post.previewMediaUrl;
+    final fallbackUrl = isVideo
+        ? widget.post.videoPlaybackUrl
+        : widget.post.previewMediaUrl;
     if (fallbackUrl.trim().isEmpty) return const [];
     return [
       FeedMedia(
@@ -2065,10 +2085,7 @@ class _ImageSurface extends StatefulWidget {
   final String imageUrl;
   final IconData placeholderIcon;
 
-  const _ImageSurface({
-    required this.imageUrl,
-    required this.placeholderIcon,
-  });
+  const _ImageSurface({required this.imageUrl, required this.placeholderIcon});
 
   @override
   State<_ImageSurface> createState() => _ImageSurfaceState();
@@ -2090,12 +2107,13 @@ class _ImageSurfaceState extends State<_ImageSurface>
   void initState() {
     super.initState();
     _transformationController = TransformationController();
-    _snapBackController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 180),
-    )
-      ..addListener(_handleSnapBackTick)
-      ..addStatusListener(_handleSnapBackStatus);
+    _snapBackController =
+        AnimationController(
+            vsync: this,
+            duration: const Duration(milliseconds: 180),
+          )
+          ..addListener(_handleSnapBackTick)
+          ..addStatusListener(_handleSnapBackStatus);
   }
 
   @override
@@ -2125,15 +2143,16 @@ class _ImageSurfaceState extends State<_ImageSurface>
       return;
     }
 
-    _snapBackAnimation = Matrix4Tween(
-      begin: Matrix4.copy(_overlayMatrix),
-      end: Matrix4.identity(),
-    ).animate(
-      CurvedAnimation(
-        parent: _snapBackController,
-        curve: Curves.easeOutCubic,
-      ),
-    );
+    _snapBackAnimation =
+        Matrix4Tween(
+          begin: Matrix4.copy(_overlayMatrix),
+          end: Matrix4.identity(),
+        ).animate(
+          CurvedAnimation(
+            parent: _snapBackController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
     _snapBackController.forward(from: 0);
   }
 
@@ -2196,10 +2215,7 @@ class _ImageSurfaceState extends State<_ImageSurface>
     if (mounted) setState(() => _showOverlayImage = true);
   }
 
-  void _removeZoomOverlay({
-    bool resetController = true,
-    bool notify = true,
-  }) {
+  void _removeZoomOverlay({bool resetController = true, bool notify = true}) {
     _zoomOverlay?.remove();
     _zoomOverlay = null;
     _sourceRect = null;
@@ -2293,9 +2309,7 @@ class _MediaPlaceholder extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: const Color(0xFF111827),
-      child: Center(
-        child: Icon(icon, color: Colors.white24, size: 72),
-      ),
+      child: Center(child: Icon(icon, color: Colors.white24, size: 72)),
     );
   }
 }
@@ -2328,6 +2342,7 @@ class _InlineVideoPlayer extends StatefulWidget {
   final String? thumbnailUrl;
   final double aspectRatio;
   final void Function(String sessionId, GlobalKey anchorKey)? onExpandRequested;
+  final VoidCallback? onDoubleTap;
 
   const _InlineVideoPlayer({
     required this.postId,
@@ -2338,6 +2353,7 @@ class _InlineVideoPlayer extends StatefulWidget {
     required this.aspectRatio,
     this.dormant = false,
     this.onExpandRequested,
+    this.onDoubleTap,
   });
 
   @override
@@ -2359,6 +2375,11 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
   /// selesai/gagal). Hanya [VideoPlayerSession] yang punya controller; sesi
   /// fake (test) tidak — inline merender thumbnail untuk itu.
   VideoPlayerSession? _boundSession;
+  bool _pausedByUser = false;
+  Timer? _mediaTapWindow;
+  DateTime? _firstMediaTapAt;
+  Offset? _firstMediaTapPosition;
+  bool? _playingBeforeFirstTap;
 
   // Stable key supaya transisi morph-scale fullscreen bisa anchor ke posisi
   // inline ini.
@@ -2416,6 +2437,7 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
 
   @override
   void dispose() {
+    _mediaTapWindow?.cancel();
     appSettingsStore.removeListener(_onSettingsChanged);
     _unbindSession();
     if (_attached) {
@@ -2522,15 +2544,57 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     }
   }
 
-  void _onTapVideo() {
-    // Video siap → buka fullscreen scoped (handoff coordinator di level
-    // halaman). Kalau belum siap (autoplay off / masih init), tap = intent
-    // start play.
-    if (_boundSession?.controller?.value.isInitialized ?? false) {
-      widget.onExpandRequested?.call(widget.postId, _anchorKey);
+  void _togglePlaybackIntent() {
+    final controller = _boundSession?.controller;
+    if (controller?.value.isInitialized ?? false) {
+      _coordinator.userTogglePlay();
+      setState(() => _pausedByUser = !_pausedByUser);
     } else if (!_shouldAutoplay && !_userStarted) {
       _onUserPlay();
     }
+  }
+
+  void _onMediaTapUp(TapUpDetails details) {
+    final now = DateTime.now();
+    final firstAt = _firstMediaTapAt;
+    final firstPosition = _firstMediaTapPosition;
+    final isDoubleTap =
+        firstAt != null &&
+        firstPosition != null &&
+        now.difference(firstAt) <= kDoubleTapTimeout &&
+        (details.localPosition - firstPosition).distance <= kDoubleTapSlop;
+    if (isDoubleTap) {
+      final wasPlaying = _playingBeforeFirstTap;
+      final isPlaying = _boundSession?.controller?.value.isPlaying;
+      if (wasPlaying != null && isPlaying != null && wasPlaying != isPlaying) {
+        _coordinator.userTogglePlay();
+        _pausedByUser = !wasPlaying;
+      }
+      _clearMediaTapWindow();
+      if (mounted) setState(() {});
+      widget.onDoubleTap?.call();
+      return;
+    }
+    _firstMediaTapAt = now;
+    _firstMediaTapPosition = details.localPosition;
+    _playingBeforeFirstTap = _boundSession?.controller?.value.isPlaying;
+    _togglePlaybackIntent();
+    _mediaTapWindow?.cancel();
+    _mediaTapWindow = Timer(kDoubleTapTimeout, _clearMediaTapWindow);
+  }
+
+  void _clearMediaTapWindow() {
+    final hadWindow = _mediaTapWindow != null;
+    _mediaTapWindow?.cancel();
+    _mediaTapWindow = null;
+    _firstMediaTapAt = null;
+    _firstMediaTapPosition = null;
+    _playingBeforeFirstTap = null;
+    if (mounted && hadWindow) setState(() {});
+  }
+
+  void _openFullscreen() {
+    widget.onExpandRequested?.call(widget.postId, _anchorKey);
   }
 
   @override
@@ -2551,7 +2615,7 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
       child: GestureDetector(
         key: _anchorKey,
         behavior: HitTestBehavior.opaque,
-        onTap: widget.dormant ? null : _onTapVideo,
+        onTapUp: widget.dormant ? null : _onMediaTapUp,
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -2597,7 +2661,9 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black.withValues(alpha: 0.55),
                         borderRadius: BorderRadius.circular(999),
@@ -2617,7 +2683,9 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
                       onTap: _onRetry,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.16),
                           borderRadius: BorderRadius.circular(999),
@@ -2628,8 +2696,11 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.refresh_rounded,
-                                color: Colors.white, size: 16),
+                            Icon(
+                              Icons.refresh_rounded,
+                              color: Colors.white,
+                              size: 16,
+                            ),
                             SizedBox(width: 6),
                             Text(
                               'Coba lagi',
@@ -2692,7 +2763,114 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
                   ),
                 ),
               ),
+            if (ready && _pausedByUser && !hasError && !widget.dormant)
+              Center(
+                child: IgnorePointer(
+                  ignoring: _mediaTapWindow != null,
+                  child: _InlinePausedVideoControls(
+                    muted: muted,
+                    canExpand: widget.onExpandRequested != null,
+                    onToggleMute: _toggleMute,
+                    onTogglePlayPause: _togglePlaybackIntent,
+                    onExpand: _openFullscreen,
+                  ),
+                ),
+              ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InlinePausedVideoControls extends StatelessWidget {
+  final bool muted;
+  final bool canExpand;
+  final VoidCallback onToggleMute;
+  final VoidCallback onTogglePlayPause;
+  final VoidCallback onExpand;
+
+  const _InlinePausedVideoControls({
+    required this.muted,
+    required this.canExpand,
+    required this.onToggleMute,
+    required this.onTogglePlayPause,
+    required this.onExpand,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _InlinePauseButton(
+              label: muted ? 'Aktifkan suara' : 'Matikan suara',
+              icon: muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+              onTap: onToggleMute,
+            ),
+            if (canExpand) ...[
+              const SizedBox(width: 8),
+              _InlinePauseButton(
+                label: 'Buka layar penuh',
+                icon: Icons.open_in_full_rounded,
+                onTap: onExpand,
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        _InlinePauseButton(
+          label: 'Putar video',
+          icon: Icons.play_arrow_rounded,
+          onTap: onTogglePlayPause,
+          visualSize: 54,
+          iconSize: 30,
+        ),
+      ],
+    );
+  }
+}
+
+class _InlinePauseButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final double visualSize;
+  final double iconSize;
+
+  const _InlinePauseButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.visualSize = 34,
+    this.iconSize = 18,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: visualSize < 48 ? 48 : visualSize,
+          height: visualSize < 48 ? 48 : visualSize,
+          child: Center(
+            child: Container(
+              width: visualSize,
+              height: visualSize,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: Colors.white, size: iconSize),
+            ),
+          ),
         ),
       ),
     );
@@ -2739,8 +2917,10 @@ class _PostMenuSheet extends StatelessWidget {
               onTap: () => Navigator.pop(context, _PostMenuAction.edit),
             ),
             ListTile(
-              leading:
-                  const Icon(Icons.delete_rounded, color: Color(0xFFDC2626)),
+              leading: const Icon(
+                Icons.delete_rounded,
+                color: Color(0xFFDC2626),
+              ),
               title: const Text(
                 'Hapus postingan',
                 style: TextStyle(
@@ -2820,10 +3000,7 @@ class _EditCaptionSheetState extends State<_EditCaptionSheet> {
                 minLines: 3,
                 maxLength: 2000,
                 autofocus: true,
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 14,
-                ),
+                style: TextStyle(color: cs.onSurface, fontSize: 14),
                 decoration: InputDecoration(
                   hintText: 'Tulis caption…',
                   filled: true,
@@ -2832,8 +3009,10 @@ class _EditCaptionSheetState extends State<_EditCaptionSheet> {
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
                   ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -2911,8 +3090,9 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
   final FocusNode _inputFocusNode = FocusNode();
   // @mention autocomplete — attach ke input controller. Saat user ketik
   // `@partial`, panel suggestion muncul (search /api/users/search).
-  late final MentionPickerController _mentionCtrl =
-      MentionPickerController(textController: _inputController);
+  late final MentionPickerController _mentionCtrl = MentionPickerController(
+    textController: _inputController,
+  );
   List<FeedComment> _comments = const [];
   bool _loading = true;
   bool _posting = false;
@@ -3048,8 +3228,9 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
         comment.id,
         (c) => c.copyWith(
           viewerLiked: newLiked,
-          likeCount:
-              newLiked ? c.likeCount + 1 : (c.likeCount - 1).clamp(0, 999999),
+          likeCount: newLiked
+              ? c.likeCount + 1
+              : (c.likeCount - 1).clamp(0, 999999),
         ),
       );
     });
@@ -3064,10 +3245,7 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
         _comments = _updateCommentInTree(
           _comments,
           comment.id,
-          (c) => c.copyWith(
-            viewerLiked: newLiked,
-            likeCount: newLikeCount,
-          ),
+          (c) => c.copyWith(viewerLiked: newLiked, likeCount: newLikeCount),
         );
       });
     } catch (_) {
@@ -3078,10 +3256,7 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
         _comments = _updateCommentInTree(
           _comments,
           comment.id,
-          (c) => c.copyWith(
-            viewerLiked: wasLiked,
-            likeCount: previousCount,
-          ),
+          (c) => c.copyWith(viewerLiked: wasLiked, likeCount: previousCount),
         );
       });
       AppToast.show(context, 'Gagal update suka komentar, coba lagi');
@@ -3187,8 +3362,9 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
       } else {
         _comments = _comments.map((top) {
           if (top.id != comment.parentCommentId) return top;
-          final newReplies =
-              top.replies.where((r) => r.id != comment.id).toList();
+          final newReplies = top.replies
+              .where((r) => r.id != comment.id)
+              .toList();
           return top.copyWith(
             replies: newReplies,
             replyCount: newReplies.length,
@@ -3235,8 +3411,10 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                 ),
               ),
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
                 child: Text(
                   'Komentar',
                   style: TextStyle(
@@ -3255,105 +3433,111 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                     : const Color(0xFFEEF2F6),
               ),
               Flexible(
-                child: Builder(builder: (context) {
-                  if (_loading) {
-                    return const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: CircularProgressIndicator(strokeWidth: 2.4),
-                      ),
-                    );
-                  }
-                  final captionRow = _captionRow;
-                  if (_comments.isEmpty && captionRow == null) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 28),
-                      child: Center(
-                        child: Text(
-                          'Belum ada komentar.\nJadi yang pertama!',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            height: 1.4,
+                child: Builder(
+                  builder: (context) {
+                    if (_loading) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: CircularProgressIndicator(strokeWidth: 2.4),
+                        ),
+                      );
+                    }
+                    final captionRow = _captionRow;
+                    if (_comments.isEmpty && captionRow == null) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 28),
+                        child: Center(
+                          child: Text(
+                            'Belum ada komentar.\nJadi yang pertama!',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              height: 1.4,
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  }
-                  // Build flat list of rows untuk ListView:
-                  //  - Caption tile (kalau ada) di top, no actions
-                  //  - Each top-level comment: parent tile + (optional)
-                  //    "Lihat N balasan" toggle + (optional, when expanded)
-                  //    semua reply tiles indented
-                  final entries = <_CommentEntry>[];
-                  if (captionRow != null) {
-                    entries.add(_CommentEntry.caption(captionRow));
-                  }
-                  for (final top in _comments) {
-                    entries.add(_CommentEntry.comment(top, isReply: false));
-                    if (top.replyCount > 0) {
-                      entries.add(_CommentEntry.repliesToggle(
-                        parent: top,
-                        expanded: _expandedReplies.contains(top.id),
-                      ));
-                      if (_expandedReplies.contains(top.id)) {
-                        for (final reply in top.replies) {
-                          entries.add(
-                            _CommentEntry.comment(reply, isReply: true),
-                          );
+                      );
+                    }
+                    // Build flat list of rows untuk ListView:
+                    //  - Caption tile (kalau ada) di top, no actions
+                    //  - Each top-level comment: parent tile + (optional)
+                    //    "Lihat N balasan" toggle + (optional, when expanded)
+                    //    semua reply tiles indented
+                    final entries = <_CommentEntry>[];
+                    if (captionRow != null) {
+                      entries.add(_CommentEntry.caption(captionRow));
+                    }
+                    for (final top in _comments) {
+                      entries.add(_CommentEntry.comment(top, isReply: false));
+                      if (top.replyCount > 0) {
+                        entries.add(
+                          _CommentEntry.repliesToggle(
+                            parent: top,
+                            expanded: _expandedReplies.contains(top.id),
+                          ),
+                        );
+                        if (_expandedReplies.contains(top.id)) {
+                          for (final reply in top.replies) {
+                            entries.add(
+                              _CommentEntry.comment(reply, isReply: true),
+                            );
+                          }
                         }
                       }
                     }
-                  }
-                  return ListView.separated(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    itemCount: entries.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final entry = entries[index];
-                      switch (entry.kind) {
-                        case _CommentEntryKind.caption:
-                          return _CommentTile(
-                            comment: entry.comment!,
-                            isReply: false,
-                            isCaption: true,
-                            likeBusy: false,
-                            onToggleLike: null,
-                            onReply: null,
-                          );
-                        case _CommentEntryKind.comment:
-                          final c = entry.comment!;
-                          // Hapus hanya untuk komentar milik viewer sendiri.
-                          final isOwn = memberStore.profile?.id != null &&
-                              c.author.id == memberStore.profile!.id;
-                          return _CommentTile(
-                            comment: c,
-                            isReply: entry.isReply,
-                            isCaption: false,
-                            likeBusy: _likeBusy.contains(c.id),
-                            onToggleLike: () => _toggleCommentLike(c),
-                            onReply: () => _startReply(c),
-                            onDelete: isOwn ? () => _deleteComment(c) : null,
-                            onMentionTap: (handle) => Navigator.of(context)
-                                .pushNamed('/u', arguments: handle),
-                          );
-                        case _CommentEntryKind.repliesToggle:
-                          return _RepliesToggle(
-                            parentId: entry.comment!.id,
-                            replyCount: entry.comment!.replyCount,
-                            expanded: entry.expanded,
-                            onTap: () =>
-                                _toggleRepliesExpanded(entry.comment!.id),
-                          );
-                      }
-                    },
-                  );
-                }),
+                    return ListView.separated(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      itemCount: entries.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final entry = entries[index];
+                        switch (entry.kind) {
+                          case _CommentEntryKind.caption:
+                            return _CommentTile(
+                              comment: entry.comment!,
+                              isReply: false,
+                              isCaption: true,
+                              likeBusy: false,
+                              onToggleLike: null,
+                              onReply: null,
+                            );
+                          case _CommentEntryKind.comment:
+                            final c = entry.comment!;
+                            // Hapus hanya untuk komentar milik viewer sendiri.
+                            final isOwn =
+                                memberStore.profile?.id != null &&
+                                c.author.id == memberStore.profile!.id;
+                            return _CommentTile(
+                              comment: c,
+                              isReply: entry.isReply,
+                              isCaption: false,
+                              likeBusy: _likeBusy.contains(c.id),
+                              onToggleLike: () => _toggleCommentLike(c),
+                              onReply: () => _startReply(c),
+                              onDelete: isOwn ? () => _deleteComment(c) : null,
+                              onMentionTap: (handle) => Navigator.of(
+                                context,
+                              ).pushNamed('/u', arguments: handle),
+                            );
+                          case _CommentEntryKind.repliesToggle:
+                            return _RepliesToggle(
+                              parentId: entry.comment!.id,
+                              replyCount: entry.comment!.replyCount,
+                              expanded: entry.expanded,
+                              onTap: () =>
+                                  _toggleRepliesExpanded(entry.comment!.id),
+                            );
+                        }
+                      },
+                    );
+                  },
+                ),
               ),
               // Reply chip — kalau lagi reply, show context bar di atas
               // input. Tap X cancel reply → kembali ke top-level mode.
@@ -3467,9 +3651,7 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                           ? const SizedBox(
                               width: 18,
                               height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                              ),
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(
                               Icons.send_rounded,
@@ -3523,12 +3705,11 @@ class _CommentEntry {
   factory _CommentEntry.repliesToggle({
     required FeedComment parent,
     required bool expanded,
-  }) =>
-      _CommentEntry._(
-        kind: _CommentEntryKind.repliesToggle,
-        comment: parent,
-        expanded: expanded,
-      );
+  }) => _CommentEntry._(
+    kind: _CommentEntryKind.repliesToggle,
+    comment: parent,
+    expanded: expanded,
+  );
 }
 
 class _CommentTile extends StatelessWidget {
@@ -3577,8 +3758,9 @@ class _CommentTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ProfileAvatar(
-            initial:
-                author.name.isNotEmpty ? author.name[0].toUpperCase() : 'U',
+            initial: author.name.isNotEmpty
+                ? author.name[0].toUpperCase()
+                : 'U',
             imageUrl: author.avatarUrl ?? author.profilePhotoUrl,
             // Reply pakai avatar lebih kecil supaya hierarchy visual jelas.
             size: isReply ? 28 : 34,
@@ -3674,10 +3856,7 @@ class _CommentTile extends StatelessWidget {
               onTap: likeBusy ? null : onToggleLike,
               behavior: HitTestBehavior.opaque,
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 4,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 child: Icon(
                   liked
                       ? Icons.favorite_rounded

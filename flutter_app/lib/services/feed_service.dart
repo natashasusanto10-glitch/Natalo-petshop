@@ -326,14 +326,24 @@ class FeedService {
     }
   }
 
-  Future<void> trackShare(String postId) async {
+  /// Catat share yang benar-benar dipilih dari native share sheet.
+  ///
+  /// Backend mengembalikan count final agar seluruh layar dapat reconcile
+  /// ke satu angka yang sama. `null` berarti tracking gagal; share native
+  /// tetap sudah terjadi sehingga caller boleh mempertahankan update lokal.
+  Future<int?> trackShare(String postId) async {
     try {
       final uri = ApiConfig.uri('/api/feed/posts/$postId/share');
-      await http
+      final response = await http
           .post(uri, headers: _headers)
           .timeout(const Duration(seconds: 4));
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+      final body = jsonDecode(response.body);
+      if (body is! Map<String, dynamic>) return null;
+      return (body['shareCount'] as num?)?.toInt();
     } catch (_) {
       // Silent — non-critical.
+      return null;
     }
   }
 
