@@ -1146,4 +1146,609 @@ void main() {
       });
     });
   });
+
+  // ── Race fix (Feed→Profile) — jalur legacy non-managed ──
+  // `didPushNext()` dulu early-return TANPA mencatat cover kalau controller
+  // belum siap (null/belum initialized). Kalau init selesai async DI
+  // BELAKANG route baru, video mulai bermain di belakang layar. Fix:
+  // `_routeCovered` dicatat SEGERA saat route opaque didorong, independen
+  // dari state controller, dan semua jalur play() lewat gate
+  // `_canAutoplayNow` yang mengecek flag itu.
+  group('race fix — route push sebelum init selesai (non-managed)', () {
+    late _FakeVideoPlayerPlatform fakePlatform;
+
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      VisibilityDetectorController.instance.updateInterval = Duration.zero;
+      CachedVideoPlayerPlus.cacheManager = _NoopCacheManager();
+      CachedVideoPlayerPlus.metadataStorage = _NoopMetadataStorage();
+    });
+
+    testWidgets(
+        'push route SEBELUM init selesai → controller tidak pernah play + '
+        'volume 0; pop → baru play', (tester) async {
+      fakePlatform = _FakeVideoPlayerPlatform(manualInit: true);
+      VideoPlayerPlatform.instance = fakePlatform;
+      // GAP #3: feedMuted=false → saat uncover, volume WAJIB kembali ke 1.
+      await appSettingsStore.setFeedMuted(false);
+      addTearDown(() => appSettingsStore.setFeedMuted(true));
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(MaterialApp(
+        navigatorObservers: [appRouteObserver],
+        home: FeedVideoPostView(
+          key: const ValueKey('feed-video-post-1'),
+          post: _fakeVideoPost(hls: true), // HLS bypass cache wrapper
+          isActive: true,
+          preloadedController: null,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ));
+      // Biarkan init mulai (create → createCount 1) — initialized ditahan
+      // (manualInit), controller masih "loading".
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.createCount, 1,
+          reason: 'init pertama mulai membuat satu player');
+      expect(fakePlatform.playCount, 0,
+          reason: 'belum initialized → belum ada play');
+
+      // Push route opaque SEBELUM init selesai → didPushNext harus mencatat
+      // _routeCovered SEGERA (controller belum initialized).
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      navigator.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: SizedBox()),
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      // Selesaikan init DI BELAKANG route baru.
+      fakePlatform.emitInitialized();
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(fakePlatform.playCount, 0,
+          reason:
+              'race fix: init selesai di belakang route → TIDAK boleh play');
+      expect(fakePlatform.volumes, isNotEmpty,
+          reason: 'volume tetap di-apply (senyap) walau tidak play');
+      expect(fakePlatform.volumes.last, 0,
+          reason: 'route-covered → controller wajib senyap (volume 0)');
+
+      // Pop kembali ke Feed → didPopNext harus resume (masih isActive).
+      navigator.pop();
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.playCount, greaterThanOrEqualTo(1),
+          reason: 'kembali ke Feed (didPopNext) → sekarang boleh play');
+      // GAP #3: sebelum fix, init-di-bawah-cover memaksa setVolume(0) dan tak
+      // ada yang mengembalikan saat uncover → video resume SENYAP. Setelah fix,
+      // uncover mengembalikan volume ke feedMuted?0:1 = 1.
+      expect(fakePlatform.volumes.last, 1,
+          reason: 'GAP #3: uncover mengembalikan volume (feedMuted=false → 1)');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    // GAP #4: di race Feed→Profile, controller null saat cover →
+    // _pausedByCover TAK PERNAH true → _resumeFromCover (versi lama)
+    // early-return, dan video hanya bangun karena VisibilityDetector re-fire
+    // (~500ms di device, jeda terlihat). Fix: didPopNext meneruskan wasCovered
+    // → _resumeFromCover(forceIfUncovered:true) menyalakan via state-machine.
+    // Test ini menon-aktifkan VD re-fire (interval besar) supaya play HANYA
+    // bisa datang dari state-machine — bukti jalur didPopNext benar-benar hidup.
+    testWidgets(
+        'GAP #4: pop → resume via didPopNext state-machine tanpa menunggu '
+        'VisibilityDetector re-fire', (tester) async {
+      // Interval besar → VisibilityDetector TIDAK re-fire selama test body.
+      VisibilityDetectorController.instance.updateInterval =
+          const Duration(hours: 1);
+      addTearDown(() => VisibilityDetectorController.instance.updateInterval =
+          Duration.zero);
+
+      fakePlatform = _FakeVideoPlayerPlatform(manualInit: true);
+      VideoPlayerPlatform.instance = fakePlatform;
+      await appSettingsStore.setFeedMuted(false);
+      addTearDown(() => appSettingsStore.setFeedMuted(true));
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(MaterialApp(
+        navigatorObservers: [appRouteObserver],
+        home: FeedVideoPostView(
+          key: const ValueKey('feed-video-post-1'),
+          post: _fakeVideoPost(hls: true),
+          isActive: true,
+          preloadedController: null,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      // Push opaque SEBELUM init selesai → controller null saat cover →
+      // _pausedByCover tak pernah true (kondisi persis GAP #4).
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      navigator.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: SizedBox()),
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      // Init selesai DI BELAKANG route → senyap, tak play.
+      fakePlatform.emitInitialized();
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.playCount, 0,
+          reason: 'covered → belum play (VD juga tak re-fire)');
+
+      // Pop → didPopNext → _resumeFromCover(forceIfUncovered:true). Karena VD
+      // dinon-aktifkan, satu-satunya sumber play adalah state-machine ini.
+      navigator.pop();
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.playCount, greaterThanOrEqualTo(1),
+          reason: 'GAP #4: resume via didPopNext, BUKAN VisibilityDetector');
+      expect(fakePlatform.volumes.last, 1,
+          reason: 'GAP #3: uncover mengembalikan volume (feedMuted=false → 1)');
+
+      await tester.pumpWidget(const SizedBox());
+      // Flush timer VD yang terjadwal (interval besar) supaya tak "pending".
+      await tester.pump(const Duration(hours: 1));
+    });
+
+    testWidgets(
+        '_routeCovered toggle: push opaque menahan autoplay, pop melepasnya '
+        '(controller sudah ready sebelum push)', (tester) async {
+      fakePlatform = _FakeVideoPlayerPlatform(); // init langsung selesai
+      VideoPlayerPlatform.instance = fakePlatform;
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(MaterialApp(
+        navigatorObservers: [appRouteObserver],
+        home: FeedVideoPostView(
+          key: const ValueKey('feed-video-post-1'),
+          post: _fakeVideoPost(hls: true),
+          isActive: true,
+          preloadedController: null,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.playCount, greaterThanOrEqualTo(1),
+          reason: 'controller ready + active + autoplay → sudah main');
+      final ctrl =
+          tester.widget<VideoPlayer>(find.byType(VideoPlayer).first).controller;
+      expect(ctrl.value.isPlaying, isTrue);
+
+      // Push opaque → didPushNext harus pause + set _routeCovered=true.
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      navigator.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: SizedBox()),
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(ctrl.value.isPlaying, isFalse,
+          reason: 'route opaque didorong → video harus pause');
+      final pauseCountAfterPush = fakePlatform.pauseCount;
+      expect(pauseCountAfterPush, greaterThanOrEqualTo(1));
+
+      // Pop → didPopNext harus resume (route tidak lagi covered).
+      navigator.pop();
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(ctrl.value.isPlaying, isTrue,
+          reason: '_routeCovered=false setelah pop → video resume');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+  });
+
+  // ── HARDENING audio-hantu Feed→Profile (_routeCovered opaque-aware) ──
+  // Video Feed TIDAK PERNAH play selama ada route OPAQUE (Profile/Postingan/dll)
+  // menutupi Feed. Ini dijaga oleh `_routeCovered` (di-set di didPushNext untuk
+  // route opaque, di-reset di didPopNext) — BUKAN oleh `ModalRoute.isCurrent`
+  // (guard itu dibuang: memblokir video di balik sheet TRANSPARAN, regresi).
+  // Kasus nested-route (Feed→Profile→Postingan lalu pop SEBAGIAN) tetap benar
+  // karena RouteObserver hanya notif route adjacent: saat Postingan di-pop
+  // (Postingan→Profile), Feed TIDAK menerima didPopNext (bukan route adjacent)
+  // → `_routeCovered` tetap true sepanjang Profile masih menutup Feed.
+  group('HARDENING _routeCovered opaque-aware (non-managed)', () {
+    late _FakeVideoPlayerPlatform fakePlatform;
+
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      VisibilityDetectorController.instance.updateInterval = Duration.zero;
+      CachedVideoPlayerPlus.cacheManager = _NoopCacheManager();
+      CachedVideoPlayerPlus.metadataStorage = _NoopMetadataStorage();
+    });
+
+    Widget legacyHost() => MaterialApp(
+          navigatorObservers: [appRouteObserver],
+          home: FeedVideoPostView(
+            key: const ValueKey('feed-video-post-1'),
+            post: _fakeVideoPost(hls: true), // HLS bypass cache wrapper
+            isActive: true,
+            preloadedController: null,
+            onOverlayStateChanged: (_) {},
+            onMediaZoomChanged: (_) {},
+          ),
+        );
+
+    // Scenario 4 + 5 (nested): Feed→Profile→Postingan (push 2 route) sebelum
+    // init selesai → init selesai DI BELAKANG dua route → TIDAK play. Pop
+    // SEKALI (Postingan→Profile) → MASIH ada Profile di atas → tetap TIDAK
+    // play. Pop lagi (Profile→Feed) → baru boleh play. `_routeCovered` (set di
+    // didPushNext saat Profile didorong) menjamin ini: pop Postingan→Profile
+    // tidak mengirim didPopNext ke Feed (bukan route adjacent) → `_routeCovered`
+    // tetap true sampai Profile sendiri di-pop.
+    testWidgets(
+        'nested Feed→Profile→Postingan: pop sebagian tetap tak play; '
+        'pop penuh baru play', (tester) async {
+      fakePlatform = _FakeVideoPlayerPlatform(manualInit: true);
+      VideoPlayerPlatform.instance = fakePlatform;
+      await appSettingsStore.setFeedMuted(false);
+      addTearDown(() => appSettingsStore.setFeedMuted(true));
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(legacyHost());
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.createCount, 1);
+      expect(fakePlatform.playCount, 0);
+
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      // Push Profile lalu Postingan (dua route opaque menumpuk di atas Feed).
+      navigator.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: SizedBox()),
+      ));
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      navigator.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: SizedBox()),
+      ));
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      // Init selesai DI BELAKANG dua route → tak boleh play + senyap.
+      fakePlatform.emitInitialized();
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.playCount, 0,
+          reason: 'nested (2 route di atas Feed) → TIDAK play');
+      expect(fakePlatform.volumes.last, 0,
+          reason: 'covered → senyap (volume 0)');
+
+      // Pop SEKALI (Postingan→Profile): Feed masih tertutup Profile → isCurrent
+      // Feed tetap false → TIDAK play. Feed tidak menerima didPopNext di sini
+      // (yang di-pop bukan route tepat di atas Feed).
+      navigator.pop();
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.playCount, 0,
+          reason: '_routeCovered masih true (Profile menutup Feed) → tetap tak play');
+
+      // Pop lagi (Profile→Feed): Feed teratas → isCurrent true → boleh play.
+      navigator.pop();
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.playCount, greaterThanOrEqualTo(1),
+          reason: 'Feed kembali teratas → sekarang boleh play');
+      expect(fakePlatform.volumes.last, 1,
+          reason: 'uncover penuh → volume kembali (feedMuted=false → 1)');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    // Scenario 3: app di-background SAAT navigasi berlangsung (push + lifecycle
+    // paused) → init selesai → tak play; kembali foreground + pop → baru play.
+    testWidgets(
+        'background app saat navigasi: init selesai tak play; foreground + pop '
+        '→ play', (tester) async {
+      fakePlatform = _FakeVideoPlayerPlatform(manualInit: true);
+      VideoPlayerPlatform.instance = fakePlatform;
+      await appSettingsStore.setFeedMuted(false);
+      addTearDown(() => appSettingsStore.setFeedMuted(true));
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(legacyHost());
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      navigator.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: SizedBox()),
+      ));
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      // App ke background SAAT route lain di atas Feed.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      // Init selesai saat covered + background → dobel penjaga → tak play.
+      fakePlatform.emitInitialized();
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.playCount, 0,
+          reason: 'covered + background → init selesai tetap tak play');
+
+      // Foreground kembali TAPI route masih di atas Feed → tetap tak play
+      // (_routeCovered masih true menahan).
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.playCount, 0,
+          reason: 'foreground tapi route masih menutup Feed → tetap tak play');
+
+      // Pop → Feed teratas + foreground → baru play.
+      navigator.pop();
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.playCount, greaterThanOrEqualTo(1),
+          reason: 'foreground + Feed teratas → boleh play');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    // _routeCovered reinforcement: controller READY + playing, push route opaque
+    // (didPushNext pause + set _routeCovered). Lalu app background→foreground
+    // SELAGI route masih di atas Feed → resume TIDAK boleh menembus
+    // (_routeCovered masih true), walau app sudah foreground. Baru setelah pop
+    // (didPopNext reset _routeCovered), play kembali.
+    testWidgets(
+        'ready+playing: app foreground selagi route menutup Feed → tetap tak '
+        'resume; pop → resume', (tester) async {
+      fakePlatform = _FakeVideoPlayerPlatform(); // init langsung selesai
+      VideoPlayerPlatform.instance = fakePlatform;
+      await appSettingsStore.setFeedMuted(false);
+      addTearDown(() => appSettingsStore.setFeedMuted(true));
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(legacyHost());
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final ctrl =
+          tester.widget<VideoPlayer>(find.byType(VideoPlayer).first).controller;
+      expect(ctrl.value.isPlaying, isTrue);
+
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      navigator.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: SizedBox()),
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(ctrl.value.isPlaying, isFalse,
+          reason: 'route opaque didorong → pause (didPushNext)');
+
+      // Background lalu foreground SELAGI route masih menutup Feed. App resume
+      // memicu _resumeFromCover(forceIfUncovered:true), tapi _routeCovered masih
+      // true (route opaque lain menutup Feed) menahan play.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final playAfterPause = fakePlatform.playCount;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.playCount, playAfterPause,
+          reason: 'foreground selagi route menutup Feed → _routeCovered menahan '
+              'resume (nol play tambahan)');
+      expect(ctrl.value.isPlaying, isFalse);
+
+      // Pop → Feed teratas → resume.
+      navigator.pop();
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(ctrl.value.isPlaying, isTrue,
+          reason: 'Feed teratas lagi → resume');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+  });
+
+  // ── REGRESI sheet TRANSPARAN (guard isCurrent dibuang) ──
+  // Sheet produk/cart/tagged dibuka via showModalBottomSheet(transparent) =
+  // ModalBottomSheetRoute NON-opaque. Desain SENGAJA membiarkan video Feed
+  // TETAP MAIN di baliknya (`_routeCovered` HANYA di-set utk route OPAQUE via
+  // lastPushedRouteIsOpaque()). Guard `_feedRouteIsCurrent` lama (ModalRoute
+  // .isCurrent) memblokir ini: video main di balik sheet → app background →
+  // foreground → _resumeFromCover(forceIfUncovered:true) → _canAutoplayNow
+  // false (isCurrent false selagi sheet non-opaque teratas) → video BEKU sampai
+  // sheet ditutup. Fix: gate mengandalkan `_routeCovered` (opaque-aware), jadi
+  // di balik sheet transparan video BOLEH resume; di balik route opaque TIDAK.
+  group('REGRESI sheet transparan (opaque-aware, non-managed)', () {
+    late _FakeVideoPlayerPlatform fakePlatform;
+
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      VisibilityDetectorController.instance.updateInterval = Duration.zero;
+      CachedVideoPlayerPlus.cacheManager = _NoopCacheManager();
+      CachedVideoPlayerPlus.metadataStorage = _NoopMetadataStorage();
+      fakePlatform = _FakeVideoPlayerPlatform(); // init langsung selesai
+      VideoPlayerPlatform.instance = fakePlatform;
+    });
+
+    Widget legacyHost() => MaterialApp(
+          navigatorObservers: [appRouteObserver],
+          home: FeedVideoPostView(
+            key: const ValueKey('feed-video-post-1'),
+            post: _fakeVideoPost(hls: true), // HLS bypass cache wrapper
+            isActive: true,
+            preloadedController: null,
+            onOverlayStateChanged: (_) {},
+            onMediaZoomChanged: (_) {},
+          ),
+        );
+
+    // NON-opaque route (opaque:false) — men-drive lastPushedRouteIsOpaque()
+    // == false persis seperti showModalBottomSheet(transparent), tanpa perlu
+    // sheet UI sungguhan. Route ini tetap PageRoute (adjacent didPushNext ke
+    // Feed) tapi tidak opaque → didPushNext TIDAK men-set _routeCovered.
+    Route<void> transparentRoute() => PageRouteBuilder<void>(
+          opaque: false,
+          barrierColor: const Color(0x66000000),
+          pageBuilder: (_, __, ___) => const SizedBox(),
+        );
+
+    testWidgets(
+        'di balik sheet transparan: app background→foreground → video RESUME '
+        '(bukan beku)', (tester) async {
+      await appSettingsStore.setFeedMuted(false);
+      addTearDown(() => appSettingsStore.setFeedMuted(true));
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(legacyHost());
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final ctrl =
+          tester.widget<VideoPlayer>(find.byType(VideoPlayer).first).controller;
+      expect(ctrl.value.isPlaying, isTrue,
+          reason: 'controller ready + active + autoplay → sudah main');
+
+      // Push sheet TRANSPARAN (opaque:false) → didPushNext fire tapi
+      // lastPushedRouteIsOpaque() false → _routeCovered TIDAK di-set → video
+      // TETAP MAIN di baliknya (perilaku by-design ala TikTok/IG).
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      navigator.push(transparentRoute());
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(ctrl.value.isPlaying, isTrue,
+          reason: 'sheet transparan tidak menutup → video tetap main');
+
+      // App ke background → _pauseForCover(appBackground) mem-pause video.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(ctrl.value.isPlaying, isFalse,
+          reason: 'app background → video pause');
+
+      // App foreground → _resumeFromCover(forceIfUncovered:true). Dengan guard
+      // isCurrent LAMA, sheet transparan teratas → isCurrent false → video BEKU.
+      // Setelah guard dibuang, _routeCovered false → video RESUME.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(ctrl.value.isPlaying, isTrue,
+          reason: 'REGRESI FIX: di balik sheet transparan, foreground → video '
+              'RESUME (guard isCurrent lama membuatnya beku)');
+      expect(fakePlatform.volumes.last, 1,
+          reason: 'resume dengan suara kembali (feedMuted=false → 1)');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    testWidgets(
+        'KONTRAS route OPAQUE: app background→foreground selagi tertutup → '
+        'TIDAK resume', (tester) async {
+      await appSettingsStore.setFeedMuted(false);
+      addTearDown(() => appSettingsStore.setFeedMuted(true));
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(legacyHost());
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final ctrl =
+          tester.widget<VideoPlayer>(find.byType(VideoPlayer).first).controller;
+      expect(ctrl.value.isPlaying, isTrue);
+
+      // Push route OPAQUE → didPushNext men-set _routeCovered=true + pause.
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      navigator.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: SizedBox()),
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(ctrl.value.isPlaying, isFalse,
+          reason: 'route opaque didorong → pause + _routeCovered=true');
+
+      // Background→foreground selagi route opaque MASIH menutup Feed →
+      // _routeCovered tetap true → resume TIDAK menembus (kontras dgn transparan).
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final playAfterPause = fakePlatform.playCount;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(fakePlatform.playCount, playAfterPause,
+          reason: 'di balik route OPAQUE (_routeCovered true) → tetap tak resume');
+      expect(ctrl.value.isPlaying, isFalse);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+  });
 }
