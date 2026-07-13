@@ -121,6 +121,11 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   // SEKALI di sini (§2.5), bukan per _InlineVideoPlayer.
   late final PostVideoCoordinator _videoCoordinator;
 
+  /// Seam test-only: verifikasi wiring handoff (mis. `_endHandoff`
+  /// re-aktifkan origin, bukan active B basi). Produksi tidak memakainya.
+  @visibleForTesting
+  PostVideoCoordinator get debugVideoCoordinator => _videoCoordinator;
+
   /// URL video per sessionId (== post.id untuk video utama; compound
   /// `${post.id}-$index` untuk item carousel). Diisi di initState untuk video
   /// utama + di-register on-demand oleh inline (carousel). Factory sesi baca
@@ -871,15 +876,30 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     }
   }
 
-  /// Akhiri transisi handoff fullscreen: clear flag, resume video asal
+  /// Akhiri transisi handoff fullscreen: clear flag, re-aktifkan video asal
   /// (kalau [resume]) SEBELUM unpin origin (§2.6), lalu keluar mode dormant.
   void _endHandoff({required bool resume}) {
     _handoffInProgress = false;
-    // Hardening (review): jangan resume kalau app sedang TIDAK resumed (mis.
-    // user background-kan app saat fetch handoff gagal) — biarkan transisi ke
-    // `resumed` nanti (didChangeAppLifecycleState) yang memicu resumeAll. Ini
-    // menutup ghost-audio di jalur fetch-fail-while-backgrounded.
-    if (resume && _lastLifecycle == AppLifecycleState.resumed) {
+    final origin = _handoffSessionId;
+    final resumed = _lastLifecycle == AppLifecycleState.resumed;
+    // BUG FIX (T7-integrasi): saat user swipe menjauh di fullscreen, active
+    // coordinator jadi B/C — dan B kini OFFSCREEN. Kalau kita cuma
+    // `resumeAll()`, ia memutar active BASI (B) → audio hantu (unmuted) /
+    // video salah main tak terlihat (acceptance "nol audio hantu"). Jadi:
+    // SEBELUM resume, re-point active ke origin kalau sudah menjauh.
+    if (resume && origin != null && _videoCoordinator.activePostId != origin) {
+      // setActive(origin): pause + mute active lama (B), jadikan origin active,
+      // lalu play SEKALI di timestamp-nya. (Bukan resumeAll — itu akan memutar
+      // B basi.)
+      _videoCoordinator.setActive(origin);
+      // Hormati guard lifecycle (hardening T3b): kalau app TIDAK resumed,
+      // origin tak boleh berbunyi sekarang. Ia sudah jadi active, jadi
+      // suspend lagi — transisi ke `resumed` nanti (didChangeAppLifecycleState)
+      // yang memutar origin (bukan B basi).
+      if (!resumed) _videoCoordinator.pauseAll();
+    } else if (resume && resumed) {
+      // No-swipe (active == origin): resume instan seperti sebelum — origin
+      // langsung main lagi, tidak ada regresi / double play.
       _videoCoordinator.resumeAll();
     }
     _videoCoordinator.setOrigin(null);
@@ -2359,8 +2379,37 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
   void didUpdateWidget(covariant _InlineVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.dormant != widget.dormant && !widget.dormant) {
-      // Keluar dormant (fullscreen tutup): resume sesuai visibilitas.
+      // Keluar dormant (fullscreen tutup) → adopt origin SEGERA.
       // Masuk dormant: cukup berhenti berperan; sesi tetap pinned via origin.
+      _adoptOriginAfterDormant();
+    }
+  }
+
+  /// Kembali dari fullscreen (dormant → aktif). JANGAN andalkan
+  /// [_applyVisibility] dengan `_visibleFraction` BASI (= 0, karena
+  /// VisibilityDetector belum re-fire — throttle ~500ms) yang akan
+  /// men-DETACH origin lalu menampilkan thumbnail (KEDIP). Origin sudah
+  /// di-`setActive` oleh `_endHandoff` (bagian 1); di sini inline cukup
+  /// re-attach + adopt sesi di timestamp — TANPA `setActive` lagi (hindari
+  /// double activate/play).
+  void _adoptOriginAfterDormant() {
+    if (!mounted) return;
+    // Scroll tak berubah selama fullscreen → origin kembali terlihat penuh.
+    // Set fraction ke nilai benar supaya VisibilityDetector re-fire berikutnya
+    // tidak salah menganggap tersembunyi sebelum sempat update.
+    _visibleFraction = 1.0;
+    if (_coordinator.activePostId == widget.postId) {
+      // Origin sudah aktif (di-setActive di _endHandoff). Re-attach + bind sesi
+      // (adopt controller yang sama, di timestamp) TANPA setActive ulang.
+      // reportVisible = no-op kalau sudah main, resume kalau perlu. Tidak perlu
+      // setState: didUpdateWidget berjalan sebelum build() di frame yang sama,
+      // jadi _boundSession baru langsung terbaca.
+      _ensureAttached();
+      _coordinator.reportVisible(widget.postId);
+    } else {
+      // Origin belum aktif (mis. app tidak resumed saat tutup, resume dilewati
+      // guard lifecycle) → jalur visibilitas normal; tetap tak kedip karena
+      // _visibleFraction sudah 1.0 (tak akan men-detach).
       _applyVisibility();
     }
   }
