@@ -56,6 +56,19 @@ class PostVideoCoordinator {
 
   final Map<String, _SessionEntry> _entries = <String, _SessionEntry>{};
 
+  /// Revisi registry sesi (KUNCI 1 / T7). Naik SETIAP keberadaan/identitas
+  /// sesi per-post berubah: sesi dibuat ([attach]/[setActive]/[preloadNext]/
+  /// [setOrigin]), atau dihapus (eviction LRU / [dispose]). TIDAK naik untuk
+  /// play/pause/seek/setVolume — supaya managed view (T7-integrasi) bisa
+  /// listen tanpa badai rebuild dan re-cek [sessionFor] hanya saat sesi
+  /// benar-benar lahir/mati.
+  final ValueNotifier<int> _registryRevision = ValueNotifier<int>(0);
+
+  /// True saat suatu mutasi mengubah himpunan sesi hidup; di-flush jadi satu
+  /// fire di batas mutasi terluar (hindari fire re-entran/berulang).
+  bool _registryDirty = false;
+  int _mutationDepth = 0;
+
   /// Video ASAL (inline di Postingan) — pinned selama fullscreen terbuka.
   String? _originPostId;
 
@@ -80,6 +93,13 @@ class PostVideoCoordinator {
   String? get activePostId => _activePostId;
   String? get preloadPostId => _preloadPostId;
   bool get isDisposed => _disposed;
+
+  /// Notifier registry sesi (KUNCI 1 / T7). Managed view yang belum punya sesi
+  /// listen ke sini; saat fire, view re-cek [sessionFor]`(myPostId)` dan adopt
+  /// bila sesinya sudah lahir (mis. hasil [preloadNext] saat swipe). Fire hanya
+  /// saat keberadaan/identitas sesi per-post berubah, bukan tiap play/pause/
+  /// volume.
+  ValueListenable<int> get registryListenable => _registryRevision;
 
   /// Post yang saat ini punya sesi hidup (untuk debug/test).
   @visibleForTesting
@@ -106,11 +126,13 @@ class PostVideoCoordinator {
     if (_disposed) {
       throw StateError('PostVideoCoordinator.attach setelah dispose');
     }
-    final entry = _ensureEntry(postId);
-    entry.attachedViewIds.add(viewId);
-    entry.lastUsed = ++_clock;
-    _evict();
-    return entry.session;
+    return _guard(() {
+      final entry = _ensureEntry(postId);
+      entry.attachedViewIds.add(viewId);
+      entry.lastUsed = ++_clock;
+      _evict();
+      return entry.session;
+    });
   }
 
   /// View berhenti merender [postId]. Attachment sesaat 0 TIDAK men-dispose:
@@ -119,8 +141,10 @@ class PostVideoCoordinator {
     if (_disposed) return;
     final entry = _entries[postId];
     if (entry == null) return;
-    entry.attachedViewIds.remove(viewId);
-    _evict();
+    _guard(() {
+      entry.attachedViewIds.remove(viewId);
+      _evict();
+    });
   }
 
   /// Tandai video ASAL (inline Postingan) — pinned selama fullscreen buka.
@@ -135,40 +159,44 @@ class PostVideoCoordinator {
   /// sesaat unpinned & unattached, ia tetap paling belakang untuk dieviction.
   void setOrigin(String? postId) {
     if (_disposed) return;
-    final previousOrigin = _originPostId;
-    _originPostId = postId;
-    if (postId != null) {
-      _ensureEntry(postId).lastUsed = ++_clock;
-    } else if (previousOrigin != null) {
-      // Lindungi bekas origin: naikkan recency-nya supaya tidak jatuh keluar
-      // window LRU sebelum inline sempat re-attach.
-      final prev = _entries[previousOrigin];
-      if (prev != null) prev.lastUsed = ++_clock;
-    }
-    _evict();
+    _guard(() {
+      final previousOrigin = _originPostId;
+      _originPostId = postId;
+      if (postId != null) {
+        _ensureEntry(postId).lastUsed = ++_clock;
+      } else if (previousOrigin != null) {
+        // Lindungi bekas origin: naikkan recency-nya supaya tidak jatuh keluar
+        // window LRU sebelum inline sempat re-attach.
+        final prev = _entries[previousOrigin];
+        if (prev != null) prev.lastUsed = ++_clock;
+      }
+      _evict();
+    });
   }
 
   /// Jadikan [postId] video AKTIF: aktif lama → paused + volume 0; aktif
   /// baru → volume dari `feedMuted` SAAT INI, lalu play (autoplay ala IG).
   void setActive(String postId) {
     if (_disposed) return;
-    final previous = _activePostId;
-    if (previous != null && previous != postId) {
-      final prevEntry = _entries[previous];
-      if (prevEntry != null) {
-        unawaited(prevEntry.session.pause());
-        unawaited(prevEntry.session.setVolume(0));
+    _guard(() {
+      final previous = _activePostId;
+      if (previous != null && previous != postId) {
+        final prevEntry = _entries[previous];
+        if (prevEntry != null) {
+          unawaited(prevEntry.session.pause());
+          unawaited(prevEntry.session.setVolume(0));
+        }
       }
-    }
-    _activePostId = postId;
-    _userPausedActive = false;
-    _suspended = false;
-    if (_preloadPostId == postId) _preloadPostId = null;
-    final entry = _ensureEntry(postId);
-    entry.lastUsed = ++_clock;
-    unawaited(entry.session.setVolume(_readMuted() ? 0 : 1));
-    unawaited(entry.session.play());
-    _evict();
+      _activePostId = postId;
+      _userPausedActive = false;
+      _suspended = false;
+      if (_preloadPostId == postId) _preloadPostId = null;
+      final entry = _ensureEntry(postId);
+      entry.lastUsed = ++_clock;
+      unawaited(entry.session.setVolume(_readMuted() ? 0 : 1));
+      unawaited(entry.session.play());
+      _evict();
+    });
   }
 
   /// Siapkan satu video berikutnya: sesi dibuat paused + volume 0 dan
@@ -176,12 +204,14 @@ class PostVideoCoordinator {
   void preloadNext(String postId) {
     if (_disposed) return;
     if (postId == _activePostId) return;
-    _preloadPostId = postId;
-    final entry = _ensureEntry(postId);
-    entry.lastUsed = ++_clock;
-    unawaited(entry.session.pause());
-    unawaited(entry.session.setVolume(0));
-    _evict();
+    _guard(() {
+      _preloadPostId = postId;
+      final entry = _ensureEntry(postId);
+      entry.lastUsed = ++_clock;
+      unawaited(entry.session.pause());
+      unawaited(entry.session.setVolume(0));
+      _evict();
+    });
   }
 
   /// View melaporkan video aktif terlihat lagi — resume bila user tidak
@@ -258,16 +288,37 @@ class PostVideoCoordinator {
     _disposed = true;
     _mutedListenable.removeListener(_onMutedChanged);
     final entries = _entries.values.toList();
+    final hadEntries = entries.isNotEmpty;
     _entries.clear();
     _originPostId = null;
     _activePostId = null;
     _preloadPostId = null;
+    // Beri tahu view yang masih listen bahwa semua sesi lenyap (mereka re-cek
+    // sessionFor → null → lepas), lalu tutup notifier. Fire sebelum dispose
+    // karena notifyListeners menolak setelah dispose.
+    if (hadEntries) _registryRevision.value++;
+    _registryRevision.dispose();
     for (final entry in entries) {
       unawaited(entry.session.dispose());
     }
   }
 
   // ── Internal ──────────────────────────────────────────────────────────
+
+  /// Jalankan mutasi lalu flush satu fire registry di batas terluar bila
+  /// himpunan sesi berubah. Nesting (mis. listener re-entran) di-coalesce.
+  T _guard<T>(T Function() body) {
+    _mutationDepth++;
+    try {
+      return body();
+    } finally {
+      _mutationDepth--;
+      if (_mutationDepth == 0 && _registryDirty && !_disposed) {
+        _registryDirty = false;
+        _registryRevision.value++;
+      }
+    }
+  }
 
   void _onMutedChanged() {
     if (_disposed) return;
@@ -289,6 +340,7 @@ class PostVideoCoordinator {
     unawaited(session.setVolume(0));
     final entry = _SessionEntry(session)..lastUsed = ++_clock;
     _entries[postId] = entry;
+    _registryDirty = true; // sesi lahir → registry berubah (KUNCI 1).
     return entry;
   }
 
@@ -319,6 +371,7 @@ class PostVideoCoordinator {
       if (_isPinned(id)) continue; // safety — pinned tak pernah dieviction.
       if (entry.attachedViewIds.isNotEmpty) continue; // masih dirender.
       _entries.remove(id);
+      _registryDirty = true; // sesi mati → registry berubah (KUNCI 1).
       unawaited(entry.session.dispose());
     }
   }

@@ -345,4 +345,138 @@ void main() {
       expect(sessions['A']!.volume, volumeBefore);
     });
   });
+
+  group('registry notifier (KUNCI 1)', () {
+    test('fire saat sesi DIBUAT (attach/setActive/preloadNext/setOrigin)', () {
+      var fires = 0;
+      coordinator.registryListenable.addListener(() => fires++);
+
+      coordinator.setOrigin('A'); // buat sesi A
+      expect(fires, 1);
+      coordinator.setActive('A'); // A sudah ada → tak ada sesi baru/hapus
+      expect(fires, 1);
+      coordinator.setActive('B'); // buat sesi B
+      expect(fires, 2);
+      coordinator.preloadNext('C'); // buat sesi C
+      expect(fires, 3);
+      coordinator.attach('v', 'C'); // C sudah ada → tak ada perubahan registry
+      expect(fires, 3);
+    });
+
+    test('fire saat sesi DIHAPUS (eviction LRU)', () {
+      coordinator.setOrigin('A');
+      coordinator.setActive('A');
+      coordinator.setActive('B');
+      coordinator.preloadNext('C');
+
+      var fires = 0;
+      coordinator.registryListenable.addListener(() => fires++);
+
+      // Swipe: C aktif (sudah ada), preload D (buat) → B keluar window & dispose.
+      coordinator.setActive('C'); // tak ada create/remove
+      expect(fires, 0);
+      coordinator.preloadNext('D'); // buat D + evict B → himpunan berubah
+      expect(fires, 1);
+      expect(coordinator.livePostIds, {'A', 'C', 'D'});
+    });
+
+    test('TIDAK fire saat play/pause/volume/mute (bukan perubahan registry)',
+        () {
+      coordinator.setActive('A');
+      coordinator.preloadNext('B');
+
+      var fires = 0;
+      coordinator.registryListenable.addListener(() => fires++);
+
+      coordinator.reportHidden('A');
+      coordinator.reportVisible('A');
+      coordinator.userTogglePlay();
+      coordinator.userTogglePlay();
+      coordinator.pauseAll();
+      coordinator.resumeAll();
+      mutedSource.set(false); // mute toggle
+      mutedSource.set(true);
+
+      expect(fires, 0);
+    });
+
+    test('view-simulasi adopt sesi preload setelah preloadNext via notifier',
+        () {
+      // View untuk post 'B' sudah mounted TAPI B belum punya sesi.
+      PlaybackSession? adopted;
+      const myPostId = 'B';
+      void recheck() => adopted ??= coordinator.sessionFor(myPostId);
+
+      coordinator.registryListenable.addListener(recheck);
+      recheck(); // cek awal di "build": belum ada
+      expect(adopted, isNull);
+
+      coordinator.setActive('A');
+      expect(adopted, isNull); // sesi A lahir, tapi bukan B
+
+      // Coordinator preload B (swipe berikutnya) → notifier fire → view adopt.
+      coordinator.preloadNext('B');
+      expect(adopted, isNotNull);
+      expect(adopted, same(sessions['B']));
+    });
+
+    test('dispose fire sekali agar view lepas (sessionFor → null)', () {
+      coordinator.setActive('A');
+      var fires = 0;
+      String? seen = 'sentinel';
+      coordinator.registryListenable.addListener(() {
+        fires++;
+        seen = coordinator.sessionFor('A') == null ? null : 'ada';
+      });
+      coordinator.dispose();
+      expect(fires, 1);
+      expect(seen, isNull);
+    });
+  });
+
+  group('KUNCI 2 — detach origin tetap hidup via pinned', () {
+    test('origin detach (attachment 0) tapi pinned → TIDAK dispose + masih '
+        'sessionFor, walau >3 sesi', () {
+      // Origin A dipakai inline; masuk fullscreen swipe menumpuk B/C/D.
+      coordinator.setOrigin('A');
+      coordinator.attach('inline', 'A');
+      coordinator.setActive('A');
+      coordinator.setActive('B');
+      coordinator.preloadNext('C');
+
+      // Origin inline detach (pindah ke fullscreen). Attachment A → 0.
+      coordinator.detach('inline', 'A');
+      // Tambah tekanan LRU: sesi ke-4.
+      coordinator.setActive('C');
+      coordinator.preloadNext('D');
+
+      // A tetap hidup (pinned origin) walau attachment 0 & di luar peran aktif.
+      expect(coordinator.livePostIds, contains('A'));
+      expect(sessions['A']!.disposeCount, 0);
+      expect(coordinator.sessionFor('A'), same(sessions['A']));
+    });
+  });
+
+  group('urutan transisi deterministik (T7)', () {
+    test('setActive pause+mute active lama + evict yang lepas-role; '
+        'origin & next selamat', () {
+      coordinator.setOrigin('A'); // A pinned origin
+      coordinator.setActive('A');
+      coordinator.setActive('B'); // B active
+      coordinator.preloadNext('C'); // C next
+      expect(coordinator.livePostIds, {'A', 'B', 'C'});
+
+      // Swipe B→C jadi active, preload D. B lepas semua peran (bukan origin/
+      // active/next) & tak attached → dieviction. A(origin)+D(next) selamat.
+      coordinator.setActive('C');
+      coordinator.preloadNext('D');
+
+      expect(sessions['B']!.pauseCount, greaterThan(0));
+      expect(sessions['B']!.volume, 0);
+      expect(sessions['B']!.disposeCount, 1);
+      expect(coordinator.livePostIds, {'A', 'C', 'D'});
+      expect(sessions['A']!.disposeCount, 0);
+      expect(sessions['D']!.disposeCount, 0);
+    });
+  });
 }
