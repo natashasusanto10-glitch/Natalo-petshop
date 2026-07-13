@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../features/feed/video/post_video_coordinator.dart';
 import '../features/feed/widgets/feed_video_post_view.dart';
 import '../models/feed_post.dart';
 import '../state/feed_store.dart';
@@ -12,10 +13,29 @@ class ScopedVideoFeedScreen extends StatefulWidget {
   final List<FeedPost> posts;
   final int initialIndex;
 
+  /// Coordinator handoff (§2.6) — di-set HANYA saat viewer dibuka dari alur
+  /// Postingan (MemberPostDetailScreen). Kalau non-null, item video ASAL
+  /// ([originPostId]) meminjam controller coordinator (tanpa init ulang →
+  /// instan). Kalau null → perilaku lama (tiap item init controller sendiri).
+  ///
+  /// TODO(T3b): integrasi penuh — attach item asal ke sesi coordinator
+  /// (`ownsController:false, playbackManagedExternally:true`), pakai slot
+  /// preload untuk item next, dan laporkan item aktif + route visibility ke
+  /// coordinator. Di T3a param ini SEKADAR seam: viewer masih fallback
+  /// (init controller sendiri) walau param di-set.
+  final PostVideoCoordinator? coordinator;
+
+  /// Id post video ASAL (yang di-tap di Postingan) — pinned di coordinator
+  /// selama viewer terbuka. Null kalau bukan alur Postingan. Lihat
+  /// [coordinator]. Dipakai penuh di T3b.
+  final String? originPostId;
+
   const ScopedVideoFeedScreen({
     super.key,
     required this.posts,
     required this.initialIndex,
+    this.coordinator,
+    this.originPostId,
   });
 
   @override
