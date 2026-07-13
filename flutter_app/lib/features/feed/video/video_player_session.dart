@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 import '../../../services/video_quality_service.dart';
 import '../../../state/settings_store.dart';
 import 'post_video_coordinator.dart';
+import 'video_playback_health_monitor.dart';
 
 /// Satu percobaan init (plugin-free seam). Melempar bila gagal; pada sukses,
 /// implementasi nyata sudah menyimpan controller/wrapper. Di-inject di test
@@ -42,6 +43,8 @@ class VideoPlayerSession implements PlaybackSession {
     required String url,
     String? userQualityPreference,
     Future<String?> Function()? urlRefresher,
+    String? analyticsPostId,
+    String analyticsSurface = 'postingan',
     @visibleForTesting VideoInitAttempt? debugInitAttempt,
     @visibleForTesting Future<void> Function(Duration)? debugDelay,
   })  : _currentUrl = url,
@@ -49,7 +52,20 @@ class VideoPlayerSession implements PlaybackSession {
             userQualityPreference ?? appSettingsStore.feedVideoQuality,
         _urlRefresher = urlRefresher,
         _debugInitAttempt = debugInitAttempt,
-        _debugDelay = debugDelay {
+        _debugDelay = debugDelay,
+        _analyticsPostId = analyticsPostId,
+        _analyticsSurface = analyticsSurface {
+    _healthMonitor = VideoPlaybackHealthMonitor(
+      readSnapshot: _healthSnapshot,
+      onRecover: _recoverFromStall,
+      metricContext: {
+        'surface': _analyticsSurface,
+        'media_type': _currentUrl.contains('.m3u8') ? 'hls' : 'mp4',
+        if (_analyticsPostId != null)
+          'media_key': _anonymousMediaKey(_analyticsPostId!),
+      },
+    );
+    _healthMonitor.record('video_init_started');
     unawaited(_init());
   }
 
@@ -62,6 +78,11 @@ class VideoPlayerSession implements PlaybackSession {
   final Future<String?> Function()? _urlRefresher;
   final VideoInitAttempt? _debugInitAttempt;
   final Future<void> Function(Duration)? _debugDelay;
+  final String? _analyticsPostId;
+  final String _analyticsSurface;
+  late final VideoPlaybackHealthMonitor _healthMonitor;
+  final Stopwatch _startupStopwatch = Stopwatch()..start();
+  bool _playStartedRecorded = false;
 
   CachedVideoPlayerPlus? _wrapper;
   VideoPlayerController? _controller;
@@ -115,6 +136,10 @@ class VideoPlayerSession implements PlaybackSession {
           }
           _initialized = true;
           _error = null;
+          _healthMonitor.record('video_init_ready', {
+            'duration_ms': _startupStopwatch.elapsedMilliseconds,
+          });
+          if (_controller != null) _healthMonitor.start();
           await _applyDesiredState();
           revision.value++;
           return;
@@ -125,6 +150,10 @@ class VideoPlayerSession implements PlaybackSession {
           if (retriesLeft <= 0 || permanent) {
             _error = error;
             _initialized = false;
+            _healthMonitor.record('video_init_failed', {
+              'duration_ms': _startupStopwatch.elapsedMilliseconds,
+              'error_type': error.runtimeType.toString(),
+            });
             revision.value++;
             return;
           }
@@ -189,6 +218,7 @@ class VideoPlayerSession implements PlaybackSession {
     }
     if (_wantPlay) {
       await ctrl.play();
+      _recordPlayStarted();
     } else {
       await ctrl.pause();
     }
@@ -272,6 +302,7 @@ class VideoPlayerSession implements PlaybackSession {
     final ctrl = _controller;
     if (_initialized && ctrl != null) {
       await ctrl.play();
+      _recordPlayStarted();
     }
   }
 
@@ -308,10 +339,43 @@ class VideoPlayerSession implements PlaybackSession {
   @override
   Duration get position => _controller?.value.position ?? _wantSeek;
 
+  VideoPlaybackSnapshot _healthSnapshot() {
+    final value = _controller?.value;
+    return VideoPlaybackSnapshot(
+      shouldMonitor: !_disposed &&
+          _wantPlay &&
+          (value?.isInitialized ?? false) &&
+          (value?.isPlaying ?? false),
+      isBuffering: value?.isBuffering ?? false,
+      position: value?.position ?? _wantSeek,
+      duration: value?.duration ?? Duration.zero,
+    );
+  }
+
+  Future<void> _recoverFromStall(Duration position) async {
+    final ctrl = _controller;
+    if (_disposed || !_initialized || ctrl == null || !_wantPlay) return;
+    await ctrl.pause();
+    await ctrl.seekTo(position);
+    await ctrl.play();
+  }
+
+  void _recordPlayStarted() {
+    if (_playStartedRecorded) return;
+    _playStartedRecorded = true;
+    _healthMonitor.record('video_play_started', {
+      'startup_ms': _startupStopwatch.elapsedMilliseconds,
+    });
+  }
+
+  static String _anonymousMediaKey(String postId) =>
+      postId.hashCode.toUnsigned(32).toRadixString(16);
+
   @override
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    _healthMonitor.dispose();
     _initialized = false;
     // Prefer dispose via wrapper (handle cache reference + underlying
     // controller sekaligus). Kalau init masih in-flight, `_init` mendeteksi

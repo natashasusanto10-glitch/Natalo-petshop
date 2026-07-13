@@ -179,7 +179,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       sessionFactory:
           debugPostVideoSessionFactory ??
           (sessionId) => VideoPlayerSession(
-            url: _videoUrls[sessionId] ?? '',
+                url: _videoUrls[sessionId] ?? '',
+                analyticsPostId: sessionId,
+                analyticsSurface: 'postingan',
             // D4: refresh signed URL expired best-effort — re-fetch post
             // dari API yang meng-sign ulang URL Bunny tiap request.
             urlRefresher: () => _refreshVideoUrl(sessionId),

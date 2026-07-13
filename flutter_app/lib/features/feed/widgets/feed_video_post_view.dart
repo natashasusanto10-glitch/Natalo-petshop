@@ -35,6 +35,7 @@ import '../../../utils/formatters.dart';
 import '../../../utils/haptics.dart';
 import '../video/post_video_coordinator.dart';
 import '../video/video_player_session.dart';
+import '../video/video_playback_health_monitor.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/feed_comment_sheet.dart';
 import '../../../widgets/moderation_action_sheet.dart';
@@ -291,10 +292,24 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   // Target "terbang ke rail" — pusat tombol like, di-capture saat gesture.
   Offset? _heartBurstTarget;
   final GlobalKey _likeButtonKey = GlobalKey();
+  late final VideoPlaybackHealthMonitor _playbackHealthMonitor;
+  final Stopwatch _startupStopwatch = Stopwatch()..start();
+  bool _initMetricStarted = false;
+  bool _playMetricRecorded = false;
 
   @override
   void initState() {
     super.initState();
+    _playbackHealthMonitor = VideoPlaybackHealthMonitor(
+      readSnapshot: _playbackHealthSnapshot,
+      onRecover: _recoverPlaybackStall,
+      metricContext: {
+        'surface': 'feed',
+        'media_type': widget.post.videoUrl.contains('.m3u8') ? 'hls' : 'mp4',
+        'media_key': widget.post.id.hashCode.toUnsigned(32).toRadixString(16),
+      },
+    );
+    if (!_managed) _playbackHealthMonitor.start();
     // Seed shared FeedStore + subscribe — single source of truth untuk
     // like/comment sync antar screen. Detail screen yang juga listen ke
     // store akan auto-update kalau user toggle dari sini, dan sebaliknya.
@@ -863,6 +878,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   void _handleVideoPositionForCta() {
     final ctrl = _videoController;
     if (ctrl == null || !mounted) return;
+    if (ctrl.value.isPlaying) _recordPlayMetric();
     if (_endOfVideoCtaVisible || _endOfVideoCtaDismissed) return;
     final value = ctrl.value;
     if (!value.isInitialized) return;
@@ -995,6 +1011,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     final url = widget.post.videoUrl;
     if (url.isEmpty) return;
     if (_dataSaverEnabled && !userInitiated) return;
+    if (!_initMetricStarted) {
+      _initMetricStarted = true;
+      _playbackHealthMonitor.record('video_init_started');
+    }
     _initInFlight = true;
     try {
       await _runInitVideo(userInitiated: userInitiated);
@@ -1044,6 +1064,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     if (secondAttempt || !mounted) return;
 
     setState(() => _videoLoadFailed = true);
+    _playbackHealthMonitor.record('video_init_failed', {
+      'duration_ms': _startupStopwatch.elapsedMilliseconds,
+    });
   }
 
   /// Helper init satu attempt. Return true kalau sukses (controller
@@ -1088,6 +1111,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       controller.addListener(_handleVideoPositionForCta);
       _cancelLoadingSpinnerDelay();
       await controller.setLooping(true);
+      _playbackHealthMonitor.record('video_init_ready', {
+        'duration_ms': _startupStopwatch.elapsedMilliseconds,
+      });
       // Race fix: controller BENAR-BENAR siap sekarang (init selesai async) —
       // kalau Feed sudah tertutup di titik ini, paksa senyap eksplisit +
       // jangan play, walau init dimulai saat masih terlihat.
@@ -1099,6 +1125,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       if (_canAutoplayNow(userInitiated: userInitiated)) {
         _logPlay('init');
         await controller.play();
+        _recordPlayMetric();
       }
       // Fix A1: JANGAN turunkan _isPaused dari state controller. Video yang
       // selesai init saat inactive (belum diputar) BUKAN "user pause" — kalau
@@ -1124,8 +1151,47 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     }
   }
 
+  VideoPlaybackSnapshot _playbackHealthSnapshot() {
+    final value = _videoController?.value;
+    return VideoPlaybackSnapshot(
+      shouldMonitor: !_managed &&
+          widget.isActive &&
+          !_isPaused &&
+          _canAutoplayNow() &&
+          (value?.isInitialized ?? false) &&
+          (value?.isPlaying ?? false),
+      isBuffering: value?.isBuffering ?? false,
+      position: value?.position ?? Duration.zero,
+      duration: value?.duration ?? Duration.zero,
+    );
+  }
+
+  Future<void> _recoverPlaybackStall(Duration position) async {
+    final controller = _videoController;
+    if (controller == null ||
+        !widget.isActive ||
+        _isPaused ||
+        !_canAutoplayNow()) {
+      return;
+    }
+    await controller.pause();
+    await controller.seekTo(position);
+    if (_canAutoplayNow() && !_isPaused && widget.isActive) {
+      await controller.play();
+    }
+  }
+
+  void _recordPlayMetric() {
+    if (_playMetricRecorded) return;
+    _playMetricRecorded = true;
+    _playbackHealthMonitor.record('video_play_started', {
+      'startup_ms': _startupStopwatch.elapsedMilliseconds,
+    });
+  }
+
   @override
   void dispose() {
+    _playbackHealthMonitor.dispose();
     _mediaTapWindow?.cancel();
     appRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
