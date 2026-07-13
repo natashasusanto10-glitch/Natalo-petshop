@@ -1,4 +1,6 @@
 // ignore_for_file: use_build_context_synchronously
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import 'package:flutter/gestures.dart';
@@ -22,6 +24,7 @@ import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../utils/mention_text.dart';
+import '../utils/app_route_observer.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/emoji_picker_panel.dart';
 import '../widgets/mention_picker.dart';
@@ -94,7 +97,9 @@ class MemberPostDetailScreen extends StatefulWidget {
 
 class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
   late final ScrollController _scrollController;
+  late final ValueNotifier<String?> _activeInlineVideoId;
   late List<FeedPost> _posts;
+  final Set<String> _shareInFlightPostIds = <String>{};
   // Track liked state per post id — optimistic toggle, source-of-truth
   // sampai backend respons confirm.
   final Map<String, bool> _likedCache = {};
@@ -113,6 +118,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
         : List<FeedPost>.from(source);
     _postKeys = List.generate(_posts.length, (_) => GlobalKey());
     _scrollController = ScrollController();
+    _activeInlineVideoId = ValueNotifier<String?>(null);
     // Hydrate _likedCache dari backend `viewerLiked` field — tanpa ini,
     // post yang sudah di-like sebelumnya tampil grey di icon, dan tap
     // pertama bakal accidentally UN-LIKE (backend toggle berdasar DB,
@@ -148,6 +154,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
       if (cached != freshLiked ||
           post.likeCount != fresh.likeCount ||
           post.commentCount != fresh.commentCount ||
+          post.shareCount != fresh.shareCount ||
           !_sameLikerIds(post.recentLikers, fresh.recentLikers)) {
         _likedCache[post.id] = freshLiked;
         _posts[i] = _withInteractionUpdate(
@@ -155,6 +162,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
           likeCount: fresh.likeCount,
           liked: freshLiked,
           commentCount: fresh.commentCount,
+          shareCount: fresh.shareCount,
           recentLikers: fresh.recentLikers,
         );
         anyChanged = true;
@@ -213,6 +221,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
   @override
   void dispose() {
     feedStore.removeListener(_onFeedStoreChanged);
+    _activeInlineVideoId.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -273,22 +282,30 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
   }
 
   Future<void> _shareNative(int index) async {
-    AppHaptics.tap();
     final post = _posts[index];
+    if (!_shareInFlightPostIds.add(post.id)) return;
+    AppHaptics.tap();
     final url = '${ApiConfig.publicSiteUrl}/feed/${post.slug}';
     final captionSnippet = (post.caption ?? '').trim();
     final text =
         captionSnippet.isEmpty ? url : '${truncate(captionSnippet, 120)}\n$url';
     try {
       final box = context.findRenderObject() as RenderBox?;
-      await Share.share(
+      final result = await Share.share(
         text,
         sharePositionOrigin:
             box != null ? box.localToGlobal(Offset.zero) & box.size : null,
       );
-      feedService.trackShare(post.id);
+      if (result.status == ShareResultStatus.success) {
+        final current = feedStore.get(post.id)?.shareCount ?? post.shareCount;
+        feedStore.setShareCount(post.id, current + 1);
+        final serverCount = await feedService.trackShare(post.id);
+        if (serverCount != null) feedStore.setShareCount(post.id, serverCount);
+      }
     } catch (_) {
       // Fail silent — user cancelled / share sheet error.
+    } finally {
+      _shareInFlightPostIds.remove(post.id);
     }
   }
 
@@ -540,6 +557,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
                     onShare: () => _shareNative(index),
                     onMenuTap:
                         widget.isOwner ? () => _openPostMenu(index) : null,
+                    activeVideoId: _activeInlineVideoId,
                     onOpenScopedFeed: (controller, anchorKey) =>
                         _openScopedVideoFeed(index, controller, anchorKey),
                   );
@@ -557,11 +575,13 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     required int likeCount,
     required bool liked,
     required int commentCount,
+    required int shareCount,
     List<FeedAuthor>? recentLikers,
   }) {
     return post.copyWith(
       likeCount: likeCount,
       commentCount: commentCount,
+      shareCount: shareCount,
       viewerLiked: liked,
       isLiked: liked,
       recentLikers: recentLikers,
@@ -692,6 +712,7 @@ class _PostFeedItem extends StatefulWidget {
   // Nullable — null ketika viewing post user lain (showMenu = false).
   // Author row builder cek null untuk decide render trailing menu icon.
   final VoidCallback? onMenuTap;
+  final ValueNotifier<String?> activeVideoId;
   // Tap video → buka viewer feed scoped (swipeable) berisi HANYA video
   // milik user ini. State yang punya list `_posts` menyuplai callback ini
   // (butuh live controller utk pause anti double-suara + anchorKey utk
@@ -712,6 +733,7 @@ class _PostFeedItem extends StatefulWidget {
     required this.onComment,
     required this.onShare,
     required this.onMenuTap,
+    required this.activeVideoId,
     this.onOpenScopedFeed,
   });
 
@@ -827,6 +849,11 @@ class _PostFeedItemState extends State<_PostFeedItem>
     _heartBurstController.forward(from: 0);
   }
 
+  void _handleVideoDoubleTap(TapUpDetails details) {
+    _heartBurstPosition = details.localPosition;
+    _handleDoubleTap();
+  }
+
   @override
   Widget build(BuildContext context) {
     final post = widget.post;
@@ -866,122 +893,132 @@ class _PostFeedItemState extends State<_PostFeedItem>
         // ke gesture detector dalam (mis. _InlineVideoPlayer onTap →
         // fullscreen). PageView swipe horizontal di carousel juga tetap
         // jalan karena swipe ≠ tap gesture.
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onDoubleTapDown: _rememberHeartBurstPosition,
-          onDoubleTap: _handleDoubleTap,
-          child: Stack(
-            children: [
-              _PostMediaSurface(
-                post: post,
-                onVideoExpandRequested: (controller, anchorKey) {
-                  // Preferensi: buka viewer feed scoped (swipeable) ke
-                  // semua video user ini — konsisten dgn flow "Postingan
-                  // Terkait". Fallback ke overlay fullscreen lama kalau
-                  // state tak menyuplai callback (mis. deep-link 1 post).
-                  final openScoped = widget.onOpenScopedFeed;
-                  if (openScoped != null) {
-                    openScoped(controller, anchorKey);
-                    return;
-                  }
-                  final renderBox = anchorKey.currentContext?.findRenderObject() as RenderBox?;
-                  if (renderBox == null) return;
-                  final origin = renderBox.localToGlobal(Offset.zero) & renderBox.size;
-                  // Pushed as a transparent, zero-duration Navigator route
-                  // (not an OverlayEntry) so Android hardware-back closes
-                  // the fullscreen overlay first instead of popping the
-                  // underlying screen (which would dispose the shared
-                  // video controller while the overlay is still painting).
-                  Navigator.of(context).push(
-                    PageRouteBuilder<void>(
-                      opaque: false,
-                      barrierColor: Colors.transparent,
-                      transitionDuration: Duration.zero,
-                      reverseTransitionDuration: Duration.zero,
-                      // The overlay's own build returns a `Positioned` (for
-                      // the morph animation), which needs an immediate
-                      // `Stack` ancestor — the route content isn't placed
-                      // directly inside one, so provide it explicitly.
-                      pageBuilder: (context, animation, secondaryAnimation) =>
-                          Stack(
-                        children: [
-                          _FullscreenInlineVideoOverlay(
-                            controller: controller,
-                            originRect: origin,
-                          ),
-                        ],
+        Builder(
+          builder: (context) {
+            final media = Stack(
+              children: [
+                _PostMediaSurface(
+                  post: post,
+                  activeVideoId: widget.activeVideoId,
+                  onVideoDoubleTap: _handleVideoDoubleTap,
+                  onVideoExpandRequested: (controller, anchorKey) {
+                    // Preferensi: buka viewer feed scoped (swipeable) ke
+                    // semua video user ini — konsisten dgn flow "Postingan
+                    // Terkait". Fallback ke overlay fullscreen lama kalau
+                    // state tak menyuplai callback (mis. deep-link 1 post).
+                    final openScoped = widget.onOpenScopedFeed;
+                    if (openScoped != null) {
+                      openScoped(controller, anchorKey);
+                      return;
+                    }
+                    final renderBox = anchorKey.currentContext
+                        ?.findRenderObject() as RenderBox?;
+                    if (renderBox == null) return;
+                    final origin =
+                        renderBox.localToGlobal(Offset.zero) & renderBox.size;
+                    // Pushed as a transparent, zero-duration Navigator route
+                    // (not an OverlayEntry) so Android hardware-back closes
+                    // the fullscreen overlay first instead of popping the
+                    // underlying screen (which would dispose the shared
+                    // video controller while the overlay is still painting).
+                    Navigator.of(context).push(
+                      PageRouteBuilder<void>(
+                        opaque: false,
+                        barrierColor: Colors.transparent,
+                        transitionDuration: Duration.zero,
+                        reverseTransitionDuration: Duration.zero,
+                        // The overlay's own build returns a `Positioned` (for
+                        // the morph animation), which needs an immediate
+                        // `Stack` ancestor — the route content isn't placed
+                        // directly inside one, so provide it explicitly.
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            Stack(
+                          children: [
+                            _FullscreenInlineVideoOverlay(
+                              controller: controller,
+                              originRect: origin,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                },
-              ),
-              if (post.isVideo)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: _VideoPostAuthorOverlay(
-                    memberName: memberName,
-                    memberInitial: memberInitial,
-                    memberPhotoUrl: memberPhotoUrl,
-                    onMenuTap: widget.onMenuTap,
-                  ),
+                    );
+                  },
                 ),
-              // Heart burst overlay — posisi mengikuti titik double-tap.
-              // IgnorePointer supaya tidak intercept tap berikutnya.
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: AnimatedBuilder(
-                    animation: _heartBurstController,
-                    builder: (context, _) {
-                      if (_burstOpacity.value == 0) {
-                        return const SizedBox.shrink();
-                      }
-                      final position = _heartBurstPosition;
-                      final progress = _heartBurstController.value;
-                      final heart = Opacity(
-                        opacity: _burstOpacity.value,
-                        child: Transform.translate(
-                          offset: Offset(0, -14 * progress),
-                          child: Transform.scale(
-                            scale: _burstScale.value,
-                            child: Transform.rotate(
-                              angle: -0.08,
-                              child: const Icon(
-                                Icons.favorite_rounded,
-                                color: Color(0xFFEF4444),
-                                size: 128,
-                                shadows: [
-                                  Shadow(
-                                    color: Colors.black54,
-                                    blurRadius: 28,
-                                  ),
-                                ],
+                if (post.isVideo)
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: _VideoPostAuthorOverlay(
+                      memberName: memberName,
+                      memberInitial: memberInitial,
+                      memberPhotoUrl: memberPhotoUrl,
+                      onMenuTap: widget.onMenuTap,
+                    ),
+                  ),
+                // Heart burst overlay — posisi mengikuti titik double-tap.
+                // IgnorePointer supaya tidak intercept tap berikutnya.
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: AnimatedBuilder(
+                      animation: _heartBurstController,
+                      builder: (context, _) {
+                        if (_burstOpacity.value == 0) {
+                          return const SizedBox.shrink();
+                        }
+                        final position = _heartBurstPosition;
+                        final progress = _heartBurstController.value;
+                        final heart = Opacity(
+                          opacity: _burstOpacity.value,
+                          child: Transform.translate(
+                            offset: Offset(0, -14 * progress),
+                            child: Transform.scale(
+                              scale: _burstScale.value,
+                              child: Transform.rotate(
+                                angle: -0.08,
+                                child: const Icon(
+                                  Icons.favorite_rounded,
+                                  color: Color(0xFFEF4444),
+                                  size: 128,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black54,
+                                      blurRadius: 28,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      );
-                      if (position == null) {
-                        return Center(child: heart);
-                      }
-                      return Stack(
-                        children: [
-                          Positioned(
-                            left: position.dx - 64,
-                            top: position.dy - 64,
-                            width: 128,
-                            height: 128,
-                            child: Center(child: heart),
-                          ),
-                        ],
-                      );
-                    },
+                        );
+                        if (position == null) {
+                          return Center(child: heart);
+                        }
+                        return Stack(
+                          children: [
+                            Positioned(
+                              left: position.dx - 64,
+                              top: position.dy - 64,
+                              width: 128,
+                              height: 128,
+                              child: Center(child: heart),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            );
+            if (post.isVideo) return media;
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onDoubleTapDown: _rememberHeartBurstPosition,
+              onDoubleTap: _handleDoubleTap,
+              child: media,
+            );
+          },
         ),
         // Action row di-padding sedikit dari edge.
         // Count di-render inline samping icon (TikTok/Reels style) supaya
@@ -1143,60 +1180,66 @@ class _VideoPostAuthorOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.black.withValues(alpha: 0.58),
-            Colors.black.withValues(alpha: 0.20),
-            Colors.transparent,
-          ],
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      // Author area adalah kontrol tersendiri. Tap avatar/nama/ruang header
+      // tidak boleh jatuh ke media dan memicu pause atau double-tap like.
+      onTap: () {},
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.black.withValues(alpha: 0.58),
+              Colors.black.withValues(alpha: 0.20),
+              Colors.transparent,
+            ],
+          ),
         ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 6, 28),
-        child: Row(
-          children: [
-            ProfileAvatar(
-              initial: memberInitial,
-              imageUrl: memberPhotoUrl,
-              size: 36,
-              fontSize: 15,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                memberName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  height: 1.15,
-                  shadows: [
-                    Shadow(color: Colors.black54, blurRadius: 10),
-                  ],
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 6, 28),
+          child: Row(
+            children: [
+              ProfileAvatar(
+                initial: memberInitial,
+                imageUrl: memberPhotoUrl,
+                size: 36,
+                fontSize: 15,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  memberName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    height: 1.15,
+                    shadows: [
+                      Shadow(color: Colors.black54, blurRadius: 10),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            if (onMenuTap != null)
-              IconButton(
-                onPressed: onMenuTap,
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(
-                  Icons.more_horiz_rounded,
-                  color: Colors.white,
-                  shadows: [
-                    Shadow(color: Colors.black54, blurRadius: 10),
-                  ],
-                ),
-              )
-            else
-              const SizedBox(width: 8),
-          ],
+              if (onMenuTap != null)
+                IconButton(
+                  onPressed: onMenuTap,
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(
+                    Icons.more_horiz_rounded,
+                    color: Colors.white,
+                    shadows: [
+                      Shadow(color: Colors.black54, blurRadius: 10),
+                    ],
+                  ),
+                )
+              else
+                const SizedBox(width: 8),
+            ],
+          ),
         ),
       ),
     );
@@ -1567,10 +1610,17 @@ class _PostStatusBadge extends StatelessWidget {
 
 class _PostMediaSurface extends StatelessWidget {
   final FeedPost post;
+  final ValueNotifier<String?> activeVideoId;
+  final ValueChanged<TapUpDetails>? onVideoDoubleTap;
   final void Function(VideoPlayerController controller, GlobalKey anchorKey)?
       onVideoExpandRequested;
 
-  const _PostMediaSurface({required this.post, this.onVideoExpandRequested});
+  const _PostMediaSurface({
+    required this.post,
+    required this.activeVideoId,
+    this.onVideoDoubleTap,
+    this.onVideoExpandRequested,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1595,6 +1645,8 @@ class _PostMediaSurface extends StatelessWidget {
             mediaUrl: post.videoPlaybackUrl,
             thumbnailUrl: post.thumbnailUrl,
             aspectRatio: aspectRatio,
+            activeVideoId: activeVideoId,
+            onDoubleTap: onVideoDoubleTap,
             onExpandRequested: onVideoExpandRequested,
           ),
         FeedContentType.carousel => Hero(
@@ -1602,6 +1654,7 @@ class _PostMediaSurface extends StatelessWidget {
             child: _CarouselSurface(
               post: post,
               aspectRatio: aspectRatio,
+              activeVideoId: activeVideoId,
             ),
           ),
         FeedContentType.photo => Hero(
@@ -1619,8 +1672,13 @@ class _PostMediaSurface extends StatelessWidget {
 class _CarouselSurface extends StatefulWidget {
   final FeedPost post;
   final double aspectRatio;
+  final ValueNotifier<String?> activeVideoId;
 
-  const _CarouselSurface({required this.post, required this.aspectRatio});
+  const _CarouselSurface({
+    required this.post,
+    required this.aspectRatio,
+    required this.activeVideoId,
+  });
 
   @override
   State<_CarouselSurface> createState() => _CarouselSurfaceState();
@@ -1669,6 +1727,7 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
                 mediaUrl: item.mediaUrl,
                 thumbnailUrl: item.thumbnailUrl,
                 aspectRatio: widget.aspectRatio,
+                activeVideoId: widget.activeVideoId,
               );
             }
             return _ImageSurface(
@@ -1974,6 +2033,8 @@ class _InlineVideoPlayer extends StatefulWidget {
   final String mediaUrl;
   final String? thumbnailUrl;
   final double aspectRatio;
+  final ValueNotifier<String?> activeVideoId;
+  final ValueChanged<TapUpDetails>? onDoubleTap;
   final void Function(VideoPlayerController controller, GlobalKey anchorKey)?
       onExpandRequested;
 
@@ -1982,6 +2043,8 @@ class _InlineVideoPlayer extends StatefulWidget {
     required this.mediaUrl,
     required this.thumbnailUrl,
     required this.aspectRatio,
+    required this.activeVideoId,
+    this.onDoubleTap,
     this.onExpandRequested,
   });
 
@@ -1989,7 +2052,8 @@ class _InlineVideoPlayer extends StatefulWidget {
   State<_InlineVideoPlayer> createState() => _InlineVideoPlayerState();
 }
 
-class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
+class _InlineVideoPlayerState extends State<_InlineVideoPlayer>
+    with WidgetsBindingObserver, RouteAware {
   // Wrapper CachedVideoPlayerPlus — handle HLS (.m3u8) Bunny + disk cache.
   // Sama seperti Reels feed (lihat feed_screen.dart). Plain
   // VideoPlayerController.networkUrl kurang reliable untuk HLS signed URL;
@@ -2003,6 +2067,12 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
   bool _muted = appSettingsStore.feedMuted;
   // Track viewport visibility to drive auto-play (≥60% visible).
   double _visibleFraction = 0;
+  bool _pausedByUser = false;
+  bool _routeActive = true;
+  Timer? _mediaTapWindow;
+  DateTime? _firstMediaTapAt;
+  Offset? _firstMediaTapPosition;
+  bool? _playingIntentBeforeFirstTap;
   // Stable key so Task 6's fullscreen overlay can anchor to this exact
   // inline player's position when expanding.
   final GlobalKey _anchorKey = GlobalKey();
@@ -2010,11 +2080,39 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    appSettingsStore.addListener(_onSettingsChanged);
+    widget.activeVideoId.addListener(_onAudioOwnerChanged);
     _initialize();
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) appRouteObserver.subscribe(this, route);
+  }
+
+  @override
+  void didUpdateWidget(covariant _InlineVideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.activeVideoId != widget.activeVideoId) {
+      oldWidget.activeVideoId.removeListener(_onAudioOwnerChanged);
+      widget.activeVideoId.addListener(_onAudioOwnerChanged);
+      _applyPlaybackPolicy();
+    }
+  }
+
+  @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
+    WidgetsBinding.instance.removeObserver(this);
+    appSettingsStore.removeListener(_onSettingsChanged);
+    widget.activeVideoId.removeListener(_onAudioOwnerChanged);
+    _mediaTapWindow?.cancel();
+    if (widget.activeVideoId.value == widget.postId) {
+      widget.activeVideoId.value = null;
+    }
     _disposeController();
     super.dispose();
   }
@@ -2041,9 +2139,8 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
         return;
       }
       _controller = controller;
-      // Muted state ikut preferensi global (appSettingsStore.feedMuted),
-      // sama seperti feed_screen — bukan selalu muted-by-default.
-      await controller.setVolume(_muted ? 0 : 1);
+      // Sampai video resmi menjadi audio owner, controller harus silent.
+      await controller.setVolume(0);
       await controller.setLooping(true);
       setState(() => _initializing = false);
       // Apply current visibility — kalau sudah visible saat init selesai,
@@ -2077,31 +2174,148 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
 
   void _onVisibilityChanged(VisibilityInfo info) {
     _visibleFraction = info.visibleFraction;
+    if (_visibleFraction >= 0.6) {
+      if (widget.activeVideoId.value != widget.postId) {
+        widget.activeVideoId.value = widget.postId;
+      }
+    } else if (widget.activeVideoId.value == widget.postId) {
+      widget.activeVideoId.value = null;
+    }
     _applyVisibility();
   }
 
   void _applyVisibility() {
+    _applyPlaybackPolicy();
+  }
+
+  bool get _isAudioOwner => widget.activeVideoId.value == widget.postId;
+
+  void _onAudioOwnerChanged() => _applyPlaybackPolicy();
+
+  void _onSettingsChanged() {
+    final nextMuted = appSettingsStore.feedMuted;
+    if (_muted != nextMuted && mounted) {
+      setState(() => _muted = nextMuted);
+    } else {
+      _muted = nextMuted;
+    }
+    _applyPlaybackPolicy();
+  }
+
+  void _applyPlaybackPolicy() {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
-    final shouldPlay = _visibleFraction >= 0.6;
+    final ownsAudio = _isAudioOwner && _routeActive;
+    final shouldPlay = ownsAudio && _visibleFraction >= 0.6 && !_pausedByUser;
+    unawaited(controller.setVolume(ownsAudio && !_muted ? 1 : 0));
     if (shouldPlay && !controller.value.isPlaying) {
-      controller.play();
+      unawaited(controller.play());
     } else if (!shouldPlay && controller.value.isPlaying) {
-      controller.pause();
+      unawaited(controller.pause());
     }
   }
 
-  Future<void> _toggleMute() async {
+  void _toggleMute() {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
     AppHaptics.tap();
-    final nextMuted = !_muted;
-    // Write-back ke preferensi global (pola sama feed_screen :2947) —
-    // toggle mute di post detail ikut sinkron balik ke layar feed.
-    await appSettingsStore.setFeedMuted(nextMuted);
-    await controller.setVolume(nextMuted ? 0 : 1);
-    if (!mounted) return;
-    setState(() => _muted = nextMuted);
+    // Setter mengubah state + notifyListeners secara sinkron; penyimpanan
+    // SharedPreferences lanjut asynchronous tanpa menahan ikon/audio.
+    unawaited(appSettingsStore.setFeedMuted(!_muted));
+  }
+
+  void _togglePlaybackIntent() {
+    _pausedByUser = !_pausedByUser;
+    if (!_pausedByUser && _visibleFraction >= 0.6) {
+      widget.activeVideoId.value = widget.postId;
+    }
+    _applyPlaybackPolicy();
+    if (mounted) setState(() {});
+  }
+
+  void _onMediaTapUp(TapUpDetails details) {
+    final now = DateTime.now();
+    final firstAt = _firstMediaTapAt;
+    final firstPosition = _firstMediaTapPosition;
+    final isDoubleTap = firstAt != null &&
+        firstPosition != null &&
+        now.difference(firstAt) <= kDoubleTapTimeout &&
+        (details.localPosition - firstPosition).distance <= kDoubleTapSlop;
+
+    if (isDoubleTap) {
+      final wasPlaying = _playingIntentBeforeFirstTap;
+      if (wasPlaying != null) {
+        _pausedByUser = !wasPlaying;
+        if (wasPlaying && _visibleFraction >= 0.6) {
+          widget.activeVideoId.value = widget.postId;
+        }
+        _applyPlaybackPolicy();
+        if (mounted) setState(() {});
+      }
+      _clearMediaTapWindow();
+      widget.onDoubleTap?.call(details);
+      return;
+    }
+
+    _firstMediaTapAt = now;
+    _firstMediaTapPosition = details.localPosition;
+    _playingIntentBeforeFirstTap = !_pausedByUser;
+    _togglePlaybackIntent();
+    _mediaTapWindow?.cancel();
+    _mediaTapWindow = Timer(kDoubleTapTimeout, _clearMediaTapWindow);
+  }
+
+  void _clearMediaTapWindow() {
+    final hadActiveWindow = _mediaTapWindow != null;
+    _mediaTapWindow?.cancel();
+    _mediaTapWindow = null;
+    _firstMediaTapAt = null;
+    _firstMediaTapPosition = null;
+    _playingIntentBeforeFirstTap = null;
+    if (mounted && hadActiveWindow) setState(() {});
+  }
+
+  void _openFullscreen() {
+    final controller = _controller;
+    final callback = widget.onExpandRequested;
+    if (controller == null || callback == null) return;
+    AppHaptics.tap();
+    callback(controller, _anchorKey);
+  }
+
+  void _pauseForCover() {
+    _routeActive = false;
+    _applyPlaybackPolicy();
+  }
+
+  void _resumeFromCover() {
+    _routeActive = true;
+    if (_visibleFraction >= 0.6) {
+      widget.activeVideoId.value = widget.postId;
+    }
+    _applyPlaybackPolicy();
+  }
+
+  @override
+  void didPushNext() {
+    if (lastPushedRouteIsOpaque()) _pauseForCover();
+  }
+
+  @override
+  void didPopNext() => _resumeFromCover();
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _resumeFromCover();
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+        _pauseForCover();
+      case AppLifecycleState.detached:
+        break;
+    }
   }
 
   @override
@@ -2111,99 +2325,198 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     return VisibilityDetector(
       key: ValueKey('inline-video-${widget.postId}'),
       onVisibilityChanged: _onVisibilityChanged,
-      child: GestureDetector(
+      child: Stack(
         key: _anchorKey,
-        behavior: HitTestBehavior.opaque,
-        onTap: ready && widget.onExpandRequested != null
-            ? () => widget.onExpandRequested!(controller, _anchorKey)
-            : null,
-        child: AbsorbPointer(
-        absorbing: false,
-        child: Stack(
-          fit: StackFit.expand,
+        fit: StackFit.expand,
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapUp: ready ? _onMediaTapUp : null,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Container(color: Colors.black),
+                  if (ready)
+                    ClipRect(
+                      child: FittedBox(
+                        fit: BoxFit.cover,
+                        child: SizedBox(
+                          width: controller.value.size.width > 0
+                              ? controller.value.size.width
+                              : 100,
+                          height: controller.value.size.height > 0
+                              ? controller.value.size.height
+                              : 100,
+                          child: VideoPlayer(controller),
+                        ),
+                      ),
+                    )
+                  else if (widget.thumbnailUrl != null &&
+                      widget.thumbnailUrl!.trim().isNotEmpty)
+                    _ImageSurface(
+                      imageUrl: widget.thumbnailUrl!,
+                      placeholderIcon: Icons.video_collection_outlined,
+                    )
+                  else
+                    const _MediaPlaceholder(
+                        icon: Icons.video_collection_outlined),
+                  if (_initializing)
+                    const Center(
+                      child: SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  if (_error != null)
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          _error!,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          if (ready && _error == null && _pausedByUser)
+            Center(
+              child: IgnorePointer(
+                // Tap kedua harus tetap mencapai media agar double-tap like
+                // tidak direbut tombol play yang baru muncul.
+                ignoring: _mediaTapWindow != null,
+                child: _InlinePausedVideoControls(
+                  muted: _muted,
+                  canExpand: widget.onExpandRequested != null,
+                  onToggleMute: _toggleMute,
+                  onTogglePlayPause: _togglePlaybackIntent,
+                  onExpand: _openFullscreen,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InlinePausedVideoControls extends StatelessWidget {
+  final bool muted;
+  final bool canExpand;
+  final VoidCallback onToggleMute;
+  final VoidCallback onTogglePlayPause;
+  final VoidCallback onExpand;
+
+  const _InlinePausedVideoControls({
+    required this.muted,
+    required this.canExpand,
+    required this.onToggleMute,
+    required this.onTogglePlayPause,
+    required this.onExpand,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(color: Colors.black),
-            if (ready)
-              ClipRect(
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: controller.value.size.width > 0
-                        ? controller.value.size.width
-                        : 100,
-                    height: controller.value.size.height > 0
-                        ? controller.value.size.height
-                        : 100,
-                    child: VideoPlayer(controller),
-                  ),
-                ),
-              )
-            else if (widget.thumbnailUrl != null &&
-                widget.thumbnailUrl!.trim().isNotEmpty)
-              _ImageSurface(
-                imageUrl: widget.thumbnailUrl!,
-                placeholderIcon: Icons.video_collection_outlined,
-              )
-            else
-              const _MediaPlaceholder(icon: Icons.video_collection_outlined),
-            if (_initializing)
-              const Center(
-                child: SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.4,
-                    color: Colors.white,
-                  ),
-                ),
+            _InlinePauseButton(
+              semanticLabel: muted ? 'Aktifkan suara' : 'Matikan suara',
+              diameter: 34,
+              onTap: onToggleMute,
+              icon: muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+              iconSize: 18,
+            ),
+            if (canExpand) ...[
+              const SizedBox(width: 8),
+              _InlinePauseButton(
+                semanticLabel: 'Buka layar penuh',
+                diameter: 34,
+                onTap: onExpand,
+                icon: Icons.open_in_full_rounded,
+                iconSize: 17,
               ),
-            if (_error != null)
-              Center(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.55),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    _error!,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-            // Muted indicator pojok kanan bawah — visual cue bahwa video
-            // bisa di-tap untuk mute/unmute. Sembunyi saat error/loading.
-            if (ready && _error == null)
-              Positioned(
-                right: 10,
-                bottom: 10,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _toggleMute,
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.55),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      _muted
-                          ? Icons.volume_off_rounded
-                          : Icons.volume_up_rounded,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                  ),
-                ),
-              ),
+            ],
           ],
         ),
+        const SizedBox(height: 10),
+        _InlinePauseButton(
+          semanticLabel: 'Putar video',
+          diameter: 54,
+          onTap: onTogglePlayPause,
+          icon: Icons.play_arrow_rounded,
+          iconSize: 30,
+        ),
+      ],
+    );
+  }
+}
+
+class _InlinePauseButton extends StatelessWidget {
+  final String semanticLabel;
+  final double diameter;
+  final VoidCallback onTap;
+  final IconData icon;
+  final double iconSize;
+
+  const _InlinePauseButton({
+    required this.semanticLabel,
+    required this.diameter,
+    required this.onTap,
+    required this.icon,
+    required this.iconSize,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        child: InkResponse(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          radius: 26,
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: Center(
+              child: Container(
+                width: diameter,
+                height: diameter,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.48),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.14),
+                  ),
+                ),
+                child: Icon(icon, color: Colors.white, size: iconSize),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -2227,15 +2540,16 @@ class _FullscreenInlineVideoOverlay extends StatefulWidget {
   });
 
   @override
-  State<_FullscreenInlineVideoOverlay> createState() => _FullscreenInlineVideoOverlayState();
+  State<_FullscreenInlineVideoOverlay> createState() =>
+      _FullscreenInlineVideoOverlayState();
 }
 
-class _FullscreenInlineVideoOverlayState extends State<_FullscreenInlineVideoOverlay>
+class _FullscreenInlineVideoOverlayState
+    extends State<_FullscreenInlineVideoOverlay>
     with SingleTickerProviderStateMixin {
   late final AnimationController _morphController;
   late final Animation<double> _morph;
-  double? _previousVolume;
-  bool _muted = false;
+  bool _muted = appSettingsStore.feedMuted;
   bool _closing = false;
 
   @override
@@ -2246,11 +2560,11 @@ class _FullscreenInlineVideoOverlayState extends State<_FullscreenInlineVideoOve
       duration: const Duration(milliseconds: 440),
       reverseDuration: const Duration(milliseconds: 260),
     );
-    _morph = CurvedAnimation(parent: _morphController, curve: Curves.easeOutCubic);
-    // Unmute on entry — explicit fullscreen intent, independent of the
-    // inline preference (same rationale the old dead code documented).
-    _previousVolume = widget.controller.value.volume;
-    widget.controller.setVolume(1);
+    _morph =
+        CurvedAnimation(parent: _morphController, curve: Curves.easeOutCubic);
+    appSettingsStore.addListener(_onSettingsChanged);
+    widget.controller.setVolume(_muted ? 0 : 1);
+    widget.controller.play();
     _morphController.forward();
   }
 
@@ -2259,18 +2573,28 @@ class _FullscreenInlineVideoOverlayState extends State<_FullscreenInlineVideoOve
     _closing = true;
     await _morphController.reverse();
     if (!mounted) return;
-    await widget.controller.setVolume(_previousVolume ?? 0);
+    // Inline owner akan menerapkan policy-nya setelah route pop. Silent-kan
+    // transisi agar tidak ada satu frame audio bocor dari overlay.
+    await widget.controller.setVolume(0);
     if (!mounted) return;
     Navigator.of(context).pop();
   }
 
   void _toggleMute() {
-    setState(() => _muted = !_muted);
-    widget.controller.setVolume(_muted ? 0 : 1);
+    AppHaptics.tap();
+    unawaited(appSettingsStore.setFeedMuted(!_muted));
+  }
+
+  void _onSettingsChanged() {
+    final next = appSettingsStore.feedMuted;
+    if (mounted && next != _muted) setState(() => _muted = next);
+    _muted = next;
+    unawaited(widget.controller.setVolume(_muted ? 0 : 1));
   }
 
   @override
   void dispose() {
+    appSettingsStore.removeListener(_onSettingsChanged);
     _morphController.dispose();
     super.dispose();
   }
@@ -2336,7 +2660,8 @@ class _FullscreenInlineVideoOverlayState extends State<_FullscreenInlineVideoOve
                       child: const SizedBox(
                         width: 40,
                         height: 40,
-                        child: Icon(Icons.chevron_left_rounded, color: Colors.white, size: 24),
+                        child: Icon(Icons.chevron_left_rounded,
+                            color: Colors.white, size: 24),
                       ),
                     ),
                   ),
@@ -2356,7 +2681,9 @@ class _FullscreenInlineVideoOverlayState extends State<_FullscreenInlineVideoOve
                     width: 40,
                     height: 40,
                     child: Icon(
-                      _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                      _muted
+                          ? Icons.volume_off_rounded
+                          : Icons.volume_up_rounded,
                       color: Colors.white,
                       size: 20,
                     ),

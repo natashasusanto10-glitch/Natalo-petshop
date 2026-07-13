@@ -654,55 +654,55 @@ class _FeedScreenState extends State<FeedScreen> {
             // Top overlay — `+` upload (kiri) + search/cart stack (kanan).
             // Plain icons (no glass/blur pill) per mockup TikTok-style. Safe
             // area aware via MediaQuery.padding.top supaya tidak overlap
-            // dengan notch / status bar di iOS+Android. Hide saat interaction
-            // locked (comment drawer / cinema mode) supaya tidak distract.
-            if (!_interactionLocked)
-              AnimatedOpacity(
-                opacity: _mediaZooming ? 0 : 1,
-                duration: const Duration(milliseconds: 160),
-                child: IgnorePointer(
-                  ignoring: _mediaZooming,
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        top: MediaQuery.paddingOf(context).top + 8,
-                        left: 4,
-                        child: _FeedTopIconButton(
-                          iconChild: const _FeedPlusGlyph(),
-                          onTap: _onUpload,
-                          tooltip: 'Upload video',
-                        ),
+            // dengan notch / status bar di iOS+Android. Saat modal Reels
+            // terbuka, ikon tetap di tempat dan ikut diredupkan barrier;
+            // jangan dilepas dari tree/fade sendiri.
+            AnimatedOpacity(
+              opacity: _mediaZooming ? 0 : 1,
+              duration: const Duration(milliseconds: 160),
+              child: IgnorePointer(
+                ignoring: _mediaZooming || _interactionLocked,
+                child: Stack(
+                  children: [
+                    Positioned(
+                      top: MediaQuery.paddingOf(context).top + 8,
+                      left: 4,
+                      child: _FeedTopIconButton(
+                        iconChild: const _FeedPlusGlyph(),
+                        onTap: _onUpload,
+                        tooltip: 'Upload video',
                       ),
-                      Positioned(
-                        top: MediaQuery.paddingOf(context).top + 8,
-                        right: _feedTopActionRightInset,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _FeedTopIconButton(
-                              icon: Icons.search_rounded,
-                              onTap: _openFeedSearch,
-                              tooltip: 'Cari',
-                            ),
-                            const SizedBox(height: 2),
-                            _FeedTopIconButton(
-                              // Icon SHAPE match home AppCartButton:
-                              // shopping_cart_outlined. Size tetap 28 (default
-                              // _FeedTopIconButton) supaya tetap prominent di atas
-                              // video — beda dari home yang 24 karena context-nya
-                              // beda (header dense dengan banyak icon).
-                              icon: Icons.shopping_cart_outlined,
-                              onTap: _openCartPage,
-                              tooltip: 'Keranjang',
-                              badgeCount: _cartCount > 0 ? _cartCount : null,
-                            ),
-                          ],
-                        ),
+                    ),
+                    Positioned(
+                      top: MediaQuery.paddingOf(context).top + 8,
+                      right: _feedTopActionRightInset,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _FeedTopIconButton(
+                            icon: Icons.search_rounded,
+                            onTap: _openFeedSearch,
+                            tooltip: 'Cari',
+                          ),
+                          const SizedBox(height: 2),
+                          _FeedTopIconButton(
+                            // Icon SHAPE match home AppCartButton:
+                            // shopping_cart_outlined. Size tetap 28 (default
+                            // _FeedTopIconButton) supaya tetap prominent di atas
+                            // video — beda dari home yang 24 karena context-nya
+                            // beda (header dense dengan banyak icon).
+                            icon: Icons.shopping_cart_outlined,
+                            onTap: _openCartPage,
+                            tooltip: 'Keranjang',
+                            badgeCount: _cartCount > 0 ? _cartCount : null,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
+            ),
           ],
         ),
       ),
@@ -1181,6 +1181,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   int _likeCount = 0;
   int _commentCount = 0;
   int _shareCount = 0;
+  bool _shareInFlight = false;
   bool _hideOverlayForLongPress = false;
   bool _hideOverlayForPinchZoom = false;
 
@@ -1443,17 +1444,24 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   }
 
   Future<void> _onShare() async {
+    if (_shareInFlight) return;
+    _shareInFlight = true;
     AppHaptics.tap();
     try {
       final url = ApiConfig.uri('/feed/${widget.post.id}').toString();
-      await Share.share(
+      final result = await Share.share(
         widget.post.title.isNotEmpty ? '${widget.post.title}\n$url' : url,
       );
-      if (!mounted) return;
-      setState(() => _shareCount += 1);
-      await feedService.trackShare(widget.post.id);
+      if (result.status != ShareResultStatus.success || !mounted) return;
+      feedStore.incrementShareCount(widget.post.id);
+      final serverCount = await feedService.trackShare(widget.post.id);
+      if (serverCount != null) {
+        feedStore.setShareCount(widget.post.id, serverCount);
+      }
     } catch (_) {
       // Cancel atau share fail — silent.
+    } finally {
+      _shareInFlight = false;
     }
   }
 
@@ -1864,4 +1872,3 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     );
   }
 }
-
