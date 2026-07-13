@@ -135,6 +135,19 @@ class _FeedPostCreatorIdentityState extends State<FeedPostCreatorIdentity> {
               onFollowTap: followState == FeedFollowChipState.hidden
                   ? null
                   : () => _toggleFollow(following),
+              // POIN 5 (guard navigasi langsung ke profil) — keputusan:
+              // DOKUMENTASI-SAJA, tanpa plumbing pause eksplisit. Alasan:
+              //  (1) FeedVideoPostView.didPushNext (RouteAware) mem-pause video
+              //      Feed SINKRON begitu route '/u' didorong — sebelum profil
+              //      sempat menutupi Feed — dan mencatat `_routeCovered=true`.
+              //  (2) Master-guard `_feedRouteIsCurrent` (isCurrent) menahan
+              //      SEMUA jalur play() legacy selama route lain menutupi Feed,
+              //      apa pun state bookkeeping.
+              // Kedua lapis itu sudah menutup celah audio-hantu Feed→Profile.
+              // Widget identity ini dipakai bersama (foto + video + detail),
+              // TIDAK punya binding langsung ke state video; menambah callback
+              // pause menembus beberapa lapis widget = invasif + berisiko ke
+              // struktur bersama tanpa manfaat tambahan. Jadi tidak di-plumb.
               onProfileTap: canOpenProfile
                   ? () {
                       AppHaptics.tap();

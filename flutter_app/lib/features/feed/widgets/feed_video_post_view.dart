@@ -399,6 +399,80 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   // supaya resume tidak menyalakan video yang memang di-pause user.
   bool _pausedByCover = false;
 
+  // Race fix (Feed→Profile) — jalur legacy non-managed: `didPushNext()` dulu
+  // early-return TANPA mencatat cover kalau controller belum siap
+  // (null/belum initialized/belum playing). Kalau saat itu init masih
+  // berjalan async, begitu init selesai DI BELAKANG route baru, beberapa
+  // jalur play() cuma cek `isActive && shouldAutoplay` — video pun mulai
+  // bermain di belakang layar. `_routeCovered` dicatat SEGERA saat route
+  // opaque didorong, independen dari state controller, supaya semua jalur
+  // play() (via `_canAutoplayNow`) tahu Feed sedang tertutup meski
+  // controllernya belum lahir.
+  bool _routeCovered = false;
+
+  // App ke background/lock (paused/inactive/hidden) — dicatat SEGERA (sebelum
+  // _pauseForCover) untuk alasan sama seperti _routeCovered: kalau init masih
+  // in-flight, play() yang lahir di belakang layar terkunci app harus tetap
+  // digerbang.
+  bool _appBackgrounded = false;
+
+  /// Gate tunggal untuk SEMUA jalur play() legacy (non-managed). Managed
+  /// (coordinator) tidak lewat sini — dijaga terpisah oleh guard `_managed`
+  /// di tiap call site.
+  ///
+  /// [userInitiated] — tap paksa walau data-saver (dari `_tryInitVideoController`
+  /// saat user tap media sebelum controller ada). Tetap WAJIB
+  /// `!_routeCovered && !_appBackgrounded` — user-initiated tidak boleh
+  /// menembus route-covered (pertahanan berlapis, bukan pelonggaran; kalau
+  /// user genuinely tap, route seharusnya sudah tidak covered).
+  bool _canAutoplayNow({bool userInitiated = false}) {
+    return !_managed &&
+        mounted &&
+        widget.isActive &&
+        !_routeCovered &&
+        !_appBackgrounded &&
+        !_isPaused &&
+        (_shouldAutoplay || userInitiated);
+  }
+
+  /// TELEMETRY-ONLY (poin 8) — apakah route Feed BENAR-BENAR teratas/aktif,
+  /// dibaca HANYA untuk log `_logPlay` (`routeCurrent=…`). BUKAN gate playback.
+  ///
+  /// Dulu ikut menggerbang `_canAutoplayNow`, tapi itu REGRESI: sheet
+  /// produk/cart/tagged dibuka via `showModalBottomSheet(backgroundColor:
+  /// transparent)` = ModalBottomSheetRoute NON-opaque → `isCurrent` jadi false
+  /// padahal desain SENGAJA membiarkan video Feed TETAP MAIN di balik sheet
+  /// transparan (`_routeCovered` HANYA di-set untuk route OPAQUE via
+  /// `lastPushedRouteIsOpaque()`). Efek paling nyata: video main di balik sheet
+  /// produk → app background → foreground → `_resumeFromCover` gagal (isCurrent
+  /// false) → video BEKU sampai sheet ditutup. Gate kini murni mengandalkan
+  /// `_routeCovered` (opaque-aware) + `_appBackgrounded`, yang juga BENAR untuk
+  /// nested-route: RouteObserver cuma notif route adjacent, sehingga
+  /// `_routeCovered` tetap true sepanjang Profile menutupi Feed (termasuk saat
+  /// Postingan didorong / di-pop di atas Profile).
+  ///
+  /// Fallback `true` bila context tak punya route (mis. widget test tanpa
+  /// Navigator). Context-guard: hanya baca `ModalRoute.of` saat `mounted`.
+  bool get _feedRouteIsCurrent {
+    if (!mounted) return true;
+    final r = ModalRoute.of(context);
+    return r?.isCurrent ?? true;
+  }
+
+  /// Telemetry playback (poin 8) — debug-only log TEPAT sebelum tiap
+  /// `ctrl.play()` legacy yang benar-benar memutar (di dalam gate). Membantu
+  /// menemukan jalur play tersembunyi di device: sumber perintah + route aktif
+  /// + status lifecycle. HANYA `kDebugMode` (nol overhead + nol bocor di
+  /// production). Tidak membocorkan data sensitif — postId saja.
+  void _logPlay(String source) {
+    if (!kDebugMode) return;
+    debugPrint(
+      '[feed-play] post=${widget.post.id} source=$source '
+      'routeCurrent=$_feedRouteIsCurrent covered=$_routeCovered '
+      'bg=$_appBackgrounded active=${widget.isActive}',
+    );
+  }
+
   void _pauseForCover(CoverPauseReason reason) {
     if (_managed) {
       // Coordinator memiliki playback — lapor intent + alasan (D5), jangan
@@ -407,13 +481,27 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       return;
     }
     final ctrl = _videoController;
-    if (ctrl == null || !ctrl.value.isInitialized) return;
+    if (ctrl == null || !ctrl.value.isInitialized) {
+      // Controller belum siap (mis. masih initialize() async) — state cover
+      // sudah cukup dicatat oleh caller (_routeCovered/_appBackgrounded)
+      // SEBELUM method ini dipanggil. Begitu controller lahir, titik
+      // penyelesaian init (_tryInitVideoController / listener onInit) akan
+      // mengecek flag ini dan mute + skip play.
+      return;
+    }
     if (!ctrl.value.isPlaying) return;
     _pausedByCover = true;
     ctrl.pause();
   }
 
-  void _resumeFromCover() {
+  /// [forceIfUncovered] — GAP #4: di race Feed→Profile, controller bisa `null`
+  /// saat cover → `_pauseForCover` early-return → `_pausedByCover` TAK PERNAH
+  /// jadi true, sehingga resume via state-machine (didPopNext → sini) mati dan
+  /// video hanya bangun karena VisibilityDetector re-fire (~500ms, jeda
+  /// terlihat). Saat caller tahu kita "baru saja uncover" (route pop / app
+  /// resume), kirim `forceIfUncovered: true` supaya resume tetap jalan walau
+  /// `_pausedByCover == false`.
+  void _resumeFromCover({bool forceIfUncovered = false}) {
     if (_managed) {
       // BLOCKER: guard isActive — view origin yang MASIH mounted tapi INACTIVE
       // (user sudah swipe ke sibling di fullscreen; sibling tak pernah
@@ -426,11 +514,29 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       widget.onRequestPlay?.call();
       return;
     }
-    if (!_pausedByCover) return;
+    // Non-managed. Normalnya resume hanya kalau KITA yang pause
+    // (_pausedByCover); tapi kalau caller menandai uncover (forceIfUncovered),
+    // teruskan walau _pausedByCover false (kasus controller-null-saat-cover).
+    if (!_pausedByCover && !forceIfUncovered) return;
     _pausedByCover = false;
     if (!mounted || !widget.isActive) return;
     if (_isPaused || !_shouldAutoplay) return;
-    _videoController?.play();
+    // GAP #3: kembalikan volume saat uncover. Init yang selesai DI BAWAH cover
+    // memaksa setVolume(0) (pertahanan anti audio-hantu); tanpa mengembalikan
+    // di sini, video resume SENYAP (volume 0 nyangkut) sampai user toggle mute
+    // / navigasi. Idempoten & murah. Hanya video aktif yang akan main.
+    final ctrl = _videoController;
+    if (ctrl != null && ctrl.value.isInitialized) {
+      ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+    }
+    // Play hanya kalau controller SUDAH ada; kalau masih null, init-path yang
+    // meng-handle (dan karena _routeCovered sudah false, _canAutoplayNow di
+    // init-path akan mengizinkan play + volume sudah benar). _canAutoplayNow
+    // tetap penjaga akhir (blok _appBackgrounded / _routeCovered / dsb).
+    if (_canAutoplayNow()) {
+      _logPlay('resume-cover');
+      ctrl?.play();
+    }
   }
 
   @override
@@ -439,6 +545,13 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // sheet produk) TIDAK mem-pause — video tetap jalan di baliknya (ala
     // TikTok/IG) dan tidak ada konflik audio dari sheet.
     if (lastPushedRouteIsOpaque()) {
+      // Race fix: catat _routeCovered SEGERA, SEBELUM _pauseForCover —
+      // independen dari state controller (null/belum initialized/belum
+      // playing semua tetap dicatat). Kalau ditunda sampai controller siap
+      // (perilaku lama _pauseForCover early-return diam), init yang selesai
+      // async di belakang route baru bisa lolos gate isActive/shouldAutoplay
+      // lama dan mulai bermain di belakang layar.
+      if (!_managed) _routeCovered = true;
       // D5: route opaque didorong (mis. buka fullscreen). T3 memakai reason
       // untuk men-DROP kasus ini saat handoff sedang berlangsung (controller
       // sama lanjut di fullscreen → JANGAN pauseAll).
@@ -448,7 +561,12 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
   @override
   void didPopNext() {
-    _resumeFromCover();
+    // GAP #4: tangkap wasCovered SEBELUM reset supaya _resumeFromCover tahu kita
+    // baru saja uncover — resume via state-machine walau controller null saat
+    // cover (jadi _pausedByCover tak pernah true), bukan menunggu VD re-fire.
+    final wasCovered = _routeCovered;
+    _routeCovered = false;
+    _resumeFromCover(forceIfUncovered: wasCovered);
   }
 
   @override
@@ -457,9 +575,17 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
+        if (!_managed) _appBackgrounded = true;
         _pauseForCover(CoverPauseReason.appBackground);
       case AppLifecycleState.resumed:
-        _resumeFromCover();
+        // GAP #4: sama seperti didPopNext — kalau app di-background SAAT init
+        // in-flight, controller null → _pausedByCover tak pernah true; treat
+        // resume sebagai uncover supaya state-machine tetap menyalakan.
+        {
+          final wasBackgrounded = _appBackgrounded;
+          _appBackgrounded = false;
+          _resumeFromCover(forceIfUncovered: wasBackgrounded);
+        }
       case AppLifecycleState.detached:
         break;
     }
@@ -584,7 +710,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // Widget cuma merender VideoPlayer + overlay. Jangan sentuh controller.
     if (!_managed) {
       await ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
-      if (widget.isActive && _shouldAutoplay) {
+      if (_canAutoplayNow()) {
+        _logPlay('adopt');
         await ctrl.play();
       }
       // HLS bisa ter-adopt SEBELUM initialize selesai (controller masuk map
@@ -596,8 +723,18 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
           if (!ctrl.value.isInitialized) return;
           ctrl.removeListener(onInit);
           if (!mounted || _videoController != ctrl) return;
-          ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
-          if (widget.isActive && _shouldAutoplay && !_isPaused) {
+          // Race fix: controller BENAR-BENAR siap sekarang — kalau Feed
+          // sudah tertutup (route/app) di titik ini, paksa senyap eksplisit
+          // + jangan play. _canAutoplayNow di bawah sudah blokir play(), tapi
+          // setVolume(0) eksplisit di sini jadi pertahanan tambahan kalau ada
+          // race lain.
+          if (_routeCovered || _appBackgrounded) {
+            ctrl.setVolume(0);
+          } else {
+            ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+          }
+          if (_canAutoplayNow()) {
+            _logPlay('adopt-oninit');
             ctrl.play();
           }
           _cancelLoadingSpinnerDelay();
@@ -774,7 +911,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       if (widget.isActive) {
         // Managed: coordinator.setActive yang memutar video aktif; widget
         // tidak play() langsung (§2.1).
-        if (!_managed && !_isPaused && _shouldAutoplay) {
+        if (_canAutoplayNow()) {
+          _logPlay('active');
           _videoController?.play();
         }
         _syncProductRotation();
@@ -931,8 +1069,16 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       controller.addListener(_handleVideoPositionForCta);
       _cancelLoadingSpinnerDelay();
       await controller.setLooping(true);
-      await controller.setVolume(appSettingsStore.feedMuted ? 0 : 1);
-      if (widget.isActive && (_shouldAutoplay || userInitiated)) {
+      // Race fix: controller BENAR-BENAR siap sekarang (init selesai async) —
+      // kalau Feed sudah tertutup di titik ini, paksa senyap eksplisit +
+      // jangan play, walau init dimulai saat masih terlihat.
+      if (_routeCovered || _appBackgrounded) {
+        await controller.setVolume(0);
+      } else {
+        await controller.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+      }
+      if (_canAutoplayNow(userInitiated: userInitiated)) {
+        _logPlay('init');
         await controller.play();
       }
       // Fix A1: JANGAN turunkan _isPaused dari state controller. Video yang
@@ -1046,12 +1192,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         ctrl.pause();
       } else if (!shouldPause && _pausedByCommentSheet) {
         _pausedByCommentSheet = false;
-        if (mounted &&
-            widget.isActive &&
-            !_isPaused &&
-            _shouldAutoplay &&
-            ctrl != null &&
-            ctrl.value.isInitialized) {
+        if (_canAutoplayNow() && ctrl != null && ctrl.value.isInitialized) {
+          _logPlay('comment-close');
           ctrl.play();
         }
       }
@@ -1271,12 +1413,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       _pausedByCommentSheet = false;
       if (_managed) {
         widget.onRequestPlay?.call();
-      } else if (mounted &&
-          widget.isActive &&
-          !_isPaused &&
-          _shouldAutoplay &&
-          ctrl != null &&
-          ctrl.value.isInitialized) {
+      } else if (_canAutoplayNow() && ctrl != null && ctrl.value.isInitialized) {
+        _logPlay('comment-close-full');
         ctrl.play();
       }
     }
@@ -1439,8 +1577,15 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       ),
     );
     widget.onOverlayStateChanged(false);
-    if (mounted && wasPlaying && !ctrl.value.isPlaying) {
-      // Restore playback kalau user pause di fullscreen lalu close.
+    // POIN 2 (satu pintu lengkap): resume dari cinema-mode WAJIB lewat gate
+    // legacy. `_openCinemaMode` saat ini dead code (`unused_element`), tapi
+    // kalau kelak diaktifkan, restore playback tanpa gate bisa memutar video
+    // Feed walau route lain sudah menutup Feed (mis. pop cinema langsung ke
+    // route non-Feed) atau app di-background — persis kelas audio-hantu yang
+    // sedang di-hardening. Bungkus dengan `_canAutoplayNow()` supaya patuh
+    // master-guard (isCurrent) + lifecycle.
+    if (mounted && wasPlaying && !ctrl.value.isPlaying && _canAutoplayNow()) {
+      _logPlay('cinema');
       ctrl.play();
     }
   }
@@ -1654,8 +1799,15 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       ctrl.pause();
       setState(() => _isPaused = true);
     } else {
-      ctrl.play();
-      setState(() => _isPaused = false);
+      _isPaused = false;
+      // User-initiated: pertahanan berlapis via _canAutoplayNow (tetap wajib
+      // !_routeCovered && !_appBackgrounded — kalau user genuinely tap,
+      // route seharusnya sudah tidak covered).
+      if (_canAutoplayNow(userInitiated: true)) {
+        _logPlay('tap');
+        ctrl.play();
+      }
+      setState(() {});
     }
   }
 
@@ -1740,8 +1892,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         _longPressPaused = false;
         _hideOverlayForLongPress = false;
       });
-      if (ctrl != null && !_isPaused) {
+      if (ctrl != null && _canAutoplayNow(userInitiated: true)) {
         // Resume cuma kalau user tidak previously tap-paused juga.
+        _logPlay('longpress-end');
         ctrl.play();
       }
     } else if (_longPressSpeedActive) {
@@ -1814,8 +1967,17 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
           return;
         }
         if (ctrl == null) return;
-        if (info.visibleFraction > 0.7 && widget.isActive && _shouldAutoplay) {
-          if (!ctrl.value.isPlaying && !_isPaused) ctrl.play();
+        if (info.visibleFraction > 0.7 && _canAutoplayNow()) {
+          if (!ctrl.value.isPlaying) {
+            // GAP #3: kembalikan volume saat kembali terlihat & aktif. Init
+            // yang selesai di bawah cover memaksa setVolume(0); jalur VD-resume
+            // dulu play() TANPA unmute → video main senyap. _canAutoplayNow
+            // sudah menjamin aktif + tak covered + tak user-pause, jadi ini
+            // hanya menyentuh video yang benar-benar akan main (bukan inactive).
+            ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+            _logPlay('visibility');
+            ctrl.play();
+          }
         } else {
           ctrl.pause();
         }
