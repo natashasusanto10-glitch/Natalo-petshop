@@ -7,6 +7,8 @@ import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/features/feed/video/post_video_coordinator.dart';
+import 'package:natalo_petshop_flutter/features/feed/video/video_player_session.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_post_view.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_scrubber.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
@@ -114,6 +116,81 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   @override
   Future<Duration> getPosition(int playerId) async =>
       _positions[playerId] ?? Duration.zero;
+
+  @override
+  Widget buildView(int playerId) => const SizedBox.shrink();
+}
+
+/// Fake platform yang GAGAL membuat player untuk [failUntil] percobaan pertama
+/// (create ke-1..failUntil lempar) lalu SUKSES sesudahnya. Dipakai T8 untuk
+/// membawa [VideoPlayerSession] ke keadaan error (init awal + 1 auto-retry
+/// gagal) lalu membuktikan `retry()` melahirkan controller BARU yang sukses.
+class _FailThenSucceedPlatform extends VideoPlayerPlatform {
+  _FailThenSucceedPlatform({required this.failUntil});
+
+  final int failUntil;
+  final Map<int, StreamController<VideoEvent>> _streams = {};
+  int _nextId = 0;
+  int createCount = 0;
+  int disposeCount = 0;
+
+  @override
+  Future<void> init() async {}
+
+  @override
+  Future<int?> create(DataSource dataSource) => _create();
+
+  @override
+  Future<int?> createWithOptions(VideoCreationOptions options) => _create();
+
+  Future<int?> _create() async {
+    createCount++;
+    if (createCount <= failUntil) {
+      throw Exception('network down (create #$createCount)');
+    }
+    final id = _nextId++;
+    final stream = StreamController<VideoEvent>();
+    _streams[id] = stream;
+    stream.add(VideoEvent(
+      eventType: VideoEventType.initialized,
+      size: const Size(720, 1280),
+      duration: const Duration(seconds: 10),
+    ));
+    return id;
+  }
+
+  @override
+  Future<void> dispose(int playerId) async {
+    disposeCount++;
+    await _streams.remove(playerId)?.close();
+  }
+
+  @override
+  Stream<VideoEvent> videoEventsFor(int playerId) => _streams[playerId]!.stream;
+
+  @override
+  Future<void> play(int playerId) async {}
+
+  @override
+  Future<void> pause(int playerId) async {}
+
+  @override
+  Future<void> setLooping(int playerId, bool looping) async {}
+
+  @override
+  Future<void> setVolume(int playerId, double volume) async {}
+
+  @override
+  Future<void> setPlaybackSpeed(int playerId, double speed) async {}
+
+  @override
+  Future<void> setMixWithOthers(bool mixWithOthers) async {}
+
+  @override
+  Future<void> seekTo(int playerId, Duration position) async {}
+
+  @override
+  Future<Duration> getPosition(int playerId) async => Duration.zero;
 
   @override
   Widget buildView(int playerId) => const SizedBox.shrink();
@@ -881,6 +958,192 @@ void main() {
       await appSettingsStore.setFeedMuted(true);
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(milliseconds: 50));
+    });
+  });
+
+  // ── T8 — retry di fullscreen (managed view) ──
+  // Saat sesi coordinator ERROR di managed view: tampil surface error +
+  // tombol "Coba lagi" → session.retry() (reset budget). Retry mengganti
+  // controller DI DALAM sesi yang sama (identitas sesi tetap, revision bump)
+  // → view WAJIB re-adopt controller BARU via listener REVISION (bukan
+  // registry) dan merender langsung, tanpa kembali ke Postingan. Widget tak
+  // pernah men-dispose controller (coordinator pemilik).
+  group('T8 retry di fullscreen (managed)', () {
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    });
+
+    Widget host({
+      required PostVideoCoordinator coordinator,
+      required FeedPost post,
+      required bool isActive,
+    }) {
+      return MaterialApp(
+        home: FeedVideoPostView(
+          key: const ValueKey('feed-video-post-managed'),
+          post: post,
+          isActive: isActive,
+          preloadedController: null,
+          ownsController: false,
+          playbackManagedExternally: true,
+          coordinator: coordinator,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      );
+    }
+
+    Future<void> flushAsync(WidgetTester tester) async {
+      await tester.runAsync(() async {
+        for (var i = 0; i < 12; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+      });
+    }
+
+    // (a) + (b): sesi error → tombol "Coba lagi"; tap → session.retry().
+    // Pakai seam debugInitAttempt (tanpa plugin) — controller selalu null,
+    // sesi selalu error → cukup untuk memverifikasi surface + panggilan retry.
+    testWidgets('sesi error → tampil "Coba lagi"; tap → retry() dipanggil',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final post = _fakeVideoPost();
+      var attempts = 0;
+      final coordinator = PostVideoCoordinator(
+        sessionFactory: (postId) => VideoPlayerSession(
+          url: 'https://cdn/$postId.mp4',
+          userQualityPreference: 'auto',
+          debugDelay: (_) async {},
+          debugInitAttempt: (_) async {
+            attempts++;
+            throw Exception('network down');
+          },
+        ),
+      );
+      addTearDown(coordinator.dispose);
+
+      // Buat sesi + drive init (awal + 1 auto-retry) sampai error.
+      coordinator.attach('view-1', post.id);
+      await flushAsync(tester);
+      final session = coordinator.sessionFor(post.id) as VideoPlayerSession;
+      expect(session.hasError, isTrue);
+      expect(attempts, 2, reason: 'init awal + tepat 1 auto-retry');
+
+      await tester.pumpWidget(host(
+        coordinator: coordinator,
+        post: post,
+        isActive: true,
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(find.text('Coba lagi'), findsOneWidget,
+          reason: 'managed + sesi error → surface error dgn tombol Coba lagi');
+      expect(find.byType(VideoPlayer), findsNothing);
+
+      // Tap Coba lagi → session.retry() (reset budget → init ulang).
+      await tester.tap(find.text('Coba lagi'));
+      await tester.pump();
+      await flushAsync(tester);
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(attempts, greaterThan(2),
+          reason: 'tap "Coba lagi" memicu session.retry() → init ulang');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    // (c) + (d): retry SUKSES (create ke-3) → sesi melahirkan controller BARU
+    // (revision bump) → view re-adopt + render VideoPlayer (bukan thumbnail
+    // diam). Controller tak pernah di-dispose oleh widget saat unmount.
+    testWidgets(
+        'retry sukses → re-adopt controller baru via revision + render',
+        (tester) async {
+      final platform = _FailThenSucceedPlatform(failUntil: 2);
+      VideoPlayerPlatform.instance = platform;
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      // HLS → bypass cache wrapper → plain VideoPlayerController → fake platform.
+      final post = _fakeVideoPost(hls: true);
+      final coordinator = PostVideoCoordinator(
+        sessionFactory: (postId) => VideoPlayerSession(
+          url: 'https://example.com/$postId.m3u8',
+          userQualityPreference: 'auto',
+          debugDelay: (_) async {},
+        ),
+      );
+      addTearDown(coordinator.dispose);
+
+      // Buat sesi (init awal + auto-retry pakai create #1 & #2 → keduanya
+      // gagal) + jadikan aktif (desired play + volume, poin 4).
+      coordinator.attach('view-1', post.id);
+      coordinator.setActive(post.id);
+      await flushAsync(tester);
+      final session = coordinator.sessionFor(post.id) as VideoPlayerSession;
+      expect(session.hasError, isTrue,
+          reason: 'dua create pertama gagal → sesi error');
+      expect(platform.createCount, 2);
+
+      await tester.pumpWidget(host(
+        coordinator: coordinator,
+        post: post,
+        isActive: true,
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.text('Coba lagi'), findsOneWidget);
+      expect(find.byType(VideoPlayer), findsNothing,
+          reason: 'error → belum ada controller dirender');
+
+      // Tap Coba lagi → retry → create #3 SUKSES → controller baru.
+      await tester.tap(find.text('Coba lagi'));
+      await tester.pump();
+      await flushAsync(tester);
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(session.hasError, isFalse);
+      expect(session.isInitialized, isTrue);
+      expect(session.controller, isNotNull);
+      expect(find.byType(VideoPlayer), findsWidgets,
+          reason: 're-adopt controller baru pasca-retry → VideoPlayer render');
+      expect(find.text('Coba lagi'), findsNothing,
+          reason: 'surface error hilang setelah retry sukses');
+      // Poin 4: desired play dipertahankan pada controller baru (view aktif).
+      expect(session.controller!.value.isPlaying, isTrue,
+          reason: 'retry mempertahankan desired play state (view aktif)');
+
+      final controller = session.controller!;
+      final disposesBefore = platform.disposeCount;
+
+      // (d) Unmount widget → ownsController:false → TIDAK men-dispose.
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(platform.disposeCount, disposesBefore,
+          reason: 'widget managed tak pernah men-dispose controller pinjaman');
+      expect(controller.value.isInitialized, isTrue,
+          reason: 'controller tetap hidup — coordinator pemilik');
+
+      // Bersihkan: coordinator (pemilik) men-dispose sesi → controller,
+      // menghentikan timer posisi periodik yang jalan selama playing.
+      await tester.runAsync(() async {
+        coordinator.dispose();
+        await Future<void>.delayed(Duration.zero);
+      });
     });
   });
 }

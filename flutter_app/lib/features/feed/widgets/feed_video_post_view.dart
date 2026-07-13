@@ -475,6 +475,40 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   /// laporan intent, bukan panggilan langsung ke controller.
   bool get _managed => widget.playbackManagedExternally;
 
+  /// T8 — di managed view, error/loading/ready dibedakan dari sesi coordinator
+  /// terikat ([_managedSession], hanya di-set bila sesi benar-benar
+  /// [VideoPlayerSession]). Sesi fake non-VideoPlayerSession → _managedSession
+  /// null → dianggap thumbnail (bukan error), jalur legacy tak terpengaruh.
+  bool get _managedHasError => _managed && (_managedSession?.hasError ?? false);
+
+  /// Loading managed: sesi terikat ADA, belum error, tapi controllernya belum
+  /// terpasang/siap — init awal ATAU selama [VideoPlayerSession.retry] mengganti
+  /// controller (controller lama sudah dilepas, yang baru belum lahir). Beda
+  /// dari spinner legacy yang butuh `_videoController != null`.
+  bool get _managedLoading {
+    if (!_managed) return false;
+    final session = _managedSession;
+    if (session == null || session.hasError) return false;
+    final ctrl = _videoController;
+    return ctrl == null || !ctrl.value.isInitialized;
+  }
+
+  /// T8 — tombol "Coba lagi" di managed view: reset budget + re-init sesi
+  /// coordinator. JANGAN membuat/men-dispose controller sendiri — coordinator
+  /// satu-satunya pemilik (§2.1). Controller baru hasil retry diadopsi lewat
+  /// listener REVISION sesi (identitas sesi tetap sama, controllernya yang
+  /// berganti) → [_onManagedSessionRevision] → [_syncManagedSession].
+  void _retryManagedSession() {
+    final session = _managedSession;
+    if (session == null) return;
+    AppHaptics.tap();
+    unawaited(session.retry());
+    // Rebuild optimistis: singkirkan surface error + tampilkan spinner segera
+    // (revision juga akan fire saat _init mulai, ini cuma menghindari 1 frame
+    // error yang tersisa antara tap dan fire).
+    if (mounted) setState(() {});
+  }
+
   /// D1 (§2.2) — re-apply volume LIVE saat `feedMuted` berubah (jalur legacy
   /// non-managed). Aturan aktif-saja: HANYA controller post yang sedang tampil
   /// (`widget.isActive`) yang naik ke volume 1 saat unmute global; controller
@@ -598,13 +632,21 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   void _onCoordinatorRegistryChanged() {
     if (!mounted) return;
     _syncManagedSession();
+    // Rebuild: sesi bisa lahir dalam keadaan loading/error tanpa mengganti
+    // identitas controller (tetap null) — build harus ikut menampilkan
+    // spinner / surface error meski _syncManagedSession tak setState.
+    if (mounted) setState(() {});
   }
 
-  /// Init controller sesi terikat selesai/gagal → re-render (adopt controller
-  /// begitu lahir; lepas bila hilang). Dasar re-adopt T8.
+  /// Init controller sesi terikat selesai/gagal/retry → re-render. Revision
+  /// bump menandai transisi loading→ready→error (KUNCI T8): controller BARU
+  /// hasil retry (identitas sesi SAMA, controllernya berganti) dipungut di
+  /// sini, dan transisi ready→error yang tak pernah punya controller tetap
+  /// memicu surface error via setState di bawah.
   void _onManagedSessionRevision() {
     if (!mounted) return;
     _syncManagedSession();
+    if (mounted) setState(() {});
   }
 
   /// Sinkronkan controller yang dirender dengan sesi coordinator untuk
@@ -1895,10 +1937,36 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                           ),
                         ),
                       ),
-                      if (_videoLoadFailed)
+                      // Error surface — jalur legacy (_videoLoadFailed) ATAU
+                      // managed (sesi coordinator error, T8). Tombol "Coba lagi"
+                      // memanggil retry yang tepat: legacy → _maybeInitVideo
+                      // (bikin controller sendiri); managed → session.retry()
+                      // (coordinator yang re-init + tetap pemilik controller).
+                      if (_videoLoadFailed || _managedHasError)
                         Positioned.fill(
                           child: Center(
-                            child: _VideoRetryButton(onRetry: _maybeInitVideo),
+                            child: _VideoRetryButton(
+                              onRetry: _managedHasError
+                                  ? _retryManagedSession
+                                  : _maybeInitVideo,
+                            ),
+                          ),
+                        ),
+                      // Managed loading (T8): sesi terikat sedang init awal /
+                      // retry (controller belum siap) → spinner LANGSUNG (tanpa
+                      // delay) sebagai feedback sesudah user tap "Coba lagi".
+                      // Thumbnail _MediaBackground tetap di baliknya.
+                      if (_managedLoading)
+                        Positioned.fill(
+                          child: Center(
+                            child: SizedBox(
+                              height: 26,
+                              width: 26,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white.withValues(alpha: 0.82),
+                              ),
+                            ),
                           ),
                         ),
                       // Spinner hanya muncul kalau video belum ready DAN
