@@ -1,4 +1,6 @@
 // ignore_for_file: use_build_context_synchronously
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -169,7 +171,12 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     // nyata (atau fake via seam test). Listener feedMuted hidup di coordinator.
     _videoCoordinator = PostVideoCoordinator(
       sessionFactory: debugPostVideoSessionFactory ??
-          (sessionId) => VideoPlayerSession(url: _videoUrls[sessionId] ?? ''),
+          (sessionId) => VideoPlayerSession(
+                url: _videoUrls[sessionId] ?? '',
+                // D4: refresh signed URL expired best-effort — re-fetch post
+                // dari API yang meng-sign ulang URL Bunny tiap request.
+                urlRefresher: () => _refreshVideoUrl(sessionId),
+              ),
     );
     // Lifecycle app (background/foreground) — pause/resume SEMUA sesi (§2.5),
     // menutup audio hantu #2. Route visibility didaftarkan di
@@ -328,6 +335,50 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   /// compound id; video utama sudah diprapopulasi di initState).
   void _registerVideoUrl(String sessionId, String url) {
     _videoUrls[sessionId] = url;
+  }
+
+  /// D4 — ambil URL video bertanda-tangan SEGAR untuk [sessionId] dari API
+  /// (`GET /api/feed/posts/:id` → `signBunnyUrl`, sign ulang tiap request).
+  /// Dipanggil oleh [VideoPlayerSession] hanya saat init gagal DAN URL lama
+  /// bertanda-tangan (kemungkinan expired). Best-effort: null bila gagal /
+  /// tak ada URL — caller jatuh ke tombol "Coba lagi".
+  ///
+  /// `sessionId` untuk video utama == post.id; item carousel == `${id}-$idx`.
+  Future<String?> _refreshVideoUrl(String sessionId) async {
+    // Turunkan post.id nyata: kalau sessionId dikenal langsung (video utama)
+    // pakai apa adanya; kalau tidak, kupas sufiks `-<index>` (carousel).
+    var postId = sessionId;
+    int? carouselIndex;
+    if (!_posts.any((p) => p.id == sessionId)) {
+      final dash = sessionId.lastIndexOf('-');
+      if (dash > 0) {
+        final maybeIndex = int.tryParse(sessionId.substring(dash + 1));
+        if (maybeIndex != null) {
+          postId = sessionId.substring(0, dash);
+          carouselIndex = maybeIndex;
+        }
+      }
+    }
+    try {
+      final fresh = await feedService.fetchPostById(postId);
+      if (fresh == null) return null;
+      String? url;
+      if (carouselIndex != null &&
+          carouselIndex >= 0 &&
+          carouselIndex < fresh.mediaItems.length) {
+        final item = fresh.mediaItems[carouselIndex];
+        url = item.mediaUrl.trim().isNotEmpty ? item.mediaUrl : null;
+      } else {
+        url = fresh.videoPlaybackUrl.trim().isNotEmpty
+            ? fresh.videoPlaybackUrl
+            : null;
+      }
+      if (url == null || url.trim().isEmpty) return null;
+      _videoUrls[sessionId] = url;
+      return url;
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
@@ -2412,6 +2463,16 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     _applyVisibility();
   }
 
+  /// Tombol "Coba lagi" — init ulang manual (reset budget retry di sesi).
+  /// Sesi tetap dimiliki coordinator; kita hanya minta re-init dari view.
+  void _onRetry() {
+    AppHaptics.tap();
+    final session = _coordinator.sessionFor(widget.postId);
+    if (session is VideoPlayerSession) {
+      unawaited(session.retry());
+    }
+  }
+
   void _onTapVideo() {
     // Video siap → buka fullscreen scoped (handoff coordinator di level
     // halaman). Kalau belum siap (autoplay off / masih init), tap = intent
@@ -2482,21 +2543,58 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
               ),
             if (hasError && !widget.dormant)
               Center(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.55),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: const Text(
-                    'Video belum bisa diputar',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        'Video belum bisa diputar',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 10),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _onRetry,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.55),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.refresh_rounded,
+                                color: Colors.white, size: 16),
+                            SizedBox(width: 6),
+                            Text(
+                              'Coba lagi',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             // Tombol play besar (D3 autoplay off, belum di-start).
