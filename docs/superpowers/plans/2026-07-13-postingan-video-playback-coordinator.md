@@ -129,12 +129,29 @@ Widget test regresi: init-saat-inactive lalu jadi aktif → play; tap ganda saat
 
 Urutan: T1 → T2 → T3 → T4 (T5 paralel kapan saja) → T6.
 
+## 4b. Refinement acceptance (user, 2026-07-13) — 12 poin + 5 delta
+
+12 poin acceptance user memetakan ke task: (1) mute global→T2/T3+**D1**, (2) audio hantu→T3, (3) flow IG→T3, (4) handoff→T3, (5) coordinator lokal→T1/T3, (6) preload next→T3+**D2**, (7) fix autoplay macet→T2+**D3**, (8) cegah dobel init→T2, (9) HLS→T4+**D4**, (10) fix preload feed→T5, (11) lifecycle/ownership→T3+**D5**, (12) uji Android+iOS→§6.
+
+Lima delta yang MEMPERLUAS scope dari plan awal:
+
+- **D1 (poin 1) — Mute live di Feed utama juga.** Coordinator hanya Postingan-scoped; controller Feed utama TIDAK dikelolanya. Feed utama sekarang baca `feedMuted` cuma saat init/adopt (feed_video_post_view :544 dll), jadi mute dari layar lain tak berlaku ke controller feed yang sudah hidup. Fix: pasang listener `feedMuted` ringan di jalur Feed utama yang re-apply volume HANYA ke controller AKTIF feed (aturan sama §2.2: aktif ikut feedMuted, non-aktif tetap 0). Masuk **T5** (sudah menyentuh feed_screen). Verifikasi: mute di Postingan → Feed utama ikut senyap seketika (dan sebaliknya).
+- **D2 (poin 6) — Data saver menonaktifkan preload.** `coordinator.preloadNext` di-skip saat `appSettingsStore.feedVideoQuality == 'data_saver'` (atau flag data-saver setara). Masuk **T3** (caller preloadNext cek setting sebelum panggil). Preload yang sudah terlanjur dibuang aman via LRU.
+- **D3 (poin 7) — Autoplay OFF dihormati di Postingan.** `_InlineVideoPlayer` sekarang autoplay murni dari visibilitas ≥60% tanpa cek `feedAutoplay`. Fix: hormati `appSettingsStore.feedAutoplay` (kalau OFF → tampilkan thumbnail + tombol play, tidak auto-main; tetap boleh play saat user tap). Masuk **T3**. CATATAN: default autoplay ON = perilaku IG tetap; ini hanya menutup kebocoran saat user mematikan setting. (Menggeser A2 dari out-of-scope jadi IN-scope sebatas ini.)
+- **D4 (poin 9) — Refresh signed URL expired.** Signed URL Bunny (`token=&expires=`) TIDAK bisa di-rewrite (video_quality_service :147); tidak ada refresh klien saat ini. Fix best-effort: pada error init yang teridentifikasi 403/expired, re-fetch URL video post dari API (kalau endpoint detail post mengembalikan URL bertanda-tangan segar) SEKALI, lalu retry; kalau tak ada endpoint/refresh gagal → jatuh ke tombol "Coba lagi". Masuk **T4**. Kalau ternyata endpoint refresh belum ada → dokumentasikan sebagai follow-up, JANGAN bikin backend baru di task ini.
+- **D5 (poin 11) — Buka fullscreen internal TIDAK boleh mem-pause controller handoff.** `FeedVideoPostView` `didPushNext` (RouteAware) mem-pause saat route opaque didorong. Untuk controller pinjaman (`playbackManagedExternally: true`), pause itu HARUS jadi laporan ke coordinator — dan karena fullscreen = active baru pakai controller SAMA, coordinator tak mem-pause-nya. Kontrak dua-flag §2.1 sudah menutup ini; T3 wajib memverifikasi urutan: fullscreen attach ke controller asal SEBELUM inline dormant, dan tutup: fullscreen detach → inline re-attach (§2.6). Uji khusus: buka fullscreen tidak menimbulkan jeda/pause pada frame handoff.
+
+## 4c. Deferred secara sadar (whole-branch review 2026-07-13)
+
+- **Preload next-1 / D2 TIDAK di-wire (PARSIAL).** `coordinator.preloadNext` + slot-3 + skip-data-saver ADA & ter-unit-test di core, tapi tak dipanggil integrasi (T3b hanya me-manage item ORIGIN; sibling own-controller). Konsekuensi: swipe-ke-next di fullscreen tetap init own-controller (loading singkat). Acceptance §2.6 mengizinkan ini ("loading singkat, wajar"), jadi DITERIMA sebagai deferred — poin acceptance 6 (preload) & D2 belum fungsional. Follow-up bila device-verify menunjukkan swipe terlalu lambat: wire preloadNext dgn hati-hati agar tak dobel controller video sibling.
+- **Error origin saat DI fullscreen = dead-end (RENDAH).** Tombol "Coba lagi" hanya di `_InlineVideoPlayer` (Postingan). Kalau origin error saat di fullscreen (managed view, controller null), user lihat thumbnail diam tanpa retry; `_adoptPreloadedController` jalan sekali di initState tanpa re-adopt di didUpdateWidget, jadi walau auto-retry sesi sukses fullscreen tak memungut controller baru. RENDAH: origin hampir selalu sudah play inline sebelum tap; user bisa back ke inline (ada retry). Follow-up/device-verify.
+
 ## 5. Out of scope
 
-- Migrasi Feed utama ke coordinator (hanya fix A5 di tempat).
+- Migrasi Feed utama ke coordinator (hanya fix A5 + D1 mute-live di tempat).
 - Perubahan visual/desain apa pun.
-- Perubahan perilaku autoplay (tetap autoplay ala IG — keputusan user).
-- Perbaikan `feedAutoplay`/data-saver di luar jalur yang lewat coordinator (A2 tercakup sebatas lifecycle+mute; setting autoplay Postingan mengikuti perilaku sekarang).
+- Perubahan perilaku autoplay default (tetap autoplay ON ala IG; D3 hanya menghormati saat user OFF-kan).
+- Membuat endpoint/backend baru untuk refresh signed URL (D4 best-effort pakai yang ada; kalau tak ada → follow-up).
 
 ## 6. Verifikasi device (wajib sebelum rilis)
 
