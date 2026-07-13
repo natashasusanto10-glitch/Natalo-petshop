@@ -247,6 +247,64 @@ void main() {
       expect(sessions['B']!.playing, isTrue);
     });
 
+    test('resumeAll: sesi aktif main lagi dgn mute terkini; background tidak',
+        () {
+      coordinator.setOrigin('A');
+      coordinator.setActive('A');
+      coordinator.setActive('B'); // A jadi background
+      coordinator.preloadNext('C');
+
+      coordinator.pauseAll();
+      expect(sessions['A']!.playing, isFalse);
+      expect(sessions['B']!.playing, isFalse);
+      expect(sessions['C']!.playing, isFalse);
+
+      mutedSource.set(false); // user unmute selagi suspended
+      coordinator.resumeAll();
+
+      // Sesi aktif (B) main lagi dgn volume mute terkini.
+      expect(sessions['B']!.playing, isTrue);
+      expect(sessions['B']!.volume, 1);
+      // Background & preload TIDAK ikut main.
+      expect(sessions['A']!.playing, isFalse);
+      expect(sessions['A']!.volume, 0);
+      expect(sessions['C']!.playing, isFalse);
+      expect(sessions['C']!.volume, 0);
+    });
+
+    test('resumeAll hormati user-pause eksplisit', () {
+      coordinator.setActive('A');
+      coordinator.userTogglePlay(); // user pause eksplisit
+      coordinator.pauseAll();
+
+      coordinator.resumeAll();
+      expect(sessions['A']!.playing, isFalse);
+    });
+
+    test('intent setelah dispose tidak menambah sesi / panggil factory', () {
+      coordinator.setActive('A');
+      coordinator.dispose();
+      final sessionCountBefore = sessions.length;
+
+      // Semua void intent: silent no-op, tidak bikin sesi baru.
+      coordinator.setActive('Z');
+      coordinator.preloadNext('Y');
+      coordinator.setOrigin('X');
+      coordinator.userTogglePlay();
+      coordinator.resumeAll();
+      coordinator.pauseAll();
+
+      expect(coordinator.livePostIds, isEmpty);
+      expect(sessions.length, sessionCountBefore);
+      expect(sessions.containsKey('Z'), isFalse);
+      expect(sessions.containsKey('Y'), isFalse);
+      expect(sessions.containsKey('X'), isFalse);
+
+      // attach setelah dispose → throw (view initState keliru).
+      expect(() => coordinator.attach('v', 'W'), throwsStateError);
+      expect(sessions.containsKey('W'), isFalse);
+    });
+
     test('dispose: semua sesi di-dispose TEPAT sekali, idempotent', () {
       coordinator.setOrigin('A');
       coordinator.setActive('A');

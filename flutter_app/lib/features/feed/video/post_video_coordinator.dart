@@ -99,10 +99,17 @@ class PostVideoCoordinator {
   /// Membuat sesi bila belum ada. Sesi baru SELALU lahir paused + volume 0
   /// — hanya [setActive] yang memberi suara/play.
   PlaybackSession attach(String viewId, String postId) {
-    _checkNotDisposed();
+    // Runtime guard (bukan cuma assert): view initState bisa race dgn dispose
+    // coordinator. attach() punya return value + kontraknya "view sedang mau
+    // merender" — kalau coordinator mati, caller keliru → throw, jangan diam2
+    // bikin sesi yatim di luar lifecycle coordinator.
+    if (_disposed) {
+      throw StateError('PostVideoCoordinator.attach setelah dispose');
+    }
     final entry = _ensureEntry(postId);
     entry.attachedViewIds.add(viewId);
     entry.lastUsed = ++_clock;
+    _evict();
     return entry.session;
   }
 
@@ -118,11 +125,25 @@ class PostVideoCoordinator {
 
   /// Tandai video ASAL (inline Postingan) — pinned selama fullscreen buka.
   /// Kirim `null` saat fullscreen ditutup dan inline sudah tidak butuh pin.
+  ///
+  /// KONTRAK PENTING (F3): saat menutup fullscreen, view inline (T3) WAJIB
+  /// `attach()` ulang ke sesi asal SEBELUM memanggil `setOrigin(null)`. Kalau
+  /// tidak, dengan >3 sesi hidup, unpin bisa membuat sesi asal keluar window
+  /// LRU dan langsung dieviction → resume inline instan hilang. Sebagai
+  /// pertahanan inti, `setOrigin(null)` di sini men-touch `lastUsed` bekas
+  /// origin agar ia jadi sesi PALING BARU dipakai; dengan begitu, walau
+  /// sesaat unpinned & unattached, ia tetap paling belakang untuk dieviction.
   void setOrigin(String? postId) {
-    _checkNotDisposed();
+    if (_disposed) return;
+    final previousOrigin = _originPostId;
     _originPostId = postId;
     if (postId != null) {
       _ensureEntry(postId).lastUsed = ++_clock;
+    } else if (previousOrigin != null) {
+      // Lindungi bekas origin: naikkan recency-nya supaya tidak jatuh keluar
+      // window LRU sebelum inline sempat re-attach.
+      final prev = _entries[previousOrigin];
+      if (prev != null) prev.lastUsed = ++_clock;
     }
     _evict();
   }
@@ -130,7 +151,7 @@ class PostVideoCoordinator {
   /// Jadikan [postId] video AKTIF: aktif lama → paused + volume 0; aktif
   /// baru → volume dari `feedMuted` SAAT INI, lalu play (autoplay ala IG).
   void setActive(String postId) {
-    _checkNotDisposed();
+    if (_disposed) return;
     final previous = _activePostId;
     if (previous != null && previous != postId) {
       final prevEntry = _entries[previous];
@@ -153,7 +174,7 @@ class PostVideoCoordinator {
   /// Siapkan satu video berikutnya: sesi dibuat paused + volume 0 dan
   /// pinned sampai window berubah (preload berikutnya / jadi aktif).
   void preloadNext(String postId) {
-    _checkNotDisposed();
+    if (_disposed) return;
     if (postId == _activePostId) return;
     _preloadPostId = postId;
     final entry = _ensureEntry(postId);
@@ -185,7 +206,7 @@ class PostVideoCoordinator {
 
   /// User tap play/pause di video aktif. Satu-satunya sumber `userPaused`.
   void userTogglePlay() {
-    _checkNotDisposed();
+    if (_disposed) return;
     final active = _activePostId;
     if (active == null) return;
     final entry = _entries[active];
@@ -210,8 +231,28 @@ class PostVideoCoordinator {
     }
   }
 
+  /// Foreground / route dibuka lagi → clear suspend DAN resume playback sesi
+  /// AKTIF (kecuali user memang lagi pause eksplisit), dengan volume mengikuti
+  /// `feedMuted` saat ini. Sesi non-aktif tetap paused + volume 0.
+  ///
+  /// Tanpa ini, `pauseAll` menyetel `_suspended=true` dan hanya
+  /// setActive/userTogglePlay yang meng-clear-nya — jadi kalau foreground cuma
+  /// mem-forward reportVisible, video aktif mati permanen.
+  void resumeAll() {
+    if (_disposed) return;
+    _suspended = false;
+    final active = _activePostId;
+    if (active == null) return;
+    if (_userPausedActive) return;
+    final entry = _entries[active];
+    if (entry == null) return;
+    unawaited(entry.session.setVolume(_readMuted() ? 0 : 1));
+    unawaited(entry.session.play());
+  }
+
   /// Dispose coordinator + SEMUA sesi. Idempotent; setelah ini semua intent
-  /// jadi no-op (attach/setActive/... akan throw via assert).
+  /// void (setActive/preloadNext/setOrigin/userTogglePlay/resumeAll/pauseAll)
+  /// jadi silent no-op via runtime guard, dan [attach] melempar StateError.
   void dispose() {
     if (_disposed) return;
     _disposed = true;
@@ -282,9 +323,6 @@ class PostVideoCoordinator {
     }
   }
 
-  void _checkNotDisposed() {
-    assert(!_disposed, 'PostVideoCoordinator dipakai setelah dispose');
-  }
 }
 
 class _SessionEntry {
