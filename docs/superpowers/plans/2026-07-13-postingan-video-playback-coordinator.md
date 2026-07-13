@@ -129,6 +129,23 @@ Widget test regresi: init-saat-inactive lalu jadi aktif → play; tap ganda saat
 
 Urutan: T1 → T2 → T3 → T4 (T5 paralel kapan saja) → T6.
 
+### T7 — Scoped fullscreen FULL-managed + preload next (mengganti pendekatan bertahap T3b)
+Disetujui user 2026-07-13. Menggantikan T3b "hanya origin managed" → **SELURUH item scoped fullscreen managed saat coordinator ada** (ownership seragam, statis per item — hilangkan flip own-controller↔managed yang jadi sumber controller-ganda/audio-hantu).
+
+Prinsip: **ownership seragam (semua managed), kepemilikan SESI on-demand.**
+- Managed view mengadopsi sesi HANYA jika coordinator sudah punya sesi utk postId-nya (origin/active/hasil preloadNext). Belum ada → render thumbnail/frozen, TIDAK bikin controller.
+- **KUNCI 1 (registry notifier):** managed view yang belum punya sesi harus TAHU saat coordinator kemudian membuat sesi utk postId-nya. Tak cukup cek `sessionFor` sekali di build. Coordinator WAJIB expose notifier — `Listenable` yang fire saat map sesi berubah, atau revision per-postId. View listen → re-cek `sessionFor(postId)` → adopt saat muncul. Ini yang bikin swipe-ke-preload instan (widget sudah mounted, adopt begitu sesi preload lahir).
+- **KUNCI 2 (semua inactive detach, TERMASUK origin):** view yang jadi inactive WAJIB detach. Sesi origin tetap hidup karena `pinned`, BUKAN karena attachment. Ini menjaga makna "attached" jujur + cegah sesi transient ke-4 menetap saat 3 widget PageView mounted.
+- **Urutan transisi halaman DETERMINISTIK** (onPageChanged): (1) pause+mute active lama; (2) buat/promosikan sesi halaman baru jadi active; (3) managed view halaman baru adopt sesi via notifier; (4) detach view lama; (5) tentukan+preloadNext (KECUALI Data Saver); (6) evict sesi yang bukan origin/active/next.
+- **Data Saver:** semua tetap managed, `preloadNext` DILEWATI; swipe → coordinator baru bikin sesi utk item aktif saat itu (satu controller, loading singkat boleh). Menuntaskan D2.
+- Maks 3 sesi logis: origin(A,pinned) + active(B) + next(C). Item bukan-role → dieviksi LRU.
+- Fallback: `coordinator == null` (Postingan Terkait detail produk, deep link) → semua own-controller, TAK berubah.
+
+### T8 — Retry di fullscreen (session revision + re-adopt)
+Managed view mendengarkan SESI (bukan snapshot controller di initState). `VideoPlayerSession` naikkan `revision` setiap controller dibuat/diganti/gagal/sukses-retry. Revision berubah → view lepas listener controller lama + adopt controller baru. Tombol "Coba lagi" di managed view saat `hasError` → `session.retry()`; selama retry tampil thumbnail/frozen+loading; sukses → controller baru langsung dirender, coordinator terapkan active/mute. View TAK PERNAH dispose (ownership tetap coordinator). Sekaligus menutup risiko sisa T3b (controller null saat buka fullscreen → thumbnail diam).
+
+**Acceptance T7+T8 (verbatim user):** tak ada 2 controller utk postId sama; swipe A→B pakai controller B ter-preload; maks 3 sesi hidup setelah swipe berkali-kali; Data Saver tak preload; error fullscreen punya "Coba lagi"; retry sukses tanpa kembali ke Postingan; controller hasil retry langsung terpasang ke managed view; mute konsisten tanpa audio background; kembali ke Postingan lanjut video A di timestamp terakhir.
+
 ## 4b. Refinement acceptance (user, 2026-07-13) — 12 poin + 5 delta
 
 12 poin acceptance user memetakan ke task: (1) mute global→T2/T3+**D1**, (2) audio hantu→T3, (3) flow IG→T3, (4) handoff→T3, (5) coordinator lokal→T1/T3, (6) preload next→T3+**D2**, (7) fix autoplay macet→T2+**D3**, (8) cegah dobel init→T2, (9) HLS→T4+**D4**, (10) fix preload feed→T5, (11) lifecycle/ownership→T3+**D5**, (12) uji Android+iOS→§6.
