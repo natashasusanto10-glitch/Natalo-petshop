@@ -95,4 +95,50 @@ void main() {
     final fit = await pumpAndReadThumbFit(tester, 0.8);
     expect(fit, BoxFit.contain);
   });
+
+  // Fix A5 — handoff preload terkonfirmasi: klaim dari map pemilik hanya
+  // terjadi saat state mengadopsi (initState), BUKAN tiap build parent.
+  // Regresi lama: remove() di build() → rebuild parent dengan state
+  // ber-key sama masih hidup menjatuhkan controller dari map tanpa pernah
+  // diadopsi (yatim, tak pernah di-dispose).
+  testWidgets(
+      'claimPreloadedVideo dipanggil sekali di initState, '
+      'tidak dipanggil ulang saat parent rebuild', (tester) async {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    var claimCalls = 0;
+    Widget buildHost({required bool isActive}) {
+      return MaterialApp(
+        home: FeedVideoPostView(
+          key: const ValueKey('feed-video-post-1'),
+          post: _fakeVideoPost(),
+          isActive: isActive,
+          preloadedController: null,
+          claimPreloadedVideo: () {
+            claimCalls++;
+            return null; // tidak ada preload siap — jalur fresh-init.
+          },
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildHost(isActive: false));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(claimCalls, 1);
+
+    // Parent rebuild (props berubah) dengan key sama → state lama tetap
+    // hidup, initState tidak jalan lagi → klaim TIDAK boleh terjadi lagi.
+    await tester.pumpWidget(buildHost(isActive: true));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpWidget(buildHost(isActive: false));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(claimCalls, 1);
+  });
 }

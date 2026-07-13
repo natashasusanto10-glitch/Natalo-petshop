@@ -84,6 +84,20 @@ bool shouldPauseForCommentExtent({
   return extent >= maxExtent - 0.02;
 }
 
+/// Hasil klaim preload dari pemilik map (FeedScreen). Controller +
+/// wrapper cache 1:1 — wrapper bisa null (HLS bypass wrapper), controller
+/// bisa null saat init MP4 masih in-flight (wrapper sudah ada, controller
+/// belum) → penerima dispose wrapper orphan itu, lalu init fresh.
+class PreloadedVideoClaim {
+  final VideoPlayerController? controller;
+  final CachedVideoPlayerPlus? cachedPlayer;
+
+  const PreloadedVideoClaim({
+    required this.controller,
+    required this.cachedPlayer,
+  });
+}
+
 /// Satu fullscreen page Reels-style — video/thumbnail + Reels overlay.
 class FeedVideoPostView extends StatefulWidget {
   final FeedPost post;
@@ -95,6 +109,15 @@ class FeedVideoPostView extends StatefulWidget {
   /// child create fresh via _maybeInitVideo. Disimpan supaya dispose
   /// proper handle cache file lifecycle via wrapper.dispose().
   final CachedVideoPlayerPlus? preloadedCachedPlayer;
+
+  /// Handoff preload TERKONFIRMASI (fix A5): kalau di-set, state MENGKLAIM
+  /// controller dari pemilik map saat initState (adopt) — remove dari map
+  /// terjadi di dalam callback ini, BUKAN di build() parent. Rebuild parent
+  /// dengan state ber-key sama yang masih hidup jadi tidak lagi menjatuhkan
+  /// controller dari map tanpa pernah diadopsi (controller yatim: tak pernah
+  /// di-dispose → leak + kandidat audio hantu). Kalau di-set, callback ini
+  /// menang atas [preloadedController]/[preloadedCachedPlayer].
+  final PreloadedVideoClaim? Function()? claimPreloadedVideo;
   final ValueChanged<bool> onOverlayStateChanged;
   final ValueChanged<bool> onMediaZoomChanged;
 
@@ -106,6 +129,7 @@ class FeedVideoPostView extends StatefulWidget {
     required this.onOverlayStateChanged,
     required this.onMediaZoomChanged,
     this.preloadedCachedPlayer,
+    this.claimPreloadedVideo,
   });
 
   @override
@@ -332,7 +356,22 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       appSettingsStore.feedAutoplay && !_dataSaverEnabled;
 
   Future<void> _adoptPreloadedController() async {
-    final controller = widget.preloadedController;
+    // Jalur klaim (fix A5): ambil dari map pemilik HANYA saat state ini
+    // benar-benar mengadopsi (initState) — bukan pass-by-value di build
+    // parent. Klaim adalah remove atomik: dua state tidak mungkin dapat
+    // controller yang sama (nol double-adopt/double-dispose); controller
+    // yang tidak pernah diklaim tetap di map dan di-dispose pemiliknya.
+    VideoPlayerController? controller;
+    CachedVideoPlayerPlus? cachedPlayer;
+    final claim = widget.claimPreloadedVideo;
+    if (claim != null) {
+      final claimed = claim();
+      controller = claimed?.controller;
+      cachedPlayer = claimed?.cachedPlayer;
+    } else {
+      controller = widget.preloadedController;
+      cachedPlayer = widget.preloadedCachedPlayer;
+    }
     if (controller == null) {
       // RACE FIX: post jadi aktif sebelum preload MP4 selesai — controller
       // belum masuk map (baru di-add di .then initialize), tapi wrapper
@@ -340,7 +379,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       // sini. Dulu wrapper ini dibiarkan → VideoPlayerController native
       // bocor (tidak pernah dispose). Sekarang: dispose begitu init-nya
       // settle; _maybeInitVideo lanjut bikin controller fresh.
-      final orphan = widget.preloadedCachedPlayer;
+      final orphan = cachedPlayer;
       if (orphan != null) {
         Future(() async {
           try {
@@ -350,38 +389,41 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       }
       return;
     }
-    _videoController = controller;
+    // Binding non-nullable — promotion `controller` gagal di dalam closure
+    // onInit (variabel lokal assignable yang di-capture).
+    final ctrl = controller;
+    _videoController = ctrl;
     // Adopt wrapper juga supaya child bisa dispose properly. Wrapper
     // might be null (legacy or unwrapped). Either way, controller-level
     // ops tetap work.
-    _cachedPlayer = widget.preloadedCachedPlayer;
-    controller.addListener(_handleVideoPositionForCta);
+    _cachedPlayer = cachedPlayer;
+    ctrl.addListener(_handleVideoPositionForCta);
     // Preloaded controller selalu sudah initialize() — timer reset di sini
     // cuma untuk kasus defensif (controller mungkin dispose dari luar). Kalau
     // sudah initialized, helper-nya early-return tanpa schedule spinner.
     _resetLoadingSpinnerTimer();
-    await controller.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+    await ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
     if (widget.isActive && _shouldAutoplay) {
-      await controller.play();
+      await ctrl.play();
     }
     // HLS bisa ter-adopt SEBELUM initialize selesai (controller masuk map
     // sinkron, init jalan async). play()/setVolume di atas jadi no-op diam
     // → tanpa hook ini video stuck di poster sampai user interaksi.
     // Listener one-shot: begitu initialized, apply volume + play.
-    if (!controller.value.isInitialized) {
+    if (!ctrl.value.isInitialized) {
       void onInit() {
-        if (!controller.value.isInitialized) return;
-        controller.removeListener(onInit);
-        if (!mounted || _videoController != controller) return;
-        controller.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+        if (!ctrl.value.isInitialized) return;
+        ctrl.removeListener(onInit);
+        if (!mounted || _videoController != ctrl) return;
+        ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
         if (widget.isActive && _shouldAutoplay && !_isPaused) {
-          controller.play();
+          ctrl.play();
         }
         _cancelLoadingSpinnerDelay();
         if (mounted) setState(() {});
       }
 
-      controller.addListener(onInit);
+      ctrl.addListener(onInit);
     }
     if (mounted) setState(() {});
   }
