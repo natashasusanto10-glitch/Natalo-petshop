@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/post_video_coordinator.dart';
+import 'package:natalo_petshop_flutter/features/feed/video/video_audio_arbiter.dart';
 
 class FakePlaybackSession implements PlaybackSession {
   FakePlaybackSession(this.postId);
@@ -44,6 +47,51 @@ class FakePlaybackSession implements PlaybackSession {
   Duration get position => _position;
 }
 
+class DeferredPlaySession extends FakePlaybackSession {
+  DeferredPlaySession(super.postId);
+
+  Completer<void>? playGate;
+
+  @override
+  Future<void> play() async {
+    final gate = playGate;
+    if (gate != null) await gate.future;
+    await super.play();
+  }
+}
+
+class DelayedPlaybackSession extends FakePlaybackSession {
+  DelayedPlaybackSession(super.postId, this.events);
+
+  final List<String> events;
+  Completer<void>? volumeGate;
+  Completer<void>? pauseGate;
+
+  @override
+  Future<void> setVolume(double value) async {
+    events.add('$postId:volume:$value:start');
+    final gate = volumeGate;
+    if (gate != null) await gate.future;
+    await super.setVolume(value);
+    events.add('$postId:volume:$value:end');
+  }
+
+  @override
+  Future<void> pause() async {
+    events.add('$postId:pause:start');
+    final gate = pauseGate;
+    if (gate != null) await gate.future;
+    await super.pause();
+    events.add('$postId:pause:end');
+  }
+
+  @override
+  Future<void> play() async {
+    events.add('$postId:play');
+    await super.play();
+  }
+}
+
 class FakeMutedSource extends ChangeNotifier {
   bool muted = true;
 
@@ -58,6 +106,11 @@ void main() {
   late Map<String, FakePlaybackSession> sessions;
   late PostVideoCoordinator coordinator;
 
+  Future<void> settlePlayback() async {
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+  }
+
   setUp(() {
     mutedSource = FakeMutedSource();
     sessions = {};
@@ -69,7 +122,172 @@ void main() {
       },
       mutedListenable: mutedSource,
       readMuted: () => mutedSource.muted,
+      audioArbiter: VideoAudioArbiter(),
     );
+  });
+
+  test('app-wide arbiter transfers audio and stale A cannot silence B',
+      () async {
+    final arbiter = VideoAudioArbiter();
+    final sourceA = FakeMutedSource()..muted = false;
+    final sourceB = FakeMutedSource()..muted = false;
+    final sessionA = DeferredPlaySession('A');
+    final sessionB = FakePlaybackSession('B');
+    final coordinatorA = PostVideoCoordinator(
+      sessionFactory: (_) => sessionA,
+      mutedListenable: sourceA,
+      readMuted: () => sourceA.muted,
+      audioArbiter: arbiter,
+    );
+    final coordinatorB = PostVideoCoordinator(
+      sessionFactory: (_) => sessionB,
+      mutedListenable: sourceB,
+      readMuted: () => sourceB.muted,
+      audioArbiter: arbiter,
+    );
+
+    coordinatorA.setActive('A');
+    await Future<void>.delayed(Duration.zero);
+    expect(sessionA.playing, isTrue);
+    expect(sessionA.volume, 1);
+
+    sessionA.playGate = Completer<void>();
+    coordinatorA.reportVisible('A');
+    await Future<void>.delayed(Duration.zero);
+    coordinatorB.setActive('B');
+    await Future<void>.delayed(Duration.zero);
+    expect(sessionA.playing, isFalse);
+    expect(sessionA.volume, 0);
+    expect(sessionB.playing, isTrue);
+    expect(sessionB.volume, 1);
+
+    sessionA.playGate!.complete();
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+    coordinatorA.reportHidden('A');
+    await Future<void>.delayed(Duration.zero);
+    expect(sessionB.playing, isTrue);
+    expect(sessionB.volume, 1);
+
+    coordinatorB.pauseAll();
+    await Future<void>.delayed(Duration.zero);
+    expect(sessionA.playing, isFalse,
+        reason: 'A only returns after a fresh explicit eligible resume');
+    coordinatorA.resumeAll();
+    await Future<void>.delayed(Duration.zero);
+    expect(sessionA.playing, isTrue);
+    expect(sessionA.volume, 1);
+
+    coordinatorA.dispose();
+    coordinatorB.dispose();
+  });
+
+  test('A to B waits for old active mute and pause before B audio starts',
+      () async {
+    final events = <String>[];
+    final a = DelayedPlaybackSession('A', events);
+    final b = DelayedPlaybackSession('B', events);
+    final source = FakeMutedSource()..muted = false;
+    final coordinator = PostVideoCoordinator(
+      sessionFactory: (id) => id == 'A' ? a : b,
+      mutedListenable: source,
+      readMuted: () => source.muted,
+      audioArbiter: VideoAudioArbiter(),
+    );
+
+    coordinator.setActive('A');
+    await Future<void>.delayed(Duration.zero);
+    expect(a.playing, isTrue);
+
+    a.volumeGate = Completer<void>();
+    a.pauseGate = Completer<void>();
+    coordinator.setActive('B');
+    await Future<void>.delayed(Duration.zero);
+    expect(b.playCount, 0);
+    expect(events, isNot(contains('B:volume:1.0:start')));
+
+    a.volumeGate!.complete();
+    await Future<void>.delayed(Duration.zero);
+    expect(b.playCount, 0, reason: 'B still waits for A pause');
+    a.pauseGate!.complete();
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(a.volume, 0);
+    expect(a.playing, isFalse);
+    expect(b.volume, 1);
+    expect(b.playing, isTrue);
+    expect(events.indexOf('A:pause:end'),
+        lessThan(events.indexOf('B:volume:1.0:start')));
+    coordinator.dispose();
+  });
+
+  test('superseded claim delayed in setVolume never invokes stale play',
+      () async {
+    final arbiter = VideoAudioArbiter();
+    final source = FakeMutedSource()..muted = false;
+    final events = <String>[];
+    final a = DelayedPlaybackSession('A', events)
+      ..volumeGate = Completer<void>();
+    final b = FakePlaybackSession('B');
+    final coordinatorA = PostVideoCoordinator(
+      sessionFactory: (_) => a,
+      mutedListenable: source,
+      readMuted: () => source.muted,
+      audioArbiter: arbiter,
+    );
+    final coordinatorB = PostVideoCoordinator(
+      sessionFactory: (_) => b,
+      mutedListenable: source,
+      readMuted: () => source.muted,
+      audioArbiter: arbiter,
+    );
+
+    coordinatorA.setActive('A');
+    await Future<void>.delayed(Duration.zero);
+    coordinatorB.setActive('B');
+    await Future<void>.delayed(Duration.zero);
+    expect(b.playing, isTrue);
+
+    a.volumeGate!.complete();
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+    expect(a.playCount, 0,
+        reason: 'stale token must be checked before play is invoked');
+    expect(a.volume, 0);
+    expect(b.playing, isTrue);
+
+    coordinatorA.dispose();
+    coordinatorB.dispose();
+  });
+
+  group('session adoption', () {
+    test('adopt bypasses factory and coordinator disposes adopted session',
+        () async {
+      final adopted = FakePlaybackSession('A');
+      expect(coordinator.adoptSession('A', adopted), isTrue);
+
+      expect(coordinator.attach('view-a', 'A'), same(adopted));
+      expect(sessions, isEmpty);
+      coordinator.dispose();
+      await Future<void>.delayed(Duration.zero);
+      expect(adopted.disposeCount, 1);
+    });
+
+    test('duplicate adoption is rejected and duplicate is cleaned once',
+        () async {
+      final first = FakePlaybackSession('A');
+      final duplicate = FakePlaybackSession('A-duplicate');
+      expect(coordinator.adoptSession('A', first), isTrue);
+      expect(coordinator.adoptSession('A', duplicate), isFalse);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(coordinator.sessionFor('A'), same(first));
+      expect(duplicate.disposeCount, 1);
+      coordinator.dispose();
+      await Future<void>.delayed(Duration.zero);
+      expect(first.disposeCount, 1);
+    });
   });
 
   group('slot & eviction LRU', () {
@@ -102,10 +320,60 @@ void main() {
       expect(coordinator.livePostIds, contains('B'));
       expect(sessions['B']!.disposeCount, 0);
 
-      // Detach → sekarang boleh dieviction.
+      // Detach preserves the short transition grace while below the new cap.
       coordinator.detach('view-b', 'B');
-      expect(coordinator.livePostIds, isNot(contains('B')));
-      expect(sessions['B']!.disposeCount, 1);
+      expect(coordinator.livePostIds, contains('B'));
+      expect(sessions['B']!.disposeCount, 0);
+    });
+  });
+
+  group('adaptive preload window', () {
+    test('deduplicates and hard caps preload IDs at three', () {
+      coordinator.setOrigin('origin');
+      coordinator.setActive('active');
+      coordinator.setPreloadWindow(['a', 'a', 'b', 'c', 'd', 'active']);
+
+      expect(coordinator.preloadPostIds, {'a', 'b', 'c'});
+      expect(coordinator.livePostIds.length, 5);
+      expect(sessions['d'], isNull);
+      for (final id in ['a', 'b', 'c']) {
+        expect(sessions[id]!.playing, isFalse);
+        expect(sessions[id]!.volume, 0);
+      }
+    });
+
+    test('window replacement evicts stale preload and clear keeps roles',
+        () async {
+      coordinator.setOrigin('origin');
+      coordinator.setActive('active');
+      coordinator.setPreloadWindow(['a', 'b', 'c']);
+      coordinator.setPreloadWindow(['c', 'd']);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(coordinator.preloadPostIds, {'c', 'd'});
+      expect(coordinator.livePostIds, {'origin', 'active', 'c', 'd'});
+      expect(sessions['a']!.disposeCount, 1);
+      expect(sessions['b']!.disposeCount, 1);
+
+      coordinator.setPreloadWindow(const []);
+      await Future<void>.delayed(Duration.zero);
+      expect(coordinator.livePostIds, {'origin', 'active'});
+      expect(sessions['c']!.disposeCount, 1);
+      expect(sessions['d']!.disposeCount, 1);
+    });
+
+    test('attached session survives clear then disposes after detach',
+        () async {
+      coordinator.attach('view-a', 'a');
+      coordinator.setPreloadWindow(['a']);
+      coordinator.setPreloadWindow(const []);
+      expect(coordinator.livePostIds, contains('a'));
+
+      coordinator.detach('view-a', 'a');
+      coordinator.setPreloadWindow(const []);
+      await Future<void>.delayed(Duration.zero);
+      expect(coordinator.livePostIds, isNot(contains('a')));
+      expect(sessions['a']!.disposeCount, 1);
     });
   });
 
@@ -135,22 +403,24 @@ void main() {
   });
 
   group('mute rules', () {
-    test('sesi baru selalu paused + volume 0; aktif dapat feedMuted', () {
+    test('sesi baru selalu paused + volume 0; aktif dapat feedMuted', () async {
       coordinator.preloadNext('B');
       expect(sessions['B']!.volume, 0);
       expect(sessions['B']!.playing, isFalse);
 
       mutedSource.muted = false;
       coordinator.setActive('A');
+      await settlePlayback();
       expect(sessions['A']!.volume, 1);
       expect(sessions['A']!.playing, isTrue);
     });
 
-    test('unmute global TIDAK menyentuh background/preload', () {
+    test('unmute global TIDAK menyentuh background/preload', () async {
       coordinator.setOrigin('A');
       coordinator.setActive('A');
       coordinator.setActive('B'); // A jadi background
       coordinator.preloadNext('C');
+      await settlePlayback();
       expect(sessions['A']!.volume, 0);
       expect(sessions['C']!.volume, 0);
 
@@ -163,16 +433,17 @@ void main() {
       expect(sessions['C']!.playing, isFalse);
     });
 
-    test('mute global menurunkan volume aktif ke 0', () {
+    test('mute global menurunkan volume aktif ke 0', () async {
       mutedSource.muted = false;
       coordinator.setActive('A');
+      await settlePlayback();
       expect(sessions['A']!.volume, 1);
 
       mutedSource.set(true);
       expect(sessions['A']!.volume, 0);
     });
 
-    test('preload → aktif diberi nilai feedMuted SAAT ITU', () {
+    test('preload → aktif diberi nilai feedMuted SAAT ITU', () async {
       coordinator.preloadNext('B'); // lahir muted
       expect(sessions['B']!.volume, 0);
 
@@ -180,6 +451,7 @@ void main() {
       expect(sessions['B']!.volume, 0); // preload tak tersentuh
 
       coordinator.setActive('B'); // baru sekarang dapat nilai terkini
+      await settlePlayback();
       expect(sessions['B']!.volume, 1);
       expect(sessions['B']!.playing, isTrue);
       expect(coordinator.preloadPostId, isNull);
@@ -187,21 +459,24 @@ void main() {
   });
 
   group('intent playback', () {
-    test('setActive: aktif lama paused + volume 0', () {
+    test('setActive: aktif lama paused + volume 0', () async {
       mutedSource.muted = false;
       coordinator.setActive('A');
       coordinator.setActive('B');
+      await settlePlayback();
       expect(sessions['A']!.playing, isFalse);
       expect(sessions['A']!.volume, 0);
       expect(sessions['B']!.playing, isTrue);
     });
 
     test('userTogglePlay pause lalu play lagi; reportVisible hormati pause',
-        () {
+        () async {
       coordinator.setActive('A');
+      await settlePlayback();
       expect(sessions['A']!.playing, isTrue);
 
       coordinator.userTogglePlay();
+      await settlePlayback();
       expect(sessions['A']!.playing, isFalse);
 
       // Visible saat user-paused → TIDAK auto-resume.
@@ -209,15 +484,20 @@ void main() {
       expect(sessions['A']!.playing, isFalse);
 
       coordinator.userTogglePlay();
+      await settlePlayback();
       expect(sessions['A']!.playing, isTrue);
     });
 
-    test('reportHidden pause; reportVisible resume hanya video aktif', () {
+    test('reportHidden pause; reportVisible resume hanya video aktif',
+        () async {
       coordinator.setActive('A');
+      await settlePlayback();
       coordinator.reportHidden('A');
+      await settlePlayback();
       expect(sessions['A']!.playing, isFalse);
 
       coordinator.reportVisible('A');
+      await settlePlayback();
       expect(sessions['A']!.playing, isTrue);
 
       // Non-aktif tidak pernah di-play oleh reportVisible.
@@ -229,13 +509,14 @@ void main() {
 
   group('pauseAll & dispose', () {
     test('pauseAll pause semua sesi; visible tak resume sampai intent baru',
-        () {
+        () async {
       coordinator.setOrigin('A');
       coordinator.setActive('A');
       coordinator.setActive('B');
       coordinator.preloadNext('C');
 
       coordinator.pauseAll();
+      await settlePlayback();
       expect(sessions['A']!.playing, isFalse);
       expect(sessions['B']!.playing, isFalse);
       expect(sessions['C']!.playing, isFalse);
@@ -244,23 +525,26 @@ void main() {
       expect(sessions['B']!.playing, isFalse); // masih suspended
 
       coordinator.setActive('B'); // intent baru
+      await settlePlayback();
       expect(sessions['B']!.playing, isTrue);
     });
 
     test('resumeAll: sesi aktif main lagi dgn mute terkini; background tidak',
-        () {
+        () async {
       coordinator.setOrigin('A');
       coordinator.setActive('A');
       coordinator.setActive('B'); // A jadi background
       coordinator.preloadNext('C');
 
       coordinator.pauseAll();
+      await settlePlayback();
       expect(sessions['A']!.playing, isFalse);
       expect(sessions['B']!.playing, isFalse);
       expect(sessions['C']!.playing, isFalse);
 
       mutedSource.set(false); // user unmute selagi suspended
       coordinator.resumeAll();
+      await settlePlayback();
 
       // Sesi aktif (B) main lagi dgn volume mute terkini.
       expect(sessions['B']!.playing, isTrue);
@@ -435,7 +719,8 @@ void main() {
   });
 
   group('KUNCI 2 — detach origin tetap hidup via pinned', () {
-    test('origin detach (attachment 0) tapi pinned → TIDAK dispose + masih '
+    test(
+        'origin detach (attachment 0) tapi pinned → TIDAK dispose + masih '
         'sessionFor, walau >3 sesi', () {
       // Origin A dipakai inline; masuk fullscreen swipe menumpuk B/C/D.
       coordinator.setOrigin('A');
@@ -458,7 +743,8 @@ void main() {
   });
 
   group('urutan transisi deterministik (T7)', () {
-    test('setActive pause+mute active lama + evict yang lepas-role; '
+    test(
+        'setActive pause+mute active lama + evict yang lepas-role; '
         'origin & next selamat', () {
       coordinator.setOrigin('A'); // A pinned origin
       coordinator.setActive('A');

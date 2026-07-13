@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { MY_FEED_VISIBLE_STATUSES } from "@/lib/feed/my-posts";
 import { deleteFeedAssets } from "@/lib/feed/cleanup";
 import { signBunnyUrl } from "@/lib/feed/bunny";
+import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 
 const MAX_TITLE_LENGTH = 200;
@@ -42,6 +43,7 @@ export async function GET(
       thumbnailUrl: true,
       thumbnailBlurhash: true,
       videoUrl: true,
+      videoGuid: true,
       videoDurationSec: true,
       videoWidth: true,
       videoHeight: true,
@@ -106,6 +108,11 @@ export async function GET(
     viewerLiked = Boolean(like);
   }
 
+  const playbackUrls = buildFeedVideoPlaybackUrls({
+    videoUrl: post.videoUrl,
+    videoGuid: post.videoGuid,
+  });
+
   return NextResponse.json({
     id: post.id,
     kind: post.kind,
@@ -113,7 +120,8 @@ export async function GET(
     description: post.description,
     thumbnailUrl: signBunnyUrl(post.thumbnailUrl) ?? null,
     thumbnailBlurhash: post.thumbnailBlurhash,
-    videoUrl: signBunnyUrl(post.videoUrl) ?? null,
+    videoUrl: playbackUrls.videoUrl,
+    videoDataSaverUrl: playbackUrls.videoDataSaverUrl,
     videoDurationSec: post.videoDurationSec,
     videoWidth: post.videoWidth,
     videoHeight: post.videoHeight,
@@ -130,14 +138,20 @@ export async function GET(
       role: post.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
       profilePhotoUrl: brandPhotoUrl(post.author.role, post.author.profilePhotoUrl),
     },
-    media: post.media.map((m) => ({
-      id: m.id,
-      url: signBunnyUrl(m.url) ?? m.url,
-      thumbnailUrl: signBunnyUrl(m.thumbnailUrl) ?? null,
-      mediaType: m.mediaType,
-      width: m.width,
-      height: m.height,
-    })),
+    media: post.media.map((m) => {
+      const mediaPlaybackUrls = buildFeedVideoPlaybackUrls({ videoUrl: m.url });
+      return {
+        id: m.id,
+        url: mediaPlaybackUrls.videoUrl ?? m.url,
+        ...(m.mediaType === "video"
+          ? { videoDataSaverUrl: mediaPlaybackUrls.videoDataSaverUrl }
+          : {}),
+        thumbnailUrl: signBunnyUrl(m.thumbnailUrl) ?? null,
+        mediaType: m.mediaType,
+        width: m.width,
+        height: m.height,
+      };
+    }),
     recentLikers: post.likes.map((l) => ({
       id: l.user.id,
       name: brandDisplayName(l.user.role, l.user.name),

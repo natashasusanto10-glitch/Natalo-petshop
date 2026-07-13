@@ -19,7 +19,7 @@ class AppSettingsStore extends ChangeNotifier {
   /// Auto-play video saat masuk viewport feed. Default ON.
   bool _feedAutoplay = true;
 
-  /// 'auto' (network tier), 'high', 'medium', 'low'. Default 'auto'.
+  /// 'auto' (HLS adaptive), 'high' (HLS Full HD), 'data_saver' (MP4 480).
   String _feedVideoQuality = 'auto';
 
   /// Default mute saat start playback — match Instagram Reels behavior.
@@ -39,7 +39,7 @@ class AppSettingsStore extends ChangeNotifier {
   String get feedVideoQuality => _feedVideoQuality;
   String get feedVideoQualityLabel {
     return switch (_feedVideoQuality) {
-      'high' => 'Tinggi',
+      'high' => 'Tinggi / Full HD',
       'data_saver' => 'Hemat Data',
       _ => 'Otomatis',
     };

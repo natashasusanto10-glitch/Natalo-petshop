@@ -24,6 +24,7 @@ import { prisma } from "@/lib/prisma";
 import { resolveUserByUsername } from "@/lib/username";
 import { getSession } from "@/lib/auth";
 import { signBunnyUrl } from "@/lib/feed/bunny";
+import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 
 // Postingan customer biasa: video komunitas + foto carousel.
@@ -102,6 +103,7 @@ export async function GET(
         description: true,
         thumbnailUrl: true,
         videoUrl: true,
+        videoGuid: true,
         videoDurationSec: true,
         videoWidth: true,
         videoHeight: true,
@@ -212,38 +214,51 @@ export async function GET(
     // bisa fetch HLS playlist → "video tidak bisa diputar".
     // `signBunnyUrl` no-op untuk URL non-Bunny (UploadThing image
     // carousel return as-is), jadi aman apply ke semua URL.
-    items: sliced.map((p) => ({
-      id: p.id,
-      kind: p.kind,
-      title: p.title,
-      description: p.description,
-      thumbnailUrl: signBunnyUrl(p.thumbnailUrl) ?? null,
-      videoUrl: signBunnyUrl(p.videoUrl) ?? null,
-      videoDurationSec: p.videoDurationSec,
-      videoWidth: p.videoWidth,
-      videoHeight: p.videoHeight,
-      createdAt: p.createdAt.toISOString(),
-      likeCount: p.likeCount,
-      commentCount: p.commentCount,
-      viewCount: p.viewCount,
-      viewerLiked: viewerLikedIds.has(p.id),
-      recentLikers: p.likes.map((like) => ({
-        id: like.user.id,
-        name: brandDisplayName(like.user.role, like.user.name),
-        username: like.user.username,
-        role: like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
-        profilePhotoUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
-        avatarUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
-      })),
-      media: p.media.map((m) => ({
-        id: m.id,
-        url: signBunnyUrl(m.url) ?? m.url,
-        thumbnailUrl: signBunnyUrl(m.thumbnailUrl) ?? null,
-        mediaType: m.mediaType,
-        width: m.width,
-        height: m.height,
-      })),
-    })),
+    items: sliced.map((p) => {
+      const playbackUrls = buildFeedVideoPlaybackUrls({
+        videoUrl: p.videoUrl,
+        videoGuid: p.videoGuid,
+      });
+      return {
+        id: p.id,
+        kind: p.kind,
+        title: p.title,
+        description: p.description,
+        thumbnailUrl: signBunnyUrl(p.thumbnailUrl) ?? null,
+        videoUrl: playbackUrls.videoUrl,
+        videoDataSaverUrl: playbackUrls.videoDataSaverUrl,
+        videoDurationSec: p.videoDurationSec,
+        videoWidth: p.videoWidth,
+        videoHeight: p.videoHeight,
+        createdAt: p.createdAt.toISOString(),
+        likeCount: p.likeCount,
+        commentCount: p.commentCount,
+        viewCount: p.viewCount,
+        viewerLiked: viewerLikedIds.has(p.id),
+        recentLikers: p.likes.map((like) => ({
+          id: like.user.id,
+          name: brandDisplayName(like.user.role, like.user.name),
+          username: like.user.username,
+          role: like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
+          profilePhotoUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
+          avatarUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
+        })),
+        media: p.media.map((m) => {
+          const mediaPlaybackUrls = buildFeedVideoPlaybackUrls({ videoUrl: m.url });
+          return {
+            id: m.id,
+            url: mediaPlaybackUrls.videoUrl ?? m.url,
+            ...(m.mediaType === "video"
+              ? { videoDataSaverUrl: mediaPlaybackUrls.videoDataSaverUrl }
+              : {}),
+            thumbnailUrl: signBunnyUrl(m.thumbnailUrl) ?? null,
+            mediaType: m.mediaType,
+            width: m.width,
+            height: m.height,
+          };
+        }),
+      };
+    }),
     nextCursor: hasMore ? sliced[sliced.length - 1].id : null,
   });
 }

@@ -92,6 +92,7 @@ class FeedProductLink {
   final int price;
   final int? discountPrice;
   final int? promoPrice;
+
   /// Sumber diskon dari backend (resolveActiveDiscount): 'FLASH_SALE' atau
   /// 'PROMO_TOKO'. null kalau tidak ada diskon aktif. Dipakai untuk label:
   /// Flash Sale → "Flash Sale X%", Promo Toko → "Diskon X%". Tanpa ini app
@@ -220,6 +221,7 @@ class FeedPost {
   /// Untuk video kind: source video URL. Untuk photo/carousel: kosong
   /// (gunakan mediaItems.first.mediaUrl).
   final String videoUrl;
+  final String? videoDataSaverUrl;
   final String? thumbnailUrl;
   final String? blurhash;
   final String? thumbnailBlurhash;
@@ -267,6 +269,7 @@ class FeedPost {
     this.description = '',
     this.caption,
     required this.videoUrl,
+    this.videoDataSaverUrl,
     this.thumbnailUrl,
     this.blurhash,
     this.thumbnailBlurhash,
@@ -371,6 +374,14 @@ class FeedPost {
     return '';
   }
 
+  String videoPlaybackUrlForQuality(String? qualityPreference) {
+    if (qualityPreference == 'data_saver') {
+      final dataSaver = videoDataSaverUrl?.trim();
+      if (dataSaver != null && dataSaver.isNotEmpty) return dataSaver;
+    }
+    return videoPlaybackUrl;
+  }
+
   // ───────── Moderation helpers (owner-only) ─────────
 
   FeedPostStatus get statusInfo {
@@ -422,6 +433,7 @@ class FeedPost {
     String? description,
     String? caption,
     String? videoUrl,
+    String? videoDataSaverUrl,
     String? thumbnailUrl,
     String? blurhash,
     String? thumbnailBlurhash,
@@ -457,6 +469,7 @@ class FeedPost {
       description: description ?? this.description,
       caption: caption ?? this.caption,
       videoUrl: videoUrl ?? this.videoUrl,
+      videoDataSaverUrl: videoDataSaverUrl ?? this.videoDataSaverUrl,
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       blurhash: blurhash ?? this.blurhash,
       thumbnailBlurhash: thumbnailBlurhash ?? this.thumbnailBlurhash,
@@ -594,6 +607,7 @@ class FeedPost {
         json['title'] as String?,
       ]),
       videoUrl: (json['videoUrl'] ?? json['mediaUrl']) as String? ?? '',
+      videoDataSaverUrl: json['videoDataSaverUrl'] as String?,
       thumbnailUrl: json['thumbnailUrl'] as String?,
       blurhash: blurhash,
       thumbnailBlurhash: blurhash,
@@ -639,6 +653,7 @@ class FeedPost {
       'description': description,
       'caption': caption,
       'videoUrl': videoUrl,
+      'videoDataSaverUrl': videoDataSaverUrl,
       'thumbnailUrl': thumbnailUrl,
       'thumbnailBlurhash': thumbnailBlurhash,
       'durationSec': durationSec,
@@ -731,13 +746,15 @@ bool _looksLikeVideoUrl(String url) {
       lower.contains('/video/');
 }
 
-/// 1 row dari FeedMedia table — image atau video item dalam carousel/single
-/// media post. Field `mediaUrl` adalah canonical (sebelumnya bernama `url`
-/// di reels feed shape — fromJson accept BOTH).
+/// 1 row dari FeedMedia table. Untuk feed post, PHOTO_CAROUSEL berisi 1-8
+/// image-only rows; video post memakai top-level `videoUrl`/`videoGuid`.
+/// Parser tetap menerima `video` untuk backward-compat shape lama/detail
+/// fallback lokal, tapi tidak ada kontrak data-saver per-media.
 class FeedMedia {
   final String id;
   final String mediaType; // "image" | "video"
   final String mediaUrl;
+  final String? videoDataSaverUrl;
   final String? thumbnailUrl;
   final int? width;
   final int? height;
@@ -748,6 +765,7 @@ class FeedMedia {
     required this.id,
     required this.mediaType,
     required this.mediaUrl,
+    this.videoDataSaverUrl,
     this.thumbnailUrl,
     this.width,
     this.height,
@@ -770,6 +788,14 @@ class FeedMedia {
   bool get isVideo => mediaType.toLowerCase() == 'video';
   bool get isImage => !isVideo;
 
+  String mediaPlaybackUrlForQuality(String? qualityPreference) {
+    if (isVideo && qualityPreference == 'data_saver') {
+      final dataSaver = videoDataSaverUrl?.trim();
+      if (dataSaver != null && dataSaver.isNotEmpty) return dataSaver;
+    }
+    return mediaUrl;
+  }
+
   factory FeedMedia.fromJson(Map<String, dynamic> json) {
     final mediaUrl = (json['mediaUrl'] as String?) ??
         (json['url'] as String?) ??
@@ -785,6 +811,7 @@ class FeedMedia {
       id: (json['id'] as String?) ?? '',
       mediaType: mediaType,
       mediaUrl: mediaUrl,
+      videoDataSaverUrl: json['videoDataSaverUrl'] as String?,
       thumbnailUrl: json['thumbnailUrl'] as String?,
       width: (json['width'] as num?)?.toInt(),
       height: (json['height'] as num?)?.toInt(),

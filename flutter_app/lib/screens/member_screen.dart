@@ -6,11 +6,13 @@ import 'package:flutter/services.dart';
 import '../theme/natalo_colors.dart';
 
 import '../models/feed_post.dart';
+import '../features/feed/video/post_video_warm_handoff.dart';
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
+import '../state/settings_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_notification_button.dart';
@@ -113,6 +115,7 @@ class _ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<_ProfilePage>
     with SingleTickerProviderStateMixin {
+  bool _openingPost = false;
   late TabController _tabController;
   List<FeedPost> _allPosts = const [];
   bool _loadingPosts = true;
@@ -246,22 +249,33 @@ class _ProfilePageState extends State<_ProfilePage>
     showUpdateProfilePhotoSheet(context);
   }
 
-  void _openPostDetail(List<FeedPost> posts, int initialIndex) {
-    if (posts.isEmpty) return;
+  Future<void> _openPostDetail(List<FeedPost> posts, int initialIndex) async {
+    if (posts.isEmpty || _openingPost) return;
+    _openingPost = true;
     AppHaptics.tap();
-    Navigator.push<void>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => MemberPostDetailScreen(
-          post: posts[initialIndex],
-          posts: posts,
-          initialIndex: initialIndex,
+    final post = posts[initialIndex];
+    final handoff = PostVideoWarmHandoff.createIfVideo(
+      isVideo: post.isVideo,
+      postId: post.id,
+      url: post.videoPlaybackUrlForQuality(appSettingsStore.feedVideoQuality),
+    );
+    try {
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MemberPostDetailScreen(
+            post: post,
+            posts: posts,
+            initialIndex: initialIndex,
+            warmVideoHandoff: handoff,
+          ),
         ),
-      ),
-    ).then((_) {
-      // User mungkin delete/edit post di detail screen → refresh.
-      if (mounted) _loadAll();
-    });
+      );
+    } finally {
+      await handoff?.disposeIfUnclaimed();
+      _openingPost = false;
+    }
+    if (mounted) await _loadAll();
   }
 
   List<FeedPost> get _videoPosts => _allPosts.where((p) => p.isVideo).toList();
@@ -946,8 +960,7 @@ class _PostThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mediaUrl =
-        (post.thumbnailUrl?.trim().isNotEmpty == true
+    final mediaUrl = (post.thumbnailUrl?.trim().isNotEmpty == true
             ? post.thumbnailUrl
             : null) ??
         (post.previewMediaUrl.trim().isNotEmpty ? post.previewMediaUrl : null);

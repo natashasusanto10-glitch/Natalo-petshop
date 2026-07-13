@@ -34,6 +34,8 @@ import '../../../utils/app_route_observer.dart';
 import '../../../utils/formatters.dart';
 import '../../../utils/haptics.dart';
 import '../video/post_video_coordinator.dart';
+import '../video/single_dispose_guard.dart';
+import '../video/video_audio_arbiter.dart';
 import '../video/video_player_session.dart';
 import '../video/video_playback_health_monitor.dart';
 import '../../../widgets/app_toast.dart';
@@ -111,12 +113,20 @@ bool shouldPauseForCommentExtent({
 class PreloadedVideoClaim {
   final VideoPlayerController? controller;
   final CachedVideoPlayerPlus? cachedPlayer;
+  final bool isPending;
 
   const PreloadedVideoClaim({
     required this.controller,
     required this.cachedPlayer,
-  });
+  }) : isPending = false;
+
+  const PreloadedVideoClaim.pending()
+      : controller = null,
+        cachedPlayer = null,
+        isPending = true;
 }
+
+enum _PreloadClaimState { none, pending, adopted }
 
 /// Satu fullscreen page Reels-style — video/thumbnail + Reels overlay.
 class FeedVideoPostView extends StatefulWidget {
@@ -137,7 +147,9 @@ class FeedVideoPostView extends StatefulWidget {
   /// controller dari map tanpa pernah diadopsi (controller yatim: tak pernah
   /// di-dispose → leak + kandidat audio hantu). Kalau di-set, callback ini
   /// menang atas [preloadedController]/[preloadedCachedPlayer].
-  final PreloadedVideoClaim? Function()? claimPreloadedVideo;
+  final FutureOr<PreloadedVideoClaim?> Function()? claimPreloadedVideo;
+  final ValueListenable<int>? preloadListenable;
+  final ValueChanged<bool>? onLocalOwnershipChanged;
   final ValueChanged<bool> onOverlayStateChanged;
   final ValueChanged<bool> onMediaZoomChanged;
 
@@ -202,6 +214,8 @@ class FeedVideoPostView extends StatefulWidget {
     required this.onMediaZoomChanged,
     this.preloadedCachedPlayer,
     this.claimPreloadedVideo,
+    this.preloadListenable,
+    this.onLocalOwnershipChanged,
     this.ownsController = true,
     this.playbackManagedExternally = false,
     this.coordinator,
@@ -229,6 +243,30 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   /// adopt-from-parent path: copy dari widget.preloadedCachedPlayer.
   /// Untuk fresh-create path: di-set di _maybeInitVideo.
   CachedVideoPlayerPlus? _cachedPlayer;
+  CachedVideoPlayerPlus? _localInitCachedPlayer;
+  VideoPlayerController? _localInitController;
+  final SingleDisposeGuard<CachedVideoPlayerPlus> _localWrapperDisposeGuard =
+      SingleDisposeGuard<CachedVideoPlayerPlus>();
+  final SingleDisposeGuard<VideoPlayerController> _localControllerDisposeGuard =
+      SingleDisposeGuard<VideoPlayerController>();
+
+  Future<void> _disposeLocalInitResource({
+    CachedVideoPlayerPlus? wrapper,
+    VideoPlayerController? controller,
+  }) async {
+    if (wrapper != null && identical(wrapper, _localInitCachedPlayer)) {
+      await _localWrapperDisposeGuard.dispose(wrapper, () async {
+        await wrapper.dispose();
+      });
+      return;
+    }
+    if (controller != null && identical(controller, _localInitController)) {
+      await _localControllerDisposeGuard.dispose(controller, () async {
+        await controller.dispose();
+      });
+    }
+  }
+
   final DraggableScrollableController _commentSheetController =
       DraggableScrollableController();
   final ValueNotifier<double> _commentSheetExtent = ValueNotifier<double>(
@@ -410,15 +448,16 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       );
       _syncManagedSession();
     } else {
-      _adoptPreloadedController();
+      widget.preloadListenable?.addListener(_onLatePreloadAvailable);
+      unawaited(_claimOrInitOnActivation(allowLocalInit: widget.isActive));
     }
-    _maybeInitVideo();
     _syncProductRotation();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _dependenciesReady = true;
     // Subscribe RouteAware — pause pasti SEBELUM route lain menutup feed,
     // tidak lagi menunggu debounce VisibilityDetector (~500ms) yang
     // membiarkan dua video bersuara bersamaan (fix double-audio).
@@ -449,6 +488,118 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   // in-flight, play() yang lahir di belakang layar terkunci app harus tetap
   // digerbang.
   bool _appBackgrounded = false;
+  bool _dependenciesReady = false;
+  VideoAudioClaim? _audioClaim;
+  int _legacyPlaybackGeneration = 0;
+  bool _legacyDisposed = false;
+
+  VideoAudioClaim _claimAudio() {
+    final claim = videoAudioArbiter.claim(
+      owner: this,
+      onFocusLost: _onAudioFocusLost,
+    );
+    _audioClaim = claim;
+    return claim;
+  }
+
+  void _releaseAudio() {
+    _legacyPlaybackGeneration++;
+    _audioClaim?.release();
+    _audioClaim = null;
+  }
+
+  void _onAudioFocusLost() {
+    _legacyPlaybackGeneration++;
+    _audioClaim = null;
+    final ctrl = _videoController;
+    if (ctrl == null) return;
+    unawaited(_silenceLegacyController(ctrl));
+  }
+
+  Future<void> _silenceLegacyController(VideoPlayerController ctrl) async {
+    try {
+      await ctrl.setVolume(0);
+      await ctrl.pause();
+    } catch (_) {
+      // Expected when native teardown wins a race with lifecycle cleanup.
+    }
+  }
+
+  bool _legacyPlaybackIsValid(
+    VideoPlayerController ctrl,
+    VideoAudioClaim claim,
+    int generation, {
+    required bool userInitiated,
+  }) {
+    return !_legacyDisposed &&
+        mounted &&
+        identical(_videoController, ctrl) &&
+        generation == _legacyPlaybackGeneration &&
+        identical(_audioClaim, claim) &&
+        claim.isCurrent &&
+        _canAutoplayNow(userInitiated: userInitiated);
+  }
+
+  bool _hasNewerLegacyPlayback(
+    VideoPlayerController ctrl,
+    VideoAudioClaim claim,
+  ) {
+    final current = _audioClaim;
+    return !_legacyDisposed &&
+        mounted &&
+        identical(_videoController, ctrl) &&
+        current != null &&
+        !identical(current, claim) &&
+        current.isCurrent &&
+        _canAutoplayNow();
+  }
+
+  Future<void> _playLegacy(
+    VideoPlayerController ctrl,
+    String source, {
+    bool userInitiated = false,
+  }) async {
+    if (!_canAutoplayNow(userInitiated: userInitiated)) return;
+    final generation = ++_legacyPlaybackGeneration;
+    final claim = _claimAudio();
+    _logPlay(source);
+    try {
+      await ctrl.setVolume(
+        !appSettingsStore.feedMuted && claim.isCurrent ? 1 : 0,
+      );
+      if (!_legacyPlaybackIsValid(
+        ctrl,
+        claim,
+        generation,
+        userInitiated: userInitiated,
+      )) {
+        if (_hasNewerLegacyPlayback(ctrl, claim)) {
+          await ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+          return;
+        }
+        if (identical(_audioClaim, claim)) _releaseAudio();
+        await _silenceLegacyController(ctrl);
+        return;
+      }
+      await ctrl.play();
+      if (!_legacyPlaybackIsValid(
+        ctrl,
+        claim,
+        generation,
+        userInitiated: userInitiated,
+      )) {
+        if (_hasNewerLegacyPlayback(ctrl, claim)) {
+          await ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+          return;
+        }
+        if (identical(_audioClaim, claim)) _releaseAudio();
+        await _silenceLegacyController(ctrl);
+      }
+    } catch (_) {
+      if (identical(_audioClaim, claim)) _releaseAudio();
+      await _silenceLegacyController(ctrl);
+    }
+  }
 
   /// Gate tunggal untuk SEMUA jalur play() legacy (non-managed). Managed
   /// (coordinator) tidak lewat sini — dijaga terpisah oleh guard `_managed`
@@ -488,7 +639,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   /// Fallback `true` bila context tak punya route (mis. widget test tanpa
   /// Navigator). Context-guard: hanya baca `ModalRoute.of` saat `mounted`.
   bool get _feedRouteIsCurrent {
-    if (!mounted) return true;
+    if (!mounted || !_dependenciesReady) return true;
     final r = ModalRoute.of(context);
     return r?.isCurrent ?? true;
   }
@@ -514,6 +665,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       widget.onRequestPause?.call(reason);
       return;
     }
+    _releaseAudio();
     final ctrl = _videoController;
     if (ctrl == null || !ctrl.value.isInitialized) {
       // Controller belum siap (mis. masih initialize() async) — state cover
@@ -561,15 +713,18 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // / navigasi. Idempoten & murah. Hanya video aktif yang akan main.
     final ctrl = _videoController;
     if (ctrl != null && ctrl.value.isInitialized) {
-      ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+      ctrl.setVolume(
+        !appSettingsStore.feedMuted && (_audioClaim?.isCurrent ?? false)
+            ? 1
+            : 0,
+      );
     }
     // Play hanya kalau controller SUDAH ada; kalau masih null, init-path yang
     // meng-handle (dan karena _routeCovered sudah false, _canAutoplayNow di
     // init-path akan mengizinkan play + volume sudah benar). _canAutoplayNow
     // tetap penjaga akhir (blok _appBackgrounded / _routeCovered / dsb).
     if (_canAutoplayNow()) {
-      _logPlay('resume-cover');
-      ctrl?.play();
+      if (ctrl != null) unawaited(_playLegacy(ctrl, 'resume-cover'));
     }
   }
 
@@ -685,15 +840,31 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       ctrl.setVolume(0);
       return;
     }
-    ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+    ctrl.setVolume(
+      !appSettingsStore.feedMuted && (_audioClaim?.isCurrent ?? false) ? 1 : 0,
+    );
   }
 
   /// Guard in-flight untuk [_maybeInitVideo] (fix A4): true selama sebuah
   /// init sedang berjalan supaya panggilan kedua (mis. tap saat loading)
   /// tidak memulai controller/download kedua.
   bool _initInFlight = false;
+  bool _ownsLocalController = false;
 
-  Future<void> _adoptPreloadedController() async {
+  void _commitLocalOwnership() {
+    if (_ownsLocalController) return;
+    _ownsLocalController = true;
+    widget.onLocalOwnershipChanged?.call(true);
+  }
+
+  void _onLatePreloadAvailable() {
+    if (!mounted || _managed || _initInFlight || _videoController != null) {
+      return;
+    }
+    unawaited(_claimOrInitOnActivation(allowLocalInit: widget.isActive));
+  }
+
+  Future<_PreloadClaimState> _adoptPreloadedController() async {
     // Jalur klaim (fix A5): ambil dari map pemilik HANYA saat state ini
     // benar-benar mengadopsi (initState) — bukan pass-by-value di build
     // parent. Klaim adalah remove atomik: dua state tidak mungkin dapat
@@ -703,12 +874,31 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     CachedVideoPlayerPlus? cachedPlayer;
     final claim = widget.claimPreloadedVideo;
     if (claim != null) {
-      final claimed = claim();
+      final claimed = await claim();
+      if (!mounted) {
+        final cachedPlayer = claimed?.cachedPlayer;
+        final controller = claimed?.controller;
+        if (cachedPlayer != null) {
+          unawaited(cachedPlayer.dispose());
+        } else if (controller != null) {
+          unawaited(controller.dispose());
+        }
+        return _PreloadClaimState.none;
+      }
+      if (claimed?.isPending ?? false) return _PreloadClaimState.pending;
       controller = claimed?.controller;
       cachedPlayer = claimed?.cachedPlayer;
     } else {
       controller = widget.preloadedController;
       cachedPlayer = widget.preloadedCachedPlayer;
+    }
+    if (_videoController != null || _initInFlight) {
+      if (cachedPlayer != null) {
+        unawaited(cachedPlayer.dispose());
+      } else if (controller != null) {
+        unawaited(controller.dispose());
+      }
+      return _PreloadClaimState.none;
     }
     if (controller == null) {
       // RACE FIX: post jadi aktif sebelum preload MP4 selesai — controller
@@ -725,12 +915,13 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
           } catch (_) {}
         });
       }
-      return;
+      return _PreloadClaimState.none;
     }
     // Binding non-nullable — promotion `controller` gagal di dalam closure
     // onInit (variabel lokal assignable yang di-capture).
     final ctrl = controller;
     _videoController = ctrl;
+    _commitLocalOwnership();
     // Adopt wrapper juga supaya child bisa dispose properly. Wrapper
     // might be null (legacy or unwrapped). Either way, controller-level
     // ops tetap work.
@@ -743,10 +934,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // Managed (§2.1): coordinator yang set volume + play (via setActive).
     // Widget cuma merender VideoPlayer + overlay. Jangan sentuh controller.
     if (!_managed) {
-      await ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
       if (_canAutoplayNow()) {
-        _logPlay('adopt');
-        await ctrl.play();
+        await _playLegacy(ctrl, 'adopt');
+      } else {
+        await ctrl.setVolume(0);
       }
       // HLS bisa ter-adopt SEBELUM initialize selesai (controller masuk map
       // sinkron, init jalan async). play()/setVolume di atas jadi no-op diam
@@ -765,11 +956,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
           if (_routeCovered || _appBackgrounded) {
             ctrl.setVolume(0);
           } else {
-            ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+            ctrl.setVolume(0);
           }
           if (_canAutoplayNow()) {
-            _logPlay('adopt-oninit');
-            ctrl.play();
+            unawaited(_playLegacy(ctrl, 'adopt-oninit'));
           }
           _cancelLoadingSpinnerDelay();
           if (mounted) setState(() {});
@@ -791,6 +981,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       ctrl.addListener(onInit);
     }
     if (mounted) setState(() {});
+    return _PreloadClaimState.adopted;
   }
 
   // ── T7: managed-source dinamis (adopsi sesi via registry notifier) ──
@@ -944,14 +1135,18 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.isActive != widget.isActive) {
       if (widget.isActive) {
+        if (_videoController == null) {
+          unawaited(_claimOrInitOnActivation());
+        }
         // Managed: coordinator.setActive yang memutar video aktif; widget
         // tidak play() langsung (§2.1).
         if (_canAutoplayNow()) {
-          _logPlay('active');
-          _videoController?.play();
+          final ctrl = _videoController;
+          if (ctrl != null) unawaited(_playLegacy(ctrl, 'active'));
         }
         _syncProductRotation();
       } else {
+        if (!_managed) _releaseAudio();
         _isPaused = false;
         _commentDrawerMounted = false;
         _commentSheetOpen = false;
@@ -1004,11 +1199,14 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // Managed (§2.1): controller di-attach dari luar (preloaded/claim);
     // widget tidak boleh membuat/mengunduh controllernya sendiri.
     if (_managed) return;
+    if (!widget.isActive && !userInitiated) return;
     // Fix A4 — guard in-flight: init sedang berjalan untuk controller ini,
     // panggilan kedua (mis. tap :onTapMedia saat loading) no-op supaya tidak
     // ada dua controller / dua download.
     if (_initInFlight) return;
-    final url = widget.post.videoUrl;
+    final url = widget.post.videoPlaybackUrlForQuality(
+      appSettingsStore.feedVideoQuality,
+    );
     if (url.isEmpty) return;
     if (_dataSaverEnabled && !userInitiated) return;
     if (!_initMetricStarted) {
@@ -1023,9 +1221,18 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     }
   }
 
+  Future<void> _claimOrInitOnActivation({bool allowLocalInit = true}) async {
+    final claimState = await _adoptPreloadedController();
+    if (!mounted || _videoController != null || !allowLocalInit) return;
+    if (claimState == _PreloadClaimState.pending) return;
+    await _maybeInitVideo();
+  }
+
   Future<void> _runInitVideo({required bool userInitiated}) async {
     setState(() => _videoLoadFailed = false);
-    final url = widget.post.videoUrl;
+    final url = widget.post.videoPlaybackUrlForQuality(
+      appSettingsStore.feedVideoQuality,
+    );
     // Sprint 2 #7 — Network-aware quality rewrite + user preference.
     final resolvedUrl = videoQualityService.resolvePlaybackUrl(
       url,
@@ -1090,6 +1297,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       } else {
         controller = VideoPlayerController.networkUrl(Uri.parse(resolvedUrl));
       }
+      _localInitCachedPlayer = wrapper;
+      _localInitController = controller;
       _cachedPlayer = wrapper;
       _resetLoadingSpinnerTimer();
       if (mounted) setState(() {});
@@ -1099,15 +1308,15 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         await controller.initialize();
       }
       if (!mounted) {
-        if (wrapper != null) {
-          await wrapper.dispose();
-        } else {
-          await controller.dispose();
-        }
+        await _disposeLocalInitResource(
+          wrapper: wrapper,
+          controller: controller,
+        );
         _cachedPlayer = null;
         return true; // not failed, just unmounted; skip retry
       }
       _videoController = controller;
+      _commitLocalOwnership();
       controller.addListener(_handleVideoPositionForCta);
       _cancelLoadingSpinnerDelay();
       await controller.setLooping(true);
@@ -1117,14 +1326,13 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       // Race fix: controller BENAR-BENAR siap sekarang (init selesai async) —
       // kalau Feed sudah tertutup di titik ini, paksa senyap eksplisit +
       // jangan play, walau init dimulai saat masih terlihat.
-      if (_routeCovered || _appBackgrounded) {
-        await controller.setVolume(0);
-      } else {
-        await controller.setVolume(appSettingsStore.feedMuted ? 0 : 1);
-      }
+      await controller.setVolume(0);
       if (_canAutoplayNow(userInitiated: userInitiated)) {
-        _logPlay('init');
-        await controller.play();
+        await _playLegacy(
+          controller,
+          'init',
+          userInitiated: userInitiated,
+        );
         _recordPlayMetric();
       }
       // Fix A1: JANGAN turunkan _isPaused dari state controller. Video yang
@@ -1136,15 +1344,12 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       return true;
     } catch (_) {
       _cancelLoadingSpinnerDelay();
-      if (wrapper != null) {
-        try {
-          await wrapper.dispose();
-        } catch (_) {}
-      } else if (controller != null) {
-        try {
-          await controller.dispose();
-        } catch (_) {}
-      }
+      try {
+        await _disposeLocalInitResource(
+          wrapper: wrapper,
+          controller: controller,
+        );
+      } catch (_) {}
       _cachedPlayer = null;
       _videoController = null;
       return false;
@@ -1177,7 +1382,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     await controller.pause();
     await controller.seekTo(position);
     if (_canAutoplayNow() && !_isPaused && widget.isActive) {
-      await controller.play();
+      await _playLegacy(controller, 'stall-recovery');
     }
   }
 
@@ -1191,6 +1396,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
   @override
   void dispose() {
+    _legacyDisposed = true;
+    if (!_managed) _releaseAudio();
     _playbackHealthMonitor.dispose();
     _mediaTapWindow?.cancel();
     appRouteObserver.unsubscribe(this);
@@ -1198,6 +1405,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // D1: lepas listener feedMuted live (hanya terpasang di jalur non-managed).
     if (!_managed) {
       appSettingsStore.removeListener(_onFeedMutedChangedLive);
+      widget.preloadListenable?.removeListener(_onLatePreloadAvailable);
+      if (_ownsLocalController) widget.onLocalOwnershipChanged?.call(false);
     }
     // T7: lepas listener registry + revision sesi (managed-source dinamis).
     if (_managed && widget.coordinator != null) {
@@ -1227,9 +1436,19 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       // tidak perlu double-dispose. Kalau wrapper null (defensive), fallback
       // ke controller dispose direct.
       if (_cachedPlayer != null) {
-        _cachedPlayer!.dispose();
+        final cachedPlayer = _cachedPlayer!;
+        if (identical(cachedPlayer, _localInitCachedPlayer)) {
+          unawaited(_disposeLocalInitResource(wrapper: cachedPlayer));
+        } else {
+          cachedPlayer.dispose();
+        }
       } else {
-        _videoController?.dispose();
+        final controller = _videoController ?? _localInitController;
+        if (identical(controller, _localInitController)) {
+          unawaited(_disposeLocalInitResource(controller: controller));
+        } else {
+          controller?.dispose();
+        }
       }
     }
     _cachedPlayer = null;
@@ -1282,8 +1501,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       } else if (!shouldPause && _pausedByCommentSheet) {
         _pausedByCommentSheet = false;
         if (_canAutoplayNow() && ctrl != null && ctrl.value.isInitialized) {
-          _logPlay('comment-close');
-          ctrl.play();
+          unawaited(_playLegacy(ctrl, 'comment-close'));
         }
       }
     }
@@ -1496,8 +1714,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       } else if (_canAutoplayNow() &&
           ctrl != null &&
           ctrl.value.isInitialized) {
-        _logPlay('comment-close-full');
-        ctrl.play();
+        unawaited(_playLegacy(ctrl, 'comment-close-full'));
       }
     }
     Future<void>.delayed(const Duration(milliseconds: 280), () {
@@ -1717,8 +1934,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // sedang di-hardening. Bungkus dengan `_canAutoplayNow()` supaya patuh
     // master-guard (isCurrent) + lifecycle.
     if (mounted && wasPlaying && !ctrl.value.isPlaying && _canAutoplayNow()) {
-      _logPlay('cinema');
-      ctrl.play();
+      unawaited(_playLegacy(ctrl, 'cinema'));
     }
   }
 
@@ -1916,7 +2132,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       return;
     }
     if (ctrl.value.isPlaying) {
+      _releaseAudio();
       ctrl.pause();
+      ctrl.setVolume(0);
       setState(() => _isPaused = true);
     } else {
       _isPaused = false;
@@ -1924,8 +2142,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       // !_routeCovered && !_appBackgrounded — kalau user genuinely tap,
       // route seharusnya sudah tidak covered).
       if (_canAutoplayNow(userInitiated: true)) {
-        _logPlay('tap');
-        ctrl.play();
+        unawaited(_playLegacy(ctrl, 'tap', userInitiated: true));
       }
       setState(() {});
     }
@@ -2014,8 +2231,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       });
       if (ctrl != null && _canAutoplayNow(userInitiated: true)) {
         // Resume cuma kalau user tidak previously tap-paused juga.
-        _logPlay('longpress-end');
-        ctrl.play();
+        unawaited(
+          _playLegacy(ctrl, 'longpress-end', userInitiated: true),
+        );
       }
     } else if (_longPressSpeedActive) {
       setState(() {
@@ -2052,7 +2270,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     AppHaptics.tap();
     final nextMuted = !appSettingsStore.feedMuted;
     await appSettingsStore.setFeedMuted(nextMuted);
-    await ctrl.setVolume(nextMuted ? 0 : 1);
+    await ctrl.setVolume(
+      !nextMuted && (_audioClaim?.isCurrent ?? false) ? 1 : 0,
+    );
     if (mounted) setState(() {});
   }
 
@@ -2094,11 +2314,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
             // dulu play() TANPA unmute → video main senyap. _canAutoplayNow
             // sudah menjamin aktif + tak covered + tak user-pause, jadi ini
             // hanya menyentuh video yang benar-benar akan main (bukan inactive).
-            ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
-            _logPlay('visibility');
-            ctrl.play();
+            unawaited(_playLegacy(ctrl, 'visibility'));
           }
         } else {
+          _releaseAudio();
+          ctrl.setVolume(0);
           ctrl.pause();
         }
       },

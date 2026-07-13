@@ -1,9 +1,8 @@
 // ignore_for_file: depend_on_referenced_packages
 //
 // These tests exercise the private `_InlineVideoPlayer` inside
-// member_post_detail_screen.dart end-to-end, plus its pause-to-open behavior:
-// tapping the inline video pauses it, then the fullscreen control opens the
-// immersive, swipeable
+// member_post_detail_screen.dart end-to-end, including deterministic single-
+// tap opening of the immersive, swipeable
 // [ScopedVideoFeedScreen] scoped to this user's videos (mirrors the
 // "Postingan Terkait" flow). They need a working `VideoPlayerController`,
 // which in turn needs a fake `VideoPlayerPlatform` (this repo had none —
@@ -255,34 +254,22 @@ void main() {
   }
 
   testWidgets(
-    'tap pauses inline video; fullscreen control opens scoped feed',
+    'single media tap opens scoped feed; mute stays an isolated corner action',
     (tester) async {
       await pumpAndInitialize(tester);
 
       // No scoped feed viewer yet.
       expect(find.byType(ScopedVideoFeedScreen), findsNothing);
 
-      // Tap the media itself: the first tap must pause immediately and reveal
-      // the controls. Navigation is an explicit action so media gestures stay
-      // responsive and predictable.
-      await tester.tapAt(const Offset(200, 600));
+      expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
+      await tester.tap(find.byIcon(Icons.volume_off_rounded));
       await tester.pump();
-      expect(find.bySemanticsLabel('Putar video'), findsOneWidget);
-      expect(find.bySemanticsLabel('Buka layar penuh'), findsOneWidget);
-      expect(find.byType(ScopedVideoFeedScreen), findsNothing);
-
-      // Wait until the double-tap window closes before interacting with a
-      // paused control. Inline defaults to globally muted.
-      await tester.pump(const Duration(milliseconds: 350));
-      expect(find.bySemanticsLabel('Aktifkan suara'), findsOneWidget);
-      await tester.tap(find.bySemanticsLabel('Aktifkan suara'));
-      await tester.pump();
-      expect(find.bySemanticsLabel('Matikan suara'), findsOneWidget,
+      expect(find.byIcon(Icons.volume_up_rounded), findsOneWidget,
           reason: 'mute tap should update immediately');
       expect(find.byType(ScopedVideoFeedScreen), findsNothing,
           reason: 'mute tap must not open the scoped feed');
 
-      await tester.tap(find.bySemanticsLabel('Buka layar penuh'));
+      await tester.tapAt(const Offset(200, 600));
       for (var i = 0; i < 30; i++) {
         await tester.pump(const Duration(milliseconds: 50));
         if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
@@ -304,12 +291,9 @@ void main() {
       ];
       await pumpAndInitialize(tester, posts: posts);
 
-      // The first post is scrolled into view; pause it, then open its explicit
-      // fullscreen action. initialIndex resolution is exercised by the
+      // The first post is scrolled into view. initialIndex resolution is exercised by the
       // widget's own indexWhere; here we assert the viewer has all 3 videos.
       await tester.tapAt(const Offset(200, 600));
-      await tester.pump(const Duration(milliseconds: 350));
-      await tester.tap(find.bySemanticsLabel('Buka layar penuh'));
       for (var i = 0; i < 30; i++) {
         await tester.pump(const Duration(milliseconds: 50));
         if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
@@ -344,8 +328,6 @@ void main() {
 
   Future<void> openScopedFeed(WidgetTester tester) async {
     await tester.tapAt(const Offset(200, 600));
-    await tester.pump(const Duration(milliseconds: 350));
-    await tester.tap(find.bySemanticsLabel('Buka layar penuh'));
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 50));
       if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
@@ -437,16 +419,15 @@ void main() {
     },
   );
 
-  // ── T7-integrasi — kembali-dari-fullscreen re-aktifkan ORIGIN ────────────
+  // ── T7-integrasi — kembali ke video TERAKHIR yang ditonton ──────────────
 
   testWidgets(
-    'T7: swipe away in fullscreen then close re-activates ORIGIN (not stale B); '
-    'B is paused (no ghost playback) and origin is not re-created',
+    'T7: real swipe then close resumes last watched B at its timestamp and '
+    'scrolls B visible without origin ghost audio or controller recreation',
     (tester) async {
       final posts = [
         _fakeVideoPost(id: 'post-1'),
         _fakeVideoPost(id: 'post-2'),
-        _fakeVideoPost(id: 'post-3'),
       ];
       await pumpAndInitialize(tester, posts: posts);
 
@@ -462,15 +443,18 @@ void main() {
       expect(coordinator.activePostId, 'post-1',
           reason: 'fullscreen opens with origin active');
 
-      // Simulate the user swiping to the next video (B = post-2). The scoped
-      // viewer's onPageChanged calls setActive(next); drive the coordinator
-      // directly to be deterministic (no reliance on PageView fling timing).
-      coordinator.setActive('post-2');
-      await tester.pump(const Duration(milliseconds: 50));
+      await tester.drag(find.byType(PageView), const Offset(0, -900));
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(milliseconds: 40));
+      }
       expect(coordinator.activePostId, 'post-2',
           reason: 'swiping made B (post-2) the active session');
+      final dynamic bSession = coordinator.sessionFor('post-2');
+      final dynamic bController = bSession.controller;
+      const watchedAt = Duration(seconds: 4);
+      await bController.seekTo(watchedAt);
+      await tester.pump(const Duration(milliseconds: 50));
 
-      // Close fullscreen → _endHandoff must re-point active back to ORIGIN A.
       final beforeClose = fakePlatform.createCount;
       await tester.tap(find.byIcon(Icons.chevron_left_rounded));
       for (var i = 0; i < 20; i++) {
@@ -478,24 +462,32 @@ void main() {
         if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
       }
       expect(find.byType(ScopedVideoFeedScreen), findsNothing);
-
-      expect(coordinator.activePostId, 'post-1',
-          reason: 'closing fullscreen must re-activate origin A, NOT resume '
-              'the stale active B');
-
-      // B (post-2) must be paused — no ghost audio/playback in the background.
-      final dynamic bSession = coordinator.sessionFor('post-2');
-      final dynamic bController = bSession?.controller;
-      if (bController != null) {
-        expect(bController.value.isPlaying, isFalse,
-            reason: 'stale B must not be playing after return to Postingan');
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (coordinator.activePostId == 'post-2' &&
+            bController.value.isPlaying) {
+          break;
+        }
       }
+
+      expect(coordinator.activePostId, 'post-2',
+          reason: 'last watched B becomes the visible inline active video');
+      expect(coordinator.sessionFor('post-2'), same(bSession));
+      expect(bController.value.position, watchedAt);
+      expect(bController.value.isPlaying, isTrue);
+
+      final dynamic originSession = coordinator.sessionFor('post-1');
+      expect(originSession?.controller.value.isPlaying, isFalse,
+          reason: 'origin A must not produce ghost playback after return');
 
       // No re-init on return (instant re-attach, no thumbnail blink path).
       expect(fakePlatform.createCount, beforeClose,
           reason: 'returning must not re-create any controller');
-      expect(find.byType(VideoPlayer), findsWidgets,
-          reason: 'origin inline still renders the same video after return');
+      final target = find.byKey(const ValueKey('inline-video-post-2'));
+      expect(target, findsOneWidget);
+      final rect = tester.getRect(target);
+      expect(rect.bottom, greaterThan(0));
+      expect(rect.top, lessThan(tester.view.physicalSize.height));
 
       await disposeTree(tester);
     },
@@ -522,6 +514,10 @@ void main() {
         if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
       }
       expect(find.byType(ScopedVideoFeedScreen), findsNothing);
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (controller.value.isPlaying) break;
+      }
 
       expect(coordinator.activePostId, 'post-1',
           reason: 'no-swipe: origin stays active after close');

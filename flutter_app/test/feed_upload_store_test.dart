@@ -22,9 +22,14 @@ void main() {
     addTearDown(() => tmp.delete());
     final store = FeedUploadStore.instance;
     store.clear();
+    VideoQuality? requestedQuality;
     store.gate = VideoCompressGate(
-      compressRunner: (path, {quality = VideoQuality.Res1280x720Quality,
-          includeAudio = true, startTime, duration}) async {
+      compressRunner: (path,
+          {quality = VideoQuality.Res1280x720Quality,
+          includeAudio = true,
+          startTime,
+          duration}) async {
+        requestedQuality = quality;
         throw StateError('compress boom');
       },
       cancelRunner: () async {},
@@ -57,7 +62,9 @@ void main() {
       ),
     );
     // startVideoUpload fire-and-forget — tunggu task settle.
-    for (var i = 0; i < 50 && store.activeTask?.status != FeedUploadStatus.failed; i++) {
+    for (var i = 0;
+        i < 50 && store.activeTask?.status != FeedUploadStatus.failed;
+        i++) {
       await Future<void>.delayed(const Duration(milliseconds: 20));
     }
     expect(store.activeTask?.status, FeedUploadStatus.failed);
@@ -69,8 +76,147 @@ void main() {
           'tahap upload — status uploading tak boleh pernah tercapai. '
           'Jika tercapai, berarti regresi ke fallback (upload video asli).',
     );
+    expect(requestedQuality, VideoQuality.Res1920x1080Quality);
     store.removeListener(listener);
     store.clear();
+  });
+
+  group('prepareVideoPathForUpload', () {
+    test('tanpa trim + sumber Full HD memakai original tanpa kompres',
+        () async {
+      final tmp = await File(
+        '${Directory.systemTemp.path}/store-fullhd-${DateTime.now().microsecondsSinceEpoch}.mp4',
+      ).writeAsBytes(List<int>.filled(10, 1));
+      addTearDown(() => tmp.delete());
+      final store = FeedUploadStore.instance;
+      store.clear();
+      var compressCalls = 0;
+      store.mediaInfoReader = (path) async => MediaInfo(
+            path: path,
+            width: 1080,
+            height: 1920,
+          );
+      store.gate = VideoCompressGate(
+        compressRunner: (path,
+            {quality = VideoQuality.Res1280x720Quality,
+            includeAudio = true,
+            startTime,
+            duration}) async {
+          compressCalls += 1;
+          return null;
+        },
+        cancelRunner: () async {},
+        isPluginBusy: () => false,
+        resetPluginFlag: () {},
+      );
+
+      final selected = await store.prepareVideoPathForUpload(
+        FeedCreatePostDraft(
+          localVideoPath: tmp.path,
+          originalDuration: const Duration(seconds: 30),
+        ),
+        tmp.path,
+      );
+
+      expect(selected, tmp.path);
+      expect(compressCalls, 0);
+      store.mediaInfoReader = (path) => VideoCompress.getMediaInfo(path);
+      store.clear();
+    });
+
+    test(
+        'tanpa trim + hasil kompres lebih besar memakai original dan hapus temp',
+        () async {
+      final original = await File(
+        '${Directory.systemTemp.path}/store-original-${DateTime.now().microsecondsSinceEpoch}.mp4',
+      ).writeAsBytes(List<int>.filled(10, 1));
+      final compressed = await File(
+        '${Directory.systemTemp.path}/store-compressed-${DateTime.now().microsecondsSinceEpoch}.mp4',
+      ).writeAsBytes(List<int>.filled(20, 2));
+      addTearDown(() async {
+        if (await original.exists()) await original.delete();
+        if (await compressed.exists()) await compressed.delete();
+      });
+      final store = FeedUploadStore.instance;
+      store.clear();
+      store.mediaInfoReader = (path) async => MediaInfo(
+            path: path,
+            width: 2160,
+            height: 3840,
+          );
+      store.gate = VideoCompressGate(
+        compressRunner: (path,
+            {quality = VideoQuality.Res1280x720Quality,
+            includeAudio = true,
+            startTime,
+            duration}) async {
+          return MediaInfo(path: compressed.path, file: compressed);
+        },
+        cancelRunner: () async {},
+        isPluginBusy: () => false,
+        resetPluginFlag: () {},
+      );
+
+      final selected = await store.prepareVideoPathForUpload(
+        FeedCreatePostDraft(
+          localVideoPath: original.path,
+          originalDuration: const Duration(seconds: 30),
+        ),
+        original.path,
+      );
+
+      expect(selected, original.path);
+      expect(await compressed.exists(), isFalse);
+      store.mediaInfoReader = (path) => VideoCompress.getMediaInfo(path);
+      store.clear();
+    });
+
+    test('trim tetap memakai output kompres meski lebih besar', () async {
+      final original = await File(
+        '${Directory.systemTemp.path}/store-trim-original-${DateTime.now().microsecondsSinceEpoch}.mp4',
+      ).writeAsBytes(List<int>.filled(10, 1));
+      final compressed = await File(
+        '${Directory.systemTemp.path}/store-trim-compressed-${DateTime.now().microsecondsSinceEpoch}.mp4',
+      ).writeAsBytes(List<int>.filled(20, 2));
+      addTearDown(() async {
+        if (await original.exists()) await original.delete();
+        if (await compressed.exists()) await compressed.delete();
+      });
+      final store = FeedUploadStore.instance;
+      store.clear();
+      store.mediaInfoReader = (path) async => MediaInfo(
+            path: path,
+            width: 1080,
+            height: 1920,
+          );
+      store.gate = VideoCompressGate(
+        compressRunner: (path,
+            {quality = VideoQuality.Res1280x720Quality,
+            includeAudio = true,
+            startTime,
+            duration}) async {
+          return MediaInfo(path: compressed.path, file: compressed);
+        },
+        cancelRunner: () async {},
+        isPluginBusy: () => false,
+        resetPluginFlag: () {},
+      );
+
+      final selected = await store.prepareVideoPathForUpload(
+        FeedCreatePostDraft(
+          localVideoPath: original.path,
+          originalDuration: const Duration(seconds: 70),
+          trimStart: const Duration(seconds: 5),
+          trimmedDuration: const Duration(seconds: 60),
+        ),
+        original.path,
+      );
+
+      expect(selected, compressed.path);
+      expect(await compressed.exists(), isTrue);
+      store.mediaInfoReader = (path) => VideoCompress.getMediaInfo(path);
+      store.clear();
+    });
   });
 
   test('cancelActive saat kompresi trimmed → status CANCELLED, bukan failed',
@@ -84,8 +230,11 @@ void main() {
     final started = Completer<void>();
     final blocker = Completer<MediaInfo?>();
     store.gate = VideoCompressGate(
-      compressRunner: (path, {quality = VideoQuality.Res1280x720Quality,
-          includeAudio = true, startTime, duration}) {
+      compressRunner: (path,
+          {quality = VideoQuality.Res1280x720Quality,
+          includeAudio = true,
+          startTime,
+          duration}) {
         started.complete();
         return blocker.future;
       },
@@ -106,7 +255,11 @@ void main() {
     await store.cancelActive();
     for (var i = 0; i < 50; i++) {
       final s = store.activeTask?.status;
-      if (s == FeedUploadStatus.cancelled || s == FeedUploadStatus.failed || store.activeTask == null) break;
+      if (s == FeedUploadStatus.cancelled ||
+          s == FeedUploadStatus.failed ||
+          store.activeTask == null) {
+        break;
+      }
       await Future<void>.delayed(const Duration(milliseconds: 20));
     }
     // Status TIDAK boleh failed; boleh cancelled atau task sudah di-clear.
@@ -245,8 +398,11 @@ void main() {
       final started = Completer<void>();
       final blocker = Completer<MediaInfo?>();
       store.gate = VideoCompressGate(
-        compressRunner: (path, {quality = VideoQuality.Res1280x720Quality,
-            includeAudio = true, startTime, duration}) {
+        compressRunner: (path,
+            {quality = VideoQuality.Res1280x720Quality,
+            includeAudio = true,
+            startTime,
+            duration}) {
           started.complete();
           return blocker.future;
         },

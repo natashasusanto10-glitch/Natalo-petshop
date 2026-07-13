@@ -22,6 +22,7 @@ import type { FeedPostKind, FeedPostStatus, Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { bunnyThumbnailUrl, signBunnyUrl } from "@/lib/feed/bunny";
+import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
 import { reconcileFeedPost } from "@/lib/feed/reconcile";
 
 const PAGE_SIZE = 20;
@@ -163,6 +164,7 @@ export async function GET(request: NextRequest) {
     title: string;
     description: string | null;
     videoUrl: string | null;
+    videoDataSaverUrl: string | null;
     thumbnailUrl: string | null;
     // First media URL untuk PHOTO_CAROUSEL — admin list pakai sebagai
     // thumbnail kalau thumbnailUrl null (video) tidak ada. Null untuk
@@ -189,49 +191,58 @@ export async function GET(request: NextRequest) {
     createdAt: string;
   };
 
-  const items: Item[] = sliced.map((p) => ({
-    id: p.id,
-    status: p.status,
-    encodingStatus: p.encodingStatus,
-    kind: p.kind,
-    tab: p.tab,
-    title: p.title,
-    description: p.description,
-    videoUrl: signBunnyUrl(p.videoUrl) ?? null,
-    thumbnailUrl:
-      signBunnyUrl(
-        p.thumbnailUrl ?? (p.videoGuid ? bunnyThumbnailUrl(p.videoGuid) : null),
-      ) ?? null,
-    // First media item (PHOTO_CAROUSEL) — pakai thumbnailUrl kalau ada
-    // (uploaded thumbnail), fallback ke url full image. Sign kalau dari
-    // Bunny CDN (defensive — biasanya UploadThing direct URL untuk photo).
-    firstMediaUrl: p.media[0]
-      ? signBunnyUrl(p.media[0].thumbnailUrl ?? p.media[0].url) ?? null
-      : null,
-    mediaCount: p._count.media,
-    videoDurationSec: p.videoDurationSec,
-    product: p.product
-      ? { id: p.product.id, slug: p.product.slug, name: p.product.name }
-      : null,
-    promo:
-      p.promoOriginalPrice != null && p.promoDiscountPrice != null
-        ? {
-            originalPrice: p.promoOriginalPrice,
-            discountPrice: p.promoDiscountPrice,
-            startsAt: p.promoStartsAt?.toISOString() ?? null,
-            endsAt: p.promoEndsAt?.toISOString() ?? null,
-          }
+  const items: Item[] = sliced.map((p) => {
+    const playbackUrls = buildFeedVideoPlaybackUrls({
+      videoUrl: p.videoUrl,
+      videoGuid: p.videoGuid,
+    });
+    return {
+      id: p.id,
+      status: p.status,
+      encodingStatus: p.encodingStatus,
+      kind: p.kind,
+      tab: p.tab,
+      title: p.title,
+      description: p.description,
+      videoUrl: playbackUrls.videoUrl,
+      videoDataSaverUrl: playbackUrls.videoDataSaverUrl,
+      thumbnailUrl:
+        signBunnyUrl(
+          p.thumbnailUrl ?? (p.videoGuid ? bunnyThumbnailUrl(p.videoGuid) : null),
+        ) ?? null,
+      // First media item (PHOTO_CAROUSEL) — pakai thumbnailUrl kalau ada
+      // (uploaded thumbnail), fallback ke url full image. Sign kalau dari
+      // Bunny CDN (defensive — biasanya UploadThing direct URL untuk photo).
+      firstMediaUrl: p.media[0]
+        ? signBunnyUrl(p.media[0].thumbnailUrl ?? p.media[0].url) ?? null
         : null,
-    likeCount: p.likeCount,
-    commentCount: p.commentCount,
-    viewCount: p.viewCount,
-    author: { id: p.author.id, name: p.author.name, role: p.author.role },
-    moderatedBy: p.moderatedBy ? { id: p.moderatedBy.id, name: p.moderatedBy.name } : null,
-    moderatedAt: p.moderatedAt?.toISOString() ?? null,
-    moderationNote: p.moderationNote,
-    publishedAt: p.publishedAt?.toISOString() ?? null,
-    createdAt: p.createdAt.toISOString(),
-  }));
+      mediaCount: p._count.media,
+      videoDurationSec: p.videoDurationSec,
+      product: p.product
+        ? { id: p.product.id, slug: p.product.slug, name: p.product.name }
+        : null,
+      promo:
+        p.promoOriginalPrice != null && p.promoDiscountPrice != null
+          ? {
+              originalPrice: p.promoOriginalPrice,
+              discountPrice: p.promoDiscountPrice,
+              startsAt: p.promoStartsAt?.toISOString() ?? null,
+              endsAt: p.promoEndsAt?.toISOString() ?? null,
+            }
+          : null,
+      likeCount: p.likeCount,
+      commentCount: p.commentCount,
+      viewCount: p.viewCount,
+      author: { id: p.author.id, name: p.author.name, role: p.author.role },
+      moderatedBy: p.moderatedBy
+        ? { id: p.moderatedBy.id, name: p.moderatedBy.name }
+        : null,
+      moderatedAt: p.moderatedAt?.toISOString() ?? null,
+      moderationNote: p.moderationNote,
+      publishedAt: p.publishedAt?.toISOString() ?? null,
+      createdAt: p.createdAt.toISOString(),
+    };
+  });
 
   // Counts untuk filter badges. SEMUA count EXCLUDE soft-deleted kecuali
   // deletedCount yang khusus untuk "deleted" filter badge.

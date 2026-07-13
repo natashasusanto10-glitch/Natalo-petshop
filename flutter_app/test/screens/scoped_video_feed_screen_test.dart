@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/post_video_coordinator.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/scoped_video_feed_screen.dart';
+import 'package:natalo_petshop_flutter/services/video_quality_service.dart';
 import 'package:natalo_petshop_flutter/state/settings_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -71,7 +72,11 @@ void main() {
   });
 
   testWidgets('ScopedVideoFeedScreen opens at initialIndex', (tester) async {
-    final posts = [_fakeVideoPost('a'), _fakeVideoPost('b'), _fakeVideoPost('c')];
+    final posts = [
+      _fakeVideoPost('a'),
+      _fakeVideoPost('b'),
+      _fakeVideoPost('c')
+    ];
     await tester.pumpWidget(
       MaterialApp(
         home: ScopedVideoFeedScreen(posts: posts, initialIndex: 1),
@@ -130,8 +135,86 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
   });
 
-  // ── T7 — full-managed: semua item terikat coordinator, preload next,
-  //    urutan transisi deterministik, maks 3 sesi, nol dobel controller ──
+  testWidgets('toolbar back returns typed last-active post payload',
+      (tester) async {
+    final posts = [_fakeVideoPost('a'), _fakeVideoPost('b')];
+    ScopedVideoFeedResult? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () async {
+              result = await Navigator.of(context).push<ScopedVideoFeedResult>(
+                MaterialPageRoute<ScopedVideoFeedResult>(
+                  builder: (_) => ScopedVideoFeedScreen(
+                    posts: posts,
+                    initialIndex: 1,
+                  ),
+                ),
+              );
+            },
+            child: const Text('open typed'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open typed'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
+    }
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.chevron_left_rounded));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(result, isNotNull);
+    expect(result!.postId, 'b');
+    expect(result!.index, 1);
+    expect(result!.timestamp, Duration.zero);
+  });
+
+  testWidgets('system back returns typed last-active post payload',
+      (tester) async {
+    final posts = [_fakeVideoPost('a'), _fakeVideoPost('b')];
+    ScopedVideoFeedResult? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () async {
+              result = await Navigator.of(context).push<ScopedVideoFeedResult>(
+                MaterialPageRoute<ScopedVideoFeedResult>(
+                  builder: (_) => ScopedVideoFeedScreen(
+                    posts: posts,
+                    initialIndex: 0,
+                  ),
+                ),
+              );
+            },
+            child: const Text('open system'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open system'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
+    }
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(result, isNotNull);
+    expect(result!.postId, 'a');
+    expect(result!.index, 0);
+    expect(result!.timestamp, Duration.zero);
+  });
+
+  // ── T7 — full-managed: adaptive preload, max 5 live sessions
+  //    (origin + active + max 3 preload), zero duplicate controllers. ──
   group('T7 full-managed', () {
     late Map<String, _FakeSession> sessions;
     late Map<String, int> createCount;
@@ -163,6 +246,7 @@ void main() {
       WidgetTester tester, {
       required List<FeedPost> posts,
       int initialIndex = 0,
+      NetworkTier? networkTier,
     }) async {
       tester.view.physicalSize = const Size(400, 1200);
       tester.view.devicePixelRatio = 1.0;
@@ -177,6 +261,7 @@ void main() {
             initialIndex: initialIndex,
             coordinator: coordinator,
             originPostId: posts[initialIndex].id,
+            debugNetworkTier: networkTier,
           ),
         ),
       );
@@ -216,6 +301,32 @@ void main() {
       },
     );
 
+    testWidgets('wifi window follows direction with two ahead and one behind',
+        (tester) async {
+      final posts = [
+        _fakeVideoPost('a'),
+        _fakeVideoPost('b'),
+        _fakeVideoPost('c'),
+        _fakeVideoPost('d'),
+      ];
+      await pumpScoped(
+        tester,
+        posts: posts,
+        initialIndex: 1,
+        networkTier: NetworkTier.wifi,
+      );
+      expect(coordinator.preloadPostIds, {'c', 'd', 'a'});
+
+      await tester.drag(find.byType(PageView), const Offset(0, 900),
+          warnIfMissed: false);
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 30));
+      }
+      expect(coordinator.activePostId, 'a');
+      expect(coordinator.preloadPostIds, isEmpty,
+          reason: 'the only valid behind target is already pinned as origin');
+    });
+
     testWidgets(
       'swipe A→B: B pakai sesi preload (createCount B tetap 1, tak dibuat ulang)',
       (tester) async {
@@ -225,7 +336,8 @@ void main() {
           _fakeVideoPost('c'),
         ];
         await pumpScoped(tester, posts: posts);
-        expect(createCount['b'], 1, reason: 'B dipreload sekali di aktivasi awal');
+        expect(createCount['b'], 1,
+            reason: 'B dipreload sekali di aktivasi awal');
 
         await swipeNext(tester);
 
@@ -235,13 +347,14 @@ void main() {
             reason: 'B jadi active pakai sesi preload — TIDAK dibuat ulang');
         // Nol dobel controller: setiap id maksimum 1 sesi dibuat.
         for (final entry in createCount.entries) {
-          expect(entry.value, 1, reason: 'id ${entry.key} tak boleh dobel sesi');
+          expect(entry.value, 1,
+              reason: 'id ${entry.key} tak boleh dobel sesi');
         }
       },
     );
 
     testWidgets(
-      'swipe berkali-kali → maks 3 sesi hidup (origin+active+next), nol dobel',
+      'steady state respects max 5 live and max 3 adaptive preloads',
       (tester) async {
         final posts = [
           _fakeVideoPost('a'),
@@ -256,14 +369,16 @@ void main() {
         await swipeNext(tester); // b→c
         await swipeNext(tester); // c→d
 
-        expect(coordinator.livePostIds.length, lessThanOrEqualTo(3),
-            reason: 'maks 3 sesi: origin + active + next');
+        expect(coordinator.livePostIds.length, lessThanOrEqualTo(5),
+            reason: 'origin + active + at most three adaptive preloads');
+        expect(coordinator.preloadPostIds.length, lessThanOrEqualTo(3));
         // Origin (a) tetap hidup (pinned) untuk kembali ke Postingan.
         expect(coordinator.livePostIds, contains('a'));
         expect(sessions['a']!.disposeCount, 0);
         // Nol dobel controller sepanjang swipe.
         for (final entry in createCount.entries) {
-          expect(entry.value, 1, reason: 'id ${entry.key} tak boleh dobel sesi');
+          expect(entry.value, 1,
+              reason: 'id ${entry.key} tak boleh dobel sesi');
         }
       },
     );
@@ -287,7 +402,8 @@ void main() {
         await swipeNext(tester); // a→b: setActive bikin sesi B saat itu
 
         expect(coordinator.activePostId, 'b');
-        expect(createCount['b'], 1, reason: 'B dibuat sekali (satu controller)');
+        expect(createCount['b'], 1,
+            reason: 'B dibuat sekali (satu controller)');
         // Masih tak ada preload C.
         expect(coordinator.preloadPostId, isNull);
         expect(sessions.containsKey('c'), isFalse);

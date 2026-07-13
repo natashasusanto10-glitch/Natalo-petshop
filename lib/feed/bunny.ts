@@ -172,22 +172,17 @@ export function bunnyPlaylistUrl(guid: string): string {
  *
  * Bunny generates these MP4 transcodes when "MP4 Fallback" is enabled
  * in the library settings. Available resolutions are reported in the
- * video meta's `availableResolutions` field (typically 240p/360p/480p/720p).
- * 720p is a safe default for portrait phone video — picture stays sharp,
- * file size stays small (~5-10 MB for a 15-second clip).
+ * video meta's `availableResolutions` field. Feed playback uses HLS as the
+ * canonical source; MP4 fallback is still needed for Flutter Hemat Data
+ * (`play_480p.mp4`) and safe fallback (`play_720p.mp4`).
  *
  * ── Bunny encoding profile target (configured di dashboard, NOT di code) ──
- * 720p HD (1280×720) @ 30fps, bitrate 2500 kbps (2.5 Mbps).
- * Sweet spot match IG Reels / TikTok standard:
- *   - Quality bagus di phone screen, imperceptible artifact
- *   - File 30-detik ≈ 9.4 MB (vs 10.5 MB di 2800 kbps lama)
- *   - Bunny CDN egress saving ~10% per session
- *   - Initial buffer time ~1.0-1.2 detik di 4G Indonesia
- * Range valid 1.5-2.5 Mbps untuk 720p phone content. Lower → blocky di motion,
- * higher → diminishing returns (mata gak bedain di small screen).
+ * 1080p Full HD rendition target: 4-6 Mbps. Bunny master playlist handles
+ * fallback to lower variants such as 720p when device/network cannot sustain
+ * 1080p. 480p MP4 fallback remains the data-saver contract.
  *
  * Untuk ubah: Bunny dashboard → Library Natalo → Settings → Encoding Profile
- * → 720p → field "Bitrate". Update note ini juga supaya consistent.
+ * → 1080p → field "Bitrate". Update note ini juga supaya consistent.
  */
 export function bunnyMp4Url(
   guid: string,

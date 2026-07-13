@@ -620,7 +620,7 @@ Future<void> _openVideoQualitySheet(BuildContext context) {
                   ),
                   _SheetOption(
                     icon: Icons.high_quality_rounded,
-                    title: 'Tinggi',
+                    title: 'Tinggi / Full HD',
                     selected: current == 'high',
                     onTap: () async {
                       await appSettingsStore.setFeedVideoQuality('high');

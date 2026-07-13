@@ -23,6 +23,7 @@ import {
   normalizeMyFeedFilter,
 } from "@/lib/feed/my-posts";
 import { bunnyThumbnailUrl, signBunnyUrl } from "@/lib/feed/bunny";
+import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 
 export async function GET(request: NextRequest) {
@@ -181,21 +182,33 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     posts: slicedPosts.map((post) => {
-      const signedMedia = post.media.map((item) => ({
-        id: item.id,
-        mediaType: item.mediaType,
-        mediaUrl: signBunnyUrl(item.url) ?? item.url,
-        thumbnailUrl:
-          signBunnyUrl(item.thumbnailUrl ?? item.url) ??
-          item.thumbnailUrl ??
-          item.url,
-        width: item.width,
-        height: item.height,
-        sortOrder: item.sortOrder,
-      }));
+      const signedMedia = post.media.map((item) => {
+        const mediaPlaybackUrls = buildFeedVideoPlaybackUrls({
+          videoUrl: item.url,
+        });
+        return {
+          id: item.id,
+          mediaType: item.mediaType,
+          mediaUrl: mediaPlaybackUrls.videoUrl ?? item.url,
+          ...(item.mediaType === "video"
+            ? { videoDataSaverUrl: mediaPlaybackUrls.videoDataSaverUrl }
+            : {}),
+          thumbnailUrl:
+            signBunnyUrl(item.thumbnailUrl ?? item.url) ??
+            item.thumbnailUrl ??
+            item.url,
+          width: item.width,
+          height: item.height,
+          sortOrder: item.sortOrder,
+        };
+      });
       const isPhotoPost = post.kind === "PHOTO_CAROUSEL";
       const firstMedia = signedMedia[0] ?? null;
-      const videoUrl = signBunnyUrl(post.videoUrl) ?? null;
+      const playbackUrls = buildFeedVideoPlaybackUrls({
+        videoUrl: post.videoUrl,
+        videoGuid: post.videoGuid,
+      });
+      const videoUrl = playbackUrls.videoUrl;
       const videoThumbnailUrl =
         signBunnyUrl(
           post.thumbnailUrl ??
@@ -209,6 +222,7 @@ export async function GET(request: NextRequest) {
               id: `${post.id}-video`,
               mediaType: "video",
               mediaUrl: videoUrl,
+              videoDataSaverUrl: playbackUrls.videoDataSaverUrl,
               thumbnailUrl: videoThumbnailUrl,
               durationSeconds: post.videoDurationSec,
               width: post.videoWidth,
@@ -235,6 +249,7 @@ export async function GET(request: NextRequest) {
           : videoThumbnailUrl,
         mediaUrl: isPhotoPost ? firstMedia?.mediaUrl ?? "" : videoUrl ?? "",
         videoUrl,
+        videoDataSaverUrl: playbackUrls.videoDataSaverUrl,
         mediaItems,
         videoDurationSec: post.videoDurationSec,
         durationSec: post.videoDurationSec,

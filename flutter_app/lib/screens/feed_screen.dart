@@ -14,6 +14,10 @@ import 'package:visibility_detector/visibility_detector.dart';
 
 import '../config/api_config.dart';
 import '../features/feed/widgets/feed_action_rail.dart';
+import '../features/feed/video/adaptive_video_preload_policy.dart';
+import '../features/feed/video/preload_generation.dart';
+import '../features/feed/video/single_dispose_guard.dart';
+import '../features/feed/video/video_preload_metrics.dart';
 import '../features/feed/widgets/feed_creator_overlay.dart';
 import '../features/feed/widgets/feed_post_shared_widgets.dart';
 import '../features/feed/widgets/feed_video_post_view.dart';
@@ -79,13 +83,24 @@ class _FeedScreenState extends State<FeedScreen> {
   // perlu di-refactor.
   final Map<String, VideoPlayerController> _preloadedControllers = {};
   final Map<String, CachedVideoPlayerPlus> _preloadedCachedPlayers = {};
+  final Set<String> _localControllerOwners = <String>{};
+  final ValueNotifier<int> _preloadRevision = ValueNotifier<int>(0);
+  final SingleDisposeGuard<VideoPlayerController> _plainPreloadDisposer =
+      SingleDisposeGuard<VideoPlayerController>();
+  final SingleDisposeGuard<CachedVideoPlayerPlus> _cachedPreloadDisposer =
+      SingleDisposeGuard<CachedVideoPlayerPlus>();
+  StreamSubscription<NetworkTier>? _networkTierSubscription;
+  late bool _lastPreloadAutoplay;
+  late String _lastPreloadQuality;
   List<FeedPost> _posts = const [];
   String? _nextCursor;
   bool _loading = true;
   bool _loadingMore = false;
   bool _interactionLocked = false;
   bool _mediaZooming = false;
+  bool _disposing = false;
   int _activeIndex = 0;
+  VideoSwipeDirection _swipeDirection = VideoSwipeDirection.forward;
   int _cartCount = 0;
 
   /// Gap #9: distinguish "no posts" vs "fetch error" — UI bisa show retry.
@@ -107,6 +122,12 @@ class _FeedScreenState extends State<FeedScreen> {
     // notifyListeners() di-dispatch dari [moderation_action_sheet.dart].
     blockService.addListener(_onBlocklistChanged);
     blockService.load();
+    _lastPreloadAutoplay = appSettingsStore.feedAutoplay;
+    _lastPreloadQuality = appSettingsStore.feedVideoQuality;
+    appSettingsStore.addListener(_onPreloadSettingsChanged);
+    _networkTierSubscription = videoQualityService.tierChanges.listen((_) {
+      if (mounted) unawaited(_managePreloadWindow(_activeIndex));
+    });
     // Auto-trigger upload kalau dipush dari UploadVideoCta (Account screen
     // "Upload Video" button) yang kirim arguments `{openUpload: true}`.
     // Pakai post-frame callback supaya context.modalRoute settled.
@@ -121,8 +142,11 @@ class _FeedScreenState extends State<FeedScreen> {
 
   @override
   void dispose() {
+    _disposing = true;
     cartStore.removeListener(_syncTopCartCount);
     blockService.removeListener(_onBlocklistChanged);
+    appSettingsStore.removeListener(_onPreloadSettingsChanged);
+    unawaited(_networkTierSubscription?.cancel());
     // Prefer dispose via wrapper — handles both underlying controller +
     // cache file reference. Sisa controllers tanpa wrapper (shouldn't
     // happen di prod tapi defensive) di-dispose langsung.
@@ -131,11 +155,13 @@ class _FeedScreenState extends State<FeedScreen> {
     }
     for (final id in _preloadedControllers.keys.toList()) {
       if (!_preloadedCachedPlayers.containsKey(id)) {
-        _preloadedControllers[id]?.dispose();
+        final controller = _preloadedControllers[id];
+        if (controller != null) unawaited(_disposePlainPreloadOnce(controller));
       }
     }
     _preloadedCachedPlayers.clear();
     _preloadedControllers.clear();
+    _preloadRevision.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -151,13 +177,56 @@ class _FeedScreenState extends State<FeedScreen> {
   /// hasil init masuk kembali ke map sebagai zombie, dan state pengklaim
   /// men-dispose wrapper orphan itu.
   PreloadedVideoClaim? _claimPreloadedVideo(String postId) {
-    final controller = _preloadedControllers.remove(postId);
-    final cachedPlayer = _preloadedCachedPlayers.remove(postId);
+    final controller = _preloadedControllers[postId];
+    final cachedPlayer = _preloadedCachedPlayers[postId];
     if (controller == null && cachedPlayer == null) return null;
+    if (controller == null) return const PreloadedVideoClaim.pending();
+    _preloadedControllers.remove(postId);
+    _preloadedCachedPlayers.remove(postId);
     return PreloadedVideoClaim(
       controller: controller,
       cachedPlayer: cachedPlayer,
     );
+  }
+
+  void _onLocalControllerOwnershipChanged(String postId, bool ownsLocally) {
+    if (_disposing) return;
+    if (ownsLocally) {
+      _localControllerOwners.add(postId);
+      unawaited(_evictPreload(postId));
+    } else {
+      _localControllerOwners.remove(postId);
+      if (mounted) unawaited(_managePreloadWindow(_activeIndex));
+    }
+  }
+
+  void _onPreloadSettingsChanged() {
+    if (_disposing) return;
+    final autoplay = appSettingsStore.feedAutoplay;
+    final quality = appSettingsStore.feedVideoQuality;
+    if (autoplay == _lastPreloadAutoplay && quality == _lastPreloadQuality) {
+      return;
+    }
+    _lastPreloadAutoplay = autoplay;
+    _lastPreloadQuality = quality;
+    if (mounted) unawaited(_managePreloadWindow(_activeIndex));
+  }
+
+  Future<void> _disposePlainPreloadOnce(
+    VideoPlayerController controller,
+  ) async {
+    await _plainPreloadDisposer.dispose(controller, controller.dispose);
+  }
+
+  Future<void> _evictPreload(String id) async {
+    final cachedPlayer = _preloadedCachedPlayers.remove(id);
+    final controller = _preloadedControllers.remove(id);
+    if (cachedPlayer != null) {
+      await _cachedPreloadDisposer.dispose(cachedPlayer, cachedPlayer.dispose);
+    } else if (controller != null) {
+      await _disposePlainPreloadOnce(controller);
+    }
+    if (!_disposing) _preloadRevision.value++;
   }
 
   /// Cache hasil filter — re-compute hanya saat _posts berubah atau
@@ -345,6 +414,9 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   void _onPageChanged(int index) {
+    _swipeDirection = index < _activeIndex
+        ? VideoSwipeDirection.backward
+        : VideoSwipeDirection.forward;
     setState(() => _activeIndex = index);
     _preloadNext(index);
     // BUGFIX(audit): bandingkan index dengan _visiblePosts (list TERFILTER
@@ -356,14 +428,8 @@ class _FeedScreenState extends State<FeedScreen> {
     }
   }
 
-  bool get _shouldPreloadNext {
-    return appSettingsStore.feedAutoplay &&
-        appSettingsStore.feedVideoQuality != 'data_saver';
-  }
-
-  /// Sliding window 4-item — keep prev, current, next, next+1 controllers
-  /// hidup di RAM. Sesuai Reels/TikTok spec: swipe forward smooth dua kali
-  /// berturut-turut tanpa loading spinner.
+  /// Adaptive controller window. Data saver/offline/autoplay-off keep none;
+  /// cellular/unknown keep one directional target; WiFi keeps up to three.
   ///
   /// State per slot setelah pre-init:
   ///   - prev (i-1):    paused, seek 0, prepared. Attached saat user
@@ -389,8 +455,15 @@ class _FeedScreenState extends State<FeedScreen> {
     // BUKAN post yang ditonton user → preload controller video untuk post
     // yang salah (swipe tidak instan). Pakai _visiblePosts konsisten.
     final visible = _visiblePosts;
+    final offsets = adaptiveVideoPreloadPolicy.offsets(
+      qualityPreference: appSettingsStore.feedVideoQuality,
+      networkTier: videoQualityService.currentTier,
+      autoplayEnabled: appSettingsStore.feedAutoplay,
+      swipeDirection: _swipeDirection,
+      interactionLocked: _interactionLocked || _mediaZooming,
+    );
     final keepIds = <String>{};
-    for (final offset in const [-1, 0, 1, 2]) {
+    for (final offset in offsets) {
       final i = activeIndex + offset;
       if (i >= 0 && i < visible.length) {
         keepIds.add(visible[i].id);
@@ -402,18 +475,21 @@ class _FeedScreenState extends State<FeedScreen> {
     // Dispose via wrapper kalau ada (handle cache properly), fallback ke
     // controller dispose langsung. Cache file di disk TIDAK dihapus —
     // tetap available untuk repeat-view (itu point disk cache).
-    final staleIds = _preloadedControllers.keys
-        .where((id) => !keepIds.contains(id))
-        .toList();
+    final staleIds = {
+      ..._preloadedControllers.keys,
+      ..._preloadedCachedPlayers.keys,
+    }.where((id) => !keepIds.contains(id)).toList();
     for (final id in staleIds) {
-      final cachedPlayer = _preloadedCachedPlayers.remove(id);
-      _preloadedControllers.remove(id);
-      if (cachedPlayer != null) {
-        await cachedPlayer.dispose();
-      }
+      await _evictPreload(id);
+      recordVideoPreloadMetric(
+        'evicted',
+        surface: 'main_feed',
+        tier: videoQualityService.currentTier,
+        windowSize: keepIds.length,
+      );
     }
 
-    if (!_shouldPreloadNext) return;
+    if (offsets.isEmpty) return;
 
     // Pre-init controllers yang masih dalam window tapi belum ada.
     // Paralel init (Future.wait) supaya prev + next siap bersamaan.
@@ -425,7 +501,14 @@ class _FeedScreenState extends State<FeedScreen> {
     for (final id in keepIds) {
       // Skip current — widget FeedVideoPostView create sendiri di-mount.
       if (activePost != null && id == activePost.id) continue;
-      if (_preloadedControllers.containsKey(id)) continue;
+      if (_localControllerOwners.contains(id)) continue;
+      if (preloadSlotOccupied(
+        id,
+        _preloadedControllers,
+        _preloadedCachedPlayers,
+      )) {
+        continue;
+      }
 
       FeedPost? post;
       for (final p in _posts) {
@@ -469,6 +552,12 @@ class _FeedScreenState extends State<FeedScreen> {
       // MP4 tetap pakai CachedVideoPlayerPlus untuk repeat-view benefit
       // (legacy support untuk post .mp4 yang belum di-migrate).
       final isHls = resolvedUrl.contains('.m3u8');
+      recordVideoPreloadMetric(
+        'requested',
+        surface: 'main_feed',
+        tier: videoQualityService.currentTier,
+        windowSize: keepIds.length,
+      );
       if (isHls) {
         final controller = VideoPlayerController.networkUrl(
           Uri.parse(resolvedUrl),
@@ -476,12 +565,28 @@ class _FeedScreenState extends State<FeedScreen> {
         _preloadedControllers[id] = controller;
         initFutures.add(
           controller.initialize().then((_) async {
+            if (!identical(_preloadedControllers[id], controller)) return;
             await controller.setLooping(true);
             await controller.setVolume(0);
             await controller.seekTo(Duration.zero);
+            if (!_disposing) _preloadRevision.value++;
+            recordVideoPreloadMetric(
+              'ready',
+              surface: 'main_feed',
+              tier: videoQualityService.currentTier,
+              windowSize: keepIds.length,
+            );
           }).catchError((Object _) async {
-            _preloadedControllers.remove(id);
-            await controller.dispose();
+            if (identical(_preloadedControllers[id], controller)) {
+              _preloadedControllers.remove(id);
+            }
+            await _disposePlainPreloadOnce(controller);
+            recordVideoPreloadMetric(
+              'failed',
+              surface: 'main_feed',
+              tier: videoQualityService.currentTier,
+              windowSize: keepIds.length,
+            );
           }),
         );
         continue;
@@ -513,6 +618,13 @@ class _FeedScreenState extends State<FeedScreen> {
           await controller.setLooping(true);
           await controller.setVolume(0);
           await controller.seekTo(Duration.zero);
+          if (!_disposing) _preloadRevision.value++;
+          recordVideoPreloadMetric(
+            'ready',
+            surface: 'main_feed',
+            tier: videoQualityService.currentTier,
+            windowSize: keepIds.length,
+          );
         }).catchError((Object _) async {
           // Init gagal — kemungkinan besar disk cache corrupt (force-kill
           // mid-write left partial file). Invalidate cache entry supaya
@@ -520,16 +632,29 @@ class _FeedScreenState extends State<FeedScreen> {
           // user scroll ke post ini dan _maybeInitVideo run) bisa fresh-
           // fetch dari network. Tanpa ini, cache wrapper tetap baca file
           // corrupt setiap retry.
-          final p = _preloadedCachedPlayers.remove(id);
-          _preloadedControllers.remove(id);
-          if (p != null) {
-            try {
-              await p.dispose();
-            } catch (_) {}
-          }
+          final ownController = cachedPlayer.controller;
+          final ownsFailedGeneration = removeFailedPreloadGeneration(
+            id: id,
+            failedWrapper: cachedPlayer,
+            failedController: ownController,
+            controllers: _preloadedControllers,
+            wrappers: _preloadedCachedPlayers,
+          );
+          if (!ownsFailedGeneration) return;
+          await _cachedPreloadDisposer.dispose(
+            cachedPlayer,
+            cachedPlayer.dispose,
+          );
+          if (!_disposing) _preloadRevision.value++;
           try {
             await DefaultCacheManager().removeFile(resolvedUrl);
           } catch (_) {}
+          recordVideoPreloadMetric(
+            'failed',
+            surface: 'main_feed',
+            tier: videoQualityService.currentTier,
+            windowSize: keepIds.length,
+          );
         }),
       );
     }
@@ -544,11 +669,13 @@ class _FeedScreenState extends State<FeedScreen> {
   void _setFeedInteractionLocked(bool locked) {
     if (!mounted || _interactionLocked == locked) return;
     setState(() => _interactionLocked = locked);
+    unawaited(_managePreloadWindow(_activeIndex));
   }
 
   void _setFeedMediaZooming(bool zooming) {
     if (!mounted || _mediaZooming == zooming) return;
     setState(() => _mediaZooming = zooming);
+    unawaited(_managePreloadWindow(_activeIndex));
   }
 
   Future<void> _onUpload() async {
@@ -670,6 +797,9 @@ class _FeedScreenState extends State<FeedScreen> {
                         preloadedController: null,
                         claimPreloadedVideo: () =>
                             _claimPreloadedVideo(post.id),
+                        preloadListenable: _preloadRevision,
+                        onLocalOwnershipChanged: (owns) =>
+                            _onLocalControllerOwnershipChanged(post.id, owns),
                         onOverlayStateChanged: _setFeedInteractionLocked,
                         onMediaZoomChanged: _setFeedMediaZooming,
                       );

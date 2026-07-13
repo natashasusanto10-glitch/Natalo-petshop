@@ -1,10 +1,25 @@
 import 'package:flutter/material.dart';
 
+import '../features/feed/video/adaptive_video_preload_policy.dart';
 import '../features/feed/video/post_video_coordinator.dart';
 import '../features/feed/widgets/feed_video_post_view.dart';
 import '../models/feed_post.dart';
 import '../state/feed_store.dart';
 import '../state/settings_store.dart';
+import '../services/video_quality_service.dart';
+
+@immutable
+class ScopedVideoFeedResult {
+  final String postId;
+  final int index;
+  final Duration timestamp;
+
+  const ScopedVideoFeedResult({
+    required this.postId,
+    required this.index,
+    required this.timestamp,
+  });
+}
 
 /// Immersive, vertically swipeable video viewer scoped to a caller-
 /// supplied list of videos (e.g. "videos tagged to this product", or
@@ -33,6 +48,7 @@ class ScopedVideoFeedScreen extends StatefulWidget {
   /// selama viewer terbuka. Null kalau bukan alur Postingan. Lihat
   /// [coordinator].
   final String? originPostId;
+  final NetworkTier? debugNetworkTier;
 
   const ScopedVideoFeedScreen({
     super.key,
@@ -40,6 +56,7 @@ class ScopedVideoFeedScreen extends StatefulWidget {
     required this.initialIndex,
     this.coordinator,
     this.originPostId,
+    this.debugNetworkTier,
   });
 
   @override
@@ -51,6 +68,8 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
   late int _activeIndex;
   // Guard supaya overscroll-dismiss cuma pop SEKALI per gesture.
   bool _dismissing = false;
+  bool _interactionLocked = false;
+  VideoSwipeDirection _swipeDirection = VideoSwipeDirection.forward;
 
   /// Seberapa jauh (px) user harus menarik melewati batas atas (video
   /// pertama) sebelum viewer menutup — ala IG Reels dari profil: tarik
@@ -93,9 +112,6 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
     super.dispose();
   }
 
-  bool get _dataSaver =>
-      appSettingsStore.feedVideoQuality == 'data_saver';
-
   String _viewIdFor(String postId) => 'scoped-fs-$postId';
 
   /// Urutan transisi DETERMINISTIK (§T7 onPageChanged):
@@ -127,13 +143,39 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
         coord.detach(_viewIdFor(prevId), prevId);
       }
     }
-    // (d) preload next searah swipe — DILEWATI saat data saver (D2): swipe
-    // berikutnya bikin sesi saat itu (loading singkat boleh, satu controller).
-    if (!_dataSaver) {
-      final nextIndex = index + swipeDir;
-      if (nextIndex >= 0 && nextIndex < widget.posts.length) {
-        coord.preloadNext(widget.posts[nextIndex].id);
-      }
+    _swipeDirection = swipeDir < 0
+        ? VideoSwipeDirection.backward
+        : VideoSwipeDirection.forward;
+    _updatePreloadWindow(index);
+  }
+
+  void _updatePreloadWindow(int index) {
+    final coord = widget.coordinator;
+    if (coord == null || coord.isDisposed) return;
+    final offsets = adaptiveVideoPreloadPolicy.offsets(
+      qualityPreference: appSettingsStore.feedVideoQuality,
+      networkTier: widget.debugNetworkTier ?? videoQualityService.currentTier,
+      autoplayEnabled: appSettingsStore.feedAutoplay,
+      swipeDirection: _swipeDirection,
+      interactionLocked: _interactionLocked,
+    );
+    final targetIds = <String>[];
+    for (final offset in offsets) {
+      final targetIndex = index + offset;
+      if (targetIndex < 0 || targetIndex >= widget.posts.length) continue;
+      final id = widget.posts[targetIndex].id;
+      if (!targetIds.contains(id)) targetIds.add(id);
+    }
+    coord.setPreloadWindow(targetIds);
+  }
+
+  void _setInteractionLocked(bool locked) {
+    if (_interactionLocked == locked) return;
+    _interactionLocked = locked;
+    if (locked) {
+      widget.coordinator?.setPreloadWindow(const []);
+    } else {
+      _updatePreloadWindow(_activeIndex);
     }
   }
 
@@ -143,6 +185,21 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
     if (widget.coordinator == null) return;
     final swipeDir = index >= previousIndex ? 1 : -1;
     _activateManaged(index, previousIndex: previousIndex, swipeDir: swipeDir);
+  }
+
+  ScopedVideoFeedResult get _result {
+    final post = widget.posts[_activeIndex];
+    return ScopedVideoFeedResult(
+      postId: post.id,
+      index: _activeIndex,
+      timestamp: widget.coordinator?.positionOf(post.id) ?? Duration.zero,
+    );
+  }
+
+  void _close() {
+    if (_dismissing || !mounted) return;
+    _dismissing = true;
+    Navigator.of(context).pop(_result);
   }
 
   /// Tarik-turun melewati batas atas (BouncingScrollPhysics → pixels <
@@ -155,8 +212,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
         notification.dragDetails != null) {
       final metrics = notification.metrics;
       if (metrics.pixels < metrics.minScrollExtent - _dismissOverscroll) {
-        _dismissing = true;
-        Navigator.maybePop(context);
+        _close();
       }
     }
     return false;
@@ -176,7 +232,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
         preloadedController: null,
         preloadedCachedPlayer: null,
         onOverlayStateChanged: (_) {},
-        onMediaZoomChanged: (_) {},
+        onMediaZoomChanged: _setInteractionLocked,
       );
     }
 
@@ -195,11 +251,14 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
       preloadedController: null,
       preloadedCachedPlayer: null,
       onOverlayStateChanged: (_) {},
-      onMediaZoomChanged: (_) {},
+      onMediaZoomChanged: _setInteractionLocked,
       // Visibilitas → resume/pause sesi yang MEMANG aktif (mis. kembali dari
       // comment sheet / route). setActive authoritative di [_onPageChanged];
       // di sini tidak setActive supaya urutan transisi tetap deterministik.
       onVisibleChanged: (visible) {
+        // Route teardown can report one final hidden event after the caller
+        // has already resumed this shared session. It is stale once closing.
+        if (_dismissing) return;
         if (coordinator.activePostId != postId) return;
         if (visible) {
           coordinator.reportVisible(postId);
@@ -219,45 +278,52 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          NotificationListener<ScrollNotification>(
-            onNotification: _onScrollNotification,
-            child: PageView.builder(
-              controller: _pageController,
-              scrollDirection: Axis.vertical,
-              physics: const PageScrollPhysics(parent: BouncingScrollPhysics()),
-              itemCount: widget.posts.length,
-              onPageChanged: _onPageChanged,
-              itemBuilder: (context, index) => _buildItem(index),
+    return PopScope<ScopedVideoFeedResult>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _close();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            NotificationListener<ScrollNotification>(
+              onNotification: _onScrollNotification,
+              child: PageView.builder(
+                controller: _pageController,
+                scrollDirection: Axis.vertical,
+                physics:
+                    const PageScrollPhysics(parent: BouncingScrollPhysics()),
+                itemCount: widget.posts.length,
+                onPageChanged: _onPageChanged,
+                itemBuilder: (context, index) => _buildItem(index),
+              ),
             ),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Align(
-                alignment: Alignment.topLeft,
-                child: Material(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: () => Navigator.maybePop(context),
-                    child: const SizedBox(
-                      width: 40,
-                      height: 40,
-                      child: Icon(Icons.chevron_left_rounded,
-                          color: Colors.white, size: 26),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: _close,
+                      child: const SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: Icon(Icons.chevron_left_rounded,
+                            color: Colors.white, size: 26),
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

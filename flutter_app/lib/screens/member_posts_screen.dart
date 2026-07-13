@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 
 import '../models/feed_create_post_draft.dart';
 import '../models/feed_post.dart';
+import '../features/feed/video/post_video_warm_handoff.dart';
 import '../services/feed_service.dart';
 import '../state/feed_draft_store.dart';
 import '../state/feed_store.dart';
@@ -36,6 +37,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
   List<FeedDraft> _drafts = const [];
   List<FeedPost> _allPosts = const [];
   bool _loading = true;
+  bool _openingPost = false;
   // Pagination state:
   // - _nextCursor: post id terakhir dari fetch sebelumnya. null = end-of-list.
   // - _loadingMore: guard supaya scroll listener tidak fire concurrent fetch.
@@ -298,18 +300,33 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     setState(() => _filterIndex = index);
   }
 
-  void _openPostDetail(List<FeedPost> posts, int initialIndex) {
+  Future<void> _openPostDetail(List<FeedPost> posts, int initialIndex) async {
+    if (_openingPost) return;
+    _openingPost = true;
     AppHaptics.tap();
-    Navigator.push<void>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => MemberPostDetailScreen(
-          post: posts[initialIndex],
-          posts: posts,
-          initialIndex: initialIndex,
+    final post = posts[initialIndex];
+    final handoff = PostVideoWarmHandoff.createIfVideo(
+      isVideo: post.isVideo,
+      postId: post.id,
+      url: post.videoPlaybackUrlForQuality(appSettingsStore.feedVideoQuality),
+    );
+    try {
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MemberPostDetailScreen(
+            post: post,
+            posts: posts,
+            initialIndex: initialIndex,
+            warmVideoHandoff: handoff,
+          ),
         ),
-      ),
-    ).then((_) => _loadPosts());
+      );
+    } finally {
+      await handoff?.disposeIfUnclaimed();
+      _openingPost = false;
+    }
+    if (mounted) await _loadPosts();
   }
 
   @override

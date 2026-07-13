@@ -86,6 +86,7 @@ export type FeedPostListItem = {
   title: string;
   description: string | null;
   videoUrl: string | null;
+  videoDataSaverUrl?: string | null;
   thumbnailUrl: string | null;
   // Blurhash LQIP placeholder — di-decode di client jadi canvas 32x32
   // sebagai placeholder instan sebelum thumbnail real load. Null untuk
@@ -106,11 +107,13 @@ export type FeedPostListItem = {
     endsAt: string | null;
   } | null;
   /// PHOTO_CAROUSEL kind: 1-8 image media ordered by sortOrder asc.
-  /// Untuk video kind (VIDEO_*, COMMUNITY), array kosong [].
+  /// Legacy clients may still receive video media rows; only those rows may
+  /// include `videoDataSaverUrl`, derived from a safe Bunny CDN GUID.
   media: Array<{
     id: string;
-    mediaType: string; // "image" | "video"
+    mediaType: string;
     url: string;
+    videoDataSaverUrl?: string | null;
     thumbnailUrl: string | null;
     width: number | null;
     height: number | null;

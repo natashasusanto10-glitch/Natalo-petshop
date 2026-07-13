@@ -13,6 +13,7 @@ import type { FeedPostTab } from "@prisma/client";
 import { resolveActiveDiscount } from "@/lib/product-pricing";
 import { extractMentionHandles } from "./mentions";
 import { signBunnyUrl } from "./bunny";
+import { buildFeedVideoPlaybackUrls } from "./video-playback-urls";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 import type {
   FeedCommentItem,
@@ -368,7 +369,12 @@ export async function listFeedPosts({
   const hasMore = posts.length > FEED_PAGE_SIZE;
   const sliced = hasMore ? posts.slice(0, FEED_PAGE_SIZE) : posts;
 
-  const items: FeedPostListItem[] = sliced.map((p) => ({
+  const items: FeedPostListItem[] = sliced.map((p) => {
+    const playbackUrls = buildFeedVideoPlaybackUrls({
+      videoUrl: p.videoUrl,
+      videoGuid: p.videoGuid,
+    });
+    return {
     id: p.id,
     kind: p.kind,
     tab: p.tab,
@@ -377,7 +383,8 @@ export async function listFeedPosts({
     description: p.description,
     // Sign URL dengan Bunny CDN token kalau BUNNY_TOKEN_SECURITY_KEY di-set
     // (defense untuk hotlink protection). Tanpa env, return as-is.
-    videoUrl: signBunnyUrl(p.videoUrl) ?? null,
+    videoUrl: playbackUrls.videoUrl,
+    videoDataSaverUrl: playbackUrls.videoDataSaverUrl,
     thumbnailUrl: signBunnyUrl(p.thumbnailUrl) ?? null,
     thumbnailBlurhash: p.thumbnailBlurhash,
     videoDurationSec: p.videoDurationSec,
@@ -446,15 +453,21 @@ export async function listFeedPosts({
         : null,
     // PHOTO_CAROUSEL media — 1-8 image entries ordered by sortOrder.
     // Video posts return empty array (kind != PHOTO_CAROUSEL).
-    media: p.media.map((m) => ({
-      id: m.id,
-      mediaType: m.mediaType,
-      url: m.url,
-      thumbnailUrl: m.thumbnailUrl,
-      width: m.width,
-      height: m.height,
-      sortOrder: m.sortOrder,
-    })),
+    media: p.media.map((m) => {
+      const mediaPlaybackUrls = buildFeedVideoPlaybackUrls({ videoUrl: m.url });
+      return {
+        id: m.id,
+        mediaType: m.mediaType,
+        url: mediaPlaybackUrls.videoUrl ?? m.url,
+        ...(m.mediaType === "video"
+          ? { videoDataSaverUrl: mediaPlaybackUrls.videoDataSaverUrl }
+          : {}),
+        thumbnailUrl: m.thumbnailUrl,
+        width: m.width,
+        height: m.height,
+        sortOrder: m.sortOrder,
+      };
+    }),
     likeCount: p.likeCount,
     commentCount: p.commentCount,
     viewCount: p.viewCount,
@@ -486,7 +499,8 @@ export async function listFeedPosts({
     publishedAt: p.publishedAt?.toISOString() ?? null,
     createdAt: p.createdAt.toISOString(),
     viewerLiked: viewerLikedIds.has(p.id),
-  }));
+    };
+  });
 
   return {
     items,

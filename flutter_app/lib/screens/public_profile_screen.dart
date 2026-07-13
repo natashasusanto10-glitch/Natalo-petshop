@@ -8,12 +8,14 @@ import '../widgets/official_brand_avatar.dart';
 
 import '../config/api_config.dart';
 import '../models/feed_post.dart';
+import '../features/feed/video/post_video_warm_handoff.dart';
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
 import '../services/follow_service.dart';
 import '../services/profile_service.dart';
 import '../services/report_service.dart';
 import '../state/feed_store.dart';
+import '../state/settings_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_ui.dart';
@@ -48,6 +50,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   List<FeedPost> _posts = const [];
   String? _nextCursor;
   bool _loading = true;
+  bool _openingPost = false;
   bool _loadingMore = false;
   bool _followBusy = false;
   String? _errorText;
@@ -165,32 +168,45 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     if (mounted) _refresh();
   }
 
-  void _openPost(int index) {
-    if (index < 0 || index >= _posts.length) return;
+  Future<void> _openPost(int index) async {
+    if (index < 0 || index >= _posts.length || _openingPost) return;
+    _openingPost = true;
     final profile = _profile;
-    AppHaptics.tap();
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        // IG-style: bukan single-post screen, tapi vertical-scroll feed
-        // dari SEMUA posts user — initial scrolled ke tile yang di-tap.
-        // Author header pakai data dari PublicProfile (bukan memberStore,
-        // karena viewer != author). isOwner: false → sembunyikan menu
-        // edit/delete (cuma owner di "Postingan Saya" yang lihat itu).
-        builder: (_) => MemberPostDetailScreen(
-          post: _posts[index],
-          posts: _posts,
-          initialIndex: index,
-          authorName: profile?.name,
-          authorPhotoUrl: profile?.profilePhotoUrl,
-          authorInitial: profile?.initial,
-          // Official → detail render identitas brand (logo + emas +
-          // rosette) di author row, caption, dan subtitle AppBar.
-          authorIsOfficial: profile?.isOfficial ?? false,
-          isOwner: profile?.isOwner ?? false,
-        ),
-      ),
+    final post = _posts[index];
+    final handoff = PostVideoWarmHandoff.createIfVideo(
+      isVideo: post.isVideo,
+      postId: post.id,
+      url: post.videoPlaybackUrlForQuality(appSettingsStore.feedVideoQuality),
     );
+    AppHaptics.tap();
+    try {
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          // IG-style: bukan single-post screen, tapi vertical-scroll feed
+          // dari SEMUA posts user — initial scrolled ke tile yang di-tap.
+          // Author header pakai data dari PublicProfile (bukan memberStore,
+          // karena viewer != author). isOwner: false → sembunyikan menu
+          // edit/delete (cuma owner di "Postingan Saya" yang lihat itu).
+          builder: (_) => MemberPostDetailScreen(
+            post: post,
+            posts: _posts,
+            initialIndex: index,
+            authorName: profile?.name,
+            authorPhotoUrl: profile?.profilePhotoUrl,
+            authorInitial: profile?.initial,
+            // Official → detail render identitas brand (logo + emas +
+            // rosette) di author row, caption, dan subtitle AppBar.
+            authorIsOfficial: profile?.isOfficial ?? false,
+            isOwner: profile?.isOwner ?? false,
+            warmVideoHandoff: handoff,
+          ),
+        ),
+      );
+    } finally {
+      await handoff?.disposeIfUnclaimed();
+      _openingPost = false;
+    }
   }
 
   Future<void> _toggleFollow() async {

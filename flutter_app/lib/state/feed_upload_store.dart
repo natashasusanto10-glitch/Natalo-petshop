@@ -27,6 +27,7 @@ enum FeedUploadStatus {
   waitingReview,
   failed,
   cancelled,
+
   /// Ada task inflight tersimpan dari sesi sebelumnya (app di-kill saat
   /// preparing/uploading) — FeedUploadBar tawarkan "Lanjutkan" (Fase 2C-4).
   resumable,
@@ -121,6 +122,16 @@ class FeedUploadStore extends ChangeNotifier {
   /// Injectable untuk unit test — default gate global.
   @visibleForTesting
   VideoCompressGate gate = videoCompressGate;
+
+  /// Injectable media probe untuk unit test. Dipakai supaya sumber yang sudah
+  /// Full HD (<=1920x1080 atau <=1080x1920) tidak lewat preset kompresi yang
+  /// di Android bersifat at-most 1080/1920, tapi di iOS preset bisa menjaga
+  /// kualitas dengan perilaku yang kurang eksplisit. Untuk video tanpa trim,
+  /// original Full HD dipakai apa adanya agar tidak ada upscale/downscale
+  /// diam-diam.
+  @visibleForTesting
+  Future<MediaInfo?> Function(String path) mediaInfoReader =
+      (path) => VideoCompress.getMediaInfo(path);
 
   /// Injectable clock untuk unit test — dipakai timestamp `savedAtMs` saat
   /// persist task inflight (bukan lagi untuk cek window `authExpire`; video
@@ -374,7 +385,7 @@ class FeedUploadStore extends ChangeNotifier {
         );
       }
 
-      // ── Step 0 — Compress video ke 720p (Approach B: ber-range) ──
+      // ── Step 0 — Normalize video max 1080p (Approach B: ber-range) ──
       // CRITICAL: missed di first version background upload (v1.0.86) →
       // user upload original video (50-300MB iPhone 4K) → Bunny encode
       // lambat → URL .mp4 404 sampai encode selesai. Trip compress dulu:
@@ -384,56 +395,7 @@ class FeedUploadStore extends ChangeNotifier {
       //   kalau tidak ada range trim (lihat catch di bawah).
       // Match logic FeedUploadProgressScreen._startUpload() yang lama.
       _update(status: FeedUploadStatus.preparing, progress: 0.05);
-      String videoPath = originalPath;
-      if (draft.trimmedVideoPath == null) {
-        final range = compressRangeOf(draft);
-        final job = VideoCompressJob();
-        _activeCompressJob = job;
-        try {
-          // Lewat gate: kalau layar trim sedang kompres, job ini antre
-          // (bukan StateError), dan dispose layar lain tidak bisa
-          // membunuh job ini.
-          final info = await gate.compress(
-            originalPath,
-            quality: VideoQuality.Res1280x720Quality,
-            includeAudio: true,
-            startTime: range.startTimeSec,
-            duration: range.durationSec,
-            job: job,
-          );
-          final compressed = info?.file;
-          if (compressed != null && await compressed.exists()) {
-            videoPath = compressed.path;
-            if (kDebugMode) {
-              final origSize = await File(originalPath).length();
-              final newSize = await compressed.length();
-              debugPrint(
-                '[feed-upload-store] compressed: ${origSize ~/ 1024}KB → '
-                '${newSize ~/ 1024}KB '
-                '(${(100 - newSize / origSize * 100).round()}% reduction)',
-              );
-            }
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('[feed-upload-store] compress failed: $e');
-          }
-          // Kalau ada range trim, `originalPath` masih video PENUH
-          // (belum dipotong) — upload apa adanya akan post konten yang
-          // salah (durasi/isi tidak sesuai pilihan user di layar trim).
-          // Rethrow supaya job ini gagal & user bisa retry, bukan
-          // diam-diam post video yang salah.
-          // KECUALI: throw ini dipicu oleh cancel user (gate.cancel →
-          // cancelRunner bikin compress future error). Itu bukan
-          // kegagalan — jangan rethrow, biarkan jatuh ke _checkCancel()
-          // di bawah supaya transisi ke status `cancelled`, bukan `failed`.
-          if (range.startTimeSec != null && !_cancelRequested) rethrow;
-          // Tanpa range trim, original == video yang dimaksud user —
-          // aman fallback, Bunny bisa accept + re-encode.
-        } finally {
-          _activeCompressJob = null;
-        }
-      }
+      final videoPath = await prepareVideoPathForUpload(draft, originalPath);
 
       // ── Checkpoint batal — setelah compress ──
       if (_checkCancel()) return;
@@ -586,6 +548,96 @@ class FeedUploadStore extends ChangeNotifier {
       _uploading = false;
       await _clearPendingIfTerminal();
     }
+  }
+
+  @visibleForTesting
+  Future<String> prepareVideoPathForUpload(
+    FeedCreatePostDraft draft,
+    String originalPath,
+  ) async {
+    if (draft.trimmedVideoPath != null) return originalPath;
+
+    final range = compressRangeOf(draft);
+    final hasTrim = range.startTimeSec != null || range.durationSec != null;
+    if (!hasTrim && await _sourceIsAtMostFullHd(originalPath)) {
+      return originalPath;
+    }
+
+    final job = VideoCompressJob();
+    _activeCompressJob = job;
+    try {
+      final info = await gate.compress(
+        originalPath,
+        quality: VideoQuality.Res1920x1080Quality,
+        includeAudio: true,
+        startTime: range.startTimeSec,
+        duration: range.durationSec,
+        job: job,
+      );
+      final compressed = info?.file;
+      if (compressed != null && await compressed.exists()) {
+        if (!hasTrim && await _compressedIsLarger(compressed, originalPath)) {
+          await _deleteTempCompressed(compressed, originalPath);
+          return originalPath;
+        }
+        if (kDebugMode) {
+          final origSize = await File(originalPath).length();
+          final newSize = await compressed.length();
+          debugPrint(
+            '[feed-upload-store] compressed: ${origSize ~/ 1024}KB → '
+            '${newSize ~/ 1024}KB '
+            '(${(100 - newSize / origSize * 100).round()}% reduction)',
+          );
+        }
+        return compressed.path;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[feed-upload-store] compress failed: $e');
+      }
+      if (hasTrim && !_cancelRequested) rethrow;
+    } finally {
+      _activeCompressJob = null;
+    }
+    return originalPath;
+  }
+
+  Future<bool> _sourceIsAtMostFullHd(String path) async {
+    try {
+      final info = await mediaInfoReader(path);
+      final width = info?.width;
+      final height = info?.height;
+      if (width == null || height == null || width <= 0 || height <= 0) {
+        return false;
+      }
+      return _isAtMostFullHd(width, height);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _isAtMostFullHd(int width, int height) {
+    return (width <= 1920 && height <= 1080) ||
+        (width <= 1080 && height <= 1920);
+  }
+
+  Future<bool> _compressedIsLarger(File compressed, String originalPath) async {
+    try {
+      final originalSize = await File(originalPath).length();
+      final compressedSize = await compressed.length();
+      return compressedSize > originalSize;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _deleteTempCompressed(
+      File compressed, String originalPath) async {
+    try {
+      if (compressed.path != originalPath && await compressed.exists()) {
+        await compressed.delete();
+      }
+    } catch (_) {}
   }
 
   /// Retry upload — restart from beginning dengan data yang sama.
