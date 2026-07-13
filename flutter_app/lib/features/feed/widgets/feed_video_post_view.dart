@@ -121,6 +121,41 @@ class FeedVideoPostView extends StatefulWidget {
   final ValueChanged<bool> onOverlayStateChanged;
   final ValueChanged<bool> onMediaZoomChanged;
 
+  /// Kontrak §2.1 (KUNCI USER) — siapa yang boleh men-DISPOSE controller.
+  /// `false` → controller/wrapper milik coordinator (T3); widget ini TIDAK
+  /// memanggil `dispose()` di `dispose()`-nya. Default `true` = perilaku
+  /// lama (widget membuat + memiliki + men-dispose controllernya sendiri).
+  final bool ownsController;
+
+  /// Kontrak §2.1 (KUNCI USER) — siapa yang boleh play/pause/seek/setVolume.
+  /// `true` → SEMUA sumber kontrol internal (VisibilityDetector, lifecycle
+  /// route/app, tap/toggle, comment-sheet cover) TIDAK menyentuh controller
+  /// langsung; sebaliknya widget MELAPOR intent lewat callback di bawah dan
+  /// coordinator (T3) yang mengeksekusi. Widget juga tidak meng-init
+  /// controller sendiri — controller datang dari luar (preloaded/claim).
+  /// Default `false` = perilaku lama (nol perubahan pada call site lama).
+  final bool playbackManagedExternally;
+
+  /// [playbackManagedExternally] — video jadi cukup terlihat (`true`, >0.7
+  /// fraction + aktif) atau tersembunyi (`false`). T3 memetakan ke
+  /// `coordinator.reportVisible` / `reportHidden`.
+  final ValueChanged<bool>? onVisibleChanged;
+
+  /// [playbackManagedExternally] — video harus di-pause karena tertutup
+  /// (route opaque didorong, app ke background, comment sheet full). T3
+  /// memetakan ke pause-cover coordinator (mis. `pauseAll`).
+  final VoidCallback? onRequestPause;
+
+  /// [playbackManagedExternally] — penutup hilang (route dibuka lagi, app
+  /// foreground, comment sheet turun) → boleh resume. T3 memetakan ke
+  /// `coordinator.resumeAll`.
+  final VoidCallback? onRequestPlay;
+
+  /// [playbackManagedExternally] — user tap play/pause di area video. T3
+  /// memetakan ke `coordinator.userTogglePlay` (satu-satunya sumber
+  /// user-pause eksplisit).
+  final VoidCallback? onRequestUserTogglePlay;
+
   const FeedVideoPostView({
     super.key,
     required this.post,
@@ -130,6 +165,12 @@ class FeedVideoPostView extends StatefulWidget {
     required this.onMediaZoomChanged,
     this.preloadedCachedPlayer,
     this.claimPreloadedVideo,
+    this.ownsController = true,
+    this.playbackManagedExternally = false,
+    this.onVisibleChanged,
+    this.onRequestPause,
+    this.onRequestPlay,
+    this.onRequestUserTogglePlay,
   });
 
   @override
@@ -305,6 +346,12 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   bool _pausedByCover = false;
 
   void _pauseForCover() {
+    if (_managed) {
+      // Coordinator memiliki playback — lapor intent, jangan sentuh
+      // controller (lifecycle level-halaman yang mengeksekusi, §2.5).
+      widget.onRequestPause?.call();
+      return;
+    }
     final ctrl = _videoController;
     if (ctrl == null || !ctrl.value.isInitialized) return;
     if (!ctrl.value.isPlaying) return;
@@ -313,6 +360,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   }
 
   void _resumeFromCover() {
+    if (_managed) {
+      widget.onRequestPlay?.call();
+      return;
+    }
     if (!_pausedByCover) return;
     _pausedByCover = false;
     if (!mounted || !widget.isActive) return;
@@ -354,6 +405,15 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
   bool get _shouldAutoplay =>
       appSettingsStore.feedAutoplay && !_dataSaverEnabled;
+
+  /// Playback dikendalikan coordinator (§2.1) — semua kontrol internal jadi
+  /// laporan intent, bukan panggilan langsung ke controller.
+  bool get _managed => widget.playbackManagedExternally;
+
+  /// Guard in-flight untuk [_maybeInitVideo] (fix A4): true selama sebuah
+  /// init sedang berjalan supaya panggilan kedua (mis. tap saat loading)
+  /// tidak memulai controller/download kedua.
+  bool _initInFlight = false;
 
   Future<void> _adoptPreloadedController() async {
     // Jalur klaim (fix A5): ambil dari map pemilik HANYA saat state ini
@@ -402,23 +462,39 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // cuma untuk kasus defensif (controller mungkin dispose dari luar). Kalau
     // sudah initialized, helper-nya early-return tanpa schedule spinner.
     _resetLoadingSpinnerTimer();
-    await ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
-    if (widget.isActive && _shouldAutoplay) {
-      await ctrl.play();
-    }
-    // HLS bisa ter-adopt SEBELUM initialize selesai (controller masuk map
-    // sinkron, init jalan async). play()/setVolume di atas jadi no-op diam
-    // → tanpa hook ini video stuck di poster sampai user interaksi.
-    // Listener one-shot: begitu initialized, apply volume + play.
-    if (!ctrl.value.isInitialized) {
+    // Managed (§2.1): coordinator yang set volume + play (via setActive).
+    // Widget cuma merender VideoPlayer + overlay. Jangan sentuh controller.
+    if (!_managed) {
+      await ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+      if (widget.isActive && _shouldAutoplay) {
+        await ctrl.play();
+      }
+      // HLS bisa ter-adopt SEBELUM initialize selesai (controller masuk map
+      // sinkron, init jalan async). play()/setVolume di atas jadi no-op diam
+      // → tanpa hook ini video stuck di poster sampai user interaksi.
+      // Listener one-shot: begitu initialized, apply volume + play.
+      if (!ctrl.value.isInitialized) {
+        void onInit() {
+          if (!ctrl.value.isInitialized) return;
+          ctrl.removeListener(onInit);
+          if (!mounted || _videoController != ctrl) return;
+          ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+          if (widget.isActive && _shouldAutoplay && !_isPaused) {
+            ctrl.play();
+          }
+          _cancelLoadingSpinnerDelay();
+          if (mounted) setState(() {});
+        }
+
+        ctrl.addListener(onInit);
+      }
+    } else if (!ctrl.value.isInitialized) {
+      // Managed: tetap butuh rebuild + cancel spinner saat init selesai
+      // supaya VideoPlayer merender frame pertama (tanpa menyentuh playback).
       void onInit() {
         if (!ctrl.value.isInitialized) return;
         ctrl.removeListener(onInit);
         if (!mounted || _videoController != ctrl) return;
-        ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
-        if (widget.isActive && _shouldAutoplay && !_isPaused) {
-          ctrl.play();
-        }
         _cancelLoadingSpinnerDelay();
         if (mounted) setState(() {});
       }
@@ -505,7 +581,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.isActive != widget.isActive) {
       if (widget.isActive) {
-        if (!_isPaused && _shouldAutoplay) {
+        // Managed: coordinator.setActive yang memutar video aktif; widget
+        // tidak play() langsung (§2.1).
+        if (!_managed && !_isPaused && _shouldAutoplay) {
           _videoController?.play();
         }
         _syncProductRotation();
@@ -534,11 +612,16 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         _isScrubbing = false;
         widget.onOverlayStateChanged(false);
         widget.onMediaZoomChanged(false);
-        _videoController?.pause();
-        try {
-          _videoController?.setPlaybackSpeed(1.0);
-        } catch (_) {}
-        _videoController?.seekTo(Duration.zero);
+        // Managed: coordinator yang mem-pause aktif-lama saat setActive ke
+        // video lain (dan tetap pinned untuk resume di timestamp — §2.6).
+        // Widget TIDAK pause/seek langsung supaya tidak mereset posisi.
+        if (!_managed) {
+          _videoController?.pause();
+          try {
+            _videoController?.setPlaybackSpeed(1.0);
+          } catch (_) {}
+          _videoController?.seekTo(Duration.zero);
+        }
         _stopProductRotation();
       }
     }
@@ -554,10 +637,27 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
   Future<void> _maybeInitVideo({bool userInitiated = false}) async {
     if (_videoController != null) return;
+    // Managed (§2.1): controller di-attach dari luar (preloaded/claim);
+    // widget tidak boleh membuat/mengunduh controllernya sendiri.
+    if (_managed) return;
+    // Fix A4 — guard in-flight: init sedang berjalan untuk controller ini,
+    // panggilan kedua (mis. tap :onTapMedia saat loading) no-op supaya tidak
+    // ada dua controller / dua download.
+    if (_initInFlight) return;
     final url = widget.post.videoUrl;
     if (url.isEmpty) return;
     if (_dataSaverEnabled && !userInitiated) return;
+    _initInFlight = true;
+    try {
+      await _runInitVideo(userInitiated: userInitiated);
+    } finally {
+      _initInFlight = false;
+    }
+  }
+
+  Future<void> _runInitVideo({required bool userInitiated}) async {
     setState(() => _videoLoadFailed = false);
+    final url = widget.post.videoUrl;
     // Sprint 2 #7 — Network-aware quality rewrite + user preference.
     final resolvedUrl = videoQualityService.resolvePlaybackUrl(
       url,
@@ -644,7 +744,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       if (widget.isActive && (_shouldAutoplay || userInitiated)) {
         await controller.play();
       }
-      _isPaused = !controller.value.isPlaying;
+      // Fix A1: JANGAN turunkan _isPaused dari state controller. Video yang
+      // selesai init saat inactive (belum diputar) BUKAN "user pause" — kalau
+      // di-set _isPaused=true di sini, gate autoplay saat jadi aktif
+      // (didUpdateWidget) menolak play → video diam padahal user tak pernah
+      // pause. _isPaused HANYA true dari aksi user eksplisit (_onTapMedia).
       setState(() {});
       return true;
     } catch (_) {
@@ -679,16 +783,21 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     _commentSheetController.dispose();
     _commentSheetExtent.dispose();
     _videoController?.removeListener(_handleVideoPositionForCta);
-    // Prefer dispose via wrapper — handle cache reference cleanup.
-    // Wrapper.dispose() internally call controller.dispose() too, jadi
-    // tidak perlu double-dispose. Kalau wrapper null (defensive), fallback
-    // ke controller dispose direct.
-    if (_cachedPlayer != null) {
-      _cachedPlayer!.dispose();
-      _cachedPlayer = null;
-    } else {
-      _videoController?.dispose();
+    // Kontrak §2.1: kalau widget BUKAN pemilik controller (coordinator yang
+    // pemilik, T3), JANGAN dispose — cukup lepas referensi. Coordinator
+    // satu-satunya pemanggil dispose (nol double-dispose / audio hantu).
+    if (widget.ownsController) {
+      // Prefer dispose via wrapper — handle cache reference cleanup.
+      // Wrapper.dispose() internally call controller.dispose() too, jadi
+      // tidak perlu double-dispose. Kalau wrapper null (defensive), fallback
+      // ke controller dispose direct.
+      if (_cachedPlayer != null) {
+        _cachedPlayer!.dispose();
+      } else {
+        _videoController?.dispose();
+      }
     }
+    _cachedPlayer = null;
     _videoController = null;
     _heartBurstController.dispose();
     super.dispose();
@@ -713,23 +822,36 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // video harus hilang dari layar dan berhenti (bukan cuma tersembunyi).
     final shouldPause =
         shouldPauseForCommentExtent(extent: extent, maxExtent: maxExtent);
-    final ctrl = _videoController;
-    if (shouldPause &&
-        !_pausedByCommentSheet &&
-        ctrl != null &&
-        ctrl.value.isInitialized &&
-        ctrl.value.isPlaying) {
-      _pausedByCommentSheet = true;
-      ctrl.pause();
-    } else if (!shouldPause && _pausedByCommentSheet) {
-      _pausedByCommentSheet = false;
-      if (mounted &&
-          widget.isActive &&
-          !_isPaused &&
-          _shouldAutoplay &&
+    if (_managed) {
+      // Managed (§2.1): comment sheet full = cover → lapor pause/resume ke
+      // coordinator, jangan sentuh controller. Pakai flag lokal untuk
+      // memastikan lapor sekali per transisi.
+      if (shouldPause && !_pausedByCommentSheet) {
+        _pausedByCommentSheet = true;
+        widget.onRequestPause?.call();
+      } else if (!shouldPause && _pausedByCommentSheet) {
+        _pausedByCommentSheet = false;
+        widget.onRequestPlay?.call();
+      }
+    } else {
+      final ctrl = _videoController;
+      if (shouldPause &&
+          !_pausedByCommentSheet &&
           ctrl != null &&
-          ctrl.value.isInitialized) {
-        ctrl.play();
+          ctrl.value.isInitialized &&
+          ctrl.value.isPlaying) {
+        _pausedByCommentSheet = true;
+        ctrl.pause();
+      } else if (!shouldPause && _pausedByCommentSheet) {
+        _pausedByCommentSheet = false;
+        if (mounted &&
+            widget.isActive &&
+            !_isPaused &&
+            _shouldAutoplay &&
+            ctrl != null &&
+            ctrl.value.isInitialized) {
+          ctrl.play();
+        }
       }
     }
 
@@ -945,7 +1067,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     final ctrl = _videoController;
     if (_pausedByCommentSheet) {
       _pausedByCommentSheet = false;
-      if (mounted &&
+      if (_managed) {
+        widget.onRequestPlay?.call();
+      } else if (mounted &&
           widget.isActive &&
           !_isPaused &&
           _shouldAutoplay &&
@@ -1312,6 +1436,12 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   }
 
   Future<void> _onTapMedia() async {
+    // Managed (§2.1): tap = intent user-toggle ke coordinator; widget tidak
+    // play/pause langsung dan tidak init sendiri (controller dari luar).
+    if (_managed) {
+      widget.onRequestUserTogglePlay?.call();
+      return;
+    }
     final ctrl = _videoController;
     if (ctrl == null) {
       await _maybeInitVideo(userInitiated: true);
@@ -1463,6 +1593,14 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
           feedLocalStore.markViewedThisSession(post.id);
           // Fire-and-forget — analytics non-critical, jangan await.
           feedService.trackView(post.id);
+        }
+        // Managed (§2.1): visibilitas jadi laporan intent ke coordinator,
+        // bukan panggilan play/pause langsung. Coordinator yang memutuskan
+        // (aktif + tidak user-pause + tidak suspend → resume).
+        if (_managed) {
+          final visibleEnough = info.visibleFraction > 0.7 && widget.isActive;
+          widget.onVisibleChanged?.call(visibleEnough);
+          return;
         }
         if (ctrl == null) return;
         if (info.visibleFraction > 0.7 && widget.isActive && _shouldAutoplay) {
