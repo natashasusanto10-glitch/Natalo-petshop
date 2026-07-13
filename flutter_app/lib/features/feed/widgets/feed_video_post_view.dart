@@ -46,6 +46,20 @@ import 'feed_video_scrubber.dart';
 /// widget tree).
 enum CommentSnapTarget { close, initial, max }
 
+/// Alasan sebuah cover-pause dilaporkan lewat [FeedVideoPostView.onRequestPause]
+/// (gap D5). Satu sinyal pause dulu opaque untuk 3 sumber berbeda; T3 tidak
+/// bisa membedakan "aku sedang push fullscreen handoff" (controller SAMA
+/// lanjut di fullscreen → JANGAN pauseAll) dari cover asli.
+///
+/// Panduan konsumsi (T3):
+///  - [routePush] + sedang-handoff (fullscreen borrow controller yang sama)
+///    → JANGAN `pauseAll`; controller identik lanjut jalan di fullscreen.
+///  - [routePush] non-handoff (route opaque lain didorong) → `pauseAll`
+///    sesuai kebutuhan supaya video Postingan berhenti di balik route.
+///  - [appBackground] → `pauseAll` (app ke background/lock → nol audio hantu).
+///  - [commentSheetFull] → `pauseAll` (comment sheet full menutup video).
+enum CoverPauseReason { routePush, appBackground, commentSheetFull }
+
 /// Pure decision function untuk `_onCommentDragEnd` — menentukan target
 /// snap sheet komentar berdasar posisi + kecepatan gesture saat lepas jari.
 /// Diekstrak supaya bisa di-unit-test langsung (lihat
@@ -141,10 +155,11 @@ class FeedVideoPostView extends StatefulWidget {
   /// `coordinator.reportVisible` / `reportHidden`.
   final ValueChanged<bool>? onVisibleChanged;
 
-  /// [playbackManagedExternally] — video harus di-pause karena tertutup
-  /// (route opaque didorong, app ke background, comment sheet full). T3
-  /// memetakan ke pause-cover coordinator (mis. `pauseAll`).
-  final VoidCallback? onRequestPause;
+  /// [playbackManagedExternally] — video harus di-pause karena tertutup.
+  /// Membawa [CoverPauseReason] (gap D5) supaya T3 bisa membedakan
+  /// route-push handoff (controller sama lanjut di fullscreen → JANGAN
+  /// pauseAll) dari cover asli (app background / comment full → pauseAll).
+  final ValueChanged<CoverPauseReason>? onRequestPause;
 
   /// [playbackManagedExternally] — penutup hilang (route dibuka lagi, app
   /// foreground, comment sheet turun) → boleh resume. T3 memetakan ke
@@ -345,11 +360,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   // supaya resume tidak menyalakan video yang memang di-pause user.
   bool _pausedByCover = false;
 
-  void _pauseForCover() {
+  void _pauseForCover(CoverPauseReason reason) {
     if (_managed) {
-      // Coordinator memiliki playback — lapor intent, jangan sentuh
-      // controller (lifecycle level-halaman yang mengeksekusi, §2.5).
-      widget.onRequestPause?.call();
+      // Coordinator memiliki playback — lapor intent + alasan (D5), jangan
+      // sentuh controller (lifecycle level-halaman yang mengeksekusi, §2.5).
+      widget.onRequestPause?.call(reason);
       return;
     }
     final ctrl = _videoController;
@@ -377,7 +392,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // sheet produk) TIDAK mem-pause — video tetap jalan di baliknya (ala
     // TikTok/IG) dan tidak ada konflik audio dari sheet.
     if (lastPushedRouteIsOpaque()) {
-      _pauseForCover();
+      // D5: route opaque didorong (mis. buka fullscreen). T3 memakai reason
+      // untuk men-DROP kasus ini saat handoff sedang berlangsung (controller
+      // sama lanjut di fullscreen → JANGAN pauseAll).
+      _pauseForCover(CoverPauseReason.routePush);
     }
   }
 
@@ -392,7 +410,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
-        _pauseForCover();
+        _pauseForCover(CoverPauseReason.appBackground);
       case AppLifecycleState.resumed:
         _resumeFromCover();
       case AppLifecycleState.detached:
@@ -828,7 +846,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       // memastikan lapor sekali per transisi.
       if (shouldPause && !_pausedByCommentSheet) {
         _pausedByCommentSheet = true;
-        widget.onRequestPause?.call();
+        widget.onRequestPause?.call(CoverPauseReason.commentSheetFull);
       } else if (!shouldPause && _pausedByCommentSheet) {
         _pausedByCommentSheet = false;
         widget.onRequestPlay?.call();
@@ -1488,6 +1506,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   }
 
   void _onLongPressStart(LongPressStartDetails details) {
+    // Managed (§2.1): playback dikuasai coordinator — peek-pause & 2x-speed
+    // menyentuh controller pinjaman langsung → race (resume bisa menembus
+    // _suspended = audio hantu; speed 2x bisa nyangkut kalau widget disposed
+    // mid-press). Nonaktifkan gesture ini saat managed (default aman D5/§2.1).
+    if (_managed) return;
     if (_isScrubbing) return; // Scrubber priority
     final ctrl = _videoController;
     if (ctrl == null || !ctrl.value.isInitialized) return;
@@ -1523,6 +1546,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   }
 
   Future<void> _onLongPressEnd(LongPressEndDetails details) async {
+    // Managed: gesture di-nonaktifkan di _onLongPressStart → tidak ada state
+    // long-press yang perlu di-resume/reset di sini. Guard simetris supaya
+    // tak ada ctrl.play/setPlaybackSpeed/seek langsung saat managed.
+    if (_managed) return;
     final ctrl = _videoController;
     if (_longPressPaused) {
       setState(() {
@@ -1852,6 +1879,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                             child: FeedVideoScrubber(
                               controller: _videoController!,
                               isCurrent: widget.isActive,
+                              // §2.1: managed → scrubber seek-only (nol
+                              // ctrl.play/pause; tak ada resume yang menembus
+                              // suspend coordinator).
+                              managed: _managed,
                               onScrubbingChanged: (scrubbing) {
                                 if (!mounted) return;
                                 setState(() => _isScrubbing = scrubbing);

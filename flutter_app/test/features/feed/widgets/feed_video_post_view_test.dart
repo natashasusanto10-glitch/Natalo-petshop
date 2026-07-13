@@ -8,7 +8,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_post_view.dart';
+import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_scrubber.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
+import 'package:natalo_petshop_flutter/utils/app_route_observer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
@@ -26,6 +28,9 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   final Map<int, Duration> _positions = {};
   int _nextId = 0;
   int createCount = 0;
+  int playCount = 0;
+  int pauseCount = 0;
+  int setSpeedCount = 0;
 
   @override
   Future<void> init() async {}
@@ -72,10 +77,14 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   Stream<VideoEvent> videoEventsFor(int playerId) => _streams[playerId]!.stream;
 
   @override
-  Future<void> play(int playerId) async {}
+  Future<void> play(int playerId) async {
+    playCount++;
+  }
 
   @override
-  Future<void> pause(int playerId) async {}
+  Future<void> pause(int playerId) async {
+    pauseCount++;
+  }
 
   @override
   Future<void> setLooping(int playerId, bool looping) async {}
@@ -84,7 +93,9 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   Future<void> setVolume(int playerId, double volume) async {}
 
   @override
-  Future<void> setPlaybackSpeed(int playerId, double speed) async {}
+  Future<void> setPlaybackSpeed(int playerId, double speed) async {
+    setSpeedCount++;
+  }
 
   @override
   Future<void> setMixWithOthers(bool mixWithOthers) async {}
@@ -316,7 +327,7 @@ void main() {
       bool playbackManagedExternally = false,
       ValueChanged<bool>? onVisibleChanged,
       VoidCallback? onRequestUserTogglePlay,
-      VoidCallback? onRequestPause,
+      ValueChanged<CoverPauseReason>? onRequestPause,
       VoidCallback? onRequestPlay,
     }) {
       return MaterialApp(
@@ -466,6 +477,169 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       expect(borrowed.value.isInitialized, isTrue,
           reason: 'ownsController:false → controller tidak di-dispose widget');
+    });
+
+    // FIX 1 (T2 review): scrubber di managed mode TIDAK boleh play/pause
+    // controller pinjaman — hanya seek. Cegah race scrub-pause → background
+    // → lepas scrub → play() menembus suspend = audio hantu.
+    testWidgets('managed: scrub drag TIDAK memanggil controller play/pause',
+        (tester) async {
+      installPlatform();
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final borrowed = VideoPlayerController.networkUrl(
+        Uri.parse('https://example.com/managed-scrub.mp4'),
+      );
+      await tester.runAsync(() => borrowed.initialize());
+      await tester.runAsync(() => borrowed.play());
+      addTearDown(borrowed.dispose);
+      expect(borrowed.value.isPlaying, isTrue);
+
+      await tester.pumpWidget(host(
+        isActive: true,
+        preloaded: borrowed,
+        ownsController: false,
+        playbackManagedExternally: true,
+      ));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(find.byType(FeedVideoScrubber), findsOneWidget,
+          reason: 'scrubber harus ter-render untuk controller aktif');
+
+      final playBefore = fakePlatform.playCount;
+      final pauseBefore = fakePlatform.pauseCount;
+
+      // Drag horizontal di scrubber (start → update → end).
+      await tester.drag(
+        find.byType(FeedVideoScrubber),
+        const Offset(120, 0),
+        warnIfMissed: false,
+      );
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(fakePlatform.pauseCount, pauseBefore,
+          reason: 'managed → scrub start tidak boleh pause controller');
+      expect(fakePlatform.playCount, playBefore,
+          reason: 'managed → scrub end tidak boleh play/resume controller');
+      expect(borrowed.value.isPlaying, isTrue,
+          reason: 'managed → video tetap jalan saat scrub (seek-only)');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    // FIX 2 (T2 review): long-press peek-pause / 2x-speed di managed mode
+    // di-nonaktifkan — tak ada ctrl.pause/play/setPlaybackSpeed langsung.
+    testWidgets(
+        'managed: long-press TIDAK memanggil play/pause/setPlaybackSpeed',
+        (tester) async {
+      installPlatform();
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final borrowed = VideoPlayerController.networkUrl(
+        Uri.parse('https://example.com/managed-lp.mp4'),
+      );
+      await tester.runAsync(() => borrowed.initialize());
+      await tester.runAsync(() => borrowed.play());
+      addTearDown(borrowed.dispose);
+      expect(borrowed.value.isPlaying, isTrue);
+
+      await tester.pumpWidget(host(
+        isActive: true,
+        preloaded: borrowed,
+        ownsController: false,
+        playbackManagedExternally: true,
+      ));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      final playBefore = fakePlatform.playCount;
+      final pauseBefore = fakePlatform.pauseCount;
+      final speedBefore = fakePlatform.setSpeedCount;
+
+      // Long-press center (pause zone) lalu release.
+      await tester.longPressAt(const Offset(200, 600));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(fakePlatform.pauseCount, pauseBefore,
+          reason: 'managed → long-press tidak boleh pause controller');
+      expect(fakePlatform.playCount, playBefore,
+          reason: 'managed → long-press release tidak boleh play controller');
+      expect(fakePlatform.setSpeedCount, speedBefore,
+          reason: 'managed → long-press tidak boleh setPlaybackSpeed (nol 2x)');
+      expect(borrowed.value.isPlaying, isTrue);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    // FIX 3 (T2 review, gap D5): onRequestPause membawa CoverPauseReason yang
+    // benar dari sumber berbeda — routePush (route opaque didorong) vs
+    // appBackground (lifecycle). T3 pakai reason untuk drop routePush saat
+    // handoff.
+    testWidgets('managed: onRequestPause membawa reason sesuai sumber',
+        (tester) async {
+      installPlatform();
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final reasons = <CoverPauseReason>[];
+      await tester.pumpWidget(MaterialApp(
+        navigatorObservers: [appRouteObserver],
+        home: FeedVideoPostView(
+          key: const ValueKey('feed-video-post-1'),
+          post: _fakeVideoPost(hls: true),
+          isActive: true,
+          preloadedController: null,
+          ownsController: false,
+          playbackManagedExternally: true,
+          onRequestPause: reasons.add,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      // Sumber 1: push route opaque → didPushNext → reason routePush.
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      navigator.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: SizedBox()),
+      ));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(reasons, contains(CoverPauseReason.routePush),
+          reason: 'route opaque didorong → reason routePush (T3 drop saat handoff)');
+      expect(reasons.last, CoverPauseReason.routePush);
+
+      // Sumber 2: app ke background → lifecycle → reason appBackground.
+      tester.binding
+          .handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(reasons.last, CoverPauseReason.appBackground,
+          reason: 'app background → reason appBackground (T3 pauseAll)');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
     });
   });
 }
