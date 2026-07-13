@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../features/feed/video/post_video_coordinator.dart';
-import '../features/feed/video/video_player_session.dart';
 import '../features/feed/widgets/feed_video_post_view.dart';
 import '../models/feed_post.dart';
 import '../state/feed_store.dart';
+import '../state/settings_store.dart';
 
 /// Immersive, vertically swipeable video viewer scoped to a caller-
 /// supplied list of videos (e.g. "videos tagged to this product", or
@@ -15,18 +15,18 @@ class ScopedVideoFeedScreen extends StatefulWidget {
   final int initialIndex;
 
   /// Coordinator handoff (§2.6) — di-set HANYA saat viewer dibuka dari alur
-  /// Postingan (MemberPostDetailScreen). Kalau non-null, item video ASAL
-  /// ([originPostId]) meminjam controller coordinator (tanpa init ulang →
-  /// instan). Kalau null → perilaku lama (tiap item init controller sendiri).
+  /// Postingan (MemberPostDetailScreen). Kalau non-null, SEMUA item video
+  /// managed oleh coordinator (ownership seragam). Kalau null → perilaku lama
+  /// (tiap item init controller sendiri).
   ///
-  /// T3b (integrasi bertahap, aman): HANYA item ASAL ([originPostId]) yang
-  /// di-handoff lewat coordinator — ia dibangun dengan
-  /// `ownsController:false, playbackManagedExternally:true` dan meminjam
-  /// controller yang SUDAH init dari `coordinator.sessionFor(originPostId)`
-  /// (via `preloadedController`) → tap→fullscreen instan, kembali di
-  /// timestamp sama, nol audio hantu. Item lain TETAP own-controller
-  /// (perilaku lama) — swipe berikutnya boleh loading singkat (diizinkan
-  /// acceptance). Tanpa coordinator/originPostId → semua item fallback lama.
+  /// T7 (full-managed, mengganti T3b "hanya origin"): saat coordinator ada,
+  /// SETIAP item dibangun `ownsController:false, playbackManagedExternally:true`
+  /// + terikat ke `coordinator` via `post.id`. Kepemilikan SESI on-demand:
+  /// item ASAL ([originPostId]) sudah punya sesi dari handoff (adopt instan);
+  /// item lain belum punya sesi → render thumbnail sampai `setActive`/
+  /// `preloadNext` melahirkan sesinya, lalu adopt via registry notifier. Urutan
+  /// transisi deterministik ada di [_onPageChanged]. Tanpa coordinator → semua
+  /// item fallback own-controller (perilaku lama).
   final PostVideoCoordinator? coordinator;
 
   /// Id post video ASAL (yang di-tap di Postingan) — pinned di coordinator
@@ -63,16 +63,86 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
     _activeIndex = widget.initialIndex.clamp(0, widget.posts.length - 1);
     _pageController = PageController(initialPage: _activeIndex);
     feedStore.seed(widget.posts);
+    // Full-managed: aktifkan halaman awal setelah frame pertama supaya view
+    // managed sudah mounted (adopt sesi via notifier). Item ASAL biasanya sudah
+    // punya sesi dari handoff → adopt instan; setActive mem-play + set volume.
+    if (widget.coordinator != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _activateManaged(_activeIndex, previousIndex: null, swipeDir: 1);
+      });
+    }
   }
+
+  /// Post yang saat ini attached ke coordinator (view aktif fullscreen). Perlu
+  /// di-detach saat viewer ditutup supaya attachment tak menetap dan menghalangi
+  /// eviction sesi (KUNCI 2 — attachment harus jujur).
+  String? _attachedPostId;
 
   @override
   void dispose() {
+    // Lepas attachment aktif terakhir — kembali ke Postingan, inline yang
+    // re-attach origin (member_post_detail._endHandoff). Tanpa ini attachment
+    // fullscreen menetap → sesi tak pernah dievict.
+    final coord = widget.coordinator;
+    final attached = _attachedPostId;
+    if (coord != null && !coord.isDisposed && attached != null) {
+      coord.detach(_viewIdFor(attached), attached);
+    }
     _pageController.dispose();
     super.dispose();
   }
 
+  bool get _dataSaver =>
+      appSettingsStore.feedVideoQuality == 'data_saver';
+
+  String _viewIdFor(String postId) => 'scoped-fs-$postId';
+
+  /// Urutan transisi DETERMINISTIK (§T7 onPageChanged):
+  /// (a) `setActive(new)` — coordinator otomatis pause+mute active lama +
+  ///     buat/promote sesi halaman baru jadi active;
+  /// (b) view halaman baru adopt sesi via registry notifier (otomatis di widget);
+  /// (c) `detach(oldViewId)` — SEMUA inactive detach TERMASUK origin (origin
+  ///     tetap hidup via pinned, bukan attachment — KUNCI 2);
+  /// (d) data-saver? kalau BUKAN → `preloadNext(next)` (next = index+arah swipe);
+  /// (e) eviction otomatis di coordinator (sesi bukan origin/active/next dibuang).
+  void _activateManaged(
+    int index, {
+    required int? previousIndex,
+    required int swipeDir,
+  }) {
+    final coord = widget.coordinator;
+    if (coord == null || coord.isDisposed) return;
+    final postId = widget.posts[index].id;
+    // (a) + attach untuk kejujuran refcount ("view ini sedang merender").
+    coord.attach(_viewIdFor(postId), postId);
+    _attachedPostId = postId;
+    coord.setActive(postId);
+    // (c) detach view lama (origin pun) — origin hidup via pinned.
+    if (previousIndex != null &&
+        previousIndex >= 0 &&
+        previousIndex < widget.posts.length) {
+      final prevId = widget.posts[previousIndex].id;
+      if (prevId != postId) {
+        coord.detach(_viewIdFor(prevId), prevId);
+      }
+    }
+    // (d) preload next searah swipe — DILEWATI saat data saver (D2): swipe
+    // berikutnya bikin sesi saat itu (loading singkat boleh, satu controller).
+    if (!_dataSaver) {
+      final nextIndex = index + swipeDir;
+      if (nextIndex >= 0 && nextIndex < widget.posts.length) {
+        coord.preloadNext(widget.posts[nextIndex].id);
+      }
+    }
+  }
+
   void _onPageChanged(int index) {
+    final previousIndex = _activeIndex;
     setState(() => _activeIndex = index);
+    if (widget.coordinator == null) return;
+    final swipeDir = index >= previousIndex ? 1 : -1;
+    _activateManaged(index, previousIndex: previousIndex, swipeDir: swipeDir);
   }
 
   /// Tarik-turun melewati batas atas (BouncingScrollPhysics → pixels <
@@ -92,16 +162,14 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
     return false;
   }
 
-  /// Bangun satu page. Item ASAL (handoff coordinator) → managed borrow
-  /// controller (instan); lainnya → own-controller (perilaku lama).
+  /// Bangun satu page. Full-managed (coordinator ada) → SEMUA item managed +
+  /// terikat coordinator via `post.id` (ownership seragam); tanpa coordinator →
+  /// own-controller (perilaku lama, mis. Postingan Terkait / deep link).
   Widget _buildItem(int index) {
     final post = widget.posts[index];
     final coordinator = widget.coordinator;
-    final originId = widget.originPostId;
-    final isOrigin =
-        coordinator != null && originId != null && post.id == originId;
 
-    if (!isOrigin) {
+    if (coordinator == null) {
       return FeedVideoPostView(
         post: post,
         isActive: index == _activeIndex,
@@ -112,40 +180,31 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
       );
     }
 
-    // Item ASAL: pinjam controller yang SUDAH init dari sesi coordinator —
-    // tanpa init ulang → instan. Sesi origin adalah [VideoPlayerSession]
-    // nyata; sesi fake (test) tak punya controller (preloadedController null),
-    // widget tetap merender managed dan melapor intent (cukup untuk
-    // memverifikasi wiring handoff tanpa plugin).
-    final session = coordinator.sessionFor(originId);
-    final videoSession = session is VideoPlayerSession ? session : null;
+    final postId = post.id;
     return FeedVideoPostView(
-      // Key stabil supaya state managed tidak dibangun ulang saat swipe
-      // bolak-balik ke origin (re-attach controller SAMA, bukan sesi baru).
-      key: ValueKey('scoped-origin-$originId'),
+      // Key stabil per-post supaya state managed tidak dibangun ulang saat
+      // swipe bolak-balik (re-adopt sesi via notifier, bukan state baru).
+      key: ValueKey('scoped-fs-$postId'),
       post: post,
       isActive: index == _activeIndex,
-      // §2.1 KUNCI USER: coordinator pemilik controller (dispose) + pengendali
-      // playback. Widget hanya merender + melapor intent.
+      // §2.1: coordinator pemilik controller (dispose) + pengendali playback.
+      // Widget hanya merender + melapor intent + adopt sesi via notifier.
       ownsController: false,
       playbackManagedExternally: true,
-      preloadedController: videoSession?.controller,
+      coordinator: coordinator,
+      preloadedController: null,
       preloadedCachedPlayer: null,
       onOverlayStateChanged: (_) {},
       onMediaZoomChanged: (_) {},
-      // Visibilitas → intent ke coordinator. Terlihat + jadi halaman aktif →
-      // setActive (mainkan controller SAMA, instan); kalau sudah aktif cukup
-      // reportVisible (resume). Tak terlihat → reportHidden (pause, tetap
-      // pinned via origin untuk resume timestamp saat kembali, §2.6).
+      // Visibilitas → resume/pause sesi yang MEMANG aktif (mis. kembali dari
+      // comment sheet / route). setActive authoritative di [_onPageChanged];
+      // di sini tidak setActive supaya urutan transisi tetap deterministik.
       onVisibleChanged: (visible) {
+        if (coordinator.activePostId != postId) return;
         if (visible) {
-          if (coordinator.activePostId != originId) {
-            coordinator.setActive(originId);
-          } else {
-            coordinator.reportVisible(originId);
-          }
+          coordinator.reportVisible(postId);
         } else {
-          coordinator.reportHidden(originId);
+          coordinator.reportHidden(postId);
         }
       },
       // Tap play/pause → satu-satunya sumber user-pause eksplisit.
@@ -153,9 +212,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
       // Cover hilang (route pop / app foreground / comment sheet turun) →
       // resume sesi aktif (guard suspend/user-pause ada di coordinator).
       onRequestPlay: coordinator.resumeAll,
-      // Cover (D5): appBackground / commentSheetFull / routePush (route lain
-      // di ATAS fullscreen) → pause semua. pauseAll idempoten dengan observer
-      // level-halaman Postingan; controller origin tetap hidup + pinned.
+      // Cover (D5): appBackground / commentSheetFull / routePush → pause semua.
       onRequestPause: (_) => coordinator.pauseAll(),
     );
   }

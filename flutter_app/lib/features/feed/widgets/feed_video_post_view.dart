@@ -32,6 +32,8 @@ import '../../../utils/android_back_overlays.dart';
 import '../../../utils/app_route_observer.dart';
 import '../../../utils/formatters.dart';
 import '../../../utils/haptics.dart';
+import '../video/post_video_coordinator.dart';
+import '../video/video_player_session.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/feed_comment_sheet.dart';
 import '../../../widgets/moderation_action_sheet.dart';
@@ -150,6 +152,22 @@ class FeedVideoPostView extends StatefulWidget {
   /// Default `false` = perilaku lama (nol perubahan pada call site lama).
   final bool playbackManagedExternally;
 
+  /// T7 (integrasi full-managed) — sumber sesi DINAMIS. Kalau di-set BERSAMA
+  /// [playbackManagedExternally], widget mengikat controllernya ke
+  /// `coordinator.sessionFor(post.id)` secara dinamis (bukan cuma
+  /// [preloadedController] statis sekali di initState):
+  ///  - initState + saat `coordinator.registryListenable` fire → re-cek
+  ///    `sessionFor(post.id)`; sesi muncul (mis. hasil `preloadNext` saat swipe)
+  ///    → adopt controllernya. Belum ada sesi → render thumbnail/frozen, TIDAK
+  ///    membuat controller sendiri.
+  ///  - Ikut `VideoPlayerSession.revision` sesi terikat supaya begitu init
+  ///    controller selesai (controller lahir async), frame pertama dirender.
+  ///  - Sesi dievict-dispose coordinator (sessionFor → null) → lepas referensi
+  ///    controller (tidak merender controller mati), balik ke thumbnail.
+  /// Widget TETAP tidak pernah men-dispose controller (`ownsController:false`).
+  /// Null → jalur lama (managed via [preloadedController] statis / non-managed).
+  final PostVideoCoordinator? coordinator;
+
   /// [playbackManagedExternally] — video jadi cukup terlihat (`true`, >0.7
   /// fraction + aktif) atau tersembunyi (`false`). T3 memetakan ke
   /// `coordinator.reportVisible` / `reportHidden`.
@@ -182,6 +200,7 @@ class FeedVideoPostView extends StatefulWidget {
     this.claimPreloadedVideo,
     this.ownsController = true,
     this.playbackManagedExternally = false,
+    this.coordinator,
     this.onVisibleChanged,
     this.onRequestPause,
     this.onRequestPlay,
@@ -348,7 +367,17 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       appSettingsStore.addListener(_onFeedMutedChangedLive);
     }
 
-    _adoptPreloadedController();
+    // T7: managed-source DINAMIS bila coordinator di-set — ikat controller ke
+    // `coordinator.sessionFor(post.id)` via registry notifier (adopt saat sesi
+    // muncul), bukan preloadedController statis. Tanpa coordinator → jalur lama
+    // (managed via preloadedController statis, atau non-managed fresh-init).
+    if (_managed && widget.coordinator != null) {
+      widget.coordinator!.registryListenable
+          .addListener(_onCoordinatorRegistryChanged);
+      _syncManagedSession();
+    } else {
+      _adoptPreloadedController();
+    }
     _maybeInitVideo();
     _syncProductRotation();
   }
@@ -556,6 +585,71 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
       ctrl.addListener(onInit);
     }
+    if (mounted) setState(() {});
+  }
+
+  // ── T7: managed-source dinamis (adopsi sesi via registry notifier) ──
+  /// Sesi coordinator yang sedang terikat — dilistened `revision`-nya supaya
+  /// controller yang lahir async (init selesai) langsung dirender. Hanya
+  /// [VideoPlayerSession] yang punya controller; sesi fake (test) tidak.
+  VideoPlayerSession? _managedSession;
+
+  /// Coordinator membuat/menghapus sesi → re-cek `sessionFor(post.id)`.
+  void _onCoordinatorRegistryChanged() {
+    if (!mounted) return;
+    _syncManagedSession();
+  }
+
+  /// Init controller sesi terikat selesai/gagal → re-render (adopt controller
+  /// begitu lahir; lepas bila hilang). Dasar re-adopt T8.
+  void _onManagedSessionRevision() {
+    if (!mounted) return;
+    _syncManagedSession();
+  }
+
+  /// Sinkronkan controller yang dirender dengan sesi coordinator untuk
+  /// `post.id`. Idempoten: aman dipanggil dari initState, registry fire, dan
+  /// revision fire. TIDAK pernah membuat controller sendiri (§2.1) — kalau sesi
+  /// belum ada/controllernya belum lahir, render thumbnail/frozen.
+  void _syncManagedSession() {
+    final coord = widget.coordinator;
+    if (coord == null || !mounted) return;
+    final session = coord.sessionFor(widget.post.id);
+    final videoSession = session is VideoPlayerSession ? session : null;
+    // Rebind listener revision bila identitas sesi berubah (lahir / diganti /
+    // dievict). Sesi fake (test) → videoSession null → cukup thumbnail.
+    if (!identical(videoSession, _managedSession)) {
+      _managedSession?.revision.removeListener(_onManagedSessionRevision);
+      _managedSession = videoSession;
+      _managedSession?.revision.addListener(_onManagedSessionRevision);
+    }
+    final ctrl = videoSession?.controller;
+    if (ctrl == null) {
+      // Sesi belum ada / controller belum init / sudah dievict-dispose oleh
+      // coordinator → lepas referensi controller lama (jangan render controller
+      // yang mungkin sudah mati) dan tampilkan thumbnail. TIDAK dispose:
+      // coordinator satu-satunya pemilik.
+      if (_videoController != null) {
+        _videoController!.removeListener(_handleVideoPositionForCta);
+        _videoController = null;
+        if (mounted) setState(() {});
+      }
+      return;
+    }
+    if (identical(ctrl, _videoController)) return;
+    _adoptManagedController(ctrl);
+  }
+
+  /// Adopsi controller dari sesi coordinator (bukan pemilik → tak pernah
+  /// dispose). Controller sesi hanya di-set SETELAH init selesai, jadi ia
+  /// dianggap siap dirender; cukup pasang listener CTA + rebuild.
+  void _adoptManagedController(VideoPlayerController ctrl) {
+    final old = _videoController;
+    if (identical(old, ctrl)) return;
+    old?.removeListener(_handleVideoPositionForCta);
+    _videoController = ctrl;
+    ctrl.addListener(_handleVideoPositionForCta);
+    _cancelLoadingSpinnerDelay();
     if (mounted) setState(() {});
   }
 
@@ -831,6 +925,13 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     if (!_managed) {
       appSettingsStore.removeListener(_onFeedMutedChangedLive);
     }
+    // T7: lepas listener registry + revision sesi (managed-source dinamis).
+    if (_managed && widget.coordinator != null) {
+      widget.coordinator!.registryListenable
+          .removeListener(_onCoordinatorRegistryChanged);
+    }
+    _managedSession?.revision.removeListener(_onManagedSessionRevision);
+    _managedSession = null;
     feedStore.removeListener(_onFeedStoreChanged);
     _loadingSpinnerDelay?.cancel();
     _stopProductRotation();
