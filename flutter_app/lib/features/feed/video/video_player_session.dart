@@ -45,6 +45,8 @@ class VideoPlayerSession implements PlaybackSession {
     Future<String?> Function()? urlRefresher,
     String? analyticsPostId,
     String analyticsSurface = 'postingan',
+    @visibleForTesting VideoPlaybackMetricSink? debugMetricSink,
+    @visibleForTesting NetworkTier? debugNetworkTier,
     @visibleForTesting VideoInitAttempt? debugInitAttempt,
     @visibleForTesting Future<void> Function(Duration)? debugDelay,
   })  : _currentUrl = url,
@@ -61,9 +63,13 @@ class VideoPlayerSession implements PlaybackSession {
       metricContext: {
         'surface': _analyticsSurface,
         'media_type': _currentUrl.contains('.m3u8') ? 'hls' : 'mp4',
+        'network_tier':
+            (debugNetworkTier ?? videoQualityService.currentTier).name,
+        'quality_preference': _userQualityPreference,
         if (_analyticsPostId != null)
           'media_key': _anonymousMediaKey(_analyticsPostId!),
       },
+      metricSink: debugMetricSink,
     );
     _healthMonitor.record('video_init_started');
     unawaited(_init());
@@ -197,6 +203,7 @@ class VideoPlayerSession implements PlaybackSession {
       final controller = VideoPlayerController.networkUrl(Uri.parse(resolved));
       await controller.initialize();
       _controller = controller;
+      controller.addListener(_observePlaybackStateTransition);
     } else {
       final wrapper = CachedVideoPlayerPlus.networkUrl(
         Uri.parse(resolved),
@@ -205,6 +212,7 @@ class VideoPlayerSession implements PlaybackSession {
       await wrapper.initialize();
       _wrapper = wrapper;
       _controller = wrapper.controller;
+      _controller!.addListener(_observePlaybackStateTransition);
     }
   }
 
@@ -232,6 +240,7 @@ class VideoPlayerSession implements PlaybackSession {
     final controller = _controller;
     _wrapper = null;
     _controller = null;
+    controller?.removeListener(_observePlaybackStateTransition);
     try {
       if (wrapper != null) {
         await wrapper.dispose();
@@ -342,14 +351,42 @@ class VideoPlayerSession implements PlaybackSession {
   VideoPlaybackSnapshot _healthSnapshot() {
     final value = _controller?.value;
     return VideoPlaybackSnapshot(
-      shouldMonitor: !_disposed &&
-          _wantPlay &&
-          (value?.isInitialized ?? false) &&
-          (value?.isPlaying ?? false),
+      shouldMonitor: shouldMonitorIntendedPlayback(
+        intendsPlayback: !_disposed && _wantPlay,
+        isInitialized: value?.isInitialized ?? false,
+      ),
       isBuffering: value?.isBuffering ?? false,
       position: value?.position ?? _wantSeek,
       duration: value?.duration ?? Duration.zero,
+      bufferAhead: _bufferAhead(value),
     );
+  }
+
+  void _observePlaybackStateTransition() {
+    if (_disposed) return;
+    _healthMonitor.observePlaybackStateTransition();
+  }
+
+  Duration _bufferAhead(VideoPlayerValue? value) {
+    if (value == null) return Duration.zero;
+    return contiguousBufferAhead(
+      position: value.position,
+      buffered: value.buffered,
+    );
+  }
+
+  @visibleForTesting
+  static Duration contiguousBufferAhead({
+    required Duration position,
+    required List<DurationRange> buffered,
+  }) {
+    var furthestEnd = position;
+    for (final range in buffered) {
+      if (range.end <= position) continue;
+      if (range.start > furthestEnd) break;
+      if (range.end > furthestEnd) furthestEnd = range.end;
+    }
+    return furthestEnd - position;
   }
 
   Future<void> _recoverFromStall(Duration position) async {

@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/video_player_session.dart';
+import 'package:natalo_petshop_flutter/services/video_quality_service.dart';
+import 'package:video_player/video_player.dart';
 
 /// T4 — orkestrasi retry/refresh [VideoPlayerSession] diuji via seam
 /// `debugInitAttempt` (tanpa plugin video_player). Controller nyata null di
@@ -10,6 +12,57 @@ void main() {
 
   // Delay backoff jadi no-op supaya test cepat & deterministik.
   Future<void> noDelay(Duration _) async {}
+
+  test('buffer ahead merges adjacent ranges', () {
+    final ahead = VideoPlayerSession.contiguousBufferAhead(
+      position: const Duration(seconds: 1),
+      buffered: [
+        DurationRange(Duration.zero, const Duration(seconds: 2)),
+        DurationRange(
+          const Duration(seconds: 2),
+          const Duration(seconds: 5),
+        ),
+      ],
+    );
+
+    expect(ahead, const Duration(seconds: 4));
+  });
+
+  test('buffer ahead stops at the first gap after playback position', () {
+    final ahead = VideoPlayerSession.contiguousBufferAhead(
+      position: const Duration(seconds: 1),
+      buffered: [
+        DurationRange(Duration.zero, const Duration(seconds: 2)),
+        DurationRange(
+          const Duration(seconds: 3),
+          const Duration(seconds: 8),
+        ),
+      ],
+    );
+
+    expect(ahead, const Duration(seconds: 1));
+  });
+
+  test('metrics include network, quality, and startup context', () async {
+    final metrics = <String, Map<String, Object>>{};
+    final session = VideoPlayerSession(
+      url: 'https://cdn/play_720p.mp4',
+      userQualityPreference: 'data_saver',
+      debugNetworkTier: NetworkTier.cellularSlow,
+      debugMetricSink: (event, parameters) => metrics[event] = parameters,
+      debugInitAttempt: (_) async {},
+    );
+
+    await pumpEventQueue();
+
+    expect(metrics['video_init_started'],
+        containsPair('network_tier', 'cellularSlow'));
+    expect(metrics['video_init_started'],
+        containsPair('quality_preference', 'data_saver'));
+    expect(metrics['video_init_ready'], contains('duration_ms'));
+    expect(metrics['video_init_ready'], containsPair('buffer_ahead_ms', 0));
+    await session.dispose();
+  });
 
   test('gagal sekali lalu sukses → retry TEPAT 1× lalu ready', () async {
     var attempts = 0;
@@ -102,7 +155,8 @@ void main() {
     expect(attempts, 2);
     expect(refreshCalls, 1, reason: 'refresh best-effort tepat sekali');
     expect(seenUrls.first, signed);
-    expect(seenUrls.last, fresh, reason: 'retry memakai URL bertanda-tangan segar');
+    expect(seenUrls.last, fresh,
+        reason: 'retry memakai URL bertanda-tangan segar');
     expect(session.isInitialized, isTrue);
     expect(session.hasError, isFalse);
   });

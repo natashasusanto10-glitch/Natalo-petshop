@@ -77,6 +77,15 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
     }
   }
 
+  void emitBuffered(Duration end) {
+    for (final stream in _streams.values) {
+      stream.add(VideoEvent(
+        eventType: VideoEventType.bufferingUpdate,
+        buffered: [DurationRange(Duration.zero, end)],
+      ));
+    }
+  }
+
   @override
   Future<void> dispose(int playerId) async {
     _disposedIds.add(playerId);
@@ -263,6 +272,7 @@ FeedPost _fakeVideoPost({
   String id = 'post-1',
   double aspectRatio = 0.5625,
   bool hls = false,
+  bool liked = false,
 }) {
   return FeedPost.fromJson({
     'id': id,
@@ -281,6 +291,7 @@ FeedPost _fakeVideoPost({
     'likeCount': 0,
     'commentCount': 0,
     'shareCount': 0,
+    'viewerLiked': liked,
     'createdAt': DateTime.now().toIso8601String(),
   });
 }
@@ -643,6 +654,7 @@ void main() {
       VideoPlayerController? preloaded,
       bool ownsController = true,
       bool playbackManagedExternally = false,
+      bool liked = false,
       ValueChanged<bool>? onVisibleChanged,
       VoidCallback? onRequestUserTogglePlay,
       ValueChanged<CoverPauseReason>? onRequestPause,
@@ -651,7 +663,7 @@ void main() {
       return MaterialApp(
         home: FeedVideoPostView(
           key: const ValueKey('feed-video-post-1'),
-          post: _fakeVideoPost(hls: true),
+          post: _fakeVideoPost(hls: true, liked: liked),
           isActive: isActive,
           preloadedController: preloaded,
           ownsController: ownsController,
@@ -765,6 +777,7 @@ void main() {
         preloaded: borrowed,
         ownsController: false,
         playbackManagedExternally: true,
+        liked: true,
         onVisibleChanged: visibleReports.add,
         onRequestUserTogglePlay: () => toggleCalls++,
       ));
@@ -779,11 +792,19 @@ void main() {
       expect(borrowed.value.isPlaying, isFalse,
           reason: 'managed → widget tidak play() controller langsung');
 
-      // Tap → user-toggle callback, bukan pause/play langsung.
+      // Double-tap → like saja. Gesture arena harus membatalkan single-tap,
+      // jadi playback tidak sempat pause lalu resume.
+      await tester.tapAt(const Offset(200, 600));
+      await tester.pump(const Duration(milliseconds: 80));
       await tester.tapAt(const Offset(200, 600));
       await tester.pump(const Duration(milliseconds: 350));
-      expect(toggleCalls, greaterThanOrEqualTo(1),
-          reason: 'managed → tap melapor userTogglePlay');
+      expect(toggleCalls, 0,
+          reason: 'double-tap like tidak boleh menyentuh playback');
+
+      // Single tap → user-toggle callback, bukan pause/play langsung.
+      await tester.tapAt(const Offset(200, 600));
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(toggleCalls, 1, reason: 'managed → tap melapor userTogglePlay');
       expect(borrowed.value.isPlaying, isFalse,
           reason: 'managed → tap tidak mengubah playback controller');
 
@@ -1233,6 +1254,46 @@ void main() {
     expect(platform.callsAfterDispose, 0,
         reason: 'cleanup errors are contained before reaching native calls');
     await appSettingsStore.setFeedMuted(true);
+  });
+
+  testWidgets('reports low-frequency contiguous buffer ahead while active',
+      (tester) async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    final platform = _FakeVideoPlayerPlatform();
+    VideoPlayerPlatform.instance = platform;
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse('https://example.com/buffer-report.mp4'),
+    );
+    await tester.runAsync(controller.initialize);
+    final reports = <Duration>[];
+
+    Widget host(bool active) => MaterialApp(
+          home: FeedVideoPostView(
+            post: _fakeVideoPost(hls: true),
+            isActive: active,
+            preloadedController: controller,
+            onBufferAheadChanged: reports.add,
+            onOverlayStateChanged: (_) {},
+            onMediaZoomChanged: (_) {},
+          ),
+        );
+
+    await tester.pumpWidget(host(true));
+    await tester.pump();
+    platform.emitBuffered(const Duration(milliseconds: 2500));
+    await tester.pump();
+    platform.emitBuffered(const Duration(milliseconds: 3200));
+    await tester.pump();
+
+    expect(reports, contains(const Duration(milliseconds: 3200)));
+    final activeReportCount = reports.length;
+
+    await tester.pumpWidget(host(false));
+    platform.emitBuffered(const Duration(seconds: 5));
+    await tester.pump();
+    expect(reports.length, activeReportCount);
   });
 
   // ── T8 — retry di fullscreen (managed view) ──

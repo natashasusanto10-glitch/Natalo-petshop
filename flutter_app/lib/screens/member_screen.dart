@@ -10,6 +10,7 @@ import '../features/feed/video/post_video_warm_handoff.dart';
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
+import '../services/video_quality_service.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../state/settings_store.dart';
@@ -257,7 +258,11 @@ class _ProfilePageState extends State<_ProfilePage>
     final handoff = PostVideoWarmHandoff.createIfVideo(
       isVideo: post.isVideo,
       postId: post.id,
-      url: post.videoPlaybackUrlForQuality(appSettingsStore.feedVideoQuality),
+      url: videoQualityService.resolvePlaybackUrl(
+        post.videoPlaybackUrl,
+        dataSaverUrl: post.videoDataSaverUrl,
+        userPreference: appSettingsStore.feedVideoQuality,
+      ),
     );
     try {
       await Navigator.push<void>(

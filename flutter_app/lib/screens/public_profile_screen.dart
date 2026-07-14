@@ -14,6 +14,7 @@ import '../services/api_client.dart';
 import '../services/follow_service.dart';
 import '../services/profile_service.dart';
 import '../services/report_service.dart';
+import '../services/video_quality_service.dart';
 import '../state/feed_store.dart';
 import '../state/settings_store.dart';
 import '../utils/formatters.dart';
@@ -176,7 +177,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final handoff = PostVideoWarmHandoff.createIfVideo(
       isVideo: post.isVideo,
       postId: post.id,
-      url: post.videoPlaybackUrlForQuality(appSettingsStore.feedVideoQuality),
+      url: videoQualityService.resolvePlaybackUrl(
+        post.videoPlaybackUrl,
+        dataSaverUrl: post.videoDataSaverUrl,
+        userPreference: appSettingsStore.feedVideoQuality,
+      ),
     );
     AppHaptics.tap();
     try {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../features/feed/video/adaptive_video_preload_policy.dart';
@@ -49,6 +51,9 @@ class ScopedVideoFeedScreen extends StatefulWidget {
   /// [coordinator].
   final String? originPostId;
   final NetworkTier? debugNetworkTier;
+  @visibleForTesting
+  final Stream<NetworkTier>? debugTierChanges;
+  final ValueChanged<NetworkTier>? onNetworkTierChanged;
 
   const ScopedVideoFeedScreen({
     super.key,
@@ -57,6 +62,8 @@ class ScopedVideoFeedScreen extends StatefulWidget {
     this.coordinator,
     this.originPostId,
     this.debugNetworkTier,
+    this.debugTierChanges,
+    this.onNetworkTierChanged,
   });
 
   @override
@@ -70,6 +77,9 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
   bool _dismissing = false;
   bool _interactionLocked = false;
   VideoSwipeDirection _swipeDirection = VideoSwipeDirection.forward;
+  Duration _activeBufferAhead = Duration.zero;
+  late NetworkTier _networkTier;
+  StreamSubscription<NetworkTier>? _networkTierSubscription;
 
   /// Seberapa jauh (px) user harus menarik melewati batas atas (video
   /// pertama) sebelum viewer menutup — ala IG Reels dari profil: tarik
@@ -80,6 +90,10 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
   void initState() {
     super.initState();
     _activeIndex = widget.initialIndex.clamp(0, widget.posts.length - 1);
+    _networkTier = widget.debugNetworkTier ?? videoQualityService.currentTier;
+    _networkTierSubscription =
+        (widget.debugTierChanges ?? videoQualityService.tierChanges)
+            .listen(_onNetworkTierChanged);
     _pageController = PageController(initialPage: _activeIndex);
     feedStore.seed(widget.posts);
     // Full-managed: aktifkan halaman awal setelah frame pertama supaya view
@@ -100,6 +114,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
 
   @override
   void dispose() {
+    unawaited(_networkTierSubscription?.cancel());
     // Lepas attachment aktif terakhir — kembali ke Postingan, inline yang
     // re-attach origin (member_post_detail._endHandoff). Tanpa ini attachment
     // fullscreen menetap → sesi tak pernah dievict.
@@ -154,9 +169,10 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
     if (coord == null || coord.isDisposed) return;
     final offsets = adaptiveVideoPreloadPolicy.offsets(
       qualityPreference: appSettingsStore.feedVideoQuality,
-      networkTier: widget.debugNetworkTier ?? videoQualityService.currentTier,
+      networkTier: _networkTier,
       autoplayEnabled: appSettingsStore.feedAutoplay,
       swipeDirection: _swipeDirection,
+      activeBufferAhead: _activeBufferAhead,
       interactionLocked: _interactionLocked,
     );
     final targetIds = <String>[];
@@ -167,6 +183,21 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
       if (!targetIds.contains(id)) targetIds.add(id);
     }
     coord.setPreloadWindow(targetIds);
+  }
+
+  void _onNetworkTierChanged(NetworkTier tier) {
+    if (!mounted) return;
+    final coord = widget.coordinator;
+    // Drop only adaptive preloads before the parent switches its URL resolver
+    // to the new tier. Origin and active sessions remain pinned, so playback
+    // is not interrupted while the next-video window is recreated below.
+    if (coord != null && !coord.isDisposed) {
+      coord.setPreloadWindow(const []);
+    }
+    _networkTier = tier;
+    widget.onNetworkTierChanged?.call(tier);
+    _activeBufferAhead = Duration.zero;
+    _updatePreloadWindow(_activeIndex);
   }
 
   void _setInteractionLocked(bool locked) {
@@ -181,10 +212,21 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
 
   void _onPageChanged(int index) {
     final previousIndex = _activeIndex;
+    _activeBufferAhead = Duration.zero;
     setState(() => _activeIndex = index);
     if (widget.coordinator == null) return;
     final swipeDir = index >= previousIndex ? 1 : -1;
     _activateManaged(index, previousIndex: previousIndex, swipeDir: swipeDir);
+  }
+
+  void _onActiveBufferAheadChanged(String postId, Duration bufferAhead) {
+    if (widget.posts[_activeIndex].id != postId) return;
+    final wasEligible = _activeBufferAhead >=
+        AdaptiveVideoPreloadPolicy.cellularBufferAheadThreshold;
+    if (bufferAhead > _activeBufferAhead) _activeBufferAhead = bufferAhead;
+    final isEligible = _activeBufferAhead >=
+        AdaptiveVideoPreloadPolicy.cellularBufferAheadThreshold;
+    if (!wasEligible && isEligible) _updatePreloadWindow(_activeIndex);
   }
 
   ScopedVideoFeedResult get _result {
@@ -233,6 +275,8 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
         preloadedCachedPlayer: null,
         onOverlayStateChanged: (_) {},
         onMediaZoomChanged: _setInteractionLocked,
+        onBufferAheadChanged: (ahead) =>
+            _onActiveBufferAheadChanged(post.id, ahead),
       );
     }
 
@@ -252,6 +296,8 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
       preloadedCachedPlayer: null,
       onOverlayStateChanged: (_) {},
       onMediaZoomChanged: _setInteractionLocked,
+      onBufferAheadChanged: (ahead) =>
+          _onActiveBufferAheadChanged(post.id, ahead),
       // Visibilitas → resume/pause sesi yang MEMANG aktif (mis. kembali dari
       // comment sheet / route). setActive authoritative di [_onPageChanged];
       // di sini tidak setActive supaya urutan transisi tetap deterministik.

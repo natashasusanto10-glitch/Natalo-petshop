@@ -11,12 +11,14 @@ void main() {
     bool autoplay = true,
     VideoSwipeDirection direction = VideoSwipeDirection.forward,
     bool locked = false,
+    Duration bufferAhead = Duration.zero,
   }) {
     return policy.offsets(
       qualityPreference: quality,
       networkTier: tier,
       autoplayEnabled: autoplay,
       swipeDirection: direction,
+      activeBufferAhead: bufferAhead,
       interactionLocked: locked,
     );
   }
@@ -29,18 +31,30 @@ void main() {
     expect(offsets(locked: true), isEmpty);
   });
 
-  test('cellular and unknown auto preload one in swipe direction', () {
-    for (final tier in [
-      NetworkTier.cellularFast,
-      NetworkTier.cellularSlow,
-      NetworkTier.unknown,
-    ]) {
-      expect(offsets(tier: tier), [1]);
+  test('cellular waits for three buffered seconds then preloads one', () {
+    for (final tier in [NetworkTier.cellularFast, NetworkTier.cellularSlow]) {
+      expect(offsets(tier: tier), isEmpty);
       expect(
-        offsets(tier: tier, direction: VideoSwipeDirection.backward),
+        offsets(tier: tier, bufferAhead: const Duration(milliseconds: 2999)),
+        isEmpty,
+      );
+      expect(
+        offsets(tier: tier, bufferAhead: const Duration(seconds: 3)),
+        [1],
+      );
+      expect(
+        offsets(
+          tier: tier,
+          direction: VideoSwipeDirection.backward,
+          bufferAhead: const Duration(seconds: 3),
+        ),
         [-1],
       );
     }
+  });
+
+  test('unknown preserves immediate one-item directional preload', () {
+    expect(offsets(tier: NetworkTier.unknown), [1]);
   });
 
   test('wifi auto/high preload two ahead and one behind, capped at three', () {

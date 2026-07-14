@@ -99,8 +99,8 @@ class VideoQualityService {
 
   /// Pilih quality recommendation untuk current tier. Single source of
   /// truth supaya consistent across player + thumbnail rendering.
-  VideoQuality recommendedQuality() {
-    switch (_currentTier) {
+  VideoQuality recommendedQuality([NetworkTier? networkTier]) {
+    switch (networkTier ?? _currentTier) {
       case NetworkTier.wifi:
         // Auto memakai HLS playlist; nilai ini hanya fallback untuk legacy
         // MP4 URL yang belum punya canonical playlist.
@@ -135,10 +135,32 @@ class VideoQualityService {
   ///   - Non-Bunny URL → return as-is (legacy / external)
   ///
   /// userPreference values (dari appSettingsStore.feedVideoQuality):
-  ///   - `null` / `'auto'`  → canonical HLS adaptive
+  ///   - `null` / `'auto'`  → backend 480p MP4 on cellular when provided;
+  ///                          otherwise canonical HLS adaptive
   ///   - `'data_saver'`     → backend-signed MP4 480p jika caller memberi URL itu
   ///   - `'high'`           → canonical HLS Full HD; player/Bunny fallback 720
-  String resolvePlaybackUrl(String url, {String? userPreference}) {
+  String resolvePlaybackUrl(
+    String url, {
+    String? dataSaverUrl,
+    String? userPreference,
+    @visibleForTesting NetworkTier? networkTier,
+  }) {
+    final backendDataSaverUrl = dataSaverUrl?.trim();
+    final hasBackendDataSaverUrl =
+        backendDataSaverUrl != null && backendDataSaverUrl.isNotEmpty;
+
+    // Explicit Data Saver keeps its existing precedence. Auto uses the same
+    // backend-provided 480p MP4 only on cellular; no URL is synthesized here.
+    final effectiveTier = networkTier ?? _currentTier;
+    final isCellular = effectiveTier == NetworkTier.cellularFast ||
+        effectiveTier == NetworkTier.cellularSlow;
+    if (hasBackendDataSaverUrl &&
+        (userPreference == 'data_saver' ||
+            ((userPreference == null || userPreference == 'auto') &&
+                isCellular))) {
+      return backendDataSaverUrl;
+    }
+
     if (url.isEmpty) return url;
 
     // Signed URL — server sudah pre-sign path SPECIFIC. Rewrite path bikin
@@ -171,8 +193,8 @@ class VideoQualityService {
     }
 
     // auto / null → tier-based behavior lama.
-    final tier = _currentTier;
-    final quality = recommendedQuality();
+    final tier = effectiveTier;
+    final quality = recommendedQuality(effectiveTier);
 
     final isHls = url.contains('.m3u8');
 

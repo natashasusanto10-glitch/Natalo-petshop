@@ -87,5 +87,149 @@ void main() {
         hls,
       );
     });
+
+    test('auto uses backend 480p MP4 on fast and slow cellular', () {
+      const hls = 'https://cdn.example.com/post-1/playlist.m3u8';
+      const mp4 = 'https://cdn.example.com/post-1/play_480p.mp4';
+
+      for (final tier in [
+        NetworkTier.cellularFast,
+        NetworkTier.cellularSlow,
+      ]) {
+        expect(
+          videoQualityService.resolvePlaybackUrl(
+            hls,
+            dataSaverUrl: mp4,
+            userPreference: 'auto',
+            networkTier: tier,
+          ),
+          mp4,
+        );
+      }
+    });
+
+    test('auto cellular falls back to canonical HLS without backend 480p', () {
+      const hls = 'https://cdn.example.com/post-1/playlist.m3u8';
+
+      expect(
+        videoQualityService.resolvePlaybackUrl(
+          hls,
+          dataSaverUrl: '   ',
+          userPreference: 'auto',
+          networkTier: NetworkTier.cellularFast,
+        ),
+        hls,
+      );
+    });
+
+    test('wifi auto and cellular high retain canonical HLS', () {
+      const hls = 'https://cdn.example.com/post-1/playlist.m3u8';
+      const mp4 = 'https://cdn.example.com/post-1/play_480p.mp4';
+
+      expect(
+        videoQualityService.resolvePlaybackUrl(
+          hls,
+          dataSaverUrl: mp4,
+          userPreference: 'auto',
+          networkTier: NetworkTier.wifi,
+        ),
+        hls,
+      );
+      expect(
+        videoQualityService.resolvePlaybackUrl(
+          hls,
+          dataSaverUrl: mp4,
+          userPreference: 'high',
+          networkTier: NetworkTier.cellularSlow,
+        ),
+        hls,
+      );
+    });
+
+    test('explicit data saver keeps preferring backend 480p on wifi', () {
+      const hls = 'https://cdn.example.com/post-1/playlist.m3u8';
+      const mp4 = 'https://cdn.example.com/post-1/play_480p.mp4';
+
+      expect(
+        videoQualityService.resolvePlaybackUrl(
+          hls,
+          dataSaverUrl: mp4,
+          userPreference: 'data_saver',
+          networkTier: NetworkTier.wifi,
+        ),
+        mp4,
+      );
+    });
+
+    test('blank canonical URL still permits only eligible backend fallback',
+        () {
+      const mp4 = 'https://cdn.example.com/post-1/play_480p.mp4';
+
+      expect(
+        videoQualityService.resolvePlaybackUrl(
+          '',
+          dataSaverUrl: mp4,
+          userPreference: 'data_saver',
+          networkTier: NetworkTier.wifi,
+        ),
+        mp4,
+      );
+
+      for (final tier in [
+        NetworkTier.cellularFast,
+        NetworkTier.cellularSlow,
+      ]) {
+        expect(
+          videoQualityService.resolvePlaybackUrl(
+            '',
+            dataSaverUrl: mp4,
+            userPreference: 'auto',
+            networkTier: tier,
+          ),
+          mp4,
+        );
+      }
+
+      expect(
+        videoQualityService.resolvePlaybackUrl(
+          '',
+          dataSaverUrl: mp4,
+          userPreference: 'auto',
+          networkTier: NetworkTier.wifi,
+        ),
+        isEmpty,
+      );
+      expect(
+        videoQualityService.resolvePlaybackUrl(
+          '',
+          dataSaverUrl: mp4,
+          userPreference: 'high',
+          networkTier: NetworkTier.cellularFast,
+        ),
+        isEmpty,
+      );
+    });
+
+    test('legacy unsigned MP4 quality uses the injected effective tier', () {
+      const mp4 =
+          'https://cdn.example.com/01234567-89ab-cdef-0123-456789abcdef/play_1080p.mp4';
+
+      expect(
+        videoQualityService.resolvePlaybackUrl(
+          mp4,
+          userPreference: 'auto',
+          networkTier: NetworkTier.cellularSlow,
+        ),
+        'https://cdn.example.com/01234567-89ab-cdef-0123-456789abcdef/play_480p.mp4',
+      );
+      expect(
+        videoQualityService.resolvePlaybackUrl(
+          mp4,
+          userPreference: 'auto',
+          networkTier: NetworkTier.offline,
+        ),
+        'https://cdn.example.com/01234567-89ab-cdef-0123-456789abcdef/play_240p.mp4',
+      );
+    });
   });
 }

@@ -10,6 +10,7 @@ import '../models/feed_create_post_draft.dart';
 import '../models/feed_post.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../services/feed_service.dart';
+import '../services/video_quality_service.dart';
 import '../state/feed_draft_store.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
@@ -308,7 +309,11 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     final handoff = PostVideoWarmHandoff.createIfVideo(
       isVideo: post.isVideo,
       postId: post.id,
-      url: post.videoPlaybackUrlForQuality(appSettingsStore.feedVideoQuality),
+      url: videoQualityService.resolvePlaybackUrl(
+        post.videoPlaybackUrl,
+        dataSaverUrl: post.videoDataSaverUrl,
+        userPreference: appSettingsStore.feedVideoQuality,
+      ),
     );
     try {
       await Navigator.push<void>(

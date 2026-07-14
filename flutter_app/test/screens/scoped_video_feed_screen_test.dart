@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/features/feed/video/adaptive_video_preload_policy.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/post_video_coordinator.dart';
+import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_post_view.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/scoped_video_feed_screen.dart';
 import 'package:natalo_petshop_flutter/services/video_quality_service.dart';
@@ -46,12 +50,13 @@ class _FakeSession implements PlaybackSession {
   Duration get position => _pos;
 }
 
-FeedPost _fakeVideoPost(String id) {
+FeedPost _fakeVideoPost(String id, {String? videoDataSaverUrl}) {
   return FeedPost.fromJson({
     'id': id,
     'slug': id,
     'kind': 'USER_VIDEO',
     'videoUrl': 'https://example.com/$id.mp4',
+    if (videoDataSaverUrl != null) 'videoDataSaverUrl': videoDataSaverUrl,
     'thumbnailUrl': 'https://example.com/$id.jpg',
     'durationSec': 10,
     'aspectRatio': 0.5625,
@@ -247,6 +252,8 @@ void main() {
       required List<FeedPost> posts,
       int initialIndex = 0,
       NetworkTier? networkTier,
+      Stream<NetworkTier>? tierChanges,
+      ValueChanged<NetworkTier>? onNetworkTierChanged,
     }) async {
       tester.view.physicalSize = const Size(400, 1200);
       tester.view.devicePixelRatio = 1.0;
@@ -262,6 +269,8 @@ void main() {
             coordinator: coordinator,
             originPostId: posts[initialIndex].id,
             debugNetworkTier: networkTier,
+            debugTierChanges: tierChanges,
+            onNetworkTierChanged: onNetworkTierChanged,
           ),
         ),
       );
@@ -326,6 +335,124 @@ void main() {
       expect(coordinator.preloadPostIds, isEmpty,
           reason: 'the only valid behind target is already pinned as origin');
     });
+
+    testWidgets(
+      'tier change resets cellular buffer eligibility and refreshes window',
+      (tester) async {
+        final tierChanges = StreamController<NetworkTier>.broadcast();
+        addTearDown(tierChanges.close);
+        final posts = [
+          _fakeVideoPost('a'),
+          _fakeVideoPost('b'),
+          _fakeVideoPost('c'),
+          _fakeVideoPost('d'),
+        ];
+        await pumpScoped(
+          tester,
+          posts: posts,
+          initialIndex: 1,
+          networkTier: NetworkTier.wifi,
+          tierChanges: tierChanges.stream,
+        );
+        expect(coordinator.preloadPostIds, {'c', 'd', 'a'});
+
+        tierChanges.add(NetworkTier.cellularFast);
+        await tester.pump();
+
+        expect(coordinator.preloadPostIds, isEmpty,
+            reason: 'new cellular tier must earn fresh buffer eligibility');
+        expect(sessions['c']!.disposeCount, 1);
+        expect(sessions['d']!.disposeCount, 1);
+
+        tierChanges.add(NetworkTier.wifi);
+        await tester.pump();
+
+        expect(coordinator.preloadPostIds, {'c', 'd', 'a'});
+        expect(createCount['c'], 2,
+            reason: 'evicted prior-tier preload is recreated');
+        expect(createCount['d'], 2,
+            reason: 'evicted prior-tier preload is recreated');
+      },
+    );
+
+    testWidgets(
+      'tier change evicts preload before callback and recreates it at 480p',
+      (tester) async {
+        final tierChanges = StreamController<NetworkTier>.broadcast();
+        addTearDown(tierChanges.close);
+        var resolverTier = NetworkTier.wifi;
+        final createdUrls = <String, List<String>>{};
+        final sessionHistory = <String, List<_FakeSession>>{};
+        final posts = [
+          _fakeVideoPost('a'),
+          _fakeVideoPost('b'),
+          _fakeVideoPost(
+            'c',
+            videoDataSaverUrl: 'https://example.com/c/play_480p.mp4',
+          ),
+        ];
+        final postsById = {for (final post in posts) post.id: post};
+
+        coordinator.dispose();
+        coordinator = PostVideoCoordinator(
+          sessionFactory: (id) {
+            final post = postsById[id]!;
+            final url = videoQualityService.resolvePlaybackUrl(
+              post.videoPlaybackUrl,
+              dataSaverUrl: post.videoDataSaverUrl,
+              userPreference: 'auto',
+              networkTier: resolverTier,
+            );
+            createdUrls.putIfAbsent(id, () => <String>[]).add(url);
+            final session = _FakeSession(id);
+            sessions[id] = session;
+            sessionHistory.putIfAbsent(id, () => <_FakeSession>[]).add(session);
+            return session;
+          },
+        );
+
+        await pumpScoped(
+          tester,
+          posts: posts,
+          initialIndex: 1,
+          networkTier: NetworkTier.wifi,
+          tierChanges: tierChanges.stream,
+          onNetworkTierChanged: (tier) {
+            expect(coordinator.preloadPostIds, isEmpty,
+                reason: 'old-tier preloads must be evicted before callback');
+            resolverTier = tier;
+          },
+        );
+        expect(createdUrls['c'], ['https://example.com/c.mp4']);
+        final activeSession = coordinator.sessionFor('b');
+        final originSession = activeSession;
+        final wifiPreload = sessionHistory['c']!.single;
+
+        tierChanges.add(NetworkTier.cellularFast);
+        await tester.pump();
+
+        expect(wifiPreload.disposeCount, 1);
+        expect(coordinator.sessionFor('b'), same(activeSession),
+            reason: 'active/origin playback must not restart on tier change');
+        expect(coordinator.preloadPostIds, isEmpty,
+            reason: 'cellular preload waits for sufficient active buffer');
+
+        final activeView = tester.widget<FeedVideoPostView>(
+          find.byKey(const ValueKey('scoped-fs-b')),
+        );
+        activeView.onBufferAheadChanged!(
+          AdaptiveVideoPreloadPolicy.cellularBufferAheadThreshold,
+        );
+        await tester.pump();
+
+        expect(createdUrls['c'], [
+          'https://example.com/c.mp4',
+          'https://example.com/c/play_480p.mp4',
+        ]);
+        expect(sessionHistory['c'], hasLength(2));
+        expect(coordinator.sessionFor('b'), same(originSession));
+      },
+    );
 
     testWidgets(
       'swipe A→B: B pakai sesi preload (createCount B tetap 1, tak dibuat ulang)',

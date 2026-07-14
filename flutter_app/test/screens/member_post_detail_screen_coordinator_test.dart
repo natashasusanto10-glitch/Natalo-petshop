@@ -15,6 +15,7 @@ import 'package:natalo_petshop_flutter/features/feed/video/post_video_warm_hando
 import 'package:natalo_petshop_flutter/features/feed/video/video_player_session.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
+import 'package:natalo_petshop_flutter/services/video_quality_service.dart';
 import 'package:natalo_petshop_flutter/state/settings_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -93,8 +94,7 @@ FeedPost _fakePostWithVideoMedia({
         'id': 'media-1',
         'mediaType': 'video',
         'mediaUrl': mediaUrl,
-        if (mediaDataSaverUrl != null)
-          'videoDataSaverUrl': mediaDataSaverUrl,
+        if (mediaDataSaverUrl != null) 'videoDataSaverUrl': mediaDataSaverUrl,
         'sortOrder': 0,
       },
     ],
@@ -127,6 +127,7 @@ void main() {
 
   tearDown(() {
     debugPostVideoSessionFactory = null;
+    debugPostVideoSessionUrlObserver = null;
     debugScopedFeedPostFetcher = null;
   });
 
@@ -151,6 +152,48 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(milliseconds: 20));
   }
+
+  testWidgets(
+    'session factory resolves a fresh URL after network tier changes',
+    (tester) async {
+      final createdUrls = <String, List<String>>{};
+      debugPostVideoSessionUrlObserver = (sessionId, url) {
+        createdUrls.putIfAbsent(sessionId, () => <String>[]).add(url);
+      };
+      final posts = [
+        _fakeVideoPost(),
+        _fakeVideoPost(
+          id: 'post-2',
+          videoDataSaverUrl: 'https://example.com/post-2/play_480p.mp4',
+        ),
+        for (var index = 3; index <= 20; index++)
+          _fakeVideoPost(
+            id: 'post-$index',
+            videoDataSaverUrl: 'https://example.com/post-$index/play_480p.mp4',
+          ),
+      ];
+      await pumpScreen(tester, posts: posts);
+      final state =
+          tester.state(find.byType(MemberPostDetailScreen)) as dynamic;
+      final coordinator = state.debugVideoCoordinator as PostVideoCoordinator;
+
+      state.debugSetPlaybackNetworkTier(NetworkTier.wifi);
+      coordinator.setPreloadWindow(const ['post-20']);
+      expect(createdUrls['post-20']?.last, 'https://example.com/post-20.mp4');
+
+      coordinator.setPreloadWindow(const ['post-17', 'post-18', 'post-19']);
+      coordinator.setPreloadWindow(const ['post-14', 'post-15', 'post-16']);
+      expect(coordinator.sessionFor('post-20'), isNull,
+          reason: 'the WiFi session must be evicted before recreation');
+
+      state.debugSetPlaybackNetworkTier(NetworkTier.cellularFast);
+      coordinator.setPreloadWindow(const ['post-20']);
+      expect(createdUrls['post-20']?.last,
+          'https://example.com/post-20/play_480p.mp4');
+
+      await disposeTree(tester);
+    },
+  );
 
   testWidgets(
     'warm video is adopted before attach and bypasses normal factory',

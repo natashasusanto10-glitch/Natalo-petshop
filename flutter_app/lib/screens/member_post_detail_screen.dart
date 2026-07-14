@@ -18,6 +18,7 @@ import '../models/feed_post.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
 import '../services/report_service.dart';
+import '../services/video_quality_service.dart';
 import '../state/feed_local_store.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
@@ -52,6 +53,9 @@ Future<FeedPost?> Function(String id)? debugScopedFeedPostFetcher;
 /// memverifikasi wiring inline↔coordinator (attach/setActive/dormant/D3).
 @visibleForTesting
 PlaybackSessionFactory? debugPostVideoSessionFactory;
+
+@visibleForTesting
+void Function(String sessionId, String url)? debugPostVideoSessionUrlObserver;
 
 /// Detail Postingan style Instagram Feed — continuous vertical scroll list
 /// of user's own posts (Postingan Saya).
@@ -140,6 +144,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   /// utama + di-register on-demand oleh inline (carousel). Factory sesi baca
   /// dari sini — coordinator sendiri plugin-free & tak tahu URL.
   final Map<String, String> _videoUrls = {};
+  late NetworkTier _playbackNetworkTier;
 
   /// True selama transisi buka/tutup fullscreen scoped (§2.6 + D5). Selama
   /// ini, cover-pause route-push TIDAK memicu `pauseAll` (controller asal
@@ -176,33 +181,35 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
         : List<FeedPost>.from(source);
     _postKeys = List.generate(_posts.length, (_) => GlobalKey());
     _scrollController = ScrollController();
+    _playbackNetworkTier = videoQualityService.currentTier;
     // Prapopulasi URL video utama tiap post (video item non-carousel).
     for (final post in _posts) {
       if (post.isVideo) {
-        _videoUrls[post.id] = post.videoPlaybackUrlForQuality(
-          appSettingsStore.feedVideoQuality,
-        );
+        _videoUrls[post.id] = _resolvePostVideoUrl(post);
       }
     }
     // Coordinator dimiliki halaman: factory bikin sesi VideoPlayerSession
     // nyata (atau fake via seam test). Listener feedMuted hidup di coordinator.
     _videoCoordinator = PostVideoCoordinator(
-      sessionFactory: debugPostVideoSessionFactory ??
-          (sessionId) => VideoPlayerSession(
-                url: _videoUrls[sessionId] ?? '',
-                analyticsPostId: sessionId,
-                analyticsSurface: 'postingan',
-                // D4: refresh signed URL expired best-effort — re-fetch post
-                // dari API yang meng-sign ulang URL Bunny tiap request.
-                urlRefresher: () => _refreshVideoUrl(sessionId),
-              ),
+      sessionFactory: (sessionId) {
+        final url = _resolveSessionVideoUrl(sessionId);
+        debugPostVideoSessionUrlObserver?.call(sessionId, url);
+        final debugFactory = debugPostVideoSessionFactory;
+        if (debugFactory != null) return debugFactory(sessionId);
+        return VideoPlayerSession(
+          url: url,
+          analyticsPostId: sessionId,
+          analyticsSurface: 'postingan',
+          // D4: refresh signed URL expired best-effort — re-fetch post
+          // dari API yang meng-sign ulang URL Bunny tiap request.
+          urlRefresher: () => _refreshVideoUrl(sessionId),
+        );
+      },
     );
     final warmHandoff = widget.warmVideoHandoff;
     final warmSession = warmHandoff?.claim(
       postId: widget.post.id,
-      url: widget.post.videoPlaybackUrlForQuality(
-        appSettingsStore.feedVideoQuality,
-      ),
+      url: _resolvePostVideoUrl(widget.post),
     );
     if (warmSession != null) {
       _videoCoordinator.adoptSession(widget.post.id, warmSession);
@@ -372,6 +379,45 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     _videoUrls[sessionId] = url;
   }
 
+  String _resolvePostVideoUrl(FeedPost post) =>
+      videoQualityService.resolvePlaybackUrl(
+        post.videoPlaybackUrl,
+        dataSaverUrl: post.videoDataSaverUrl,
+        userPreference: appSettingsStore.feedVideoQuality,
+        // Tier berasal dari lifecycle fullscreen, bukan override test.
+        // ignore: invalid_use_of_visible_for_testing_member
+        networkTier: _playbackNetworkTier,
+      );
+
+  String _resolveMediaVideoUrl(FeedMedia media) =>
+      videoQualityService.resolvePlaybackUrl(
+        media.mediaUrl,
+        dataSaverUrl: media.videoDataSaverUrl,
+        userPreference: appSettingsStore.feedVideoQuality,
+        // Tier berasal dari lifecycle fullscreen, bukan override test.
+        // ignore: invalid_use_of_visible_for_testing_member
+        networkTier: _playbackNetworkTier,
+      );
+
+  String _resolveSessionVideoUrl(String sessionId) {
+    final postIndex = _posts.indexWhere((post) => post.id == sessionId);
+    if (postIndex >= 0) {
+      final url = _resolvePostVideoUrl(_posts[postIndex]);
+      _videoUrls[sessionId] = url;
+      return url;
+    }
+    return _videoUrls[sessionId] ?? '';
+  }
+
+  void _onPlaybackNetworkTierChanged(NetworkTier tier) {
+    _playbackNetworkTier = tier;
+  }
+
+  @visibleForTesting
+  void debugSetPlaybackNetworkTier(NetworkTier tier) {
+    _onPlaybackNetworkTierChanged(tier);
+  }
+
   /// D4 — ambil URL video bertanda-tangan SEGAR untuk [sessionId] dari API
   /// (`GET /api/feed/posts/:id` → `signBunnyUrl`, sign ulang tiap request).
   /// Dipanggil oleh [VideoPlayerSession] hanya saat init gagal DAN URL lama
@@ -403,14 +449,10 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
           carouselIndex >= 0 &&
           carouselIndex < fresh.mediaItems.length) {
         final item = fresh.mediaItems[carouselIndex];
-        final playbackUrl = item.mediaPlaybackUrlForQuality(
-          appSettingsStore.feedVideoQuality,
-        );
+        final playbackUrl = _resolveMediaVideoUrl(item);
         url = playbackUrl.trim().isNotEmpty ? playbackUrl : null;
       } else {
-        final playbackUrl = fresh.videoPlaybackUrlForQuality(
-          appSettingsStore.feedVideoQuality,
-        );
+        final playbackUrl = _resolvePostVideoUrl(fresh);
         url = playbackUrl.trim().isNotEmpty ? playbackUrl : null;
       }
       if (url == null || url.trim().isEmpty) return null;
@@ -906,6 +948,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
             // Handoff §2.6: item ASAL pinjam controller coordinator (instan).
             coordinator: _videoCoordinator,
             originPostId: sessionId,
+            onNetworkTierChanged: _onPlaybackNetworkTierChanged,
           ),
         ),
       );
@@ -1981,8 +2024,10 @@ class _PostMediaSurface extends StatelessWidget {
             dormant: handoffSessionId == post.id,
             // videoPlaybackUrl (videoUrl-first), BUKAN previewMediaUrl
             // (yang thumbnail-first → JPG → player gagal initialize).
-            mediaUrl: post.videoPlaybackUrlForQuality(
-              appSettingsStore.feedVideoQuality,
+            mediaUrl: videoQualityService.resolvePlaybackUrl(
+              post.videoPlaybackUrl,
+              dataSaverUrl: post.videoDataSaverUrl,
+              userPreference: appSettingsStore.feedVideoQuality,
             ),
             thumbnailUrl: post.thumbnailUrl,
             aspectRatio: aspectRatio,
@@ -2038,10 +2083,8 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
     // source), untuk photo pakai previewMediaUrl (thumbnail/image). Jangan
     // kasih thumbnail JPG ke item video → player gagal.
     final isVideo = widget.post.isVideo;
-    final fallbackUrl = isVideo
-        ? widget.post
-            .videoPlaybackUrlForQuality(appSettingsStore.feedVideoQuality)
-        : widget.post.previewMediaUrl;
+    final fallbackUrl =
+        isVideo ? widget.post.videoPlaybackUrl : widget.post.previewMediaUrl;
     if (fallbackUrl.trim().isEmpty) return const [];
     return [
       FeedMedia(
@@ -2076,8 +2119,10 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
                 coordinator: widget.coordinator,
                 registerVideoUrl: widget.registerVideoUrl,
                 dormant: widget.handoffSessionId == sessionId,
-                mediaUrl: item.mediaPlaybackUrlForQuality(
-                  appSettingsStore.feedVideoQuality,
+                mediaUrl: videoQualityService.resolvePlaybackUrl(
+                  item.mediaUrl,
+                  dataSaverUrl: item.videoDataSaverUrl,
+                  userPreference: appSettingsStore.feedVideoQuality,
                 ),
                 thumbnailUrl: item.thumbnailUrl,
                 aspectRatio: widget.aspectRatio,

@@ -5,7 +5,6 @@ import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
@@ -150,6 +149,11 @@ class FeedVideoPostView extends StatefulWidget {
   final FutureOr<PreloadedVideoClaim?> Function()? claimPreloadedVideo;
   final ValueListenable<int>? preloadListenable;
   final ValueChanged<bool>? onLocalOwnershipChanged;
+
+  /// Low-frequency contiguous buffered-ahead telemetry for the active video.
+  /// Reports without rebuilding this widget and works for local and managed
+  /// controllers alike.
+  final ValueChanged<Duration>? onBufferAheadChanged;
   final ValueChanged<bool> onOverlayStateChanged;
   final ValueChanged<bool> onMediaZoomChanged;
 
@@ -216,6 +220,7 @@ class FeedVideoPostView extends StatefulWidget {
     this.claimPreloadedVideo,
     this.preloadListenable,
     this.onLocalOwnershipChanged,
+    this.onBufferAheadChanged,
     this.ownsController = true,
     this.playbackManagedExternally = false,
     this.coordinator,
@@ -277,10 +282,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   int _commentCount = 0;
   int _shareCount = 0;
   bool _shareInFlight = false;
-  Timer? _mediaTapWindow;
-  DateTime? _firstMediaTapAt;
-  Offset? _firstMediaTapPosition;
-  bool? _playingBeforeFirstTap;
   bool _isPaused = false;
   bool _commentDrawerMounted = false;
   bool _commentSheetOpen = false;
@@ -334,6 +335,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   final Stopwatch _startupStopwatch = Stopwatch()..start();
   bool _initMetricStarted = false;
   bool _playMetricRecorded = false;
+  Duration? _lastReportedBufferAhead;
+  DateTime? _lastBufferAheadReportAt;
+
+  static const Duration _bufferReportInterval = Duration(milliseconds: 500);
+  static const Duration _bufferReportMinDelta = Duration(milliseconds: 500);
 
   @override
   void initState() {
@@ -345,6 +351,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         'surface': 'feed',
         'media_type': widget.post.videoUrl.contains('.m3u8') ? 'hls' : 'mp4',
         'media_key': widget.post.id.hashCode.toUnsigned(32).toRadixString(16),
+        'network_tier': videoQualityService.currentTier.name,
+        'quality_preference': appSettingsStore.feedVideoQuality,
       },
     );
     if (!_managed) _playbackHealthMonitor.start();
@@ -920,6 +928,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // Binding non-nullable — promotion `controller` gagal di dalam closure
     // onInit (variabel lokal assignable yang di-capture).
     final ctrl = controller;
+    _resetBufferAheadReporting();
     _videoController = ctrl;
     _commitLocalOwnership();
     // Adopt wrapper juga supaya child bisa dispose properly. Wrapper
@@ -1035,6 +1044,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       // coordinator satu-satunya pemilik.
       if (_videoController != null) {
         _videoController!.removeListener(_handleVideoPositionForCta);
+        _resetBufferAheadReporting();
         _videoController = null;
         if (mounted) setState(() {});
       }
@@ -1051,6 +1061,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     final old = _videoController;
     if (identical(old, ctrl)) return;
     old?.removeListener(_handleVideoPositionForCta);
+    _resetBufferAheadReporting();
     _videoController = ctrl;
     ctrl.addListener(_handleVideoPositionForCta);
     _cancelLoadingSpinnerDelay();
@@ -1069,6 +1080,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   void _handleVideoPositionForCta() {
     final ctrl = _videoController;
     if (ctrl == null || !mounted) return;
+    _playbackHealthMonitor.observePlaybackStateTransition();
+    _reportBufferAhead(ctrl.value);
     if (ctrl.value.isPlaying) _recordPlayMetric();
     if (_endOfVideoCtaVisible || _endOfVideoCtaDismissed) return;
     final value = ctrl.value;
@@ -1086,6 +1099,30 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // hindari render kosong.
     if (_rotatingProductsForPost(widget.post).isEmpty) return;
     setState(() => _endOfVideoCtaVisible = true);
+  }
+
+  void _resetBufferAheadReporting() {
+    _lastReportedBufferAhead = null;
+    _lastBufferAheadReportAt = null;
+  }
+
+  void _reportBufferAhead(VideoPlayerValue value) {
+    final callback = widget.onBufferAheadChanged;
+    if (callback == null || !widget.isActive || !value.isInitialized) return;
+    final ahead = _bufferAhead(value);
+    final previous = _lastReportedBufferAhead;
+    final now = DateTime.now();
+    final crossedThreshold = previous != null &&
+        previous < const Duration(seconds: 3) &&
+        ahead >= const Duration(seconds: 3);
+    final enoughTime = _lastBufferAheadReportAt == null ||
+        now.difference(_lastBufferAheadReportAt!) >= _bufferReportInterval;
+    final enoughChange =
+        previous == null || (ahead - previous).abs() >= _bufferReportMinDelta;
+    if (!crossedThreshold && !(enoughTime && enoughChange)) return;
+    _lastReportedBufferAhead = ahead;
+    _lastBufferAheadReportAt = now;
+    callback(ahead);
   }
 
   void _dismissEndOfVideoCta() {
@@ -1134,6 +1171,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   void didUpdateWidget(covariant FeedVideoPostView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.isActive != widget.isActive) {
+      _resetBufferAheadReporting();
       if (widget.isActive) {
         if (_videoController == null) {
           unawaited(_claimOrInitOnActivation());
@@ -1204,8 +1242,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // panggilan kedua (mis. tap :onTapMedia saat loading) no-op supaya tidak
     // ada dua controller / dua download.
     if (_initInFlight) return;
-    final url = widget.post.videoPlaybackUrlForQuality(
-      appSettingsStore.feedVideoQuality,
+    final url = videoQualityService.resolvePlaybackUrl(
+      widget.post.videoPlaybackUrl,
+      dataSaverUrl: widget.post.videoDataSaverUrl,
+      userPreference: appSettingsStore.feedVideoQuality,
     );
     if (url.isEmpty) return;
     if (_dataSaverEnabled && !userInitiated) return;
@@ -1230,12 +1270,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
   Future<void> _runInitVideo({required bool userInitiated}) async {
     setState(() => _videoLoadFailed = false);
-    final url = widget.post.videoPlaybackUrlForQuality(
-      appSettingsStore.feedVideoQuality,
-    );
-    // Sprint 2 #7 — Network-aware quality rewrite + user preference.
+    // Sprint 2 #7 — Network-aware source selection + user preference.
     final resolvedUrl = videoQualityService.resolvePlaybackUrl(
-      url,
+      widget.post.videoPlaybackUrl,
+      dataSaverUrl: widget.post.videoDataSaverUrl,
       userPreference: appSettingsStore.feedVideoQuality,
     );
     final isHls = resolvedUrl.contains('.m3u8');
@@ -1316,6 +1354,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         return true; // not failed, just unmounted; skip retry
       }
       _videoController = controller;
+      _resetBufferAheadReporting();
       _commitLocalOwnership();
       controller.addListener(_handleVideoPositionForCta);
       _cancelLoadingSpinnerDelay();
@@ -1359,16 +1398,30 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   VideoPlaybackSnapshot _playbackHealthSnapshot() {
     final value = _videoController?.value;
     return VideoPlaybackSnapshot(
-      shouldMonitor: !_managed &&
-          widget.isActive &&
-          !_isPaused &&
-          _canAutoplayNow() &&
-          (value?.isInitialized ?? false) &&
-          (value?.isPlaying ?? false),
+      shouldMonitor: shouldMonitorIntendedPlayback(
+        intendsPlayback:
+            !_managed && widget.isActive && !_isPaused && _canAutoplayNow(),
+        isInitialized: value?.isInitialized ?? false,
+      ),
       isBuffering: value?.isBuffering ?? false,
       position: value?.position ?? Duration.zero,
       duration: value?.duration ?? Duration.zero,
+      bufferAhead: _bufferAhead(value),
     );
+  }
+
+  Duration _bufferAhead(VideoPlayerValue? value) {
+    if (value == null) return Duration.zero;
+    final position = value.position;
+    var furthestEnd = position;
+    for (final range in value.buffered) {
+      if (range.end <= position) continue;
+      if (range.start > furthestEnd) break;
+      if (range.end > furthestEnd) {
+        furthestEnd = range.end;
+      }
+    }
+    return furthestEnd - position;
   }
 
   Future<void> _recoverPlaybackStall(Duration position) async {
@@ -1399,7 +1452,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     _legacyDisposed = true;
     if (!_managed) _releaseAudio();
     _playbackHealthMonitor.dispose();
-    _mediaTapWindow?.cancel();
     appRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
     // D1: lepas listener feedMuted live (hanya terpasang di jalur non-managed).
@@ -1854,41 +1906,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     }
   }
 
-  void _onMediaTapUp(TapUpDetails details) {
-    final now = DateTime.now();
-    final firstAt = _firstMediaTapAt;
-    final firstPosition = _firstMediaTapPosition;
-    final isDoubleTap = firstAt != null &&
-        firstPosition != null &&
-        now.difference(firstAt) <= kDoubleTapTimeout &&
-        (details.localPosition - firstPosition).distance <= kDoubleTapSlop;
-    if (isDoubleTap) {
-      _heartBurstPosition = details.localPosition;
-      final wasPlaying = _playingBeforeFirstTap;
-      if (wasPlaying != null &&
-          (_videoController?.value.isPlaying ?? false) != wasPlaying) {
-        unawaited(_onTapMedia());
-      }
-      _clearMediaTapWindow();
-      _onDoubleTapLike();
-      return;
-    }
-    _firstMediaTapAt = now;
-    _firstMediaTapPosition = details.localPosition;
-    _playingBeforeFirstTap = _videoController?.value.isPlaying;
-    unawaited(_onTapMedia());
-    _mediaTapWindow?.cancel();
-    _mediaTapWindow = Timer(kDoubleTapTimeout, _clearMediaTapWindow);
-  }
-
-  void _clearMediaTapWindow() {
-    final hadActiveWindow = _mediaTapWindow != null;
-    _mediaTapWindow?.cancel();
-    _mediaTapWindow = null;
-    _firstMediaTapAt = null;
-    _firstMediaTapPosition = null;
-    _playingBeforeFirstTap = null;
-    if (mounted && hadActiveWindow) setState(() {});
+  void _onMediaDoubleTapDown(TapDownDetails details) {
+    _heartBurstPosition = details.localPosition;
   }
 
   void _openCart({bool fromFeed = false}) {
@@ -2425,7 +2444,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                         top: 0,
                         bottom: 0,
                         child: GestureDetector(
-                          onTapUp: _onMediaTapUp,
+                          onTap: () => unawaited(_onTapMedia()),
+                          onDoubleTapDown: _onMediaDoubleTapDown,
+                          onDoubleTap: _onDoubleTapLike,
                           // Sprint 4 #1 — Long-press signature gesture.
                           onLongPressStart: _onLongPressStart,
                           onLongPressEnd: _onLongPressEnd,
@@ -2524,13 +2545,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                           !minimized &&
                           !_commentSheetOpen)
                         Center(
-                          child: IgnorePointer(
-                            ignoring: _mediaTapWindow != null,
-                            child: _PausedVideoControls(
-                              muted: appSettingsStore.feedMuted,
-                              onToggleMute: _toggleMuteWhilePaused,
-                              onTogglePlayPause: _onTapMedia,
-                            ),
+                          child: _PausedVideoControls(
+                            muted: appSettingsStore.feedMuted,
+                            onToggleMute: _toggleMuteWhilePaused,
+                            onTogglePlayPause: _onTapMedia,
                           ),
                         ),
                       if (!minimized) ...[
