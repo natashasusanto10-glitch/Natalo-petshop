@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   getFirstReviewableOrderItem,
+  manualPaymentDeadlineIso,
   serializeOrderDetail,
 } from "@/lib/order-detail";
 import { shouldHideBottomNav } from "@/lib/navigation";
@@ -102,6 +103,50 @@ test("order detail review CTA is unavailable before delivery or without owner ac
       canReview: false,
       items,
     }),
+    null
+  );
+});
+
+test("manual payment deadline follows the configured checkout window", () => {
+  const previous = process.env.AUTO_CANCEL_MANUAL_HOURS;
+  process.env.AUTO_CANCEL_MANUAL_HOURS = "12";
+  try {
+    const deadline = manualPaymentDeadlineIso({
+      paymentProvider: "MANUAL",
+      paymentStatus: "PENDING",
+      status: "PENDING",
+      paymentProofUrl: null,
+      createdAt: new Date("2026-07-14T06:00:00.000Z"),
+    } as any);
+
+    assert.equal(deadline, "2026-07-14T18:00:00.000Z");
+  } finally {
+    if (previous == null) delete process.env.AUTO_CANCEL_MANUAL_HOURS;
+    else process.env.AUTO_CANCEL_MANUAL_HOURS = previous;
+  }
+});
+
+test("manual payment deadline is hidden after proof or for Midtrans", () => {
+  const base = {
+    paymentStatus: "PENDING",
+    status: "PENDING",
+    createdAt: new Date("2026-07-14T06:00:00.000Z"),
+  };
+
+  assert.equal(
+    manualPaymentDeadlineIso({
+      ...base,
+      paymentProvider: "MANUAL",
+      paymentProofUrl: "https://cdn.example/proof.jpg",
+    } as any),
+    null
+  );
+  assert.equal(
+    manualPaymentDeadlineIso({
+      ...base,
+      paymentProvider: "MIDTRANS",
+      paymentProofUrl: null,
+    } as any),
     null
   );
 });

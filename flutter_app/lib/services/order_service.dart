@@ -119,6 +119,16 @@ class OrderService {
       detailUrl: data['detailUrl']?.toString(),
       paymentUrl: data['paymentUrl']?.toString(),
       trackingToken: data['trackingToken']?.toString(),
+      status: data['status']?.toString(),
+      paymentStatus: data['paymentStatus']?.toString(),
+      paymentProvider: data['paymentProvider']?.toString(),
+      manualBank: data['manualBank']?.toString(),
+      uniqueCode: data['uniqueCode'] is num
+          ? (data['uniqueCode'] as num).round()
+          : int.tryParse(data['uniqueCode']?.toString() ?? ''),
+      paymentDeadline: DateTime.tryParse(
+        data['paymentDeadline']?.toString() ?? '',
+      ),
     );
   }
 
@@ -417,8 +427,12 @@ class OrderResult {
   final String? detailUrl;
   final String? paymentUrl;
   final String? trackingToken;
+  final String? status;
+  final String? paymentStatus;
   final String? paymentProvider;
   final String? manualBank;
+  final int? uniqueCode;
+  final DateTime? paymentDeadline;
 
   const OrderResult({
     required this.orderNumber,
@@ -426,8 +440,12 @@ class OrderResult {
     this.detailUrl,
     this.paymentUrl,
     this.trackingToken,
+    this.status,
+    this.paymentStatus,
     this.paymentProvider,
     this.manualBank,
+    this.uniqueCode,
+    this.paymentDeadline,
   });
 }
 

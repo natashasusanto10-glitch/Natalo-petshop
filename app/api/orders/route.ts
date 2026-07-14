@@ -9,7 +9,12 @@ import {
   type CheckedOutItem,
 } from "@/lib/checkout-items";
 import { InvalidCustomerSessionError, resolveOrderIdentity } from "@/lib/order-identity";
-import { buildOrderDetailPath, buildOrderSuccessUrl, createTrackingToken } from "@/lib/order-detail";
+import {
+  buildOrderDetailPath,
+  buildOrderSuccessUrl,
+  createTrackingToken,
+  manualPaymentDeadlineIso,
+} from "@/lib/order-detail";
 import { debitWallet, getOrCreateWallet } from "@/lib/refund-wallet";
 import { withSerializationRetry, isSerializationFailure } from "@/lib/db-retry";
 import { SELF_PICKUP_METHOD, SELF_PICKUP_STORE } from "@/lib/self-pickup";
@@ -894,6 +899,12 @@ export async function POST(request: Request) {
       detailUrl: buildOrderDetailPath(order.orderNumber, order.trackingToken),
       earnedPoints,
       paymentUrl,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      paymentProvider: order.paymentProvider,
+      manualBank: order.manualBank,
+      uniqueCode: order.uniqueCode,
+      paymentDeadline: manualPaymentDeadlineIso(order),
       snapToken: input.paymentProvider === "MIDTRANS" ? paymentReference : undefined,
     });
   } catch (error) {

@@ -100,7 +100,7 @@ async function getManualRuleIds(sourceIds: string[], limit: number) {
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? 10) || 10, 1), 10);
+  const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? 10) || 10, 1), 12);
   const excludeIds = parseIds(searchParams.get("exclude"));
   const cartIds = parseIds(searchParams.get("cart"));
   const viewedIds = parseIds(searchParams.get("viewed"));

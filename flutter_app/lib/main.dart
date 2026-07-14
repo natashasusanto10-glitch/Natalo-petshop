@@ -44,6 +44,7 @@ import 'screens/forgot_password_screen.dart';
 import 'screens/notification_preferences_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/onboarding_screen.dart';
+import 'screens/order_success_screen.dart';
 import 'screens/product_detail_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/static_info_screen.dart';
@@ -332,6 +333,14 @@ class NataloPetshopApp extends StatelessWidget {
               '/checkout' when settings.arguments is List<CartItem> =>
                 CheckoutScreen(items: settings.arguments as List<CartItem>),
               '/checkout' => const CheckoutScreen(),
+              '/order-success' when settings.arguments is OrderSuccessArgs =>
+                () {
+                  final args = settings.arguments as OrderSuccessArgs;
+                  return OrderSuccessScreen(
+                    initialOrder: args.order,
+                    purchasedProductIds: args.purchasedProductIds,
+                  );
+                }(),
               // Rute chat customer<->staff. Arguments tolerant: null (resolve
               // room milik sesi login di server), String (chatId — deep link
               // FCM ke room spesifik), atau Map (productContext dari tombol
