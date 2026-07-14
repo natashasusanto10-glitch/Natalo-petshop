@@ -1,115 +1,140 @@
 /**
  * GET /api/search/trending
  *
- * Returns the products that have been ordered most often over the last 30
- * days, surfaced under the "Lagi banyak dicari" section in the search overlay.
- *
- * Uses real order data, never a hardcoded list. Out-of-stock / inactive
- * products are excluded.
+ * Search momentum from the last seven days compared with the preceding seven
+ * days. A 24-hour boost lets genuinely new demand rise quickly. Low-volume and
+ * unsafe queries never reach clients. When there is not enough signal, terms
+ * come from the live catalogue (brand -> category -> popular product).
  */
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  isSearchKeywordAllowed,
+  normalizeSearchKeyword,
+  rankTrendingKeywords,
+  toSearchDisplayLabel,
+  type SearchCount,
+} from "@/lib/search-trending";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const WINDOW_DAYS = 30;
 const LIMIT = 6;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+async function groupedCounts(from: Date, to?: Date): Promise<SearchCount[]> {
+  const rows = await prisma.searchLog.groupBy({
+    by: ["keyword"],
+    where: {
+      createdAt: {
+        gte: from,
+        ...(to ? { lt: to } : {}),
+      },
+    },
+    _count: { keyword: true },
+    orderBy: { _count: { keyword: "desc" } },
+    take: 100,
+  });
+  const merged = new Map<string, number>();
+  for (const row of rows) {
+    const keyword = normalizeSearchKeyword(row.keyword);
+    merged.set(keyword, (merged.get(keyword) ?? 0) + row._count.keyword);
+  }
+  return [...merged].map(([keyword, count]) => ({ keyword, count }));
+}
+
+async function catalogueFallback(excluded: Set<string>): Promise<string[]> {
+  const [brands, categories, products] = await Promise.all([
+    prisma.brand.findMany({
+      where: { isActive: true, products: { some: { isActive: true } } },
+      select: { name: true },
+      orderBy: { position: "asc" },
+      take: LIMIT * 2,
+    }),
+    prisma.category.findMany({
+      where: { products: { some: { isActive: true } } },
+      select: { name: true },
+      orderBy: { updatedAt: "desc" },
+      take: LIMIT * 2,
+    }),
+    prisma.product.findMany({
+      where: { isActive: true },
+      select: { name: true },
+      orderBy: [{ reviewCount: "desc" }, { avgRating: "desc" }],
+      take: LIMIT * 2,
+    }),
+  ]);
+
+  const result: string[] = [];
+  for (const value of [
+    ...brands.map((item) => item.name),
+    ...categories.map((item) => item.name),
+    ...products.map((item) => item.name),
+  ]) {
+    const normalized = normalizeSearchKeyword(value);
+    if (
+      excluded.has(normalized) ||
+      !isSearchKeywordAllowed(normalized) ||
+      result.some((item) => normalizeSearchKeyword(item) === normalized)
+    ) {
+      continue;
+    }
+    result.push(value.trim());
+    if (result.length >= LIMIT) break;
+  }
+  return result;
+}
 
 export async function GET() {
   try {
-    const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const now = new Date();
+    const currentStart = new Date(now.getTime() - 7 * DAY_MS);
+    const previousStart = new Date(now.getTime() - 14 * DAY_MS);
+    const recentStart = new Date(now.getTime() - DAY_MS);
 
-    const grouped = await prisma.orderItem.groupBy({
-      by: ["productId"],
-      where: {
-        order: { createdAt: { gte: since } },
-      },
-      _sum: { quantity: true },
-      orderBy: { _sum: { quantity: "desc" } },
-      take: LIMIT * 3, // over-fetch to let inactive/empty-stock filter trim
+    const [current7d, previous7d, recent24h] = await Promise.all([
+      groupedCounts(currentStart),
+      groupedCounts(previousStart, currentStart),
+      groupedCounts(recentStart),
+    ]);
+    const ranked = rankTrendingKeywords({
+      current7d,
+      previous7d,
+      recent24h,
+      limit: LIMIT,
     });
 
-    const productIds = grouped.map((row) => row.productId);
-    if (productIds.length === 0) {
-      // Fallback: top-rated active products. Avoids an empty overlay
-      // when the shop has no orders in the last 30 days yet.
-      const fallback = await prisma.product.findMany({
-        where: { isActive: true },
-        select: {
-          id: true,
-          slug: true,
-          name: true,
-          imageUrl: true,
-          price: true,
-          discountPrice: true,
-          brand: { select: { name: true } },
-          category: { select: { name: true } },
-        },
-        orderBy: [{ reviewCount: "desc" }, { avgRating: "desc" }],
-        take: LIMIT,
-      });
-      return NextResponse.json({
-        items: fallback.map((p) => ({
-          id: p.id,
-          slug: p.slug,
-          name: p.name,
-          imageUrl: p.imageUrl,
-          price: p.discountPrice ?? p.price,
-          brandName: p.brand?.name ?? null,
-          categoryName: p.category?.name ?? null,
-          orderCount: 0,
-        })),
-        source: "rating_fallback",
-      });
+    const terms = ranked.map((item) => toSearchDisplayLabel(item.keyword));
+    if (terms.length < LIMIT) {
+      const fallback = await catalogueFallback(
+        new Set(ranked.map((item) => item.keyword))
+      );
+      terms.push(...fallback.slice(0, LIMIT - terms.length));
     }
 
-    const products = await prisma.product.findMany({
-      where: {
-        id: { in: productIds },
-        isActive: true,
+    return NextResponse.json(
+      {
+        terms,
+        items: ranked,
+        source: ranked.length > 0 ? "search_momentum" : "catalogue_fallback",
+        windows: { recentHours: 24, currentDays: 7, previousDays: 7 },
       },
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        imageUrl: true,
-        price: true,
-        discountPrice: true,
-        brand: { select: { name: true } },
-        category: { select: { name: true } },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+        },
       },
-    });
-
-    const byId = new Map(products.map((p) => [p.id, p]));
-    const ordered = grouped
-      .map((row) => {
-        const p = byId.get(row.productId);
-        if (!p) return null;
-        return {
-          id: p.id,
-          slug: p.slug,
-          name: p.name,
-          imageUrl: p.imageUrl,
-          price: p.discountPrice ?? p.price,
-          brandName: p.brand?.name ?? null,
-          categoryName: p.category?.name ?? null,
-          orderCount: row._sum.quantity ?? 0,
-        };
-      })
-      .filter(Boolean)
-      .slice(0, LIMIT);
-
-    return NextResponse.json({ items: ordered, source: "order_30d" });
+    );
   } catch (error) {
     return NextResponse.json(
       {
+        terms: [],
         items: [],
         source: "error",
         error: error instanceof Error ? error.message : "unknown",
       },
-      { status: 200 },
+      { status: 200 }
     );
   }
 }

@@ -12,22 +12,55 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { checkLimit, getClientIp, getSearchLogLimiter } from "@/lib/rate-limit";
+import {
+  isSearchKeywordAllowed,
+  normalizeSearchKeyword,
+} from "@/lib/search-trending";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => null);
-    const keyword = String(body?.keyword ?? "")
-      .trim()
-      .toLowerCase()
-      .slice(0, 100);
+    const keyword = normalizeSearchKeyword(body?.keyword);
 
-    if (!keyword) {
-      return NextResponse.json({ ok: false, error: "Empty keyword" }, { status: 400 });
+    if (!isSearchKeywordAllowed(keyword)) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid keyword" },
+        { status: 400 }
+      );
     }
 
     const session = await getSession("CUSTOMER").catch(() => null);
+    const clientKey = session?.sub ?? getClientIp(request.headers);
+    const gate = await checkLimit(getSearchLogLimiter(), `search:${clientKey}`);
+    if (!gate.ok) {
+      return NextResponse.json(
+        { ok: false, rateLimited: true },
+        {
+          status: 429,
+          headers: { "Retry-After": String(gate.retryAfter) },
+        }
+      );
+    }
+
+    // One signed-in shopper repeating the same query should not manufacture a
+    // trend. Anonymous traffic is still protected by the IP rate limit.
+    if (session?.sub) {
+      const duplicate = await prisma.searchLog.findFirst({
+        where: {
+          userId: session.sub,
+          keyword,
+          createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) },
+        },
+        select: { id: true },
+      });
+      if (duplicate) {
+        return NextResponse.json({ ok: true, deduplicated: true });
+      }
+    }
+
     await prisma.searchLog.create({
       data: {
         keyword,

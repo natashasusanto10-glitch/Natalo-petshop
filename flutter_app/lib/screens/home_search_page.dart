@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/product.dart';
+import '../services/search_service.dart';
 import '../state/recently_viewed_store.dart';
 import '../state/search_history_store.dart';
 import '../state/trending_placeholder_controller.dart';
@@ -36,10 +39,12 @@ class _HomeSearchPageState extends State<HomeSearchPage> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
   String _query = '';
+  late final Future<List<String>> _trendingTerms;
 
   @override
   void initState() {
     super.initState();
+    _trendingTerms = searchService.trending();
     _searchController.addListener(_handleInputChange);
     _searchFocus.addListener(_handleFocusChange);
     // Pause placeholder rotation saat halaman search aktif — user akan
@@ -87,6 +92,7 @@ class _HomeSearchPageState extends State<HomeSearchPage> {
     // Persist ke searchHistoryStore (versioned key — sama yang dipakai
     // home recommendation algorithm).
     searchHistoryStore.push(keyword);
+    unawaited(searchService.log(keyword));
     // Navigate ke products screen dengan initial query — replace bukan
     // push supaya back gesture langsung ke Beranda (bukan kembali ke
     // search page yang sudah tidak relevan).
@@ -143,6 +149,7 @@ class _HomeSearchPageState extends State<HomeSearchPage> {
               child: _SearchInitialContent(
                 onTapKeyword: _tapKeyword,
                 onTapProduct: _openProductDetail,
+                trendingTerms: _trendingTerms,
               ),
             ),
           ],
@@ -286,10 +293,12 @@ class _SearchHeader extends StatelessWidget {
 class _SearchInitialContent extends StatelessWidget {
   final ValueChanged<String> onTapKeyword;
   final ValueChanged<Product> onTapProduct;
+  final Future<List<String>> trendingTerms;
 
   const _SearchInitialContent({
     required this.onTapKeyword,
     required this.onTapProduct,
+    required this.trendingTerms,
   });
 
   @override
@@ -317,7 +326,7 @@ class _SearchInitialContent extends StatelessWidget {
                 entries: history.take(5).toList(),
                 onTap: onTapKeyword,
               ),
-            const _TrendingSearchSection(),
+            _TrendingSearchSection(terms: trendingTerms),
           ],
         );
       },
@@ -651,12 +660,12 @@ class _RecentSearchRow extends StatelessWidget {
 // ─────────────────── TRENDING SEARCH ───────────────────
 
 class _TrendingSearchSection extends StatelessWidget {
-  const _TrendingSearchSection();
+  final Future<List<String>> terms;
 
-  // Fallback static — backend trending analytics belum tersedia. Spec
-  // section 7 mention prioritas: backend → product search count →
-  // popular → fallback manual. Hardcoded list di sini = step terakhir
-  // fallback chain, sampai backend trending API ready.
+  const _TrendingSearchSection({required this.terms});
+
+  // Last-resort offline fallback. In normal operation terms come from the
+  // backend's search momentum ranking and catalogue fallback.
   static const _trendingFallback = [
     'Royal Canin',
     'Pasir Kucing',
@@ -683,34 +692,86 @@ class _TrendingSearchSection extends StatelessWidget {
             ),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _trendingFallback.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 10,
-              childAspectRatio: 4.2,
-            ),
-            itemBuilder: (context, i) {
-              final keyword = _trendingFallback[i];
-              return _TrendingChip(
-                keyword: keyword,
-                onTap: () {
-                  // Parent state wires this via inherited callback —
-                  // ambil dari closest _HomeSearchPageState ancestor.
-                  final state =
-                      context.findAncestorStateOfType<_HomeSearchPageState>();
-                  state?._tapKeyword(keyword);
-                },
-              );
-            },
-          ),
+        FutureBuilder<List<String>>(
+          future: terms,
+          builder: (context, snapshot) {
+            final keywords = snapshot.data?.take(6).toList(growable: false);
+            if (snapshot.connectionState != ConnectionState.done &&
+                keywords == null) {
+              return const _TrendingGridSkeleton();
+            }
+            return _TrendingGrid(
+              keywords: keywords == null || keywords.isEmpty
+                  ? _trendingFallback
+                  : keywords,
+            );
+          },
         ),
       ],
+    );
+  }
+}
+
+class _TrendingGrid extends StatelessWidget {
+  final List<String> keywords;
+
+  const _TrendingGrid({required this.keywords});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: keywords.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 10,
+          childAspectRatio: 4.2,
+        ),
+        itemBuilder: (context, i) {
+          final keyword = keywords[i];
+          return _TrendingChip(
+            keyword: keyword,
+            onTap: () {
+              context
+                  .findAncestorStateOfType<_HomeSearchPageState>()
+                  ?._tapKeyword(keyword);
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TrendingGridSkeleton extends StatelessWidget {
+  const _TrendingGridSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.surfaceContainerHighest;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: 6,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 10,
+          childAspectRatio: 4.2,
+        ),
+        itemBuilder: (_, __) => DecoratedBox(
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      ),
     );
   }
 }

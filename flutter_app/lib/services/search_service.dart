@@ -36,9 +36,8 @@ class SearchHit {
       title: (json['title'] ?? '').toString(),
       imageUrl: json['imageUrl']?.toString(),
       price: _asNum(json['price']),
-      originalPrice: json['originalPrice'] is num
-          ? json['originalPrice'] as num
-          : null,
+      originalPrice:
+          json['originalPrice'] is num ? json['originalPrice'] as num : null,
       brand: json['brand']?.toString(),
       category: json['category']?.toString(),
       rating: _asNum(json['rating']).toDouble(),
@@ -94,8 +93,9 @@ class SearchService {
       return SearchResult(
         hits: hits,
         total: _asInt(data['total']),
-        facets:
-            data['facets'] is Map<String, dynamic> ? data['facets'] as Map<String, dynamic> : {},
+        facets: data['facets'] is Map<String, dynamic>
+            ? data['facets'] as Map<String, dynamic>
+            : {},
         nextCursor: data['nextCursor']?.toString(),
       );
     } catch (_) {
@@ -120,9 +120,7 @@ class SearchService {
   Future<List<String>> popular() async {
     try {
       final data = await apiClient.getJson('/api/search/popular');
-      final raw = data['terms'] ?? data['items'] ?? data['data'];
-      if (raw is! List) return const [];
-      return raw.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+      return _extractTerms(data);
     } catch (_) {
       return const [];
     }
@@ -132,9 +130,7 @@ class SearchService {
   Future<List<String>> trending() async {
     try {
       final data = await apiClient.getJson('/api/search/trending');
-      final raw = data['terms'] ?? data['items'] ?? data['data'];
-      if (raw is! List) return const [];
-      return raw.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+      return _extractTerms(data);
     } catch (_) {
       return const [];
     }
@@ -148,12 +144,31 @@ class SearchService {
     try {
       await apiClient.postJson(
         '/api/search/log',
-        body: {'query': query.trim()},
+        body: {'keyword': query.trim()},
       );
     } catch (_) {
       // Silent — logging adalah analytics, jangan blokir UX.
     }
   }
+}
+
+List<String> _extractTerms(Map<String, dynamic> data) {
+  final raw = data['terms'] ?? data['items'] ?? data['data'];
+  if (raw is! List) return const [];
+  return raw
+      .map((item) {
+        if (item is String) return item.trim();
+        if (item is Map) {
+          return (item['q'] ?? item['keyword'] ?? item['name'] ?? '')
+              .toString()
+              .trim();
+        }
+        return '';
+      })
+      .where((term) => term.isNotEmpty)
+      .toSet()
+      .take(8)
+      .toList(growable: false);
 }
 
 num _asNum(Object? value) {

@@ -111,6 +111,22 @@ export function getAiLimiter(): Ratelimit | null {
   return aiLimiterCache;
 }
 
+// Search logging is public and fire-and-forget. Keep the allowance generous
+// for real shoppers, but stop one client from manufacturing trending terms.
+let searchLogLimiterCache: Ratelimit | null = null;
+export function getSearchLogLimiter(): Ratelimit | null {
+  if (searchLogLimiterCache) return searchLogLimiterCache;
+  const redis = getRedisClient();
+  if (!redis) return null;
+  searchLogLimiterCache = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(30, "1 m"),
+    prefix: "rate:search-log",
+    analytics: false,
+  });
+  return searchLogLimiterCache;
+}
+
 type LimitResult =
   | { ok: true }
   | { ok: false; retryAfter: number };
