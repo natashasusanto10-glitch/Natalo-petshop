@@ -31,6 +31,7 @@ import '../widgets/scaled_video_feed_route.dart';
 import '../utils/fly_to_cart.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../utils/product_media.dart';
 import '../utils/voucher_promo.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/app_chat_button.dart';
@@ -96,6 +97,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   // sebelumnya yang cuma pakai product.voucherPreview.
   List<ProductVoucherPreview> _vouchers = const [];
   List<_ProductCustomerPost> _customerPosts = const [];
+  int _customerPostsTotal = 0;
+  int _customerPostsNextOffset = 0;
   bool _loadingCustomerPosts = true;
   bool _descriptionExpanded = false;
   int _activeTab = 0;
@@ -108,6 +111,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final GlobalKey _heroImageKey = GlobalKey();
   // Map attribute.id → selected option.id. Kosong = belum pilih satu pun.
   final Map<String, String> _selectedOptions = {};
+  int _variantMediaRevision = 0;
 
   Product get product => _product;
 
@@ -141,6 +145,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_syncActiveTabFromScroll);
     // Track view fire-and-forget. Match perilaku PWA ProductViewTracker —
     // dipakai untuk personalisasi recommendation di /api/cart/recommendations.
     // Gagal silent (offline, guest, dll), tidak blokir render screen.
@@ -202,13 +207,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Future<void> _loadCustomerPosts() async {
     try {
-      final raw = await productService.fetchProductFeedPosts(
+      final page = await productService.fetchProductFeedPostsPage(
         product.slug,
         limit: 12,
       );
       if (!mounted) return;
       final parsed = <_ProductCustomerPost>[];
-      for (final entry in raw) {
+      for (final entry in page.items) {
         try {
           final post = _ProductCustomerPost.fromJson(entry);
           if (post.thumbnailUrl.isNotEmpty) parsed.add(post);
@@ -218,6 +223,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       }
       setState(() {
         _customerPosts = parsed;
+        _customerPostsTotal = page.total;
+        _customerPostsNextOffset = page.offset + page.items.length;
         _loadingCustomerPosts = false;
       });
     } catch (_) {
@@ -226,10 +233,40 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
+  void _openAllCustomerPosts() {
+    AppHaptics.tap();
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => _ProductCustomerPostsScreen(
+          product: product,
+          initialPosts: _customerPosts,
+          initialTotal: _customerPostsTotal,
+          initialOffset: _customerPostsNextOffset,
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    _scrollController.removeListener(_syncActiveTabFromScroll);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _syncActiveTabFromScroll() {
+    final reviewContext = _reviewsKey.currentContext;
+    if (reviewContext == null) return;
+    final renderObject = reviewContext.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.attached) return;
+    final reviewTop = renderObject.localToGlobal(Offset.zero).dy;
+    final stickyThreshold = MediaQuery.paddingOf(context).top +
+        kToolbarHeight +
+        _ProductSectionTabsDelegate.extent;
+    final nextIndex = reviewTop <= stickyThreshold ? 1 : 0;
+    if (nextIndex != _activeTab && mounted) {
+      setState(() => _activeTab = nextIndex);
+    }
   }
 
   /// Fetch full product dari /api/products/{slug} untuk dapat variantAttrs +
@@ -261,6 +298,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       _selectedOptions
         ..clear()
         ..addAll(options);
+      _variantMediaRevision++;
     });
   }
 
@@ -563,6 +601,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               child: _ProductHero(
                 product: product,
                 selectedVariant: _selectedVariant,
+                variantMediaRevision: _variantMediaRevision,
                 needsVariantSelection: _needsVariantSelection,
                 onSelectVariant: _openVariantSheet,
                 onAddToCart: (variant, quantity) =>
@@ -599,7 +638,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             pinned: true,
             delegate: _ProductSectionTabsDelegate(
               activeIndex: _activeTab,
-              onRecommendationTap: () => _scrollToSection(_overviewKey, 0),
+              onDetailTap: () => _scrollToSection(_overviewKey, 0),
               onReviewsTap: () => _scrollToSection(_reviewsKey, 1),
             ),
           ),
@@ -624,11 +663,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           SliverToBoxAdapter(
             child: _ProductCustomerPostsSection(
               posts: _customerPosts,
+              total: _customerPostsTotal,
               loading: _loadingCustomerPosts,
+              onViewAll: _openAllCustomerPosts,
             ),
-          ),
-          SliverToBoxAdapter(
-            child: _ProductRecommendationSection(related: _related),
           ),
           SliverToBoxAdapter(
             child: KeyedSubtree(
@@ -640,6 +678,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 onViewAll: _openAllReviews,
               ),
             ),
+          ),
+          SliverToBoxAdapter(
+            child: _ProductRecommendationSection(related: _related),
           ),
           // Spacer bawah ikut backdrop abu supaya area di balik sticky bar
           // tidak balik ke putih (kartu terakhir tetap "duduk" di abu).
@@ -669,6 +710,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 class _ProductHero extends StatefulWidget {
   final Product product;
   final ProductVariant? selectedVariant;
+  final int variantMediaRevision;
   final bool needsVariantSelection;
   final VoidCallback onSelectVariant;
   final void Function(ProductVariant? variant, int quantity) onAddToCart;
@@ -676,6 +718,7 @@ class _ProductHero extends StatefulWidget {
   const _ProductHero({
     required this.product,
     required this.selectedVariant,
+    required this.variantMediaRevision,
     required this.needsVariantSelection,
     required this.onSelectVariant,
     required this.onAddToCart,
@@ -696,13 +739,7 @@ class _ProductHeroState extends State<_ProductHero> {
   // Slide pertama = imageUrl (thumbnail utama), sisanya = gallery.
   // Match PWA components/ProductImageCarousel.tsx urutan.
   List<String> get _images {
-    final all = <String>[
-      if (widget.product.imageUrl.isNotEmpty) widget.product.imageUrl,
-      ...widget.product.gallery.where((url) => url.isNotEmpty),
-    ];
-    // Dedup: kalau imageUrl sama dengan gallery[0], jangan ulang.
-    final seen = <String>{};
-    return all.where(seen.add).toList();
+    return productCarouselImages(widget.product);
   }
 
   // Ada video → slide #0 = video, sisanya foto. `_slideCount` = video + foto,
@@ -714,6 +751,33 @@ class _ProductHeroState extends State<_ProductHero> {
   void initState() {
     super.initState();
     _controller = PageController();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProductHero oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.variantMediaRevision == widget.variantMediaRevision) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _showSelectedVariantImage();
+    });
+  }
+
+  void _showSelectedVariantImage() {
+    final imageUrl = widget.selectedVariant?.imageUrl?.trim();
+    if (imageUrl == null || imageUrl.isEmpty || !_controller.hasClients) return;
+    final slideIndex = productMediaSlideIndex(
+      images: _images,
+      imageUrl: imageUrl,
+      hasVideo: _hasVideo,
+    );
+    if (slideIndex < 0) return;
+    if (slideIndex == _activeIndex) return;
+    _controller.animateToPage(
+      slideIndex,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
@@ -802,8 +866,7 @@ class _ProductHeroState extends State<_ProductHero> {
                                 // Pindah dari slide video (index 0) → pause.
                                 // pauseIfPlaying idempotent (aman kapan pun).
                                 if (index != 0) {
-                                  _videoSlideKey.currentState
-                                      ?.pauseIfPlaying();
+                                  _videoSlideKey.currentState?.pauseIfPlaying();
                                 }
                               },
                               itemBuilder: (context, index) {
@@ -824,8 +887,7 @@ class _ProductHeroState extends State<_ProductHero> {
                                   );
                                 }
                                 // Slide foto: geser index kalau video di depan.
-                                final imageIndex =
-                                    index - (_hasVideo ? 1 : 0);
+                                final imageIndex = index - (_hasVideo ? 1 : 0);
                                 return GestureDetector(
                                   // Tap image → buka fullscreen pinch-zoom
                                   // gallery viewer dengan native Flutter
@@ -1072,7 +1134,7 @@ class _ProductInfo extends StatelessWidget {
             const SizedBox(width: 10),
             FavoriteButton(
               product: product,
-              size: 36,
+              size: 44,
             ),
           ],
         ),
@@ -1455,8 +1517,7 @@ class _PromoVoucherSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final sorted = [...vouchers]
       ..sort((a, b) => _voucherSortRank(a).compareTo(_voucherSortRank(b)));
-    final shippingVouchers =
-        sorted.where((v) => v.isShippingVoucher).toList();
+    final shippingVouchers = sorted.where((v) => v.isShippingVoucher).toList();
     final estimate = computePromoEstimate(product.finalPrice, sorted);
     final discountProduct = product.price - product.finalPrice;
     final showEstimate =
@@ -1784,8 +1845,7 @@ class _VoucherSheetCard extends StatelessWidget {
                     height: 1.25,
                   ),
                 ),
-                if (expiresAt != null)
-                  _VoucherCountdown(expiresAt: expiresAt),
+                if (expiresAt != null) _VoucherCountdown(expiresAt: expiresAt),
               ],
             ),
           ),
@@ -1932,8 +1992,7 @@ class _VoucherCountdownState extends State<_VoucherCountdown> {
       _timer = null;
       return const SizedBox.shrink();
     }
-    final urgent =
-        widget.expiresAt.difference(DateTime.now()).inHours < 24;
+    final urgent = widget.expiresAt.difference(DateTime.now()).inHours < 24;
     final color = urgent ? _discountRed : _textMedium;
     return Padding(
       padding: const EdgeInsets.only(top: 7),
@@ -1999,21 +2058,22 @@ class _SectionShell extends StatelessWidget {
 }
 
 class _ProductSectionTabsDelegate extends SliverPersistentHeaderDelegate {
+  static const double extent = 56;
   final int activeIndex;
-  final VoidCallback onRecommendationTap;
+  final VoidCallback onDetailTap;
   final VoidCallback onReviewsTap;
 
   const _ProductSectionTabsDelegate({
     required this.activeIndex,
-    required this.onRecommendationTap,
+    required this.onDetailTap,
     required this.onReviewsTap,
   });
 
   @override
-  double get minExtent => 56;
+  double get minExtent => extent;
 
   @override
-  double get maxExtent => 56;
+  double get maxExtent => extent;
 
   @override
   Widget build(
@@ -2023,7 +2083,7 @@ class _ProductSectionTabsDelegate extends SliverPersistentHeaderDelegate {
   ) {
     return _ProductSectionTabs(
       activeIndex: activeIndex,
-      onRecommendationTap: onRecommendationTap,
+      onDetailTap: onDetailTap,
       onReviewsTap: onReviewsTap,
       elevated: overlapsContent || shrinkOffset > 0,
     );
@@ -2038,13 +2098,13 @@ class _ProductSectionTabsDelegate extends SliverPersistentHeaderDelegate {
 class _ProductSectionTabs extends StatelessWidget {
   final int activeIndex;
   final bool elevated;
-  final VoidCallback onRecommendationTap;
+  final VoidCallback onDetailTap;
   final VoidCallback onReviewsTap;
 
   const _ProductSectionTabs({
     required this.activeIndex,
     required this.elevated,
-    required this.onRecommendationTap,
+    required this.onDetailTap,
     required this.onReviewsTap,
   });
 
@@ -2062,9 +2122,9 @@ class _ProductSectionTabs extends StatelessWidget {
         child: Row(
           children: [
             _Tab(
-              label: 'Rekomendasi',
+              label: 'Detail Produk',
               active: activeIndex == 0,
-              onTap: onRecommendationTap,
+              onTap: onDetailTap,
             ),
             _Tab(
               label: 'Ulasan',
@@ -2236,11 +2296,15 @@ class _ProductDescriptionSection extends StatelessWidget {
 
 class _ProductCustomerPostsSection extends StatelessWidget {
   final List<_ProductCustomerPost> posts;
+  final int total;
   final bool loading;
+  final VoidCallback onViewAll;
 
   const _ProductCustomerPostsSection({
     required this.posts,
+    required this.total,
     required this.loading,
+    required this.onViewAll,
   });
 
   @override
@@ -2264,15 +2328,41 @@ class _ProductCustomerPostsSection extends StatelessWidget {
                   ),
                 ),
               ),
-              if (!loading && posts.isNotEmpty)
+              if (!loading && posts.isNotEmpty) ...[
                 Text(
-                  '${posts.length} post',
+                  '$total post',
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+                if (total > posts.length) ...[
+                  const SizedBox(width: 10),
+                  AppPressable(
+                    onTap: onViewAll,
+                    borderRadius: BorderRadius.circular(8),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Lihat semua',
+                          style: TextStyle(
+                            color: _brandBlue,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: _brandBlue,
+                          size: 18,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -2294,6 +2384,165 @@ class _ProductCustomerPostsSection extends StatelessWidget {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ProductCustomerPostsScreen extends StatefulWidget {
+  final Product product;
+  final List<_ProductCustomerPost> initialPosts;
+  final int initialTotal;
+  final int initialOffset;
+
+  const _ProductCustomerPostsScreen({
+    required this.product,
+    required this.initialPosts,
+    required this.initialTotal,
+    required this.initialOffset,
+  });
+
+  @override
+  State<_ProductCustomerPostsScreen> createState() =>
+      _ProductCustomerPostsScreenState();
+}
+
+class _ProductCustomerPostsScreenState
+    extends State<_ProductCustomerPostsScreen> {
+  static const _pageSize = 24;
+
+  final ScrollController _controller = ScrollController();
+  late List<_ProductCustomerPost> _posts;
+  late int _total;
+  late int _nextOffset;
+  bool _loading = false;
+  bool _loadFailed = false;
+
+  bool get _hasMore => _nextOffset < _total;
+
+  @override
+  void initState() {
+    super.initState();
+    _posts = [...widget.initialPosts];
+    _total = widget.initialTotal;
+    _nextOffset = widget.initialOffset;
+    _controller.addListener(_handleScroll);
+    if (_posts.isEmpty || _hasMore) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadMore());
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller
+      ..removeListener(_handleScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleScroll() {
+    if (_controller.position.extentAfter < 320) _loadMore();
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _posts = [];
+      _total = 1;
+      _nextOffset = 0;
+      _loadFailed = false;
+    });
+    await _loadMore();
+  }
+
+  Future<void> _loadMore() async {
+    if (_loading || !_hasMore) return;
+    setState(() {
+      _loading = true;
+      _loadFailed = false;
+    });
+    final page = await productService.fetchProductFeedPostsPage(
+      widget.product.slug,
+      limit: _pageSize,
+      offset: _nextOffset,
+    );
+    if (!mounted) return;
+    if (page.failed) {
+      setState(() {
+        _loading = false;
+        _loadFailed = true;
+      });
+      return;
+    }
+
+    final parsed = <_ProductCustomerPost>[];
+    for (final entry in page.items) {
+      try {
+        final post = _ProductCustomerPost.fromJson(entry);
+        if (post.thumbnailUrl.isNotEmpty) parsed.add(post);
+      } catch (_) {
+        // One malformed post must not block the remaining product UGC.
+      }
+    }
+    final knownIds = _posts.map((post) => post.id).toSet();
+    setState(() {
+      _posts.addAll(parsed.where((post) => knownIds.add(post.id)));
+      _total = page.total;
+      _nextOffset = page.offset + page.items.length;
+      _loading = false;
+      _loadFailed = page.items.isEmpty && _nextOffset < _total;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Postingan Terkait')),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = (constraints.maxWidth / 130).floor().clamp(2, 5);
+            final showFooter = _loading || _loadFailed;
+            return GridView.builder(
+              controller: _controller,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+                childAspectRatio: 118 / 190,
+              ),
+              itemCount: _posts.length + (showFooter ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index < _posts.length) {
+                  return Center(
+                    child: _CustomerPostCard(
+                      post: _posts[index],
+                      allPosts: _posts,
+                      index: index,
+                    ),
+                  );
+                }
+                if (_loadFailed) {
+                  return Center(
+                    child: TextButton(
+                      onPressed: _loadMore,
+                      child: const Text('Coba lagi'),
+                    ),
+                  );
+                }
+                return Center(
+                  child: CircularProgressIndicator(
+                    color: cs.primary,
+                    strokeWidth: 2.4,
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }
@@ -2452,6 +2701,7 @@ class _CustomerPostCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: 118,
+      height: 190,
       child: AppPressable(
         onTap: () => _openPost(context),
         borderRadius: BorderRadius.circular(14),
