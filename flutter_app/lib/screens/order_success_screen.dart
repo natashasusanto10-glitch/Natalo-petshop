@@ -81,16 +81,33 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
         .where((id) => id.trim().isNotEmpty)
         .toSet()
         .toList();
+    final recommendationsFuture = () async {
+      try {
+        return await productService.fetchRecommendations(
+          cartIds: ids,
+          excludeIds: ids,
+          limit: 12,
+        );
+      } catch (_) {
+        return <Product>[];
+      }
+    }();
+    final vouchersFuture = () async {
+      try {
+        return await memberService.fetchCartVouchers(
+          _order.total.round(),
+          ids,
+        );
+      } catch (_) {
+        return (
+          available: <MemberVoucher>[],
+          unavailable: <MemberVoucher>[],
+        );
+      }
+    }();
     final results = await Future.wait<dynamic>([
-      productService.fetchRecommendations(
-        cartIds: ids,
-        excludeIds: ids,
-        limit: 12,
-      ),
-      memberService.fetchCartVouchers(
-        _order.total.round(),
-        ids,
-      ),
+      recommendationsFuture,
+      vouchersFuture,
     ]);
     if (!mounted) return;
 
