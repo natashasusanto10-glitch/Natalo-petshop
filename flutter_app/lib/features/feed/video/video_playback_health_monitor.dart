@@ -32,6 +32,10 @@ typedef FrameOutputStallRecover = Future<void> Function(
   int attempt,
 );
 
+typedef FrameOutputRecoveryExhausted = Future<void> Function(
+  Duration position,
+);
+
 /// Monitoring follows app playback intent, not the native `isPlaying` flag.
 /// Native players may temporarily clear that flag while they are buffering.
 bool shouldMonitorIntendedPlayback({
@@ -57,6 +61,7 @@ class VideoPlaybackHealthMonitor {
     this.maxRecoveries = 2,
     this.recoveryCooldown = const Duration(seconds: 15),
     this.onFrameOutputStallRecover,
+    this.onFrameOutputRecoveryExhausted,
     this.frameOutputStaleSamplesBeforeRecovery = 2,
     this.maxFrameOutputRecoveries = 2,
     this.frameOutputRecoveryCooldown = const Duration(seconds: 15),
@@ -73,6 +78,7 @@ class VideoPlaybackHealthMonitor {
   final int maxRecoveries;
   final Duration recoveryCooldown;
   final FrameOutputStallRecover? onFrameOutputStallRecover;
+  final FrameOutputRecoveryExhausted? onFrameOutputRecoveryExhausted;
   final int frameOutputStaleSamplesBeforeRecovery;
   final int maxFrameOutputRecoveries;
   final Duration frameOutputRecoveryCooldown;
@@ -95,6 +101,7 @@ class VideoPlaybackHealthMonitor {
   int _frameOutputStaleSamples = 0;
   int _frameOutputRecoveryCount = 0;
   bool _recoveringFrameOutput = false;
+  bool _frameOutputExhaustionReported = false;
   bool _sampling = false;
   int? _lastPlaybackDiscontinuitySequence;
 
@@ -209,10 +216,7 @@ class VideoPlaybackHealthMonitor {
     required bool nearEnd,
   }) async {
     final count = snapshot.frameOutputCount;
-    if (!snapshot.shouldMonitor ||
-        snapshot.isBuffering ||
-        nearEnd ||
-        count == null) {
+    if (!snapshot.shouldMonitor || snapshot.isBuffering || nearEnd) {
       _resetFrameOutputProgress();
       return false;
     }
@@ -222,18 +226,48 @@ class VideoPlaybackHealthMonitor {
     _lastFrameOutputCount = count;
     _lastFrameOutputPosition = snapshot.position;
 
+    // Missing heartbeat used to disable visual-stall recovery completely.
+    // That is exactly the audio-only failure mode: the playback clock can
+    // advance while no decoder/texture frame is observed. Treat a missing
+    // signal like a stale signal, but still require position progress so a
+    // genuinely buffering/paused player is not restarted.
+    if (count == null) {
+      if (previousPosition == null) {
+        _frameOutputStaleSamples = 0;
+        return false;
+      }
+      return _sampleStaleFrameOutput(
+        snapshot,
+        previousPosition: previousPosition,
+        signal: 'missing',
+      );
+    }
+
     if (previousCount == null ||
         previousPosition == null ||
         count != previousCount) {
       _frameOutputStaleSamples = 0;
+      _frameOutputExhaustionReported = false;
       return false;
     }
 
+    return _sampleStaleFrameOutput(
+      snapshot,
+      previousPosition: previousPosition,
+      signal: 'stale',
+    );
+  }
+
+  Future<bool> _sampleStaleFrameOutput(
+    VideoPlaybackSnapshot snapshot, {
+    required Duration previousPosition,
+    required String signal,
+  }) async {
     // A visual-output stall requires the playback clock to keep moving.
     final positionDelta = snapshot.position - previousPosition;
     if (positionDelta > interval * 2) {
       _resetFrameOutputProgress();
-      _lastFrameOutputCount = count;
+      _lastFrameOutputCount = snapshot.frameOutputCount;
       _lastFrameOutputPosition = snapshot.position;
       return false;
     }
@@ -245,12 +279,28 @@ class VideoPlaybackHealthMonitor {
     _frameOutputStaleSamples++;
     final recover = onFrameOutputStallRecover;
     if (_frameOutputStaleSamples < frameOutputStaleSamplesBeforeRecovery ||
-        recover == null ||
         _recovering ||
-        _recoveringFrameOutput ||
-        _frameOutputRecoveryCount >= maxFrameOutputRecoveries) {
+        _recoveringFrameOutput) {
       return false;
     }
+
+    if (_frameOutputRecoveryCount >= maxFrameOutputRecoveries) {
+      final exhausted = onFrameOutputRecoveryExhausted;
+      if (exhausted == null || _frameOutputExhaustionReported) return false;
+      _frameOutputExhaustionReported = true;
+      final metricParameters = {
+        'position_ms': snapshot.position.inMilliseconds,
+        'frame_signal': signal,
+        'recovery_attempts': _frameOutputRecoveryCount,
+      };
+      _emit('video_frame_output_recovery_exhausted', metricParameters);
+      try {
+        await exhausted(snapshot.position);
+      } catch (_) {}
+      return true;
+    }
+
+    if (recover == null) return false;
 
     final now = _now();
     if (_lastFrameOutputRecoveryAt != null &&
@@ -266,6 +316,7 @@ class VideoPlaybackHealthMonitor {
     final metricParameters = {
       'position_ms': snapshot.position.inMilliseconds,
       'recovery_attempt': attempt,
+      'frame_signal': signal,
     };
     _emit('video_frame_output_stall_detected', metricParameters);
     try {
@@ -316,6 +367,20 @@ class VideoPlaybackHealthMonitor {
     _lastFrameOutputPosition = null;
     _frameOutputStaleSamples = 0;
   }
+
+  /// A manual retry is a new user intent and receives a fresh bounded recovery
+  /// budget. Automatic controller recreation deliberately does not reset this
+  /// cap, preventing an endless restart loop for a broken stream.
+  void resetFrameOutputRecoveryBudget() {
+    _frameOutputRecoveryCount = 0;
+    _lastFrameOutputRecoveryAt = null;
+    _frameOutputExhaustionReported = false;
+    _resetFrameOutputProgress();
+  }
+
+  int get debugFrameOutputStaleSamples => _frameOutputStaleSamples;
+
+  int get debugFrameOutputRecoveryCount => _frameOutputRecoveryCount;
 
   void _emit(String event, [Map<String, Object> parameters = const {}]) {
     metricSink(event, {

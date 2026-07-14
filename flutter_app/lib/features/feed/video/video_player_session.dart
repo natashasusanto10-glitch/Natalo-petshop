@@ -84,6 +84,9 @@ class VideoPlayerSession implements PlaybackSession {
       readSnapshot: _healthSnapshot,
       onRecover: _recoverFromStall,
       onFrameOutputStallRecover: _recoverFromFrameOutputStall,
+      onFrameOutputRecoveryExhausted: _markVisualOutputFailed,
+      interval: const Duration(milliseconds: 500),
+      frameOutputRecoveryCooldown: const Duration(seconds: 2),
       metricContext: {
         'surface': _analyticsSurface,
         'media_type': _currentUrl.contains('.m3u8') ? 'hls' : 'mp4',
@@ -125,12 +128,22 @@ class VideoPlayerSession implements PlaybackSession {
   CachedVideoPlayerPlus? _wrapper;
   VideoPlayerController? _controller;
   FrameOutputHeartbeatRegistration? _heartbeatRegistration;
+  StreamSubscription<FrameOutputHeartbeat>? _heartbeatSubscription;
+  Future<void>? _volumeTail;
+  int _heartbeatGeneration = 0;
   int _playbackDiscontinuitySequence = 0;
+  int _visualIntentGeneration = 0;
 
   bool _disposed = false;
   bool _initInFlight = false;
   bool _initialized = false;
   Object? _error;
+  bool _hasVisualOutput = false;
+  bool _awaitingVisualOutput = false;
+  bool _recoveringVisualOutput = false;
+  bool _visualOutputFailed = false;
+  int? _visualBaselineFrameCount;
+  int? _visualGateArmedGeneration;
 
   // Desired state — diterapkan saat init selesai kalau perintah datang lebih
   // dulu (coordinator set pause+volume0 sinkron sebelum controller siap).
@@ -152,6 +165,9 @@ class VideoPlayerSession implements PlaybackSession {
   bool get isInitialized => _initialized;
   bool get hasError => _error != null;
   Object? get error => _error;
+  bool get hasVisualOutput => _hasVisualOutput;
+  bool get isAwaitingVisualOutput => _awaitingVisualOutput;
+  bool get isRecoveringVisualOutput => _recoveringVisualOutput;
 
   /// True selama percobaan init sedang berjalan (loading). View pakai ini +
   /// [hasError] untuk membedakan spinner vs pesan error.
@@ -176,6 +192,7 @@ class VideoPlayerSession implements PlaybackSession {
           }
           _initialized = true;
           _registerHeartbeat();
+          _visualOutputFailed = false;
           _error = null;
           _healthMonitor.record('video_init_ready', {
             'duration_ms': _startupStopwatch.elapsedMilliseconds,
@@ -191,6 +208,9 @@ class VideoPlayerSession implements PlaybackSession {
           if (retriesLeft <= 0 || permanent) {
             _error = error;
             _initialized = false;
+            _awaitingVisualOutput = false;
+            _recoveringVisualOutput = false;
+            _visualOutputFailed = false;
             _healthMonitor.record('video_init_failed', {
               'duration_ms': _startupStopwatch.elapsedMilliseconds,
               'error_type': error.runtimeType.toString(),
@@ -255,13 +275,17 @@ class VideoPlayerSession implements PlaybackSession {
     final ctrl = _controller;
     if (ctrl == null && _debugInitAttempt == null) return;
     if (ctrl != null) await ctrl.setLooping(true);
-    await _setPlayerVolume(_wantVolume);
+    // Audio is always closed while a controller is attached/re-attached. The
+    // requested volume is restored only after a fresh frame heartbeat proves
+    // that this playback intent has visual output.
+    await _setPlayerVolume(0);
     if (_wantSeek > Duration.zero) {
       await _seekPlayer(_wantSeek);
     }
     if (_wantPlay) {
-      await _playPlayer();
-      _recordPlayStarted();
+      await _startPlaybackWithVisualGate(
+        recovering: _recoveringVisualOutput,
+      );
     } else {
       await _pausePlayer();
     }
@@ -275,6 +299,11 @@ class VideoPlayerSession implements PlaybackSession {
     final controller = _controller;
     _wrapper = null;
     _controller = null;
+    _visualIntentGeneration++;
+    _hasVisualOutput = false;
+    _awaitingVisualOutput = false;
+    _visualBaselineFrameCount = null;
+    _visualGateArmedGeneration = null;
     _unregisterHeartbeat();
     controller?.removeListener(_observePlaybackStateTransition);
     try {
@@ -339,7 +368,22 @@ class VideoPlayerSession implements PlaybackSession {
   /// Manual "Coba lagi" dari view: reset budget (via [_init] fresh) dan init
   /// ulang. No-op kalau sudah init / sedang berjalan / sudah dispose.
   Future<void> retry() async {
-    if (_disposed || _initialized || _initInFlight) return;
+    if (_disposed || _initInFlight) return;
+    if (_visualOutputFailed) {
+      _visualOutputFailed = false;
+      _error = null;
+      _recoveringVisualOutput = false;
+      _awaitingVisualOutput = false;
+      _healthMonitor.resetFrameOutputRecoveryBudget();
+      _initialized = false;
+      revision.value++;
+      await _quiesceCurrentPlayer();
+      await _cleanupResources();
+      if (_disposed) return;
+      await _init();
+      return;
+    }
+    if (_initialized) return;
     _error = null;
     await _init();
   }
@@ -347,11 +391,16 @@ class VideoPlayerSession implements PlaybackSession {
   @override
   Future<void> play() async {
     if (_disposed) return;
+    final alreadyWanted = _wantPlay;
     _wantPlay = true;
+    if (_visualOutputFailed) return;
     final ctrl = _controller;
     if (_initialized && (ctrl != null || _debugInitAttempt != null)) {
-      await _playPlayer();
-      _recordPlayStarted();
+      if (alreadyWanted) {
+        await _applyEffectiveVolume();
+        return;
+      }
+      await _startPlaybackWithVisualGate();
     }
   }
 
@@ -359,8 +408,11 @@ class VideoPlayerSession implements PlaybackSession {
   Future<void> pause() async {
     if (_disposed) return;
     _wantPlay = false;
+    _visualIntentGeneration++;
+    _setVisualGateState(awaiting: false, recovering: false);
     final ctrl = _controller;
     if (_initialized && (ctrl != null || _debugInitAttempt != null)) {
+      await _setPlayerVolume(0);
       await _pausePlayer();
     }
   }
@@ -370,9 +422,21 @@ class VideoPlayerSession implements PlaybackSession {
     if (_disposed) return;
     _wantSeek = position;
     _playbackDiscontinuitySequence++;
+    final shouldResume = _wantPlay && !_visualOutputFailed;
+    if (shouldResume) {
+      _visualIntentGeneration++;
+      _setVisualGateState(
+        awaiting: true,
+        recovering: _recoveringVisualOutput,
+      );
+    }
     final ctrl = _controller;
     if (_initialized && (ctrl != null || _debugInitAttempt != null)) {
+      if (shouldResume) await _setPlayerVolume(0);
       await _seekPlayer(position);
+      if (shouldResume && _wantPlay && !_visualOutputFailed) {
+        await _startPlaybackWithVisualGate(reuseCurrentGate: true);
+      }
     }
   }
 
@@ -382,7 +446,7 @@ class VideoPlayerSession implements PlaybackSession {
     _wantVolume = volume;
     final ctrl = _controller;
     if (_initialized && (ctrl != null || _debugInitAttempt != null)) {
-      await _setPlayerVolume(volume);
+      await _applyEffectiveVolume();
     }
   }
 
@@ -390,15 +454,116 @@ class VideoPlayerSession implements PlaybackSession {
   Duration get position =>
       _controller?.value.position ?? _debugPosition?.call() ?? _wantSeek;
 
+  Future<void> _startPlaybackWithVisualGate({
+    bool reuseCurrentGate = false,
+    bool recovering = false,
+  }) async {
+    if (_disposed || !_initialized || !_wantPlay || _visualOutputFailed) return;
+    final generation =
+        reuseCurrentGate ? _visualIntentGeneration : ++_visualIntentGeneration;
+    if (!reuseCurrentGate) {
+      _visualBaselineFrameCount = _heartbeatRegistration?.latest?.frameCount;
+      _setVisualGateState(awaiting: true, recovering: recovering);
+    } else if (recovering && !_recoveringVisualOutput) {
+      _setVisualGateState(awaiting: true, recovering: true);
+    }
+
+    await _setPlayerVolume(0);
+    if (!_isCurrentVisualIntent(generation)) return;
+    _visualGateArmedGeneration = generation;
+    try {
+      await _playPlayer();
+    } catch (_) {
+      if (_visualGateArmedGeneration == generation) {
+        _visualGateArmedGeneration = null;
+      }
+      rethrow;
+    }
+    if (!_isCurrentVisualIntent(generation)) {
+      await _setPlayerVolume(0);
+      return;
+    }
+    _recordPlayStarted();
+  }
+
+  bool _isCurrentVisualIntent(int generation) =>
+      !_disposed &&
+      _initialized &&
+      _wantPlay &&
+      !_visualOutputFailed &&
+      generation == _visualIntentGeneration;
+
+  Future<void> _applyEffectiveVolume({int? expectedGeneration}) async {
+    final canOpen = !_disposed &&
+        _initialized &&
+        _wantPlay &&
+        !_awaitingVisualOutput &&
+        !_visualOutputFailed &&
+        (expectedGeneration == null ||
+            expectedGeneration == _visualIntentGeneration);
+    final target = canOpen ? _wantVolume : 0.0;
+    await _setPlayerVolume(target);
+    if (target > 0 &&
+        (_disposed ||
+            !_wantPlay ||
+            _awaitingVisualOutput ||
+            _visualOutputFailed ||
+            (expectedGeneration != null &&
+                expectedGeneration != _visualIntentGeneration))) {
+      await _setPlayerVolume(0);
+    }
+  }
+
+  void _setVisualGateState({
+    required bool awaiting,
+    required bool recovering,
+  }) {
+    if (_awaitingVisualOutput == awaiting &&
+        _recoveringVisualOutput == recovering) {
+      return;
+    }
+    _awaitingVisualOutput = awaiting;
+    _recoveringVisualOutput = recovering;
+    if (!awaiting) _visualGateArmedGeneration = null;
+    revision.value++;
+  }
+
+  void _onFrameOutputHeartbeat(FrameOutputHeartbeat heartbeat) {
+    if (_disposed) return;
+    final firstVisualOutput = !_hasVisualOutput;
+    _hasVisualOutput = true;
+
+    if (!_wantPlay || !_awaitingVisualOutput || _visualOutputFailed) {
+      if (firstVisualOutput) revision.value++;
+      return;
+    }
+    final generation = _visualIntentGeneration;
+    if (_visualGateArmedGeneration != generation) {
+      if (firstVisualOutput) revision.value++;
+      return;
+    }
+    final baseline = _visualBaselineFrameCount;
+    if (baseline != null && heartbeat.frameCount <= baseline) return;
+
+    _visualBaselineFrameCount = heartbeat.frameCount;
+    _setVisualGateState(awaiting: false, recovering: false);
+    _healthMonitor.record('video_visual_output_ready', {
+      'frame_count': heartbeat.frameCount,
+      'platform': heartbeat.platform,
+    });
+    unawaited(_applyEffectiveVolume(expectedGeneration: generation));
+  }
+
   VideoPlaybackSnapshot _healthSnapshot() {
     final value = _controller?.value;
     return VideoPlaybackSnapshot(
       shouldMonitor: shouldMonitorIntendedPlayback(
-        intendsPlayback: !_disposed && _wantPlay,
-        isInitialized: value?.isInitialized ?? false,
+        intendsPlayback: !_disposed && _wantPlay && !_visualOutputFailed,
+        isInitialized:
+            value?.isInitialized ?? (_debugInitAttempt != null && _initialized),
       ),
       isBuffering: value?.isBuffering ?? false,
-      position: value?.position ?? _wantSeek,
+      position: value?.position ?? _debugPosition?.call() ?? _wantSeek,
       duration: value?.duration ?? Duration.zero,
       bufferAhead: _bufferAhead(value),
       frameOutputCount: _heartbeatRegistration?.latest?.frameCount,
@@ -436,10 +601,23 @@ class VideoPlayerSession implements PlaybackSession {
   Future<void> _recoverFromStall(Duration position) async {
     final ctrl = _controller;
     if (_disposed || !_initialized || ctrl == null || !_wantPlay) return;
+    _visualIntentGeneration++;
+    _visualBaselineFrameCount = _heartbeatRegistration?.latest?.frameCount;
+    _setVisualGateState(awaiting: true, recovering: true);
+    await _setPlayerVolume(0);
     await ctrl.pause();
     _playbackDiscontinuitySequence++;
     await ctrl.seekTo(position);
-    await ctrl.play();
+    if (_disposed ||
+        !_initialized ||
+        !_wantPlay ||
+        !identical(ctrl, _controller)) {
+      return;
+    }
+    await _startPlaybackWithVisualGate(
+      reuseCurrentGate: true,
+      recovering: true,
+    );
   }
 
   Future<void> _recoverFromFrameOutputStall(
@@ -452,6 +630,10 @@ class VideoPlayerSession implements PlaybackSession {
     final controller = _controller;
     final playerId = _debugPlayerId?.call();
     if (attempt == 1) {
+      _visualIntentGeneration++;
+      _visualBaselineFrameCount = _heartbeatRegistration?.latest?.frameCount;
+      _setVisualGateState(awaiting: true, recovering: true);
+      await _setPlayerVolume(0);
       await _pausePlayer();
       if (_disposed ||
           !_wantPlay ||
@@ -464,12 +646,16 @@ class VideoPlayerSession implements PlaybackSession {
       _playbackDiscontinuitySequence++;
       await _seekPlayer(position);
       if (_disposed || !_wantPlay) return;
-      await _setPlayerVolume(_wantVolume);
-      await _playPlayer();
+      await _startPlaybackWithVisualGate(
+        reuseCurrentGate: true,
+        recovering: true,
+      );
       return;
     }
     if (attempt != 2) return;
 
+    _visualIntentGeneration++;
+    _setVisualGateState(awaiting: false, recovering: true);
     _initialized = false;
     revision.value++;
     await _quiesceCurrentPlayer();
@@ -479,6 +665,7 @@ class VideoPlayerSession implements PlaybackSession {
         !identical(controller, _controller) ||
         playerId != _debugPlayerId?.call()) {
       _initialized = true;
+      _setVisualGateState(awaiting: false, recovering: false);
       await _applyDesiredState();
       revision.value++;
       return;
@@ -488,6 +675,20 @@ class VideoPlayerSession implements PlaybackSession {
     await _cleanupResources();
     if (_disposed) return;
     await _init();
+  }
+
+  Future<void> _markVisualOutputFailed(Duration position) async {
+    if (_disposed || !_initialized || !_wantPlay || _visualOutputFailed) return;
+    _visualOutputFailed = true;
+    _error = StateError('Video frame output tidak tersedia');
+    _visualIntentGeneration++;
+    _awaitingVisualOutput = false;
+    _recoveringVisualOutput = false;
+    _healthMonitor.record('video_visual_output_failed', {
+      'position_ms': position.inMilliseconds,
+    });
+    revision.value++;
+    await _quiesceCurrentPlayer();
   }
 
   Future<void> _quiesceCurrentPlayer() async {
@@ -504,13 +705,28 @@ class VideoPlayerSession implements PlaybackSession {
     final player = _controller ?? _debugPlayerId?.call();
     if (player == null) return;
     try {
-      _heartbeatRegistration = _heartbeatService.register(player);
+      final registration = _heartbeatService.register(player);
+      final generation = ++_heartbeatGeneration;
+      _heartbeatRegistration = registration;
+      _heartbeatSubscription = registration.heartbeats.listen(
+        (heartbeat) {
+          if (generation != _heartbeatGeneration ||
+              !identical(_heartbeatRegistration, registration)) {
+            return;
+          }
+          _onFrameOutputHeartbeat(heartbeat);
+        },
+      );
     } catch (_) {
       _heartbeatRegistration = null;
+      _heartbeatSubscription = null;
     }
   }
 
   void _unregisterHeartbeat() {
+    _heartbeatGeneration++;
+    unawaited(_heartbeatSubscription?.cancel());
+    _heartbeatSubscription = null;
     _heartbeatRegistration?.unregister();
     _heartbeatRegistration = null;
   }
@@ -526,14 +742,59 @@ class VideoPlayerSession implements PlaybackSession {
       _debugSeek?.call(position) ??
       Future<void>.value();
 
-  Future<void> _setPlayerVolume(double volume) =>
-      _controller?.setVolume(volume) ??
-      _debugSetVolume?.call(volume) ??
-      Future<void>.value();
+  Future<void> _setPlayerVolume(double volume) {
+    final controller = _controller;
+    final debugSetVolume = _debugSetVolume;
+    final playerId = _debugPlayerId?.call();
+
+    Future<void> write() {
+      // A queued write belongs to the player that requested it. Once recovery
+      // replaces that player, silently drop the stale write instead of
+      // applying an old unmute to the new controller.
+      if (controller != null) {
+        if (!identical(controller, _controller)) return Future<void>.value();
+        return controller.setVolume(volume);
+      }
+      if (playerId != null && playerId != _debugPlayerId?.call()) {
+        return Future<void>.value();
+      }
+      return debugSetVolume?.call(volume) ?? Future<void>.value();
+    }
+
+    final previous = _volumeTail;
+    final next = previous == null
+        ? Future<void>.sync(write)
+        : previous.catchError((Object _) {}).then((_) => write());
+    _volumeTail = next;
+    unawaited(next.then(
+      (_) {
+        if (identical(_volumeTail, next)) _volumeTail = null;
+      },
+      onError: (Object _) {
+        if (identical(_volumeTail, next)) _volumeTail = null;
+      },
+    ));
+    return next;
+  }
 
   @visibleForTesting
   Future<void> debugRecoverFrameOutput(Duration position, int attempt) =>
       _recoverFromFrameOutputStall(position, attempt);
+
+  @visibleForTesting
+  Future<void> debugSampleHealth() => _healthMonitor.sample();
+
+  @visibleForTesting
+  int get debugFrameOutputStaleSamples =>
+      _healthMonitor.debugFrameOutputStaleSamples;
+
+  @visibleForTesting
+  int get debugFrameOutputRecoveryCount =>
+      _healthMonitor.debugFrameOutputRecoveryCount;
+
+  @visibleForTesting
+  Future<void> debugMarkVisualOutputFailed(Duration position) =>
+      _markVisualOutputFailed(position);
 
   @visibleForTesting
   VideoPlaybackSnapshot get debugHealthSnapshot => _healthSnapshot();

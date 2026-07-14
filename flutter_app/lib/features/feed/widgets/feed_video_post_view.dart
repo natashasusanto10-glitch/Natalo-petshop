@@ -838,7 +838,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     final session = _managedSession;
     if (session == null || session.hasError) return false;
     final ctrl = _videoController;
-    return ctrl == null || !ctrl.value.isInitialized;
+    return ctrl == null ||
+        !ctrl.value.isInitialized ||
+        !session.hasVisualOutput ||
+        session.isRecoveringVisualOutput;
   }
 
   /// T8 — tombol "Coba lagi" di managed view: reset budget + re-init sesi

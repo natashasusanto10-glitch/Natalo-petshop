@@ -2636,13 +2636,18 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = _boundSession?.controller;
+    final session = _boundSession;
+    final controller = session?.controller;
     final ready = controller != null && controller.value.isInitialized;
-    final hasError = _boundSession?.hasError ?? false;
+    final hasError = session?.hasError ?? false;
+    final hasVisualOutput = session?.hasVisualOutput ?? false;
+    final visualLoading = ready &&
+        session != null &&
+        (!hasVisualOutput || session.isRecoveringVisualOutput);
     final muted = appSettingsStore.feedMuted;
     // Spinner hanya saat kita memang sedang memuat (attached, belum ready,
-    // tanpa error).
-    final loading = _attached && !ready && !hasError;
+    // tanpa error), atau saat audio ditahan karena frame baru belum terbukti.
+    final loading = _attached && !hasError && (!ready || visualLoading);
 
     return VisibilityDetector(
       key: ValueKey('inline-video-${widget.postId}'),
@@ -2678,6 +2683,17 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
               )
             else
               const _MediaPlaceholder(icon: Icons.video_collection_outlined),
+            // Saat controller sudah initialized tetapi frame pertamanya belum
+            // terbukti keluar, pertahankan thumbnail. Ini mencegah surface
+            // beku/black terlihat sementara audio gate dan recovery bekerja.
+            if (ready &&
+                !hasVisualOutput &&
+                widget.thumbnailUrl != null &&
+                widget.thumbnailUrl!.trim().isNotEmpty)
+              _ImageSurface(
+                imageUrl: widget.thumbnailUrl!,
+                placeholderIcon: Icons.video_collection_outlined,
+              ),
             if (loading)
               const Center(
                 child: SizedBox(

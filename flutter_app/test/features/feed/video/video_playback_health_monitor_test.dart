@@ -13,9 +13,11 @@ void main() {
 
   VideoPlaybackHealthMonitor createMonitor({
     int maxRecoveries = 2,
+    int maxFrameOutputRecoveries = 2,
     Duration frameOutputCooldown = Duration.zero,
     Future<void> Function(Duration)? onRecover,
     FrameOutputStallRecover? onFrameOutputStallRecover,
+    FrameOutputRecoveryExhausted? onFrameOutputRecoveryExhausted,
   }) {
     return VideoPlaybackHealthMonitor(
       readSnapshot: () => snapshot,
@@ -33,6 +35,8 @@ void main() {
           (position, attempt) async {
             frameOutputRecoveries.add((position, attempt));
           },
+      onFrameOutputRecoveryExhausted: onFrameOutputRecoveryExhausted,
+      maxFrameOutputRecoveries: maxFrameOutputRecoveries,
       frameOutputRecoveryCooldown: frameOutputCooldown,
     );
   }
@@ -221,7 +225,7 @@ void main() {
       expect(recoveries, 0, reason: 'playback-clock recovery stays separate');
     });
 
-    test('pause, buffering, end, and missing signal reset the baseline',
+    test('pause, buffering, end, and one missing signal reset the baseline',
         () async {
       final monitor = createMonitor();
       snapshot = frameSnapshot(seconds: 0);
@@ -242,6 +246,43 @@ void main() {
         await monitor.sample();
         expect(frameOutputRecoveries, isEmpty);
       }
+    });
+
+    test('missing heartbeat recovers when playback clock keeps advancing',
+        () async {
+      final monitor = createMonitor();
+      for (var second = 0; second <= 2; second++) {
+        snapshot = frameSnapshot(seconds: second, count: null);
+        await monitor.sample();
+      }
+
+      expect(frameOutputRecoveries, [(const Duration(seconds: 2), 1)]);
+      final detectedIndex = events.indexOf('video_frame_output_stall_detected');
+      expect(
+          parameters[detectedIndex], containsPair('frame_signal', 'missing'));
+    });
+
+    test('exhausted visual recovery reports once instead of looping', () async {
+      final exhaustedAt = <Duration>[];
+      final monitor = createMonitor(
+        maxFrameOutputRecoveries: 0,
+        onFrameOutputRecoveryExhausted: (position) async {
+          exhaustedAt.add(position);
+        },
+      );
+
+      for (var second = 0; second <= 4; second++) {
+        snapshot = frameSnapshot(seconds: second, count: null);
+        await monitor.sample();
+      }
+
+      expect(exhaustedAt, [const Duration(seconds: 2)]);
+      expect(
+        events.where(
+          (event) => event == 'video_frame_output_recovery_exhausted',
+        ),
+        hasLength(1),
+      );
     });
 
     test('advancing and regressing counts establish a new baseline', () async {
