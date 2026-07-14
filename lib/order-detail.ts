@@ -117,7 +117,16 @@ export function isOrderContactMatch(
 // tampil window beda). Deadline cuma relevan saat order MANUAL masih
 // nunggu bayar & belum upload bukti — setelah bukti masuk, auto-cancel
 // berhenti (lihat guard paymentProofUrl di cron) jadi tidak ada deadline.
-function manualPaymentDeadlineIso(order: OrderDetailRecord): string | null {
+export function manualPaymentDeadlineIso(
+  order: Pick<
+    OrderDetailRecord,
+    | "paymentProvider"
+    | "paymentStatus"
+    | "status"
+    | "paymentProofUrl"
+    | "createdAt"
+  >
+): string | null {
   if (order.paymentProvider !== "MANUAL") return null;
   if (order.paymentStatus !== "PENDING") return null;
   if (order.status !== "PENDING") return null;

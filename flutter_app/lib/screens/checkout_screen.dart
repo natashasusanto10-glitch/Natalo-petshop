@@ -15,13 +15,11 @@ import '../services/voucher_service.dart';
 import '../state/cart_store.dart';
 import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
-import '../utils/app_review.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
-import '../utils/in_app_browser.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_ui.dart';
-import '../widgets/order_success_overlay.dart';
+import 'order_success_screen.dart';
 
 const _brandBlue = NataloColors.nataloBlue;
 const _maxPricingSyncRetries = 3;
@@ -958,21 +956,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         notes: _noteController.text,
       );
       if (!mounted) return;
-      // Midtrans flow — kalau payment provider MIDTRANS, server return URL
-      // Snap dialog. Launch in-app browser supaya user tidak keluar app.
-      if (_paymentProvider == 'MIDTRANS') {
-        final token = await orderService.initiateMidtrans(
-          orderNumber: result.orderNumber,
-        );
-        if (!mounted) return;
-        if (token != null && token.redirectUrl.isNotEmpty) {
-          await AppInAppBrowser.open(
-            context,
-            url: token.redirectUrl,
-            title: 'Pembayaran Midtrans',
-          );
-        }
-      }
       AppHaptics.success();
       // Analytics: conversion event utama — track purchase value + item count
       // untuk funnel + revenue dashboard. No-op kalau Firebase belum setup.
@@ -980,22 +963,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         transactionId: result.orderNumber,
         value: _grandTotal.round(),
       );
-      // Confetti overlay 2.5s sebelum show order detail dialog.
-      // Positive emotional moment — drive review / share / repeat purchase.
       if (!mounted) return;
-      await showOrderSuccess(
-        context,
-        orderNumber: result.orderNumber,
-        message:
-            'Order ${result.orderNumber}\nKami segera memproses pesananmu.',
-      );
-      if (!mounted) return;
-      await _showOrderSuccess(result);
-      // Trigger in-app review prompt — best moment, user baru saja
-      // menyelesaikan flow positif (order created). Cooldown 30 hari
-      // handled di AppReview.maybeRequest().
-      // ignore: use_build_context_synchronously
-      AppReview.maybeRequest();
+      _openOrderSuccess(result);
     } catch (error) {
       if (!mounted) return;
       AppHaptics.warning();
@@ -1010,31 +979,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  Future<void> _showOrderSuccess(OrderResult result) {
+  void _openOrderSuccess(OrderResult result) {
     final createdOrder = _createdOrderSummary(result);
-    final hasPaymentLink = result.paymentUrl?.isNotEmpty ?? false;
-
-    return showDialog<void>(
-      context: context,
-      builder: (context) {
-        return _CheckoutOrderSuccessDialog(
-          orderNumber: result.orderNumber,
-          message: result.message,
-          hasPaymentLink: hasPaymentLink,
-          onDone: () {
-            _clearOrderedItemsFromCart();
-            Navigator.pop(context);
-            Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
-          },
-          onOpenDetail: () => _openCreatedOrder(createdOrder),
-          onPayNow: hasPaymentLink
-              ? () => _openPaymentAndDetail(
-                    result.paymentUrl!,
-                    createdOrder,
-                  )
-              : null,
-        );
-      },
+    final purchasedProductIds = _checkoutItems
+        .map((item) => item.product.id)
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    _clearOrderedItemsFromCart();
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      '/order-success',
+      ModalRoute.withName('/'),
+      arguments: OrderSuccessArgs(
+        order: createdOrder,
+        purchasedProductIds: purchasedProductIds,
+      ),
     );
   }
 
@@ -1042,10 +1002,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return OrderSummary(
       id: result.orderNumber,
       orderNumber: result.orderNumber,
-      status: 'PENDING',
-      paymentStatus: _payment == 'Midtrans' ? 'PENDING' : 'PENDING',
-      paymentProvider: _paymentProvider,
+      status: result.status ?? 'PENDING',
+      paymentStatus: result.paymentStatus ?? 'PENDING',
+      paymentProvider: result.paymentProvider ?? _paymentProvider,
       paymentUrl: result.paymentUrl,
+      manualBank: result.manualBank ??
+          (_paymentProvider == 'MANUAL' ? 'BCA_NATASHA' : null),
+      uniqueCode: result.uniqueCode,
+      paymentDeadline: result.paymentDeadline,
       trackingToken: result.trackingToken,
       detailUrl: result.detailUrl,
       createdAt: DateTime.now(),
@@ -1071,42 +1035,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           categoryName: item.product.category,
         );
       }).toList(),
-    );
-  }
-
-  void _openCreatedOrder(OrderSummary order) {
-    _clearOrderedItemsFromCart();
-    Navigator.pop(context);
-    Navigator.pushNamedAndRemoveUntil(
-      context,
-      '/member/order-detail',
-      ModalRoute.withName('/'),
-      arguments: order,
-    );
-  }
-
-  Future<void> _openPaymentAndDetail(
-    String paymentUrl,
-    OrderSummary order,
-  ) async {
-    final uri = Uri.tryParse(paymentUrl);
-    if (uri == null) {
-      _showSnack('Link pembayaran tidak valid.');
-      return;
-    }
-
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!mounted) return;
-    if (!opened) {
-      _showSnack('Tidak bisa membuka pembayaran.');
-      return;
-    }
-    _openCreatedOrder(order);
-  }
-
-  void _showSnack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 
@@ -1765,176 +1693,6 @@ class _ShippingMethodIcon extends StatelessWidget {
                 disabled: disabled,
               ),
             ),
-    );
-  }
-}
-
-class _CheckoutOrderSuccessDialog extends StatelessWidget {
-  final String orderNumber;
-  final String message;
-  final bool hasPaymentLink;
-  final VoidCallback onDone;
-  final VoidCallback onOpenDetail;
-  final VoidCallback? onPayNow;
-
-  const _CheckoutOrderSuccessDialog({
-    required this.orderNumber,
-    required this.message,
-    required this.hasPaymentLink,
-    required this.onDone,
-    required this.onOpenDetail,
-    this.onPayNow,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-      backgroundColor: Colors.transparent,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(30),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
-              blurRadius: 34,
-              offset: const Offset(0, 16),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                Container(
-                  width: 122,
-                  height: 122,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEAF8EF),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF16A34A).withValues(alpha: 0.12),
-                        blurRadius: 24,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                ),
-                const AppLottieAsset(
-                  asset: 'assets/lottie/order_created.json',
-                  size: 150,
-                  repeat: false,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Pesanan Dibuat',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: cs.onSurface,
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                height: 1.15,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                height: 1.42,
-              ),
-            ),
-            const SizedBox(height: 18),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? cs.outlineVariant
-                      : const Color(0xFFE8EEF7),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Nomor order',
-                    style: TextStyle(
-                      color: cs.onSurfaceVariant,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    orderNumber,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: cs.onSurface,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.2,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            if (hasPaymentLink && onPayNow != null) ...[
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: onPayNow,
-                  child: const Text('Bayar Sekarang'),
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                onPressed: onOpenDetail,
-                style: ElevatedButton.styleFrom(
-                  elevation: 0,
-                  backgroundColor: _brandBlue,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  textStyle: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                child: const Text('Lihat Detail'),
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: onDone,
-              child: const Text('Selesai'),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
