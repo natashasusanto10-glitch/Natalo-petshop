@@ -1,5 +1,5 @@
 /**
- * GET /api/u/{username}?cursor=...&limit=20
+ * GET /api/u/{username}?content=all|video|shoppable&cursor=...&limit=20
  *
  * Public profile endpoint — return profile + paginated posts user.
  * Tidak butuh login. Dipakai oleh:
@@ -12,19 +12,21 @@
  *
  * Posts: filter status=ACTIVE only (public visibility) + sort
  * createdAt desc. Cursor-paginated supaya scroll infinite di Flutter
- * + web tab "Postingan" tidak nge-block dengan fetch all-at-once.
+ * + web tab "Postingan" tidak nge-block dengan fetch all-at-once. Filter
+ * content dipakai Flutter untuk Grid / Video / Belanja.
  *
  * Like state per-viewer: kalau session ada (viewer login), batch
  * resolve viewer's like state untuk batch ini → UI tampil heart
  * filled vs outline yang akurat.
  */
 import { NextRequest, NextResponse } from "next/server";
-import type { FeedPostKind } from "@prisma/client";
+import type { FeedPostKind, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { resolveUserByUsername } from "@/lib/username";
 import { getSession } from "@/lib/auth";
 import { signBunnyUrl } from "@/lib/feed/bunny";
 import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
+import { resolveFeedProductDiscount } from "@/lib/feed/queries";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 
 // Postingan customer biasa: video komunitas + foto carousel.
@@ -47,6 +49,45 @@ const OFFICIAL_BRAND_BIO = "Akun resmi Natalo Petshop & Aquarium 🐾";
 
 const MAX_LIMIT = 50;
 const DEFAULT_LIMIT = 20;
+
+type ProfileContentFilter = "all" | "video" | "shoppable";
+
+function profileProductSelect(now: Date) {
+  return {
+    id: true,
+    slug: true,
+    name: true,
+    price: true,
+    discountPrice: true,
+    flashSaleEndsAt: true,
+    discountItems: {
+      where: {
+        isItemActive: true,
+        discount: {
+          isActive: true,
+          startsAt: { lte: now },
+          endsAt: { gt: now },
+        },
+      },
+      select: {
+        variantId: true,
+        discountedPrice: true,
+        discount: { select: { endsAt: true } },
+      },
+    },
+    stock: true,
+    weightGram: true,
+    isActive: true,
+    imageUrl: true,
+    hasVariants: true,
+    avgRating: true,
+    reviewCount: true,
+  } satisfies Prisma.ProductSelect;
+}
+
+function normalizeContentFilter(raw: string | null): ProfileContentFilter {
+  return raw === "video" || raw === "shoppable" ? raw : "all";
+}
 
 export async function GET(
   request: NextRequest,
@@ -71,6 +112,11 @@ export async function GET(
   const visibleKinds = isOfficial ? ADMIN_VISIBLE_KINDS : VISIBLE_KINDS;
 
   const cursor = request.nextUrl.searchParams.get("cursor") || null;
+  const content = normalizeContentFilter(
+    request.nextUrl.searchParams.get("content")
+  );
+  const now = new Date();
+  const productSelect = profileProductSelect(now);
   const rawLimit = Number(
     request.nextUrl.searchParams.get("limit") ?? `${DEFAULT_LIMIT}`
   );
@@ -79,20 +125,34 @@ export async function GET(
       ? Math.min(MAX_LIMIT, Math.max(1, Math.floor(rawLimit)))
       : DEFAULT_LIMIT;
 
+  const baseWhere: Prisma.FeedPostWhereInput = {
+    authorId: target.id,
+    kind: { in: visibleKinds },
+    status: "ACTIVE",
+    deletedAt: null,
+    // Mirror reels feed filter (lib/feed/queries.ts) — skip video yang
+    // masih encoding di Bunny Stream. Legacy/photo default `ready` tetap
+    // ikut sehingga jumlah header konsisten dengan konten yang terlihat.
+    encodingStatus: "ready",
+  };
+  const contentWhere: Prisma.FeedPostWhereInput =
+    content === "video"
+      ? { videoUrl: { not: null } }
+      : content === "shoppable"
+        ? {
+            OR: [
+              { productId: { not: null } },
+              { taggedProducts: { some: {} } },
+            ],
+          }
+        : {};
+  const listingWhere: Prisma.FeedPostWhereInput = {
+    AND: [baseWhere, contentWhere],
+  };
+
   const [rawPosts, totalCount, likedCount, viewerFollow] = await Promise.all([
     prisma.feedPost.findMany({
-      where: {
-        authorId: target.id,
-        kind: { in: visibleKinds },
-        status: "ACTIVE",
-        deletedAt: null,
-        // Mirror reels feed filter (lib/feed/queries.ts) — skip video yang
-        // masih encoding di Bunny Stream. Tanpa filter ini: video baru
-        // tampil dengan videoUrl=null + thumbnail saja → Flutter player
-        // gagal load → "Video belum bisa diputar". Legacy UploadThing post
-        // default 'ready' jadi tetap surface.
-        encodingStatus: "ready",
-      },
+      where: listingWhere,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -111,6 +171,15 @@ export async function GET(
         likeCount: true,
         commentCount: true,
         viewCount: true,
+        shareCount: true,
+        product: { select: productSelect },
+        taggedProducts: {
+          orderBy: { position: "asc" },
+          select: {
+            promoPrice: true,
+            product: { select: productSelect },
+          },
+        },
         media: {
           orderBy: { sortOrder: "asc" },
           select: {
@@ -143,16 +212,10 @@ export async function GET(
     // post yang masih encoding tidak ikut count (kalau ikut, header
     // tampil "5 Postingan" tapi grid cuma show 4 → bingung user).
     prisma.feedPost.count({
-      where: {
-        authorId: target.id,
-        kind: { in: visibleKinds },
-        status: "ACTIVE",
-        deletedAt: null,
-        encodingStatus: "ready",
-      },
+      where: baseWhere,
     }),
-    // Liked count — total likes yang user ini kasih ke feed posts.
-    // Public stat (match IG/TikTok "Disukai" tab).
+    // Tetap dikirim untuk backward compatibility client lama. UI profil baru
+    // memakai followingCount agar arti statistik tidak membingungkan.
     prisma.feedLike.count({
       where: { userId: target.id },
     }),
@@ -234,6 +297,7 @@ export async function GET(
         likeCount: p.likeCount,
         commentCount: p.commentCount,
         viewCount: p.viewCount,
+        shareCount: p.shareCount,
         viewerLiked: viewerLikedIds.has(p.id),
         recentLikers: p.likes.map((like) => ({
           id: like.user.id,
@@ -257,8 +321,36 @@ export async function GET(
             height: m.height,
           };
         }),
+        products: [
+          ...p.taggedProducts,
+          ...(p.product ? [{ product: p.product, promoPrice: null }] : []),
+        ]
+          .filter(
+            (entry, index, all) =>
+              all.findIndex(
+                (candidate) => candidate.product.id === entry.product.id
+              ) === index
+          )
+          .map((entry) => {
+            const discount = resolveFeedProductDiscount(
+              entry.product,
+              now,
+              entry.promoPrice
+            );
+            return {
+              ...entry.product,
+              discountPrice: discount.discountPrice,
+              discountSource: discount.discountSource,
+              avgRating: Number(entry.product.avgRating ?? 0),
+              promoPrice: entry.promoPrice,
+              // Field internal resolver tidak perlu keluar ke client.
+              flashSaleEndsAt: undefined,
+              discountItems: undefined,
+            };
+          }),
       };
     }),
+    content,
     nextCursor: hasMore ? sliced[sliced.length - 1].id : null,
   });
 }

@@ -4,11 +4,21 @@ import '../models/feed_post.dart';
 import '../models/public_profile.dart';
 import 'api_client.dart';
 
+enum PublicProfileContentFilter {
+  all('all'),
+  video('video'),
+  shoppable('shoppable');
+
+  final String apiValue;
+
+  const PublicProfileContentFilter(this.apiValue);
+}
+
 /// Public profile service — fetch /api/u/{username}. Used by:
 ///   - PublicProfileScreen (deep link / tap @username di feed/komentar)
 ///   - share preview kalau ada featured CTA "view profile"
 ///
-/// Endpoint: `GET /api/u/{username}?cursor=...&limit=20`
+/// Endpoint: `GET /api/u/{username}?content=all|video|shoppable&cursor=...`
 /// Tidak butuh login (public endpoint), tapi kalau ada session, server
 /// set `isOwner: true` saat session.sub == target.id supaya screen
 /// bisa tampilkan tombol "Edit Profil" alih-alih "Bagikan".
@@ -19,10 +29,12 @@ class ProfileService {
     required String username,
     String? cursor,
     int limit = 20,
+    PublicProfileContentFilter content = PublicProfileContentFilter.all,
   }) async {
     final query = <String, String>{
       if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
       'limit': limit.toString(),
+      'content': content.apiValue,
     };
     final path = '/api/u/${Uri.encodeComponent(username)}';
     final data = await apiClient.getJson(path, query: query);

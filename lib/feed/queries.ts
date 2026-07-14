@@ -42,7 +42,7 @@ const COMMENT_PAGE_SIZE = 20;
  * Look (FeedPostProduct.promoPrice). Diperlakukan sebagai Promo Toko;
  * lowest wins.
  */
-function resolveFeedProductDiscount(
+export function resolveFeedProductDiscount(
   product: {
     price: number;
     discountPrice: number | null;

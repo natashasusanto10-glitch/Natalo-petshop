@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -29,11 +31,20 @@ import 'public_profile_follow_list_screen.dart';
 
 const _brandBlue = NataloColors.primary;
 
+class _ProfileContentState {
+  List<FeedPost> posts = const [];
+  String? nextCursor;
+  String? errorText;
+  bool loaded = false;
+  bool loading = false;
+  bool loadingMore = false;
+}
+
 /// Public profile screen — `/u/{username}` deep link target +
 /// destination saat user tap @username di feed/komentar.
 ///
 /// Layout: header (avatar + handle + bio + stats) → tombol Follow
-/// (atau Edit Profil kalau owner) → grid 3-kolom postingan public.
+/// (atau Edit Profil kalau owner) → Grid / Video / Belanja.
 ///
 /// Owner view: tombol "Edit Profil" → /member/profile. Other view:
 /// tombol "Follow" / "Mengikuti" via NestJS social service.
@@ -50,16 +61,24 @@ class PublicProfileScreen extends StatefulWidget {
 
 class _PublicProfileScreenState extends State<PublicProfileScreen> {
   PublicProfile? _profile;
-  List<FeedPost> _posts = const [];
-  String? _nextCursor;
+  final Map<PublicProfileContentFilter, _ProfileContentState> _contentStates = {
+    PublicProfileContentFilter.all: _ProfileContentState(),
+    PublicProfileContentFilter.video: _ProfileContentState(),
+    PublicProfileContentFilter.shoppable: _ProfileContentState(),
+  };
+  PublicProfileContentFilter _selectedContent = PublicProfileContentFilter.all;
   bool _loading = true;
   bool _openingPost = false;
-  bool _loadingMore = false;
   bool _followBusy = false;
   String? _errorText;
   bool _notFound = false;
 
   late final ScrollController _scrollController;
+
+  _ProfileContentState get _activeContentState =>
+      _contentStates[_selectedContent]!;
+
+  List<FeedPost> get _posts => _activeContentState.posts;
 
   @override
   void initState() {
@@ -92,27 +111,35 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   }
 
   void _onScroll() {
-    if (_loadingMore || _nextCursor == null) return;
+    final contentState = _activeContentState;
+    if (contentState.loadingMore || contentState.nextCursor == null) return;
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 400) {
-      _loadMore();
+      unawaited(_loadMore());
     }
   }
 
   Future<void> _load({bool showInitialLoading = true}) async {
+    final content = _selectedContent;
+    final contentState = _contentStates[content]!;
     setState(() {
       // Saat pull-to-refresh, pertahankan profil lama di layar. Loading penuh
       // hanya tepat untuk kunjungan pertama ketika belum ada data sama sekali.
       if (showInitialLoading && _profile == null) _loading = true;
       _errorText = null;
       _notFound = false;
+      contentState
+        ..loading = true
+        ..errorText = null;
     });
     // Capture sebelum await — stale-write guard. Kalau user tap like di
     // tile saat fetch jalan, store skip overwrite interaction fields.
     final fetchedAt = DateTime.now();
     try {
-      final result =
-          await profileService.fetchPublicProfile(username: widget.username);
+      final result = await profileService.fetchPublicProfile(
+        username: widget.username,
+        content: content,
+      );
       if (!mounted) return;
       // Seed FeedStore — supaya kalau user tap tile masuk Detail dan like
       // dari sana, post di store ke-update + grid bisa observe (kalau
@@ -128,14 +155,22 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             result.profile.isFollowing,
           ),
         );
-        _posts = result.posts;
-        _nextCursor = result.nextCursor;
+        contentState
+          ..posts = result.posts
+          ..nextCursor = result.nextCursor
+          ..loaded = true
+          ..loading = false;
         _loading = false;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
+        contentState
+          ..loading = false
+          ..errorText = e.statusCode == 404
+              ? null
+              : 'Konten belum bisa dimuat. Coba lagi.';
         _notFound = e.statusCode == 404;
         _errorText = e.statusCode == 404
             ? 'User ${widget.username} tidak ditemukan.'
@@ -145,19 +180,26 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
+        contentState
+          ..loading = false
+          ..errorText = 'Konten belum bisa dimuat. Coba lagi.';
         _errorText = 'Gagal memuat profil. Tarik untuk coba lagi.';
       });
     }
   }
 
   Future<void> _loadMore() async {
-    if (_nextCursor == null) return;
-    setState(() => _loadingMore = true);
+    final content = _selectedContent;
+    final contentState = _contentStates[content]!;
+    final cursor = contentState.nextCursor;
+    if (cursor == null || contentState.loadingMore) return;
+    setState(() => contentState.loadingMore = true);
     final fetchedAt = DateTime.now();
     try {
       final result = await profileService.fetchPublicProfile(
         username: widget.username,
-        cursor: _nextCursor,
+        cursor: cursor,
+        content: content,
       );
       if (!mounted) return;
       feedStore.mergeFromServer(
@@ -165,17 +207,66 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         fetchedAt: fetchedAt,
       );
       setState(() {
-        _posts = [..._posts, ...result.posts];
-        _nextCursor = result.nextCursor;
-        _loadingMore = false;
+        final existingIds = contentState.posts.map((post) => post.id).toSet();
+        contentState
+          ..posts = [
+            ...contentState.posts,
+            ...result.posts.where((post) => existingIds.add(post.id)),
+          ]
+          ..nextCursor = result.nextCursor
+          ..loadingMore = false;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loadingMore = false);
+      setState(() => contentState.loadingMore = false);
     }
   }
 
   Future<void> _refresh() async => _load(showInitialLoading: false);
+
+  void _selectContent(PublicProfileContentFilter content) {
+    if (content == _selectedContent) return;
+    AppHaptics.tap();
+    setState(() => _selectedContent = content);
+    final contentState = _contentStates[content]!;
+    if (!contentState.loaded && !contentState.loading) {
+      unawaited(_loadSelectedContent(content));
+    }
+  }
+
+  Future<void> _loadSelectedContent(
+    PublicProfileContentFilter content,
+  ) async {
+    final contentState = _contentStates[content]!;
+    setState(() {
+      contentState
+        ..loading = true
+        ..errorText = null;
+    });
+    final fetchedAt = DateTime.now();
+    try {
+      final result = await profileService.fetchPublicProfile(
+        username: widget.username,
+        content: content,
+      );
+      if (!mounted) return;
+      feedStore.mergeFromServer(result.posts, fetchedAt: fetchedAt);
+      setState(() {
+        contentState
+          ..posts = result.posts
+          ..nextCursor = result.nextCursor
+          ..loaded = true
+          ..loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        contentState
+          ..loading = false
+          ..errorText = 'Konten belum bisa dimuat. Coba lagi.';
+      });
+    }
+  }
 
   Future<void> _openFollowList(FollowListKind kind) async {
     final profile = _profile;
@@ -446,6 +537,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       return AppErrorState(description: _errorText!, onRetry: _load);
     }
     final profile = _profile!;
+    final contentState = _activeContentState;
     final scrollView = NataloPawRefreshIndicator(
       onRefresh: _refresh,
       // Selaras dengan profil sendiri: app bar tetap, isi profil mengikuti
@@ -467,13 +559,32 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   ? () => Navigator.pushNamed(context, '/member/profile')
                   : null,
               onShareProfile: _shareProfile,
+              onOpenCatalog: profile.isOfficial
+                  ? () => Navigator.pushNamed(context, '/products')
+                  : null,
             ),
           ),
-          const SliverToBoxAdapter(child: _ProfileTabs()),
-          if (_posts.isEmpty)
-            const SliverFillRemaining(
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _ProfileTabsDelegate(
+              selected: _selectedContent,
+              onSelected: _selectContent,
+            ),
+          ),
+          if (contentState.loading && _posts.isEmpty)
+            const SliverToBoxAdapter(child: _ProfileGridLoading())
+          else if (contentState.errorText != null && _posts.isEmpty)
+            SliverFillRemaining(
               hasScrollBody: false,
-              child: _EmptyPosts(),
+              child: _ProfileContentError(
+                message: contentState.errorText!,
+                onRetry: () => _loadSelectedContent(_selectedContent),
+              ),
+            )
+          else if (_posts.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _EmptyPosts(content: _selectedContent),
             )
           else
             SliverGrid(
@@ -495,6 +606,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     return _PostTile(
                       post: _posts[idx],
                       onTap: () => _openPost(idx),
+                      showCommerceBadge: _selectedContent ==
+                          PublicProfileContentFilter.shoppable,
                     );
                   } catch (_) {
                     return ColoredBox(
@@ -506,7 +619,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                 childCount: _posts.length,
               ),
             ),
-          if (_loadingMore)
+          if (contentState.loadingMore)
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
@@ -564,6 +677,7 @@ class _Header extends StatelessWidget {
   final VoidCallback? onFollowingTap;
   final VoidCallback? onEditProfile;
   final VoidCallback? onShareProfile;
+  final VoidCallback? onOpenCatalog;
 
   const _Header({
     required this.profile,
@@ -573,6 +687,7 @@ class _Header extends StatelessWidget {
     this.onFollowingTap,
     this.onEditProfile,
     this.onShareProfile,
+    this.onOpenCatalog,
   });
 
   @override
@@ -588,6 +703,7 @@ class _Header extends StatelessWidget {
         onFollowersTap: onFollowersTap,
         onFollowingTap: onFollowingTap,
         onShareProfile: onShareProfile,
+        onOpenCatalog: onOpenCatalog,
       );
     }
     return Container(
@@ -802,6 +918,7 @@ class _OfficialHeader extends StatelessWidget {
   final VoidCallback? onFollowersTap;
   final VoidCallback? onFollowingTap;
   final VoidCallback? onShareProfile;
+  final VoidCallback? onOpenCatalog;
 
   const _OfficialHeader({
     required this.profile,
@@ -810,6 +927,7 @@ class _OfficialHeader extends StatelessWidget {
     this.onFollowersTap,
     this.onFollowingTap,
     this.onShareProfile,
+    this.onOpenCatalog,
   });
 
   @override
@@ -960,8 +1078,9 @@ class _OfficialHeader extends StatelessWidget {
                 _statDivider(),
                 Expanded(
                   child: _OfficialStat(
-                    value: profile.likedCount,
-                    label: 'Disukai',
+                    value: profile.followingCount,
+                    label: 'Mengikuti',
+                    onTap: onFollowingTap,
                     onHero: true,
                   ),
                 ),
@@ -997,6 +1116,29 @@ class _OfficialHeader extends StatelessWidget {
               ],
             ],
           ),
+          if (onOpenCatalog != null) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: FilledButton.icon(
+                onPressed: onOpenCatalog,
+                style: FilledButton.styleFrom(
+                  backgroundColor: NataloColors.primary,
+                  foregroundColor: Colors.white,
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.shopping_bag_outlined, size: 20),
+                label: const Text('Lihat Etalase Produk'),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1218,8 +1360,45 @@ class _StatColumn extends StatelessWidget {
   }
 }
 
+class _ProfileTabsDelegate extends SliverPersistentHeaderDelegate {
+  final PublicProfileContentFilter selected;
+  final ValueChanged<PublicProfileContentFilter> onSelected;
+
+  const _ProfileTabsDelegate({
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  double get minExtent => 48;
+
+  @override
+  double get maxExtent => 48;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return _ProfileTabs(selected: selected, onSelected: onSelected);
+  }
+
+  @override
+  bool shouldRebuild(covariant _ProfileTabsDelegate oldDelegate) {
+    return oldDelegate.selected != selected ||
+        oldDelegate.onSelected != onSelected;
+  }
+}
+
 class _ProfileTabs extends StatelessWidget {
-  const _ProfileTabs();
+  final PublicProfileContentFilter selected;
+  final ValueChanged<PublicProfileContentFilter> onSelected;
+
+  const _ProfileTabs({
+    required this.selected,
+    required this.onSelected,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1232,28 +1411,77 @@ class _ProfileTabs extends StatelessWidget {
           bottom: BorderSide(color: cs.outlineVariant, width: 0.5),
         ),
       ),
-      child: SizedBox(
-        height: 48,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Icon(
-              Icons.grid_on_rounded,
-              color: cs.onSurface,
-              size: 23,
+      child: Row(
+        children: [
+          _ProfileTabButton(
+            icon: Icons.grid_on_rounded,
+            label: 'Postingan',
+            selected: selected == PublicProfileContentFilter.all,
+            onTap: () => onSelected(PublicProfileContentFilter.all),
+          ),
+          _ProfileTabButton(
+            icon: Icons.play_circle_outline_rounded,
+            label: 'Video',
+            selected: selected == PublicProfileContentFilter.video,
+            onTap: () => onSelected(PublicProfileContentFilter.video),
+          ),
+          _ProfileTabButton(
+            icon: Icons.shopping_bag_outlined,
+            label: 'Belanja',
+            selected: selected == PublicProfileContentFilter.shoppable,
+            onTap: () => onSelected(PublicProfileContentFilter.shoppable),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileTabButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ProfileTabButton({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final color = selected ? _brandBlue : cs.onSurfaceVariant;
+    return Expanded(
+      child: Semantics(
+        button: true,
+        selected: selected,
+        label: label,
+        child: Tooltip(
+          message: label,
+          child: InkWell(
+            onTap: onTap,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(icon, color: color, size: 23),
+                if (selected)
+                  Positioned(
+                    bottom: 0,
+                    child: Container(
+                      width: 44,
+                      height: 3,
+                      decoration: BoxDecoration(
+                        color: _brandBlue,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-            Positioned(
-              bottom: 0,
-              child: Container(
-                width: 44,
-                height: 2,
-                decoration: BoxDecoration(
-                  color: cs.onSurface,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -1263,8 +1491,13 @@ class _ProfileTabs extends StatelessWidget {
 class _PostTile extends StatelessWidget {
   final FeedPost post;
   final VoidCallback onTap;
+  final bool showCommerceBadge;
 
-  const _PostTile({required this.post, required this.onTap});
+  const _PostTile({
+    required this.post,
+    required this.onTap,
+    this.showCommerceBadge = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1311,47 +1544,131 @@ class _PostTile extends StatelessWidget {
         parsedUri.hasAuthority;
 
     final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        // Pakai decoration (bukan color shorthand) karena Container assert
-        // `clipBehavior == Clip.none || decoration != null`. Pakai color:
-        // shorthand TIDAK set decoration, jadi pair-up dengan
-        // clipBehavior: Clip.hardEdge throw assertion saat build child —
-        // dan throw itu terjadi DI LUAR try-catch _buildSafeTile (sudah
-        // return), bocor ke ErrorWidget.builder global = AppErrorWidget
-        // di seluruh cell. Decoration eksplisit fix root cause.
-        decoration: BoxDecoration(color: cs.surfaceContainerHighest),
-        clipBehavior: Clip.hardEdge,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (isValidImageUrl)
-              _SafeNetworkImage(url: thumb)
-            else
-              ColoredBox(color: cs.surfaceContainerHighest),
-            if (post.isVideo)
-              Positioned(
-                top: 6,
-                right: 6,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.55),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Icon(
-                    Icons.play_arrow_rounded,
-                    color: Colors.white,
-                    size: 14,
+    final productCount = post.products.length;
+    final primaryPrice = _lowestProductPrice(post.products);
+    return Semantics(
+      button: true,
+      label: showCommerceBadge && productCount > 0
+          ? 'Postingan belanja dengan $productCount produk'
+          : post.isVideo
+              ? 'Postingan video'
+              : 'Postingan foto',
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          // Pakai decoration (bukan color shorthand) karena Container assert
+          // `clipBehavior == Clip.none || decoration != null`. Pakai color:
+          // shorthand TIDAK set decoration, jadi pair-up dengan
+          // clipBehavior: Clip.hardEdge throw assertion saat build child —
+          // dan throw itu terjadi DI LUAR try-catch _buildSafeTile (sudah
+          // return), bocor ke ErrorWidget.builder global = AppErrorWidget
+          // di seluruh cell. Decoration eksplisit fix root cause.
+          decoration: BoxDecoration(color: cs.surfaceContainerHighest),
+          clipBehavior: Clip.hardEdge,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (isValidImageUrl)
+                _SafeNetworkImage(url: thumb)
+              else
+                ColoredBox(color: cs.surfaceContainerHighest),
+              if (post.isVideo)
+                Positioned(
+                  top: 6,
+                  left: showCommerceBadge ? 6 : null,
+                  right: showCommerceBadge ? null : 6,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 14,
+                    ),
                   ),
                 ),
-              ),
-          ],
+              if (showCommerceBadge && productCount > 0)
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.68),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.shopping_bag_outlined,
+                          color: Colors.white,
+                          size: 13,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          '$productCount produk',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            height: 1,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (showCommerceBadge && primaryPrice != null)
+                Positioned(
+                  left: 6,
+                  bottom: 6,
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 112),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.68),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'Mulai ${formatRupiahCompact(primaryPrice)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  int? _lowestProductPrice(List<FeedProductLink> products) {
+    final prices = products
+        .expand(
+          (product) => <int>[
+            product.price,
+            if (product.discountPrice != null) product.discountPrice!,
+            if (product.promoPrice != null) product.promoPrice!,
+          ],
+        )
+        .where((price) => price > 0)
+        .toList();
+    if (prices.isEmpty) return null;
+    return prices.reduce((current, next) => next < current ? next : current);
   }
 }
 
@@ -1394,8 +1711,81 @@ class _SafeNetworkImage extends StatelessWidget {
   }
 }
 
+class _ProfileGridLoading extends StatelessWidget {
+  const _ProfileGridLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return AspectRatio(
+      aspectRatio: 3 / 2,
+      child: GridView.builder(
+        padding: EdgeInsets.zero,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          mainAxisSpacing: 1.5,
+          crossAxisSpacing: 1.5,
+        ),
+        itemCount: 6,
+        itemBuilder: (_, __) => ColoredBox(
+          color: cs.surfaceContainerHighest,
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileContentError extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ProfileContentError({
+    required this.message,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 36, 24, 80),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.cloud_off_outlined,
+              color: cs.onSurfaceVariant,
+              size: 32,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Coba lagi'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _EmptyPosts extends StatelessWidget {
-  const _EmptyPosts();
+  final PublicProfileContentFilter content;
+
+  const _EmptyPosts({required this.content});
 
   @override
   Widget build(BuildContext context) {
@@ -1407,13 +1797,24 @@ class _EmptyPosts extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.photo_library_outlined,
+              switch (content) {
+                PublicProfileContentFilter.all => Icons.photo_library_outlined,
+                PublicProfileContentFilter.video =>
+                  Icons.play_circle_outline_rounded,
+                PublicProfileContentFilter.shoppable =>
+                  Icons.shopping_bag_outlined,
+              },
               color: cs.onSurfaceVariant,
               size: 32,
             ),
             const SizedBox(height: 10),
             Text(
-              'Belum ada postingan',
+              switch (content) {
+                PublicProfileContentFilter.all => 'Belum ada postingan',
+                PublicProfileContentFilter.video => 'Belum ada video',
+                PublicProfileContentFilter.shoppable =>
+                  'Belum ada postingan belanja',
+              },
               style: TextStyle(
                 color: cs.onSurface,
                 fontSize: 14,

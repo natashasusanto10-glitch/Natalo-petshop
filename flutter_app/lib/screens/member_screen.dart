@@ -31,7 +31,7 @@ import 'public_profile_follow_list_screen.dart';
 ///
 /// Layout: Header (+ icon, bell, cart) → Profile section (foto + stats
 /// Postingan/Pengikut/Mengikuti + nama + @username + bio + tombol Edit/
-/// Bagikan) → Tab bar (Postingan/Video/Produk Ditag) → Grid 3-kolom.
+/// Bagikan) → Tab bar (Postingan/Video/Belanja) → Grid 3-kolom.
 ///
 /// Semua menu transaksi (Pesanan, Voucher, Wishlist, Alamat, Poin, Ulasan)
 /// SUDAH DIPINDAH ke halaman /transactions. Halaman ini fokus jadi
@@ -401,9 +401,9 @@ class _ProfilePageState extends State<_ProfilePage>
                               posts: _taggedPosts,
                               loading: _loadingPosts,
                               errorText: _postsError,
-                              emptyText: 'Belum ada produk ditag',
+                              emptyText: 'Belum ada postingan belanja',
                               emptySubtext:
-                                  'Postingan dengan produk Natalo yang ditag akan muncul di sini.',
+                                  'Postingan yang terhubung ke produk Natalo akan muncul di sini.',
                               showCreateCta: false,
                               onCreateCta: _openCreatePost,
                               onRetry: _loadAll,
@@ -810,7 +810,7 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
             height: 42,
             iconMargin: EdgeInsets.zero,
             icon: Semantics(
-              label: 'Produk Ditag',
+              label: 'Belanja',
               child: const Icon(Icons.shopping_bag_outlined, size: 22),
             ),
           ),
