@@ -7,9 +7,9 @@
  * /api/admin/products.
  *
  * Field order (sesuai spec):
- *  1. Foto Produk → 2. Nama → 3. Kategori|Brand → 4. Deskripsi
- *  5. Variasi (VariantEditor draft mode)
- *  6. Harga Satuan → 7. Stok → 8. Berat
+ *  1. Foto Produk → 2. Video → 3. Nama → 4. Kategori|Brand → 5. Deskripsi
+ *  6. Variasi (VariantEditor draft mode)
+ *  7. Harga Satuan → 8. Stok → 9. Berat
  *
  * Behavior conditional:
  *  - Varian OFF: Harga Satuan/Stok/Berat enabled + required

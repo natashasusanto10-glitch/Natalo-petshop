@@ -19,14 +19,15 @@ interface Props {
  * Form tambah produk baru — Shopee Seller style.
  *
  * Field order (sesuai spec admin):
- *  1. Foto Produk (slot 1 = cover, max 5)
- *  2. Nama Produk
- *  3. Kategori | Brand
- *  4. Deskripsi
- *  5. Variasi section (VariantEditor draft mode — collect state ke parent)
- *  6. Harga Satuan      ┐
- *  7. Stok              ├─ disabled saat varian aktif (data dari per-varian)
- *  8. Berat (gram)      ┘
+ *  1. Foto Produk (slot 1 = cover, max 9)
+ *  2. Video Produk (upload setelah productId tersedia)
+ *  3. Nama Produk
+ *  4. Kategori | Brand
+ *  5. Deskripsi
+ *  6. Variasi section (VariantEditor draft mode — collect state ke parent)
+ *  7. Harga Satuan      ┐
+ *  8. Stok              ├─ disabled saat varian aktif (data dari per-varian)
+ *  9. Berat (gram)      ┘
  *
  * Submit: POST /api/admin/products dengan payload lengkap (product +
  * variants). Backend atomic transaction — kalau varian gagal, product
@@ -176,9 +177,9 @@ export function NewProductForm({ categories, brands }: Props) {
         }
         throw new Error(data.error ?? "Gagal menyimpan produk");
       }
-      // Sukses — redirect ke list. Pakai router.push + refresh supaya
-      // server component list re-fetch dan tampilin produk baru.
-      router.push("/admin/products");
+      // Upload video butuh productId. Setelah produk berhasil dibuat,
+      // lanjutkan ke section video di halaman edit yang sudah punya ID.
+      router.push(`/admin/products/${data.id}/edit?from=new#video`);
       router.refresh();
     } catch (e) {
       setSubmitError(
@@ -241,15 +242,27 @@ export function NewProductForm({ categories, brands }: Props) {
         <FormField
           label="Foto Produk"
           required
-          hint="Foto pertama = cover (thumbnail di list & search). Max 5 foto, 2 MB per file."
+          hint="Foto pertama = cover (thumbnail di list & search). Maksimal 9 foto, 2 MB per file."
         >
           <MultiImageUpload
             name="images"
-            max={5}
+            max={9}
             label=""
             defaultValue={images}
             onChange={setImages}
           />
+        </FormField>
+
+        <FormField
+          label="Video Produk"
+          hint="Opsional. Setelah produk disimpan, Anda langsung diarahkan ke upload video."
+        >
+          <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-5 text-center">
+            <p className="text-sm font-semibold text-zinc-700">Tambah Video Produk</p>
+            <p className="mt-1 text-xs text-zinc-500">
+              Isi data produk lalu klik Simpan &amp; lanjut tambah video.
+            </p>
+          </div>
         </FormField>
 
         {/* ─── 2. Nama Produk ─────────────────────────────────────── */}
@@ -443,7 +456,7 @@ export function NewProductForm({ categories, brands }: Props) {
             disabled={submitting}
             className="flex-1 sm:flex-none"
           >
-            {submitting ? "Menyimpan..." : "Simpan Produk"}
+            {submitting ? "Menyimpan..." : "Simpan & lanjut tambah video"}
           </Button>
         </div>
       </div>

@@ -8,7 +8,7 @@ interface Props {
   /** Default URL gambar yg sudah ada saat edit. Index 0 = thumbnail utama. */
   defaultValue?: string[];
   label?: string;
-  /** Maksimum jumlah gambar. Default 5. */
+  /** Maksimum jumlah gambar. Default 9. */
   max?: number;
   /**
    * Optional callback yang fire setiap kali list URL berubah. Dipakai
@@ -42,7 +42,7 @@ export function MultiImageUpload({
   name,
   defaultValue = [],
   label = "Gambar produk",
-  max = 5,
+  max = 9,
   onChange,
 }: Props) {
   const [urls, setUrls] = useState<string[]>(defaultValue);
