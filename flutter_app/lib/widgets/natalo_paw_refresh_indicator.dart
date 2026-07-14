@@ -15,8 +15,9 @@ import '../utils/haptics.dart';
 /// Mechanics:
 /// - NotificationListener detect overscroll di top scrollable
 /// - Drag offset di-accumulate dari `OverscrollNotification.overscroll`
-/// - Threshold @ `triggerOffset` (default 48px): haptic tap fire,
-///   indicator "armed" — kalau user lepas, refresh trigger
+/// - Threshold @ `triggerOffset` (default 48px): indicator "armed" — kalau
+///   user lepas, refresh trigger
+/// - Satu haptic ringan hanya saat refresh benar-benar dimulai
 /// - During refresh: paw spin continuous (900ms loop) + freeze offset
 ///   di triggerOffset supaya tetap visible
 /// - After refresh: spin stop + offset snap back ke 0 dengan fade-out
@@ -185,10 +186,10 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
       if (newOverscroll > _maxOverscroll) {
         _maxOverscroll = newOverscroll;
       }
-      // Threshold reached — haptic tap "armed".
+      // Threshold reached. Haptic sengaja ditunda sampai user melepas dan
+      // refresh benar-benar dimulai agar pull kecil tidak terasa berisik.
       if (!_armed && _overscroll >= widget.triggerOffset) {
         _armed = true;
-        AppHaptics.tap();
       }
     }
 
@@ -242,7 +243,7 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
     _maxOverscroll = widget.triggerOffset;
     _fadeCtrl.value = 1.0;
     _spinCtrl.repeat();
-    AppHaptics.success();
+    AppHaptics.tap();
 
     try {
       await widget.onRefresh();
