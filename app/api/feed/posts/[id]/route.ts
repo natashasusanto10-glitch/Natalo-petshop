@@ -1,4 +1,5 @@
 import { after, NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
@@ -6,10 +7,44 @@ import { MY_FEED_VISIBLE_STATUSES } from "@/lib/feed/my-posts";
 import { deleteFeedAssets } from "@/lib/feed/cleanup";
 import { signBunnyUrl } from "@/lib/feed/bunny";
 import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
+import { resolveFeedProductDiscount } from "@/lib/feed/queries";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESC_LENGTH = 2000;
+
+function singlePostProductSelect(now: Date) {
+  return {
+    id: true,
+    slug: true,
+    name: true,
+    price: true,
+    discountPrice: true,
+    flashSaleEndsAt: true,
+    discountItems: {
+      where: {
+        isItemActive: true,
+        discount: {
+          isActive: true,
+          startsAt: { lte: now },
+          endsAt: { gt: now },
+        },
+      },
+      select: {
+        variantId: true,
+        discountedPrice: true,
+        discount: { select: { endsAt: true } },
+      },
+    },
+    stock: true,
+    weightGram: true,
+    isActive: true,
+    imageUrl: true,
+    hasVariants: true,
+    avgRating: true,
+    reviewCount: true,
+  } satisfies Prisma.ProductSelect;
+}
 
 /**
  * GET /api/feed/posts/[id]
@@ -33,6 +68,9 @@ export async function GET(
     return NextResponse.json({ error: "Post ID required" }, { status: 400 });
   }
 
+  const now = new Date();
+  const productSelect = singlePostProductSelect(now);
+
   const post = await prisma.feedPost.findFirst({
     where: { id, status: "ACTIVE", deletedAt: null },
     select: {
@@ -51,6 +89,15 @@ export async function GET(
       likeCount: true,
       commentCount: true,
       viewCount: true,
+      product: { select: productSelect },
+      taggedProducts: {
+        orderBy: { position: "asc" },
+        select: {
+          position: true,
+          promoPrice: true,
+          product: { select: productSelect },
+        },
+      },
       author: {
         select: {
           id: true,
@@ -112,6 +159,41 @@ export async function GET(
     videoUrl: post.videoUrl,
     videoGuid: post.videoGuid,
   });
+  const products = [
+    ...post.taggedProducts,
+    ...(post.product
+      ? [
+          {
+            position: post.taggedProducts.length,
+            promoPrice: null,
+            product: post.product,
+          },
+        ]
+      : []),
+  ]
+    .filter(
+      (entry, index, all) =>
+        all.findIndex(
+          (candidate) => candidate.product.id === entry.product.id,
+        ) === index,
+    )
+    .map((entry) => {
+      const discount = resolveFeedProductDiscount(
+        entry.product,
+        now,
+        entry.promoPrice,
+      );
+      return {
+        ...entry.product,
+        discountPrice: discount.discountPrice,
+        discountSource: discount.discountSource,
+        avgRating: Number(entry.product.avgRating ?? 0),
+        promoPrice: entry.promoPrice,
+        position: entry.position,
+        flashSaleEndsAt: undefined,
+        discountItems: undefined,
+      };
+    });
 
   return NextResponse.json({
     id: post.id,
@@ -130,6 +212,8 @@ export async function GET(
     commentCount: post.commentCount,
     viewCount: post.viewCount,
     viewerLiked,
+    products,
+    taggedProducts: products,
     author: {
       id: post.author.id,
       // Akun official (admin) → brand name + foto null (klien render logo).

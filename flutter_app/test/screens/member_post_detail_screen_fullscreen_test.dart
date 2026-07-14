@@ -163,7 +163,10 @@ class _NoopMetadataStorage implements IVideoPlayerMetadataStorage {
 
 // ─── Fixtures ───────────────────────────────────────────────────────────
 
-FeedPost _fakeVideoPost({String id = 'post-1'}) {
+FeedPost _fakeVideoPost({
+  String id = 'post-1',
+  bool withTaggedProduct = false,
+}) {
   return FeedPost.fromJson({
     'id': id,
     'slug': id,
@@ -176,6 +179,21 @@ FeedPost _fakeVideoPost({String id = 'post-1'}) {
     'likeCount': 0,
     'commentCount': 0,
     'shareCount': 0,
+    if (withTaggedProduct)
+      'products': [
+        {
+          'id': 'product-1',
+          'slug': 'magic-bites-1kg',
+          'name': 'Magic Bites 1KG',
+          'imageUrl': 'https://example.com/magic-bites.jpg',
+          'price': 85000,
+          'discountPrice': 72250,
+          'discountSource': 'PROMO_TOKO',
+          'stock': 12,
+          'weightGram': 1000,
+          'isActive': true,
+        },
+      ],
     'createdAt': DateTime.now().toIso8601String(),
   });
 }
@@ -334,6 +352,35 @@ void main() {
     }
     expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
   }
+
+  testWidgets(
+    'shopping video keeps its product chip when single-post fetch omits products',
+    (tester) async {
+      final shoppingPost = _fakeVideoPost(
+        id: 'shopping-video',
+        withTaggedProduct: true,
+      );
+      // Simulate an older backend response: complete video, no product links.
+      debugScopedFeedPostFetcher = (id) async => _fakeVideoPost(id: id);
+
+      await pumpAndInitialize(tester, posts: [shoppingPost]);
+      await openScopedFeed(tester);
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final scoped = tester.widget<ScopedVideoFeedScreen>(
+        find.byType(ScopedVideoFeedScreen),
+      );
+      expect(scoped.posts.single.taggedProducts, hasLength(1));
+      expect(scoped.posts.single.taggedProducts.single.name, 'Magic Bites 1KG');
+      expect(
+        find.text('Magic Bites 1KG'),
+        findsOneWidget,
+        reason: 'fullscreen must keep the social-commerce product anchor',
+      );
+
+      await disposeTree(tester);
+    },
+  );
 
   testWidgets(
     'T3b: opening fullscreen ADOPTS the origin controller — no new player '

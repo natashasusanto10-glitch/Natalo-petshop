@@ -920,7 +920,32 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
           }
         }),
       );
-      final fetched = results.whereType<FeedPost>().toList();
+      final fetched = <FeedPost>[];
+      for (var i = 0; i < results.length; i++) {
+        final fetchedPost = results[i];
+        if (fetchedPost == null) continue;
+        final sourcePost = videoPosts[i];
+        final fetchedHasProducts = fetchedPost.taggedProducts.isNotEmpty ||
+            fetchedPost.products.isNotEmpty;
+        final sourceHasProducts = sourcePost.taggedProducts.isNotEmpty ||
+            sourcePost.products.isNotEmpty;
+
+        // Compatibility guard: older deployments of GET /feed/posts/:id
+        // returned complete author/video data but omitted tagged products.
+        // Preserve the richer profile post until every backend instance uses
+        // the new contract, otherwise the fullscreen commerce chip vanishes.
+        fetched.add(
+          !fetchedHasProducts && sourceHasProducts
+              ? fetchedPost.copyWith(
+                  products: sourcePost.products,
+                  productsInVideo: sourcePost.productsInVideo,
+                  taggedProducts: sourcePost.taggedProducts.isNotEmpty
+                      ? sourcePost.taggedProducts
+                      : sourcePost.products,
+                )
+              : fetchedPost,
+        );
+      }
 
       rootNav.pop(); // tutup loading dialog
       if (!mounted) {
