@@ -7,6 +7,22 @@ import '../models/product.dart';
 import '../utils/read_only_mode.dart';
 import 'api_client.dart';
 
+class ProductFeedPostsPage {
+  final List<Map<String, dynamic>> items;
+  final int total;
+  final int offset;
+  final bool hasMore;
+  final bool failed;
+
+  const ProductFeedPostsPage({
+    this.items = const [],
+    this.total = 0,
+    this.offset = 0,
+    this.hasMore = false,
+    this.failed = false,
+  });
+}
+
 class SearchSuggestionResult {
   final List<ProductSuggestion> products;
   final List<LabelSuggestion> categories;
@@ -526,19 +542,40 @@ class ProductService {
     String slug, {
     int limit = 12,
   }) async {
-    if (slug.trim().isEmpty) return const [];
+    final page = await fetchProductFeedPostsPage(slug, limit: limit);
+    return page.items;
+  }
+
+  Future<ProductFeedPostsPage> fetchProductFeedPostsPage(
+    String slug, {
+    int limit = 12,
+    int offset = 0,
+  }) async {
+    if (slug.trim().isEmpty) return const ProductFeedPostsPage();
     try {
       final data = await apiClient.getJson(
         '/api/products/${Uri.encodeComponent(slug)}/feed-posts',
-        query: {'limit': limit.toString()},
+        query: {
+          'limit': limit.toString(),
+          'offset': offset.toString(),
+        },
       );
       final map = _asMap(data);
       final raw =
           map == null ? data : (map['posts'] ?? map['items'] ?? map['data']);
-      if (raw is! List) return const [];
-      return raw.whereType<Map<String, dynamic>>().toList();
+      if (raw is! List) return const ProductFeedPostsPage(failed: true);
+      final items = raw.whereType<Map<String, dynamic>>().toList();
+      final total = _asInt(map?['total']) ?? items.length;
+      final resolvedOffset = _asInt(map?['offset']) ?? offset;
+      return ProductFeedPostsPage(
+        items: items,
+        total: total,
+        offset: resolvedOffset,
+        hasMore:
+            map?['hasMore'] == true || resolvedOffset + items.length < total,
+      );
     } catch (_) {
-      return const [];
+      return const ProductFeedPostsPage(failed: true);
     }
   }
 }

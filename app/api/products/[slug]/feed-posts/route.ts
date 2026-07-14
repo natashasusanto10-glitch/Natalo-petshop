@@ -13,6 +13,7 @@
  *     Video harus encodingStatus=ready; PHOTO_CAROUSEL pakai media pertama.
  *   - Sort: likeCount DESC + createdAt DESC (paling banyak interaksi dulu)
  *   - Limit: ?limit=N (default 12, max 24)
+ *   - Pagination: ?offset=N
  *
  * Cache 60s — UGC tidak diharapkan update tiap detik, satu menit window OK.
  */
@@ -34,7 +35,15 @@ export async function GET(
   const rawLimit = Number(searchParams.get("limit") ?? DEFAULT_LIMIT);
   const limit = Math.max(
     1,
-    Math.min(MAX_LIMIT, Number.isFinite(rawLimit) ? rawLimit : DEFAULT_LIMIT)
+    Math.min(
+      MAX_LIMIT,
+      Math.floor(Number.isFinite(rawLimit) ? rawLimit : DEFAULT_LIMIT)
+    )
+  );
+  const rawOffset = Number(searchParams.get("offset") ?? 0);
+  const offset = Math.max(
+    0,
+    Math.floor(Number.isFinite(rawOffset) ? rawOffset : 0)
   );
 
   const product = await prisma.product.findUnique({
@@ -72,6 +81,7 @@ export async function GET(
       },
     },
     orderBy: [{ likeCount: "desc" }, { createdAt: "desc" }],
+    skip: offset,
     take: limit,
     select: {
       id: true,
@@ -119,6 +129,8 @@ export async function GET(
     productSlug: slug,
     productName: product.name,
     total: totalCount,
+    offset,
+    hasMore: offset + posts.length < totalCount,
     items: posts.map((p) => {
       const firstMedia = p.media[0] ?? null;
       const coverUrl =
