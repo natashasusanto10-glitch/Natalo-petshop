@@ -1,4 +1,5 @@
 import 'api_client.dart';
+import '../state/follow_override_store.dart';
 
 /// Follow/unfollow service — pakai endpoint Next.js (`/social/users/...`)
 /// yang dihost di Vercel. Sebelumnya ada dual implementation dengan
@@ -137,9 +138,17 @@ class FollowListResult {
     if (rawItems is List) {
       for (final raw in rawItems) {
         if (raw is Map<String, dynamic>) {
-          items.add(FollowUserSummary.fromJson(raw));
+          final user = FollowUserSummary.fromJson(raw);
+          items.add(user.copyWith(
+            isFollowing: resolveFollowState(user.id, user.isFollowing),
+          ));
         } else if (raw is Map) {
-          items.add(FollowUserSummary.fromJson(Map<String, dynamic>.from(raw)));
+          final user = FollowUserSummary.fromJson(
+            Map<String, dynamic>.from(raw),
+          );
+          items.add(user.copyWith(
+            isFollowing: resolveFollowState(user.id, user.isFollowing),
+          ));
         }
       }
     }
@@ -157,14 +166,18 @@ class FollowService {
     final data = await apiClient.postJson(
       '/social/users/${Uri.encodeComponent(userId)}/follow',
     );
-    return FollowState.fromJson(_asMap(data));
+    final state = FollowState.fromJson(_asMap(data));
+    setFollowOverride(userId, state.isFollowing);
+    return state;
   }
 
   Future<FollowState> unfollow(String userId) async {
     final data = await apiClient.deleteJson(
       '/social/users/${Uri.encodeComponent(userId)}/follow',
     );
-    return FollowState.fromJson(_asMap(data));
+    final state = FollowState.fromJson(_asMap(data));
+    setFollowOverride(userId, state.isFollowing);
+    return state;
   }
 
   Future<FollowState> fetchState(String userId) async {
@@ -215,6 +228,9 @@ class FollowService {
     return rawItems
         .whereType<Map<String, dynamic>>()
         .map(FollowUserSummary.fromJson)
+        .map((user) => user.copyWith(
+              isFollowing: resolveFollowState(user.id, user.isFollowing),
+            ))
         .where((user) => user.canOpenProfile)
         .toList(growable: false);
   }

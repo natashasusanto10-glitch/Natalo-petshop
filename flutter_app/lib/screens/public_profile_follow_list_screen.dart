@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
 
@@ -6,9 +5,11 @@ import '../models/public_profile.dart';
 import '../services/api_client.dart';
 import '../services/follow_service.dart';
 import '../state/member_store.dart';
+import '../state/follow_override_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/official_brand_avatar.dart';
+import '../widgets/profile_avatar.dart';
 
 const _brandBlue = NataloColors.primary;
 
@@ -296,6 +297,7 @@ class _FollowListPaneState extends State<_FollowListPane>
       _busyUserIds.add(user.id);
       _replaceUser(optimistic);
     });
+    setFollowOverride(user.id, !wasFollowing);
 
     try {
       final state = wasFollowing
@@ -311,6 +313,7 @@ class _FollowListPaneState extends State<_FollowListPane>
         _busyUserIds.remove(user.id);
         _replaceUser(updated);
       });
+      setFollowOverride(user.id, state.isFollowing);
       widget.onFollowChanged(updated, state, wasFollowing);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -318,6 +321,7 @@ class _FollowListPaneState extends State<_FollowListPane>
         _busyUserIds.remove(user.id);
         _replaceUser(user);
       });
+      setFollowOverride(user.id, wasFollowing);
       if (e.isUnauthorized) {
         Navigator.pushNamed(context, '/member/login');
       } else {
@@ -329,6 +333,7 @@ class _FollowListPaneState extends State<_FollowListPane>
         _busyUserIds.remove(user.id);
         _replaceUser(user);
       });
+      setFollowOverride(user.id, wasFollowing);
       _showSnack('Gagal memproses follow. Coba lagi.');
     }
   }
@@ -611,49 +616,13 @@ class _FollowAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Akun official → logo brand NL (server null-kan foto asli).
-    if (user.isOfficial) {
-      return const OfficialBrandAvatar(size: 52);
-    }
-    final url = user.profilePhotoUrl;
-    if (url != null && url.isNotEmpty) {
-      return ClipOval(
-        child: CachedNetworkImage(
-          imageUrl: url,
-          width: 52,
-          height: 52,
-          fit: BoxFit.cover,
-          placeholder: (_, __) => _initialAvatar(),
-          errorWidget: (_, __, ___) => _initialAvatar(),
-        ),
-      );
-    }
-    return _initialAvatar();
-  }
-
-  Widget _initialAvatar() {
-    return Builder(
-      builder: (context) {
-        final cs = Theme.of(context).colorScheme;
-        return Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: cs.surfaceContainerHighest,
-          ),
-          child: Center(
-            child: Text(
-              user.initial,
-              style: const TextStyle(
-                color: Color(0xFF1D4ED8),
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        );
-      },
+    return ProfileAvatar(
+      initial: user.initial,
+      imageUrl: user.profilePhotoUrl,
+      size: 52,
+      fontSize: 20,
+      isOfficial: user.isOfficial,
+      plain: true,
     );
   }
 }

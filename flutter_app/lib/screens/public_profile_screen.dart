@@ -16,12 +16,14 @@ import '../services/profile_service.dart';
 import '../services/report_service.dart';
 import '../services/video_quality_service.dart';
 import '../state/feed_store.dart';
+import '../state/follow_override_store.dart';
 import '../state/settings_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/moderation_action_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
+import '../widgets/profile_avatar.dart';
 import 'member_post_detail_screen.dart';
 import 'public_profile_follow_list_screen.dart';
 
@@ -63,15 +65,30 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   void initState() {
     super.initState();
     _scrollController = ScrollController()..addListener(_onScroll);
+    followOverrides.addListener(_onFollowOverridesChanged);
     _load();
   }
 
   @override
   void dispose() {
+    followOverrides.removeListener(_onFollowOverridesChanged);
     _scrollController
       ..removeListener(_onScroll)
       ..dispose();
     super.dispose();
+  }
+
+  void _onFollowOverridesChanged() {
+    final profile = _profile;
+    if (!mounted || profile == null || profile.isOwner) return;
+    final following = resolveFollowState(profile.id, profile.isFollowing);
+    if (following == profile.isFollowing) return;
+    final followerDelta = following ? 1 : -1;
+    final followersCount = profile.followersCount + followerDelta;
+    setState(() => _profile = profile.copyWith(
+          isFollowing: following,
+          followersCount: followersCount < 0 ? 0 : followersCount,
+        ));
   }
 
   void _onScroll() {
@@ -82,9 +99,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     }
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool showInitialLoading = true}) async {
     setState(() {
-      _loading = true;
+      // Saat pull-to-refresh, pertahankan profil lama di layar. Loading penuh
+      // hanya tepat untuk kunjungan pertama ketika belum ada data sama sekali.
+      if (showInitialLoading && _profile == null) _loading = true;
       _errorText = null;
       _notFound = false;
     });
@@ -103,7 +122,12 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         fetchedAt: fetchedAt,
       );
       setState(() {
-        _profile = result.profile;
+        _profile = result.profile.copyWith(
+          isFollowing: resolveFollowState(
+            result.profile.id,
+            result.profile.isFollowing,
+          ),
+        );
         _posts = result.posts;
         _nextCursor = result.nextCursor;
         _loading = false;
@@ -151,7 +175,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     }
   }
 
-  Future<void> _refresh() async => _load();
+  Future<void> _refresh() async => _load(showInitialLoading: false);
 
   Future<void> _openFollowList(FollowListKind kind) async {
     final profile = _profile;
@@ -229,6 +253,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         followersCount: optimisticFollowers < 0 ? 0 : optimisticFollowers,
       );
     });
+    setFollowOverride(current.id, !wasFollowing);
 
     try {
       final state = wasFollowing
@@ -243,12 +268,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           followingCount: state.followingCount,
         );
       });
+      setFollowOverride(current.id, state.isFollowing);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
         _followBusy = false;
         _profile = current;
       });
+      setFollowOverride(current.id, wasFollowing);
       if (e.isUnauthorized) {
         Navigator.pushNamed(context, '/member/login');
       } else {
@@ -260,6 +287,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         _followBusy = false;
         _profile = current;
       });
+      setFollowOverride(current.id, wasFollowing);
       _showSnack('Gagal memproses follow. Coba lagi.');
     }
   }
@@ -378,10 +406,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              // Judul official → emas identitas; ikon tetap putih (chrome).
-              color: isOfficial ? NataloColors.officialGold : onAppBar,
+              color: onAppBar,
               fontSize: 18,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
               height: 1.1,
             ),
           ),
@@ -793,106 +820,123 @@ class _OfficialHeader extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(gradient: NataloColors.heroGradientV),
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Logo brand — ring putih + shadow lembut, premium.
-          Container(
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.95),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.22),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: const OfficialBrandAvatar(size: 88),
-          ),
-          const SizedBox(height: 12),
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Flexible(
-                child: Text(
-                  profile.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    // Emas identitas official — seragam dgn feed/komentar.
-                    color: NataloColors.officialGold,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    height: 1.1,
-                  ),
+              Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.18),
+                      blurRadius: 14,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: const ProfileAvatar(
+                  initial: 'N',
+                  size: 78,
+                  fontSize: 28,
+                  isOfficial: true,
+                  plain: true,
                 ),
               ),
-              const SizedBox(width: 6),
-              const OfficialVerifiedBadge(size: 20),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            profile.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              height: 1.1,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        const OfficialVerifiedBadge(size: 19),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            NataloColors.officialGold.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color:
+                              NataloColors.officialGold.withValues(alpha: 0.48),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.shield_rounded,
+                            color: NataloColors.officialGold,
+                            size: 13,
+                          ),
+                          SizedBox(width: 5),
+                          Text(
+                            'AKUN RESMI',
+                            style: TextStyle(
+                              color: NataloColors.officialGold,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 8),
-          // Pill "Akun Resmi" — aksen emas identitas (tint + border emas).
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              color: NataloColors.officialGold.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: NataloColors.officialGold.withValues(alpha: 0.45),
-                width: 0.5,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.shield_rounded,
-                    color: NataloColors.officialGold, size: 13),
-                const SizedBox(width: 5),
-                Text(
-                  profile.bio?.isNotEmpty == true
-                      ? 'AKUN RESMI'
-                      : 'AKUN RESMI NATALO PETSHOP',
-                  style: const TextStyle(
-                    color: NataloColors.officialGold,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.4,
-                    height: 1.0,
-                  ),
-                ),
-              ],
-            ),
-          ),
           if (profile.bio != null && profile.bio!.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 13),
             Text(
               profile.bio!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: NataloColors.onHeroBright,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.88),
                 fontSize: 13,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w400,
                 height: 1.4,
               ),
             ),
           ],
           const SizedBox(height: 16),
-          // Kartu statistik putih mengambang.
+          // Statistik menyatu dengan hero agar profil resmi terasa seperti
+          // satu permukaan, bukan kartu putih yang terpisah dari identitas.
           Container(
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.10),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              color: Colors.white.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.18),
+              ),
             ),
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
             child: Row(
@@ -901,6 +945,7 @@ class _OfficialHeader extends StatelessWidget {
                   child: _OfficialStat(
                     value: profile.postCount,
                     label: 'Postingan',
+                    onHero: true,
                   ),
                 ),
                 _statDivider(),
@@ -909,6 +954,7 @@ class _OfficialHeader extends StatelessWidget {
                     value: profile.followersCount,
                     label: 'Pengikut',
                     onTap: onFollowersTap,
+                    onHero: true,
                   ),
                 ),
                 _statDivider(),
@@ -916,12 +962,13 @@ class _OfficialHeader extends StatelessWidget {
                   child: _OfficialStat(
                     value: profile.likedCount,
                     label: 'Disukai',
+                    onHero: true,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(child: _buildFollowButton()),
@@ -958,7 +1005,7 @@ class _OfficialHeader extends StatelessWidget {
   Widget _statDivider() => Container(
         width: 0.5,
         height: 30,
-        color: NataloColors.grey200,
+        color: Colors.white.withValues(alpha: 0.22),
       );
 
   Widget _buildFollowButton() {
@@ -1011,11 +1058,13 @@ class _OfficialStat extends StatelessWidget {
   final int value;
   final String label;
   final VoidCallback? onTap;
+  final bool onHero;
 
   const _OfficialStat({
     required this.value,
     required this.label,
     this.onTap,
+    this.onHero = false,
   });
 
   @override
@@ -1025,20 +1074,22 @@ class _OfficialStat extends StatelessWidget {
       children: [
         Text(
           formatCountCompact(value),
-          style: const TextStyle(
-            color: Color(0xFF0F2A4A),
+          style: TextStyle(
+            color: onHero ? Colors.white : const Color(0xFF0F2A4A),
             fontSize: 17,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
             height: 1.08,
           ),
         ),
         const SizedBox(height: 3),
         Text(
           label,
-          style: const TextStyle(
-            color: Color(0xFF6B7A90),
+          style: TextStyle(
+            color: onHero
+                ? Colors.white.withValues(alpha: 0.72)
+                : const Color(0xFF6B7A90),
             fontSize: 11.5,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w500,
             height: 1.08,
           ),
         ),
@@ -1101,59 +1152,13 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    // Akun official Natalo → tampilkan logo brand (bukan foto/initial
-    // pribadi). API sudah set profilePhotoUrl null untuk official.
-    if (profile.isOfficial) {
-      return Container(
-        width: 82,
-        height: 82,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: cs.surfaceContainerHighest,
-        ),
-        clipBehavior: Clip.antiAlias,
-        padding: const EdgeInsets.all(14),
-        child: Image.asset(
-          'assets/native/icon-only.png',
-          fit: BoxFit.contain,
-        ),
-      );
-    }
-    final url = profile.profilePhotoUrl;
-    if (url != null && url.isNotEmpty) {
-      return ClipOval(
-        child: CachedNetworkImage(
-          imageUrl: url,
-          width: 82,
-          height: 82,
-          fit: BoxFit.cover,
-          placeholder: (_, __) => _initialAvatar(cs),
-          errorWidget: (_, __, ___) => _initialAvatar(cs),
-        ),
-      );
-    }
-    return _initialAvatar(cs);
-  }
-
-  Widget _initialAvatar(ColorScheme cs) {
-    return Container(
-      width: 82,
-      height: 82,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: cs.surfaceContainerHighest,
-      ),
-      child: Center(
-        child: Text(
-          profile.initial,
-          style: const TextStyle(
-            color: Color(0xFF1D4ED8),
-            fontSize: 30,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
+    return ProfileAvatar(
+      initial: profile.initial,
+      imageUrl: profile.profilePhotoUrl,
+      size: 82,
+      fontSize: 30,
+      isOfficial: profile.isOfficial,
+      plain: true,
     );
   }
 }

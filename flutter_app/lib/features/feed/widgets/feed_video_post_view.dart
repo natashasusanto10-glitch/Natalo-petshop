@@ -33,6 +33,7 @@ import '../../../utils/app_route_observer.dart';
 import '../../../utils/formatters.dart';
 import '../../../utils/haptics.dart';
 import '../video/post_video_coordinator.dart';
+import '../video/frame_output_heartbeat_service.dart';
 import '../video/single_dispose_guard.dart';
 import '../video/video_audio_arbiter.dart';
 import '../video/video_player_session.dart';
@@ -45,6 +46,13 @@ import 'feed_creator_overlay.dart';
 import 'feed_post_scrim.dart';
 import 'feed_post_shared_widgets.dart';
 import 'feed_video_scrubber.dart';
+
+typedef FeedVideoHealthMonitorFactory = VideoPlaybackHealthMonitor Function({
+  required VideoPlaybackSnapshot Function() readSnapshot,
+  required Future<void> Function(Duration position) onPlaybackStall,
+  required FrameOutputStallRecover onFrameOutputStall,
+  required Map<String, Object> metricContext,
+});
 
 /// Target hasil drag comment sheet saat gesture berakhir (dipakai oleh
 /// [commentSnapTargetFor] — pure function supaya bisa di-unit-test tanpa
@@ -209,6 +217,10 @@ class FeedVideoPostView extends StatefulWidget {
   /// user-pause eksplisit).
   final VoidCallback? onRequestUserTogglePlay;
 
+  /// Test seams for the native frame-output route and watchdog scheduling.
+  final FrameOutputHeartbeatService? frameOutputHeartbeatService;
+  final FeedVideoHealthMonitorFactory? healthMonitorFactory;
+
   const FeedVideoPostView({
     super.key,
     required this.post,
@@ -228,6 +240,8 @@ class FeedVideoPostView extends StatefulWidget {
     this.onRequestPause,
     this.onRequestPlay,
     this.onRequestUserTogglePlay,
+    this.frameOutputHeartbeatService,
+    this.healthMonitorFactory,
   });
 
   @override
@@ -287,7 +301,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   bool _commentSheetOpen = false;
   bool _videoLoadFailed = false;
   bool _commentSheetClosingFromDrag = false;
-  int _commentAddedCount = 0;
   int _featuredProductIndex = 0;
   Timer? _productRotationTimer;
   double _commentDragOffset = 0;
@@ -332,6 +345,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   Offset? _heartBurstTarget;
   final GlobalKey _likeButtonKey = GlobalKey();
   late final VideoPlaybackHealthMonitor _playbackHealthMonitor;
+  FrameOutputHeartbeatRegistration? _frameOutputRegistration;
+  VideoPlayerController? _frameOutputController;
+  int _playbackDiscontinuitySequence = 0;
+  int _controllerGeneration = 0;
   final Stopwatch _startupStopwatch = Stopwatch()..start();
   bool _initMetricStarted = false;
   bool _playMetricRecorded = false;
@@ -344,17 +361,25 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   @override
   void initState() {
     super.initState();
-    _playbackHealthMonitor = VideoPlaybackHealthMonitor(
-      readSnapshot: _playbackHealthSnapshot,
-      onRecover: _recoverPlaybackStall,
-      metricContext: {
-        'surface': 'feed',
-        'media_type': widget.post.videoUrl.contains('.m3u8') ? 'hls' : 'mp4',
-        'media_key': widget.post.id.hashCode.toUnsigned(32).toRadixString(16),
-        'network_tier': videoQualityService.currentTier.name,
-        'quality_preference': appSettingsStore.feedVideoQuality,
-      },
-    );
+    final metricContext = <String, Object>{
+      'surface': 'feed',
+      'media_type': widget.post.videoUrl.contains('.m3u8') ? 'hls' : 'mp4',
+      'media_key': widget.post.id.hashCode.toUnsigned(32).toRadixString(16),
+      'network_tier': videoQualityService.currentTier.name,
+      'quality_preference': appSettingsStore.feedVideoQuality,
+    };
+    _playbackHealthMonitor = widget.healthMonitorFactory?.call(
+          readSnapshot: _playbackHealthSnapshot,
+          onPlaybackStall: _recoverPlaybackStall,
+          onFrameOutputStall: _recoverFrameOutputStall,
+          metricContext: metricContext,
+        ) ??
+        VideoPlaybackHealthMonitor(
+          readSnapshot: _playbackHealthSnapshot,
+          onRecover: _recoverPlaybackStall,
+          onFrameOutputStallRecover: _recoverFrameOutputStall,
+          metricContext: metricContext,
+        );
     if (!_managed) _playbackHealthMonitor.start();
     // Seed shared FeedStore + subscribe — single source of truth untuk
     // like/comment sync antar screen. Detail screen yang juga listen ke
@@ -859,6 +884,45 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   bool _initInFlight = false;
   bool _ownsLocalController = false;
 
+  void _unregisterFrameOutput() {
+    _frameOutputRegistration?.unregister();
+    _frameOutputRegistration = null;
+    _frameOutputController = null;
+  }
+
+  void _registerFrameOutput(VideoPlayerController controller) {
+    if (_managed || !controller.value.isInitialized) return;
+    if (identical(_frameOutputController, controller) &&
+        (_frameOutputRegistration?.isRegistered ?? false)) {
+      return;
+    }
+    _unregisterFrameOutput();
+    try {
+      _frameOutputRegistration = (widget.frameOutputHeartbeatService ??
+              FrameOutputHeartbeatService.instance)
+          .register(controller);
+      _frameOutputController = controller;
+    } catch (_) {
+      // Native heartbeat support is optional and must never affect playback.
+    }
+  }
+
+  void _replaceController(VideoPlayerController? controller) {
+    if (identical(_videoController, controller)) return;
+    _unregisterFrameOutput();
+    _controllerGeneration++;
+    _playbackDiscontinuitySequence++;
+    _videoController = controller;
+  }
+
+  Future<void> _seekWithDiscontinuity(
+    VideoPlayerController controller,
+    Duration position,
+  ) {
+    _playbackDiscontinuitySequence++;
+    return controller.seekTo(position);
+  }
+
   void _commitLocalOwnership() {
     if (_ownsLocalController) return;
     _ownsLocalController = true;
@@ -929,7 +993,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // onInit (variabel lokal assignable yang di-capture).
     final ctrl = controller;
     _resetBufferAheadReporting();
-    _videoController = ctrl;
+    _replaceController(ctrl);
     _commitLocalOwnership();
     // Adopt wrapper juga supaya child bisa dispose properly. Wrapper
     // might be null (legacy or unwrapped). Either way, controller-level
@@ -943,6 +1007,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // Managed (§2.1): coordinator yang set volume + play (via setActive).
     // Widget cuma merender VideoPlayer + overlay. Jangan sentuh controller.
     if (!_managed) {
+      if (ctrl.value.isInitialized) _registerFrameOutput(ctrl);
       if (_canAutoplayNow()) {
         await _playLegacy(ctrl, 'adopt');
       } else {
@@ -957,6 +1022,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
           if (!ctrl.value.isInitialized) return;
           ctrl.removeListener(onInit);
           if (!mounted || _videoController != ctrl) return;
+          _registerFrameOutput(ctrl);
           // Race fix: controller BENAR-BENAR siap sekarang — kalau Feed
           // sudah tertutup (route/app) di titik ini, paksa senyap eksplisit
           // + jangan play. _canAutoplayNow di bawah sudah blokir play(), tapi
@@ -1045,7 +1111,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       if (_videoController != null) {
         _videoController!.removeListener(_handleVideoPositionForCta);
         _resetBufferAheadReporting();
-        _videoController = null;
+        _replaceController(null);
         if (mounted) setState(() {});
       }
       return;
@@ -1062,7 +1128,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     if (identical(old, ctrl)) return;
     old?.removeListener(_handleVideoPositionForCta);
     _resetBufferAheadReporting();
-    _videoController = ctrl;
+    _replaceController(ctrl);
     ctrl.addListener(_handleVideoPositionForCta);
     _cancelLoadingSpinnerDelay();
     if (mounted) setState(() {});
@@ -1188,7 +1254,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         _isPaused = false;
         _commentDrawerMounted = false;
         _commentSheetOpen = false;
-        _commentAddedCount = 0;
         _featuredProductIndex = 0;
         _commentSheetClosingFromDrag = false;
         _commentDragOffset = 0;
@@ -1217,7 +1282,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
           try {
             _videoController?.setPlaybackSpeed(1.0);
           } catch (_) {}
-          _videoController?.seekTo(Duration.zero);
+          final controller = _videoController;
+          if (controller != null) {
+            unawaited(_seekWithDiscontinuity(controller, Duration.zero));
+          }
         }
         _stopProductRotation();
       }
@@ -1322,6 +1390,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     required String resolvedUrl,
     required bool useCacheWrapper,
     required bool userInitiated,
+    Duration? initialPosition,
   }) async {
     CachedVideoPlayerPlus? wrapper;
     VideoPlayerController? controller;
@@ -1353,12 +1422,16 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         _cachedPlayer = null;
         return true; // not failed, just unmounted; skip retry
       }
-      _videoController = controller;
+      _replaceController(controller);
       _resetBufferAheadReporting();
       _commitLocalOwnership();
       controller.addListener(_handleVideoPositionForCta);
+      _registerFrameOutput(controller);
       _cancelLoadingSpinnerDelay();
       await controller.setLooping(true);
+      if (initialPosition != null) {
+        await _seekWithDiscontinuity(controller, initialPosition);
+      }
       _playbackHealthMonitor.record('video_init_ready', {
         'duration_ms': _startupStopwatch.elapsedMilliseconds,
       });
@@ -1390,7 +1463,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         );
       } catch (_) {}
       _cachedPlayer = null;
-      _videoController = null;
+      _replaceController(null);
       return false;
     }
   }
@@ -1407,6 +1480,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       position: value?.position ?? Duration.zero,
       duration: value?.duration ?? Duration.zero,
       bufferAhead: _bufferAhead(value),
+      frameOutputCount: _frameOutputRegistration?.latest?.frameCount,
+      playbackDiscontinuitySequence: _playbackDiscontinuitySequence,
     );
   }
 
@@ -1433,10 +1508,72 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       return;
     }
     await controller.pause();
-    await controller.seekTo(position);
+    await _seekWithDiscontinuity(controller, position);
     if (_canAutoplayNow() && !_isPaused && widget.isActive) {
       await _playLegacy(controller, 'stall-recovery');
     }
+  }
+
+  Future<void> _recoverFrameOutputStall(
+    Duration position,
+    int attempt,
+  ) async {
+    final controller = _videoController;
+    final generation = _controllerGeneration;
+    final discontinuity = _playbackDiscontinuitySequence;
+    if (controller == null || !_canAutoplayNow() || !widget.isActive) return;
+
+    if (attempt == 1) {
+      await controller.pause();
+      if (!mounted ||
+          generation != _controllerGeneration ||
+          discontinuity != _playbackDiscontinuitySequence ||
+          !identical(controller, _videoController)) {
+        return;
+      }
+      await _seekWithDiscontinuity(controller, position);
+      if (mounted &&
+          generation == _controllerGeneration &&
+          identical(controller, _videoController) &&
+          _canAutoplayNow()) {
+        await _playLegacy(controller, 'frame-stall-recovery-1');
+      }
+      return;
+    }
+
+    if (attempt != 2 || !widget.ownsController || !_ownsLocalController) return;
+    final resolvedUrl = videoQualityService.resolvePlaybackUrl(
+      widget.post.videoPlaybackUrl,
+      dataSaverUrl: widget.post.videoDataSaverUrl,
+      userPreference: appSettingsStore.feedVideoQuality,
+    );
+    if (resolvedUrl.isEmpty) return;
+
+    final wrapper = _cachedPlayer;
+    controller.removeListener(_handleVideoPositionForCta);
+    _replaceController(null);
+    _cachedPlayer = null;
+    _localInitCachedPlayer = null;
+    _localInitController = null;
+    _releaseAudio();
+    if (wrapper != null) {
+      await wrapper.dispose();
+    } else {
+      await controller.dispose();
+    }
+    if (!mounted ||
+        _videoController != null ||
+        discontinuity + 1 != _playbackDiscontinuitySequence) {
+      return;
+    }
+
+    final rebuilt = await _tryInitVideoController(
+      resolvedUrl: resolvedUrl,
+      useCacheWrapper: !resolvedUrl.contains('.m3u8'),
+      userInitiated: false,
+      initialPosition: position,
+    );
+    if (!rebuilt && mounted) setState(() => _videoLoadFailed = true);
   }
 
   void _recordPlayMetric() {
@@ -1450,6 +1587,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   @override
   void dispose() {
     _legacyDisposed = true;
+    _unregisterFrameOutput();
     if (!_managed) _releaseAudio();
     _playbackHealthMonitor.dispose();
     appRouteObserver.unsubscribe(this);
@@ -1504,7 +1642,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       }
     }
     _cachedPlayer = null;
-    _videoController = null;
+    _replaceController(null);
     _heartBurstController.dispose();
     super.dispose();
   }
@@ -1707,7 +1845,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     pushAndroidBackOverlayCloser(_androidBackCommentCloser);
     setState(() {
       _commentDrawerMounted = true;
-      _commentAddedCount = 0;
       _commentSheetClosingFromDrag = false;
       _commentDragOffset = 0;
       // Panel caption tertutup saat komentar dibuka — dua panel baca
@@ -1731,7 +1868,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     if (_commentDrawerMounted) _closeComments();
   }
 
-  void _closeComments([int addedCount = 0]) {
+  void _closeComments() {
     if (!_commentDrawerMounted) return;
     FocusScope.of(context).unfocus();
     AppHaptics.tap();
@@ -1740,17 +1877,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // Aman dipanggil walau closer udah ke-consume oleh back press
     // (consumeAndroidBackOverlay sudah removeLast SEBELUM call closer).
     popAndroidBackOverlayCloser(_androidBackCommentCloser);
-    final countDelta = math.max(addedCount, _commentAddedCount);
-    if (countDelta > 0) {
-      // Propagasi ke FeedStore — semua screen lain (Detail / Public
-      // Profile / Postingan Saya) yang baca count dari store ikut update.
-      // Local _commentCount field auto-update via _onFeedStoreChanged.
-      final base = feedStore.get(widget.post.id)?.commentCount ?? _commentCount;
-      feedStore.setCommentCount(widget.post.id, base + countDelta);
-    }
     setState(() {
       _commentSheetOpen = false;
-      _commentAddedCount = 0;
       _commentDragOffset = 0;
     });
     // Resume video segera saat close dari FULL extent (barrier-tap/Android
@@ -2277,7 +2405,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         final pos = ctrl?.value.position;
         ctrl?.setPlaybackSpeed(1.0);
         if (pos != null && ctrl != null && ctrl.value.isInitialized) {
-          await ctrl.seekTo(pos);
+          await _seekWithDiscontinuity(ctrl, pos);
         }
       } catch (_) {}
     }
@@ -2418,9 +2546,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                             applyKeyboardInset: false,
                             sheetScrollController: scrollController,
                             onClose: _closeComments,
-                            onAddedCountChanged: (count) {
-                              _commentAddedCount = count;
-                            },
                             onDragUpdate: _onCommentDragUpdate,
                             onDragEnd: _onCommentDragEnd,
                           );
@@ -2618,6 +2743,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                               managed: _managed,
                               onScrubbingChanged: (scrubbing) {
                                 if (!mounted) return;
+                                if (scrubbing && !_isScrubbing) {
+                                  _playbackDiscontinuitySequence++;
+                                }
                                 setState(() => _isScrubbing = scrubbing);
                               },
                             ),

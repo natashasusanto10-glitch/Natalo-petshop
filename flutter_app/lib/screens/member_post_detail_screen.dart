@@ -571,6 +571,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
         // Owner viewing own post → fallback ke memberStore.
         authorName: _memberName,
         authorAvatarUrl: _memberPhotoUrl,
+        authorIsOfficial: widget.authorIsOfficial,
       ),
     );
   }
@@ -1472,15 +1473,14 @@ class _PostAuthorRow extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
       child: Row(
         children: [
-          if (isOfficial)
-            const OfficialBrandAvatar(size: 36)
-          else
-            ProfileAvatar(
-              initial: memberInitial,
-              imageUrl: memberPhotoUrl,
-              size: 36,
-              fontSize: 15,
-            ),
+          ProfileAvatar(
+            initial: memberInitial,
+            imageUrl: memberPhotoUrl,
+            size: 36,
+            fontSize: 15,
+            isOfficial: isOfficial,
+            plain: isOfficial,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Row(
@@ -1559,15 +1559,14 @@ class _VideoPostAuthorOverlay extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 10, 6, 28),
         child: Row(
           children: [
-            if (isOfficial)
-              const OfficialBrandAvatar(size: 36)
-            else
-              ProfileAvatar(
-                initial: memberInitial,
-                imageUrl: memberPhotoUrl,
-                size: 36,
-                fontSize: 15,
-              ),
+            ProfileAvatar(
+              initial: memberInitial,
+              imageUrl: memberPhotoUrl,
+              size: 36,
+              fontSize: 15,
+              isOfficial: isOfficial,
+              plain: isOfficial,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Row(
@@ -1801,6 +1800,7 @@ class _LikedAvatarStack extends StatelessWidget {
                       initial: visible[1].initial,
                       photoUrl:
                           visible[1].profilePhotoUrl ?? visible[1].avatarUrl,
+                      isOfficial: visible[1].isOfficialAccount,
                       size: size,
                     )
                   : _MiniAvatar.placeholder(size: size),
@@ -1812,6 +1812,7 @@ class _LikedAvatarStack extends StatelessWidget {
                     initial: visible.first.initial,
                     photoUrl: visible.first.profilePhotoUrl ??
                         visible.first.avatarUrl,
+                    isOfficial: visible.first.isOfficialAccount,
                     size: size,
                   )
                 : _MiniAvatar.placeholder(size: size),
@@ -1827,20 +1828,28 @@ class _MiniAvatar extends StatelessWidget {
   final String? photoUrl;
   final String? initial;
   final Color? backgroundColor;
+  final bool isOfficial;
 
   const _MiniAvatar({
     required this.size,
     this.photoUrl,
     this.initial,
     this.backgroundColor,
+    this.isOfficial = false,
   });
 
   factory _MiniAvatar.member({
     required String initial,
     required String? photoUrl,
+    required bool isOfficial,
     required double size,
   }) =>
-      _MiniAvatar(size: size, photoUrl: photoUrl, initial: initial);
+      _MiniAvatar(
+        size: size,
+        photoUrl: photoUrl,
+        initial: initial,
+        isOfficial: isOfficial,
+      );
 
   factory _MiniAvatar.placeholder({required double size}) => _MiniAvatar(
         size: size,
@@ -1862,14 +1871,16 @@ class _MiniAvatar extends StatelessWidget {
         border: Border.all(color: Colors.white, width: 1.6),
       ),
       clipBehavior: Clip.antiAlias,
-      child: url != null && url.isNotEmpty
-          ? CachedNetworkImage(
+      child: backgroundColor != null
+          ? _miniAvatarFallback(cs)
+          : ProfileAvatar(
+              initial: initial ?? 'N',
               imageUrl: url,
-              fit: BoxFit.cover,
-              errorWidget: (_, __, ___) => _miniAvatarFallback(cs),
-              placeholder: (_, __) => _miniAvatarFallback(cs),
-            )
-          : _miniAvatarFallback(cs),
+              size: size,
+              fontSize: size * 0.45,
+              isOfficial: isOfficial,
+              plain: true,
+            ),
     );
   }
 
@@ -2970,11 +2981,13 @@ class _MyPostCommentSheet extends StatefulWidget {
   final FeedPost post;
   final String authorName;
   final String? authorAvatarUrl;
+  final bool authorIsOfficial;
 
   const _MyPostCommentSheet({
     required this.post,
     required this.authorName,
     this.authorAvatarUrl,
+    this.authorIsOfficial = false,
   });
 
   @override
@@ -2982,6 +2995,8 @@ class _MyPostCommentSheet extends StatefulWidget {
 }
 
 class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
+  static const int _replyBatchSize = 3;
+
   final TextEditingController _inputController = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
   // @mention autocomplete — attach ke input controller. Saat user ketik
@@ -3000,9 +3015,9 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
   /// cancel pill di atas. Submit pakai parentCommentId = _replyingTo.id.
   FeedComment? _replyingTo;
 
-  /// Parent comment IDs yang sedang di-expand replies. Default collapsed
-  /// (match IG: user harus tap "Lihat N balasan" supaya replies muncul).
-  final Set<String> _expandedReplies = {};
+  /// Jumlah balasan terbaru yang terlihat per parent. Tanpa entry berarti
+  /// collapsed; balasan dibuka bertahap agar sheet tidak memanjang mendadak.
+  final Map<String, int> _visibleReplyCounts = {};
 
   /// Comment IDs yang sedang dalam optimistic like toggle — guard
   /// supaya tidak double-fire request kalau user spam tap.
@@ -3026,7 +3041,8 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
       author: FeedAuthor(
         id: 'self',
         name: widget.authorName,
-        role: 'CUSTOMER',
+        role: widget.authorIsOfficial ? 'ADMIN' : 'CUSTOMER',
+        isOfficial: widget.authorIsOfficial,
         profilePhotoUrl: widget.authorAvatarUrl,
       ),
       viewerLiked: false,
@@ -3100,15 +3116,18 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
     return candidate;
   }
 
-  void _toggleRepliesExpanded(String parentId) {
+  void _showMoreReplies(String parentId, int totalReplies) {
     AppHaptics.tap();
     setState(() {
-      if (_expandedReplies.contains(parentId)) {
-        _expandedReplies.remove(parentId);
-      } else {
-        _expandedReplies.add(parentId);
-      }
+      final current = _visibleReplyCounts[parentId] ?? 0;
+      _visibleReplyCounts[parentId] =
+          (current + _replyBatchSize).clamp(0, totalReplies);
     });
+  }
+
+  void _hideReplies(String parentId) {
+    AppHaptics.tap();
+    setState(() => _visibleReplyCounts.remove(parentId));
   }
 
   Future<void> _toggleCommentLike(FeedComment comment) async {
@@ -3181,12 +3200,13 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
     setState(() => _posting = true);
     final replyTo = _replyingTo;
     try {
-      final comment = await feedService.postComment(
+      final result = await feedService.postComment(
         widget.post.id,
         content: text,
         parentCommentId: replyTo?.id,
       );
       if (!mounted) return;
+      final comment = result.comment;
       _inputController.clear();
       setState(() {
         _replyingTo = null;
@@ -3203,7 +3223,7 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
               replyCount: newReplies.length,
             );
           }).toList();
-          _expandedReplies.add(replyTo.id);
+          _visibleReplyCounts[replyTo.id] = _replyBatchSize;
         }
       });
       // Sync count ke FeedStore — semua screen lain (Reels, grid Postingan
@@ -3212,7 +3232,10 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
       // tetap stale sampai refresh.
       final fresh = feedStore.get(widget.post.id);
       final current = fresh?.commentCount ?? widget.post.commentCount;
-      feedStore.setCommentCount(widget.post.id, current + 1);
+      feedStore.setCommentCount(
+        widget.post.id,
+        result.commentCount ?? current + 1,
+      );
     } catch (_) {
       if (!mounted) return;
       AppToast.show(context, 'Gagal kirim komentar, coba lagi');
@@ -3248,6 +3271,7 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
     if (confirmed != true || !mounted) return;
 
     final isTopLevel = comment.parentCommentId == null;
+    final removedCount = isTopLevel ? 1 + comment.replies.length : 1;
     final snapshot = _comments;
     // Optimistic remove — top-level: drop dari list. Reply: drop dari
     // replies parent + recompute replyCount.
@@ -3268,12 +3292,14 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
     });
 
     try {
-      await feedService.deleteComment(comment.id);
-      if (isTopLevel) {
-        final fresh = feedStore.get(widget.post.id);
-        final current = fresh?.commentCount ?? widget.post.commentCount;
-        feedStore.setCommentCount(widget.post.id, current - 1);
-      }
+      final result = await feedService.deleteComment(comment.id);
+      final fresh = feedStore.get(widget.post.id);
+      final current = fresh?.commentCount ?? widget.post.commentCount;
+      feedStore.setCommentCount(
+        widget.post.id,
+        result.commentCount ??
+            (current > removedCount ? current - removedCount : 0),
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() => _comments = snapshot);
@@ -3366,20 +3392,26 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                     }
                     for (final top in _comments) {
                       entries.add(_CommentEntry.comment(top, isReply: false));
-                      if (top.replyCount > 0) {
+                      if (top.replies.isNotEmpty) {
+                        final visibleCount =
+                            (_visibleReplyCounts[top.id] ?? 0).clamp(
+                          0,
+                          top.replies.length,
+                        );
+                        for (final reply in latestVisibleFeedReplies(
+                          top.replies,
+                          visibleCount,
+                        )) {
+                          entries.add(
+                            _CommentEntry.comment(reply, isReply: true),
+                          );
+                        }
                         entries.add(
                           _CommentEntry.repliesToggle(
                             parent: top,
-                            expanded: _expandedReplies.contains(top.id),
+                            visibleReplies: visibleCount,
                           ),
                         );
-                        if (_expandedReplies.contains(top.id)) {
-                          for (final reply in top.replies) {
-                            entries.add(
-                              _CommentEntry.comment(reply, isReply: true),
-                            );
-                          }
-                        }
                       }
                     }
                     return ListView.separated(
@@ -3420,11 +3452,15 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                             );
                           case _CommentEntryKind.repliesToggle:
                             return _RepliesToggle(
-                              parentId: entry.comment!.id,
-                              replyCount: entry.comment!.replyCount,
-                              expanded: entry.expanded,
-                              onTap: () =>
-                                  _toggleRepliesExpanded(entry.comment!.id),
+                              replyCount: entry.comment!.replies.length,
+                              visibleReplies: entry.visibleReplies,
+                              onShowMore: () => _showMoreReplies(
+                                entry.comment!.id,
+                                entry.comment!.replies.length,
+                              ),
+                              onHide: entry.visibleReplies > 0
+                                  ? () => _hideReplies(entry.comment!.id)
+                                  : null,
                             );
                         }
                       },
@@ -3576,13 +3612,13 @@ class _CommentEntry {
   final _CommentEntryKind kind;
   final FeedComment? comment;
   final bool isReply;
-  final bool expanded;
+  final int visibleReplies;
 
   const _CommentEntry._({
     required this.kind,
     this.comment,
     this.isReply = false,
-    this.expanded = false,
+    this.visibleReplies = 0,
   });
 
   factory _CommentEntry.caption(FeedComment row) =>
@@ -3597,12 +3633,12 @@ class _CommentEntry {
 
   factory _CommentEntry.repliesToggle({
     required FeedComment parent,
-    required bool expanded,
+    required int visibleReplies,
   }) =>
       _CommentEntry._(
         kind: _CommentEntryKind.repliesToggle,
         comment: parent,
-        expanded: expanded,
+        visibleReplies: visibleReplies,
       );
 }
 
@@ -3658,6 +3694,8 @@ class _CommentTile extends StatelessWidget {
             // Reply pakai avatar lebih kecil supaya hierarchy visual jelas.
             size: isReply ? 28 : 34,
             fontSize: isReply ? 12 : 14,
+            isOfficial: author.isOfficialAccount,
+            plain: author.isOfficialAccount,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -3802,16 +3840,16 @@ class _CommentTile extends StatelessWidget {
 }
 
 class _RepliesToggle extends StatelessWidget {
-  final String parentId;
   final int replyCount;
-  final bool expanded;
-  final VoidCallback onTap;
+  final int visibleReplies;
+  final VoidCallback onShowMore;
+  final VoidCallback? onHide;
 
   const _RepliesToggle({
-    required this.parentId,
     required this.replyCount,
-    required this.expanded,
-    required this.onTap,
+    required this.visibleReplies,
+    required this.onShowMore,
+    this.onHide,
   });
 
   @override
@@ -3819,28 +3857,55 @@ class _RepliesToggle extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(left: 40, top: 2),
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 24,
-              height: 1,
-              color: cs.outlineVariant,
-              margin: const EdgeInsets.only(right: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 24,
+            height: 1,
+            color: cs.outlineVariant,
+            margin: const EdgeInsets.only(right: 8),
+          ),
+          if (replyCount - visibleReplies > 0)
+            Flexible(
+              child: InkWell(
+                onTap: onShowMore,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    visibleReplies == 0
+                        ? 'Lihat $replyCount balasan'
+                        : 'Lihat ${replyCount - visibleReplies} balasan lainnya',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
             ),
-            Text(
-              expanded ? 'Sembunyikan balasan' : 'Lihat $replyCount balasan',
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
+          if (onHide != null) ...[
+            if (replyCount - visibleReplies > 0) const Spacer(),
+            InkWell(
+              onTap: onHide,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 8,
+                ),
+                child: Text(
+                  'Sembunyikan',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
             ),
           ],
-        ),
+        ],
       ),
     );
   }

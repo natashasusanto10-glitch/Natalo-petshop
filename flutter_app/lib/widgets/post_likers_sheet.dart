@@ -1,13 +1,14 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
 
 import '../screens/public_profile_screen.dart';
 import '../services/api_client.dart';
 import '../services/follow_service.dart';
+import '../state/follow_override_store.dart';
 import 'official_brand_avatar.dart';
 import '../services/post_likers_service.dart';
 import '../utils/haptics.dart';
+import 'profile_avatar.dart';
 
 const _brandBlue = NataloColors.primary;
 
@@ -132,6 +133,7 @@ class _PostLikersSheetState extends State<PostLikersSheet> {
       _followBusy.add(liker.id);
       _items[index] = liker.copyWith(isFollowing: !wasFollowing);
     });
+    setFollowOverride(liker.id, !wasFollowing);
 
     try {
       final state = wasFollowing
@@ -146,6 +148,7 @@ class _PostLikersSheetState extends State<PostLikersSheet> {
           followersCount: state.followersCount,
         );
       });
+      setFollowOverride(liker.id, state.isFollowing);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -153,6 +156,7 @@ class _PostLikersSheetState extends State<PostLikersSheet> {
         // Rollback optimistic update.
         _items[index] = _items[index].copyWith(isFollowing: wasFollowing);
       });
+      setFollowOverride(liker.id, wasFollowing);
       if (e.isUnauthorized) {
         Navigator.pop(context);
         Navigator.pushNamed(context, '/member/login');
@@ -167,6 +171,7 @@ class _PostLikersSheetState extends State<PostLikersSheet> {
         _followBusy.remove(liker.id);
         _items[index] = _items[index].copyWith(isFollowing: wasFollowing);
       });
+      setFollowOverride(liker.id, wasFollowing);
     }
   }
 
@@ -440,47 +445,13 @@ class _Avatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const size = 42.0;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    // Akun official → logo brand NL (server null-kan foto asli).
-    if (liker.isOfficial) {
-      return const OfficialBrandAvatar(size: size);
-    }
-    final url = liker.profilePhotoUrl;
-    if (url != null && url.isNotEmpty) {
-      return ClipOval(
-        child: CachedNetworkImage(
-          imageUrl: url,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          placeholder: (_, __) => _initialAvatar(size, isDark),
-          errorWidget: (_, __, ___) => _initialAvatar(size, isDark),
-        ),
-      );
-    }
-    return _initialAvatar(size, isDark);
-  }
-
-  Widget _initialAvatar(double size, bool isDark) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: isDark
-            ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
-            : const Color(0xFFEFF6FF),
-      ),
-      child: Center(
-        child: Text(
-          liker.initial,
-          style: const TextStyle(
-            color: Color(0xFF1D4ED8),
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
+    return ProfileAvatar(
+      initial: liker.initial,
+      imageUrl: liker.profilePhotoUrl,
+      size: size,
+      fontSize: 16,
+      isOfficial: liker.isOfficial,
+      plain: true,
     );
   }
 }

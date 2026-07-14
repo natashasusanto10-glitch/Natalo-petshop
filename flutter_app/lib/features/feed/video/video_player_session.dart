@@ -7,12 +7,18 @@ import 'package:video_player/video_player.dart';
 import '../../../services/video_quality_service.dart';
 import '../../../state/settings_store.dart';
 import 'post_video_coordinator.dart';
+import 'frame_output_heartbeat_service.dart';
 import 'video_playback_health_monitor.dart';
 
 /// Satu percobaan init (plugin-free seam). Melempar bila gagal; pada sukses,
 /// implementasi nyata sudah menyimpan controller/wrapper. Di-inject di test
 /// supaya orkestrasi retry (T4) bisa diuji tanpa plugin.
 typedef VideoInitAttempt = Future<void> Function(String url);
+
+/// Plugin-free operations for focused ownership/recovery tests.
+typedef VideoSessionOperation = Future<void> Function();
+typedef VideoSessionSeekOperation = Future<void> Function(Duration position);
+typedef VideoSessionVolumeOperation = Future<void> Function(double volume);
 
 /// Implementasi nyata [PlaybackSession] (T3) — membungkus satu
 /// [VideoPlayerController] (+ optional wrapper cache MP4). Sesi ini DIMILIKI
@@ -49,17 +55,35 @@ class VideoPlayerSession implements PlaybackSession {
     @visibleForTesting NetworkTier? debugNetworkTier,
     @visibleForTesting VideoInitAttempt? debugInitAttempt,
     @visibleForTesting Future<void> Function(Duration)? debugDelay,
+    @visibleForTesting FrameOutputHeartbeatService? debugHeartbeatService,
+    @visibleForTesting int Function()? debugPlayerId,
+    @visibleForTesting Duration Function()? debugPosition,
+    @visibleForTesting VideoSessionOperation? debugPlay,
+    @visibleForTesting VideoSessionOperation? debugPause,
+    @visibleForTesting VideoSessionSeekOperation? debugSeek,
+    @visibleForTesting VideoSessionVolumeOperation? debugSetVolume,
+    @visibleForTesting VideoSessionOperation? debugDisposePlayer,
   })  : _currentUrl = url,
         _userQualityPreference =
             userQualityPreference ?? appSettingsStore.feedVideoQuality,
         _urlRefresher = urlRefresher,
         _debugInitAttempt = debugInitAttempt,
         _debugDelay = debugDelay,
+        _heartbeatService =
+            debugHeartbeatService ?? FrameOutputHeartbeatService.instance,
+        _debugPlayerId = debugPlayerId,
+        _debugPosition = debugPosition,
+        _debugPlay = debugPlay,
+        _debugPause = debugPause,
+        _debugSeek = debugSeek,
+        _debugSetVolume = debugSetVolume,
+        _debugDisposePlayer = debugDisposePlayer,
         _analyticsPostId = analyticsPostId,
         _analyticsSurface = analyticsSurface {
     _healthMonitor = VideoPlaybackHealthMonitor(
       readSnapshot: _healthSnapshot,
       onRecover: _recoverFromStall,
+      onFrameOutputStallRecover: _recoverFromFrameOutputStall,
       metricContext: {
         'surface': _analyticsSurface,
         'media_type': _currentUrl.contains('.m3u8') ? 'hls' : 'mp4',
@@ -84,6 +108,14 @@ class VideoPlayerSession implements PlaybackSession {
   final Future<String?> Function()? _urlRefresher;
   final VideoInitAttempt? _debugInitAttempt;
   final Future<void> Function(Duration)? _debugDelay;
+  final FrameOutputHeartbeatService _heartbeatService;
+  final int Function()? _debugPlayerId;
+  final Duration Function()? _debugPosition;
+  final VideoSessionOperation? _debugPlay;
+  final VideoSessionOperation? _debugPause;
+  final VideoSessionSeekOperation? _debugSeek;
+  final VideoSessionVolumeOperation? _debugSetVolume;
+  final VideoSessionOperation? _debugDisposePlayer;
   final String? _analyticsPostId;
   final String _analyticsSurface;
   late final VideoPlaybackHealthMonitor _healthMonitor;
@@ -92,6 +124,8 @@ class VideoPlayerSession implements PlaybackSession {
 
   CachedVideoPlayerPlus? _wrapper;
   VideoPlayerController? _controller;
+  FrameOutputHeartbeatRegistration? _heartbeatRegistration;
+  int _playbackDiscontinuitySequence = 0;
 
   bool _disposed = false;
   bool _initInFlight = false;
@@ -141,6 +175,7 @@ class VideoPlayerSession implements PlaybackSession {
             return;
           }
           _initialized = true;
+          _registerHeartbeat();
           _error = null;
           _healthMonitor.record('video_init_ready', {
             'duration_ms': _startupStopwatch.elapsedMilliseconds,
@@ -218,17 +253,17 @@ class VideoPlayerSession implements PlaybackSession {
 
   Future<void> _applyDesiredState() async {
     final ctrl = _controller;
-    if (ctrl == null) return; // seam test: tak ada controller nyata.
-    await ctrl.setLooping(true);
-    await ctrl.setVolume(_wantVolume);
+    if (ctrl == null && _debugInitAttempt == null) return;
+    if (ctrl != null) await ctrl.setLooping(true);
+    await _setPlayerVolume(_wantVolume);
     if (_wantSeek > Duration.zero) {
-      await ctrl.seekTo(_wantSeek);
+      await _seekPlayer(_wantSeek);
     }
     if (_wantPlay) {
-      await ctrl.play();
+      await _playPlayer();
       _recordPlayStarted();
     } else {
-      await ctrl.pause();
+      await _pausePlayer();
     }
   }
 
@@ -240,12 +275,17 @@ class VideoPlayerSession implements PlaybackSession {
     final controller = _controller;
     _wrapper = null;
     _controller = null;
+    _unregisterHeartbeat();
     controller?.removeListener(_observePlaybackStateTransition);
     try {
       if (wrapper != null) {
         await wrapper.dispose();
       } else {
-        await controller?.dispose();
+        if (controller != null) {
+          await controller.dispose();
+        } else {
+          await _debugDisposePlayer?.call();
+        }
       }
     } catch (_) {}
   }
@@ -309,8 +349,8 @@ class VideoPlayerSession implements PlaybackSession {
     if (_disposed) return;
     _wantPlay = true;
     final ctrl = _controller;
-    if (_initialized && ctrl != null) {
-      await ctrl.play();
+    if (_initialized && (ctrl != null || _debugInitAttempt != null)) {
+      await _playPlayer();
       _recordPlayStarted();
     }
   }
@@ -320,8 +360,8 @@ class VideoPlayerSession implements PlaybackSession {
     if (_disposed) return;
     _wantPlay = false;
     final ctrl = _controller;
-    if (_initialized && ctrl != null) {
-      await ctrl.pause();
+    if (_initialized && (ctrl != null || _debugInitAttempt != null)) {
+      await _pausePlayer();
     }
   }
 
@@ -329,9 +369,10 @@ class VideoPlayerSession implements PlaybackSession {
   Future<void> seekTo(Duration position) async {
     if (_disposed) return;
     _wantSeek = position;
+    _playbackDiscontinuitySequence++;
     final ctrl = _controller;
-    if (_initialized && ctrl != null) {
-      await ctrl.seekTo(position);
+    if (_initialized && (ctrl != null || _debugInitAttempt != null)) {
+      await _seekPlayer(position);
     }
   }
 
@@ -340,13 +381,14 @@ class VideoPlayerSession implements PlaybackSession {
     if (_disposed) return;
     _wantVolume = volume;
     final ctrl = _controller;
-    if (_initialized && ctrl != null) {
-      await ctrl.setVolume(volume);
+    if (_initialized && (ctrl != null || _debugInitAttempt != null)) {
+      await _setPlayerVolume(volume);
     }
   }
 
   @override
-  Duration get position => _controller?.value.position ?? _wantSeek;
+  Duration get position =>
+      _controller?.value.position ?? _debugPosition?.call() ?? _wantSeek;
 
   VideoPlaybackSnapshot _healthSnapshot() {
     final value = _controller?.value;
@@ -359,6 +401,8 @@ class VideoPlayerSession implements PlaybackSession {
       position: value?.position ?? _wantSeek,
       duration: value?.duration ?? Duration.zero,
       bufferAhead: _bufferAhead(value),
+      frameOutputCount: _heartbeatRegistration?.latest?.frameCount,
+      playbackDiscontinuitySequence: _playbackDiscontinuitySequence,
     );
   }
 
@@ -393,9 +437,106 @@ class VideoPlayerSession implements PlaybackSession {
     final ctrl = _controller;
     if (_disposed || !_initialized || ctrl == null || !_wantPlay) return;
     await ctrl.pause();
+    _playbackDiscontinuitySequence++;
     await ctrl.seekTo(position);
     await ctrl.play();
   }
+
+  Future<void> _recoverFromFrameOutputStall(
+    Duration position,
+    int attempt,
+  ) async {
+    if (_disposed || !_initialized || !_wantPlay) return;
+    if (_controller == null && _debugInitAttempt == null) return;
+    final discontinuity = _playbackDiscontinuitySequence;
+    final controller = _controller;
+    final playerId = _debugPlayerId?.call();
+    if (attempt == 1) {
+      await _pausePlayer();
+      if (_disposed ||
+          !_wantPlay ||
+          discontinuity != _playbackDiscontinuitySequence ||
+          !identical(controller, _controller) ||
+          playerId != _debugPlayerId?.call()) {
+        return;
+      }
+      _wantSeek = position;
+      _playbackDiscontinuitySequence++;
+      await _seekPlayer(position);
+      if (_disposed || !_wantPlay) return;
+      await _setPlayerVolume(_wantVolume);
+      await _playPlayer();
+      return;
+    }
+    if (attempt != 2) return;
+
+    _initialized = false;
+    revision.value++;
+    await _quiesceCurrentPlayer();
+    if (_disposed ||
+        !_wantPlay ||
+        discontinuity != _playbackDiscontinuitySequence ||
+        !identical(controller, _controller) ||
+        playerId != _debugPlayerId?.call()) {
+      _initialized = true;
+      await _applyDesiredState();
+      revision.value++;
+      return;
+    }
+    _wantSeek = position;
+    _playbackDiscontinuitySequence++;
+    await _cleanupResources();
+    if (_disposed) return;
+    await _init();
+  }
+
+  Future<void> _quiesceCurrentPlayer() async {
+    try {
+      await _setPlayerVolume(0);
+    } catch (_) {}
+    try {
+      await _pausePlayer();
+    } catch (_) {}
+  }
+
+  void _registerHeartbeat() {
+    _unregisterHeartbeat();
+    final player = _controller ?? _debugPlayerId?.call();
+    if (player == null) return;
+    try {
+      _heartbeatRegistration = _heartbeatService.register(player);
+    } catch (_) {
+      _heartbeatRegistration = null;
+    }
+  }
+
+  void _unregisterHeartbeat() {
+    _heartbeatRegistration?.unregister();
+    _heartbeatRegistration = null;
+  }
+
+  Future<void> _playPlayer() =>
+      _controller?.play() ?? _debugPlay?.call() ?? Future<void>.value();
+
+  Future<void> _pausePlayer() =>
+      _controller?.pause() ?? _debugPause?.call() ?? Future<void>.value();
+
+  Future<void> _seekPlayer(Duration position) =>
+      _controller?.seekTo(position) ??
+      _debugSeek?.call(position) ??
+      Future<void>.value();
+
+  Future<void> _setPlayerVolume(double volume) =>
+      _controller?.setVolume(volume) ??
+      _debugSetVolume?.call(volume) ??
+      Future<void>.value();
+
+  @visibleForTesting
+  Future<void> debugRecoverFrameOutput(Duration position, int attempt) =>
+      _recoverFromFrameOutputStall(position, attempt);
+
+  @visibleForTesting
+  VideoPlaybackSnapshot get debugHealthSnapshot => _healthSnapshot();
 
   void _recordPlayStarted() {
     if (_playStartedRecorded) return;
@@ -417,6 +558,7 @@ class VideoPlayerSession implements PlaybackSession {
     // Prefer dispose via wrapper (handle cache reference + underlying
     // controller sekaligus). Kalau init masih in-flight, `_init` mendeteksi
     // `_disposed` dan membuang hasilnya sendiri.
+    await _quiesceCurrentPlayer();
     await _cleanupResources();
   }
 }

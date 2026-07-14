@@ -158,6 +158,15 @@ dev_dependencies:
   # integration_test/`.
   integration_test:
     sdk: flutter
+
+# Natalo keeps narrow platform forks to expose a throttled native frame-output
+# heartbeat. The upstream player/controller API remains unchanged.
+dependency_overrides:
+  video_player_android:
+    path: packages/video_player_android
+  video_player_avfoundation:
+    path: packages/video_player_avfoundation
+
 flutter:
   uses-material-design: true
   fonts:

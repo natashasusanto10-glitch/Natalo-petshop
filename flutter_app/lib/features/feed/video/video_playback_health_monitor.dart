@@ -8,6 +8,8 @@ class VideoPlaybackSnapshot {
   final Duration position;
   final Duration duration;
   final Duration bufferAhead;
+  final int? frameOutputCount;
+  final int playbackDiscontinuitySequence;
 
   const VideoPlaybackSnapshot({
     required this.shouldMonitor,
@@ -15,12 +17,19 @@ class VideoPlaybackSnapshot {
     required this.position,
     required this.duration,
     this.bufferAhead = Duration.zero,
+    this.frameOutputCount,
+    this.playbackDiscontinuitySequence = 0,
   });
 }
 
 typedef VideoPlaybackMetricSink = void Function(
   String event,
   Map<String, Object> parameters,
+);
+
+typedef FrameOutputStallRecover = Future<void> Function(
+  Duration position,
+  int attempt,
 );
 
 /// Monitoring follows app playback intent, not the native `isPlaying` flag.
@@ -47,6 +56,10 @@ class VideoPlaybackHealthMonitor {
     this.stagnantSamplesBeforeRecovery = 3,
     this.maxRecoveries = 2,
     this.recoveryCooldown = const Duration(seconds: 15),
+    this.onFrameOutputStallRecover,
+    this.frameOutputStaleSamplesBeforeRecovery = 2,
+    this.maxFrameOutputRecoveries = 2,
+    this.frameOutputRecoveryCooldown = const Duration(seconds: 15),
     DateTime Function()? now,
   })  : metricSink = metricSink ?? _defaultMetricSink,
         _now = now ?? DateTime.now;
@@ -59,6 +72,10 @@ class VideoPlaybackHealthMonitor {
   final int stagnantSamplesBeforeRecovery;
   final int maxRecoveries;
   final Duration recoveryCooldown;
+  final FrameOutputStallRecover? onFrameOutputStallRecover;
+  final int frameOutputStaleSamplesBeforeRecovery;
+  final int maxFrameOutputRecoveries;
+  final Duration frameOutputRecoveryCooldown;
   final DateTime Function() _now;
 
   Timer? _timer;
@@ -72,6 +89,14 @@ class VideoPlaybackHealthMonitor {
   Duration _bufferAhead = Duration.zero;
   bool _recovering = false;
   bool _wasBuffering = false;
+  int? _lastFrameOutputCount;
+  Duration? _lastFrameOutputPosition;
+  DateTime? _lastFrameOutputRecoveryAt;
+  int _frameOutputStaleSamples = 0;
+  int _frameOutputRecoveryCount = 0;
+  bool _recoveringFrameOutput = false;
+  bool _sampling = false;
+  int? _lastPlaybackDiscontinuitySequence;
 
   void start() {
     _timer ??= Timer.periodic(interval, (_) => unawaited(sample()));
@@ -94,16 +119,43 @@ class VideoPlaybackHealthMonitor {
   }
 
   Future<void> sample() async {
+    if (_sampling) return;
+    _sampling = true;
+    try {
+      await _sampleOnce();
+    } finally {
+      _sampling = false;
+    }
+  }
+
+  Future<void> _sampleOnce() async {
     final snapshot = readSnapshot();
     _bufferAhead = snapshot.bufferAhead;
     _recordBuffering(snapshot.shouldMonitor && snapshot.isBuffering);
 
-    if (!snapshot.shouldMonitor || snapshot.isBuffering || _recovering) {
+    final previousSequence = _lastPlaybackDiscontinuitySequence;
+    _lastPlaybackDiscontinuitySequence = snapshot.playbackDiscontinuitySequence;
+    final discontinuityChanged = previousSequence != null &&
+        previousSequence != snapshot.playbackDiscontinuitySequence;
+    if (discontinuityChanged) {
+      _resetProgress(snapshot.position);
+      _resetFrameOutputProgress();
+    }
+
+    final nearEnd = snapshot.duration > Duration.zero &&
+        snapshot.position >= snapshot.duration - const Duration(seconds: 1);
+    final frameRecoveryStarted =
+        await _sampleFrameOutput(snapshot, nearEnd: nearEnd);
+    if (frameRecoveryStarted || discontinuityChanged) return;
+
+    if (!snapshot.shouldMonitor ||
+        snapshot.isBuffering ||
+        _recovering ||
+        _recoveringFrameOutput) {
       _resetProgress(snapshot.position);
       return;
     }
-    if (snapshot.duration > Duration.zero &&
-        snapshot.position >= snapshot.duration - const Duration(seconds: 1)) {
+    if (nearEnd) {
       _resetProgress(snapshot.position);
       return;
     }
@@ -152,6 +204,89 @@ class VideoPlaybackHealthMonitor {
     }
   }
 
+  Future<bool> _sampleFrameOutput(
+    VideoPlaybackSnapshot snapshot, {
+    required bool nearEnd,
+  }) async {
+    final count = snapshot.frameOutputCount;
+    if (!snapshot.shouldMonitor ||
+        snapshot.isBuffering ||
+        nearEnd ||
+        count == null) {
+      _resetFrameOutputProgress();
+      return false;
+    }
+
+    final previousCount = _lastFrameOutputCount;
+    final previousPosition = _lastFrameOutputPosition;
+    _lastFrameOutputCount = count;
+    _lastFrameOutputPosition = snapshot.position;
+
+    if (previousCount == null ||
+        previousPosition == null ||
+        count != previousCount) {
+      _frameOutputStaleSamples = 0;
+      return false;
+    }
+
+    // A visual-output stall requires the playback clock to keep moving.
+    final positionDelta = snapshot.position - previousPosition;
+    if (positionDelta > interval * 2) {
+      _resetFrameOutputProgress();
+      _lastFrameOutputCount = count;
+      _lastFrameOutputPosition = snapshot.position;
+      return false;
+    }
+    if (positionDelta < const Duration(milliseconds: 200)) {
+      _frameOutputStaleSamples = 0;
+      return false;
+    }
+
+    _frameOutputStaleSamples++;
+    final recover = onFrameOutputStallRecover;
+    if (_frameOutputStaleSamples < frameOutputStaleSamplesBeforeRecovery ||
+        recover == null ||
+        _recovering ||
+        _recoveringFrameOutput ||
+        _frameOutputRecoveryCount >= maxFrameOutputRecoveries) {
+      return false;
+    }
+
+    final now = _now();
+    if (_lastFrameOutputRecoveryAt != null &&
+        now.difference(_lastFrameOutputRecoveryAt!) <
+            frameOutputRecoveryCooldown) {
+      return false;
+    }
+
+    _recoveringFrameOutput = true;
+    _frameOutputStaleSamples = 0;
+    _lastFrameOutputRecoveryAt = now;
+    final attempt = ++_frameOutputRecoveryCount;
+    final metricParameters = {
+      'position_ms': snapshot.position.inMilliseconds,
+      'recovery_attempt': attempt,
+    };
+    _emit('video_frame_output_stall_detected', metricParameters);
+    try {
+      await recover(snapshot.position, attempt);
+      _emit('video_frame_output_stall_recovery', {
+        ...metricParameters,
+        'result': 'requested',
+      });
+    } catch (_) {
+      _emit('video_frame_output_stall_recovery', {
+        ...metricParameters,
+        'result': 'failed',
+      });
+    } finally {
+      _lastFrameOutputCount = null;
+      _lastFrameOutputPosition = null;
+      _recoveringFrameOutput = false;
+    }
+    return true;
+  }
+
   void _recordBuffering(bool buffering) {
     if (buffering == _wasBuffering) return;
     _wasBuffering = buffering;
@@ -174,6 +309,12 @@ class VideoPlaybackHealthMonitor {
   void _resetProgress(Duration position) {
     _lastPosition = position;
     _stagnantSamples = 0;
+  }
+
+  void _resetFrameOutputProgress() {
+    _lastFrameOutputCount = null;
+    _lastFrameOutputPosition = null;
+    _frameOutputStaleSamples = 0;
   }
 
   void _emit(String event, [Map<String, Object> parameters = const {}]) {

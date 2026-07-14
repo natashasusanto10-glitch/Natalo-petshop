@@ -1,11 +1,11 @@
 import 'dart:ui';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../state/bottom_nav_scroll.dart';
 import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
+import 'profile_avatar.dart';
 
 /// Bottom nav bar Natalo: floating glass pill, gaya premium IG/Material 3.
 ///
@@ -36,7 +36,6 @@ const _navInactive = Color(0xFF6B7280);
 // foto). Background fallback SELALU terang (biru/abu muda), jadi warnanya
 // fixed gelap-readable — TIDAK ikut inactiveColor nav, yang di varian dark
 // (Feed) kini PUTIH → kalau ikut, inisial putih di atas bg terang tak terbaca.
-const _avatarFallbackFg = Color(0xFF6B7280);
 // Border super tipis (25%→10%) — Telegram/iOS glass hampir tak berbingkai;
 // border tebal bikin pill terbaca sebagai "kartu putih mengambang", bukan
 // lembaran kaca bening. Cukup highlight tepi samar.
@@ -536,50 +535,14 @@ class _AvatarIcon extends StatelessWidget {
                 : null,
           ),
           padding: selected ? const EdgeInsets.all(ringWidth - 0.5) : null,
-          child: ClipOval(
-            child: photoUrl != null && photoUrl.trim().isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: photoUrl,
-                    fit: BoxFit.cover,
-                    placeholder: (_, __) => _AvatarFallback(initial: initial),
-                    errorWidget: (_, __, ___) =>
-                        _AvatarFallback(initial: initial),
-                  )
-                : _AvatarFallback(initial: initial),
+          child: ProfileAvatar(
+            initial: initial.isEmpty ? 'N' : initial,
+            imageUrl: photoUrl,
+            size: avatarSize,
+            fontSize: 11,
+            isOfficial: profile?.isAdmin ?? false,
+            plain: true,
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AvatarFallback extends StatelessWidget {
-  final String initial;
-
-  const _AvatarFallback({required this.initial});
-
-  @override
-  Widget build(BuildContext context) {
-    if (initial.isEmpty) {
-      return Container(
-        color: const Color(0xFFE5E7EB),
-        child: const Icon(
-          Icons.person_rounded,
-          color: _avatarFallbackFg,
-          size: 16,
-        ),
-      );
-    }
-    return Container(
-      color: const Color(0xFFE0E7FF),
-      alignment: Alignment.center,
-      child: Text(
-        initial.toUpperCase(),
-        style: const TextStyle(
-          color: _avatarFallbackFg,
-          fontSize: 11,
-          fontWeight: FontWeight.w900,
-          height: 1,
         ),
       ),
     );

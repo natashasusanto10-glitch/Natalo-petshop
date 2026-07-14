@@ -17,6 +17,7 @@ import 'app_toast.dart';
 import 'mention_picker.dart';
 import 'moderation_action_sheet.dart';
 import 'natalo_paw_refresh_indicator.dart';
+import 'profile_avatar.dart';
 
 /// Comment sheet style Instagram Reels — 1:1 visual:
 ///
@@ -46,10 +47,6 @@ class FeedCommentSheet extends StatefulWidget {
   final ScrollController? sheetScrollController;
   final VoidCallback? onClose;
 
-  /// Callback ke feed_screen kalau jumlah komentar bertambah (untuk
-  /// update counter di action rail saat sheet tutup).
-  final ValueChanged<int>? onAddedCountChanged;
-
   /// Drag handle area gesture — diteruskan ke feed_screen untuk
   /// dismiss saat user drag handle ke bawah.
   final ValueChanged<DragUpdateDetails>? onDragUpdate;
@@ -61,7 +58,6 @@ class FeedCommentSheet extends StatefulWidget {
     this.applyKeyboardInset = true,
     this.sheetScrollController,
     this.onClose,
-    this.onAddedCountChanged,
     this.onDragUpdate,
     this.onDragEnd,
   });
@@ -71,6 +67,8 @@ class FeedCommentSheet extends StatefulWidget {
 }
 
 class _FeedCommentSheetState extends State<FeedCommentSheet> {
+  static const int _replyBatchSize = 3;
+
   final TextEditingController _inputCtrl = TextEditingController();
   final FocusNode _inputFocus = FocusNode();
   late final MentionPickerController _mentionCtrl =
@@ -87,9 +85,23 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   /// reply ke comment ini.
   FeedComment? _replyTarget;
 
-  /// Jumlah komentar baru di-add lewat sheet ini (untuk update counter
-  /// post saat sheet tutup).
-  int _addedCount = 0;
+  /// Jumlah balasan terbaru yang sedang terlihat per parent. Tidak ada entry
+  /// berarti thread collapsed, seperti Reels.
+  final Map<String, int> _visibleReplyCounts = {};
+
+  void _showMoreReplies(String parentId, int totalReplies) {
+    AppHaptics.tap();
+    setState(() {
+      final current = _visibleReplyCounts[parentId] ?? 0;
+      _visibleReplyCounts[parentId] =
+          (current + _replyBatchSize).clamp(0, totalReplies);
+    });
+  }
+
+  void _hideReplies(String parentId) {
+    AppHaptics.tap();
+    setState(() => _visibleReplyCounts.remove(parentId));
+  }
 
   @override
   void initState() {
@@ -215,41 +227,38 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     try {
       final content = raw;
       final parentId = _replyTarget?.id;
-      final created = await feedService.postComment(
+      final result = await feedService.postComment(
         widget.post.id,
         content: content,
         parentCommentId: parentId,
       );
       if (!mounted) return;
-      // Insert: kalau reply, sisipkan tepat setelah parent + replies
-      // existing. Kalau parent, prepend di top (newest-first).
+      final created = result.comment;
+      final effectiveParentId = created.parentCommentId ?? parentId;
       setState(() {
-        if (parentId != null) {
-          final parentIndex = _comments.indexWhere((c) => c.id == parentId);
-          if (parentIndex >= 0) {
-            // Cari insertion point: setelah parent + semua reply existing.
-            int insertAt = parentIndex + 1;
-            while (insertAt < _comments.length &&
-                _comments[insertAt].parentCommentId == parentId) {
-              insertAt++;
-            }
-            _comments = [
-              ..._comments.sublist(0, insertAt),
-              created,
-              ..._comments.sublist(insertAt),
-            ];
-          } else {
-            _comments = [created, ..._comments];
-          }
+        if (effectiveParentId != null) {
+          _comments = _comments.map((comment) {
+            if (comment.id != effectiveParentId) return comment;
+            final replies = [...comment.replies, created];
+            return comment.copyWith(
+              replies: replies,
+              replyCount: replies.length,
+            );
+          }).toList();
+          _visibleReplyCounts[effectiveParentId] = _replyBatchSize;
         } else {
           _comments = [created, ..._comments];
         }
-        _addedCount += 1;
         _posting = false;
         _replyTarget = null;
         _inputCtrl.clear();
       });
-      widget.onAddedCountChanged?.call(_addedCount);
+      final current = feedStore.get(widget.post.id)?.commentCount ??
+          widget.post.commentCount;
+      feedStore.setCommentCount(
+        widget.post.id,
+        result.commentCount ?? current + 1,
+      );
       AppHaptics.success();
       _inputFocus.unfocus();
     } on ApiException catch (e) {
@@ -317,12 +326,18 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
 
   void _updateComment(FeedComment updated) {
     if (!mounted) return;
-    final index = _comments.indexWhere((c) => c.id == updated.id);
-    if (index < 0) return;
     setState(() {
-      final copy = [..._comments];
-      copy[index] = updated;
-      _comments = copy;
+      _comments = _comments.map((comment) {
+        if (comment.id == updated.id) return updated;
+        if (comment.replies.any((reply) => reply.id == updated.id)) {
+          return comment.copyWith(
+            replies: comment.replies
+                .map((reply) => reply.id == updated.id ? updated : reply)
+                .toList(),
+          );
+        }
+        return comment;
+      }).toList();
     });
   }
 
@@ -333,13 +348,25 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   /// (moderation sheet) pakai untuk decide snackbar success vs error.
   Future<bool> _deleteComment(FeedComment comment) async {
     if (!mounted) return false;
+    final removedCount =
+        comment.parentCommentId == null ? 1 + comment.replies.length : 1;
     // Snapshot untuk rollback kalau API gagal.
     final snapshot = List<FeedComment>.from(_comments);
     setState(() {
-      _comments = _comments.where((c) => c.id != comment.id).toList();
+      _comments = _comments.where((item) => item.id != comment.id).map((item) {
+        if (!item.replies.any((reply) => reply.id == comment.id)) {
+          return item;
+        }
+        final replies =
+            item.replies.where((reply) => reply.id != comment.id).toList();
+        return item.copyWith(
+          replies: replies,
+          replyCount: replies.length,
+        );
+      }).toList();
     });
     try {
-      await feedService.deleteComment(comment.id);
+      final result = await feedService.deleteComment(comment.id);
       // Sukses — comment beneran hilang. Sync comment count ke FeedStore
       // supaya Reels/Detail/grid yang baca count dari store auto-decrement.
       // Caller juga akan terima propagation via store listener.
@@ -347,7 +374,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       final current = fresh?.commentCount ?? widget.post.commentCount;
       feedStore.setCommentCount(
         widget.post.id,
-        current > 0 ? current - 1 : 0,
+        result.commentCount ??
+            (current > removedCount ? current - removedCount : 0),
       );
       return true;
     } catch (e) {
@@ -398,33 +426,25 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   /// dengan feed_screen.dart pattern. Apply ke parent + replies.
   List<_CommentDisplayItem> _buildDisplayItems() {
     final items = <_CommentDisplayItem>[];
-    final replyMap = <String, List<FeedComment>>{};
+    for (final thread in groupFeedCommentThreads(_comments)) {
+      if (_isCommentBlocked(thread.parent)) continue;
+      items.add(_CommentDisplayItem.comment(thread.parent, isReply: false));
 
-    for (final c in _comments) {
-      if (c.parentCommentId != null) {
-        replyMap.putIfAbsent(c.parentCommentId!, () => []).add(c);
-      }
-    }
+      final replies = thread.replies
+          .where((reply) => !_isCommentBlocked(reply))
+          .toList(growable: false);
+      if (replies.isEmpty) continue;
 
-    for (final c in _comments) {
-      if (c.parentCommentId != null) continue; // skip — render under parent
-      // Skip parent komentar dari blocked user. Replies di bawahnya
-      // ikut hidden (semantik: user yang block creator tidak mau lihat
-      // diskusi terkait sama sekali).
-      if (_isCommentBlocked(c)) continue;
-      items.add(_CommentDisplayItem(comment: c, isReply: false));
-      final replies = replyMap[c.id];
-      if (replies != null) {
-        // Sort replies oldest-first (standard Instagram threading order).
-        replies.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        for (final r in replies) {
-          // Skip reply dari blocked user juga (mis. user lain yang reply
-          // di thread parent yang tidak di-block — masih bisa di-filter
-          // individual).
-          if (_isCommentBlocked(r)) continue;
-          items.add(_CommentDisplayItem(comment: r, isReply: true));
-        }
+      final requested = _visibleReplyCounts[thread.parent.id] ?? 0;
+      final visibleCount = requested.clamp(0, replies.length);
+      for (final reply in latestVisibleFeedReplies(replies, visibleCount)) {
+        items.add(_CommentDisplayItem.comment(reply, isReply: true));
       }
+      items.add(_CommentDisplayItem.repliesControl(
+        parentId: thread.parent.id,
+        totalReplies: replies.length,
+        visibleReplies: visibleCount,
+      ));
     }
     return items;
   }
@@ -616,19 +636,33 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
             );
           }
           final item = items[adjustedIndex];
+          if (item.kind == _CommentDisplayItemKind.repliesControl) {
+            return _RepliesControl(
+              totalReplies: item.totalReplies,
+              visibleReplies: item.visibleReplies,
+              onShowMore: () => _showMoreReplies(
+                item.parentId!,
+                item.totalReplies,
+              ),
+              onHide: item.visibleReplies > 0
+                  ? () => _hideReplies(item.parentId!)
+                  : null,
+            );
+          }
+          final comment = item.comment!;
           // canDelete = current user adalah author komentar. Drives
           // tampilan "Hapus" di moderation sheet (vs Laporkan/Blokir
           // untuk komentar orang lain).
           final currentUserId = memberStore.profile?.id;
           final isOwn =
-              currentUserId != null && currentUserId == item.comment.author.id;
+              currentUserId != null && currentUserId == comment.author.id;
           return _CommentTile(
-            comment: item.comment,
+            comment: comment,
             isReply: item.isReply,
-            onLike: () => _toggleLike(item.comment),
-            onReply: () => _setReplyTarget(item.comment),
+            onLike: () => _toggleLike(comment),
+            onReply: () => _setReplyTarget(comment),
             canDelete: isOwn,
-            onDelete: isOwn ? () => _deleteComment(item.comment) : null,
+            onDelete: isOwn ? () => _deleteComment(comment) : null,
           );
         },
       ),
@@ -737,11 +771,13 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         // dgn comment tile + creator overlay (server null-kan foto asli).
         Padding(
           padding: const EdgeInsets.only(bottom: 2),
-          child: _CommentAvatar(
+          child: ProfileAvatar(
             size: 34,
+            fontSize: 14,
             initial: initial,
             imageUrl: profile?.profilePhotoUrl,
             isOfficial: profile?.isAdmin ?? false,
+            plain: true,
           ),
         ),
         const SizedBox(width: 10),
@@ -825,11 +861,115 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   }
 }
 
-/// Item wrapper untuk display — bedakan parent vs reply.
+enum _CommentDisplayItemKind { comment, repliesControl }
+
+/// Item wrapper untuk comment row atau kontrol thread ringkas.
 class _CommentDisplayItem {
-  final FeedComment comment;
+  final _CommentDisplayItemKind kind;
+  final FeedComment? comment;
   final bool isReply;
-  const _CommentDisplayItem({required this.comment, required this.isReply});
+  final String? parentId;
+  final int totalReplies;
+  final int visibleReplies;
+
+  const _CommentDisplayItem._({
+    required this.kind,
+    this.comment,
+    this.isReply = false,
+    this.parentId,
+    this.totalReplies = 0,
+    this.visibleReplies = 0,
+  });
+
+  factory _CommentDisplayItem.comment(
+    FeedComment comment, {
+    required bool isReply,
+  }) =>
+      _CommentDisplayItem._(
+        kind: _CommentDisplayItemKind.comment,
+        comment: comment,
+        isReply: isReply,
+      );
+
+  factory _CommentDisplayItem.repliesControl({
+    required String parentId,
+    required int totalReplies,
+    required int visibleReplies,
+  }) =>
+      _CommentDisplayItem._(
+        kind: _CommentDisplayItemKind.repliesControl,
+        parentId: parentId,
+        totalReplies: totalReplies,
+        visibleReplies: visibleReplies,
+      );
+}
+
+class _RepliesControl extends StatelessWidget {
+  final int totalReplies;
+  final int visibleReplies;
+  final VoidCallback onShowMore;
+  final VoidCallback? onHide;
+
+  const _RepliesControl({
+    required this.totalReplies,
+    required this.visibleReplies,
+    required this.onShowMore,
+    this.onHide,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = totalReplies - visibleReplies;
+    final showMoreLabel = visibleReplies == 0
+        ? 'Lihat $totalReplies balasan'
+        : 'Lihat $remaining balasan lainnya';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(64, 2, 16, 6),
+      child: Row(
+        children: [
+          Container(
+            width: 24,
+            height: 1,
+            margin: const EdgeInsets.only(right: 8),
+            color: Colors.white.withValues(alpha: 0.30),
+          ),
+          if (remaining > 0)
+            Flexible(
+              child: InkWell(
+                onTap: onShowMore,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    showMoreLabel,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.62),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (onHide != null) ...[
+            if (remaining > 0) const Spacer(),
+            TextButton(
+              onPressed: onHide,
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white.withValues(alpha: 0.62),
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              child: const Text(
+                'Sembunyikan',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 /// Caption header — render post caption sebagai "first comment" di top
@@ -877,11 +1017,13 @@ class _CaptionTile extends StatelessWidget {
           children: [
             _AuthorTapTarget(
               author: author,
-              child: _CommentAvatar(
+              child: ProfileAvatar(
                 size: 36,
+                fontSize: 14,
                 initial: initial,
                 imageUrl: avatarUrl,
                 isOfficial: author.isOfficialAccount,
+                plain: true,
               ),
             ),
             const SizedBox(width: 10),
@@ -1035,11 +1177,13 @@ class _CommentTile extends StatelessWidget {
           children: [
             _AuthorTapTarget(
               author: author,
-              child: _CommentAvatar(
+              child: ProfileAvatar(
                 size: avatarSize,
+                fontSize: isReply ? 12 : 14,
                 initial: initial,
                 imageUrl: avatarUrl,
                 isOfficial: author.isOfficialAccount,
+                plain: true,
               ),
             ),
             const SizedBox(width: 10),
@@ -1183,64 +1327,6 @@ class _AuthorTapTarget extends StatelessWidget {
         button: true,
         label: 'Buka profil ${author.displayHandle}',
         child: child,
-      ),
-    );
-  }
-}
-
-/// Avatar untuk comment row — pakai NetworkImage kalau ada URL, fallback
-/// ke initial bubble. Tidak pakai CachedNetworkImage di sini untuk avoid
-/// extra dep call — comment list bisa scroll panjang, simpler.
-class _CommentAvatar extends StatelessWidget {
-  final double size;
-  final String initial;
-  final String? imageUrl;
-  final bool isOfficial;
-
-  const _CommentAvatar({
-    required this.size,
-    required this.initial,
-    this.imageUrl,
-    this.isOfficial = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Akun official → logo brand NL (server null-kan foto asli).
-    if (isOfficial) {
-      return OfficialBrandAvatar(size: size);
-    }
-    final url = imageUrl?.trim();
-    if (url != null && url.isNotEmpty && url.startsWith('http')) {
-      return ClipOval(
-        child: Image.network(
-          url,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _initialBubble(),
-        ),
-      );
-    }
-    return _initialBubble();
-  }
-
-  Widget _initialBubble() {
-    return Container(
-      width: size,
-      height: size,
-      alignment: Alignment.center,
-      decoration: const BoxDecoration(
-        color: Color(0xFFEAF3FF),
-        shape: BoxShape.circle,
-      ),
-      child: Text(
-        initial,
-        style: TextStyle(
-          color: NataloColors.primary,
-          fontWeight: FontWeight.w900,
-          fontSize: size * 0.4,
-        ),
       ),
     );
   }

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
 import 'package:flutter/services.dart';
@@ -9,8 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_client.dart';
 import '../services/follow_service.dart';
+import '../state/follow_override_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/profile_avatar.dart';
 
 const _bg = Color(0xFF070B10);
 const _searchFill = Color(0xFF242A30);
@@ -204,12 +205,26 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
     await _persistRecentUsers();
   }
 
-  void _openProfile(FollowUserSummary user) {
+  Future<void> _openProfile(FollowUserSummary user) async {
     final username = user.username;
     if (username == null || username.isEmpty) return;
     AppHaptics.tap();
     unawaited(_rememberRecentUser(user));
-    Navigator.pushNamed(context, '/u', arguments: username);
+    await Navigator.pushNamed(context, '/u', arguments: username);
+    if (!mounted) return;
+    setState(() {
+      List<FollowUserSummary> reconcile(List<FollowUserSummary> users) {
+        return users
+            .map((item) => item.copyWith(
+                  isFollowing: resolveFollowState(item.id, item.isFollowing),
+                ))
+            .toList(growable: false);
+      }
+
+      _items = reconcile(_items);
+      _recentUsers = reconcile(_recentUsers);
+      _suggestedUsers = reconcile(_suggestedUsers);
+    });
   }
 
   Future<void> _toggleFollow(FollowUserSummary user) async {
@@ -226,6 +241,7 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
       _busyUserIds.add(user.id);
       _replaceUserEverywhere(optimistic);
     });
+    setFollowOverride(user.id, !wasFollowing);
     if (_recentUsers.any((item) => item.id == user.id)) {
       unawaited(_persistRecentUsers());
     }
@@ -241,12 +257,14 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
         isSelf: state.isSelf,
       );
       setState(() => _replaceUserEverywhere(updated));
+      setFollowOverride(user.id, state.isFollowing);
       if (_recentUsers.any((item) => item.id == user.id)) {
         unawaited(_persistRecentUsers());
       }
     } catch (_) {
       if (!mounted) return;
       setState(() => _replaceUserEverywhere(user));
+      setFollowOverride(user.id, wasFollowing);
       if (_recentUsers.any((item) => item.id == user.id)) {
         unawaited(_persistRecentUsers());
       }
@@ -810,42 +828,13 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final url = user.profilePhotoUrl;
-    return ClipOval(
-      child: Container(
-        width: size,
-        height: size,
-        color: const Color(0xFF1B2330),
-        alignment: Alignment.center,
-        child: url != null && url.isNotEmpty
-            ? CachedNetworkImage(
-                imageUrl: url,
-                width: size,
-                height: size,
-                fit: BoxFit.cover,
-                placeholder: (_, __) => _Initial(initial: user.initial),
-                errorWidget: (_, __, ___) => _Initial(initial: user.initial),
-              )
-            : _Initial(initial: user.initial),
-      ),
-    );
-  }
-}
-
-class _Initial extends StatelessWidget {
-  final String initial;
-
-  const _Initial({required this.initial});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      initial,
-      style: const TextStyle(
-        color: Colors.white,
-        fontSize: 16,
-        fontWeight: FontWeight.w600,
-      ),
+    return ProfileAvatar(
+      initial: user.initial,
+      imageUrl: user.profilePhotoUrl,
+      size: size,
+      fontSize: 16,
+      isOfficial: user.isOfficial,
+      plain: true,
     );
   }
 }

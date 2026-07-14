@@ -344,7 +344,8 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
                           imageUrl: profile.profilePhotoUrl,
                           size: 96,
                           fontSize: 36,
-                          showCameraBadge: true,
+                          isOfficial: profile.isAdmin,
+                          showCameraBadge: !profile.isAdmin,
                           onTap: () {
                             AppHaptics.tap();
                             showUpdateProfilePhotoSheet(context);

@@ -1739,15 +1739,6 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
           applyKeyboardInset: true,
           sheetScrollController: scrollController,
           onClose: () => Navigator.pop(context),
-          onAddedCountChanged: (count) {
-            if (!mounted) return;
-            // Propagasi ke FeedStore — semua screen lain yang baca count
-            // dari store ikut update. Local field di-update otomatis lewat
-            // _onFeedStoreChanged listener.
-            final base = feedStore.get(widget.post.id)?.commentCount ??
-                widget.post.commentCount;
-            feedStore.setCommentCount(widget.post.id, base + count);
-          },
         ),
       ),
     );

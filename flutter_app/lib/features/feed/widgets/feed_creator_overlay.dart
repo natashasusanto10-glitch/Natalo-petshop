@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -6,13 +5,11 @@ import '../../../theme/natalo_colors.dart';
 import '../../../utils/formatters.dart';
 import '../../../utils/mention_text.dart';
 import '../../../widgets/official_brand_avatar.dart';
+import '../../../widgets/profile_avatar.dart';
 
 // Emas identitas official — kini satu sumber di NataloColors.officialGold
 // (dipakai seragam di semua layar). Alias lokal supaya diff minimal.
 const _officialGold = NataloColors.officialGold;
-// Duplikat dari `_feedBlue` di feed_screen.dart — setelah ekstraksi ini
-// jadi satu-satunya pemakai gradient avatar fallback.
-const _feedBlue = Color(0xFF0B7FEA);
 
 /// State chip Ikuti di baris identitas kreator feed.
 enum FeedFollowChipState { none, following, hidden }
@@ -151,9 +148,6 @@ class _FeedCreatorAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final url = profilePhotoUrl?.trim();
-    final hasPhoto = url != null && url.isNotEmpty;
-
     return Container(
       width: 34,
       height: 34,
@@ -171,52 +165,13 @@ class _FeedCreatorAvatar extends StatelessWidget {
           ),
         ],
       ),
-      child: isOfficial
-          // Akun official → logo brand NL (server null-kan foto asli).
-          ? const OfficialBrandAvatar(size: 34)
-          : ClipOval(
-              child: hasPhoto
-                  ? CachedNetworkImage(
-                      imageUrl: url,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => _AvatarFallback(name: name),
-                      errorWidget: (_, __, ___) => _AvatarFallback(name: name),
-                    )
-                  : _AvatarFallback(name: name),
-            ),
-    );
-  }
-}
-
-class _AvatarFallback extends StatelessWidget {
-  final String name;
-
-  const _AvatarFallback({required this.name});
-
-  @override
-  Widget build(BuildContext context) {
-    final trimmed = name.trim();
-    final initial = trimmed.isEmpty ? 'N' : trimmed[0].toUpperCase();
-    return Container(
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            _feedBlue.withValues(alpha: 0.92),
-            const Color(0xFF38BDF8).withValues(alpha: 0.86),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Text(
-        initial,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 13,
-          fontWeight: FontWeight.w900,
-          height: 1,
-        ),
+      child: ProfileAvatar(
+        initial: name.trim().isEmpty ? 'N' : name.trim()[0].toUpperCase(),
+        imageUrl: profilePhotoUrl,
+        size: 34,
+        fontSize: 14,
+        isOfficial: isOfficial,
+        plain: true,
       ),
     );
   }

@@ -51,6 +51,7 @@ Future<void> openFeedPostSmart(
         authorName: post.author.displayName,
         authorPhotoUrl: post.author.profilePhotoUrl,
         authorInitial: post.author.initial,
+        authorIsOfficial: post.author.isOfficialAccount,
         isOwner: isOwner,
       ),
     ),

@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import 'official_brand_avatar.dart';
+
 const _avatarBlue = Color(0xFF0B7FEA);
 
 class ProfileAvatar extends StatelessWidget {
@@ -11,6 +13,8 @@ class ProfileAvatar extends StatelessWidget {
   final double size;
   final double fontSize;
   final bool showCameraBadge;
+  final bool isOfficial;
+  final bool plain;
   final VoidCallback? onTap;
 
   const ProfileAvatar({
@@ -20,6 +24,8 @@ class ProfileAvatar extends StatelessWidget {
     this.size = 72,
     this.fontSize = 28,
     this.showCameraBadge = false,
+    this.isOfficial = false,
+    this.plain = false,
     this.onTap,
   });
 
@@ -29,26 +35,33 @@ class ProfileAvatar extends StatelessWidget {
     final avatar = Stack(
       clipBehavior: Clip.none,
       children: [
-        Container(
+        SizedBox(
           height: size,
           width: size,
-          decoration: BoxDecoration(
-            color: cs.surface,
-            shape: BoxShape.circle,
-            border: Border.all(color: cs.surface, width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.10),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: _AvatarContent(
-            imageUrl: imageUrl,
-            initial: initial,
-            fontSize: fontSize,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: cs.surface,
+              shape: BoxShape.circle,
+              border: plain ? null : Border.all(color: cs.surface, width: 2),
+              boxShadow: plain
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.10),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+            ),
+            child: ClipOval(
+              child: isOfficial
+                  ? OfficialBrandAvatar(size: size)
+                  : _AvatarContent(
+                      imageUrl: imageUrl,
+                      initial: initial,
+                      fontSize: fontSize,
+                    ),
+            ),
           ),
         ),
         if (showCameraBadge)

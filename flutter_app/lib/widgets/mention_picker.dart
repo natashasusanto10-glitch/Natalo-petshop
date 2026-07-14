@@ -1,12 +1,12 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/api_client.dart';
 import '../utils/haptics.dart';
+import 'profile_avatar.dart';
 
 /// User suggestion entry untuk @mention picker. Subset dari User model
 /// yang dibalikin /api/users/search?q=.
@@ -332,7 +332,16 @@ class _SuggestionTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
           children: [
-            _Avatar(url: user.profilePhotoUrl, fallback: user.displayLabel),
+            ProfileAvatar(
+              initial: user.displayLabel.trim().isEmpty
+                  ? 'N'
+                  : user.displayLabel.trim()[0].toUpperCase(),
+              imageUrl: user.profilePhotoUrl,
+              size: 32,
+              fontSize: 13,
+              isOfficial: user.isOfficial,
+              plain: true,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -410,55 +419,6 @@ class _SuggestionTile extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Avatar extends StatelessWidget {
-  final String? url;
-  final String fallback;
-
-  const _Avatar({required this.url, required this.fallback});
-
-  @override
-  Widget build(BuildContext context) {
-    final initial =
-        fallback.trim().isEmpty ? 'N' : fallback.trim()[0].toUpperCase();
-    if (url != null && url!.isNotEmpty) {
-      return ClipOval(
-        child: CachedNetworkImage(
-          imageUrl: url!,
-          width: 32,
-          height: 32,
-          fit: BoxFit.cover,
-          placeholder: (_, __) => _placeholder(initial),
-          errorWidget: (_, __, ___) => _placeholder(initial),
-        ),
-      );
-    }
-    return _placeholder(initial);
-  }
-
-  Widget _placeholder(String initial) {
-    return Container(
-      width: 32,
-      height: 32,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          colors: [Color(0xFFDBEAFE), Color(0xFFBFDBFE)],
-        ),
-      ),
-      child: Center(
-        child: Text(
-          initial,
-          style: const TextStyle(
-            color: Color(0xFF1D4ED8),
-            fontSize: 13,
-            fontWeight: FontWeight.w900,
-          ),
         ),
       ),
     );

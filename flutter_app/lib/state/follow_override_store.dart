@@ -19,5 +19,18 @@ final ValueNotifier<Map<String, bool>> followOverrides =
 /// Set override follow untuk [userId]. Immutable copy supaya
 /// ValueNotifier terpicu (perbandingan identitas map).
 void setFollowOverride(String userId, bool following) {
+  if (userId.isEmpty) return;
   followOverrides.value = {...followOverrides.value, userId: following};
+}
+
+/// Resolve snapshot server dengan aksi follow terbaru pada sesi ini.
+bool resolveFollowState(String userId, bool serverValue) {
+  if (userId.isEmpty) return serverValue;
+  return followOverrides.value[userId] ?? serverValue;
+}
+
+/// Follow state bersifat viewer-specific, jadi wajib dibuang saat logout.
+void clearFollowOverrides() {
+  if (followOverrides.value.isEmpty) return;
+  followOverrides.value = const {};
 }

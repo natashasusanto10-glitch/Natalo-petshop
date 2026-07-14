@@ -401,7 +401,11 @@ class NataloPetshopApp extends StatelessWidget {
               '/member/posts' => const MemberPostsScreen(),
               '/member/postingan-detail'
                   when settings.arguments is FeedPost =>
-                MemberPostDetailScreen(post: settings.arguments as FeedPost),
+                MemberPostDetailScreen(
+                  post: settings.arguments as FeedPost,
+                  authorIsOfficial:
+                      (settings.arguments as FeedPost).author.isOfficialAccount,
+                ),
               '/member/postingan-edit' when settings.arguments is FeedPost =>
                 MemberPostEditScreen(post: settings.arguments as FeedPost),
               '/member/order-detail' when settings.arguments is OrderSummary =>

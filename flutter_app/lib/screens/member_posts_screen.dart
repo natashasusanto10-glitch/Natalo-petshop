@@ -323,6 +323,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
             post: post,
             posts: posts,
             initialIndex: initialIndex,
+            authorIsOfficial: memberStore.profile?.isAdmin ?? false,
             warmVideoHandoff: handoff,
           ),
         ),
@@ -492,6 +493,7 @@ class _NlFeedIntro extends StatelessWidget {
               imageUrl: profile?.profilePhotoUrl,
               size: 50,
               fontSize: 20,
+              isOfficial: profile?.isAdmin ?? false,
             ),
             const SizedBox(width: 14),
             Expanded(

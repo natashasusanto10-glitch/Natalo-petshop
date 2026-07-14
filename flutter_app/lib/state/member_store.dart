@@ -7,6 +7,7 @@ import '../models/member_profile.dart';
 import '../services/api_client.dart';
 import '../services/member_service.dart';
 import 'cart_store.dart';
+import 'follow_override_store.dart';
 
 /// Member auth + profile store. Setelah login success, cache profile +
 /// session token ke disk. Saat app start, load + verify dengan server di
@@ -124,6 +125,7 @@ class MemberStore extends ChangeNotifier {
   }
 
   void setProfile(MemberProfile profile) {
+    _clearFollowStateForAccountChange(profile.id);
     _profile = profile;
     _initialized = true;
     _initializing = false;
@@ -150,6 +152,7 @@ class MemberStore extends ChangeNotifier {
     required MemberProfile profile,
     String? token,
   }) async {
+    _clearFollowStateForAccountChange(profile.id);
     _profile = profile;
     _sessionToken = token;
     _initialized = true;
@@ -171,12 +174,20 @@ class MemberStore extends ChangeNotifier {
     cartStore.loadFromServer();
   }
 
+  void _clearFollowStateForAccountChange(String nextMemberId) {
+    final currentMemberId = _profile?.id;
+    if (currentMemberId != null && currentMemberId != nextMemberId) {
+      clearFollowOverrides();
+    }
+  }
+
   Future<void> logout() async {
     _profile = null;
     _sessionToken = null;
     _addresses = const [];
     _orders = const [];
     cartStore.resetLoginMergeGuard();
+    clearFollowOverrides();
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();

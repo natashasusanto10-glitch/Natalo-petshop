@@ -226,13 +226,13 @@ class FeedService {
     } catch (e) {
       if (kDebugMode) debugPrint('[feedService.fetchComments] $e');
       if (e is ApiException) rethrow;
-      return FeedCommentPage.empty;
+      throw ApiException('fetch comments failed', cause: e);
     }
   }
 
   /// Post komentar baru. `parentCommentId` opsional — kalau ada, ini
   /// adalah reply ke komentar parent.
-  Future<FeedComment> postComment(
+  Future<FeedCommentCreateResult> postComment(
     String postId, {
     required String content,
     String? parentCommentId,
@@ -264,7 +264,10 @@ class FeedService {
         final commentJson = body['comment'] is Map<String, dynamic>
             ? body['comment'] as Map<String, dynamic>
             : body;
-        return FeedComment.fromApiJson(commentJson);
+        return FeedCommentCreateResult(
+          comment: FeedComment.fromApiJson(commentJson),
+          commentCount: (body['commentCount'] as num?)?.toInt(),
+        );
       }
       throw const ApiException('invalid response');
     } catch (e) {
@@ -305,7 +308,7 @@ class FeedService {
   }
 
   /// Delete komentar — backend cek ownership (cuma author yang boleh).
-  Future<void> deleteComment(String commentId) async {
+  Future<FeedCommentDeleteResult> deleteComment(String commentId) async {
     final uri = ApiConfig.uri('/api/feed/comments/$commentId');
     try {
       final res = await http
@@ -320,6 +323,12 @@ class FeedService {
           statusCode: res.statusCode,
         );
       }
+      final body = jsonDecode(res.body);
+      return FeedCommentDeleteResult(
+        commentCount: body is Map<String, dynamic>
+            ? (body['commentCount'] as num?)?.toInt()
+            : null,
+      );
     } catch (e) {
       if (e is ApiException) rethrow;
       throw ApiException(e.toString(), cause: e);

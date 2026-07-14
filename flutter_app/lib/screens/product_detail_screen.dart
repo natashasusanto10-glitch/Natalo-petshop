@@ -2391,6 +2391,7 @@ class _CustomerPostCard extends StatelessWidget {
             authorName: feedPost.author.displayName,
             authorPhotoUrl: feedPost.author.profilePhotoUrl,
             authorInitial: feedPost.author.initial,
+            authorIsOfficial: feedPost.author.isOfficialAccount,
             isOwner: false,
           ),
         ),

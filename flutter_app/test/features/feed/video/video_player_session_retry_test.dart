@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/features/feed/video/frame_output_heartbeat_service.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/video_player_session.dart';
 import 'package:natalo_petshop_flutter/services/video_quality_service.dart';
 import 'package:video_player/video_player.dart';
@@ -212,4 +215,237 @@ void main() {
     expect(session.isInitialized, isTrue);
     expect(session.hasError, isFalse);
   });
+
+  group('managed frame-output recovery', () {
+    late StreamController<dynamic> heartbeats;
+    late FrameOutputHeartbeatService heartbeatService;
+    late _FakeManagedPlayer player;
+
+    setUp(() {
+      heartbeats = StreamController<dynamic>.broadcast(sync: true);
+      heartbeatService = FrameOutputHeartbeatService(
+        streamFactory: () => heartbeats.stream,
+      );
+      player = _FakeManagedPlayer();
+    });
+
+    tearDown(() async {
+      await heartbeats.close();
+    });
+
+    VideoPlayerSession createSession({Future<void>? recreateGate}) {
+      return VideoPlayerSession(
+        url: 'https://cdn/video.mp4',
+        debugHeartbeatService: heartbeatService,
+        debugInitAttempt: (_) async {
+          if (player.initCount == 1 && recreateGate != null) {
+            await recreateGate;
+          }
+          player.initializeNext();
+        },
+        debugPlayerId: () => player.playerId,
+        debugPosition: () => player.position,
+        debugPlay: player.play,
+        debugPause: player.pause,
+        debugSeek: player.seek,
+        debugSetVolume: player.setVolume,
+        debugDisposePlayer: player.dispose,
+      );
+    }
+
+    test('registers after init, snapshots frames, and unregisters on dispose',
+        () async {
+      final session = createSession();
+      await pumpEventQueue();
+
+      heartbeats.add(_heartbeat(player.playerId, 7));
+      expect(session.debugHealthSnapshot.frameOutputCount, 7);
+
+      await session.dispose();
+      expect(heartbeatService.latestFor(player.playerId), isNull);
+      expect(player.log.sublist(player.log.length - 3),
+          <String>['volume:0.0', 'pause', 'dispose:1']);
+    });
+
+    test('attempt 1 pause-seeks-plays and preserves desired volume', () async {
+      final session = createSession();
+      await pumpEventQueue();
+      await session.setVolume(0.35);
+      await session.play();
+      player.log.clear();
+
+      await session.debugRecoverFrameOutput(const Duration(seconds: 4), 1);
+
+      expect(player.log, ['pause', 'seek:4000', 'volume:0.35', 'play']);
+      expect(session.debugHealthSnapshot.playbackDiscontinuitySequence, 1);
+      await session.dispose();
+    });
+
+    test('attempt 1 cannot overwrite a user seek while pause is pending',
+        () async {
+      final session = createSession();
+      await pumpEventQueue();
+      await session.play();
+      player.log.clear();
+      player.pauseGate = Completer<void>();
+
+      final recovery = session.debugRecoverFrameOutput(
+        const Duration(seconds: 4),
+        1,
+      );
+      await pumpEventQueue();
+      await session.seekTo(const Duration(seconds: 8));
+      player.pauseGate!.complete();
+      await recovery;
+
+      expect(player.log, ['pause', 'seek:8000']);
+      expect(session.position, const Duration(seconds: 8));
+      await session.dispose();
+    });
+
+    test('attempt 2 disposes old owner before recreate and preserves state',
+        () async {
+      final session = createSession();
+      await pumpEventQueue();
+      await session.setVolume(0.6);
+      await session.play();
+      player.log.clear();
+
+      await session.debugRecoverFrameOutput(const Duration(seconds: 9), 2);
+
+      expect(player.maxLivePlayers, 1);
+      expect(player.log.take(3), ['volume:0.0', 'pause', 'dispose:1']);
+      expect(
+          player.log,
+          containsAllInOrder(
+            ['init:2', 'volume:0.6', 'seek:9000', 'play'],
+          ));
+      expect(session.isInitialized, isTrue);
+      expect(session.debugHealthSnapshot.playbackDiscontinuitySequence, 1);
+      expect(heartbeatService.latestFor(1), isNull);
+      heartbeats.add(_heartbeat(2, 11));
+      expect(session.debugHealthSnapshot.frameOutputCount, 11);
+      await session.dispose();
+    });
+
+    test('attempt 2 abort restores desired state changed during quiesce',
+        () async {
+      final session = createSession();
+      await pumpEventQueue();
+      await session.setVolume(0.6);
+      await session.play();
+      player.log.clear();
+      player.volumeGate = Completer<void>();
+
+      final recovery = session.debugRecoverFrameOutput(
+        const Duration(seconds: 9),
+        2,
+      );
+      await pumpEventQueue();
+      await session.seekTo(const Duration(seconds: 7));
+      unawaited(session.setVolume(0.25));
+      await session.pause();
+      player.volumeGate!.complete();
+      await recovery;
+
+      expect(player.livePlayers, 1);
+      expect(player.initCount, 1);
+      expect(player.position, const Duration(seconds: 7));
+      expect(
+        player.log,
+        containsAllInOrder([
+          'volume:0.0',
+          'pause',
+          'volume:0.25',
+          'seek:7000',
+          'pause',
+        ]),
+      );
+      await session.dispose();
+    });
+
+    test('dispose during recreate leaves no owner and does not resume',
+        () async {
+      final gate = Completer<void>();
+      final session = createSession(recreateGate: gate.future);
+      await pumpEventQueue();
+      await session.play();
+
+      final recovery = session.debugRecoverFrameOutput(
+        const Duration(seconds: 2),
+        2,
+      );
+      await pumpEventQueue();
+      final disposing = session.dispose();
+      gate.complete();
+      await Future.wait([recovery, disposing]);
+
+      expect(player.livePlayers, 0);
+      expect(player.maxLivePlayers, 1);
+      expect(player.log.where((event) => event == 'play').length, 1);
+    });
+
+    test('does not recover while paused or after dispose', () async {
+      final session = createSession();
+      await pumpEventQueue();
+      player.log.clear();
+
+      await session.debugRecoverFrameOutput(Duration.zero, 1);
+      expect(player.log, isEmpty);
+      await session.dispose();
+      player.log.clear();
+      await session.debugRecoverFrameOutput(Duration.zero, 2);
+      expect(player.log, isEmpty);
+    });
+  });
+}
+
+Map<String, Object> _heartbeat(int playerId, int frameCount) => {
+      'playerId': playerId,
+      'textureId': playerId + 100,
+      'frameCount': frameCount,
+      'mediaTimeUs': 1000,
+      'monotonicTimeUs': 2000,
+      'platform': 'test',
+    };
+
+class _FakeManagedPlayer {
+  int initCount = 0;
+  int playerId = -1;
+  int livePlayers = 0;
+  int maxLivePlayers = 0;
+  Duration position = Duration.zero;
+  final List<String> log = [];
+  Completer<void>? pauseGate;
+  Completer<void>? volumeGate;
+
+  void initializeNext() {
+    initCount++;
+    playerId = initCount;
+    livePlayers++;
+    if (livePlayers > maxLivePlayers) maxLivePlayers = livePlayers;
+    log.add('init:$playerId');
+  }
+
+  Future<void> play() async => log.add('play');
+  Future<void> pause() async {
+    log.add('pause');
+    await pauseGate?.future;
+  }
+
+  Future<void> seek(Duration value) async {
+    position = value;
+    log.add('seek:${value.inMilliseconds}');
+  }
+
+  Future<void> setVolume(double value) async {
+    await volumeGate?.future;
+    log.add('volume:$value');
+  }
+
+  Future<void> dispose() async {
+    if (livePlayers == 0) return;
+    log.add('dispose:$playerId');
+    livePlayers--;
+  }
 }

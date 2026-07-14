@@ -127,19 +127,45 @@ export async function POST(
   }
 
   const rawParent = (body as { parentCommentId?: unknown }).parentCommentId;
-  const parentCommentId = typeof rawParent === "string" && rawParent ? rawParent : null;
+  let parentCommentId = typeof rawParent === "string" && rawParent ? rawParent : null;
 
   // Verify parent comment exists + masih di post yang sama (kalau ada).
   if (parentCommentId) {
     const parent = await prisma.feedComment.findUnique({
       where: { id: parentCommentId },
-      select: { id: true, postId: true, isHidden: true },
+      select: {
+        id: true,
+        postId: true,
+        parentCommentId: true,
+        isHidden: true,
+        deletedAt: true,
+        parent: {
+          select: { id: true, isHidden: true, deletedAt: true },
+        },
+      },
     });
-    if (!parent || parent.postId !== postId || parent.isHidden) {
+    if (
+      !parent ||
+      parent.postId !== postId ||
+      parent.isHidden ||
+      parent.deletedAt
+    ) {
       return NextResponse.json(
         { error: "Komentar parent tidak valid." },
         { status: 400 },
       );
+    }
+    if (parent.parentCommentId) {
+      if (!parent.parent || parent.parent.isHidden || parent.parent.deletedAt) {
+        return NextResponse.json(
+          { error: "Thread komentar sudah tidak tersedia." },
+          { status: 400 },
+        );
+      }
+      // Thread dibatasi satu level: reply ke reply menjadi anak root.
+      parentCommentId = parent.parent.id;
+    } else {
+      parentCommentId = parent.id;
     }
   }
 
@@ -170,6 +196,33 @@ export async function POST(
   }
 
   const result = await prisma.$transaction(async (tx) => {
+    // Serialize create/delete pada post yang sama. Parent divalidasi ulang
+    // setelah lock supaya reply tidak masuk saat thread sedang dihapus.
+    await tx.$queryRaw`
+      SELECT "id" FROM "FeedPost"
+      WHERE "id" = ${postId}
+      FOR UPDATE
+    `;
+    if (parentCommentId) {
+      const liveParent = await tx.feedComment.findUnique({
+        where: { id: parentCommentId },
+        select: {
+          postId: true,
+          parentCommentId: true,
+          isHidden: true,
+          deletedAt: true,
+        },
+      });
+      if (
+        !liveParent ||
+        liveParent.postId !== postId ||
+        liveParent.parentCommentId !== null ||
+        liveParent.isHidden ||
+        liveParent.deletedAt
+      ) {
+        return null;
+      }
+    }
     const comment = await tx.feedComment.create({
       data: {
         postId,
@@ -198,12 +251,22 @@ export async function POST(
     });
     // Count both top-level comments and replies so the drawer/action rail
     // matches the visible conversation total.
-    await tx.feedPost.update({
+    const updatedPost = await tx.feedPost.update({
       where: { id: postId },
       data: { commentCount: { increment: 1 } },
+      select: { commentCount: true },
     });
-    return comment;
+    return {
+      ...comment,
+      postCommentCount: updatedPost.commentCount,
+    };
   });
+  if (!result) {
+    return NextResponse.json(
+      { error: "Thread komentar sudah tidak tersedia." },
+      { status: 400 },
+    );
+  }
 
   // Activity notification via `after()` (bukan `void`) — void promise bisa
   // dibekukan Vercel sebelum jalan → notif hilang; after() dijamin eksekusi
@@ -258,6 +321,7 @@ export async function POST(
 
   return NextResponse.json({
     ok: true,
+    commentCount: result.postCommentCount,
     comment: {
       id: result.id,
       postId: result.postId,

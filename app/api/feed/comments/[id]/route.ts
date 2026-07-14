@@ -14,17 +14,14 @@
  * Soft delete reasons:
  *   - Audit trail tetap ada (row tidak hilang)
  *   - Admin bisa lihat history kalau ada dispute
- *   - Reply ke komentar yg di-delete tetap visible (orphan placeholder)
+ *   - Reply tetap tersimpan untuk audit, tetapi thread parent yang dihapus
+ *     tidak dikirim ke query publik
  *
  * Idempotent: kalau komentar udah di-delete sebelumnya, return 200
  * dengan alreadyDeleted=true. Cegah error toast saat double-tap.
  *
- * Decrement commentCount:
- *   - Top-level comment (parentCommentId=null) → decrement
- *   - Reply (parentCommentId != null) → JANGAN decrement (per Shopee/IG
- *     pattern: replies tidak dihitung di commentCount yang main). Verify
- *     dengan POST endpoint behavior — kalau dia juga skip reply,
- *     consistent.
+ * FeedPost.commentCount menghitung parent + reply yang masih terlihat.
+ * Setelah delete, counter direkonsiliasi dari database di dalam lock post.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
@@ -75,10 +72,15 @@ export async function DELETE(
   // Idempotent — return success kalau already deleted, biar UI tidak
   // show error untuk double-tap.
   if (comment.deletedAt) {
+    const post = await prisma.feedPost.findUnique({
+      where: { id: comment.postId },
+      select: { commentCount: true },
+    });
     return NextResponse.json({
       ok: true,
       alreadyDeleted: true,
       commentId: comment.id,
+      commentCount: post?.commentCount ?? 0,
     });
   }
 
@@ -91,27 +93,52 @@ export async function DELETE(
     );
   }
 
-  // Atomic: set deletedAt + decrement commentCount (kalau top-level).
-  // Reply tidak di-count di FeedPost.commentCount per existing pattern.
-  await prisma.$transaction(async (tx) => {
+  // Lock per post membuat delete parent/reply dan create paralel terserialisasi.
+  // Recount authoritative mencegah double decrement dan reply dari parent
+  // terhapus ikut tampil di counter.
+  const commentCount = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT "id" FROM "FeedPost"
+      WHERE "id" = ${comment.postId}
+      FOR UPDATE
+    `;
+    const current = await tx.feedComment.findUnique({
+      where: { id: commentId },
+      select: { deletedAt: true },
+    });
+    if (!current || current.deletedAt) {
+      const post = await tx.feedPost.findUnique({
+        where: { id: comment.postId },
+        select: { commentCount: true },
+      });
+      return post?.commentCount ?? 0;
+    }
     await tx.feedComment.update({
       where: { id: commentId },
       data: { deletedAt: new Date() },
     });
-    // Decrement commentCount hanya untuk top-level.
-    // Pakai conditional update — defensive supaya tidak underflow ke
-    // negative kalau ada race condition / counter drift sebelumnya.
-    if (comment.parentCommentId === null) {
-      await tx.feedPost.updateMany({
-        where: { id: comment.postId, commentCount: { gt: 0 } },
-        data: { commentCount: { decrement: 1 } },
-      });
-    }
+    const visibleCount = await tx.feedComment.count({
+      where: {
+        postId: comment.postId,
+        deletedAt: null,
+        isHidden: false,
+        OR: [
+          { parentCommentId: null },
+          { parent: { deletedAt: null, isHidden: false } },
+        ],
+      },
+    });
+    await tx.feedPost.update({
+      where: { id: comment.postId },
+      data: { commentCount: visibleCount },
+    });
+    return visibleCount;
   });
 
   return NextResponse.json({
     ok: true,
     commentId: comment.id,
+    commentCount,
     deletedBy: isAuthor ? "author" : "admin",
   });
 }

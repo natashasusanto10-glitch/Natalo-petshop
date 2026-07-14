@@ -5,9 +5,12 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/post_video_coordinator.dart';
+import 'package:natalo_petshop_flutter/features/feed/video/frame_output_heartbeat_service.dart';
+import 'package:natalo_petshop_flutter/features/feed/video/video_playback_health_monitor.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/video_player_session.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_post_view.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_scrubber.dart';
@@ -33,9 +36,11 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   int createCount = 0;
   int playCount = 0;
   int pauseCount = 0;
+  int seekCount = 0;
   int setSpeedCount = 0;
   int callsAfterDispose = 0;
   Completer<void>? setVolumeGate;
+  Completer<void>? pauseGate;
   final Set<int> _disposedIds = {};
   int get disposedCount => _disposedIds.length;
   // D1: rekam setiap setVolume supaya test bisa memverifikasi controller
@@ -112,6 +117,7 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
       throw StateError('pause after dispose');
     }
     pauseCount++;
+    await pauseGate?.future;
   }
 
   @override
@@ -138,6 +144,7 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
 
   @override
   Future<void> seekTo(int playerId, Duration position) async {
+    seekCount++;
     _positions[playerId] = position;
   }
 
@@ -296,7 +303,209 @@ FeedPost _fakeVideoPost({
   });
 }
 
+void _registerLegacyFrameOutputRecoveryTests() {
+  group('legacy frame-output recovery', () {
+    late _FakeVideoPlayerPlatform platform;
+    late StreamController<dynamic> heartbeatEvents;
+    late VideoPlaybackSnapshot Function() snapshot;
+    late FrameOutputStallRecover recoverFrameOutput;
+
+    FeedVideoHealthMonitorFactory monitorFactory() => ({
+          required readSnapshot,
+          required onPlaybackStall,
+          required onFrameOutputStall,
+          required metricContext,
+        }) {
+          snapshot = readSnapshot;
+          recoverFrameOutput = onFrameOutputStall;
+          return VideoPlaybackHealthMonitor(
+            readSnapshot: readSnapshot,
+            onRecover: onPlaybackStall,
+            onFrameOutputStallRecover: onFrameOutputStall,
+            metricContext: metricContext,
+            interval: const Duration(days: 1),
+          );
+        };
+
+    Future<void> pumpLegacy(
+      WidgetTester tester, {
+      VideoPlayerController? preloaded,
+      bool managed = false,
+      FrameOutputHeartbeatService? heartbeatService,
+    }) async {
+      await tester.pumpWidget(MaterialApp(
+        home: FeedVideoPostView(
+          post: _fakeVideoPost(hls: true),
+          isActive: true,
+          preloadedController: preloaded,
+          playbackManagedExternally: managed,
+          ownsController: !managed,
+          frameOutputHeartbeatService: heartbeatService,
+          healthMonitorFactory: monitorFactory(),
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+    }
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      VisibilityDetectorController.instance.updateInterval = Duration.zero;
+      platform = _FakeVideoPlayerPlatform();
+      VideoPlayerPlatform.instance = platform;
+      heartbeatEvents = StreamController<dynamic>.broadcast();
+      await appSettingsStore.setFeedAutoplay(true);
+    });
+
+    tearDown(() async {
+      if (!heartbeatEvents.isClosed) await heartbeatEvents.close();
+    });
+
+    testWidgets('registers adopted preload once and unregisters on dispose',
+        (tester) async {
+      await appSettingsStore.setFeedAutoplay(false);
+      final service = FrameOutputHeartbeatService(
+        streamFactory: () => heartbeatEvents.stream,
+      );
+      final controller = VideoPlayerController.networkUrl(
+        Uri.parse('https://example.com/preloaded.m3u8'),
+      );
+      await tester.runAsync(controller.initialize);
+
+      await pumpLegacy(tester,
+          preloaded: controller, heartbeatService: service);
+      heartbeatEvents.add({
+        'playerId': 0,
+        'textureId': 0,
+        'frameCount': 7,
+        'mediaTimeUs': 1000,
+        'monotonicTimeUs': 2000,
+        'platform': 'test',
+      });
+      await tester.pump();
+      expect(snapshot().frameOutputCount, 7);
+      expect(heartbeatEvents.hasListener, isTrue);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(heartbeatEvents.hasListener, isFalse);
+      await appSettingsStore.setFeedAutoplay(true);
+    });
+
+    testWidgets('attempts recover once, rebuild, and preserve timestamp',
+        (tester) async {
+      await pumpLegacy(tester);
+      final initialCreates = platform.createCount;
+      final playBefore = platform.playCount;
+
+      await tester.runAsync(
+        () => recoverFrameOutput(const Duration(seconds: 3), 1),
+      );
+      expect(platform.pauseCount, greaterThan(0));
+      expect(platform.seekCount, greaterThan(0));
+      expect(platform.playCount, greaterThan(playBefore));
+
+      await tester.runAsync(
+        () => recoverFrameOutput(const Duration(seconds: 4), 2),
+      );
+      await tester.pump();
+      expect(platform.createCount, initialCreates + 1);
+      expect(platform.disposedCount, 1);
+      expect(snapshot().position, const Duration(seconds: 4));
+      expect(snapshot().playbackDiscontinuitySequence, greaterThan(1));
+    });
+
+    testWidgets(
+        'attempt 1 cannot overwrite a user scrub while pause is pending',
+        (tester) async {
+      await pumpLegacy(tester);
+      platform.pauseGate = Completer<void>();
+      final recovery = recoverFrameOutput(const Duration(seconds: 2), 1);
+      await tester.pump();
+
+      expect(find.byType(FeedVideoScrubber), findsOneWidget);
+      await tester.drag(
+        find.byType(FeedVideoScrubber),
+        const Offset(120, 0),
+        warnIfMissed: false,
+      );
+      await tester.pump();
+      final userPosition = snapshot().position;
+      expect(userPosition, isNot(const Duration(seconds: 2)));
+
+      platform.pauseGate!.complete();
+      await tester.runAsync(() => recovery);
+      await tester.pump();
+      expect(snapshot().position, userPosition);
+    });
+
+    testWidgets('managed controller never registers a local heartbeat route',
+        (tester) async {
+      final service = FrameOutputHeartbeatService(
+        streamFactory: () => heartbeatEvents.stream,
+      );
+      final controller = VideoPlayerController.networkUrl(
+        Uri.parse('https://example.com/managed.m3u8'),
+      );
+      await tester.runAsync(controller.initialize);
+
+      await pumpLegacy(tester,
+          preloaded: controller, managed: true, heartbeatService: service);
+      expect(heartbeatEvents.hasListener, isFalse);
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(controller.dispose);
+    });
+
+    testWidgets('suppresses paused or covered recovery and post-dispose races',
+        (tester) async {
+      await pumpLegacy(tester);
+      final media = find.byWidgetPredicate(
+        (widget) => widget is GestureDetector && widget.onDoubleTap != null,
+      );
+      await tester.tap(media);
+      await tester.pump(const Duration(milliseconds: 400));
+      final pausedPauses = platform.pauseCount;
+      final pausedSeeks = platform.seekCount;
+      await tester.runAsync(
+        () => recoverFrameOutput(const Duration(seconds: 1), 1),
+      );
+      expect(platform.pauseCount, pausedPauses);
+      expect(platform.seekCount, pausedSeeks);
+
+      await tester.tap(media);
+      await tester.pump(const Duration(milliseconds: 400));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      final pauses = platform.pauseCount;
+      final seeks = platform.seekCount;
+      await tester.runAsync(
+        () => recoverFrameOutput(const Duration(seconds: 2), 1),
+      );
+      expect(platform.pauseCount, pauses);
+      expect(platform.seekCount, seeks);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.runAsync(
+        () => recoverFrameOutput(const Duration(seconds: 5), 2),
+      );
+      expect(platform.createCount, 1);
+      expect(platform.callsAfterDispose, 0);
+    });
+  });
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMessageHandler(frameOutputHeartbeatChannelName, (message) async {
+    return const StandardMethodCodec().encodeSuccessEnvelope(null);
+  });
+  _registerLegacyFrameOutputRecoveryTests();
   testWidgets('delayed preload claim blocks concurrent local initialization',
       (tester) async {
     TestWidgetsFlutterBinding.ensureInitialized();

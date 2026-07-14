@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/video_playback_health_monitor.dart';
 
@@ -7,11 +9,17 @@ void main() {
   late int recoveries;
   late List<Map<String, Object>> parameters;
   late DateTime now;
+  late List<(Duration, int)> frameOutputRecoveries;
 
-  VideoPlaybackHealthMonitor createMonitor({int maxRecoveries = 2}) {
+  VideoPlaybackHealthMonitor createMonitor({
+    int maxRecoveries = 2,
+    Duration frameOutputCooldown = Duration.zero,
+    Future<void> Function(Duration)? onRecover,
+    FrameOutputStallRecover? onFrameOutputStallRecover,
+  }) {
     return VideoPlaybackHealthMonitor(
       readSnapshot: () => snapshot,
-      onRecover: (_) async => recoveries++,
+      onRecover: onRecover ?? (_) async => recoveries++,
       metricContext: const {'surface': 'test'},
       metricSink: (event, payload) {
         events.add(event);
@@ -21,6 +29,11 @@ void main() {
       stagnantSamplesBeforeRecovery: 3,
       maxRecoveries: maxRecoveries,
       recoveryCooldown: Duration.zero,
+      onFrameOutputStallRecover: onFrameOutputStallRecover ??
+          (position, attempt) async {
+            frameOutputRecoveries.add((position, attempt));
+          },
+      frameOutputRecoveryCooldown: frameOutputCooldown,
     );
   }
 
@@ -34,6 +47,7 @@ void main() {
     events = [];
     recoveries = 0;
     parameters = [];
+    frameOutputRecoveries = [];
     now = DateTime(2026, 1, 1);
   });
 
@@ -167,5 +181,218 @@ void main() {
     expect(events.where((e) => e == 'video_stall_detected'), hasLength(2));
     expect(events.where((e) => e == 'video_stall_recovery'), hasLength(2));
     monitor.dispose();
+  });
+
+  group('frame-output stall detector', () {
+    VideoPlaybackSnapshot frameSnapshot({
+      required int seconds,
+      int? count = 10,
+      bool shouldMonitor = true,
+      bool isBuffering = false,
+      int durationSeconds = 30,
+      int discontinuitySequence = 0,
+    }) {
+      return VideoPlaybackSnapshot(
+        shouldMonitor: shouldMonitor,
+        isBuffering: isBuffering,
+        position: Duration(seconds: seconds),
+        duration: Duration(seconds: durationSeconds),
+        frameOutputCount: count,
+        playbackDiscontinuitySequence: discontinuitySequence,
+      );
+    }
+
+    test('recovers after baseline and two stale samples while clock advances',
+        () async {
+      final monitor = createMonitor();
+      for (var second = 0; second <= 2; second++) {
+        snapshot = frameSnapshot(seconds: second);
+        await monitor.sample();
+      }
+
+      expect(frameOutputRecoveries, [(const Duration(seconds: 2), 1)]);
+      expect(
+        events.where((event) => event == 'video_frame_output_stall_detected'),
+        hasLength(1),
+      );
+      final recoveryIndex = events.indexOf('video_frame_output_stall_recovery');
+      expect(parameters[recoveryIndex], containsPair('recovery_attempt', 1));
+      expect(parameters[recoveryIndex], containsPair('position_ms', 2000));
+      expect(recoveries, 0, reason: 'playback-clock recovery stays separate');
+    });
+
+    test('pause, buffering, end, and missing signal reset the baseline',
+        () async {
+      final monitor = createMonitor();
+      snapshot = frameSnapshot(seconds: 0);
+      await monitor.sample();
+
+      final suppressed = [
+        frameSnapshot(seconds: 1, shouldMonitor: false),
+        frameSnapshot(seconds: 2, isBuffering: true),
+        frameSnapshot(seconds: 29, durationSeconds: 30),
+        frameSnapshot(seconds: 3, count: null),
+      ];
+      for (final value in suppressed) {
+        snapshot = value;
+        await monitor.sample();
+        snapshot = frameSnapshot(seconds: 4);
+        await monitor.sample();
+        snapshot = frameSnapshot(seconds: 5);
+        await monitor.sample();
+        expect(frameOutputRecoveries, isEmpty);
+      }
+    });
+
+    test('advancing and regressing counts establish a new baseline', () async {
+      final monitor = createMonitor();
+      for (final value in [
+        frameSnapshot(seconds: 0, count: 10),
+        frameSnapshot(seconds: 1, count: 10),
+        frameSnapshot(seconds: 2, count: 11),
+        frameSnapshot(seconds: 3, count: 11),
+        frameSnapshot(seconds: 4, count: 2),
+        frameSnapshot(seconds: 5, count: 2),
+      ]) {
+        snapshot = value;
+        await monitor.sample();
+      }
+      expect(frameOutputRecoveries, isEmpty);
+
+      snapshot = frameSnapshot(seconds: 6, count: 2);
+      await monitor.sample();
+      expect(frameOutputRecoveries.single.$2, 1);
+    });
+
+    test('forward seek resets stale frame-output evidence', () async {
+      final monitor = createMonitor();
+      snapshot = frameSnapshot(seconds: 0);
+      await monitor.sample();
+      snapshot = frameSnapshot(seconds: 1);
+      await monitor.sample();
+      snapshot = frameSnapshot(seconds: 15);
+      await monitor.sample();
+      snapshot = frameSnapshot(seconds: 16);
+      await monitor.sample();
+
+      expect(frameOutputRecoveries, isEmpty);
+      snapshot = frameSnapshot(seconds: 17);
+      await monitor.sample();
+      expect(frameOutputRecoveries, hasLength(1));
+    });
+
+    test('source replacement resets both detector baselines', () async {
+      final monitor = createMonitor();
+      snapshot = frameSnapshot(seconds: 0);
+      await monitor.sample();
+      snapshot = frameSnapshot(seconds: 1);
+      await monitor.sample();
+
+      snapshot = frameSnapshot(seconds: 0, discontinuitySequence: 1);
+      await monitor.sample();
+      snapshot = frameSnapshot(seconds: 1, discontinuitySequence: 1);
+      await monitor.sample();
+      expect(frameOutputRecoveries, isEmpty);
+
+      // The clock detector also needs three fresh stagnant samples.
+      snapshot = frameSnapshot(seconds: 1, discontinuitySequence: 2);
+      await monitor.sample();
+      await monitor.sample();
+      await monitor.sample();
+      expect(recoveries, 0);
+      await monitor.sample();
+      expect(recoveries, 1);
+    });
+
+    test('recovery has an independent cap and cooldown', () async {
+      final monitor = createMonitor(
+        maxRecoveries: 0,
+        frameOutputCooldown: const Duration(seconds: 10),
+      );
+
+      for (var second = 0; second <= 2; second++) {
+        snapshot = frameSnapshot(seconds: second);
+        await monitor.sample();
+      }
+      expect(frameOutputRecoveries, hasLength(1));
+
+      for (var second = 3; second <= 6; second++) {
+        snapshot = frameSnapshot(seconds: second);
+        await monitor.sample();
+      }
+      expect(frameOutputRecoveries, hasLength(1), reason: 'cooldown applies');
+
+      now = now.add(const Duration(seconds: 10));
+      snapshot = frameSnapshot(seconds: 7);
+      await monitor.sample();
+      expect(frameOutputRecoveries, hasLength(2));
+      expect(frameOutputRecoveries.last.$2, 2);
+
+      now = now.add(const Duration(seconds: 10));
+      for (var second = 8; second <= 12; second++) {
+        snapshot = frameSnapshot(seconds: second);
+        await monitor.sample();
+      }
+      expect(frameOutputRecoveries, hasLength(2), reason: 'cap applies');
+      expect(recoveries, 0, reason: 'playback-clock cap is independent');
+    });
+
+    test('slow frame recovery serializes samples and cannot trigger clock',
+        () async {
+      final recoveryStarted = Completer<void>();
+      final releaseRecovery = Completer<void>();
+      final monitor = createMonitor(
+        onFrameOutputStallRecover: (position, attempt) async {
+          frameOutputRecoveries.add((position, attempt));
+          recoveryStarted.complete();
+          await releaseRecovery.future;
+        },
+      );
+      for (var second = 0; second < 2; second++) {
+        snapshot = frameSnapshot(seconds: second);
+        await monitor.sample();
+      }
+      snapshot = frameSnapshot(seconds: 2);
+      final slowSample = monitor.sample();
+      await recoveryStarted.future;
+
+      snapshot = frameSnapshot(seconds: 2);
+      await monitor.sample();
+      expect(frameOutputRecoveries, hasLength(1));
+      expect(recoveries, 0);
+
+      releaseRecovery.complete();
+      await slowSample;
+      expect(recoveries, 0);
+    });
+
+    test('slow clock recovery serializes samples and cannot trigger frame',
+        () async {
+      final recoveryStarted = Completer<void>();
+      final releaseRecovery = Completer<void>();
+      final monitor = createMonitor(
+        onRecover: (_) async {
+          recoveries++;
+          recoveryStarted.complete();
+          await releaseRecovery.future;
+        },
+      );
+      for (var i = 0; i < 3; i++) {
+        await monitor.sample();
+      }
+      final slowSample = monitor.sample();
+      await recoveryStarted.future;
+
+      snapshot = frameSnapshot(seconds: 1);
+      await monitor.sample();
+      snapshot = frameSnapshot(seconds: 2);
+      await monitor.sample();
+      expect(recoveries, 1);
+      expect(frameOutputRecoveries, isEmpty);
+
+      releaseRecovery.complete();
+      await slowSample;
+      expect(frameOutputRecoveries, isEmpty);
+    });
   });
 }
