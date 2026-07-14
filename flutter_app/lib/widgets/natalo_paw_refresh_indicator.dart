@@ -87,6 +87,23 @@ class NataloPawRefreshIndicator extends StatefulWidget {
   /// berubah. Override [translateChild].
   final bool pinContent;
 
+  /// Renders a compact progress ring without the 44px white paw surface.
+  /// Profile screens use this to match the quieter pull feedback of social
+  /// apps while the branded paw remains the default elsewhere.
+  final bool minimalIndicator;
+
+  /// Whether [topPadding] is measured below the device safe-area inset.
+  /// Set false when this widget already lives inside a SafeArea/app bar.
+  final bool includeSafeAreaPadding;
+
+  /// Optional color for the compact indicator.
+  final Color? indicatorColor;
+
+  /// Color revealed behind the scrollable while it rubber-bands downward.
+  /// Only a shallow top strip is painted, so grid gaps further down keep
+  /// their normal page background.
+  final Color? refreshBackdropColor;
+
   const NataloPawRefreshIndicator({
     super.key,
     required this.child,
@@ -97,6 +114,10 @@ class NataloPawRefreshIndicator extends StatefulWidget {
     this.maxChildOffset = 34,
     this.requireFullPull = false,
     this.pinContent = false,
+    this.minimalIndicator = false,
+    this.includeSafeAreaPadding = true,
+    this.indicatorColor,
+    this.refreshBackdropColor,
   });
 
   @override
@@ -284,10 +305,19 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
     return Stack(
       fit: StackFit.expand,
       children: [
+        if (widget.refreshBackdropColor != null)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: widget.triggerOffset + 48,
+            child: ColoredBox(color: widget.refreshBackdropColor!),
+          ),
         // ScrollConfiguration force bouncing physics di Android supaya
         // OverscrollNotification fire saat user drag past top (default
         // ClampingScrollPhysics tidak fire → paw tidak armed di Android).
         AnimatedContainer(
+          key: const Key('natalo_refresh_child'),
           duration: Duration(milliseconds: _isRefreshing ? 180 : 0),
           curve: Curves.easeOutCubic,
           transform: Matrix4.translationValues(0, childOffset, 0),
@@ -301,7 +331,10 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
         ),
         if (visible)
           Positioned(
-            top: MediaQuery.of(context).padding.top + widget.topPadding,
+            top: (widget.includeSafeAreaPadding
+                    ? MediaQuery.of(context).padding.top
+                    : 0) +
+                widget.topPadding,
             left: 0,
             right: 0,
             child: IgnorePointer(
@@ -314,6 +347,27 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
                       isRefreshing: _isRefreshing,
                       fadeValue: _fadeCtrl.value,
                     );
+                    if (widget.minimalIndicator) {
+                      return Opacity(
+                        opacity: visual.opacity,
+                        child: Transform.scale(
+                          scale: visual.scale,
+                          child: SizedBox.square(
+                            key: const Key('natalo_refresh_minimal_indicator'),
+                            dimension: 24,
+                            child: CircularProgressIndicator(
+                              value: _isRefreshing ? null : progress,
+                              color:
+                                  widget.indicatorColor ?? NataloColors.primary,
+                              backgroundColor: (widget.indicatorColor ??
+                                      NataloColors.primary)
+                                  .withValues(alpha: 0.22),
+                              strokeWidth: 2.2,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
                     // Rotation: 0 → π/2 saat pulling (turn-in feel),
                     // continuous spin saat refreshing.
                     final rotation = _isRefreshing
@@ -327,6 +381,7 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
                         child: Transform.rotate(
                           angle: rotation,
                           child: Container(
+                            key: const Key('natalo_refresh_paw_indicator'),
                             width: 44,
                             height: 44,
                             decoration: BoxDecoration(

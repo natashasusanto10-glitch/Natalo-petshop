@@ -21,6 +21,7 @@ import '../widgets/bottom_nav.dart';
 import 'feed_media_picker_screen.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/profile_avatar.dart';
+import '../widgets/profile_content_tab_bar.dart';
 import '../widgets/update_profile_photo_sheet.dart';
 import '../widgets/username_prompt_banner.dart';
 import 'member_post_detail_screen.dart';
@@ -333,11 +334,13 @@ class _ProfilePageState extends State<_ProfilePage>
                   Expanded(
                     child: NataloPawRefreshIndicator(
                       onRefresh: _refresh,
-                      // IG-style profile refresh: bar ikon tetap, sedangkan
-                      // hero + statistik turun dan membuka ruang untuk paw.
                       triggerOffset: 96,
-                      maxChildOffset: 104,
                       requireFullPull: true,
+                      translateChild: false,
+                      minimalIndicator: true,
+                      includeSafeAreaPadding: false,
+                      indicatorColor: Colors.white,
+                      refreshBackdropColor: NataloColors.heroTop,
                       child: NestedScrollView(
                         headerSliverBuilder: (context, innerScrolled) => [
                           // Blok profil = hero biru (avatar + statistik + nama di atas
@@ -363,8 +366,9 @@ class _ProfilePageState extends State<_ProfilePage>
                           ),
                           SliverPersistentHeader(
                             pinned: true,
-                            delegate: _TabBarDelegate(
+                            delegate: ProfileContentTabHeaderDelegate(
                               controller: _tabController,
+                              onTap: (_) => AppHaptics.tap(),
                             ),
                           ),
                         ],
@@ -737,91 +741,6 @@ class _ProfileStat extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-// ─── Tab bar ────────────────────────────────────────────────────────
-
-class _TabBarDelegate extends SliverPersistentHeaderDelegate {
-  final TabController controller;
-
-  _TabBarDelegate({required this.controller});
-
-  @override
-  double get minExtent => 42;
-
-  @override
-  double get maxExtent => 42;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      color: cs.surface,
-      child: TabBar(
-        controller: controller,
-        labelColor: _brandBlue,
-        unselectedLabelColor: cs.onSurfaceVariant,
-        // Custom UnderlineTabIndicator dengan ketebalan 3 + bottom inset
-        // 4dp supaya indikator floating subtle di bawah icon, bukan
-        // nempel mati di edge bottom. Animated transition antar tab
-        // langsung di-handle Flutter TabBar (200ms ease-in-out default).
-        indicator: UnderlineTabIndicator(
-          borderSide: const BorderSide(color: _brandBlue, width: 3),
-          borderRadius: BorderRadius.circular(3),
-          insets: const EdgeInsets.symmetric(horizontal: 16),
-        ),
-        indicatorSize: TabBarIndicatorSize.label,
-        // Hide old static indicatorColor/Weight props karena kita pakai
-        // custom UnderlineTabIndicator di atas.
-        indicatorColor: _brandBlue,
-        indicatorWeight: 0.001,
-        // Splash + hover di-disable supaya tap area clean — bukan ada
-        // splash bulat material yang clash dengan custom indicator.
-        splashFactory: NoSplash.splashFactory,
-        overlayColor: WidgetStateProperty.all<Color>(Colors.transparent),
-        labelStyle: const TextStyle(fontSize: 0, fontWeight: FontWeight.w600),
-        unselectedLabelStyle: const TextStyle(
-          fontSize: 0,
-          fontWeight: FontWeight.w500,
-        ),
-        tabs: [
-          Tab(
-            height: 42,
-            iconMargin: EdgeInsets.zero,
-            icon: Semantics(
-              label: 'Postingan',
-              child: const Icon(Icons.grid_on_rounded, size: 22),
-            ),
-          ),
-          Tab(
-            height: 42,
-            iconMargin: EdgeInsets.zero,
-            icon: Semantics(
-              label: 'Video',
-              child: const Icon(Icons.play_circle_outline_rounded, size: 22),
-            ),
-          ),
-          Tab(
-            height: 42,
-            iconMargin: EdgeInsets.zero,
-            icon: Semantics(
-              label: 'Belanja',
-              child: const Icon(Icons.shopping_bag_outlined, size: 22),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  bool shouldRebuild(covariant _TabBarDelegate oldDelegate) {
-    return oldDelegate.controller != controller;
   }
 }
 

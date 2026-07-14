@@ -26,10 +26,16 @@ import '../widgets/app_ui.dart';
 import '../widgets/moderation_action_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/profile_avatar.dart';
+import '../widgets/profile_content_tab_bar.dart';
 import 'member_post_detail_screen.dart';
 import 'public_profile_follow_list_screen.dart';
 
 const _brandBlue = NataloColors.primary;
+const _profileContentTabs = <PublicProfileContentFilter>[
+  PublicProfileContentFilter.all,
+  PublicProfileContentFilter.video,
+  PublicProfileContentFilter.shoppable,
+];
 
 class _ProfileContentState {
   List<FeedPost> posts = const [];
@@ -59,7 +65,8 @@ class PublicProfileScreen extends StatefulWidget {
   State<PublicProfileScreen> createState() => _PublicProfileScreenState();
 }
 
-class _PublicProfileScreenState extends State<PublicProfileScreen> {
+class _PublicProfileScreenState extends State<PublicProfileScreen>
+    with SingleTickerProviderStateMixin {
   PublicProfile? _profile;
   final Map<PublicProfileContentFilter, _ProfileContentState> _contentStates = {
     PublicProfileContentFilter.all: _ProfileContentState(),
@@ -74,16 +81,15 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   bool _notFound = false;
 
   late final ScrollController _scrollController;
-
-  _ProfileContentState get _activeContentState =>
-      _contentStates[_selectedContent]!;
-
-  List<FeedPost> get _posts => _activeContentState.posts;
+  late final TabController _tabController;
 
   @override
   void initState() {
     super.initState();
-    _scrollController = ScrollController()..addListener(_onScroll);
+    _scrollController = ScrollController();
+    _tabController =
+        TabController(length: _profileContentTabs.length, vsync: this)
+          ..addListener(_onTabControllerChanged);
     followOverrides.addListener(_onFollowOverridesChanged);
     _load();
   }
@@ -91,9 +97,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   @override
   void dispose() {
     followOverrides.removeListener(_onFollowOverridesChanged);
-    _scrollController
-      ..removeListener(_onScroll)
+    _tabController
+      ..removeListener(_onTabControllerChanged)
       ..dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -108,15 +115,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           isFollowing: following,
           followersCount: followersCount < 0 ? 0 : followersCount,
         ));
-  }
-
-  void _onScroll() {
-    final contentState = _activeContentState;
-    if (contentState.loadingMore || contentState.nextCursor == null) return;
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 400) {
-      unawaited(_loadMore());
-    }
   }
 
   Future<void> _load({bool showInitialLoading = true}) async {
@@ -188,8 +186,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     }
   }
 
-  Future<void> _loadMore() async {
-    final content = _selectedContent;
+  Future<void> _loadMore(PublicProfileContentFilter content) async {
     final contentState = _contentStates[content]!;
     final cursor = contentState.nextCursor;
     if (cursor == null || contentState.loadingMore) return;
@@ -224,14 +221,43 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
   Future<void> _refresh() async => _load(showInitialLoading: false);
 
-  void _selectContent(PublicProfileContentFilter content) {
+  void _activateContent(PublicProfileContentFilter content) {
     if (content == _selectedContent) return;
-    AppHaptics.tap();
     setState(() => _selectedContent = content);
     final contentState = _contentStates[content]!;
     if (!contentState.loaded && !contentState.loading) {
       unawaited(_loadSelectedContent(content));
     }
+  }
+
+  void _onTabTapped(int index) {
+    if (index == _profileContentTabs.indexOf(_selectedContent)) return;
+    AppHaptics.tap();
+    _activateContent(_profileContentTabs[index]);
+  }
+
+  void _onTabControllerChanged() {
+    if (_tabController.indexIsChanging) return;
+    final position = _tabController.animation?.value;
+    if (position != null && (position - _tabController.index).abs() > 0.001) {
+      return;
+    }
+    _activateContent(_profileContentTabs[_tabController.index]);
+  }
+
+  bool _handleContentScroll(
+    PublicProfileContentFilter content,
+    ScrollNotification notification,
+  ) {
+    if (notification.metrics.axis != Axis.vertical ||
+        notification.metrics.extentAfter >= 400) {
+      return false;
+    }
+    final contentState = _contentStates[content]!;
+    if (!contentState.loadingMore && contentState.nextCursor != null) {
+      unawaited(_loadMore(content));
+    }
+    return false;
   }
 
   Future<void> _loadSelectedContent(
@@ -284,11 +310,15 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     if (mounted) _refresh();
   }
 
-  Future<void> _openPost(int index) async {
-    if (index < 0 || index >= _posts.length || _openingPost) return;
+  Future<void> _openPost(
+    PublicProfileContentFilter content,
+    int index,
+  ) async {
+    final posts = _contentStates[content]!.posts;
+    if (index < 0 || index >= posts.length || _openingPost) return;
     _openingPost = true;
     final profile = _profile;
-    final post = _posts[index];
+    final post = posts[index];
     final handoff = PostVideoWarmHandoff.createIfVideo(
       isVideo: post.isVideo,
       postId: post.id,
@@ -310,7 +340,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           // edit/delete (cuma owner di "Postingan Saya" yang lihat itu).
           builder: (_) => MemberPostDetailScreen(
             post: post,
-            posts: _posts,
+            posts: posts,
             initialIndex: index,
             authorName: profile?.name,
             authorPhotoUrl: profile?.profilePhotoUrl,
@@ -537,17 +567,20 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       return AppErrorState(description: _errorText!, onRetry: _load);
     }
     final profile = _profile!;
-    final contentState = _activeContentState;
     final scrollView = NataloPawRefreshIndicator(
       onRefresh: _refresh,
-      // Selaras dengan profil sendiri: app bar tetap, isi profil mengikuti
-      // jari dan refresh hanya aktif setelah pull penuh.
       triggerOffset: 96,
-      maxChildOffset: 104,
       requireFullPull: true,
-      child: CustomScrollView(
+      translateChild: false,
+      minimalIndicator: true,
+      includeSafeAreaPadding: false,
+      indicatorColor: profile.isOfficial ? Colors.white : _brandBlue,
+      refreshBackdropColor: profile.isOfficial
+          ? NataloColors.heroTop
+          : Theme.of(context).colorScheme.surface,
+      child: NestedScrollView(
         controller: _scrollController,
-        slivers: [
+        headerSliverBuilder: (context, innerBoxIsScrolled) => [
           SliverToBoxAdapter(
             child: _Header(
               profile: profile,
@@ -566,73 +599,16 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           ),
           SliverPersistentHeader(
             pinned: true,
-            delegate: _ProfileTabsDelegate(
-              selected: _selectedContent,
-              onSelected: _selectContent,
+            delegate: ProfileContentTabHeaderDelegate(
+              controller: _tabController,
+              onTap: _onTabTapped,
             ),
           ),
-          if (contentState.loading && _posts.isEmpty)
-            const SliverToBoxAdapter(child: _ProfileGridLoading())
-          else if (contentState.errorText != null && _posts.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: _ProfileContentError(
-                message: contentState.errorText!,
-                onRetry: () => _loadSelectedContent(_selectedContent),
-              ),
-            )
-          else if (_posts.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: _EmptyPosts(content: _selectedContent),
-            )
-          else
-            SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                mainAxisSpacing: 1.5,
-                crossAxisSpacing: 1.5,
-                childAspectRatio: 1,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, idx) {
-                  // Per-tile guard — kalau ada single post yg bikin
-                  // _PostTile throw (mis. URL malformed bikin
-                  // CachedNetworkImage assert), jangan biarin
-                  // AppErrorWidget global ngambil-alih SELURUH grid.
-                  // Tile yang gagal di-render sebagai placeholder
-                  // abu-abu polos. Sisanya tetap aman.
-                  try {
-                    return _PostTile(
-                      post: _posts[idx],
-                      onTap: () => _openPost(idx),
-                      showCommerceBadge: _selectedContent ==
-                          PublicProfileContentFilter.shoppable,
-                    );
-                  } catch (_) {
-                    return ColoredBox(
-                      color:
-                          Theme.of(context).colorScheme.surfaceContainerHighest,
-                    );
-                  }
-                },
-                childCount: _posts.length,
-              ),
-            ),
-          if (contentState.loadingMore)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Center(
-                  child: CircularProgressIndicator(
-                    color: _brandBlue,
-                    strokeWidth: 2,
-                  ),
-                ),
-              ),
-            ),
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
+        body: TabBarView(
+          controller: _tabController,
+          children: _profileContentTabs.map(_buildContentPage).toList(),
+        ),
       ),
     );
     if (!profile.isOfficial) return scrollView;
@@ -665,6 +641,75 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         ),
         Positioned.fill(child: scrollView),
       ],
+    );
+  }
+
+  Widget _buildContentPage(PublicProfileContentFilter content) {
+    final contentState = _contentStates[content]!;
+    final posts = contentState.posts;
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) =>
+          _handleContentScroll(content, notification),
+      child: CustomScrollView(
+        key: PageStorageKey<String>('public-profile-${content.name}'),
+        slivers: [
+          if ((!contentState.loaded || contentState.loading) && posts.isEmpty)
+            const SliverToBoxAdapter(child: _ProfileGridLoading())
+          else if (contentState.errorText != null && posts.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _ProfileContentError(
+                message: contentState.errorText!,
+                onRetry: () => _loadSelectedContent(content),
+              ),
+            )
+          else if (posts.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _EmptyPosts(content: content),
+            )
+          else
+            SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: 1.5,
+                crossAxisSpacing: 1.5,
+                childAspectRatio: 1,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  try {
+                    return _PostTile(
+                      post: posts[index],
+                      onTap: () => _openPost(content, index),
+                      showCommerceBadge:
+                          content == PublicProfileContentFilter.shoppable,
+                    );
+                  } catch (_) {
+                    return ColoredBox(
+                      color:
+                          Theme.of(context).colorScheme.surfaceContainerHighest,
+                    );
+                  }
+                },
+                childCount: posts.length,
+              ),
+            ),
+          if (contentState.loadingMore)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: _brandBlue,
+                    strokeWidth: 2,
+                  ),
+                ),
+              ),
+            ),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ],
+      ),
     );
   }
 }
@@ -1354,134 +1399,6 @@ class _StatColumn extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: content,
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileTabsDelegate extends SliverPersistentHeaderDelegate {
-  final PublicProfileContentFilter selected;
-  final ValueChanged<PublicProfileContentFilter> onSelected;
-
-  const _ProfileTabsDelegate({
-    required this.selected,
-    required this.onSelected,
-  });
-
-  @override
-  double get minExtent => 48;
-
-  @override
-  double get maxExtent => 48;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return _ProfileTabs(selected: selected, onSelected: onSelected);
-  }
-
-  @override
-  bool shouldRebuild(covariant _ProfileTabsDelegate oldDelegate) {
-    return oldDelegate.selected != selected ||
-        oldDelegate.onSelected != onSelected;
-  }
-}
-
-class _ProfileTabs extends StatelessWidget {
-  final PublicProfileContentFilter selected;
-  final ValueChanged<PublicProfileContentFilter> onSelected;
-
-  const _ProfileTabs({
-    required this.selected,
-    required this.onSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        border: Border(
-          top: BorderSide(color: cs.outlineVariant, width: 0.5),
-          bottom: BorderSide(color: cs.outlineVariant, width: 0.5),
-        ),
-      ),
-      child: Row(
-        children: [
-          _ProfileTabButton(
-            icon: Icons.grid_on_rounded,
-            label: 'Postingan',
-            selected: selected == PublicProfileContentFilter.all,
-            onTap: () => onSelected(PublicProfileContentFilter.all),
-          ),
-          _ProfileTabButton(
-            icon: Icons.play_circle_outline_rounded,
-            label: 'Video',
-            selected: selected == PublicProfileContentFilter.video,
-            onTap: () => onSelected(PublicProfileContentFilter.video),
-          ),
-          _ProfileTabButton(
-            icon: Icons.shopping_bag_outlined,
-            label: 'Belanja',
-            selected: selected == PublicProfileContentFilter.shoppable,
-            onTap: () => onSelected(PublicProfileContentFilter.shoppable),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileTabButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _ProfileTabButton({
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final color = selected ? _brandBlue : cs.onSurfaceVariant;
-    return Expanded(
-      child: Semantics(
-        button: true,
-        selected: selected,
-        label: label,
-        child: Tooltip(
-          message: label,
-          child: InkWell(
-            onTap: onTap,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Icon(icon, color: color, size: 23),
-                if (selected)
-                  Positioned(
-                    bottom: 0,
-                    child: Container(
-                      width: 44,
-                      height: 3,
-                      decoration: BoxDecoration(
-                        color: _brandBlue,
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
         ),
       ),
     );
