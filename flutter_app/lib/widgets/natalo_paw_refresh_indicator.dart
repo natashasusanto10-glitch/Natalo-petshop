@@ -70,6 +70,11 @@ class NataloPawRefreshIndicator extends StatefulWidget {
   /// [translateChild] true.
   final double maxChildOffset;
 
+  /// Jika true, refresh hanya dijalankan setelah tarikan benar-benar
+  /// mencapai [triggerOffset]. Tarikan pendek akan memantul kembali tanpa
+  /// memakai toleransi release. Cocok untuk profil dengan area scroll besar.
+  final bool requireFullPull;
+
   /// Konten benar-benar DIAM saat pull: child tidak di-translate DAN physics
   /// dipaksa Clamping supaya scroll position tidak bisa lewat 0 (tidak ada
   /// rubber-band). Satu-satunya sinyal visual = paw overlay.
@@ -89,6 +94,7 @@ class NataloPawRefreshIndicator extends StatefulWidget {
     this.topPadding = 8,
     this.translateChild = true,
     this.maxChildOffset = 34,
+    this.requireFullPull = false,
     this.pinContent = false,
   });
 
@@ -212,8 +218,10 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
     // Sedikit toleran saat release: beberapa scrollable (terutama detail
     // screen dengan ListView pendek) tidak selalu memberi update frame tepat
     // di threshold, padahal user sudah menarik cukup jauh secara visual.
-    final releaseTrigger = widget.triggerOffset * 0.72;
-    if ((_armed && _overscroll >= widget.triggerOffset) ||
+    final releaseTrigger = widget.requireFullPull
+        ? widget.triggerOffset
+        : widget.triggerOffset * 0.72;
+    if (_armed ||
         _overscroll >= releaseTrigger ||
         _maxOverscroll >= releaseTrigger) {
       _doRefresh();
@@ -260,11 +268,11 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
   Widget build(BuildContext context) {
     final visible = _overscroll > 0 || _isRefreshing;
     final progress = (_overscroll / widget.triggerOffset).clamp(0.0, 1.0);
-    // Pakai rampProgress yang sama dengan computePawVisual (selesai di
-    // pawRampFraction, bukan progress 1.0 penuh) — supaya geser konten
-    // (translateChild) dan kurva paw finish di titik tarikan yang sama,
-    // tidak "kurang sinkron" seperti sebelumnya.
-    final rampProgress = (progress / pawRampFraction).clamp(0.0, 1.0);
+    // Mode full-pull mengikuti jari hingga threshold. Mode default tetap
+    // menyelesaikan gerak lebih awal agar perilaku halaman lama tidak berubah.
+    final rampProgress = widget.requireFullPull
+        ? progress
+        : (progress / pawRampFraction).clamp(0.0, 1.0);
     final childOffset = widget.translateChild && !widget.pinContent
         ? (_isRefreshing
             ? widget.maxChildOffset

@@ -416,6 +416,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final profile = _profile!;
     final scrollView = NataloPawRefreshIndicator(
       onRefresh: _refresh,
+      // Selaras dengan profil sendiri: app bar tetap, isi profil mengikuti
+      // jari dan refresh hanya aktif setelah pull penuh.
+      triggerOffset: 96,
+      maxChildOffset: 104,
+      requireFullPull: true,
       child: CustomScrollView(
         controller: _scrollController,
         slivers: [

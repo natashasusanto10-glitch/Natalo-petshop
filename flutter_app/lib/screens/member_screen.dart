@@ -327,10 +327,11 @@ class _ProfilePageState extends State<_ProfilePage>
                   Expanded(
                     child: NataloPawRefreshIndicator(
                       onRefresh: _refresh,
-                      // Konten diam saat pull (pinContent) supaya hero tidak
-                      // "terbelah"; paw muncul di bawah baris ikon header.
-                      topPadding: 60,
-                      pinContent: true,
+                      // IG-style profile refresh: bar ikon tetap, sedangkan
+                      // hero + statistik turun dan membuka ruang untuk paw.
+                      triggerOffset: 96,
+                      maxChildOffset: 104,
+                      requireFullPull: true,
                       child: NestedScrollView(
                         headerSliverBuilder: (context, innerScrolled) => [
                           // Blok profil = hero biru (avatar + statistik + nama di atas
