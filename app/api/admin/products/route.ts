@@ -16,7 +16,8 @@ const createProductSchema = z.object({
   stock: z.number().int().min(0).max(999_999).optional().default(0),
   weightGram: z.number().int().min(1).max(999_999).optional().default(500),
   imageUrl: z.string().trim().optional(),
-  gallery: z.array(z.string().trim()).optional().default([]),
+  // Maksimal 9 foto total: 1 cover (imageUrl) + 8 gallery.
+  gallery: z.array(z.string().trim()).max(8).optional().default([]),
   categoryId: z.string().trim().optional(),
   brandId: z.string().trim().optional(),
   isActive: z.boolean().optional().default(true),

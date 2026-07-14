@@ -199,13 +199,13 @@ export default async function AdminProductEditPage({
                 <div className="space-y-5">
                   <MultiImageUpload
                     name="images"
-                    max={5}
+                    max={9}
                     defaultValue={[
                       ...(product.imageUrl ? [product.imageUrl] : []),
                       ...product.gallery,
                     ]}
                   />
-                  <div className="mt-5 border-t border-zinc-100 pt-4">
+                  <div id="video" className="mt-5 scroll-mt-24 border-t border-zinc-100 pt-4">
                     <p className="mb-2 text-sm font-semibold text-zinc-800">Video Produk</p>
                     <ProductVideoUpload
                       productId={product.id}
