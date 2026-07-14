@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { BrandLogoOrderClient } from "@/components/admin/BrandLogoOrderClient";
 import { BrandLogoUploadButton } from "@/components/admin/BrandLogoUploadButton";
+import { BrandCreateDialog } from "@/components/admin/BrandCreateDialog";
 import { PageHeader, EmptyState, Badge, AdminPage, Button } from "@/components/admin/ui";
 
 function slugify(name: string) {
@@ -13,11 +14,6 @@ function slugify(name: string) {
     .replace(/&/g, "and")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-}
-
-function parsePosition(value: FormDataEntryValue | null) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
 }
 
 function revalidateBrandSurfaces() {
@@ -72,7 +68,9 @@ export default async function AdminBrandsPage({
       data: {
         name,
         slug,
-        position: parsePosition(formData.get("position")),
+        // Brand baru tidak menyela urutan utama. Admin dapat menempatkannya
+        // lewat drag setelah logo dilengkapi.
+        position: 1000,
         isActive: formData.get("isActive") === "on",
       },
     });
@@ -120,8 +118,6 @@ export default async function AdminBrandsPage({
       prisma.brand.updateMany({
         where: {
           id: { notIn: orderedIds },
-          isActive: true,
-          position: { lt: 1000 },
         },
         data: { position: 1000 },
       }),
@@ -143,6 +139,33 @@ export default async function AdminBrandsPage({
     revalidateBrandSurfaces();
   }
 
+  async function promoteBrand(brandId: string) {
+    "use server";
+    const candidate = await prisma.brand.findFirst({
+      where: { id: brandId, isActive: true, logoUrl: { not: null } },
+      select: { id: true },
+    });
+    if (!candidate) throw new Error("Brand tidak memenuhi syarat.");
+
+    const currentPrimary = await prisma.brand.findMany({
+      where: { isActive: true, logoUrl: { not: null } },
+      orderBy: [{ position: "asc" }, { createdAt: "desc" }, { name: "asc" }],
+      take: 18,
+      select: { id: true },
+    });
+    if (currentPrimary.some((brand) => brand.id === brandId)) return;
+
+    const lastPrimary = currentPrimary.length >= 18 ? currentPrimary.at(-1) : undefined;
+    const targetPosition = Math.min(currentPrimary.length, 17);
+    await prisma.$transaction([
+      ...(lastPrimary
+        ? [prisma.brand.update({ where: { id: lastPrimary.id }, data: { position: 1000 } })]
+        : []),
+      prisma.brand.update({ where: { id: brandId }, data: { position: targetPosition } }),
+    ]);
+    revalidateBrandSurfaces();
+  }
+
   const logoOrderBrands = brands
     .filter((brand) => brand.isActive && brand.logoUrl)
     .slice(0, 18)
@@ -151,20 +174,109 @@ export default async function AdminBrandsPage({
       name: brand.name,
       logoUrl: brand.logoUrl,
     }));
+  const primaryIds = new Set(logoOrderBrands.map((brand) => brand.id));
+  const otherBrands = brands
+    .filter((brand) => !primaryIds.has(brand.id))
+    .map((brand) => ({
+      id: brand.id,
+      name: brand.name,
+      logoUrl: brand.logoUrl,
+      isActive: brand.isActive,
+    }));
+  const activeCount = brands.filter((brand) => brand.isActive).length;
+  const withoutLogoCount = brands.filter((brand) => !brand.logoUrl).length;
+
+  const allBrandsPanel = (
+    <div>
+      <div className="flex flex-col gap-2 border-b border-zinc-100 px-4 py-5 sm:px-6">
+        <h2 className="text-base font-black text-zinc-950">Semua Brand</h2>
+        <p className="text-xs font-semibold text-zinc-500">
+          Kelola logo, status, produk, dan informasi setiap brand.
+        </p>
+      </div>
+      {brands.length === 0 ? (
+        <EmptyState
+          icon="🏭"
+          title="Belum ada brand"
+          description="Tambahkan brand pertama untuk mulai mengelola katalog."
+          size="full"
+        />
+      ) : (
+        <div className="divide-y divide-zinc-100">
+          {brands.map((brand) => (
+            <div
+              key={brand.id}
+              className="flex flex-col gap-3 px-4 py-4 transition hover:bg-zinc-50 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6"
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <BrandLogoUploadButton
+                  brandId={brand.id}
+                  brandName={brand.name}
+                  logoUrl={brand.logoUrl}
+                  updateLogoAction={updateBrandLogo}
+                />
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-bold text-zinc-900">{brand.name}</p>
+                    <Badge variant={brand.isActive ? "success" : "neutral"}>
+                      {brand.isActive ? "Aktif" : "Nonaktif"}
+                    </Badge>
+                    {primaryIds.has(brand.id) && (
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-700">
+                        Utama #{brand.position + 1}
+                      </span>
+                    )}
+                    {!brand.logoUrl && (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700">
+                        Tanpa logo
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs text-zinc-500">
+                    /{brand.slug} · {brand._count.products} produk
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center">
+                <Button href={`/admin/brands/${brand.id}/edit`} variant="secondary" size="md">
+                  Edit
+                </Button>
+                <Button href={`/admin/products?brand=${brand.slug}`} variant="secondary" size="md">
+                  Produk
+                </Button>
+                <form action={deleteBrand}>
+                  <input type="hidden" name="id" value={brand.id} />
+                  <ConfirmSubmitButton
+                    className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-sm font-bold text-zinc-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                    message={`Hapus brand "${brand.name}"? ${brand._count.products} produk akan kehilangan label brand-nya (tapi produk tidak terhapus).`}
+                  >
+                    Hapus
+                  </ConfirmSubmitButton>
+                </form>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <AdminPage maxWidth="xl">
       <PageHeader
         title="Brand"
         subtitle={`${brands.length} brand terdaftar.`}
-        actions={
-          <Button href="/admin/dashboard" variant="secondary" size="sm">
-            ← Dashboard
-          </Button>
-        }
+        actions={<BrandCreateDialog createAction={createBrand} />}
       />
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard label="Total Brand" value={brands.length} tone="blue" icon="◇" />
+        <SummaryCard label="Aktif" value={activeCount} tone="green" icon="✓" />
+        <SummaryCard label="Tanpa Logo" value={withoutLogoCount} tone="amber" icon="▧" />
+        <SummaryCard label="Perlu Review" value={needsReviewCount} tone="violet" icon="↻" />
+      </div>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
         {needsReviewCount > 0 && (
           <Link
             href="/admin/brands/review"
@@ -198,115 +310,51 @@ export default async function AdminBrandsPage({
           </Link>
         )}
       </div>
-
-      <form
-        action={createBrand}
-        className="mt-6 grid gap-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4"
-      >
-        <div className="grid gap-3 md:grid-cols-[1fr_140px]">
-          <input
-            type="text"
-            name="name"
-            placeholder="Nama brand baru - contoh: Royal Canin"
-            required
-            className="min-w-0 rounded-full border border-zinc-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-zinc-600"
-          />
-          <input
-            type="number"
-            min="0"
-            name="position"
-            placeholder="Urutan"
-            className="rounded-full border border-zinc-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-zinc-600"
-          />
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <label className="inline-flex items-center gap-2 text-sm font-bold text-zinc-700">
-            <input
-              type="checkbox"
-              name="isActive"
-              defaultChecked
-              className="h-4 w-4 rounded border-zinc-300"
-            />
-            Aktif di user app
-          </label>
-          <Button type="submit">+ Tambah brand</Button>
-        </div>
-      </form>
       {error === "exists" && (
-        <p className="mt-2 text-sm font-semibold text-red-600">
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
           Brand dengan nama tersebut sudah ada.
         </p>
       )}
 
       <div className="mt-6">
-        <BrandLogoOrderClient brands={logoOrderBrands} saveAction={saveBrandOrder} />
-      </div>
-
-      <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200 bg-white">
-        {brands.length === 0 ? (
-          <EmptyState
-            icon="🏭"
-            title="Belum ada brand"
-            description="Tambahkan brand pertama lewat form di atas."
-            size="full"
-          />
-        ) : (
-          <div className="divide-y divide-zinc-100">
-            {brands.map((brand) => (
-              <div
-                key={brand.id}
-                className="flex flex-col gap-3 p-4 hover:bg-zinc-50 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
-              >
-                <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <BrandLogoUploadButton
-                    brandId={brand.id}
-                    brandName={brand.name}
-                    logoUrl={brand.logoUrl}
-                    updateLogoAction={updateBrandLogo}
-                  />
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-bold text-zinc-900">{brand.name}</p>
-                      <Badge variant={brand.isActive ? "success" : "neutral"}>
-                        {brand.isActive ? "Aktif" : "Nonaktif"}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-zinc-600">
-                      /{brand.slug} - urutan {brand.position} -{" "}
-                      {brand._count.products} produk
-                    </p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center">
-                  <Button
-                    href={`/admin/brands/${brand.id}/edit`}
-                    variant="secondary"
-                    size="md"
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    href={`/admin/products?brand=${brand.slug}`}
-                    variant="secondary"
-                    size="md"
-                  >
-                    Produk
-                  </Button>
-                  <form action={deleteBrand}>
-                    <input type="hidden" name="id" value={brand.id} />
-                    <ConfirmSubmitButton
-                      className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-red-200 bg-white px-4 text-sm font-bold text-red-600 transition hover:border-red-300 hover:bg-red-50"
-                      message={`Hapus brand "${brand.name}"? ${brand._count.products} produk akan kehilangan label brand-nya (tapi produk tidak terhapus).`}
-                    >
-                      Hapus
-                    </ConfirmSubmitButton>
-                  </form>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <BrandLogoOrderClient
+          brands={logoOrderBrands}
+          otherBrands={otherBrands}
+          allBrandsPanel={allBrandsPanel}
+          saveAction={saveBrandOrder}
+          promoteAction={promoteBrand}
+        />
       </div>
     </AdminPage>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  tone,
+  icon,
+}: {
+  label: string;
+  value: number;
+  tone: "blue" | "green" | "amber" | "violet";
+  icon: string;
+}) {
+  const styles = {
+    blue: "bg-blue-50 text-blue-700",
+    green: "bg-emerald-50 text-emerald-700",
+    amber: "bg-amber-50 text-amber-700",
+    violet: "bg-violet-50 text-violet-700",
+  }[tone];
+  return (
+    <div className="flex items-center gap-4 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+      <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl text-xl font-black ${styles}`} aria-hidden="true">
+        {icon}
+      </span>
+      <div>
+        <p className="text-xs font-bold text-zinc-500">{label}</p>
+        <p className="mt-0.5 text-2xl font-black text-zinc-950">{value}</p>
+      </div>
+    </div>
   );
 }
