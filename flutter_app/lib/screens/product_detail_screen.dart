@@ -102,6 +102,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   bool _loadingCustomerPosts = true;
   bool _descriptionExpanded = false;
   int _activeTab = 0;
+  bool _isProgrammaticSectionScroll = false;
+  int _sectionScrollRequest = 0;
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _overviewKey = GlobalKey();
   final GlobalKey _reviewsKey = GlobalKey();
@@ -255,6 +257,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   void _syncActiveTabFromScroll() {
+    // Saat tab ditekan, posisi section berubah sedikit demi sedikit selama
+    // animasi. Jangan biarkan pembacaan posisi sementara mengembalikan
+    // underline ke tab sebelumnya sebelum tujuan scroll tercapai.
+    if (_isProgrammaticSectionScroll) return;
     final reviewContext = _reviewsKey.currentContext;
     if (reviewContext == null) return;
     final renderObject = reviewContext.findRenderObject();
@@ -289,6 +295,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             }
           }
         }
+        _variantMediaRevision++;
       }
     });
   }
@@ -519,17 +526,34 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
-  void _scrollToSection(GlobalKey key, int tabIndex) {
+  Future<void> _scrollToSection(GlobalKey key, int tabIndex) async {
     AppHaptics.tap();
-    setState(() => _activeTab = tabIndex);
+    final request = ++_sectionScrollRequest;
+    setState(() {
+      _activeTab = tabIndex;
+      _isProgrammaticSectionScroll = true;
+    });
     final targetContext = key.currentContext;
-    if (targetContext == null) return;
-    Scrollable.ensureVisible(
+    if (targetContext == null) {
+      if (request == _sectionScrollRequest && mounted) {
+        setState(() => _isProgrammaticSectionScroll = false);
+      }
+      return;
+    }
+    await Scrollable.ensureVisible(
       targetContext,
       duration: const Duration(milliseconds: 340),
       curve: Curves.easeOutCubic,
       alignment: 0.08,
     );
+    if (!mounted || request != _sectionScrollRequest) return;
+
+    // Pastikan hasil akhir tetap mengikuti tab yang diminta. Setelah ini,
+    // listener kembali aktif sehingga scroll manual tetap menyinkronkan tab.
+    setState(() {
+      _activeTab = tabIndex;
+      _isProgrammaticSectionScroll = false;
+    });
   }
 
   Future<void> _shareProduct(BuildContext context) async {
