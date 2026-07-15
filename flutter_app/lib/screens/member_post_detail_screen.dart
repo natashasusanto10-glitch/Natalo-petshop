@@ -1448,7 +1448,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
           const SizedBox(height: 6),
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
-            child: _PostCaption(
+            child: PostCaption(
               postId: post.id,
               memberName: memberName,
               caption: post.caption!,
@@ -1925,7 +1925,8 @@ class _MiniAvatar extends StatelessWidget {
   }
 }
 
-class _PostCaption extends StatefulWidget {
+/// Caption renderer for post detail. Public to allow focused widget tests.
+class PostCaption extends StatefulWidget {
   final String postId;
   final String memberName;
   final String caption;
@@ -1933,7 +1934,7 @@ class _PostCaption extends StatefulWidget {
   /// Akun official → nama author di prefix caption pakai emas identitas.
   final bool isOfficial;
 
-  const _PostCaption({
+  const PostCaption({
     required this.postId,
     required this.memberName,
     required this.caption,
@@ -1941,10 +1942,10 @@ class _PostCaption extends StatefulWidget {
   });
 
   @override
-  State<_PostCaption> createState() => _PostCaptionState();
+  State<PostCaption> createState() => _PostCaptionState();
 }
 
-class _PostCaptionState extends State<_PostCaption>
+class _PostCaptionState extends State<PostCaption>
     with SingleTickerProviderStateMixin {
   late final TapGestureRecognizer _expandRecognizer = TapGestureRecognizer()
     ..onTap = _expand;
@@ -2027,7 +2028,10 @@ class _PostCaptionState extends State<_PostCaption>
           ? null
           : _truncatedCaption(context, constraints.maxWidth, style);
       final text = truncated ?? widget.caption.trim();
-      final suffixIndex = text.lastIndexOf('... selengkapnya');
+      // Only generated truncation may activate the affordance. A naturally
+      // short caption containing this literal phrase remains plain text.
+      final suffixIndex =
+          truncated == null ? -1 : text.lastIndexOf('... selengkapnya');
       final span = TextSpan(children: [
         TextSpan(
             text: '${widget.memberName} ',

@@ -30,3 +30,11 @@
 - `flutter test test/screens/member_post_detail_screen_caption_test.dart` — PASS (1 test).
 - `flutter analyze lib/screens/member_post_detail_screen.dart` — PASS (no issues).
 - `dart format lib/screens/member_post_detail_screen.dart` — PASS.
+
+## Widget-level coverage
+- `PostCaption` is public for focused widget testing; long captions show the generated
+  `selengkapnya` affordance, expand to the full caption, and remain expanded after
+  rebuilding with the same post ID.
+- Literal `... selengkapnya` in a naturally short caption is verified as plain text;
+  suffix parsing is gated on generated truncation.
+- `flutter test test/screens/member_post_detail_screen_caption_test.dart --no-pub` — PASS (3 tests).
