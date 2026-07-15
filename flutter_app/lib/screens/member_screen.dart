@@ -20,6 +20,7 @@ import '../widgets/app_notification_button.dart';
 import '../widgets/bottom_nav.dart';
 import 'feed_media_picker_screen.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
+import '../widgets/origin_expansion_route.dart';
 import '../widgets/profile_avatar.dart';
 import '../widgets/profile_content_tab_bar.dart';
 import '../widgets/update_profile_photo_sheet.dart';
@@ -125,6 +126,7 @@ class _ProfilePageState extends State<_ProfilePage>
   String? _postsError;
   String? _preparedPostId;
   PostVideoWarmHandoff? _preparedHandoff;
+  final _tileKeys = <String, GlobalKey>{};
 
   @override
   void initState() {
@@ -296,26 +298,32 @@ class _ProfilePageState extends State<_ProfilePage>
     showUpdateProfilePhotoSheet(context);
   }
 
-  Future<void> _openPostDetail(List<FeedPost> posts, int initialIndex) async {
+  GlobalKey _tileKeyFor(String scope, String postId) =>
+      _tileKeys.putIfAbsent('$scope:$postId', GlobalKey.new);
+
+  Future<void> _openPostDetail(
+    List<FeedPost> posts,
+    int initialIndex,
+    GlobalKey originKey,
+  ) async {
     if (posts.isEmpty || _openingPost) return;
     _openingPost = true;
     AppHaptics.tap();
     final post = posts[initialIndex];
     final handoff = _takePreparedPost(post) ?? _createWarmHandoff(post);
     try {
-      await Navigator.push<void>(
+      await pushOriginExpansion<void>(
         context,
-        MaterialPageRoute(
-          builder: (_) => MemberPostDetailScreen(
-            post: post,
-            posts: posts,
-            initialIndex: initialIndex,
-            authorIsOfficial: memberStore.profile?.isAdmin ?? false,
-            warmVideoHandoff: handoff,
-            initialNextCursor: _postsNextCursor,
-            loadMoreScopedPosts: (cursor) =>
-                feedService.fetchMyPosts(filter: 'all', cursor: cursor),
-          ),
+        originKey: originKey,
+        destinationBuilder: (_) => MemberPostDetailScreen(
+          post: post,
+          posts: posts,
+          initialIndex: initialIndex,
+          authorIsOfficial: memberStore.profile?.isAdmin ?? false,
+          warmVideoHandoff: handoff,
+          initialNextCursor: _postsNextCursor,
+          loadMoreScopedPosts: (cursor) =>
+              feedService.fetchMyPosts(filter: 'all', cursor: cursor),
         ),
       );
     } finally {
@@ -425,8 +433,13 @@ class _ProfilePageState extends State<_ProfilePage>
                               showCreateCta: true,
                               onCreateCta: _openCreatePost,
                               onRetry: _loadAll,
-                              onTapPost: (idx) =>
-                                  _openPostDetail(_allPosts, idx),
+                              onTapPost: (idx) => _openPostDetail(
+                                _allPosts,
+                                idx,
+                                _tileKeyFor('all', _allPosts[idx].id),
+                              ),
+                              originKeyForPost: (post) =>
+                                  _tileKeyFor('all', post.id),
                               onTapDown: (idx) =>
                                   _preparePostVideo(_allPosts[idx]),
                               onTapCancel: (idx) =>
@@ -442,8 +455,13 @@ class _ProfilePageState extends State<_ProfilePage>
                               showCreateCta: false,
                               onCreateCta: _openCreatePost,
                               onRetry: _loadAll,
-                              onTapPost: (idx) =>
-                                  _openPostDetail(_videoPosts, idx),
+                              onTapPost: (idx) => _openPostDetail(
+                                _videoPosts,
+                                idx,
+                                _tileKeyFor('video', _videoPosts[idx].id),
+                              ),
+                              originKeyForPost: (post) =>
+                                  _tileKeyFor('video', post.id),
                               onTapDown: (idx) =>
                                   _preparePostVideo(_videoPosts[idx]),
                               onTapCancel: (idx) =>
@@ -459,8 +477,13 @@ class _ProfilePageState extends State<_ProfilePage>
                               showCreateCta: false,
                               onCreateCta: _openCreatePost,
                               onRetry: _loadAll,
-                              onTapPost: (idx) =>
-                                  _openPostDetail(_taggedPosts, idx),
+                              onTapPost: (idx) => _openPostDetail(
+                                _taggedPosts,
+                                idx,
+                                _tileKeyFor('tagged', _taggedPosts[idx].id),
+                              ),
+                              originKeyForPost: (post) =>
+                                  _tileKeyFor('tagged', post.id),
                               onTapDown: (idx) =>
                                   _preparePostVideo(_taggedPosts[idx]),
                               onTapCancel: (idx) =>
@@ -821,6 +844,7 @@ class _PostGrid extends StatelessWidget {
   final VoidCallback onCreateCta;
   final VoidCallback onRetry;
   final ValueChanged<int> onTapPost;
+  final GlobalKey Function(FeedPost) originKeyForPost;
   final ValueChanged<int>? onTapDown;
   final ValueChanged<int>? onTapCancel;
 
@@ -834,6 +858,7 @@ class _PostGrid extends StatelessWidget {
     required this.onCreateCta,
     required this.onRetry,
     required this.onTapPost,
+    required this.originKeyForPost,
     this.onTapDown,
     this.onTapCancel,
   });
@@ -874,6 +899,7 @@ class _PostGrid extends StatelessWidget {
         itemBuilder: (context, index) {
           return _PostThumbnail(
             post: posts[index],
+            originKey: originKeyForPost(posts[index]),
             onTap: () => onTapPost(index),
             onTapDown: () => onTapDown?.call(index),
             onTapCancel: () => onTapCancel?.call(index),
@@ -952,12 +978,14 @@ class _ErrorState extends StatelessWidget {
 
 class _PostThumbnail extends StatelessWidget {
   final FeedPost post;
+  final GlobalKey originKey;
   final VoidCallback onTap;
   final VoidCallback? onTapDown;
   final VoidCallback? onTapCancel;
 
   const _PostThumbnail({
     required this.post,
+    required this.originKey,
     required this.onTap,
     this.onTapDown,
     this.onTapCancel,
@@ -970,60 +998,63 @@ class _PostThumbnail extends StatelessWidget {
             : null) ??
         (post.previewMediaUrl.trim().isNotEmpty ? post.previewMediaUrl : null);
     final cs = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onTap,
-      onTapDown: (_) => onTapDown?.call(),
-      onTapCancel: onTapCancel,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Container(color: cs.surfaceContainerHighest),
-          if (mediaUrl != null)
-            // Hero animation source — wraps thumbnail dengan tag unik
-            // per-post. Detail screen wrap image dengan tag yang sama
-            // di _PostMediaSurface → Flutter auto-fly + scale image saat
-            // navigate. Skip untuk video (VideoPlayer destination tidak
-            // compatible dengan Hero — animasi snap kalau mismatch).
-            Hero(
-              tag: 'post-thumb-${post.id}',
-              child: CachedNetworkImage(
-                imageUrl: mediaUrl,
-                fit: BoxFit.cover,
-                fadeInDuration: const Duration(milliseconds: 180),
-                placeholder: (_, __) =>
-                    Container(color: cs.surfaceContainerHigh),
-                errorWidget: (_, __, ___) => const Center(
-                  child: Icon(
-                    Icons.image_not_supported_outlined,
-                    color: Color(0xFF94A3B8),
-                    size: 28,
+    return RepaintBoundary(
+      key: originKey,
+      child: InkWell(
+        onTap: onTap,
+        onTapDown: (_) => onTapDown?.call(),
+        onTapCancel: onTapCancel,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Container(color: cs.surfaceContainerHighest),
+            if (mediaUrl != null)
+              // Hero animation source — wraps thumbnail dengan tag unik
+              // per-post. Detail screen wrap image dengan tag yang sama
+              // di _PostMediaSurface → Flutter auto-fly + scale image saat
+              // navigate. Skip untuk video (VideoPlayer destination tidak
+              // compatible dengan Hero — animasi snap kalau mismatch).
+              Hero(
+                tag: 'post-thumb-${post.id}',
+                child: CachedNetworkImage(
+                  imageUrl: mediaUrl,
+                  fit: BoxFit.cover,
+                  fadeInDuration: const Duration(milliseconds: 180),
+                  placeholder: (_, __) =>
+                      Container(color: cs.surfaceContainerHigh),
+                  errorWidget: (_, __, ___) => const Center(
+                    child: Icon(
+                      Icons.image_not_supported_outlined,
+                      color: Color(0xFF94A3B8),
+                      size: 28,
+                    ),
                   ),
                 ),
+              )
+            else
+              const Center(
+                child: Icon(
+                  Icons.image_outlined,
+                  color: Color(0xFF94A3B8),
+                  size: 28,
+                ),
               ),
-            )
-          else
-            const Center(
-              child: Icon(
-                Icons.image_outlined,
-                color: Color(0xFF94A3B8),
-                size: 28,
+            // Type indicators top-right (video play OR shopping bag).
+            // Priority: video > tagged products (kalau dua-duanya, video win).
+            if (post.isVideo)
+              const Positioned(
+                top: 8,
+                right: 8,
+                child: _ThumbnailIcon(icon: Icons.play_arrow_rounded),
+              )
+            else if (post.productIds.isNotEmpty)
+              const Positioned(
+                top: 8,
+                right: 8,
+                child: _ThumbnailIcon(icon: Icons.shopping_bag_outlined),
               ),
-            ),
-          // Type indicators top-right (video play OR shopping bag).
-          // Priority: video > tagged products (kalau dua-duanya, video win).
-          if (post.isVideo)
-            const Positioned(
-              top: 8,
-              right: 8,
-              child: _ThumbnailIcon(icon: Icons.play_arrow_rounded),
-            )
-          else if (post.productIds.isNotEmpty)
-            const Positioned(
-              top: 8,
-              right: 8,
-              child: _ThumbnailIcon(icon: Icons.shopping_bag_outlined),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
