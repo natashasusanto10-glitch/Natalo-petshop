@@ -1,16 +1,32 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 /// Pushes [destinationBuilder] with a snapshot expanding from [originKey].
+///
+/// The source must be a [RepaintBoundary] to produce a bitmap snapshot. When
+/// it is unavailable or cannot be captured, the route safely fades instead.
 Future<T?> pushOriginExpansion<T>(
   BuildContext context, {
   required GlobalKey originKey,
   required WidgetBuilder destinationBuilder,
+  @Deprecated('Origin snapshots are captured from originKey instead.')
   String? snapshotImageUrl,
   Color snapshotFallbackColor = Colors.white,
-}) {
-  final box = originKey.currentContext?.findRenderObject() as RenderBox?;
+}) async {
+  final renderObject = originKey.currentContext?.findRenderObject();
+  final box = renderObject is RenderBox ? renderObject : null;
   final origin = box == null ? null : box.localToGlobal(Offset.zero) & box.size;
+  final snapshot = await _captureSnapshot(
+    renderObject,
+    pixelRatio: View.of(context).devicePixelRatio,
+  );
+
+  if (!context.mounted) {
+    snapshot?.dispose();
+    return null;
+  }
 
   return Navigator.of(context).push(
     PageRouteBuilder<T>(
@@ -25,7 +41,7 @@ Future<T?> pushOriginExpansion<T>(
         return OriginExpansionTransition(
           animation: animation,
           origin: origin,
-          snapshotImageUrl: snapshotImageUrl,
+          snapshot: snapshot,
           snapshotFallbackColor: snapshotFallbackColor,
           child: child,
         );
@@ -34,11 +50,23 @@ Future<T?> pushOriginExpansion<T>(
   );
 }
 
-@immutable
-class OriginExpansionTransition extends StatelessWidget {
+Future<ui.Image?> _captureSnapshot(
+  RenderObject? renderObject, {
+  required double pixelRatio,
+}) async {
+  if (renderObject is! RenderRepaintBoundary) return null;
+
+  try {
+    return await renderObject.toImage(pixelRatio: pixelRatio);
+  } catch (_) {
+    return null;
+  }
+}
+
+class OriginExpansionTransition extends StatefulWidget {
   final Animation<double> animation;
   final Rect? origin;
-  final String? snapshotImageUrl;
+  final ui.Image? snapshot;
   final Color snapshotFallbackColor;
   final Widget child;
 
@@ -46,24 +74,46 @@ class OriginExpansionTransition extends StatelessWidget {
     super.key,
     required this.animation,
     required this.origin,
-    required this.snapshotImageUrl,
+    required this.snapshot,
     required this.snapshotFallbackColor,
     required this.child,
   });
 
   @override
+  State<OriginExpansionTransition> createState() =>
+      _OriginExpansionTransitionState();
+}
+
+class _OriginExpansionTransitionState extends State<OriginExpansionTransition> {
+  @override
+  void dispose() {
+    widget.snapshot?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final sourceOrigin = origin;
-    if (sourceOrigin == null) return child;
+    final destinationOpacity = CurvedAnimation(
+      parent: widget.animation,
+      curve: const Interval(0.55, 1, curve: Curves.easeIn),
+      reverseCurve: const Interval(0.55, 1, curve: Curves.easeOut),
+    );
+    final destination = FadeTransition(
+      key: const ValueKey('origin-expansion-fade'),
+      opacity: destinationOpacity,
+      child: ColoredBox(
+        color: widget.snapshotFallbackColor,
+        child: widget.child,
+      ),
+    );
+    final sourceOrigin = widget.origin;
+    final snapshot = widget.snapshot;
+    if (sourceOrigin == null || snapshot == null) return destination;
 
     final curved = CurvedAnimation(
-      parent: animation,
+      parent: widget.animation,
       curve: Curves.easeOutCubic,
       reverseCurve: Curves.easeInCubic,
-    );
-    final destinationOpacity = CurvedAnimation(
-      parent: animation,
-      curve: const Interval(0.55, 1, curve: Curves.easeIn),
     );
 
     return LayoutBuilder(
@@ -72,7 +122,7 @@ class OriginExpansionTransition extends StatelessWidget {
         return Stack(
           fit: StackFit.expand,
           children: [
-            FadeTransition(opacity: destinationOpacity, child: child),
+            destination,
             AnimatedBuilder(
               animation: curved,
               builder: (context, _) {
@@ -81,7 +131,10 @@ class OriginExpansionTransition extends StatelessWidget {
                   left: _lerp(sourceOrigin.left, 0, progress),
                   top: _lerp(sourceOrigin.top, 0, progress),
                   width: _lerp(
-                      sourceOrigin.width, destinationSize.width, progress),
+                    sourceOrigin.width,
+                    destinationSize.width,
+                    progress,
+                  ),
                   height: _lerp(
                     sourceOrigin.height,
                     destinationSize.height,
@@ -93,9 +146,10 @@ class OriginExpansionTransition extends StatelessWidget {
                       child: ClipRRect(
                         borderRadius:
                             BorderRadius.circular(12 * (1 - progress)),
-                        child: _Snapshot(
-                          imageUrl: snapshotImageUrl,
-                          fallbackColor: snapshotFallbackColor,
+                        child: RawImage(
+                          key: const ValueKey('origin-expansion-snapshot'),
+                          image: snapshot,
+                          fit: BoxFit.cover,
                         ),
                       ),
                     ),
@@ -106,31 +160,6 @@ class OriginExpansionTransition extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-class _Snapshot extends StatelessWidget {
-  final String? imageUrl;
-  final Color fallbackColor;
-
-  const _Snapshot({required this.imageUrl, required this.fallbackColor});
-
-  @override
-  Widget build(BuildContext context) {
-    final url = imageUrl;
-    if (url == null || url.isEmpty) {
-      return ColoredBox(
-        key: const ValueKey('origin-expansion-snapshot'),
-        color: fallbackColor,
-      );
-    }
-
-    return CachedNetworkImage(
-      key: const ValueKey('origin-expansion-snapshot'),
-      imageUrl: url,
-      fit: BoxFit.cover,
-      errorWidget: (_, __, ___) => ColoredBox(color: fallbackColor),
     );
   }
 }

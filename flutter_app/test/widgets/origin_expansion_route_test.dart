@@ -5,7 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/widgets/origin_expansion_route.dart';
 
 void main() {
-  testWidgets('shows an origin snapshot when a keyed source is mounted', (
+  testWidgets('shows a captured static snapshot when the source is a boundary',
+      (
     tester,
   ) async {
     final key = GlobalKey();
@@ -15,6 +16,7 @@ void main() {
       pushOriginExpansion<void>(
         tester.element(find.byKey(const ValueKey('route-context'))),
         originKey: key,
+        snapshotImageUrl: 'https://example.com/never-fetched.jpg',
         destinationBuilder: (_) => const Placeholder(),
       ),
     );
@@ -25,9 +27,11 @@ void main() {
       find.byKey(const ValueKey('origin-expansion-snapshot')),
       findsOneWidget,
     );
+    expect(find.byType(RawImage), findsOneWidget);
   });
 
-  testWidgets('shows the destination when the keyed source is unavailable', (
+  testWidgets('uses a reversible fade when the source boundary is unavailable',
+      (
     tester,
   ) async {
     await tester.pumpWidget(_buildSource(GlobalKey()));
@@ -44,8 +48,32 @@ void main() {
 
     expect(find.text('Composer'), findsOneWidget);
     expect(
+      find.byKey(const ValueKey('origin-expansion-fade')),
+      findsOneWidget,
+    );
+    expect(
       find.byKey(const ValueKey('origin-expansion-snapshot')),
       findsNothing,
+    );
+
+    await tester.pump(const Duration(milliseconds: 240));
+    Navigator.of(tester.element(find.byKey(const ValueKey('route-context'))))
+        .pop();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 110));
+
+    expect(
+      find.byKey(const ValueKey('origin-expansion-fade')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<FadeTransition>(
+            find.byKey(const ValueKey('origin-expansion-fade')),
+          )
+          .opacity
+          .value,
+      lessThan(1),
     );
   });
 }
@@ -58,7 +86,10 @@ Widget _buildSource(GlobalKey key) {
           key: const ValueKey('route-context'),
           width: 80,
           height: 80,
-          child: SizedBox(key: key),
+          child: RepaintBoundary(
+            key: key,
+            child: const ColoredBox(color: Colors.red),
+          ),
         ),
       ),
     ),
