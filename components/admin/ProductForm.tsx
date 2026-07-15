@@ -31,7 +31,7 @@ export function ProductForm({ mode, categories, brands, initialProduct }: {
   const [name, setName] = useState(initialProduct?.name ?? "");
   const [description, setDescription] = useState(initialProduct?.description ?? "");
   const [images, setImages] = useState<string[]>([...(initialProduct?.imageUrl ? [initialProduct.imageUrl] : []), ...(initialProduct?.gallery ?? [])]);
-  const originalImages = [...images];
+  const initialSnapshot = useRef({ images: [...images], videoGuid: initialProduct?.videoGuid ?? null, videoStatus: initialProduct?.videoStatus ?? null, videoThumbnailUrl: initialProduct?.videoThumbnailUrl ?? null, videoDurationSec: initialProduct?.videoDurationSec ?? null });
   const [categoryId, setCategoryId] = useState(initialProduct?.categoryId ?? "");
   const [brandId, setBrandId] = useState(initialProduct?.brandId ?? "");
   const [price, setPrice] = useState(String(initialProduct?.price ?? ""));
@@ -50,7 +50,7 @@ export function ProductForm({ mode, categories, brands, initialProduct }: {
     if (!hasVariants && (Number(price) <= 0 || Number(weightGram) <= 0 || Number(stock) < 0)) { setError("Harga, stok, dan berat produk harus valid."); return; }
     setSaving(true);
     let createdId: string | undefined;
-    const rollbackPayload = mode === "edit" ? { name: initialProduct?.name, description: initialProduct?.description, imageUrls: originalImages, categoryId: initialProduct?.categoryId, brandId: initialProduct?.brandId, price: initialProduct?.price, stock: initialProduct?.stock, weightGram: initialProduct?.weightGram, sku: initialProduct?.sku, hasVariants: initialProduct?.hasVariants, attributes: initialAttrs, variants: initialVariants } : null;
+    const rollbackPayload = mode === "edit" ? { name: initialProduct?.name, description: initialProduct?.description, imageUrls: initialSnapshot.current.images, categoryId: initialProduct?.categoryId, brandId: initialProduct?.brandId, price: initialProduct?.price, stock: initialProduct?.stock, weightGram: initialProduct?.weightGram, sku: initialProduct?.sku, hasVariants: initialProduct?.hasVariants, attributes: initialAttrs, variants: initialVariants, video: { guid: initialSnapshot.current.videoGuid, status: initialSnapshot.current.videoStatus, thumbnailUrl: initialSnapshot.current.videoThumbnailUrl, durationSec: initialSnapshot.current.videoDurationSec } } : null;
     if (hasVariants && (!variants.attributes.length || !variants.variants.length || !variants.variants.some(v => v.isActive))) { setError("Lengkapi atribut dan minimal satu varian aktif sebelum menyimpan."); setSaving(false); return; }
     const effective = hasVariants;
     const payload = {

@@ -111,6 +111,13 @@ export async function PATCH(
   if (typeof body.brandId === "string") data.brand = body.brandId.trim() ? { connect: { id: body.brandId.trim() } } : { disconnect: true };
   if (body.brandId === null) data.brand = { disconnect: true };
   if (typeof body.sku === "string") data.sku = body.sku.trim() || null;
+  if (body.video && typeof body.video === "object") {
+    const video = body.video as Record<string, unknown>;
+    if (typeof video.guid === "string" || video.guid === null) data.videoGuid = video.guid as string | null;
+    if (typeof video.status === "string" || video.status === null) data.videoStatus = video.status as string | null;
+    if (typeof video.thumbnailUrl === "string" || video.thumbnailUrl === null) data.videoThumbnailUrl = video.thumbnailUrl as string | null;
+    if (typeof video.durationSec === "number" || video.durationSec === null) data.videoDurationSec = video.durationSec as number | null;
+  }
   let variantPayload: { hasVariants: boolean; attributes: any[]; variants: any[] } | undefined;
   if (body.hasVariants !== undefined || body.attributes !== undefined || body.variants !== undefined) {
     const parsedVariants = putVariantsPayloadSchema.safeParse({
