@@ -54,6 +54,21 @@ This remains the existing `pushScaledVideoFeed` flow:
   route behavior; only entry and final cancel use the origin transition.
 - Android system back and iOS back gesture use the same reverse behavior.
 
+## Smoothness Requirements
+
+- Use a cached static snapshot during the geometry morph. Do not scale a live
+  `VideoPlayer` texture during the route animation.
+- Fade the destination surface in only after the snapshot has covered most of
+  the screen; this avoids black flashes, duplicate frames, and video texture
+  jumps.
+- Use `easeOutCubic` on entry and `easeInCubic` on reverse, with no delayed
+  secondary animation after the main motion starts.
+- Keep the source tile/control in place until the reverse route completes.
+- The transition must remain smooth when the video is buffering: a poster
+  frame stays visible until the existing handoff session is ready.
+- No network work, controller initialization, or synchronous data fetch may
+  run on the animation critical path.
+
 ## Verification
 
 - Widget tests cover origin rect present and missing fallback paths.
