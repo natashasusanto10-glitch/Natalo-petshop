@@ -4,8 +4,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
+import 'package:natalo_petshop_flutter/models/member_profile.dart';
 import 'package:natalo_petshop_flutter/screens/feed_media_picker_screen.dart';
 import 'package:natalo_petshop_flutter/screens/feed_screen.dart';
+import 'package:natalo_petshop_flutter/screens/member_screen.dart';
+import 'package:natalo_petshop_flutter/state/member_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
@@ -114,6 +117,51 @@ void main() {
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pump();
     expect(find.byType(FeedMediaPickerScreen), findsNothing);
+  });
+
+  testWidgets(
+      'owned Profile plus opens one picker route across rapid taps and back',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    memberStore.setProfile(
+      const MemberProfile(id: 'owner-1', name: 'Owner', username: 'owner'),
+    );
+    addTearDown(memberStore.logout);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        routes: {
+          '/member/login': (_) => const Scaffold(body: Text('Login')),
+        },
+        home: const MemberScreen(),
+      ),
+    );
+    await tester.pump();
+
+    final createPost = find.byKey(const ValueKey('profile-create-post'));
+    expect(createPost, findsOneWidget);
+
+    final createButton = tester.widget<IconButton>(createPost);
+    createButton.onPressed!.call();
+    createButton.onPressed!.call();
+    await _pumpUntil(tester, find.byType(FeedMediaPickerScreen));
+    await tester.pump(const Duration(milliseconds: 120));
+
+    expect(find.byType(FeedMediaPickerScreen), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('origin-expansion-snapshot')),
+      findsOneWidget,
+    );
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 220));
+    await tester.pump();
+    expect(find.byType(FeedMediaPickerScreen), findsNothing);
+    expect(createPost, findsOneWidget);
   });
 }
 

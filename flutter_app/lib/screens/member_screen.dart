@@ -119,6 +119,7 @@ class _ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<_ProfilePage>
     with SingleTickerProviderStateMixin {
   bool _openingPost = false;
+  bool _openingCreatePost = false;
   late TabController _tabController;
   List<FeedPost> _allPosts = const [];
   String? _postsNextCursor;
@@ -235,13 +236,19 @@ class _ProfilePageState extends State<_ProfilePage>
   }
 
   Future<void> _openCreatePost() async {
+    if (_openingCreatePost) return;
+    setState(() => _openingCreatePost = true);
     AppHaptics.tap();
-    final uploaded = await FeedMediaPickerScreen.openFromOrigin(
-      context,
-      _createPostOriginKey,
-    );
-    if (uploaded == true && mounted) {
-      await _loadAll();
+    try {
+      final uploaded = await FeedMediaPickerScreen.openFromOrigin(
+        context,
+        _createPostOriginKey,
+      );
+      if (uploaded == true && mounted) {
+        await _loadAll();
+      }
+    } finally {
+      if (mounted) setState(() => _openingCreatePost = false);
     }
   }
 
@@ -383,7 +390,8 @@ class _ProfilePageState extends State<_ProfilePage>
                   // Scaffold.appBar, kini in-body supaya gradasi mengalir
                   // mulus status bar → ikon → blok profil (satu hero).
                   _ProfileTopBar(
-                    onCreatePost: _openCreatePost,
+                    onCreatePost:
+                        _openingCreatePost ? null : _openCreatePost,
                     createPostOriginKey: _createPostOriginKey,
                   ),
                   Expanded(
@@ -522,7 +530,7 @@ class _ProfilePageState extends State<_ProfilePage>
 /// Mekanisme appBar+flexibleSpace lama menyisakan status bar putih (celah
 /// putih di atas hero). Ikon putih di atas gradasi biru.
 class _ProfileTopBar extends StatelessWidget {
-  final VoidCallback onCreatePost;
+  final VoidCallback? onCreatePost;
   final GlobalKey createPostOriginKey;
 
   const _ProfileTopBar({
