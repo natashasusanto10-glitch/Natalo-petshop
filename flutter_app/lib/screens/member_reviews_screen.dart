@@ -23,6 +23,19 @@ const _brandBlue = NataloColors.primary;
 const _starGold = Color(0xFFF6B73C);
 const _successGreen = Color(0xFF16A34A);
 
+@visibleForTesting
+bool? resolveReviewPickupContext({
+  required ReviewableItem item,
+  required String? scopedOrderNumber,
+  required bool? scopedIsSelfPickup,
+  bool? explicitIsSelfPickup,
+}) {
+  if (explicitIsSelfPickup != null) return explicitIsSelfPickup;
+  if (scopedOrderNumber == null || scopedOrderNumber.isEmpty) return null;
+  if (item.orderNumber != scopedOrderNumber) return null;
+  return scopedIsSelfPickup;
+}
+
 enum _ReviewTab { pending, reviewed }
 
 class MemberReviewsScreen extends StatefulWidget {
@@ -89,6 +102,12 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
     ReviewableItem item, {
     bool? isSelfPickup,
   }) async {
+    final pickupContext = resolveReviewPickupContext(
+      item: item,
+      scopedOrderNumber: _deepLinkedOrderNumber,
+      scopedIsSelfPickup: _deepLinkedSelfPickup,
+      explicitIsSelfPickup: isSelfPickup,
+    );
     final submitted = await showModalBottomSheet<_SubmittedReview>(
       context: context,
       isScrollControlled: true,
@@ -96,7 +115,7 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => _ReviewSubmitSheet(
         item: item,
-        isSelfPickup: isSelfPickup,
+        isSelfPickup: pickupContext,
       ),
     );
     if (submitted == null || !mounted) return;
