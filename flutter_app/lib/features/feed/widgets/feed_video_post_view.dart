@@ -2777,14 +2777,14 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
           // Scrubber box 28px (hit-area), visual line 2px di DASAR box →
           // line duduk tepat di atas floating nav.
           //
-          // Caption + rail pakai anchor BERSAMA feedPostOverlayBottomGap —
-          // SAMA dengan foto carousel (jangan bedakan foto vs video).
+          // Rail sengaja 12dp lebih rendah dari caption supaya action terbawah
+          // sejajar metadata bawah, sama seperti foto carousel.
           // Dulu video +32 (di atas seluruh box scrubber) → melayang jauh
           // di atas garis progress, beda 28px dari foto. Sekarang overlap
           // 12px ke atas hit-area scrub (zona transparan) — sisa 16px +
           // area garis tetap bisa di-scrub, persis kompromi IG.
           final feedInfoInset = navClearance + feedPostOverlayBottomGap;
-          final actionRailInset = navClearance + feedPostOverlayBottomGap;
+          final actionRailInset = navClearance + feedPostActionRailBottomGap;
           final minimized = _commentSheetOpen;
 
           return ColoredBox(

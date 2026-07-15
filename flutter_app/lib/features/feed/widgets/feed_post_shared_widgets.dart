@@ -25,9 +25,11 @@ import 'feed_product_anchor_card.dart';
 /// files.
 const feedPostGoldColor = Color(0xFFF4D47C);
 
-/// Anchor bawah BERSAMA caption + action rail — SATU angka untuk foto DAN
-/// video (jangan dibedakan per jenis post).
+/// Caption memakai gap 16dp. Rail memakai gap 4dp supaya pusat action paling
+/// bawah sejajar dengan baris metadata/social proof; kedua nilai tetap dipakai
+/// konsisten oleh post foto dan video.
 const feedPostOverlayBottomGap = 16.0;
+const feedPostActionRailBottomGap = 4.0;
 const feedPostActionRailRightInset = 10.0;
 
 @visibleForTesting

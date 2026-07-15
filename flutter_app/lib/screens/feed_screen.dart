@@ -1038,9 +1038,9 @@ class _LoadingState extends StatelessWidget {
     // MediaQuery.padding.bottom SUDAH mencakup tinggi nav (extendBody) —
     // lihat feedPostOverlayBaseInset. Jangan tambah kFloatingNavClearance.
     final base = feedPostOverlayBaseInset(context);
-    // Mirror anchor bersama caption/rail (foto + video) supaya transisi
+    // Mirror anchor rail dan caption dari post nyata supaya transisi
     // skeleton → konten tidak bikin elemen loncat posisi.
-    final actionRailInset = base + feedPostOverlayBottomGap;
+    final actionRailInset = base + feedPostActionRailBottomGap;
     final feedInfoInset = base + feedPostOverlayBottomGap;
 
     return Shimmer.fromColors(
@@ -1953,9 +1953,9 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     // MediaQuery.padding.bottom SUDAH mencakup tinggi nav (extendBody) —
     // lihat feedPostOverlayBaseInset. Jangan tambah kFloatingNavClearance.
     final navClearance = feedPostOverlayBaseInset(context);
-    // Anchor BERSAMA dengan video post (feedPostOverlayBottomGap) — posisi
-    // caption + rail WAJIB identik foto vs video, jangan dibedakan.
-    final actionRailInset = navClearance + feedPostOverlayBottomGap;
+    // Gunakan pasangan anchor yang sama dengan video post. Rail sengaja 12dp
+    // lebih rendah dari caption agar action terbawah sejajar metadata bawah.
+    final actionRailInset = navClearance + feedPostActionRailBottomGap;
     final feedInfoInset = navClearance + feedPostOverlayBottomGap;
 
     // Product chip — same rotation pattern dengan video post.
