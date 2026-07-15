@@ -7,6 +7,7 @@ import '../models/member_profile.dart';
 import '../services/api_client.dart';
 import '../services/member_service.dart';
 import 'cart_store.dart';
+import 'feed_comment_session_store.dart';
 import 'follow_override_store.dart';
 
 /// Member auth + profile store. Setelah login success, cache profile +
@@ -178,6 +179,7 @@ class MemberStore extends ChangeNotifier {
     final currentMemberId = _profile?.id;
     if (currentMemberId != null && currentMemberId != nextMemberId) {
       clearFollowOverrides();
+      feedCommentSessionStore.clear();
     }
   }
 
@@ -188,6 +190,7 @@ class MemberStore extends ChangeNotifier {
     _orders = const [];
     cartStore.resetLoginMergeGuard();
     clearFollowOverrides();
+    feedCommentSessionStore.clear();
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();

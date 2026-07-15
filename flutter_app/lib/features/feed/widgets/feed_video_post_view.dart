@@ -23,6 +23,7 @@ import '../../../services/product_service.dart';
 import '../../../services/report_service.dart';
 import '../../../services/video_quality_service.dart';
 import '../../../state/cart_store.dart';
+import '../../../state/feed_comment_session_store.dart';
 import '../../../state/feed_local_store.dart';
 import '../../../state/feed_store.dart';
 import '../../../state/member_store.dart';
@@ -304,6 +305,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   bool _videoLoadFailed = false;
   bool _commentSheetClosingFromDrag = false;
   bool _commentSheetReachedVisibleExtent = false;
+  FeedCommentSession? _activeCommentSession;
   int _commentSheetTransitionEpoch = 0;
   int _featuredProductIndex = 0;
   Timer? _productRotationTimer;
@@ -1689,6 +1691,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     if ((_commentSheetExtent.value - extent).abs() > 0.002) {
       _commentSheetExtent.value = extent;
     }
+    if (!_commentSheetClosingFromDrag &&
+        extent >= _commentSheetDismissExtent) {
+      _activeCommentSession?.sheetExtent = extent;
+    }
 
     // Pause/resume video ala IG Reels — full-screen comment sheet berarti
     // video harus hilang dari layar dan berhenti (bukan cuma tersembunyi).
@@ -1884,6 +1890,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // double-back exit. Closer dipanggil ulang via _closeComments,
     // sehingga state UI + back stack sync.
     pushAndroidBackOverlayCloser(_androidBackCommentCloser);
+    _activeCommentSession = feedCommentSessionStore.sessionFor(
+      viewerId: memberStore.profile?.id ?? 'guest',
+      postId: widget.post.id,
+    );
     setState(() {
       _commentDrawerMounted = true;
       _commentSheetOpen = true;
@@ -1903,9 +1913,17 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
           !_commentSheetController.isAttached) {
         return;
       }
+      final maxExtent = _commentSheetMaxExtentFor(
+        context,
+        _commentSheetHostHeight(context),
+      );
+      final targetExtent = (_activeCommentSession?.sheetExtent ??
+              _commentSheetInitialExtent)
+          .clamp(_commentSheetInitialExtent, maxExtent)
+          .toDouble();
       unawaited(
         _commentSheetController.animateTo(
-          _commentSheetInitialExtent,
+          targetExtent,
           duration: const Duration(milliseconds: 260),
           curve: Curves.easeOutCubic,
         ),
@@ -1942,6 +1960,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         _commentSheetClosingFromDrag = false;
         _commentSheetReachedVisibleExtent = false;
       });
+      _activeCommentSession = null;
       widget.onOverlayStateChanged(false);
 
       // Resume only after the drawer is fully gone. This avoids audio
@@ -2017,12 +2036,14 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       case CommentSnapTarget.close:
         _closeComments();
       case CommentSnapTarget.max:
+        _activeCommentSession?.sheetExtent = maxExtent;
         _commentSheetController.animateTo(
           maxExtent,
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
         );
       case CommentSnapTarget.initial:
+        _activeCommentSession?.sheetExtent = _commentSheetInitialExtent;
         _commentSheetController.animateTo(
           _commentSheetInitialExtent,
           duration: const Duration(milliseconds: 220),

@@ -9,6 +9,7 @@ import '../services/api_client.dart';
 import '../services/block_service.dart';
 import '../services/feed_service.dart';
 import '../services/report_service.dart';
+import '../state/feed_comment_session_store.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
@@ -30,6 +31,10 @@ Future<void> showFeedCommentDrawer(
   required FeedPost post,
 }) {
   final sheetController = DraggableScrollableController();
+  final commentSession = feedCommentSessionStore.sessionFor(
+    viewerId: memberStore.profile?.id ?? 'guest',
+    postId: post.id,
+  );
   var reachedVisibleExtent = false;
   var dismissScheduled = false;
   var popIssued = false;
@@ -48,6 +53,10 @@ Future<void> showFeedCommentDrawer(
       final topInset = MediaQuery.paddingOf(sheetContext).top;
       final screenHeight = MediaQuery.sizeOf(sheetContext).height;
       final maxExtent = (1 - (topInset / screenHeight)).clamp(0.60, 0.96);
+      final initialExtent = (commentSession.sheetExtent ??
+              FeedCommentSheet.reelsHeightFactor)
+          .clamp(FeedCommentSheet.reelsHeightFactor, maxExtent)
+          .toDouble();
 
       void dismissDrawer({bool afterFrame = false}) {
         void popOnce() {
@@ -92,6 +101,7 @@ Future<void> showFeedCommentDrawer(
         final target = velocity < -500 || size > 0.78
             ? maxExtent
             : FeedCommentSheet.reelsHeightFactor;
+        commentSession.sheetExtent = target;
         unawaited(() async {
           try {
             await sheetController.animateTo(
@@ -108,6 +118,9 @@ Future<void> showFeedCommentDrawer(
       return NotificationListener<DraggableScrollableNotification>(
         onNotification: (notification) {
           if (notification.extent > 0.24) reachedVisibleExtent = true;
+          if (!popIssued && notification.extent >= 0.34) {
+            commentSession.sheetExtent = notification.extent;
+          }
           if (reachedVisibleExtent && notification.extent <= 0.205) {
             dismissDrawer(afterFrame: true);
           }
@@ -116,7 +129,7 @@ Future<void> showFeedCommentDrawer(
         child: DraggableScrollableSheet(
           controller: sheetController,
           expand: false,
-          initialChildSize: FeedCommentSheet.reelsHeightFactor,
+          initialChildSize: initialExtent,
           // Keep enough collapse range for a decisive downward dismissal.
           minChildSize: 0.20,
           maxChildSize: maxExtent,
@@ -171,6 +184,7 @@ class FeedCommentSheet extends StatefulWidget {
   /// dismiss saat user drag handle ke bawah.
   final ValueChanged<DragUpdateDetails>? onDragUpdate;
   final ValueChanged<DragEndDetails>? onDragEnd;
+  final FeedCommentSessionStore? sessionStore;
 
   const FeedCommentSheet({
     super.key,
@@ -180,6 +194,7 @@ class FeedCommentSheet extends StatefulWidget {
     this.onClose,
     this.onDragUpdate,
     this.onDragEnd,
+    this.sessionStore,
   });
 
   @override
@@ -189,7 +204,7 @@ class FeedCommentSheet extends StatefulWidget {
 class _FeedCommentSheetState extends State<FeedCommentSheet> {
   static const int _replyBatchSize = 3;
 
-  final TextEditingController _inputCtrl = TextEditingController();
+  late final TextEditingController _inputCtrl;
   final FocusNode _inputFocus = FocusNode();
   late final MentionPickerController _mentionCtrl =
       MentionPickerController(textController: _inputCtrl);
@@ -208,6 +223,11 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   /// Jumlah balasan terbaru yang sedang terlihat per parent. Tidak ada entry
   /// berarti thread collapsed, seperti Reels.
   final Map<String, int> _visibleReplyCounts = {};
+  late final FeedCommentSession _session;
+  int _commentMutationRevision = 0;
+  bool _hasLoadedComments = false;
+  bool _restoreScrollPending = false;
+  int _scrollRestoreAttempts = 0;
 
   void _showMoreReplies(String parentId, int totalReplies) {
     AppHaptics.tap();
@@ -216,18 +236,34 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       _visibleReplyCounts[parentId] =
           (current + _replyBatchSize).clamp(0, totalReplies);
     });
+    _persistSession();
   }
 
   void _hideReplies(String parentId) {
     AppHaptics.tap();
     setState(() => _visibleReplyCounts.remove(parentId));
+    _persistSession();
   }
 
   @override
   void initState() {
     super.initState();
-    _loadInitial();
+    _session = (widget.sessionStore ?? feedCommentSessionStore).sessionFor(
+      viewerId: memberStore.profile?.id ?? 'guest',
+      postId: widget.post.id,
+    );
+    _inputCtrl = TextEditingController(text: _session.draftText)
+      ..addListener(_persistDraft);
+    _comments = List<FeedComment>.from(_session.comments);
+    _nextCursor = _session.nextCursor;
+    _replyTarget = _session.replyTarget;
+    _visibleReplyCounts.addAll(_session.visibleReplyCounts);
+    _loading = !_session.hasLoaded;
+    _hasLoadedComments = _session.hasLoaded;
+    _restoreScrollPending = _session.scrollOffset > 0;
+    _loadInitial(showLoading: !_session.hasLoaded);
     widget.sheetScrollController?.addListener(_handleScroll);
+    _scheduleScrollRestore();
     // Listen blockService — user block lewat sheet ini sendiri
     // → setState rebuild + filter di _buildDisplayItems otomatis hide
     // komentar dari blocked user. Tidak perlu fetch ulang dari server.
@@ -237,10 +273,13 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
 
   @override
   void dispose() {
+    _persistSession();
     widget.sheetScrollController?.removeListener(_handleScroll);
     blockService.removeListener(_onBlocklistChanged);
     _mentionCtrl.dispose();
-    _inputCtrl.dispose();
+    _inputCtrl
+      ..removeListener(_persistDraft)
+      ..dispose();
     _inputFocus.dispose();
     super.dispose();
   }
@@ -249,41 +288,110 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     if (mounted) setState(() {});
   }
 
+  void _persistDraft() {
+    _session.draftText = _inputCtrl.text;
+  }
+
+  void _persistSession() {
+    _session
+      ..draftText = _inputCtrl.text
+      ..replyTarget = _replyTarget
+      ..replaceVisibleReplyCounts(_visibleReplyCounts);
+    if (_hasLoadedComments) {
+      _session.replaceComments(_comments, _nextCursor);
+    }
+    final ctrl = widget.sheetScrollController;
+    if (!_restoreScrollPending && ctrl != null && ctrl.hasClients) {
+      _session.scrollOffset = ctrl.position.pixels;
+    }
+  }
+
+  void _scheduleScrollRestore() {
+    if (!_restoreScrollPending) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_restoreScrollPending) return;
+      final ctrl = widget.sheetScrollController;
+      if (ctrl == null || !ctrl.hasClients) {
+        if (_scrollRestoreAttempts++ < 3) _scheduleScrollRestore();
+        return;
+      }
+      final maxOffset = ctrl.position.maxScrollExtent;
+      if (maxOffset <= 0 && _session.scrollOffset > 0) {
+        if (_scrollRestoreAttempts++ < 3) _scheduleScrollRestore();
+        return;
+      }
+      ctrl.jumpTo(_session.scrollOffset.clamp(0, maxOffset).toDouble());
+      _restoreScrollPending = false;
+    });
+  }
+
   void _handleScroll() {
     final ctrl = widget.sheetScrollController;
     if (ctrl == null || !ctrl.hasClients) return;
+    if (!_restoreScrollPending) {
+      _session.scrollOffset = ctrl.position.pixels;
+    }
     // Trigger load-more saat scroll dekat bottom (200px buffer).
     if (ctrl.position.pixels >= ctrl.position.maxScrollExtent - 200) {
       _loadMore();
     }
   }
 
-  Future<void> _loadInitial() async {
-    setState(() {
-      _loading = true;
+  Future<void> _loadInitial({bool showLoading = true}) async {
+    final mutationRevision = _commentMutationRevision;
+    final hadCachedPage = _hasLoadedComments && _comments.isNotEmpty;
+    final cachedNextCursor = _nextCursor;
+    if (showLoading) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    } else {
       _error = null;
-    });
+    }
     try {
       final page = await feedService.fetchComments(widget.post.id);
       if (!mounted) return;
       setState(() {
-        _comments = page.items;
-        _nextCursor = page.nextCursor;
+        // Do not overwrite a comment/like/delete completed while a cached
+        // session was being revalidated in the background.
+        if (mutationRevision == _commentMutationRevision) {
+          if (!showLoading && hadCachedPage) {
+            final refreshedIds = page.items.map((item) => item.id).toSet();
+            _comments = [
+              ...page.items,
+              ..._comments.where((item) => !refreshedIds.contains(item.id)),
+            ];
+            // The cached cursor already points after every page currently
+            // displayed. Reusing it avoids fetching page two twice.
+            _nextCursor = cachedNextCursor;
+          } else {
+            _comments = page.items;
+            _nextCursor = page.nextCursor;
+          }
+        }
         _loading = false;
       });
+      _hasLoadedComments = true;
+      _persistSession();
+      _scheduleScrollRestore();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.statusCode == 401
-            ? 'Login untuk lihat komentar.'
-            : 'Gagal memuat komentar. Tarik untuk coba lagi.';
+        _error = _hasLoadedComments
+            ? null
+            : e.statusCode == 401
+                ? 'Login untuk lihat komentar.'
+                : 'Gagal memuat komentar. Tarik untuk coba lagi.';
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'Gagal memuat komentar. Tarik untuk coba lagi.';
+        _error = _hasLoadedComments
+            ? null
+            : 'Gagal memuat komentar. Tarik untuk coba lagi.';
       });
     }
   }
@@ -298,10 +406,15 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       );
       if (!mounted) return;
       setState(() {
-        _comments = [..._comments, ...page.items];
+        final existingIds = _comments.map((item) => item.id).toSet();
+        _comments = [
+          ..._comments,
+          ...page.items.where((item) => !existingIds.contains(item.id)),
+        ];
         _nextCursor = page.nextCursor;
         _loadingMore = false;
       });
+      _persistSession();
     } catch (_) {
       if (!mounted) return;
       setState(() => _loadingMore = false);
@@ -331,6 +444,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     } else {
       _inputCtrl.clear();
     }
+    _persistSession();
   }
 
   Future<void> _postComment() async {
@@ -373,6 +487,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         _replyTarget = null;
         _inputCtrl.clear();
       });
+      _commentMutationRevision++;
+      _persistSession();
       final current = feedStore.get(widget.post.id)?.commentCount ??
           widget.post.commentCount;
       feedStore.setCommentCount(
@@ -459,6 +575,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         return comment;
       }).toList();
     });
+    _commentMutationRevision++;
+    _persistSession();
   }
 
   /// Delete komentar user sendiri. Optimistic remove dari local list,
@@ -485,6 +603,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         );
       }).toList();
     });
+    _commentMutationRevision++;
+    _persistSession();
     try {
       final result = await feedService.deleteComment(comment.id);
       // Sukses — comment beneran hilang. Sync comment count ke FeedStore
@@ -504,6 +624,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         setState(() {
           _comments = snapshot;
         });
+        _commentMutationRevision++;
+        _persistSession();
       }
       return false;
     }

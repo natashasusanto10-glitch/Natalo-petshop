@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
+import 'package:natalo_petshop_flutter/state/feed_comment_session_store.dart';
 import 'package:natalo_petshop_flutter/widgets/feed_comment_sheet.dart';
 
 FeedPost _post() => FeedPost.fromJson({
@@ -23,6 +24,9 @@ class _CountingNavigatorObserver extends NavigatorObserver {
 }
 
 void main() {
+  setUp(feedCommentSessionStore.clear);
+  tearDown(feedCommentSessionStore.clear);
+
   testWidgets('shared comment drawer dismisses from its drag handle',
       (tester) async {
     final navigatorObserver = _CountingNavigatorObserver();
@@ -125,5 +129,36 @@ void main() {
     expect(find.byType(FeedCommentSheet), findsNothing);
     expect(find.text('Race'), findsOneWidget);
     expect(navigatorObserver.popCount, 1);
+  });
+
+  testWidgets('draft survives closing and reopening the same post drawer',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        routes: {
+          '/member/login': (_) => const Scaffold(body: Text('Login')),
+        },
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showFeedCommentDrawer(context, post: _post()),
+              child: const Text('Draft'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Draft'));
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.enterText(find.byType(TextField), 'komentar belum selesai');
+    Navigator.of(tester.element(find.byType(FeedCommentSheet))).pop();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    await tester.tap(find.text('Draft'));
+    await tester.pump(const Duration(milliseconds: 350));
+
+    final input = tester.widget<TextField>(find.byType(TextField));
+    expect(input.controller?.text, 'komentar belum selesai');
   });
 }
