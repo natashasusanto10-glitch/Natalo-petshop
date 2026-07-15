@@ -17,4 +17,14 @@ void main() {
     expect(delegate.crossAxisSpacing, profileGridCrossAxisSpacing);
     expect(delegate.childAspectRatio, profileGridChildAspectRatio);
   });
+
+  test('six-item loading grid extent includes the exact one-pixel gaps', () {
+    const width = 393.0;
+    final tileWidth =
+        (width - 2 * profileGridCrossAxisSpacing) / profileGridCrossAxisCount;
+    final expected = tileWidth / profileGridChildAspectRatio * 2 +
+        profileGridMainAxisSpacing;
+
+    expect(profileGridExtentForWidth(width, itemCount: 6), expected);
+  });
 }

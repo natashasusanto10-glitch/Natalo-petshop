@@ -9,11 +9,21 @@ void main() {
     required double width,
     required double shrinkOffset,
     int initialIndex = 0,
+    ThemeMode themeMode = ThemeMode.light,
+    TextScaler textScaler = TextScaler.noScaling,
+    bool disableAnimations = false,
   }) {
     return MaterialApp(
+      themeMode: themeMode,
+      theme: ThemeData.light(),
+      darkTheme: ThemeData.dark(),
       home: MediaQuery(
         data: MediaQueryData(
-            size: Size(width, 844), padding: const EdgeInsets.only(top: 47)),
+          size: Size(width, 844),
+          padding: const EdgeInsets.only(top: 47),
+          textScaler: textScaler,
+          disableAnimations: disableAnimations,
+        ),
         child: DefaultTabController(
           length: 3,
           initialIndex: initialIndex,
@@ -57,6 +67,29 @@ void main() {
         expect(tester.takeException(), isNull);
       }
     }
+  });
+
+  testWidgets('narrow dark reduced-motion layout keeps selected-tab semantics',
+      (tester) async {
+    await tester.pumpWidget(harness(
+      width: 360,
+      shrinkOffset: PublicProfileCollapsingHeaderDelegate.collapseRange,
+      initialIndex: 2,
+      themeMode: ThemeMode.dark,
+      textScaler: const TextScaler.linear(1.3),
+      disableAnimations: true,
+    ));
+
+    expect(tester.takeException(), isNull);
+    final selected = tester.widget<Semantics>(
+      find
+          .ancestor(
+            of: find.byTooltip('Belanja'),
+            matching: find.byType(Semantics),
+          )
+          .first,
+    );
+    expect(selected.properties.selected, isTrue);
   });
 
   testWidgets('tab group moves smoothly from right to left', (tester) async {
@@ -141,10 +174,15 @@ void main() {
     for (final width in <double>[393, 360]) {
       await tester.pumpWidget(
         MaterialApp(
+          theme: ThemeData.light(),
+          darkTheme: ThemeData.dark(),
+          themeMode: ThemeMode.dark,
           home: MediaQuery(
             data: MediaQueryData(
               size: Size(width, 844),
               padding: const EdgeInsets.only(top: 47),
+              textScaler: const TextScaler.linear(1.3),
+              disableAnimations: true,
             ),
             child: DefaultTabController(
               length: 3,
@@ -155,7 +193,10 @@ void main() {
                     title: profile.displayHandle,
                     topPadding: 47,
                     expandedHeight: PublicProfileCollapsingHeaderDelegate
-                        .regularExpandedHeight,
+                        .responsiveExpandedHeight(
+                      context,
+                      isOfficial: false,
+                    ),
                     onBack: () {},
                     onOverflow: () {},
                     expandedHeader: const PublicProfileExpandedHeader(

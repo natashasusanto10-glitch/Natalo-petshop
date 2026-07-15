@@ -807,9 +807,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
                   ? kOfficialBrandName
                   : profile.displayHandle,
               topPadding: MediaQuery.paddingOf(context).top,
-              expandedHeight: profile.isOfficial
-                  ? PublicProfileCollapsingHeaderDelegate.officialExpandedHeight
-                  : PublicProfileCollapsingHeaderDelegate.regularExpandedHeight,
+              expandedHeight: PublicProfileCollapsingHeaderDelegate
+                  .responsiveExpandedHeight(
+                context,
+                isOfficial: profile.isOfficial,
+              ),
               isOfficial: profile.isOfficial,
               onBack: () => Navigator.maybePop(context),
               onOverflow: !profile.isOwner && !profile.isOfficial
@@ -1872,15 +1874,17 @@ class _ProfileGridLoading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return AspectRatio(
-      aspectRatio: profileGridCrossAxisCount * profileGridChildAspectRatio / 2,
-      child: GridView.builder(
-        padding: EdgeInsets.zero,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: profileGridDelegate(),
-        itemCount: 6,
-        itemBuilder: (_, __) => ColoredBox(
-          color: cs.surfaceContainerHighest,
+    return LayoutBuilder(
+      builder: (context, constraints) => SizedBox(
+        height: profileGridExtentForWidth(constraints.maxWidth, itemCount: 6),
+        child: GridView.builder(
+          padding: EdgeInsets.zero,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: profileGridDelegate(),
+          itemCount: 6,
+          itemBuilder: (_, __) => ColoredBox(
+            color: cs.surfaceContainerHighest,
+          ),
         ),
       ),
     );

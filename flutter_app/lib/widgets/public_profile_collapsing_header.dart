@@ -14,6 +14,15 @@ class PublicProfileCollapsingHeaderDelegate
   static const double regularExpandedHeight = 280;
   static const double officialExpandedHeight = 390;
 
+  static double responsiveExpandedHeight(
+    BuildContext context, {
+    required bool isOfficial,
+  }) {
+    final base = isOfficial ? officialExpandedHeight : regularExpandedHeight;
+    final scale = MediaQuery.textScalerOf(context).scale(1);
+    return base + ((scale - 1).clamp(0, 1) * 80);
+  }
+
   final TabController controller;
   final String title;
   final Widget expandedHeader;

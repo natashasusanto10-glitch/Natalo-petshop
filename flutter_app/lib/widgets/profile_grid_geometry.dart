@@ -13,3 +13,16 @@ SliverGridDelegateWithFixedCrossAxisCount profileGridDelegate() {
     childAspectRatio: profileGridChildAspectRatio,
   );
 }
+
+double profileGridExtentForWidth(
+  double width, {
+  required int itemCount,
+}) {
+  if (itemCount <= 0) return 0;
+  final rows = (itemCount / profileGridCrossAxisCount).ceil();
+  const horizontalGaps =
+      (profileGridCrossAxisCount - 1) * profileGridCrossAxisSpacing;
+  final tileWidth = (width - horizontalGaps) / profileGridCrossAxisCount;
+  final tileHeight = tileWidth / profileGridChildAspectRatio;
+  return rows * tileHeight + (rows - 1) * profileGridMainAxisSpacing;
+}
