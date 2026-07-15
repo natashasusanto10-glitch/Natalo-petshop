@@ -1,4 +1,5 @@
 import 'video_player_session.dart';
+import 'video_media_cache.dart';
 
 typedef WarmVideoSessionFactory = VideoPlayerSession Function({
   required String postId,
@@ -89,10 +90,5 @@ class PostVideoWarmHandoff {
 }
 
 String canonicalVideoUrl(String value) {
-  final uri = Uri.tryParse(value.trim());
-  if (uri == null || !uri.hasScheme || uri.host.isEmpty) return value.trim();
-  return uri
-      .normalizePath()
-      .replace(scheme: uri.scheme.toLowerCase(), host: uri.host.toLowerCase())
-      .toString();
+  return canonicalVideoResourceUrl(value);
 }

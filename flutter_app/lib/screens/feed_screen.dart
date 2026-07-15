@@ -5,7 +5,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:cached_video_player_plus/cached_video_player_plus.dart';
@@ -17,6 +16,7 @@ import '../features/feed/widgets/feed_action_rail.dart';
 import '../features/feed/video/adaptive_video_preload_policy.dart';
 import '../features/feed/video/preload_generation.dart';
 import '../features/feed/video/single_dispose_guard.dart';
+import '../features/feed/video/video_media_cache.dart';
 import '../features/feed/video/video_preload_metrics.dart';
 import '../features/feed/widgets/feed_creator_overlay.dart';
 import '../features/feed/widgets/feed_post_shared_widgets.dart';
@@ -695,6 +695,7 @@ class _FeedScreenState extends State<FeedScreen> {
       final cachedPlayer = CachedVideoPlayerPlus.networkUrl(
         Uri.parse(resolvedUrl),
         invalidateCacheIfOlderThan: const Duration(days: 7),
+        cacheKey: videoMediaCacheKey(mediaId: id, url: resolvedUrl),
       );
       _preloadedCachedPlayers[id] = cachedPlayer;
       _preloadedUrls[id] = resolvedUrl;
@@ -771,7 +772,7 @@ class _FeedScreenState extends State<FeedScreen> {
           );
           if (!_disposing) _preloadRevision.value++;
           try {
-            await DefaultCacheManager().removeFile(resolvedUrl);
+            await evictVideoMediaCache(mediaId: id, url: resolvedUrl);
           } catch (_) {}
           recordVideoPreloadMetric(
             'failed',

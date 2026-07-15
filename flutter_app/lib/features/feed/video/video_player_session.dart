@@ -8,6 +8,7 @@ import '../../../services/video_quality_service.dart';
 import '../../../state/settings_store.dart';
 import 'post_video_coordinator.dart';
 import 'frame_output_heartbeat_service.dart';
+import 'video_media_cache.dart';
 import 'video_playback_health_monitor.dart';
 
 /// Satu percobaan init (plugin-free seam). Melempar bila gagal; pada sukses,
@@ -276,6 +277,10 @@ class VideoPlayerSession implements PlaybackSession {
       final wrapper = CachedVideoPlayerPlus.networkUrl(
         Uri.parse(resolved),
         invalidateCacheIfOlderThan: const Duration(days: 7),
+        cacheKey: videoMediaCacheKey(
+          mediaId: _analyticsPostId ?? resolved,
+          url: resolved,
+        ),
       );
       await wrapper.initialize();
       _wrapper = wrapper;

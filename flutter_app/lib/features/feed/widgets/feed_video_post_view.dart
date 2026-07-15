@@ -7,7 +7,6 @@ import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -36,6 +35,7 @@ import '../video/post_video_coordinator.dart';
 import '../video/frame_output_heartbeat_service.dart';
 import '../video/single_dispose_guard.dart';
 import '../video/video_audio_arbiter.dart';
+import '../video/video_media_cache.dart';
 import '../video/video_player_session.dart';
 import '../video/video_playback_health_monitor.dart';
 import '../../../widgets/app_toast.dart';
@@ -1381,7 +1381,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // baru declare _videoLoadFailed (real network/codec error).
     if (!isHls) {
       try {
-        await DefaultCacheManager().removeFile(resolvedUrl);
+        await evictVideoMediaCache(
+          mediaId: widget.post.id,
+          url: resolvedUrl,
+        );
       } catch (_) {
         // Ignore — cache entry mungkin tidak ada (race), retry tetap
         // worth dicoba dengan plain controller.
@@ -1417,6 +1420,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         wrapper = CachedVideoPlayerPlus.networkUrl(
           Uri.parse(resolvedUrl),
           invalidateCacheIfOlderThan: const Duration(days: 7),
+          cacheKey: videoMediaCacheKey(
+            mediaId: widget.post.id,
+            url: resolvedUrl,
+          ),
         );
         controller = wrapper.controller;
       } else {

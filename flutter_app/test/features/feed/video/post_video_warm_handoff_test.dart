@@ -115,6 +115,26 @@ void main() {
     await session.dispose();
   });
 
+  test('claim accepts a refreshed signature for the same media', () async {
+    final session = _CountingSession();
+    final handoff = PostVideoWarmHandoff(
+      postId: 'post-1',
+      url: 'https://cdn.example.com/video.mp4?token=old&expires=1',
+      hasAudio: true,
+      session: session,
+    );
+
+    expect(
+      handoff.claim(
+        postId: 'post-1',
+        url: 'https://cdn.example.com/video.mp4?expires=2&token=new',
+        hasAudio: true,
+      ),
+      same(session),
+    );
+    await session.dispose();
+  });
+
   test('disposeIfUnclaimed disposes exactly once', () async {
     final session = _CountingSession();
     final handoff = PostVideoWarmHandoff(
