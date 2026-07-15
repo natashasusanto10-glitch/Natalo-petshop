@@ -27,6 +27,7 @@ class PublicProfileCollapsingHeaderDelegate
   final String title;
   final Widget expandedHeader;
   final VoidCallback onBack;
+  final VoidCallback? onShareProfile;
   final VoidCallback? onOverflow;
   final ValueChanged<int>? onTabTap;
   final double topPadding;
@@ -38,6 +39,7 @@ class PublicProfileCollapsingHeaderDelegate
     required this.title,
     required this.expandedHeader,
     required this.onBack,
+    this.onShareProfile,
     this.onOverflow,
     this.onTabTap,
     this.topPadding = 0,
@@ -121,14 +123,33 @@ class PublicProfileCollapsingHeaderDelegate
                       ),
                     ),
                   ),
-                  if (onOverflow != null)
+                  if (onShareProfile != null || onOverflow != null)
                     Semantics(
                       button: true,
                       label: 'Opsi lainnya',
-                      child: IconButton(
-                        onPressed: onOverflow,
+                      child: PopupMenuButton<_PublicProfileAction>(
                         tooltip: 'Opsi lainnya',
                         icon: Icon(Icons.more_horiz_rounded, color: foreground),
+                        onSelected: (action) {
+                          switch (action) {
+                            case _PublicProfileAction.share:
+                              onShareProfile?.call();
+                            case _PublicProfileAction.moderate:
+                              onOverflow?.call();
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          if (onShareProfile != null)
+                            const PopupMenuItem(
+                              value: _PublicProfileAction.share,
+                              child: Text('Bagikan profil'),
+                            ),
+                          if (onOverflow != null)
+                            const PopupMenuItem(
+                              value: _PublicProfileAction.moderate,
+                              child: Text('Laporkan atau blokir'),
+                            ),
+                        ],
                       ),
                     )
                   else
@@ -180,6 +201,7 @@ class PublicProfileCollapsingHeaderDelegate
         old.title != title ||
         old.expandedHeader != expandedHeader ||
         old.onBack != onBack ||
+        old.onShareProfile != onShareProfile ||
         old.onOverflow != onOverflow ||
         old.onTabTap != onTabTap ||
         old.topPadding != topPadding ||
@@ -187,3 +209,5 @@ class PublicProfileCollapsingHeaderDelegate
         old.isOfficial != isOfficial;
   }
 }
+
+enum _PublicProfileAction { share, moderate }

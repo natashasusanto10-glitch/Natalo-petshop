@@ -814,6 +814,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
               ),
               isOfficial: profile.isOfficial,
               onBack: () => Navigator.maybePop(context),
+              onShareProfile: _shareProfile,
               onOverflow: !profile.isOwner && !profile.isOfficial
                   ? _openModeration
                   : null,

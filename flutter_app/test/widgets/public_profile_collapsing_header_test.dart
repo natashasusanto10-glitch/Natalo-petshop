@@ -12,6 +12,8 @@ void main() {
     ThemeMode themeMode = ThemeMode.light,
     TextScaler textScaler = TextScaler.noScaling,
     bool disableAnimations = false,
+    VoidCallback? onShareProfile,
+    VoidCallback? onModerate,
   }) {
     return MaterialApp(
       themeMode: themeMode,
@@ -39,7 +41,8 @@ void main() {
                   child: Text('Profil lengkap'),
                 ),
                 onBack: () {},
-                onOverflow: () {},
+                onShareProfile: onShareProfile ?? _noop,
+                onOverflow: onModerate ?? _noop,
               );
               return Scaffold(
                 body: SizedBox(
@@ -131,6 +134,34 @@ void main() {
     );
     expect(selected.properties.selected, isTrue);
     expect(find.byType(BottomNavigationBar), findsNothing);
+  });
+
+  testWidgets('collapsed overflow keeps profile sharing reachable',
+      (tester) async {
+    var shared = false;
+    var moderated = false;
+    await tester.pumpWidget(harness(
+      width: 393,
+      shrinkOffset: PublicProfileCollapsingHeaderDelegate.collapseRange,
+      onShareProfile: () => shared = true,
+      onModerate: () => moderated = true,
+    ));
+
+    await tester.tap(find.bySemanticsLabel('Opsi lainnya'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bagikan profil'), findsOneWidget);
+    expect(find.text('Laporkan atau blokir'), findsOneWidget);
+
+    await tester.tap(find.text('Bagikan profil'));
+    await tester.pumpAndSettle();
+    expect(shared, isTrue);
+
+    await tester.tap(find.bySemanticsLabel('Opsi lainnya'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Laporkan atau blokir'));
+    await tester.pumpAndSettle();
+    expect(moderated, isTrue);
   });
 
   testWidgets('reverse scroll resolves the same geometry', (tester) async {
