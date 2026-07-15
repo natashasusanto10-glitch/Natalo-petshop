@@ -302,6 +302,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   bool _commentSheetOpen = false;
   bool _videoLoadFailed = false;
   bool _commentSheetClosingFromDrag = false;
+  bool _commentSheetReachedVisibleExtent = false;
   int _commentSheetTransitionEpoch = 0;
   int _featuredProductIndex = 0;
   Timer? _productRotationTimer;
@@ -1662,6 +1663,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     final maxExtent = _commentSheetMaxExtentFor(context, hostHeight);
     final size = _commentSheetController.size;
     final extent = size.clamp(_commentSheetMinExtent, maxExtent).toDouble();
+    if (extent >= _commentSheetDismissExtent) {
+      _commentSheetReachedVisibleExtent = true;
+    }
     if ((_commentSheetExtent.value - extent).abs() > 0.002) {
       _commentSheetExtent.value = extent;
     }
@@ -1864,6 +1868,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       _commentDrawerMounted = true;
       _commentSheetOpen = true;
       _commentSheetClosingFromDrag = false;
+      _commentSheetReachedVisibleExtent = false;
       _commentDragOffset = 0;
       // Panel caption tertutup saat komentar dibuka — dua panel baca
       // tidak boleh tumpang tindih.
@@ -1915,6 +1920,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         _commentDrawerMounted = false;
         _commentSheetOpen = false;
         _commentSheetClosingFromDrag = false;
+        _commentSheetReachedVisibleExtent = false;
       });
       widget.onOverlayStateChanged(false);
 
@@ -2552,22 +2558,41 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                     duration: const Duration(milliseconds: 180),
                     curve: Curves.easeOutCubic,
                     padding: EdgeInsets.only(bottom: keyboard),
-                    child: DraggableScrollableSheet(
-                      controller: _commentSheetController,
-                      initialChildSize: _commentSheetMinExtent,
-                      minChildSize: _commentSheetMinExtent,
-                      maxChildSize: commentSheetMaxExtent,
-                      snap: false,
-                      builder: (context, scrollController) {
-                        return FeedCommentSheet(
-                          post: widget.post,
-                          applyKeyboardInset: false,
-                          sheetScrollController: scrollController,
-                          onClose: _closeComments,
-                          onDragUpdate: _onCommentDragUpdate,
-                          onDragEnd: _onCommentDragEnd,
-                        );
+                    child:
+                        NotificationListener<DraggableScrollableNotification>(
+                      onNotification: (notification) {
+                        // A drag that starts inside the comment list is owned
+                        // by DraggableScrollableSheet, so the custom handle's
+                        // onDragEnd is not called. Once the sheet has actually
+                        // opened, reaching its minimum must still complete the
+                        // overlay teardown instead of leaving an invisible
+                        // backdrop that intercepts all taps.
+                        if (_commentSheetReachedVisibleExtent &&
+                            !_commentSheetClosingFromDrag &&
+                            notification.extent <= 0.01) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) _closeComments();
+                          });
+                        }
+                        return false;
                       },
+                      child: DraggableScrollableSheet(
+                        controller: _commentSheetController,
+                        initialChildSize: _commentSheetMinExtent,
+                        minChildSize: _commentSheetMinExtent,
+                        maxChildSize: commentSheetMaxExtent,
+                        snap: false,
+                        builder: (context, scrollController) {
+                          return FeedCommentSheet(
+                            post: widget.post,
+                            applyKeyboardInset: false,
+                            sheetScrollController: scrollController,
+                            onClose: _closeComments,
+                            onDragUpdate: _onCommentDragUpdate,
+                            onDragEnd: _onCommentDragEnd,
+                          );
+                        },
+                      ),
                     ),
                   ),
                 _CommentVideoFrame(

@@ -31,7 +31,10 @@ Future<void> showFeedCommentDrawer(
     context: context,
     isScrollControlled: true,
     useSafeArea: false,
-    enableDrag: true,
+    // The DraggableScrollableSheet below is the sole drag owner. Letting the
+    // modal BottomSheet compete for the same vertical gesture can leave both
+    // recognizers waiting, which feels like a stuck drawer on iOS/Android.
+    enableDrag: false,
     isDismissible: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.62),
