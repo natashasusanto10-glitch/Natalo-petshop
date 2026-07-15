@@ -39,6 +39,13 @@
   suffix parsing is gated on generated truncation.
 - `flutter test test/screens/member_post_detail_screen_caption_test.dart --no-pub` — PASS (3 tests).
 
+## Follow-up key/analyzer verification
+- `PostCaption` now accepts the conventional named `key` parameter for stable
+  widget-test identity and tree updates.
+- `flutter analyze lib/screens/member_post_detail_screen.dart lib/state/post_caption_session_store.dart` — PASS (no issues).
+- `flutter test test/screens/member_post_detail_screen_caption_test.dart test/state/post_caption_session_store_test.dart --no-pub` — PASS (4 tests).
+- `dart format lib/screens/member_post_detail_screen.dart` — PASS.
+
 ## Interaction test quality follow-up
 - Removed the manual `postCaptionSessionStore.markExpanded` mutation from the long-caption widget test.
 - The test now resolves the nested `selengkapnya` glyph bounds from `RenderParagraph` and taps that rendered coordinate, then asserts the session store changed and expanded UI rendered.

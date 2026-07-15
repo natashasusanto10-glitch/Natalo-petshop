@@ -1935,6 +1935,7 @@ class PostCaption extends StatefulWidget {
   final bool isOfficial;
 
   const PostCaption({
+    super.key,
     required this.postId,
     required this.memberName,
     required this.caption,
