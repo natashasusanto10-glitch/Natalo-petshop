@@ -11,3 +11,9 @@
 - Commit: `28a51656` (`fix(admin): harden compact media interactions`)
 - ProductVideoDraft now exposes picker and emits remove/replace intents; media tiles use sibling accessible buttons, and preview supports an explicit close button plus Escape.
 - Focused tests remain green (5 passed).
+
+## Upload helper follow-up
+
+- Commit: `c716a28d` (`fix(admin): share product image upload helper`)
+- Added shared `uploadProductImageFiles` validation/upload helper and wired the compact rail to it.
+- Added oversized-file coverage; focused suite now passes 6 tests.
