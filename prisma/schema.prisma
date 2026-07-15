@@ -403,6 +403,8 @@ model Product {
   videoThumbnailUrl     String? // auto-thumbnail Bunny, diisi saat ready
   videoDurationSec      Int?
   isActive              Boolean                     @default(true)
+  // Creation lifecycle: hidden while media/variants are finalized.
+  creationState         String                      @default("ready")
   hasVariants           Boolean                     @default(false)
   brandAutoAssigned     Boolean                     @default(false)
   avgRating             Float                       @default(0)
@@ -440,6 +442,8 @@ model Product {
   // ke atas + badge. Nullable; produk lama (pre-kolom) = null → jatuh ke
   // createdAt saat sort.
   lastEditedAt          DateTime?
+
+  @@index([creationState, isActive])
 }
 
 model UserProductView {
