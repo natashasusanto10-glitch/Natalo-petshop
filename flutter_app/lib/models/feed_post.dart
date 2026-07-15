@@ -14,6 +14,8 @@
 ///
 /// MyFeedPost legacy class sudah di-delete — semua callers pakai FeedPost.
 
+import '../constants/official_brand.dart';
+
 class FeedAuthor {
   final String id;
   final String name;
@@ -44,7 +46,7 @@ class FeedAuthor {
 
   bool get isOfficialAccount => isAdmin || isOfficial;
 
-  String get displayName => isOfficialAccount ? 'Natalo Petshop' : name;
+  String get displayName => isOfficialAccount ? kOfficialBrandName : name;
 
   /// Public handle untuk feed/komentar header — bare `username` kalau
   /// set, fallback ke `displayName`. Official account tampil brand

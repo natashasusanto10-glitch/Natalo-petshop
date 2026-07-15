@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import '../constants/official_brand.dart';
 
 /// Regex match `@username` di text. Sama dengan server-side regex
 /// `lib/feed/mentions.ts` — case-insensitive, lowercase saat ekstrak,
@@ -24,10 +25,12 @@ List<InlineSpan> buildMentionSpans(
   required void Function(String handle) onMentionTap,
   TextStyle? defaultStyle,
   TextStyle? mentionStyle,
+
   /// Set of gesture recognizers — caller MUST dispose recognizers di
   /// dispose() lifecycle widget. Add ke list ini supaya caller bisa
   /// iterate clean up.
   List<TapGestureRecognizer>? collectRecognizers,
+
   /// Username (lowercase) yang merupakan akun admin/official. Mention ke
   /// handle ini di-brand-override: "@username" → "@Natalo Petshop" + badge
   /// verified inline. Tap tetap navigate ke profil (handle asli). Konsisten
@@ -58,7 +61,7 @@ List<InlineSpan> buildMentionSpans(
       // Brand-override: tampil "@Natalo Petshop" + badge verified inline.
       // Tap tetap pakai handle asli (navigate ke /u/<handle>).
       spans.add(TextSpan(
-        text: '@Natalo Petshop',
+        text: '@$kOfficialBrandName',
         style: effectiveMentionStyle,
         recognizer: recognizer,
       ));

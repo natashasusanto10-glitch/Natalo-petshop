@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import '../widgets/official_brand_avatar.dart';
 
 import '../config/api_config.dart';
+import '../constants/official_brand.dart';
 import '../models/feed_post.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../models/public_profile.dart';
@@ -787,7 +788,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
             // official = username karena username ter-set → bocor nama asli.
             // Konsisten dgn branding Opsi B (body profil sudah override).
             isOfficial
-                ? (_profile?.name ?? 'Natalo Petshop')
+                ? kOfficialBrandName
                 : (_profile?.displayHandle ?? widget.username),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,

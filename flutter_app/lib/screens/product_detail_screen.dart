@@ -3199,7 +3199,7 @@ class _ProductCustomerPost {
             authorMap['isOfficial'] == true);
     final rawName = (authorMap?['name'] ?? '').toString().trim();
     final authorName = isOfficial
-        ? 'Natalo Petshop'
+        ? kOfficialBrandName
         : (rawName.isEmpty ? 'Pelanggan Natalo' : rawName);
     return _ProductCustomerPost(
       id: (json['id'] ?? '').toString(),
