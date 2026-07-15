@@ -1,11 +1,28 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/rendering.dart';
 
 @visibleForTesting
 void Function(AnimationStatus status, bool hasSnapshot)?
     debugOriginExpansionStatusObserver;
+
+/// Keeps a snapshot-driven origin out of Navigator Hero matching.
+///
+/// The destination route remains Hero-enabled, so later navigation from that
+/// screen can still use its own Hero transition.
+class OriginSnapshotSource extends StatelessWidget {
+  final Widget child;
+
+  const OriginSnapshotSource({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return HeroMode(enabled: false, child: child);
+  }
+}
 
 /// Pushes [destinationBuilder] with a snapshot expanding from [originKey].
 ///
@@ -32,29 +49,252 @@ Future<T?> pushOriginExpansion<T>(
     return null;
   }
 
-  final route = PageRouteBuilder<T>(
-    opaque: false,
-    barrierColor: Colors.transparent,
-    transitionDuration: const Duration(milliseconds: 240),
-    reverseTransitionDuration: const Duration(milliseconds: 220),
-    pageBuilder: (context, animation, secondaryAnimation) {
-      return destinationBuilder(context);
-    },
-    transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      return OriginExpansionTransition(
-        animation: animation,
-        origin: origin,
-        snapshot: snapshot,
-        snapshotFallbackColor: snapshotFallbackColor,
-        child: child,
-      );
-    },
+  final route = _OriginExpansionPageRoute<T>(
+    destinationBuilder: destinationBuilder,
+    origin: origin,
+    snapshot: snapshot,
+    snapshotFallbackColor: snapshotFallbackColor,
   );
   try {
     return await Navigator.of(context).push(route);
   } finally {
     await route.completed;
     snapshot?.dispose();
+  }
+}
+
+class _OriginExpansionPageRoute<T> extends PageRoute<T> {
+  _OriginExpansionPageRoute({
+    required this.destinationBuilder,
+    required this.origin,
+    required this.snapshot,
+    required this.snapshotFallbackColor,
+  }) : super(allowSnapshotting: false);
+
+  final WidgetBuilder destinationBuilder;
+  final Rect? origin;
+  final ui.Image? snapshot;
+  final Color snapshotFallbackColor;
+
+  @override
+  bool get opaque => false;
+
+  @override
+  Color? get barrierColor => Colors.transparent;
+
+  @override
+  String? get barrierLabel => null;
+
+  @override
+  bool get barrierDismissible => false;
+
+  @override
+  bool get maintainState => true;
+
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 240);
+
+  @override
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 220);
+
+  @override
+  Widget buildPage(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+  ) {
+    return Semantics(
+      key: const ValueKey('origin-expansion-route-semantics'),
+      scopesRoute: true,
+      explicitChildNodes: true,
+      child: destinationBuilder(context),
+    );
+  }
+
+  @override
+  Widget buildTransitions(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    return _OriginEdgeBackGestureDetector<T>(
+      enabledCallback: () => popGestureEnabled,
+      onStartPopGesture: _startPopGesture,
+      child: OriginExpansionTransition(
+        animation: animation,
+        origin: origin,
+        snapshot: snapshot,
+        snapshotFallbackColor: snapshotFallbackColor,
+        linearTransition: () => popGestureInProgress,
+        child: child,
+      ),
+    );
+  }
+
+  _OriginBackGestureController<T> _startPopGesture() {
+    return _OriginBackGestureController<T>(
+      navigator: navigator!,
+      controller: controller!,
+      getIsCurrent: () => isCurrent,
+    );
+  }
+}
+
+const double _originBackGestureWidth = 28;
+const double _originBackCompletionFraction = 0.25;
+const double _originBackFlingVelocity = 800;
+
+class _OriginEdgeBackGestureDetector<T> extends StatefulWidget {
+  const _OriginEdgeBackGestureDetector({
+    required this.enabledCallback,
+    required this.onStartPopGesture,
+    required this.child,
+  });
+
+  final ValueGetter<bool> enabledCallback;
+  final ValueGetter<_OriginBackGestureController<T>> onStartPopGesture;
+  final Widget child;
+
+  @override
+  State<_OriginEdgeBackGestureDetector<T>> createState() =>
+      _OriginEdgeBackGestureDetectorState<T>();
+}
+
+class _OriginEdgeBackGestureDetectorState<T>
+    extends State<_OriginEdgeBackGestureDetector<T>> {
+  late final HorizontalDragGestureRecognizer _recognizer;
+  _OriginBackGestureController<T>? _backGestureController;
+
+  @override
+  void initState() {
+    super.initState();
+    _recognizer = HorizontalDragGestureRecognizer(debugOwner: this)
+      ..onStart = _handleDragStart
+      ..onUpdate = _handleDragUpdate
+      ..onEnd = _handleDragEnd
+      ..onCancel = _handleDragCancel;
+  }
+
+  @override
+  void dispose() {
+    _recognizer.dispose();
+    final backGestureController = _backGestureController;
+    if (backGestureController != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        backGestureController.abort();
+      });
+    }
+    _backGestureController = null;
+    super.dispose();
+  }
+
+  void _handlePointerDown(PointerDownEvent event) {
+    final enabled = widget.enabledCallback();
+    if (event.localPosition.dx > _originBackGestureWidth || !enabled) {
+      return;
+    }
+    _recognizer.addPointer(event);
+  }
+
+  void _handleDragStart(DragStartDetails details) {
+    _backGestureController = widget.onStartPopGesture();
+  }
+
+  void _handleDragUpdate(DragUpdateDetails details) {
+    final width = context.size?.width ?? 0;
+    if (width <= 0) return;
+    _backGestureController?.dragUpdate(details.primaryDelta! / width);
+  }
+
+  void _handleDragEnd(DragEndDetails details) {
+    final width = context.size?.width ?? 0;
+    _backGestureController?.dragEnd(
+      velocity: details.velocity.pixelsPerSecond.dx,
+      width: width,
+    );
+    _backGestureController = null;
+  }
+
+  void _handleDragCancel() {
+    _backGestureController?.dragEnd(
+        velocity: 0, width: context.size?.width ?? 0);
+    _backGestureController = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      key: const ValueKey('origin-expansion-edge-back'),
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _handlePointerDown,
+      child: widget.child,
+    );
+  }
+}
+
+class _OriginBackGestureController<T> {
+  _OriginBackGestureController({
+    required this.navigator,
+    required this.controller,
+    required this.getIsCurrent,
+  }) {
+    navigator.didStartUserGesture();
+  }
+
+  final NavigatorState navigator;
+  final AnimationController controller;
+  final ValueGetter<bool> getIsCurrent;
+  bool _finished = false;
+
+  void dragUpdate(double delta) {
+    if (_finished) return;
+    controller.value -= delta;
+  }
+
+  void dragEnd({required double velocity, required double width}) {
+    if (_finished) return;
+    final dragFraction = 1 - controller.value;
+    final shouldPop = getIsCurrent() &&
+        (dragFraction >= _originBackCompletionFraction ||
+            velocity >= _originBackFlingVelocity);
+    if (shouldPop) {
+      _finished = true;
+      navigator.didStopUserGesture();
+      navigator.pop();
+      return;
+    }
+    _springBack(velocity: velocity, width: width);
+  }
+
+  void abort() {
+    if (_finished) return;
+    _finished = true;
+    if (navigator.mounted) navigator.didStopUserGesture();
+  }
+
+  void _springBack({required double velocity, required double width}) {
+    _finished = true;
+    final normalizedVelocity = width <= 0 ? 0.0 : -velocity / width;
+    final simulation = SpringSimulation(
+      const SpringDescription(mass: 1, stiffness: 450, damping: 42),
+      controller.value,
+      1,
+      normalizedVelocity,
+    );
+    controller.animateWith(simulation);
+    if (!controller.isAnimating) {
+      navigator.didStopUserGesture();
+      return;
+    }
+    late AnimationStatusListener stopGesture;
+    stopGesture = (status) {
+      if (status.isAnimating) return;
+      controller.removeStatusListener(stopGesture);
+      controller.value = 1;
+      navigator.didStopUserGesture();
+    };
+    controller.addStatusListener(stopGesture);
   }
 }
 
@@ -76,6 +316,7 @@ class OriginExpansionTransition extends StatefulWidget {
   final Rect? origin;
   final ui.Image? snapshot;
   final Color snapshotFallbackColor;
+  final ValueGetter<bool>? linearTransition;
   final Widget child;
 
   const OriginExpansionTransition({
@@ -84,6 +325,7 @@ class OriginExpansionTransition extends StatefulWidget {
     required this.origin,
     required this.snapshot,
     required this.snapshotFallbackColor,
+    this.linearTransition,
     required this.child,
   });
 
@@ -128,41 +370,42 @@ class _OriginExpansionTransitionState extends State<OriginExpansionTransition> {
 
   @override
   Widget build(BuildContext context) {
-    final destinationOpacity = CurvedAnimation(
-      parent: widget.animation,
-      curve: const Interval(0.55, 1, curve: Curves.easeIn),
-      reverseCurve: const Interval(0.55, 1, curve: Curves.easeOut),
-    );
-    final destination = FadeTransition(
-      key: const ValueKey('origin-expansion-fade'),
-      opacity: destinationOpacity,
-      child: ColoredBox(
-        color: widget.snapshotFallbackColor,
-        child: widget.child,
-      ),
-    );
-    final sourceOrigin = widget.origin;
-    final snapshot = widget.snapshot;
-    if (sourceOrigin == null || snapshot == null) return destination;
+    return AnimatedBuilder(
+      animation: widget.animation,
+      builder: (context, _) {
+        final linear = widget.linearTransition?.call() ?? false;
+        final reverse = widget.animation.status == AnimationStatus.reverse;
+        final animationValue = widget.animation.value;
+        final progress = linear
+            ? animationValue
+            : (reverse ? Curves.easeInCubic : Curves.easeOutCubic)
+                .transform(animationValue);
+        final destinationOpacity = linear
+            ? const Interval(0.55, 1).transform(animationValue)
+            : (reverse
+                    ? const Interval(0.55, 1, curve: Curves.easeOut)
+                    : const Interval(0.55, 1, curve: Curves.easeIn))
+                .transform(animationValue);
+        final destination = Opacity(
+          key: const ValueKey('origin-expansion-fade'),
+          opacity: destinationOpacity,
+          child: ColoredBox(
+            color: widget.snapshotFallbackColor,
+            child: widget.child,
+          ),
+        );
+        final sourceOrigin = widget.origin;
+        final snapshot = widget.snapshot;
+        if (sourceOrigin == null || snapshot == null) return destination;
 
-    final curved = CurvedAnimation(
-      parent: widget.animation,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    );
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final destinationSize = constraints.biggest;
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            destination,
-            AnimatedBuilder(
-              animation: curved,
-              builder: (context, _) {
-                final progress = curved.value;
-                return Positioned(
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final destinationSize = constraints.biggest;
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                destination,
+                Positioned(
                   left: _lerp(sourceOrigin.left, 0, progress),
                   top: _lerp(sourceOrigin.top, 0, progress),
                   width: _lerp(
@@ -177,7 +420,7 @@ class _OriginExpansionTransitionState extends State<OriginExpansionTransition> {
                   ),
                   child: IgnorePointer(
                     child: Opacity(
-                      opacity: 1 - destinationOpacity.value,
+                      opacity: 1 - destinationOpacity,
                       child: ClipRRect(
                         borderRadius:
                             BorderRadius.circular(12 * (1 - progress)),
@@ -189,10 +432,10 @@ class _OriginExpansionTransitionState extends State<OriginExpansionTransition> {
                       ),
                     ),
                   ),
-                );
-              },
-            ),
-          ],
+                ),
+              ],
+            );
+          },
         );
       },
     );

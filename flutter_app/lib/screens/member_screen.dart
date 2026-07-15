@@ -390,8 +390,7 @@ class _ProfilePageState extends State<_ProfilePage>
                   // Scaffold.appBar, kini in-body supaya gradasi mengalir
                   // mulus status bar → ikon → blok profil (satu hero).
                   _ProfileTopBar(
-                    onCreatePost:
-                        _openingCreatePost ? null : _openCreatePost,
+                    onCreatePost: _openingCreatePost ? null : _openCreatePost,
                     createPostOriginKey: _createPostOriginKey,
                   ),
                   Expanded(
@@ -1023,60 +1022,60 @@ class _PostThumbnail extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return RepaintBoundary(
       key: originKey,
-      child: InkWell(
-        onTap: onTap,
-        onTapDown: (_) => onTapDown?.call(),
-        onTapCancel: onTapCancel,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Container(color: cs.surfaceContainerHighest),
-            if (mediaUrl != null)
-              // Hero animation source — wraps thumbnail dengan tag unik
-              // per-post. Detail screen wrap image dengan tag yang sama
-              // di _PostMediaSurface → Flutter auto-fly + scale image saat
-              // navigate. Skip untuk video (VideoPlayer destination tidak
-              // compatible dengan Hero — animasi snap kalau mismatch).
-              Hero(
-                tag: 'post-thumb-${post.id}',
-                child: CachedNetworkImage(
-                  imageUrl: mediaUrl,
-                  fit: BoxFit.cover,
-                  fadeInDuration: const Duration(milliseconds: 180),
-                  placeholder: (_, __) =>
-                      Container(color: cs.surfaceContainerHigh),
-                  errorWidget: (_, __, ___) => const Center(
-                    child: Icon(
-                      Icons.image_not_supported_outlined,
-                      color: Color(0xFF94A3B8),
-                      size: 28,
+      child: OriginSnapshotSource(
+        child: InkWell(
+          onTap: onTap,
+          onTapDown: (_) => onTapDown?.call(),
+          onTapCancel: onTapCancel,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Container(color: cs.surfaceContainerHighest),
+              if (mediaUrl != null)
+                // Keep the tag for the detail screen's later fullscreen flow.
+                // OriginSnapshotSource suppresses this grid-side Hero while the
+                // static route snapshot performs the Profile -> Postingan morph.
+                Hero(
+                  tag: 'post-thumb-${post.id}',
+                  child: CachedNetworkImage(
+                    imageUrl: mediaUrl,
+                    fit: BoxFit.cover,
+                    fadeInDuration: const Duration(milliseconds: 180),
+                    placeholder: (_, __) =>
+                        Container(color: cs.surfaceContainerHigh),
+                    errorWidget: (_, __, ___) => const Center(
+                      child: Icon(
+                        Icons.image_not_supported_outlined,
+                        color: Color(0xFF94A3B8),
+                        size: 28,
+                      ),
                     ),
                   ),
+                )
+              else
+                const Center(
+                  child: Icon(
+                    Icons.image_outlined,
+                    color: Color(0xFF94A3B8),
+                    size: 28,
+                  ),
                 ),
-              )
-            else
-              const Center(
-                child: Icon(
-                  Icons.image_outlined,
-                  color: Color(0xFF94A3B8),
-                  size: 28,
+              // Type indicators top-right (video play OR shopping bag).
+              // Priority: video > tagged products (kalau dua-duanya, video win).
+              if (post.isVideo)
+                const Positioned(
+                  top: 8,
+                  right: 8,
+                  child: _ThumbnailIcon(icon: Icons.play_arrow_rounded),
+                )
+              else if (post.productIds.isNotEmpty)
+                const Positioned(
+                  top: 8,
+                  right: 8,
+                  child: _ThumbnailIcon(icon: Icons.shopping_bag_outlined),
                 ),
-              ),
-            // Type indicators top-right (video play OR shopping bag).
-            // Priority: video > tagged products (kalau dua-duanya, video win).
-            if (post.isVideo)
-              const Positioned(
-                top: 8,
-                right: 8,
-                child: _ThumbnailIcon(icon: Icons.play_arrow_rounded),
-              )
-            else if (post.productIds.isNotEmpty)
-              const Positioned(
-                top: 8,
-                right: 8,
-                child: _ThumbnailIcon(icon: Icons.shopping_bag_outlined),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
