@@ -23,6 +23,7 @@ test("isAdminRole hanya true untuk role ADMIN", () => {
 });
 
 test("brandDisplayName: admin → brand name, user → nama asli", () => {
+  assert.equal(OFFICIAL_BRAND_NAME, "Natalo Petshop Official");
   assert.equal(brandDisplayName("ADMIN", "Natasha"), OFFICIAL_BRAND_NAME);
   assert.equal(brandDisplayName("CUSTOMER", "Asiong"), "Asiong");
   // Nama asli admin TIDAK boleh muncul, apa pun isinya.
