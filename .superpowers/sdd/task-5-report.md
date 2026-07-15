@@ -20,3 +20,7 @@ Implemented controlled AI description and variant draft contracts.
 ## Concerns
 
 The parent ProductForm must pass the controlled `onChange` payload into its final create/update request. The endpoint intentionally does not persist anything and requires `ANTHROPIC_API_KEY` at runtime.
+
+## Follow-up
+
+Updated generation payload forwarding so edit-mode requests include the current draft category, brand, and variant context. The persisted product remains the fallback when fields are omitted. Added regression coverage for forwarding draft context.

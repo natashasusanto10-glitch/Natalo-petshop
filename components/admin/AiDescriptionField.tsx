@@ -13,8 +13,8 @@
  */
 import { useEffect, useState } from "react";
 import { FormField } from "@/components/admin/ui";
-import { buildDescriptionContext, type DescriptionContextInput } from "@/lib/ai/product-description-context";
-export { buildDescriptionContext } from "@/lib/ai/product-description-context";
+import { buildGenerationPayload, type DescriptionContextInput } from "@/lib/ai/product-description-context";
+export { buildGenerationPayload, buildDescriptionContext } from "@/lib/ai/product-description-context";
 
 export type AiDescriptionFieldProps = {
   value?: string;
@@ -53,10 +53,7 @@ export function AiDescriptionField({
     setLoading(true);
     setError(null);
     try {
-      const productContext = buildDescriptionContext({
-        ...(context ?? {}),
-        name: currentName || context?.name || "",
-      });
+      const productContext = buildGenerationPayload(context ?? { name: currentName }, currentName);
       const endpoint = existingProductId ?? productId
         ? `/api/admin/products/${existingProductId ?? productId}/generate-description`
         : "/api/admin/products/generate-description";
@@ -65,9 +62,7 @@ export function AiDescriptionField({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(existingProductId ?? productId
-            ? { name: currentName || undefined }
-            : productContext),
+          body: JSON.stringify(productContext),
         },
       );
       const data = await res.json().catch(() => null);

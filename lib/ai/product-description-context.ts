@@ -16,3 +16,7 @@ export function buildDescriptionContext(input: DescriptionContextInput) {
     variantOptions,
   };
 }
+
+export function buildGenerationPayload(context: DescriptionContextInput, name: string) {
+  return buildDescriptionContext({ ...context, name: name || context.name });
+}

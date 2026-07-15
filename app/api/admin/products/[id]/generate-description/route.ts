@@ -27,6 +27,9 @@ export async function POST(
   const { id } = await params;
   const body = (await request.json().catch(() => ({}))) as {
     name?: string;
+    categoryName?: string | null;
+    brandName?: string | null;
+    variantOptions?: string[];
   };
 
   const product = await prisma.product.findUnique({
@@ -43,7 +46,7 @@ export async function POST(
     return NextResponse.json({ error: "Produk tidak ditemukan" }, { status: 404 });
   }
 
-  const variantOptions = product.variantAttrs.flatMap((attr) =>
+  const persistedVariantOptions = product.variantAttrs.flatMap((attr) =>
     attr.options.map((opt) => opt.value),
   );
 
@@ -53,9 +56,9 @@ export async function POST(
   try {
     const description = await generateProductDescription({
       name,
-      categoryName: product.category?.name ?? null,
-      brandName: product.brand?.name ?? null,
-      variantOptions,
+      categoryName: body.categoryName ?? product.category?.name ?? null,
+      brandName: body.brandName ?? product.brand?.name ?? null,
+      variantOptions: Array.isArray(body.variantOptions) ? body.variantOptions : persistedVariantOptions,
     });
     return NextResponse.json({ description });
   } catch (err) {

@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { productIsVisibleWhere, shouldDeleteCreatingProduct, normalizeProductFormPayload } from "../lib/product/admin-product-form";
 import { buildDescriptionContext } from "../lib/ai/product-description-context";
+import { buildGenerationPayload } from "../lib/ai/product-description-context";
 import { variantPersistenceMode } from "../lib/product/variant-editor";
 
 describe("admin product creation lifecycle", () => {
   it("builds AI context for an unsaved product", () => {
     expect(buildDescriptionContext({ name: "Pakan", categoryName: "Kucing", brandName: "Acme", variants: [{ optionRefs: ["Rasa: Tuna"] }] })).toEqual({
       name: "Pakan", categoryName: "Kucing", brandName: "Acme", variantOptions: ["Rasa: Tuna"],
+    });
+  });
+
+  it("forwards draft context when generating from an existing product", () => {
+    expect(buildGenerationPayload({ name: "Lama", categoryName: "Lama", brandName: "Lama", variants: [{ optionValues: ["Lama"] }] }, "Baru")).toEqual({
+      name: "Baru", categoryName: "Lama", brandName: "Lama", variantOptions: ["Lama"],
     });
   });
 
