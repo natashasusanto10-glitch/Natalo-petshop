@@ -14,7 +14,7 @@ export type ProductFormMode = "create" | "edit";
 function persistedVariantDraft(product?: ProductLike) {
   const attrs = (product?.variantAttrs ?? []).map((a, index) => ({ name: a.name, position: index, options: a.options.map((o, optionIndex) => ({ value: o.value, position: optionIndex })) }));
   const optionRefs = new Map((product?.variantAttrs ?? []).flatMap((a, index) => a.options.map(o => [o.id, `${index}:${o.value}`] as const)));
-  const variants = (product?.variants ?? []).map(v => ({ optionRefs: v.options.map(o => optionRefs.get(o.optionId)).filter((x): x is string => Boolean(x)), price: v.price, stock: v.stock, weightGram: v.weightGram, sku: v.sku ?? undefined, imageUrl: v.imageUrl ?? undefined, isActive: v.isActive }));
+  const variants = (product?.variants ?? []).map(v => ({ optionRefs: v.options.map(o => optionRefs.get(o.optionId)).filter((x): x is `${number}:${string}` => Boolean(x)), price: v.price, stock: v.stock, weightGram: v.weightGram, sku: v.sku ?? undefined, imageUrl: v.imageUrl ?? undefined, isActive: v.isActive }));
   return { attributes: attrs, variants };
 }
 
