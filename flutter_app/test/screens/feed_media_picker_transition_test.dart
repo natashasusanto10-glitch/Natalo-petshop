@@ -78,6 +78,47 @@ void main() {
     expect(find.byKey(const ValueKey('feed-create-post')), findsOneWidget);
   });
 
+  testWidgets('Feed plus opens one picker route across rapid taps and back',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        routes: {
+          '/member/login': (_) => const Scaffold(body: Text('Login')),
+        },
+        home: const FeedScreen(),
+      ),
+    );
+    await tester.pump();
+
+    final createPost = find.byKey(const ValueKey('feed-create-post'));
+    expect(createPost, findsOneWidget);
+    final button = tester.widget<InkResponse>(
+      find.descendant(of: createPost, matching: find.byType(InkResponse)),
+    );
+    button.onTap!.call();
+    button.onTap!.call();
+    await _pumpUntil(tester, find.byType(FeedMediaPickerScreen));
+    await tester.pump(const Duration(milliseconds: 120));
+
+    expect(find.byType(FeedMediaPickerScreen), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('origin-expansion-snapshot')),
+      findsOneWidget,
+    );
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 220));
+    await tester.pump();
+    expect(find.byType(FeedMediaPickerScreen), findsNothing);
+    expect(createPost, findsOneWidget);
+  });
+
   testWidgets('media picker falls back to a reversible fade without an origin',
       (tester) async {
     final missingOrigin = GlobalKey();

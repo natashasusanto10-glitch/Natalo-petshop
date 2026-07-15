@@ -133,6 +133,7 @@ class _FeedScreenState extends State<FeedScreen> {
   bool _loading = true;
   bool _loadingMore = false;
   bool _interactionLocked = false;
+  bool _openingCreateRoute = false;
   bool _mediaZooming = false;
   bool _disposing = false;
   int _activeIndex = 0;
@@ -818,6 +819,8 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   Future<void> _onUpload() async {
+    if (_openingCreateRoute) return;
+    _openingCreateRoute = true;
     AppHaptics.tap();
     _setFeedInteractionLocked(true);
     // Unified "Postingan baru" flow — push FeedMediaPickerScreen via
@@ -830,10 +833,18 @@ class _FeedScreenState extends State<FeedScreen> {
     // dulu) → flow lama yang inkonsisten dengan akun entry. Sekarang
     // SEMUA "+" icon (feed + akun + postingan saya) lead ke flow yang
     // sama untuk konsistensi UX.
-    await FeedMediaPickerScreen.openFromOrigin(context, _createPostOriginKey);
-    if (mounted) _setFeedInteractionLocked(false);
-    if (!mounted) return;
-    await _loadInitial();
+    try {
+      await FeedMediaPickerScreen.openFromOrigin(
+        context,
+        _createPostOriginKey,
+      );
+      if (mounted) _setFeedInteractionLocked(false);
+      if (!mounted) return;
+      await _loadInitial();
+    } finally {
+      _openingCreateRoute = false;
+      if (mounted) _setFeedInteractionLocked(false);
+    }
   }
 
   @override
