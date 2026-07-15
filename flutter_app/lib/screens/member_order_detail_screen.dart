@@ -468,6 +468,11 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
                   type: order.isSelfPickup
                       ? OrderTimelineType.pickup
                       : OrderTimelineType.delivery,
+                  timelineEvents: order.timelineEvents,
+                  readyForPickupAt: order.readyForPickupAt,
+                  pickedUpAt: order.pickedUpAt,
+                  shippedAt: order.shippedAt,
+                  deliveredAt: order.deliveredAt ?? order.completedAt,
                 ),
                 const SizedBox(height: 12),
                 // Core order detail first. Ini mencegah layar terlihat seperti
