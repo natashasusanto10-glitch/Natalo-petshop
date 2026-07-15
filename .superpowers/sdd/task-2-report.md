@@ -18,3 +18,5 @@ Follow-up commit: `23acbb5b`
 Follow-up test: `npx vitest run tests/admin-product-form.test.ts` — 5 passed.
 
 Follow-up changes: PATCH now normalizes gallery/category/brand/SKU and updates `lastEditedAt`; POST legacy `imageUrl` plus `gallery` is preserved; normalized payload has an explicit return type.
+
+Variant follow-up commit: `febbeff6` — PATCH validates and persists `hasVariants`, attributes, and variants transactionally with product updates. Focused admin tests remain 5 passed.

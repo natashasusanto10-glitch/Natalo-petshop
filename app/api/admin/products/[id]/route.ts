@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { normalizeProductFormPayload } from "@/lib/product/admin-product-form";
+import { putVariantsPayloadSchema } from "@/lib/validators/variant-schema";
 
 /**
  * GET /api/admin/products/[id]
@@ -108,6 +109,17 @@ export async function PATCH(
   if (typeof body.brandId === "string") data.brand = { connect: { id: body.brandId.trim() } };
   if (body.brandId === null) data.brand = { disconnect: true };
   if (typeof body.sku === "string") data.sku = body.sku.trim() || null;
+  let variantPayload: { hasVariants: boolean; attributes: any[]; variants: any[] } | undefined;
+  if (body.hasVariants !== undefined || body.attributes !== undefined || body.variants !== undefined) {
+    const parsedVariants = putVariantsPayloadSchema.safeParse({
+      hasVariants: body.hasVariants,
+      attributes: body.attributes ?? [],
+      variants: body.variants ?? [],
+    });
+    if (!parsedVariants.success) return NextResponse.json({ error: "Payload varian tidak valid", issues: parsedVariants.error.issues }, { status: 422 });
+    variantPayload = parsedVariants.data;
+    data.hasVariants = variantPayload.hasVariants;
+  }
   if (Object.keys(data).length > 0) data.lastEditedAt = new Date();
   if (typeof body.isActive === "boolean") {
     data.isActive = body.isActive;
@@ -120,8 +132,8 @@ export async function PATCH(
     );
   }
 
-  const updated = await prisma.product
-    .update({
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.product.update({
       where: { id },
       data,
       select: {
@@ -133,11 +145,23 @@ export async function PATCH(
         isActive: true,
         imageUrl: true,
       },
-    })
-    .catch((err) => {
-      if (err.code === "P2025") return null;
-      throw err;
     });
+    if (variantPayload) {
+      await tx.productVariant.updateMany({ where: { productId: id, deletedAt: null }, data: { deletedAt: new Date(), isActive: false } });
+      await tx.variantAttribute.deleteMany({ where: { productId: id } });
+      const optionMap = new Map<string, string>();
+      for (const attr of variantPayload.attributes) {
+        const created = await tx.variantAttribute.create({ data: { productId: id, name: attr.name, position: attr.position, options: { create: attr.options.map((o: any) => ({ value: o.value, position: o.position })) } }, include: { options: true } });
+        created.options.forEach((o) => optionMap.set(`${attr.position}:${o.value}`, o.id));
+      }
+      for (const v of variantPayload.variants) {
+        const optionIds = v.optionRefs.map((r: string) => optionMap.get(r)).filter(Boolean) as string[];
+        if (optionIds.length !== v.optionRefs.length) continue;
+        await tx.productVariant.create({ data: { productId: id, sku: v.sku || null, price: v.price, stock: v.stock, weightGram: v.weightGram, imageUrl: v.imageUrl || null, isActive: v.isActive, options: { create: optionIds.map((optionId) => ({ optionId })) } } });
+      }
+    }
+    return result;
+  }).catch((err) => { if (err.code === "P2025") return null; throw err; });
 
   if (!updated) {
     return NextResponse.json({ error: "Produk tidak ditemukan" }, { status: 404 });
