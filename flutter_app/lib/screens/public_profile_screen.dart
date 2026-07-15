@@ -148,8 +148,14 @@ class PublicProfileScreen extends StatefulWidget {
   /// Handle target (raw — server lowercase + validate). Bisa di-set
   /// dari deep link, navigator argument, atau tap @mention nanti.
   final String username;
+  @visibleForTesting
+  final PublicProfileResult? initialResult;
 
-  const PublicProfileScreen({super.key, required this.username});
+  const PublicProfileScreen({
+    super.key,
+    required this.username,
+    this.initialResult,
+  });
 
   @override
   State<PublicProfileScreen> createState() => _PublicProfileScreenState();
@@ -189,7 +195,28 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     memberStore.addListener(_onViewerChanged);
     followOverrides.addListener(_onFollowOverridesChanged);
     feedStore.addListener(_onFeedStoreChanged);
-    _load();
+    final initialResult = widget.initialResult;
+    if (initialResult != null) {
+      _seedInitialResult(initialResult);
+    } else {
+      _load();
+    }
+  }
+
+  void _seedInitialResult(PublicProfileResult result) {
+    final contentState = _contentStates[PublicProfileContentFilter.all]!;
+    _profile = result.profile.copyWith(
+      isFollowing: resolveFollowState(
+        result.profile.id,
+        result.profile.isFollowing,
+      ),
+    );
+    contentState
+      ..posts = _canonicalPosts(result.posts)
+      ..nextCursor = result.nextCursor
+      ..loaded = true
+      ..loading = false;
+    _loading = false;
   }
 
   @override
