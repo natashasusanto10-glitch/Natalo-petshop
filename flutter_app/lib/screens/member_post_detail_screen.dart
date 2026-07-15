@@ -13,11 +13,9 @@ import '../config/api_config.dart';
 import '../features/feed/video/post_video_coordinator.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../features/feed/video/video_player_session.dart';
-import '../models/feed_comment.dart';
 import '../models/feed_post.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
-import '../services/report_service.dart';
 import '../services/video_quality_service.dart';
 import '../state/feed_local_store.dart';
 import '../state/feed_store.dart';
@@ -27,15 +25,13 @@ import '../theme/natalo_colors.dart';
 import '../utils/app_route_observer.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
-import '../utils/mention_text.dart';
 import '../widgets/app_toast.dart';
-import '../widgets/emoji_picker_panel.dart';
-import '../widgets/mention_picker.dart';
-import '../widgets/moderation_action_sheet.dart';
+import '../widgets/feed_comment_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/official_brand_avatar.dart';
 import '../widgets/post_likers_sheet.dart';
 import '../widgets/profile_avatar.dart';
+import '../widgets/scaled_video_feed_route.dart';
 import '../shared/widgets/natalo_post_action_icon.dart';
 import 'public_profile_screen.dart';
 import 'scoped_video_feed_screen.dart';
@@ -98,6 +94,8 @@ class MemberPostDetailScreen extends StatefulWidget {
   /// yang bocor ke viewer non-owner.
   final bool isOwner;
   final PostVideoWarmHandoff? warmVideoHandoff;
+  final String? initialNextCursor;
+  final ScopedPostPageLoader? loadMoreScopedPosts;
 
   const MemberPostDetailScreen({
     super.key,
@@ -110,6 +108,8 @@ class MemberPostDetailScreen extends StatefulWidget {
     this.authorIsOfficial = false,
     this.isOwner = true,
     this.warmVideoHandoff,
+    this.initialNextCursor,
+    this.loadMoreScopedPosts,
   });
 
   @override
@@ -144,6 +144,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   /// utama + di-register on-demand oleh inline (carousel). Factory sesi baca
   /// dari sini — coordinator sendiri plugin-free & tak tahu URL.
   final Map<String, String> _videoUrls = {};
+  final Map<String, GlobalKey> _videoAnchorKeys = {};
   late NetworkTier _playbackNetworkTier;
 
   /// True selama transisi buka/tutup fullscreen scoped (§2.6 + D5). Selama
@@ -557,23 +558,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   Future<void> _openComments(int index) async {
     AppHaptics.tap();
     final post = _posts[index];
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _MyPostCommentSheet(
-        post: post,
-        // Author info — pakai resolver yang sudah respect override
-        // dari public profile (widget.authorName / authorPhotoUrl).
-        // Owner viewing own post → fallback ke memberStore.
-        authorName: _memberName,
-        authorAvatarUrl: _memberPhotoUrl,
-        authorIsOfficial: widget.authorIsOfficial,
-      ),
-    );
+    await showFeedCommentDrawer(context, post: post);
   }
 
   Future<void> _openPostMenu(int index) async {
@@ -820,7 +805,10 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                     onMenuTap:
                         widget.isOwner ? () => _openPostMenu(index) : null,
                     onOpenScopedFeed: (sessionId, anchorKey) =>
-                        _openScopedVideoFeed(index, sessionId),
+                        _openScopedVideoFeed(index, sessionId, anchorKey),
+                    onVideoAnchorReady: (postId, anchorKey) {
+                      _videoAnchorKeys[postId] = anchorKey;
+                    },
                   );
                 },
               ),
@@ -856,10 +844,12 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   Future<void> _openScopedVideoFeed(
     int index,
     String sessionId,
+    GlobalKey anchorKey,
   ) async {
     final videoPosts = _posts.where((p) => p.isVideo).toList();
     if (videoPosts.isEmpty) return;
     final tapped = _posts[index];
+    final hydratedPosts = _hydrateScopedVideoPosts(videoPosts);
 
     // ── Handoff mulai (§2.6 + D5) ──
     // 1. Pin video asal di coordinator (origin) — tak akan dieviction selama
@@ -882,36 +872,49 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     // gagal dibuka. Semantik resume:
     // normal/return = resume true; unmounted = resume false.
     var resume = true;
+    final reverseMorphEnabled = ValueNotifier<bool>(true);
+    final reverseTarget = ValueNotifier<ScaledVideoFeedReverseTarget?>(null);
+    var returnPrepared = false;
     try {
       final tappedIndex = videoPosts.indexWhere((post) => post.id == tapped.id);
-      final result = await Navigator.of(context).push<ScopedVideoFeedResult>(
-        PageRouteBuilder<ScopedVideoFeedResult>(
-          opaque: true,
-          barrierColor: Colors.black,
-          transitionDuration: const Duration(milliseconds: 220),
-          reverseTransitionDuration: const Duration(milliseconds: 180),
-          pageBuilder: (_, animation, secondaryAnimation) =>
-              ScopedVideoFeedScreen(
-            posts: videoPosts,
-            initialIndex: tappedIndex >= 0 ? tappedIndex : 0,
-            // Handoff §2.6: item ASAL pinjam controller coordinator (instan).
-            coordinator: _videoCoordinator,
-            originPostId: sessionId,
-            onNetworkTierChanged: _onPlaybackNetworkTierChanged,
-          ),
-          transitionsBuilder: (_, animation, secondaryAnimation, child) {
-            final entrance = CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
-              reverseCurve: Curves.easeInCubic,
+      final result = await pushScaledVideoFeed<ScopedVideoFeedResult>(
+        context,
+        thumbnailKey: anchorKey,
+        thumbnailImageUrl: tapped.previewMediaUrl,
+        thumbnailBorderRadius: 0,
+        reverseMorphEnabled: reverseMorphEnabled,
+        reverseTarget: reverseTarget,
+        destinationBuilder: (_) => ScopedVideoFeedScreen(
+          posts: videoPosts,
+          hydratedPosts: hydratedPosts,
+          initialNextCursor: widget.initialNextCursor,
+          loadMorePosts:
+              widget.loadMoreScopedPosts == null ? null : _loadMoreScopedPosts,
+          initialIndex: tappedIndex >= 0 ? tappedIndex : 0,
+          // Handoff §2.6: item ASAL pinjam controller coordinator (instan).
+          coordinator: _videoCoordinator,
+          originPostId: sessionId,
+          onNetworkTierChanged: _onPlaybackNetworkTierChanged,
+          onActivePostChanged: (postId) {
+            reverseMorphEnabled.value = postId == tapped.id;
+          },
+          onPrepareClose: (result) async {
+            await _focusReturnedVideo(result);
+            returnPrepared = true;
+            if (!mounted) return;
+            final targetKey = _videoAnchorKeys[result.postId];
+            final box =
+                targetKey?.currentContext?.findRenderObject() as RenderBox?;
+            final targetPost = _posts.cast<FeedPost?>().firstWhere(
+                  (post) => post?.id == result.postId,
+                  orElse: () => null,
+                );
+            if (box == null || !box.hasSize || targetPost == null) return;
+            reverseTarget.value = ScaledVideoFeedReverseTarget(
+              rect: box.localToGlobal(Offset.zero) & box.size,
+              imageUrl: targetPost.previewMediaUrl,
             );
-            return FadeTransition(
-              opacity: entrance,
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 0.985, end: 1).animate(entrance),
-                child: child,
-              ),
-            );
+            reverseMorphEnabled.value = true;
           },
         ),
       );
@@ -919,14 +922,68 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
         resume = false;
         return;
       }
-      if (result != null && mounted) {
+      if (result != null && mounted && !returnPrepared) {
         await _focusReturnedVideo(result);
       }
     } finally {
+      reverseMorphEnabled.dispose();
+      reverseTarget.dispose();
       // ── Handoff selesai (kembali dari fullscreen / batal) ──
       // Urutan §2.6: re-attach/resume video asal DULU, baru setOrigin(null).
       _endHandoff(resume: resume);
     }
+  }
+
+  Future<FeedPage> _loadMoreScopedPosts(String? cursor) async {
+    final loader = widget.loadMoreScopedPosts;
+    if (loader == null) return const FeedPage();
+    final page = await loader(cursor);
+    final freshPosts = page.items.where((post) {
+      return !_posts.any((existing) => existing.id == post.id);
+    }).toList(growable: false);
+    for (final post in page.items.where((post) => post.isVideo)) {
+      _videoUrls[post.id] = _resolvePostVideoUrl(post);
+    }
+    if (freshPosts.isNotEmpty && mounted) {
+      feedStore.mergeFromServer(freshPosts, fetchedAt: DateTime.now());
+      setState(() {
+        _posts = [..._posts, ...freshPosts];
+        _postKeys.addAll(
+          List<GlobalKey>.generate(freshPosts.length, (_) => GlobalKey()),
+        );
+      });
+    }
+    return page;
+  }
+
+  Future<List<FeedPost>> _hydrateScopedVideoPosts(
+    List<FeedPost> source,
+  ) async {
+    final fetchById = debugScopedFeedPostFetcher ?? feedService.fetchPostById;
+    return Future.wait(
+      source.map((localPost) async {
+        try {
+          final fresh = await fetchById(localPost.id);
+          if (fresh == null) return localPost;
+          final freshHasProducts =
+              fresh.taggedProducts.isNotEmpty || fresh.products.isNotEmpty;
+          final localHasProducts = localPost.taggedProducts.isNotEmpty ||
+              localPost.products.isNotEmpty;
+          if (!freshHasProducts && localHasProducts) {
+            return fresh.copyWith(
+              products: localPost.products,
+              productsInVideo: localPost.productsInVideo,
+              taggedProducts: localPost.taggedProducts.isNotEmpty
+                  ? localPost.taggedProducts
+                  : localPost.products,
+            );
+          }
+          return fresh;
+        } catch (_) {
+          return localPost;
+        }
+      }),
+    );
   }
 
   Future<void> _focusReturnedVideo(ScopedVideoFeedResult result) async {
@@ -1053,6 +1110,7 @@ class _PostFeedItem extends StatefulWidget {
   // (sessionId video asal utk handoff coordinator + anchorKey utk transisi
   // morph-scale).
   final void Function(String sessionId, GlobalKey anchorKey)? onOpenScopedFeed;
+  final void Function(String postId, GlobalKey anchorKey)? onVideoAnchorReady;
 
   const _PostFeedItem({
     super.key,
@@ -1072,6 +1130,7 @@ class _PostFeedItem extends StatefulWidget {
     required this.onShare,
     required this.onMenuTap,
     this.onOpenScopedFeed,
+    this.onVideoAnchorReady,
   });
 
   @override
@@ -1259,6 +1318,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
                 onVideoExpandRequested: (sessionId, anchorKey) {
                   widget.onOpenScopedFeed?.call(sessionId, anchorKey);
                 },
+                onVideoAnchorReady: widget.onVideoAnchorReady,
               ),
               if (post.isVideo)
                 Positioned(
@@ -1969,6 +2029,7 @@ class _PostMediaSurface extends StatelessWidget {
   final String? handoffSessionId;
   final void Function(String sessionId, GlobalKey anchorKey)?
       onVideoExpandRequested;
+  final void Function(String postId, GlobalKey anchorKey)? onVideoAnchorReady;
 
   const _PostMediaSurface({
     required this.post,
@@ -1976,6 +2037,7 @@ class _PostMediaSurface extends StatelessWidget {
     required this.registerVideoUrl,
     required this.handoffSessionId,
     this.onVideoExpandRequested,
+    this.onVideoAnchorReady,
   });
 
   @override
@@ -2009,6 +2071,7 @@ class _PostMediaSurface extends StatelessWidget {
             thumbnailUrl: post.thumbnailUrl,
             aspectRatio: aspectRatio,
             onExpandRequested: onVideoExpandRequested,
+            onAnchorReady: onVideoAnchorReady,
           ),
         FeedContentType.carousel => Hero(
             tag: 'post-thumb-${post.id}',
@@ -2419,6 +2482,7 @@ class _InlineVideoPlayer extends StatefulWidget {
   final String? thumbnailUrl;
   final double aspectRatio;
   final void Function(String sessionId, GlobalKey anchorKey)? onExpandRequested;
+  final void Function(String postId, GlobalKey anchorKey)? onAnchorReady;
 
   const _InlineVideoPlayer({
     required this.postId,
@@ -2429,6 +2493,7 @@ class _InlineVideoPlayer extends StatefulWidget {
     required this.aspectRatio,
     this.dormant = false,
     this.onExpandRequested,
+    this.onAnchorReady,
   });
 
   @override
@@ -2456,6 +2521,9 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onAnchorReady?.call(widget.postId, _anchorKey);
+    });
     // Rebuild saat mute/autoplay berubah (ikon mute + gating D3).
     appSettingsStore.addListener(_onSettingsChanged);
   }
@@ -2952,942 +3020,6 @@ class _EditCaptionSheetState extends State<_EditCaptionSheet> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ─── Comment sheet — MVP, fetch & post inline ───────────────────────
-
-class _MyPostCommentSheet extends StatefulWidget {
-  final FeedPost post;
-  final String authorName;
-  final String? authorAvatarUrl;
-  final bool authorIsOfficial;
-
-  const _MyPostCommentSheet({
-    required this.post,
-    required this.authorName,
-    this.authorAvatarUrl,
-    this.authorIsOfficial = false,
-  });
-
-  @override
-  State<_MyPostCommentSheet> createState() => _MyPostCommentSheetState();
-}
-
-class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
-  static const int _replyBatchSize = 3;
-
-  final TextEditingController _inputController = TextEditingController();
-  final FocusNode _inputFocusNode = FocusNode();
-  // @mention autocomplete — attach ke input controller. Saat user ketik
-  // `@partial`, panel suggestion muncul (search /api/users/search).
-  late final MentionPickerController _mentionCtrl = MentionPickerController(
-    textController: _inputController,
-  );
-  List<FeedComment> _comments = const [];
-  bool _loading = true;
-  bool _posting = false;
-  // Emoji panel visibility — toggle via 😀 button samping input.
-  bool _emojiVisible = false;
-
-  /// Comment yang sedang di-reply (null = top-level comment baru).
-  /// Saat non-null, input field show hint "Balas @username…" + chip
-  /// cancel pill di atas. Submit pakai parentCommentId = _replyingTo.id.
-  FeedComment? _replyingTo;
-
-  /// Jumlah balasan terbaru yang terlihat per parent. Tanpa entry berarti
-  /// collapsed; balasan dibuka bertahap agar sheet tidak memanjang mendadak.
-  final Map<String, int> _visibleReplyCounts = {};
-
-  /// Comment IDs yang sedang dalam optimistic like toggle — guard
-  /// supaya tidak double-fire request kalau user spam tap.
-  final Set<String> _likeBusy = {};
-
-  /// Caption ditampilkan sebagai pinned item pertama di list (kalau ada).
-  /// Synthesize FeedComment virtual — bukan dari backend comment table,
-  /// jadi tidak masuk ke fetchComments / postComment lifecycle. Caption
-  /// tile tidak punya action row (like/reply hidden).
-  FeedComment? get _captionRow {
-    final raw = (widget.post.caption ?? '').trim();
-    if (raw.isEmpty) return null;
-    return FeedComment(
-      id: '__caption__${widget.post.id}',
-      postId: widget.post.id,
-      content: raw,
-      isAdminOfficial: false,
-      isHidden: false,
-      likeCount: 0,
-      createdAt: widget.post.createdAt,
-      author: FeedAuthor(
-        id: 'self',
-        name: widget.authorName,
-        role: widget.authorIsOfficial ? 'ADMIN' : 'CUSTOMER',
-        isOfficial: widget.authorIsOfficial,
-        profilePhotoUrl: widget.authorAvatarUrl,
-      ),
-      viewerLiked: false,
-    );
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _loadComments();
-  }
-
-  @override
-  void dispose() {
-    _mentionCtrl.dispose();
-    _inputController.dispose();
-    _inputFocusNode.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadComments() async {
-    try {
-      final page = await feedService.fetchComments(widget.post.id, limit: 30);
-      if (!mounted) return;
-      setState(() {
-        _comments = page.items;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _comments = const [];
-        _loading = false;
-      });
-    }
-  }
-
-  void _toggleEmojiPicker() {
-    AppHaptics.tap();
-    final newState = !_emojiVisible;
-    setState(() => _emojiVisible = newState);
-    if (newState) {
-      // Hide keyboard supaya emoji panel pas di bawah input.
-      FocusScope.of(context).unfocus();
-    } else {
-      _inputFocusNode.requestFocus();
-    }
-  }
-
-  void _startReply(FeedComment parent) {
-    AppHaptics.tap();
-    // Reply ke reply: backend flatten ke parent root. Cari root parent.
-    final root = _findRootParent(parent);
-    setState(() => _replyingTo = root);
-    _inputFocusNode.requestFocus();
-  }
-
-  void _cancelReply() {
-    setState(() => _replyingTo = null);
-  }
-
-  FeedComment _findRootParent(FeedComment candidate) {
-    if (candidate.parentCommentId == null) return candidate;
-    // Cari di top-level comments yang punya candidate sebagai reply.
-    for (final top in _comments) {
-      if (top.id == candidate.parentCommentId) return top;
-      for (final reply in top.replies) {
-        if (reply.id == candidate.id) return top;
-      }
-    }
-    return candidate;
-  }
-
-  void _showMoreReplies(String parentId, int totalReplies) {
-    AppHaptics.tap();
-    setState(() {
-      final current = _visibleReplyCounts[parentId] ?? 0;
-      _visibleReplyCounts[parentId] =
-          (current + _replyBatchSize).clamp(0, totalReplies);
-    });
-  }
-
-  void _hideReplies(String parentId) {
-    AppHaptics.tap();
-    setState(() => _visibleReplyCounts.remove(parentId));
-  }
-
-  Future<void> _toggleCommentLike(FeedComment comment) async {
-    if (_likeBusy.contains(comment.id)) return;
-    AppHaptics.tap();
-    final wasLiked = comment.viewerLiked;
-    final previousCount = comment.likeCount;
-    final newLiked = !wasLiked;
-    setState(() {
-      _likeBusy.add(comment.id);
-      _comments = _updateCommentInTree(
-        _comments,
-        comment.id,
-        (c) => c.copyWith(
-          viewerLiked: newLiked,
-          likeCount:
-              newLiked ? c.likeCount + 1 : (c.likeCount - 1).clamp(0, 999999),
-        ),
-      );
-    });
-    try {
-      final newLikeCount = await feedService.toggleCommentLike(
-        comment.id,
-        currentlyLiked: wasLiked,
-      );
-      if (!mounted) return;
-      setState(() {
-        _likeBusy.remove(comment.id);
-        _comments = _updateCommentInTree(
-          _comments,
-          comment.id,
-          (c) => c.copyWith(viewerLiked: newLiked, likeCount: newLikeCount),
-        );
-      });
-    } catch (_) {
-      if (!mounted) return;
-      // Revert optimistic.
-      setState(() {
-        _likeBusy.remove(comment.id);
-        _comments = _updateCommentInTree(
-          _comments,
-          comment.id,
-          (c) => c.copyWith(viewerLiked: wasLiked, likeCount: previousCount),
-        );
-      });
-      AppToast.show(context, 'Gagal update suka komentar, coba lagi');
-    }
-  }
-
-  /// Recursively walk top-level + replies, swap comment id-nya dengan
-  /// result transform. Immutable update — return new list.
-  List<FeedComment> _updateCommentInTree(
-    List<FeedComment> tree,
-    String id,
-    FeedComment Function(FeedComment c) transform,
-  ) {
-    return tree.map((top) {
-      if (top.id == id) return transform(top);
-      if (top.replies.isEmpty) return top;
-      final newReplies = top.replies
-          .map((reply) => reply.id == id ? transform(reply) : reply)
-          .toList();
-      return top.copyWith(replies: newReplies);
-    }).toList();
-  }
-
-  Future<void> _submitComment() async {
-    final text = _inputController.text.trim();
-    if (text.isEmpty || _posting) return;
-    setState(() => _posting = true);
-    final replyTo = _replyingTo;
-    try {
-      final result = await feedService.postComment(
-        widget.post.id,
-        content: text,
-        parentCommentId: replyTo?.id,
-      );
-      if (!mounted) return;
-      final comment = result.comment;
-      _inputController.clear();
-      setState(() {
-        _replyingTo = null;
-        if (replyTo == null) {
-          // Top-level: prepend ke list.
-          _comments = [comment, ..._comments];
-        } else {
-          // Reply: insert ke parent's replies + auto-expand.
-          _comments = _comments.map((top) {
-            if (top.id != replyTo.id) return top;
-            final newReplies = [...top.replies, comment];
-            return top.copyWith(
-              replies: newReplies,
-              replyCount: newReplies.length,
-            );
-          }).toList();
-          _visibleReplyCounts[replyTo.id] = _replyBatchSize;
-        }
-      });
-      // Sync count ke FeedStore — semua screen lain (Reels, grid Postingan
-      // Saya, public profile) yang baca commentCount lewat store akan
-      // langsung ke-update. Tanpa ini, user tutup sheet → count Feed/grid
-      // tetap stale sampai refresh.
-      final fresh = feedStore.get(widget.post.id);
-      final current = fresh?.commentCount ?? widget.post.commentCount;
-      feedStore.setCommentCount(
-        widget.post.id,
-        result.commentCount ?? current + 1,
-      );
-    } catch (_) {
-      if (!mounted) return;
-      AppToast.show(context, 'Gagal kirim komentar, coba lagi');
-    } finally {
-      if (mounted) setState(() => _posting = false);
-    }
-  }
-
-  /// Hapus komentar milik viewer sendiri. Optimistic remove + rollback
-  /// kalau API gagal. Decrement commentCount di FeedStore (backend
-  /// decrement hanya top-level — match pattern itu).
-  Future<void> _deleteComment(FeedComment comment) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: const Text('Hapus komentar?'),
-        content: const Text('Komentar akan dihapus permanen.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx, false),
-            child: const Text('Batal'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx, true),
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFFDC2626),
-            ),
-            child: const Text('Hapus'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-
-    final isTopLevel = comment.parentCommentId == null;
-    final removedCount = isTopLevel ? 1 + comment.replies.length : 1;
-    final snapshot = _comments;
-    // Optimistic remove — top-level: drop dari list. Reply: drop dari
-    // replies parent + recompute replyCount.
-    setState(() {
-      if (isTopLevel) {
-        _comments = _comments.where((c) => c.id != comment.id).toList();
-      } else {
-        _comments = _comments.map((top) {
-          if (top.id != comment.parentCommentId) return top;
-          final newReplies =
-              top.replies.where((r) => r.id != comment.id).toList();
-          return top.copyWith(
-            replies: newReplies,
-            replyCount: newReplies.length,
-          );
-        }).toList();
-      }
-    });
-
-    try {
-      final result = await feedService.deleteComment(comment.id);
-      final fresh = feedStore.get(widget.post.id);
-      final current = fresh?.commentCount ?? widget.post.commentCount;
-      feedStore.setCommentCount(
-        widget.post.id,
-        result.commentCount ??
-            (current > removedCount ? current - removedCount : 0),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _comments = snapshot);
-      AppToast.show(context, 'Gagal hapus komentar, coba lagi');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    final maxHeight = MediaQuery.of(context).size.height * 0.78;
-    return Padding(
-      padding: EdgeInsets.only(bottom: keyboardInset),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: maxHeight),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(
-                  color: cs.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 4,
-                ),
-                child: Text(
-                  'Komentar',
-                  style: TextStyle(
-                    color: cs.onSurface,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              // Divider header sheet sengaja super halus di light (#EEF2F6)
-              // seperti semula; dark pakai border gelap.
-              Divider(
-                height: 1,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? cs.outlineVariant
-                    : const Color(0xFFEEF2F6),
-              ),
-              Flexible(
-                child: Builder(
-                  builder: (context) {
-                    if (_loading) {
-                      return const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(24),
-                          child: CircularProgressIndicator(strokeWidth: 2.4),
-                        ),
-                      );
-                    }
-                    final captionRow = _captionRow;
-                    if (_comments.isEmpty && captionRow == null) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 28),
-                        child: Center(
-                          child: Text(
-                            'Belum ada komentar.\nJadi yang pertama!',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: cs.onSurfaceVariant,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-                    // Build flat list of rows untuk ListView:
-                    //  - Caption tile (kalau ada) di top, no actions
-                    //  - Each top-level comment: parent tile + (optional)
-                    //    "Lihat N balasan" toggle + (optional, when expanded)
-                    //    semua reply tiles indented
-                    final entries = <_CommentEntry>[];
-                    if (captionRow != null) {
-                      entries.add(_CommentEntry.caption(captionRow));
-                    }
-                    for (final top in _comments) {
-                      entries.add(_CommentEntry.comment(top, isReply: false));
-                      if (top.replies.isNotEmpty) {
-                        final visibleCount =
-                            (_visibleReplyCounts[top.id] ?? 0).clamp(
-                          0,
-                          top.replies.length,
-                        );
-                        for (final reply in latestVisibleFeedReplies(
-                          top.replies,
-                          visibleCount,
-                        )) {
-                          entries.add(
-                            _CommentEntry.comment(reply, isReply: true),
-                          );
-                        }
-                        entries.add(
-                          _CommentEntry.repliesToggle(
-                            parent: top,
-                            visibleReplies: visibleCount,
-                          ),
-                        );
-                      }
-                    }
-                    return ListView.separated(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
-                      itemCount: entries.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final entry = entries[index];
-                        switch (entry.kind) {
-                          case _CommentEntryKind.caption:
-                            return _CommentTile(
-                              comment: entry.comment!,
-                              isReply: false,
-                              isCaption: true,
-                              likeBusy: false,
-                              onToggleLike: null,
-                              onReply: null,
-                            );
-                          case _CommentEntryKind.comment:
-                            final c = entry.comment!;
-                            // Hapus hanya untuk komentar milik viewer sendiri.
-                            final isOwn = memberStore.profile?.id != null &&
-                                c.author.id == memberStore.profile!.id;
-                            return _CommentTile(
-                              comment: c,
-                              isReply: entry.isReply,
-                              isCaption: false,
-                              likeBusy: _likeBusy.contains(c.id),
-                              onToggleLike: () => _toggleCommentLike(c),
-                              onReply: () => _startReply(c),
-                              onDelete: isOwn ? () => _deleteComment(c) : null,
-                              onMentionTap: (handle) => Navigator.of(
-                                context,
-                              ).pushNamed('/u', arguments: handle),
-                            );
-                          case _CommentEntryKind.repliesToggle:
-                            return _RepliesToggle(
-                              replyCount: entry.comment!.replies.length,
-                              visibleReplies: entry.visibleReplies,
-                              onShowMore: () => _showMoreReplies(
-                                entry.comment!.id,
-                                entry.comment!.replies.length,
-                              ),
-                              onHide: entry.visibleReplies > 0
-                                  ? () => _hideReplies(entry.comment!.id)
-                                  : null,
-                            );
-                        }
-                      },
-                    );
-                  },
-                ),
-              ),
-              // Reply chip — kalau lagi reply, show context bar di atas
-              // input. Tap X cancel reply → kembali ke top-level mode.
-              if (_replyingTo != null)
-                Container(
-                  padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-                  color: cs.surfaceContainerHighest,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Membalas ${_replyingTo!.author.name}',
-                          style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: _cancelReply,
-                        visualDensity: VisualDensity.compact,
-                        icon: Icon(
-                          Icons.close_rounded,
-                          size: 18,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              // @mention autocomplete panel — muncul di atas input row saat
-              // user ketik `@partial`. darkTheme:false → tema terang sesuai
-              // sheet ini (beda dgn FeedCommentSheet Reels yg dark).
-              MentionSuggestionsPanel(
-                controller: _mentionCtrl,
-                darkTheme: false,
-                maxHeight: 200,
-              ),
-              Container(
-                padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-                decoration: BoxDecoration(
-                  border: Border(
-                    // Border atas input super halus di light (#EEF2F6)
-                    // seperti semula; dark pakai border gelap.
-                    top: BorderSide(
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? cs.outlineVariant
-                          : const Color(0xFFEEF2F6),
-                      width: 1,
-                    ),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    // 😀 emoji toggle — fixed left of input. Pakai
-                    // smaller icon vs caption composer (sheet space lebih
-                    // tight).
-                    IconButton(
-                      onPressed: _toggleEmojiPicker,
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.all(6),
-                      constraints: const BoxConstraints(),
-                      icon: Icon(
-                        _emojiVisible
-                            ? Icons.keyboard_rounded
-                            : Icons.emoji_emotions_outlined,
-                        color: _emojiVisible
-                            ? NataloColors.primary
-                            : cs.onSurfaceVariant,
-                        size: 22,
-                      ),
-                      tooltip: _emojiVisible ? 'Tutup emoji' : 'Buka emoji',
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: TextField(
-                        controller: _inputController,
-                        focusNode: _inputFocusNode,
-                        onTap: () {
-                          // Auto-hide emoji panel saat user tap input
-                          // (mau soft keyboard naik).
-                          if (_emojiVisible) {
-                            setState(() => _emojiVisible = false);
-                          }
-                        },
-                        maxLength: 500,
-                        decoration: InputDecoration(
-                          hintText: _replyingTo == null
-                              ? 'Tulis komentar…'
-                              : 'Balas ${_replyingTo!.author.name}…',
-                          filled: true,
-                          fillColor: cs.surfaceContainerHighest,
-                          counterText: '',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(999),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                        ),
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _submitComment(),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: _posting ? null : _submitComment,
-                      icon: _posting
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(
-                              Icons.send_rounded,
-                              color: NataloColors.primary,
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-              // Emoji panel di bawah input bar — visible toggle via state.
-              EmojiPickerPanel(
-                controller: _inputController,
-                visible: _emojiVisible,
-                // Sheet sudah tight di height. Pakai 260 vs default 280.
-                height: 260,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Entry dalam flat list ListView — tile bisa caption/comment/replies toggle.
-enum _CommentEntryKind { caption, comment, repliesToggle }
-
-class _CommentEntry {
-  final _CommentEntryKind kind;
-  final FeedComment? comment;
-  final bool isReply;
-  final int visibleReplies;
-
-  const _CommentEntry._({
-    required this.kind,
-    this.comment,
-    this.isReply = false,
-    this.visibleReplies = 0,
-  });
-
-  factory _CommentEntry.caption(FeedComment row) =>
-      _CommentEntry._(kind: _CommentEntryKind.caption, comment: row);
-
-  factory _CommentEntry.comment(FeedComment c, {required bool isReply}) =>
-      _CommentEntry._(
-        kind: _CommentEntryKind.comment,
-        comment: c,
-        isReply: isReply,
-      );
-
-  factory _CommentEntry.repliesToggle({
-    required FeedComment parent,
-    required int visibleReplies,
-  }) =>
-      _CommentEntry._(
-        kind: _CommentEntryKind.repliesToggle,
-        comment: parent,
-        visibleReplies: visibleReplies,
-      );
-}
-
-class _CommentTile extends StatelessWidget {
-  final FeedComment comment;
-  final bool isReply;
-  final bool isCaption;
-  final bool likeBusy;
-  final VoidCallback? onToggleLike;
-  final VoidCallback? onReply;
-
-  /// Non-null kalau komentar ini milik viewer (boleh dihapus). Null = tidak
-  /// tampil tombol "Hapus" (komentar orang lain / caption / non-owner).
-  final VoidCallback? onDelete;
-
-  /// Handle username untuk navigate saat tap @mention.
-  final void Function(String handle)? onMentionTap;
-
-  const _CommentTile({
-    required this.comment,
-    required this.isReply,
-    required this.isCaption,
-    required this.likeBusy,
-    this.onToggleLike,
-    this.onReply,
-    this.onDelete,
-    this.onMentionTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final liked = comment.viewerLiked;
-    final author = comment.author;
-    final canDelete = onDelete != null;
-    // Long-press → action sheet (Salin/Balas/Hapus untuk komentar sendiri,
-    // Salin/Balas/Lapor/Blokir untuk komentar orang lain). Sebelumnya
-    // "Hapus" tampil INLINE merah di samping "Balas" → cluttered + risiko
-    // mis-tap (label kecil 11px berdempetan). Match pola feed_comment_sheet
-    // (Reels) + standar industri IG/TikTok/Shopee. Caption tile (isCaption
-    // == true) tidak dapat long-press karena itu post sendiri (sudah ada
-    // menu titik-tiga di header post).
-    final body = Padding(
-      // Reply indented ~40px supaya jelas hierarchy parent → reply.
-      padding: EdgeInsets.only(left: isReply ? 40 : 0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ProfileAvatar(
-            initial:
-                author.name.isNotEmpty ? author.name[0].toUpperCase() : 'U',
-            imageUrl: author.avatarUrl ?? author.profilePhotoUrl,
-            // Reply pakai avatar lebih kecil supaya hierarchy visual jelas.
-            size: isReply ? 28 : 34,
-            fontSize: isReply ? 12 : 14,
-            isOfficial: author.isOfficialAccount,
-            plain: author.isOfficialAccount,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '${author.name} ',
-                        style: const TextStyle(fontWeight: FontWeight.w900),
-                      ),
-                      // @mention di-style + tappable + brand-override admin
-                      // (officialMentions dari backend). Sebelumnya plain
-                      // TextSpan → mention tidak ke-style/link.
-                      ...buildMentionSpans(
-                        comment.content,
-                        onMentionTap: onMentionTap ?? (_) {},
-                        defaultStyle: TextStyle(
-                          color: cs.onSurface,
-                          fontSize: isReply ? 13 : 13.5,
-                          fontWeight: FontWeight.w600,
-                          height: 1.35,
-                        ),
-                        officialHandles: comment.officialMentions.toSet(),
-                      ),
-                    ],
-                  ),
-                  style: TextStyle(
-                    color: cs.onSurface,
-                    fontSize: isReply ? 13 : 13.5,
-                    fontWeight: FontWeight.w600,
-                    height: 1.35,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                // Action row: timestamp + (kalau bukan caption) Reply
-                // button + (di luar row) Like icon vertical kanan.
-                Row(
-                  children: [
-                    Text(
-                      formatRelativeTime(comment.createdAt),
-                      style: TextStyle(
-                        color: cs.onSurfaceVariant,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (!isCaption && comment.likeCount > 0) ...[
-                      const SizedBox(width: 12),
-                      Text(
-                        '${comment.likeCount} suka',
-                        style: TextStyle(
-                          color: cs.onSurfaceVariant,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                    if (!isCaption && onReply != null) ...[
-                      const SizedBox(width: 12),
-                      GestureDetector(
-                        onTap: onReply,
-                        behavior: HitTestBehavior.opaque,
-                        child: Text(
-                          'Balas',
-                          style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
-                    // Hapus dipindah ke long-press action sheet (lihat
-                    // _ModerationSheet wrapper di luar). Sebelumnya inline
-                    // di samping "Balas" → mis-tap risk + visual noise.
-                  ],
-                ),
-              ],
-            ),
-          ),
-          // Heart icon di kanan tile — caption tidak punya. Reply tile
-          // tetap punya supaya bisa di-like.
-          if (!isCaption && onToggleLike != null) ...[
-            const SizedBox(width: 6),
-            GestureDetector(
-              onTap: likeBusy ? null : onToggleLike,
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Icon(
-                  liked
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_outline_rounded,
-                  size: isReply ? 14 : 16,
-                  color: liked ? const Color(0xFFE53935) : cs.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-
-    // Caption = post itu sendiri (sudah punya menu titik-tiga di header
-    // post). Tidak perlu long-press. Komentar/reply: long-press buka
-    // action sheet — own → Hapus, others → Lapor + Blokir.
-    if (isCaption) return body;
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onLongPress: () {
-        AppHaptics.tap();
-        showModerationActions(
-          context,
-          targetKind: ReportTargetKind.feedComment,
-          targetId: comment.id,
-          authorId: author.id,
-          // Sembunyikan nama author di header sheet untuk komentar sendiri
-          // ("Lapor @nama"-style header tidak relevan). Untuk komentar
-          // orang lain, tampilkan supaya user yakin lapor/blokir target
-          // yang benar.
-          authorName: canDelete ? null : author.name,
-          allowBlock: !canDelete,
-          allowSelfDelete: canDelete,
-          onSelfDelete: canDelete && onDelete != null
-              // _deleteComment di parent return Future<void>; bungkus jadi
-              // Future<bool> yang sheet expect. Anggap true (UI optimistic
-              // remove + toast error sudah handle di parent).
-              ? () async {
-                  onDelete!.call();
-                  return true;
-                }
-              : null,
-        );
-      },
-      child: body,
-    );
-  }
-}
-
-class _RepliesToggle extends StatelessWidget {
-  final int replyCount;
-  final int visibleReplies;
-  final VoidCallback onShowMore;
-  final VoidCallback? onHide;
-
-  const _RepliesToggle({
-    required this.replyCount,
-    required this.visibleReplies,
-    required this.onShowMore,
-    this.onHide,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(left: 40, top: 2),
-      child: Row(
-        children: [
-          Container(
-            width: 24,
-            height: 1,
-            color: cs.outlineVariant,
-            margin: const EdgeInsets.only(right: 8),
-          ),
-          if (replyCount - visibleReplies > 0)
-            Flexible(
-              child: InkWell(
-                onTap: onShowMore,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(
-                    visibleReplies == 0
-                        ? 'Lihat $replyCount balasan'
-                        : 'Lihat ${replyCount - visibleReplies} balasan lainnya',
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: cs.onSurfaceVariant,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          if (onHide != null) ...[
-            if (replyCount - visibleReplies > 0) const Spacer(),
-            InkWell(
-              onTap: onHide,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 8,
-                ),
-                child: Text(
-                  'Sembunyikan',
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
       ),
     );
   }

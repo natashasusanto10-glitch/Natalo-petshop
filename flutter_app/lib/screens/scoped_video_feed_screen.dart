@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../features/feed/video/adaptive_video_preload_policy.dart';
@@ -9,6 +10,8 @@ import '../models/feed_post.dart';
 import '../state/feed_store.dart';
 import '../state/settings_store.dart';
 import '../services/video_quality_service.dart';
+
+typedef ScopedPostPageLoader = Future<FeedPage> Function(String? cursor);
 
 @immutable
 class ScopedVideoFeedResult {
@@ -29,6 +32,9 @@ class ScopedVideoFeedResult {
 /// are identical to the main Feed tab. Swiping never leaves [posts].
 class ScopedVideoFeedScreen extends StatefulWidget {
   final List<FeedPost> posts;
+  final Future<List<FeedPost>>? hydratedPosts;
+  final String? initialNextCursor;
+  final ScopedPostPageLoader? loadMorePosts;
   final int initialIndex;
 
   /// Coordinator handoff (§2.6) — di-set HANYA saat viewer dibuka dari alur
@@ -54,16 +60,32 @@ class ScopedVideoFeedScreen extends StatefulWidget {
   @visibleForTesting
   final Stream<NetworkTier>? debugTierChanges;
   final ValueChanged<NetworkTier>? onNetworkTierChanged;
+  final ValueChanged<String>? onActivePostChanged;
+  final Future<void> Function(ScopedVideoFeedResult result)? onPrepareClose;
+
+  @visibleForTesting
+  static bool shouldDismissEdgeSwipe({
+    required double offset,
+    required double width,
+    required double velocity,
+  }) {
+    return offset >= width * 0.25 || velocity >= 900;
+  }
 
   const ScopedVideoFeedScreen({
     super.key,
     required this.posts,
     required this.initialIndex,
+    this.hydratedPosts,
+    this.initialNextCursor,
+    this.loadMorePosts,
     this.coordinator,
     this.originPostId,
     this.debugNetworkTier,
     this.debugTierChanges,
     this.onNetworkTierChanged,
+    this.onActivePostChanged,
+    this.onPrepareClose,
   });
 
   @override
@@ -73,31 +95,43 @@ class ScopedVideoFeedScreen extends StatefulWidget {
 class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
     with SingleTickerProviderStateMixin {
   late final PageController _pageController;
+  late List<FeedPost> _posts;
   late final AnimationController _horizontalDismissController;
   late int _activeIndex;
   // Guard supaya overscroll-dismiss cuma pop SEKALI per gesture.
   bool _dismissing = false;
   bool _interactionLocked = false;
   double _horizontalDragOffset = 0;
+  double _horizontalAnimationStartOffset = 0;
+  double _horizontalAnimationEndOffset = 0;
+  int? _horizontalPointer;
+  final Set<int> _activePointers = <int>{};
   Offset? _pointerDownPosition;
   Offset? _lastPointerPosition;
+  VelocityTracker? _horizontalVelocityTracker;
+  Duration? _lastHorizontalMoveTime;
+  double _recentHorizontalVelocity = 0;
   bool _horizontalGestureActive = false;
   bool _horizontalGestureRejected = false;
   VideoSwipeDirection _swipeDirection = VideoSwipeDirection.forward;
   Duration _activeBufferAhead = Duration.zero;
   late NetworkTier _networkTier;
   StreamSubscription<NetworkTier>? _networkTierSubscription;
+  String? _nextCursor;
+  bool _loadingMore = false;
 
   /// Seberapa jauh (px) user harus menarik melewati batas atas (video
   /// pertama) sebelum viewer menutup — ala IG Reels dari profil: tarik
   /// turun di reel pertama = kembali ke halaman sebelumnya.
   static const double _dismissOverscroll = 72;
-  static const double _horizontalDismissFraction = 0.24;
+  static const double _edgeSwipeWidth = 28;
 
   @override
   void initState() {
     super.initState();
-    _activeIndex = widget.initialIndex.clamp(0, widget.posts.length - 1);
+    _posts = List<FeedPost>.of(widget.posts);
+    _nextCursor = widget.initialNextCursor;
+    _activeIndex = widget.initialIndex.clamp(0, _posts.length - 1);
     _networkTier = widget.debugNetworkTier ?? videoQualityService.currentTier;
     _networkTierSubscription =
         (widget.debugTierChanges ?? videoQualityService.tierChanges)
@@ -108,12 +142,19 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
       duration: const Duration(milliseconds: 220),
     )..addListener(() {
         if (!mounted) return;
+        final progress = Curves.easeOutCubic.transform(
+          _horizontalDismissController.value,
+        );
         setState(() {
-          _horizontalDragOffset = _horizontalDismissController.value *
-              MediaQuery.sizeOf(context).width;
+          _horizontalDragOffset = _horizontalAnimationStartOffset +
+              ((_horizontalAnimationEndOffset -
+                      _horizontalAnimationStartOffset) *
+                  progress);
         });
       });
-    feedStore.seed(widget.posts);
+    feedStore.seed(_posts);
+    final hydratedPosts = widget.hydratedPosts;
+    if (hydratedPosts != null) unawaited(_applyHydratedPosts(hydratedPosts));
     // Full-managed: aktifkan halaman awal setelah frame pertama supaya view
     // managed sudah mounted (adopt sesi via notifier). Item ASAL biasanya sudah
     // punya sesi dari handoff → adopt instan; setActive mem-play + set volume.
@@ -123,12 +164,29 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
         _activateManaged(_activeIndex, previousIndex: null, swipeDir: 1);
       });
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_maybeLoadMore(_activeIndex));
+    });
   }
 
   /// Post yang saat ini attached ke coordinator (view aktif fullscreen). Perlu
   /// di-detach saat viewer ditutup supaya attachment tak menetap dan menghalangi
   /// eviction sesi (KUNCI 2 — attachment harus jujur).
   String? _attachedPostId;
+
+  Future<void> _applyHydratedPosts(Future<List<FeedPost>> future) async {
+    try {
+      final fresh = await future;
+      if (!mounted || fresh.isEmpty) return;
+      final byId = {for (final post in fresh) post.id: post};
+      final merged = [for (final post in _posts) byId[post.id] ?? post];
+      feedStore.mergeFromServer(fresh, fetchedAt: DateTime.now());
+      if (!mounted) return;
+      setState(() => _posts = merged);
+    } catch (_) {
+      // Data lokal sudah cukup untuk playback; refresh background best-effort.
+    }
+  }
 
   @override
   void dispose() {
@@ -147,15 +205,31 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
   }
 
   void _onPointerDown(PointerDownEvent event) {
-    if (_dismissing || _interactionLocked) return;
+    _activePointers.add(event.pointer);
+    if (_activePointers.length > 1) {
+      _cancelHorizontalGestureForConflict();
+      return;
+    }
+    if (_dismissing ||
+        _interactionLocked ||
+        _horizontalPointer != null ||
+        event.localPosition.dx > _edgeSwipeWidth) {
+      return;
+    }
+    _horizontalPointer = event.pointer;
     _pointerDownPosition = event.position;
     _lastPointerPosition = event.position;
+    _horizontalVelocityTracker = VelocityTracker.withKind(event.kind)
+      ..addPosition(event.timeStamp, event.position);
+    _lastHorizontalMoveTime = event.timeStamp;
+    _recentHorizontalVelocity = 0;
     _horizontalGestureActive = false;
     _horizontalGestureRejected = false;
     _horizontalDismissController.stop();
   }
 
   void _onPointerMove(PointerMoveEvent event) {
+    if (event.pointer != _horizontalPointer) return;
     final start = _pointerDownPosition;
     final last = _lastPointerPosition;
     if (start == null || last == null || _dismissing || _interactionLocked) {
@@ -163,7 +237,16 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
     }
     final total = event.position - start;
     final delta = event.position - last;
+    final previousMoveTime = _lastHorizontalMoveTime;
+    if (previousMoveTime != null) {
+      final elapsedMicros = (event.timeStamp - previousMoveTime).inMicroseconds;
+      if (elapsedMicros > 0) {
+        _recentHorizontalVelocity = delta.dx * 1000000 / elapsedMicros;
+      }
+    }
+    _lastHorizontalMoveTime = event.timeStamp;
     _lastPointerPosition = event.position;
+    _horizontalVelocityTracker?.addPosition(event.timeStamp, event.position);
     if (!_horizontalGestureActive && !_horizontalGestureRejected) {
       if (total.distance < 8) return;
       // Keep vertical paging, pinch zoom, and diagonal gestures authoritative.
@@ -174,7 +257,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
       }
       _horizontalGestureActive = true;
     }
-    if (!_horizontalGestureActive || delta.dx <= 0) return;
+    if (!_horizontalGestureActive) return;
     final next = (_horizontalDragOffset + delta.dx).clamp(
       0.0,
       MediaQuery.sizeOf(context).width,
@@ -184,44 +267,80 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
     }
   }
 
-  void _onPointerUp(PointerUpEvent _) {
+  void _onPointerUp(PointerUpEvent event) {
+    _activePointers.remove(event.pointer);
+    if (event.pointer != _horizontalPointer) return;
     if (!_horizontalGestureActive || _dismissing) {
       _resetPointerGesture();
       return;
     }
+    _horizontalVelocityTracker?.addPosition(event.timeStamp, event.position);
+    final trackedVelocity =
+        _horizontalVelocityTracker?.getVelocity().pixelsPerSecond.dx ?? 0;
+    final lastMoveTime = _lastHorizontalMoveTime;
+    final recentVelocityIsFresh = lastMoveTime != null &&
+        event.timeStamp - lastMoveTime <= const Duration(milliseconds: 120);
+    final horizontalVelocity =
+        recentVelocityIsFresh && _recentHorizontalVelocity > trackedVelocity
+            ? _recentHorizontalVelocity
+            : trackedVelocity;
     _resetPointerGesture();
     final width = MediaQuery.sizeOf(context).width;
-    final shouldDismiss =
-        _horizontalDragOffset >= width * _horizontalDismissFraction;
-    _horizontalDismissController.value =
-        (_horizontalDragOffset / width).clamp(0.0, 1.0);
+    final shouldDismiss = ScopedVideoFeedScreen.shouldDismissEdgeSwipe(
+      offset: _horizontalDragOffset,
+      width: width,
+      velocity: horizontalVelocity,
+    );
     if (shouldDismiss) {
       _dismissing = true;
-      _horizontalDismissController.animateTo(1).then((_) {
-        if (mounted) Navigator.of(context).pop(_result);
-      });
+      final result = _result;
+      unawaited(() async {
+        await widget.onPrepareClose?.call(result);
+        await _animateHorizontalOffsetTo(width).orCancel.catchError((_) {});
+        if (mounted) Navigator.of(context).pop(result);
+      }());
       return;
     }
-    _horizontalDismissController.animateTo(0).then((_) {
+    _springHorizontalDragBack(width);
+  }
+
+  void _onPointerCancel(PointerCancelEvent event) {
+    _activePointers.remove(event.pointer);
+    if (event.pointer != _horizontalPointer) return;
+    if (_horizontalGestureActive && !_dismissing) {
+      _springHorizontalDragBack(MediaQuery.sizeOf(context).width);
+    }
+    _resetPointerGesture();
+  }
+
+  void _cancelHorizontalGestureForConflict() {
+    if (_horizontalPointer == null) return;
+    if (!_dismissing && _horizontalDragOffset > 0) {
+      _springHorizontalDragBack(MediaQuery.sizeOf(context).width);
+    }
+    _resetPointerGesture();
+  }
+
+  void _springHorizontalDragBack(double width) {
+    if (width <= 0) return;
+    _animateHorizontalOffsetTo(0).then((_) {
       if (mounted) setState(() => _horizontalDragOffset = 0);
     });
   }
 
-  void _onPointerCancel(PointerCancelEvent _) {
-    if (_horizontalGestureActive && !_dismissing) {
-      final width = MediaQuery.sizeOf(context).width;
-      _horizontalDismissController.value =
-          (_horizontalDragOffset / width).clamp(0.0, 1.0);
-      _horizontalDismissController.animateTo(0).then((_) {
-        if (mounted) setState(() => _horizontalDragOffset = 0);
-      });
-    }
-    _resetPointerGesture();
+  TickerFuture _animateHorizontalOffsetTo(double target) {
+    _horizontalAnimationStartOffset = _horizontalDragOffset;
+    _horizontalAnimationEndOffset = target;
+    return _horizontalDismissController.forward(from: 0);
   }
 
   void _resetPointerGesture() {
+    _horizontalPointer = null;
     _pointerDownPosition = null;
     _lastPointerPosition = null;
+    _horizontalVelocityTracker = null;
+    _lastHorizontalMoveTime = null;
+    _recentHorizontalVelocity = 0;
     _horizontalGestureActive = false;
     _horizontalGestureRejected = false;
   }
@@ -243,7 +362,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
   }) {
     final coord = widget.coordinator;
     if (coord == null || coord.isDisposed) return;
-    final postId = widget.posts[index].id;
+    final postId = _posts[index].id;
     // (a) + attach untuk kejujuran refcount ("view ini sedang merender").
     coord.attach(_viewIdFor(postId), postId);
     _attachedPostId = postId;
@@ -251,8 +370,8 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
     // (c) detach view lama (origin pun) — origin hidup via pinned.
     if (previousIndex != null &&
         previousIndex >= 0 &&
-        previousIndex < widget.posts.length) {
-      final prevId = widget.posts[previousIndex].id;
+        previousIndex < _posts.length) {
+      final prevId = _posts[previousIndex].id;
       if (prevId != postId) {
         coord.detach(_viewIdFor(prevId), prevId);
       }
@@ -277,8 +396,8 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
     final targetIds = <String>[];
     for (final offset in offsets) {
       final targetIndex = index + offset;
-      if (targetIndex < 0 || targetIndex >= widget.posts.length) continue;
-      final id = widget.posts[targetIndex].id;
+      if (targetIndex < 0 || targetIndex >= _posts.length) continue;
+      final id = _posts[targetIndex].id;
       if (!targetIds.contains(id)) targetIds.add(id);
     }
     coord.setPreloadWindow(targetIds);
@@ -303,6 +422,10 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
     if (_interactionLocked == locked) return;
     _interactionLocked = locked;
     if (locked) {
+      if (_horizontalPointer != null && !_dismissing) {
+        _springHorizontalDragBack(MediaQuery.sizeOf(context).width);
+        _resetPointerGesture();
+      }
       widget.coordinator?.setPreloadWindow(const []);
     } else {
       _updatePreloadWindow(_activeIndex);
@@ -313,13 +436,50 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
     final previousIndex = _activeIndex;
     _activeBufferAhead = Duration.zero;
     setState(() => _activeIndex = index);
+    widget.onActivePostChanged?.call(_posts[index].id);
+    unawaited(_maybeLoadMore(index));
     if (widget.coordinator == null) return;
     final swipeDir = index >= previousIndex ? 1 : -1;
     _activateManaged(index, previousIndex: previousIndex, swipeDir: swipeDir);
   }
 
+  Future<void> _maybeLoadMore(int index) async {
+    final loader = widget.loadMorePosts;
+    if (loader == null || _loadingMore || _nextCursor == null) return;
+    if (index < _posts.length - 3) return;
+
+    _loadingMore = true;
+    try {
+      // A profile page can contain photos between videos. Keep advancing the
+      // opaque source cursor until at least one video is appended or the
+      // source is exhausted, without ever creating a controller here.
+      while (mounted && _nextCursor != null) {
+        final page = await loader(_nextCursor);
+        if (!mounted) return;
+        _nextCursor = page.nextCursor;
+        final existingIds = _posts.map((post) => post.id).toSet();
+        final videos = page.items
+            .where((post) => post.isVideo && existingIds.add(post.id))
+            .toList(growable: false);
+        if (page.items.isNotEmpty) {
+          feedStore.mergeFromServer(page.items, fetchedAt: DateTime.now());
+        }
+        if (videos.isNotEmpty) {
+          setState(() => _posts = [..._posts, ...videos]);
+          _updatePreloadWindow(_activeIndex);
+          break;
+        }
+      }
+    } catch (_) {
+      // Keep the cursor unchanged in the source callback contract where
+      // possible; a later page change/return near the end retries quietly.
+    } finally {
+      _loadingMore = false;
+    }
+  }
+
   void _onActiveBufferAheadChanged(String postId, Duration bufferAhead) {
-    if (widget.posts[_activeIndex].id != postId) return;
+    if (_posts[_activeIndex].id != postId) return;
     final wasEligible = _activeBufferAhead >=
         AdaptiveVideoPreloadPolicy.cellularBufferAheadThreshold;
     if (bufferAhead > _activeBufferAhead) _activeBufferAhead = bufferAhead;
@@ -329,7 +489,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
   }
 
   ScopedVideoFeedResult get _result {
-    final post = widget.posts[_activeIndex];
+    final post = _posts[_activeIndex];
     return ScopedVideoFeedResult(
       postId: post.id,
       index: _activeIndex,
@@ -340,7 +500,18 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
   void _close() {
     if (_dismissing || !mounted) return;
     _dismissing = true;
-    Navigator.of(context).pop(_result);
+    final result = _result;
+    unawaited(() async {
+      // A suspended app cannot produce the frame needed to measure the
+      // inline reverse target. Waiting here would leave the route stuck
+      // until a second interaction after resume. Close immediately; the
+      // caller still reconciles post + timestamp from the typed result.
+      if (WidgetsBinding.instance.lifecycleState ==
+          AppLifecycleState.resumed) {
+        await widget.onPrepareClose?.call(result);
+      }
+      if (mounted) Navigator.of(context).pop(result);
+    }());
   }
 
   /// Tarik-turun melewati batas atas (BouncingScrollPhysics → pixels <
@@ -363,7 +534,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
   /// terikat coordinator via `post.id` (ownership seragam); tanpa coordinator →
   /// own-controller (perilaku lama, mis. Postingan Terkait / deep link).
   Widget _buildItem(int index) {
-    final post = widget.posts[index];
+    final post = _posts[index];
     final coordinator = widget.coordinator;
 
     if (coordinator == null) {
@@ -424,9 +595,8 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    final horizontalProgress = width == 0
-        ? 0.0
-        : (_horizontalDragOffset / width).clamp(0.0, 1.0);
+    final horizontalProgress =
+        width == 0 ? 0.0 : (_horizontalDragOffset / width).clamp(0.0, 1.0);
     return PopScope<ScopedVideoFeedResult>(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -435,6 +605,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
       child: Scaffold(
         backgroundColor: Colors.black,
         body: Listener(
+          behavior: HitTestBehavior.translucent,
           onPointerDown: _onPointerDown,
           onPointerMove: _onPointerMove,
           onPointerUp: _onPointerUp,
@@ -446,40 +617,60 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-            NotificationListener<ScrollNotification>(
-              onNotification: _onScrollNotification,
-              child: PageView.builder(
-                controller: _pageController,
-                scrollDirection: Axis.vertical,
-                physics:
-                    const PageScrollPhysics(parent: BouncingScrollPhysics()),
-                itemCount: widget.posts.length,
-                onPageChanged: _onPageChanged,
-                itemBuilder: (context, index) => _buildItem(index),
-              ),
-            ),
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Align(
-                  alignment: Alignment.topLeft,
-                  child: Material(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    shape: const CircleBorder(),
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: _close,
-                      child: const SizedBox(
-                        width: 40,
-                        height: 40,
-                        child: Icon(Icons.chevron_left_rounded,
-                            color: Colors.white, size: 26),
+                  NotificationListener<ScrollNotification>(
+                    onNotification: _onScrollNotification,
+                    child: PageView.builder(
+                      controller: _pageController,
+                      scrollDirection: Axis.vertical,
+                      physics: const PageScrollPhysics(
+                          parent: BouncingScrollPhysics()),
+                      itemCount: _posts.length,
+                      onPageChanged: _onPageChanged,
+                      itemBuilder: (context, index) => _buildItem(index),
+                    ),
+                  ),
+                  const IgnorePointer(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: SizedBox(
+                        key: ValueKey('scoped-video-top-scrim'),
+                        height: 120,
+                        width: double.infinity,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Color(0x73000000), Color(0x00000000)],
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
-            ),
+                  SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Align(
+                        alignment: Alignment.topLeft,
+                        child: Material(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: _close,
+                            child: const SizedBox(
+                              key: ValueKey('scoped-video-back-target'),
+                              width: 48,
+                              height: 48,
+                              child: Icon(Icons.chevron_left_rounded,
+                                  color: Colors.white, size: 26),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),

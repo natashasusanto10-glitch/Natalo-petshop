@@ -120,8 +120,11 @@ class _ProfilePageState extends State<_ProfilePage>
   bool _openingPost = false;
   late TabController _tabController;
   List<FeedPost> _allPosts = const [];
+  String? _postsNextCursor;
   bool _loadingPosts = true;
   String? _postsError;
+  String? _preparedPostId;
+  PostVideoWarmHandoff? _preparedHandoff;
 
   @override
   void initState() {
@@ -132,8 +135,48 @@ class _ProfilePageState extends State<_ProfilePage>
 
   @override
   void dispose() {
+    unawaited(_preparedHandoff?.disposeIfUnclaimed());
     _tabController.dispose();
     super.dispose();
+  }
+
+  PostVideoWarmHandoff? _createWarmHandoff(FeedPost post) {
+    return PostVideoWarmHandoff.createIfVideo(
+      isVideo: post.isVideo,
+      postId: post.id,
+      url: videoQualityService.resolvePlaybackUrl(
+        post.videoPlaybackUrl,
+        dataSaverUrl: post.videoDataSaverUrl,
+        userPreference: appSettingsStore.feedVideoQuality,
+      ),
+    );
+  }
+
+  void _preparePostVideo(FeedPost post) {
+    if (_openingPost || !post.isVideo || _preparedPostId == post.id) return;
+    final stale = _preparedHandoff;
+    _preparedHandoff = _createWarmHandoff(post);
+    _preparedPostId = _preparedHandoff == null ? null : post.id;
+    unawaited(stale?.disposeIfUnclaimed());
+  }
+
+  void _cancelPreparedPost([String? postId]) {
+    if (postId != null && _preparedPostId != postId) return;
+    final stale = _preparedHandoff;
+    _preparedHandoff = null;
+    _preparedPostId = null;
+    unawaited(stale?.disposeIfUnclaimed());
+  }
+
+  PostVideoWarmHandoff? _takePreparedPost(FeedPost post) {
+    if (_preparedPostId != post.id) {
+      _cancelPreparedPost();
+      return null;
+    }
+    final handoff = _preparedHandoff;
+    _preparedHandoff = null;
+    _preparedPostId = null;
+    return handoff;
   }
 
   Future<void> _loadAll() async {
@@ -155,6 +198,7 @@ class _ProfilePageState extends State<_ProfilePage>
       feedStore.mergeFromServer(page.items, fetchedAt: fetchedAt);
       setState(() {
         _allPosts = page.items;
+        _postsNextCursor = page.nextCursor;
         _loadingPosts = false;
       });
     } on ApiException catch (error) {
@@ -256,15 +300,7 @@ class _ProfilePageState extends State<_ProfilePage>
     _openingPost = true;
     AppHaptics.tap();
     final post = posts[initialIndex];
-    final handoff = PostVideoWarmHandoff.createIfVideo(
-      isVideo: post.isVideo,
-      postId: post.id,
-      url: videoQualityService.resolvePlaybackUrl(
-        post.videoPlaybackUrl,
-        dataSaverUrl: post.videoDataSaverUrl,
-        userPreference: appSettingsStore.feedVideoQuality,
-      ),
-    );
+    final handoff = _takePreparedPost(post) ?? _createWarmHandoff(post);
     try {
       await Navigator.push<void>(
         context,
@@ -275,6 +311,9 @@ class _ProfilePageState extends State<_ProfilePage>
             initialIndex: initialIndex,
             authorIsOfficial: memberStore.profile?.isAdmin ?? false,
             warmVideoHandoff: handoff,
+            initialNextCursor: _postsNextCursor,
+            loadMoreScopedPosts: (cursor) =>
+                feedService.fetchMyPosts(filter: 'all', cursor: cursor),
           ),
         ),
       );
@@ -387,6 +426,10 @@ class _ProfilePageState extends State<_ProfilePage>
                               onRetry: _loadAll,
                               onTapPost: (idx) =>
                                   _openPostDetail(_allPosts, idx),
+                              onTapDown: (idx) =>
+                                  _preparePostVideo(_allPosts[idx]),
+                              onTapCancel: (idx) =>
+                                  _cancelPreparedPost(_allPosts[idx].id),
                             ),
                             _PostGrid(
                               posts: _videoPosts,
@@ -400,6 +443,10 @@ class _ProfilePageState extends State<_ProfilePage>
                               onRetry: _loadAll,
                               onTapPost: (idx) =>
                                   _openPostDetail(_videoPosts, idx),
+                              onTapDown: (idx) =>
+                                  _preparePostVideo(_videoPosts[idx]),
+                              onTapCancel: (idx) =>
+                                  _cancelPreparedPost(_videoPosts[idx].id),
                             ),
                             _PostGrid(
                               posts: _taggedPosts,
@@ -413,6 +460,10 @@ class _ProfilePageState extends State<_ProfilePage>
                               onRetry: _loadAll,
                               onTapPost: (idx) =>
                                   _openPostDetail(_taggedPosts, idx),
+                              onTapDown: (idx) =>
+                                  _preparePostVideo(_taggedPosts[idx]),
+                              onTapCancel: (idx) =>
+                                  _cancelPreparedPost(_taggedPosts[idx].id),
                             ),
                           ],
                         ),
@@ -756,6 +807,8 @@ class _PostGrid extends StatelessWidget {
   final VoidCallback onCreateCta;
   final VoidCallback onRetry;
   final ValueChanged<int> onTapPost;
+  final ValueChanged<int>? onTapDown;
+  final ValueChanged<int>? onTapCancel;
 
   const _PostGrid({
     required this.posts,
@@ -767,6 +820,8 @@ class _PostGrid extends StatelessWidget {
     required this.onCreateCta,
     required this.onRetry,
     required this.onTapPost,
+    this.onTapDown,
+    this.onTapCancel,
   });
 
   @override
@@ -806,6 +861,8 @@ class _PostGrid extends StatelessWidget {
           return _PostThumbnail(
             post: posts[index],
             onTap: () => onTapPost(index),
+            onTapDown: () => onTapDown?.call(index),
+            onTapCancel: () => onTapCancel?.call(index),
           );
         },
       ),
@@ -882,8 +939,15 @@ class _ErrorState extends StatelessWidget {
 class _PostThumbnail extends StatelessWidget {
   final FeedPost post;
   final VoidCallback onTap;
+  final VoidCallback? onTapDown;
+  final VoidCallback? onTapCancel;
 
-  const _PostThumbnail({required this.post, required this.onTap});
+  const _PostThumbnail({
+    required this.post,
+    required this.onTap,
+    this.onTapDown,
+    this.onTapCancel,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -894,6 +958,8 @@ class _PostThumbnail extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
+      onTapDown: (_) => onTapDown?.call(),
+      onTapCancel: onTapCancel,
       child: Stack(
         fit: StackFit.expand,
         children: [

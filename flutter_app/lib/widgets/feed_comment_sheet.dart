@@ -19,6 +19,47 @@ import 'moderation_action_sheet.dart';
 import 'natalo_paw_refresh_indicator.dart';
 import 'profile_avatar.dart';
 
+/// Opens the same comment experience used by the fullscreen Feed from
+/// non-fullscreen surfaces such as Postingan. The modal route owns only the
+/// presentation; [FeedCommentSheet] remains the single source of comment
+/// loading, replies, moderation, and optimistic state.
+Future<void> showFeedCommentDrawer(
+  BuildContext context, {
+  required FeedPost post,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: false,
+    enableDrag: true,
+    isDismissible: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.62),
+    builder: (sheetContext) {
+      final topInset = MediaQuery.paddingOf(sheetContext).top;
+      final screenHeight = MediaQuery.sizeOf(sheetContext).height;
+      final maxExtent = (1 - (topInset / screenHeight)).clamp(0.60, 0.96);
+      return DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: FeedCommentSheet.reelsHeightFactor,
+        // Keep enough collapse range for the route to recognize a decisive
+        // downward dismissal. A 0.42 minimum made the drawer feel stuck:
+        // the inner sheet stopped moving before the modal could close.
+        minChildSize: 0.20,
+        maxChildSize: maxExtent,
+        snap: true,
+        snapSizes: [FeedCommentSheet.reelsHeightFactor, maxExtent],
+        shouldCloseOnMinExtent: true,
+        builder: (context, scrollController) => FeedCommentSheet(
+          post: post,
+          sheetScrollController: scrollController,
+          onClose: () => Navigator.of(context).maybePop(),
+        ),
+      );
+    },
+  );
+}
+
 /// Comment sheet style Instagram Reels — 1:1 visual:
 ///
 /// Layout:

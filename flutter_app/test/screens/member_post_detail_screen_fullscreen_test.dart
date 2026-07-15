@@ -381,7 +381,7 @@ void main() {
   );
 
   testWidgets(
-    'opening fullscreen does not wait for or request fetch-by-id hydration',
+    'opening fullscreen does not wait for background fetch-by-id hydration',
     (tester) async {
       var fetchCalls = 0;
       final blockedFetch = Completer<FeedPost?>();
@@ -400,8 +400,9 @@ void main() {
       expect(find.byType(ScopedVideoFeedScreen), findsOneWidget,
           reason: 'route must render promptly from local post data even while '
               'the fetch seam never completes');
-      expect(fetchCalls, 0,
-          reason: 'fullscreen opening must not depend on network hydration');
+      expect(fetchCalls, 1,
+          reason: 'fresh data may load in background, but must not block the '
+              'initial fullscreen frame');
 
       blockedFetch.complete(_fakeVideoPost());
       await disposeTree(tester);

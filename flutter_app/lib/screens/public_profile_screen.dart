@@ -403,6 +403,18 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
             authorIsOfficial: profile?.isOfficial ?? false,
             isOwner: profile?.isOwner ?? false,
             warmVideoHandoff: handoff,
+            initialNextCursor: _contentStates[content]!.nextCursor,
+            loadMoreScopedPosts: (cursor) async {
+              final result = await profileService.fetchPublicProfile(
+                username: widget.username,
+                cursor: cursor,
+                content: content,
+              );
+              return FeedPage(
+                items: result.posts,
+                nextCursor: result.nextCursor,
+              );
+            },
           ),
         ),
       );

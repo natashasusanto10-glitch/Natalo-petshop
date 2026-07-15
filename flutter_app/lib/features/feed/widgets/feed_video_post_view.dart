@@ -301,6 +301,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   bool _commentSheetOpen = false;
   bool _videoLoadFailed = false;
   bool _commentSheetClosingFromDrag = false;
+  int _commentSheetTransitionEpoch = 0;
   int _featuredProductIndex = 0;
   Timer? _productRotationTimer;
   double _commentDragOffset = 0;
@@ -1698,17 +1699,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         }
       }
     }
-
-    // Drag menutup sheet sampai (hampir) 0 — finalisasi close TANPA
-    // AnimatedSlide (sheet sudah visually di posisi 0 lewat drag/animateTo,
-    // lihat _settleCommentDragClose). Guard _commentSheetClosingFromDrag
-    // cegah double-run.
-    if (_commentSheetOpen && !_commentSheetClosingFromDrag && size <= 0.005) {
-      _commentSheetClosingFromDrag = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _closeComments();
-      });
-    }
   }
 
   double _commentSheetHostHeight(BuildContext context) {
@@ -1848,19 +1838,29 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     pushAndroidBackOverlayCloser(_androidBackCommentCloser);
     setState(() {
       _commentDrawerMounted = true;
+      _commentSheetOpen = true;
       _commentSheetClosingFromDrag = false;
       _commentDragOffset = 0;
       // Panel caption tertutup saat komentar dibuka — dua panel baca
       // tidak boleh tumpang tindih.
       _captionExpanded = false;
     });
-    _commentSheetExtent.value = _commentSheetInitialExtent;
+    final transitionEpoch = ++_commentSheetTransitionEpoch;
+    _commentSheetExtent.value = _commentSheetMinExtent;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_commentDrawerMounted) return;
-      if (_commentSheetController.isAttached) {
-        _commentSheetController.jumpTo(_commentSheetInitialExtent);
+      if (!mounted ||
+          !_commentDrawerMounted ||
+          transitionEpoch != _commentSheetTransitionEpoch ||
+          !_commentSheetController.isAttached) {
+        return;
       }
-      setState(() => _commentSheetOpen = true);
+      unawaited(
+        _commentSheetController.animateTo(
+          _commentSheetInitialExtent,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+        ),
+      );
     });
   }
 
@@ -1872,7 +1872,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   }
 
   void _closeComments() {
-    if (!_commentDrawerMounted) return;
+    if (!_commentDrawerMounted || _commentSheetClosingFromDrag) return;
     FocusScope.of(context).unfocus();
     AppHaptics.tap();
     // Cleanup Android back closer reference — defensive double-pop
@@ -1880,15 +1880,44 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // Aman dipanggil walau closer udah ke-consume oleh back press
     // (consumeAndroidBackOverlay sudah removeLast SEBELUM call closer).
     popAndroidBackOverlayCloser(_androidBackCommentCloser);
-    setState(() {
-      _commentSheetOpen = false;
-      _commentDragOffset = 0;
-    });
-    // Resume video segera saat close dari FULL extent (barrier-tap/Android
-    // back) — jangan tunggu delayed jumpTo di bawah, itu bikin jeda diam
-    // ~280ms yang kelihatan. Guard sama persis dengan resume branch di
-    // _syncCommentSheetProgress: hanya resume kalau kita yang pause tadi
-    // (bukan user pause manual).
+    _commentSheetClosingFromDrag = true;
+    final transitionEpoch = ++_commentSheetTransitionEpoch;
+    if (mounted) setState(() => _commentDragOffset = 0);
+
+    Future<void> finishClose() async {
+      if (!mounted || transitionEpoch != _commentSheetTransitionEpoch) return;
+      _commentSheetExtent.value = _commentSheetMinExtent;
+      setState(() {
+        _commentDrawerMounted = false;
+        _commentSheetOpen = false;
+        _commentSheetClosingFromDrag = false;
+      });
+      widget.onOverlayStateChanged(false);
+
+      // Resume only after the drawer is fully gone. This avoids audio
+      // returning while a closing sheet still covers the video.
+      _resumeAfterComments();
+    }
+
+    if (!_commentSheetController.isAttached) {
+      unawaited(finishClose());
+      return;
+    }
+    final size = _commentSheetController.size;
+    final durationMs = (size * 340).clamp(120, 280).round();
+    unawaited(
+      _commentSheetController
+          .animateTo(
+            _commentSheetMinExtent,
+            duration: Duration(milliseconds: durationMs),
+            curve: Curves.easeOutCubic,
+          )
+          .then((_) => finishClose())
+          .onError((_, __) => finishClose()),
+    );
+  }
+
+  void _resumeAfterComments() {
     final ctrl = _videoController;
     if (_pausedByCommentSheet) {
       _pausedByCommentSheet = false;
@@ -1900,16 +1929,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         unawaited(_playLegacy(ctrl, 'comment-close-full'));
       }
     }
-    Future<void>.delayed(const Duration(milliseconds: 280), () {
-      if (!mounted || _commentSheetOpen) return;
-      _commentSheetExtent.value = _commentSheetInitialExtent;
-      _commentSheetClosingFromDrag = false;
-      if (_commentSheetController.isAttached) {
-        _commentSheetController.jumpTo(_commentSheetInitialExtent);
-      }
-      setState(() => _commentDrawerMounted = false);
-      widget.onOverlayStateChanged(false);
-    });
   }
 
   void _onCommentDragUpdate(DragUpdateDetails details) {
@@ -1946,7 +1965,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     );
     switch (target) {
       case CommentSnapTarget.close:
-        _settleCommentDragClose();
+        _closeComments();
       case CommentSnapTarget.max:
         _commentSheetController.animateTo(
           maxExtent,
@@ -1960,29 +1979,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
           curve: Curves.easeOutCubic,
         );
     }
-  }
-
-  /// Close driven oleh drag/fling — BEDA dengan [_closeComments]
-  /// (barrier tap / Android back / setelah posting) yang langsung
-  /// men-toggle AnimatedSlide dari posisi initial extent.
-  ///
-  /// Di sini sheet SUDAH sedang di-drag turun oleh jari; kita lanjutkan
-  /// gerakan itu secara mulus sampai extent 0 (bukan teleport/detach),
-  /// lalu [_syncCommentSheetProgress] mendeteksi extent ≈0 dan menjalankan
-  /// cleanup yang sama via [_closeComments] — haptic + count-sync terjadi
-  /// di titik itu (close sungguhan), bukan di tengah gesture.
-  void _settleCommentDragClose() {
-    if (!_commentSheetController.isAttached) {
-      _closeComments();
-      return;
-    }
-    final size = _commentSheetController.size;
-    final durationMs = (size * 300).clamp(120, 300).round();
-    _commentSheetController.animateTo(
-      0.0,
-      duration: Duration(milliseconds: durationMs),
-      curve: Curves.easeOutCubic,
-    );
   }
 
   /// Open moderation actions sheet (Report / Block).
@@ -2528,32 +2524,26 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                     ),
                   ),
                 if (_commentDrawerMounted)
-                  AnimatedSlide(
-                    duration: const Duration(milliseconds: 260),
+                  AnimatedPadding(
+                    duration: const Duration(milliseconds: 180),
                     curve: Curves.easeOutCubic,
-                    offset:
-                        _commentSheetOpen ? Offset.zero : const Offset(0, 1),
-                    child: AnimatedPadding(
-                      duration: const Duration(milliseconds: 180),
-                      curve: Curves.easeOutCubic,
-                      padding: EdgeInsets.only(bottom: keyboard),
-                      child: DraggableScrollableSheet(
-                        controller: _commentSheetController,
-                        initialChildSize: FeedCommentSheet.reelsHeightFactor,
-                        minChildSize: _commentSheetMinExtent,
-                        maxChildSize: commentSheetMaxExtent,
-                        snap: false,
-                        builder: (context, scrollController) {
-                          return FeedCommentSheet(
-                            post: widget.post,
-                            applyKeyboardInset: false,
-                            sheetScrollController: scrollController,
-                            onClose: _closeComments,
-                            onDragUpdate: _onCommentDragUpdate,
-                            onDragEnd: _onCommentDragEnd,
-                          );
-                        },
-                      ),
+                    padding: EdgeInsets.only(bottom: keyboard),
+                    child: DraggableScrollableSheet(
+                      controller: _commentSheetController,
+                      initialChildSize: _commentSheetMinExtent,
+                      minChildSize: _commentSheetMinExtent,
+                      maxChildSize: commentSheetMaxExtent,
+                      snap: false,
+                      builder: (context, scrollController) {
+                        return FeedCommentSheet(
+                          post: widget.post,
+                          applyKeyboardInset: false,
+                          sheetScrollController: scrollController,
+                          onClose: _closeComments,
+                          onDragUpdate: _onCommentDragUpdate,
+                          onDragEnd: _onCommentDragEnd,
+                        );
+                      },
                     ),
                   ),
                 _CommentVideoFrame(

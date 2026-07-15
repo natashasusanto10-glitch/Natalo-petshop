@@ -68,6 +68,17 @@ FeedPost _fakeVideoPost(String id, {String? videoDataSaverUrl}) {
   });
 }
 
+FeedPost _fakePhotoPost(String id) {
+  return FeedPost.fromJson({
+    'id': id,
+    'slug': id,
+    'kind': 'USER_PHOTO',
+    'mediaUrl': 'https://example.com/$id.jpg',
+    'author': {'id': 'author-1', 'name': 'Tester'},
+    'createdAt': DateTime.now().toIso8601String(),
+  });
+}
+
 void main() {
   setUp(() {
     // Disable VisibilityDetector's internal debounce timer so it doesn't
@@ -94,6 +105,41 @@ void main() {
     // paint; flush it so the test binding doesn't flag a pending timer at
     // teardown. pumpAndSettle() is avoided repo-wide because it hangs when
     // video/image/shimmer surfaces render (never settles).
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('loads next profile pages and skips photo-only page',
+      (tester) async {
+    final requestedCursors = <String?>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(
+          posts: [_fakeVideoPost('a')],
+          initialIndex: 0,
+          initialNextCursor: 'page-2',
+          loadMorePosts: (cursor) async {
+            requestedCursors.add(cursor);
+            if (cursor == 'page-2') {
+              return FeedPage(
+                items: [_fakePhotoPost('photo')],
+                nextCursor: 'page-3',
+              );
+            }
+            return FeedPage(
+              items: [_fakeVideoPost('b')],
+              nextCursor: null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final pageView = tester.widget<PageView>(find.byType(PageView));
+    final delegate = pageView.childrenDelegate as SliverChildBuilderDelegate;
+    expect(requestedCursors, ['page-2', 'page-3']);
+    expect(delegate.childCount, 2);
     await tester.pump(const Duration(milliseconds: 600));
   });
 
@@ -140,7 +186,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
   });
 
-  testWidgets('swipe right dismisses and returns last-active payload',
+  testWidgets('edge swipe right dismisses and returns last-active payload',
       (tester) async {
     final posts = [_fakeVideoPost('a'), _fakeVideoPost('b')];
     ScopedVideoFeedResult? result;
@@ -171,8 +217,9 @@ void main() {
       if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
     }
     expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 400));
 
-    await tester.dragFrom(const Offset(100, 400), const Offset(220, 0));
+    await tester.dragFrom(const Offset(24, 400), const Offset(220, 0));
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 50));
       if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
@@ -184,6 +231,111 @@ void main() {
     expect(result!.index, 1);
     expect(result!.timestamp, Duration.zero);
     await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('horizontal swipe away from left edge does not dismiss',
+      (tester) async {
+    final posts = [_fakeVideoPost('a')];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(posts: posts, initialIndex: 0),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+
+    await tester.dragFrom(const Offset(100, 400), const Offset(300, 0));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+  });
+
+  testWidgets('short slow edge drag springs back without dismissing',
+      (tester) async {
+    final posts = [_fakeVideoPost('a')];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(posts: posts, initialIndex: 0),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+
+    final gesture = await tester.startGesture(const Offset(16, 400));
+    await gesture.moveBy(const Offset(55, 0));
+    await tester.pump(const Duration(milliseconds: 350));
+    await gesture.up();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byType(PageView)).dx,
+      moreOrLessEquals(0),
+    );
+  });
+
+  testWidgets('pinch beginning at the left edge does not dismiss',
+      (tester) async {
+    final posts = [_fakeVideoPost('a')];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(posts: posts, initialIndex: 0),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+
+    final firstPointer = await tester.startGesture(const Offset(16, 400));
+    final secondPointer = await tester.startGesture(const Offset(180, 400));
+    await firstPointer.moveBy(const Offset(80, 0));
+    await secondPointer.moveBy(const Offset(-80, 0));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byType(PageView)).dx,
+      moreOrLessEquals(0),
+    );
+
+    await firstPointer.up();
+    await secondPointer.up();
+  });
+
+  test('high rightward velocity dismisses before the distance threshold', () {
+    expect(
+      ScopedVideoFeedScreen.shouldDismissEdgeSwipe(
+        offset: 70,
+        width: 400,
+        velocity: 1200,
+      ),
+      isTrue,
+    );
+    expect(
+      ScopedVideoFeedScreen.shouldDismissEdgeSwipe(
+        offset: 70,
+        width: 400,
+        velocity: 500,
+      ),
+      isFalse,
+    );
+  });
+
+  testWidgets('fullscreen controls use 48px back target and top scrim',
+      (tester) async {
+    final posts = [_fakeVideoPost('a')];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(posts: posts, initialIndex: 0),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(
+      tester.getSize(find.byKey(const ValueKey('scoped-video-back-target'))),
+      const Size(48, 48),
+    );
+    expect(
+      find.byKey(const ValueKey('scoped-video-top-scrim')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('toolbar back returns typed last-active post payload',
