@@ -1116,7 +1116,7 @@ export async function getProductBySlug(
     if (p && p.creationState !== "ready") p = null;
     if (!p) {
       p = await prisma.product.findUnique({
-        where: { id: slug },
+        where: { id: slug, creationState: "ready" },
         include: {
           ...variantInclude,
           ...discountItemsInclude,

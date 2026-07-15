@@ -4,7 +4,7 @@ Status: COMPLETE
 
 Original commit: `d066bc39a3191e934a3f45b29f9d6959b7a95c55` (`feat(products): add hidden creation lifecycle`)
 
-Follow-up fix commit: pending (visibility integration and conditional finalization).
+Follow-up fix commit: `7264f61ea1bb1f56b790a180eb98160695f4bbcc` (visibility integration and conditional finalization).
 
 Implemented the Product `creationState` column and index, migration, lifecycle helpers, hidden create/finalize/compensate operations, and focused lifecycle tests. Existing product creation behavior is preserved; callers can opt into nested variant creation through Prisma create input.
 
