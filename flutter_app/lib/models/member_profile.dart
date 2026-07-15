@@ -307,6 +307,10 @@ class OrderSummary {
   /// Timestamp kapan admin tandai SHIPPED (=shippedAt). Pakai untuk
   /// tampilkan estimated auto-confirm date di order detail.
   final DateTime? shippedAt;
+  /// Timestamp ketika pesanan pickup sudah selesai disiapkan oleh toko.
+  final DateTime? readyForPickupAt;
+  /// Timestamp ketika pesanan pickup diserahkan kepada customer.
+  final DateTime? pickedUpAt;
   /// Pre-computed timestamp kapan order akan otomatis ditandai DELIVERED
   /// kalau user tidak tap "Sudah Diterima" duluan (cron auto-confirm
   /// jalan di hari ke-7 setelah shippedAt). Null kalau belum SHIPPED.
@@ -383,6 +387,8 @@ class OrderSummary {
   final DateTime? deliveredAt;
   final DateTime? completedAt;
   final DateTime? statusUpdatedAt;
+  /// Riwayat status akurat dari backend. Kosong untuk pesanan legacy.
+  final List<OrderTimelineEvent> timelineEvents;
 
   /// Batas waktu bayar transfer manual (countdown). Null untuk non-manual,
   /// sudah bayar, atau sudah upload bukti (auto-cancel berhenti).
@@ -419,6 +425,8 @@ class OrderSummary {
     this.trackingNumber,
     this.shippingDriverInfo,
     this.shippedAt,
+    this.readyForPickupAt,
+    this.pickedUpAt,
     this.autoConfirmAt,
     this.trackingToken,
     this.biteshipTrackingUrl,
@@ -460,6 +468,7 @@ class OrderSummary {
     this.deliveredAt,
     this.completedAt,
     this.statusUpdatedAt,
+    this.timelineEvents = const [],
     this.paymentDeadline,
     this.detailUrl,
     this.cancellationRequestStatus,
@@ -513,7 +522,7 @@ class OrderSummary {
       customerPhone: (json['customerPhone'] ?? '').toString(),
       shippingAddress: (json['shippingAddress'] ?? '').toString(),
       shippingCity: _nullableString(json['shippingCity']),
-      status: (json['status'] ?? 'PENDING').toString(),
+      status: normalizeOrderStatus(json['status']),
       paymentStatus: (json['paymentStatus'] ?? 'UNPAID').toString(),
       paymentProvider: (json['paymentProvider'] ?? 'MANUAL').toString(),
       shippingMethod:
@@ -526,6 +535,12 @@ class OrderSummary {
       trackingNumber: _nullableString(json['trackingNumber']),
       shippingDriverInfo: _nullableString(json['shippingDriverInfo']),
       shippedAt: _asDateTimeOrNull(json['shippedAt']),
+      readyForPickupAt: _asDateTimeOrNull(
+        json['readyForPickupAt'] ?? json['ready_for_pickup_at'],
+      ),
+      pickedUpAt: _asDateTimeOrNull(
+        json['pickedUpAt'] ?? json['picked_up_at'],
+      ),
       autoConfirmAt: _asDateTimeOrNull(json['autoConfirmAt']),
       trackingToken: _nullableString(json['trackingToken']),
       biteshipTrackingUrl: _nullableString(json['biteshipTrackingUrl']),
@@ -593,6 +608,7 @@ class OrderSummary {
       statusUpdatedAt: _asDateTimeOrNull(
         json['statusUpdatedAt'] ?? json['status_updated_at'],
       ),
+      timelineEvents: _parseOrderTimelineEvents(json['timelineEvents']),
       updatedAt: _asDateTimeOrNull(json['updatedAt'] ?? json['updated_at']),
       paymentDeadline: _asDateTimeOrNull(
         json['paymentDeadline'] ?? json['payment_deadline'],
@@ -625,6 +641,72 @@ class OrderSummary {
   /// Alias `fromJson` — beberapa code (service) pakai fromApiJson.
   factory OrderSummary.fromApiJson(Map<String, dynamic> json) =>
       OrderSummary.fromJson(json);
+}
+
+/// A single persisted order lifecycle event.
+class OrderTimelineEvent {
+  final String status;
+  final DateTime occurredAt;
+  final String? actorType;
+  final Map<String, dynamic> metadata;
+
+  const OrderTimelineEvent({
+    required this.status,
+    required this.occurredAt,
+    this.actorType,
+    this.metadata = const {},
+  });
+
+  factory OrderTimelineEvent.fromJson(Map<String, dynamic> json) {
+    final occurredAt = _asDateTimeOrNull(
+      json['occurredAt'] ?? json['occurred_at'] ?? json['createdAt'],
+    );
+    if (occurredAt == null) {
+      throw const FormatException('Order timeline event requires occurredAt');
+    }
+
+    final rawMetadata = json['metadata'];
+    return OrderTimelineEvent(
+      status: normalizeOrderStatus(json['status'] ?? json['event']),
+      occurredAt: occurredAt,
+      actorType: _nullableString(json['actorType'] ?? json['actor_type']),
+      metadata: rawMetadata is Map
+          ? Map<String, dynamic>.from(rawMetadata)
+          : const {},
+    );
+  }
+}
+
+/// Converts aliases from older APIs/admin flows to the public order contract.
+String normalizeOrderStatus(dynamic raw) {
+  final value = (raw ?? 'PENDING')
+      .toString()
+      .trim()
+      .toUpperCase()
+      .replaceAll('-', '_')
+      .replaceAll(' ', '_');
+  return switch (value) {
+    'UNPAID' || 'WAITING_PAYMENT' || 'PENDING_PAYMENT' => 'PENDING',
+    'READY_TO_PICKUP' || 'READY_PICKUP' => 'READY_FOR_PICKUP',
+    'PICKED_UP' || 'COMPLETED' || 'COMPLETE' => 'DELIVERED',
+    _ => value.isEmpty ? 'PENDING' : value,
+  };
+}
+
+List<OrderTimelineEvent> _parseOrderTimelineEvents(dynamic raw) {
+  if (raw is! List) return const [];
+
+  final events = <OrderTimelineEvent>[];
+  for (final item in raw) {
+    if (item is! Map) continue;
+    try {
+      events.add(OrderTimelineEvent.fromJson(Map<String, dynamic>.from(item)));
+    } on FormatException {
+      // An incomplete event must not make the whole order unreadable.
+    }
+  }
+  events.sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
+  return List.unmodifiable(events);
 }
 
 /// Per-voucher usage detail untuk order ini. Backend kirim dari
