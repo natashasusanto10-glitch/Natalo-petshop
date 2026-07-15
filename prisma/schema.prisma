@@ -1159,6 +1159,10 @@ model FeedPost {
   videoDurationSec  Int?
   videoWidth        Int?
   videoHeight       Int?
+  videoAltText      String?
+  hasAudio          Boolean?
+  subtitleUrl       String?
+  subtitleLanguage  String?
   thumbnailUrl      String? // Wajib kalau ada videoUrl
   // Blurhash LQIP — string ~30 byte yang di-decode ke canvas 32x32 di
   // client sebagai placeholder instan sebelum thumbnailUrl fully decoded.
@@ -1263,6 +1267,7 @@ model FeedMedia {
   /// Optional — untuk image biasanya null (URL itself adalah final),
   /// untuk video bisa dipakai sebagai poster thumbnail.
   thumbnailUrl   String?
+  altText        String?
   /// UploadThing file key — disimpan untuk hard-delete asset saat post
   /// di-delete via /admin/feed/posts/[id]/cleanup.
   uploadthingKey String?

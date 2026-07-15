@@ -94,6 +94,10 @@ export type FeedPostListItem = {
   videoDurationSec: number | null;
   videoWidth: number | null;
   videoHeight: number | null;
+  videoAltText: string | null;
+  hasAudio: boolean | null;
+  subtitleUrl: string | null;
+  subtitleLanguage: string | null;
   product: FeedPostProduct;
   // Shop the Look — semua produk yang di-tag (admin max 5, user max 3).
   // Sorted by position ascending. `product` (single) tetap dipertahankan
@@ -115,6 +119,7 @@ export type FeedPostListItem = {
     width: number | null;
     height: number | null;
     sortOrder: number;
+    altText: string | null;
   }>;
   likeCount: number;
   commentCount: number;

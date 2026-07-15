@@ -13,6 +13,7 @@ import type { FeedPostTab } from "@prisma/client";
 import { resolveActiveDiscount } from "@/lib/product-pricing";
 import { extractMentionHandles } from "./mentions";
 import { signBunnyUrl } from "./bunny";
+import { feedAccessibilityPayload } from "./accessibility";
 import type {
   FeedCommentItem,
   FeedCommentsResponse,
@@ -270,6 +271,7 @@ export async function listFeedPosts({
           width: true,
           height: true,
           sortOrder: true,
+          altText: true,
         },
         orderBy: { sortOrder: "asc" },
       },
@@ -382,6 +384,7 @@ export async function listFeedPosts({
     videoDurationSec: p.videoDurationSec,
     videoWidth: p.videoWidth,
     videoHeight: p.videoHeight,
+    ...feedAccessibilityPayload(p, signBunnyUrl),
     product: p.product
       ? (() => {
           // discountPrice = harga AKTIF (effectivePrice) hasil
@@ -453,6 +456,7 @@ export async function listFeedPosts({
       width: m.width,
       height: m.height,
       sortOrder: m.sortOrder,
+      altText: m.altText,
     })),
     likeCount: p.likeCount,
     commentCount: p.commentCount,

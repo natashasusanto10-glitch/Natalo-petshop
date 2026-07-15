@@ -24,6 +24,7 @@ import { prisma } from "@/lib/prisma";
 import { resolveUserByUsername } from "@/lib/username";
 import { getSession } from "@/lib/auth";
 import { signBunnyUrl } from "@/lib/feed/bunny";
+import { feedAccessibilityPayload } from "@/lib/feed/accessibility";
 
 // Postingan customer biasa: video komunitas + foto carousel.
 const VISIBLE_KINDS: FeedPostKind[] = ["COMMUNITY", "PHOTO_CAROUSEL"];
@@ -104,6 +105,10 @@ export async function GET(
         videoDurationSec: true,
         videoWidth: true,
         videoHeight: true,
+        videoAltText: true,
+        hasAudio: true,
+        subtitleUrl: true,
+        subtitleLanguage: true,
         createdAt: true,
         likeCount: true,
         commentCount: true,
@@ -117,6 +122,7 @@ export async function GET(
             mediaType: true,
             width: true,
             height: true,
+            altText: true,
           },
         },
         likes: {
@@ -221,6 +227,7 @@ export async function GET(
       videoDurationSec: p.videoDurationSec,
       videoWidth: p.videoWidth,
       videoHeight: p.videoHeight,
+      ...feedAccessibilityPayload(p, signBunnyUrl),
       createdAt: p.createdAt.toISOString(),
       likeCount: p.likeCount,
       commentCount: p.commentCount,
@@ -241,6 +248,7 @@ export async function GET(
         mediaType: m.mediaType,
         width: m.width,
         height: m.height,
+        altText: m.altText,
       })),
     })),
     nextCursor: hasMore ? sliced[sliced.length - 1].id : null,

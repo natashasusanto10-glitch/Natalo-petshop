@@ -46,6 +46,7 @@ import {
   generateBunnyTusCredentials,
   getBunnyConfig,
 } from "@/lib/feed/bunny";
+import { parseFeedAccessibilityMetadata } from "@/lib/feed/accessibility";
 
 export const dynamic = "force-dynamic";
 
@@ -109,6 +110,10 @@ export async function POST(request: NextRequest) {
     productIds?: unknown;
     thumbnailUrl?: string | null;
     videoDurationSec?: number | null;
+    videoAltText?: string | null;
+    hasAudio?: boolean | null;
+    subtitleUrl?: string | null;
+    subtitleLanguage?: string | null;
     // Admin-only fields. Customer sessions always create COMMUNITY posts to
     // the KOMUNITAS tab regardless of what's sent.
     kind?: string;
@@ -141,6 +146,12 @@ export async function POST(request: NextRequest) {
       { error: `Deskripsi maksimal ${MAX_DESC_LENGTH} karakter.` },
       { status: 400 },
     );
+  }
+  const accessibility = parseFeedAccessibilityMetadata(
+    body as Record<string, unknown>,
+  );
+  if (!accessibility.ok) {
+    return NextResponse.json({ error: accessibility.error }, { status: 400 });
   }
 
   const maxTaggedProducts = isAdmin ? 5 : 3;
@@ -292,6 +303,7 @@ export async function POST(request: NextRequest) {
           Number.isFinite(videoDurationSec) && videoDurationSec > 0
             ? Math.round(videoDurationSec)
             : null,
+        ...accessibility.data,
         videoGuid: bunnyCreated.guid,
         encodingStatus: "uploading",
         productId: productIdSingle,
