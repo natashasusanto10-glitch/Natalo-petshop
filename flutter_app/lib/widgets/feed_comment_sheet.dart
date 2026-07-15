@@ -53,10 +53,10 @@ Future<void> showFeedCommentDrawer(
       final topInset = MediaQuery.paddingOf(sheetContext).top;
       final screenHeight = MediaQuery.sizeOf(sheetContext).height;
       final maxExtent = (1 - (topInset / screenHeight)).clamp(0.60, 0.96);
-      final initialExtent = (commentSession.sheetExtent ??
-              FeedCommentSheet.reelsHeightFactor)
-          .clamp(FeedCommentSheet.reelsHeightFactor, maxExtent)
-          .toDouble();
+      final initialExtent =
+          (commentSession.sheetExtent ?? FeedCommentSheet.reelsHeightFactor)
+              .clamp(FeedCommentSheet.reelsHeightFactor, maxExtent)
+              .toDouble();
 
       void dismissDrawer({bool afterFrame = false}) {
         void popOnce() {
@@ -586,22 +586,28 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   /// (moderation sheet) pakai untuk decide snackbar success vs error.
   Future<bool> _deleteComment(FeedComment comment) async {
     if (!mounted) return false;
-    final removedCount =
-        comment.parentCommentId == null ? 1 + comment.replies.length : 1;
+    final removedCount = comment.parentCommentId == null
+        ? 1 +
+            (comment.replyCount > comment.replies.length
+                ? comment.replyCount
+                : comment.replies.length)
+        : 1;
     // Snapshot untuk rollback kalau API gagal.
     final snapshot = List<FeedComment>.from(_comments);
+    final replyTargetSnapshot = _replyTarget;
+    final inputSnapshot = _inputCtrl.value;
+    final visibleReplyCountsSnapshot =
+        Map<String, int>.from(_visibleReplyCounts);
+    final removal = removeFeedCommentFromThreads(_comments, comment);
     setState(() {
-      _comments = _comments.where((item) => item.id != comment.id).map((item) {
-        if (!item.replies.any((reply) => reply.id == comment.id)) {
-          return item;
-        }
-        final replies =
-            item.replies.where((reply) => reply.id != comment.id).toList();
-        return item.copyWith(
-          replies: replies,
-          replyCount: replies.length,
-        );
-      }).toList();
+      _comments = removal.comments;
+      _visibleReplyCounts
+          .removeWhere((parentId, _) => removal.removedIds.contains(parentId));
+      if (_replyTarget != null &&
+          removal.removedIds.contains(_replyTarget!.id)) {
+        _replyTarget = null;
+        _inputCtrl.clear();
+      }
     });
     _commentMutationRevision++;
     _persistSession();
@@ -623,6 +629,11 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       if (mounted) {
         setState(() {
           _comments = snapshot;
+          _replyTarget = replyTargetSnapshot;
+          _visibleReplyCounts
+            ..clear()
+            ..addAll(visibleReplyCountsSnapshot);
+          _inputCtrl.value = inputSnapshot;
         });
         _commentMutationRevision++;
         _persistSession();

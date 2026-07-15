@@ -1478,6 +1478,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   int _commentCount = 0;
   int _shareCount = 0;
   bool _shareInFlight = false;
+  bool _commentDrawerOpen = false;
   bool _hideOverlayForLongPress = false;
   bool _hideOverlayForPinchZoom = false;
 
@@ -1716,33 +1717,18 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     _heartBurstController.forward(from: 0);
   }
 
-  void _onComment() {
+  Future<void> _onComment() async {
+    if (_commentDrawerOpen) return;
+    _commentDrawerOpen = true;
     AppHaptics.tap();
-    // TODO: open comment sheet (reuse FeedCommentSheet — sama dengan video).
-    // Untuk MVP carousel, buka modal sheet dengan post comments.
-    showModalBottomSheet(
-      context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        snap: true,
-        // Explicit snap points: tarik ke salah satu dari 3 size. Bukan
-        // free-drag. Match Apple Maps / Spotify pattern — bottom sheet
-        // selalu terasa "settled" di posisi yang jelas, bukan random
-        // height yang berubah-ubah.
-        snapSizes: const [0.5, 0.7, 0.95],
-        builder: (_, scrollController) => FeedCommentSheet(
-          post: widget.post,
-          applyKeyboardInset: true,
-          sheetScrollController: scrollController,
-          onClose: () => Navigator.pop(context),
-        ),
-      ),
-    );
+    FocusScope.of(context).unfocus();
+    widget.onOverlayStateChanged(true);
+    try {
+      await showFeedCommentDrawer(context, post: widget.post);
+    } finally {
+      _commentDrawerOpen = false;
+      widget.onOverlayStateChanged(false);
+    }
   }
 
   Future<void> _onShare() async {

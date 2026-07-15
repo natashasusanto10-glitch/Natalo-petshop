@@ -95,6 +95,58 @@ List<FeedCommentThreadItem> flattenFeedCommentThreads(
   return result;
 }
 
+class FeedCommentRemovalResult {
+  final List<FeedComment> comments;
+  final Set<String> removedIds;
+
+  const FeedCommentRemovalResult({
+    required this.comments,
+    required this.removedIds,
+  });
+}
+
+/// Remove one comment from a nested comment page while preserving the server
+/// reply total. A parent deletion also removes every loaded child ID so UI
+/// state such as an active reply target can be invalidated safely.
+FeedCommentRemovalResult removeFeedCommentFromThreads(
+  List<FeedComment> comments,
+  FeedComment removed,
+) {
+  final removesThread = removed.parentCommentId == null;
+  final removedIds = <String>{
+    removed.id,
+    if (removesThread) ...removed.replies.map((reply) => reply.id),
+    if (removesThread)
+      ...comments
+          .where((comment) => comment.parentCommentId == removed.id)
+          .map((comment) => comment.id),
+  };
+  final updated = comments
+      .where((comment) => !removedIds.contains(comment.id))
+      .map((comment) {
+    final containsNestedReply =
+        comment.replies.any((reply) => reply.id == removed.id);
+    final isLegacyFlatParent = removed.parentCommentId == comment.id;
+    if (!containsNestedReply && !isLegacyFlatParent) {
+      return comment;
+    }
+    final replies = comment.replies
+        .where((reply) => reply.id != removed.id)
+        .toList(growable: false);
+    final remainingTotal =
+        comment.replyCount > 0 ? comment.replyCount - 1 : replies.length;
+    return comment.copyWith(
+      replies: replies,
+      replyCount:
+          remainingTotal < replies.length ? replies.length : remainingTotal,
+    );
+  }).toList(growable: false);
+  return FeedCommentRemovalResult(
+    comments: updated,
+    removedIds: removedIds,
+  );
+}
+
 class FeedComment {
   final String id;
   final String postId;

@@ -27,7 +27,7 @@ void main() {
   setUp(feedCommentSessionStore.clear);
   tearDown(feedCommentSessionStore.clear);
 
-  testWidgets('shared comment drawer dismisses from its drag handle',
+  testWidgets('photo post uses one shared draggable comment drawer',
       (tester) async {
     final navigatorObserver = _CountingNavigatorObserver();
     tester.view.physicalSize = const Size(400, 900);
@@ -53,6 +53,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 350));
     expect(find.byType(FeedCommentSheet), findsOneWidget);
+    expect(find.byType(DraggableScrollableSheet), findsOneWidget);
 
     final sheetTop = tester.getTopLeft(find.byType(FeedCommentSheet)).dy;
     await tester.dragFrom(
