@@ -49,7 +49,7 @@ export function ProductForm({ mode, categories, brands, initialProduct }: {
     if (!hasVariants && (Number(price) <= 0 || Number(weightGram) <= 0 || Number(stock) < 0)) { setError("Harga, stok, dan berat produk harus valid."); return; }
     setSaving(true);
     let createdId: string | undefined;
-    if (hasVariants && (!variants.attributes.length || !variants.variants.length || !variants.variants.some(v => v.isActive))) { setError("Lengkapi atribut dan minimal satu varian aktif sebelum menyimpan."); return; }
+    if (hasVariants && (!variants.attributes.length || !variants.variants.length || !variants.variants.some(v => v.isActive))) { setError("Lengkapi atribut dan minimal satu varian aktif sebelum menyimpan."); setSaving(false); return; }
     const effective = hasVariants;
     const payload = {
       name: name.trim(), description: description.trim(), imageUrls: images,
@@ -84,8 +84,8 @@ export function ProductForm({ mode, categories, brands, initialProduct }: {
         <div id="penjualan"><SectionCard title="Informasi Penjualan"><VariantEditor initialHasVariants={initialProduct?.hasVariants ?? false} initialAttributes={initialAttrs} initialVariants={initialVariants} onChange={setVariants} /><div className="mt-5 grid gap-4 sm:grid-cols-2"><FormField label="Harga Satuan (Rp)" required={!hasVariants}><input type="number" disabled={hasVariants} value={hasVariants ? "" : price} onChange={e => setPrice(e.target.value)} className="block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm" /></FormField><FormField label="Stok" required={!hasVariants}><input type="number" disabled={hasVariants} value={hasVariants ? "" : stock} onChange={e => setStock(e.target.value)} className="block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm" /></FormField></div><FormField label="SKU Induk"><input disabled={hasVariants} value={hasVariants ? "" : sku} onChange={e => setSku(e.target.value.toUpperCase())} className="block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm" /></FormField></SectionCard></div>
         <div id="pengiriman"><SectionCard title="Pengiriman"><FormField label="Berat (gram)" required={!hasVariants}><input type="number" disabled={hasVariants} value={hasVariants ? "" : weightGram} onChange={e => setWeightGram(e.target.value)} className="block w-full max-w-xs rounded-xl border border-zinc-300 px-4 py-3 text-sm" /></FormField></SectionCard></div>
       </div>
-    </form>
     {error && <p className="mt-4 rounded-xl bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</p>}
-    <div className="sticky bottom-4 z-20 mt-6 flex justify-end gap-3 rounded-2xl border border-zinc-200 bg-white/95 px-4 py-3 shadow-lg"><Button href="/admin/products" variant="secondary">Batal</Button><Button type="button" onClick={save} disabled={saving}>{saving ? "Menyimpan..." : copy.submit}</Button></div>
+    <div className="sticky bottom-4 z-20 mt-6 flex justify-end gap-3 rounded-2xl border border-zinc-200 bg-white/95 px-4 py-3 shadow-lg"><Button href="/admin/products" variant="secondary">Batal</Button><Button type="submit" disabled={saving}>{saving ? "Menyimpan..." : copy.submit}</Button></div>
+    </form>
   </AdminPage>;
 }

@@ -200,7 +200,7 @@ export async function POST(request: NextRequest) {
 
   // Atomic create — product + variants dalam satu transaction supaya
   // kalau varian gagal di-create, product juga di-rollback (no orphan).
-  const hasVideo = Boolean(normalized.video?.guid || normalized.video?.url);
+  const hasVideo = Boolean(normalized.video?.guid || normalized.video?.url || normalized.video?.status);
   const created = await prisma.$transaction(async (tx) => {
     // Validasi SKU Induk unik kalau ada (Product.sku @unique). NULL kalau
     // varian aktif atau kosong — admin tidak isi SKU Induk untuk produk
