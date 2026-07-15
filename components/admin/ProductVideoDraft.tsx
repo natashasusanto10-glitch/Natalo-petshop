@@ -13,6 +13,7 @@ const MAX_DURATION = 60;
 
 export type PreparedVideo = { file: File; durationSec: number; trimStartSec: number; trimEndSec: number };
 export type ProductVideoDraftHandle = {
+  openPicker(): void;
   prepareForSave(): Promise<PreparedVideo | null>;
   commitAfterProductSave(productId: string): Promise<void>;
   discardPendingCreation(): Promise<void>;
@@ -20,7 +21,7 @@ export type ProductVideoDraftHandle = {
 };
 type Initial = { videoGuid?: string | null; videoStatus: string | null; videoThumbnailUrl: string | null; videoDurationSec: number | null };
 
-export const ProductVideoDraft = forwardRef<ProductVideoDraftHandle, { productId?: string; initial?: Initial }>(function ProductVideoDraft({ productId, initial }, ref) {
+export const ProductVideoDraft = forwardRef<ProductVideoDraftHandle, { productId?: string; initial?: Initial; onIntentChange?: (intent: "keep" | "remove" | "replace") => void }>(function ProductVideoDraft({ productId, initial, onIntentChange }, ref) {
   const { show } = useAdminToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [picked, setPicked] = useState<PreparedVideo | null>(null);
@@ -36,7 +37,7 @@ export const ProductVideoDraft = forwardRef<ProductVideoDraftHandle, { productId
   async function pick(file: File | null) {
     setError(null); setPicked(null);
     if (!file) return;
-    setRemoveRequested(false);
+    setRemoveRequested(false); onIntentChange?.("replace");
     if (!file.type.startsWith("video/")) return setError("Format video belum didukung. Pilih MP4/MOV/WebM.");
     if (file.size > MAX_SOURCE) return setError(`Ukuran video melebihi ${formatFileSize(MAX_SOURCE)}.`);
     try {
@@ -50,6 +51,7 @@ export const ProductVideoDraft = forwardRef<ProductVideoDraftHandle, { productId
   }
 
   useImperativeHandle(ref, () => ({
+    openPicker() { inputRef.current?.click(); },
     async prepareForSave() { return picked; },
     async commitAfterProductSave(id: string) {
       if (!picked) return;
@@ -75,11 +77,11 @@ export const ProductVideoDraft = forwardRef<ProductVideoDraftHandle, { productId
     },
     async discardPendingCreation() { setPicked(null); },
     getDraftState() { return { hasPendingVideo: Boolean(picked), removeRequested }; },
-  }), [picked, productId, show, sourceDurationSec, removeRequested]);
+  }), [picked, productId, show, sourceDurationSec, removeRequested, onIntentChange]);
 
   async function remove() {
     // Draft intent only: the parent decides whether deletion is committed.
-    setRemoveRequested(true); setExistingGuid(null); setExistingStatus(null); setPicked(null);
+    setRemoveRequested(true); setExistingGuid(null); setExistingStatus(null); setPicked(null); onIntentChange?.("remove");
   }
 
   return <div className="space-y-2">
