@@ -75,6 +75,7 @@ class _OriginExpansionPageRoute<T> extends PageRoute<T> {
   final Rect? origin;
   final ui.Image? snapshot;
   final Color snapshotFallbackColor;
+  _OriginBackGestureController<T>? _backGestureController;
 
   @override
   bool get opaque => false;
@@ -133,11 +134,27 @@ class _OriginExpansionPageRoute<T> extends PageRoute<T> {
   }
 
   _OriginBackGestureController<T> _startPopGesture() {
-    return _OriginBackGestureController<T>(
+    _backGestureController?.abort();
+    late final _OriginBackGestureController<T> backGestureController;
+    backGestureController = _OriginBackGestureController<T>(
       navigator: navigator!,
       controller: controller!,
       getIsCurrent: () => isCurrent,
+      onFinished: () {
+        if (identical(_backGestureController, backGestureController)) {
+          _backGestureController = null;
+        }
+      },
     );
+    _backGestureController = backGestureController;
+    return backGestureController;
+  }
+
+  @override
+  void dispose() {
+    _backGestureController?.abort();
+    _backGestureController = null;
+    super.dispose();
   }
 }
 
@@ -179,12 +196,7 @@ class _OriginEdgeBackGestureDetectorState<T>
   @override
   void dispose() {
     _recognizer.dispose();
-    final backGestureController = _backGestureController;
-    if (backGestureController != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        backGestureController.abort();
-      });
-    }
+    _backGestureController?.abort();
     _backGestureController = null;
     super.dispose();
   }
@@ -238,6 +250,7 @@ class _OriginBackGestureController<T> {
     required this.navigator,
     required this.controller,
     required this.getIsCurrent,
+    required this.onFinished,
   }) {
     navigator.didStartUserGesture();
   }
@@ -245,36 +258,35 @@ class _OriginBackGestureController<T> {
   final NavigatorState navigator;
   final AnimationController controller;
   final ValueGetter<bool> getIsCurrent;
-  bool _finished = false;
+  final VoidCallback onFinished;
+  bool _active = true;
+  AnimationStatusListener? _statusListener;
 
   void dragUpdate(double delta) {
-    if (_finished) return;
+    if (!_active) return;
     controller.value -= delta;
   }
 
   void dragEnd({required double velocity, required double width}) {
-    if (_finished) return;
+    if (!_active) return;
     final dragFraction = 1 - controller.value;
     final shouldPop = getIsCurrent() &&
         (dragFraction >= _originBackCompletionFraction ||
             velocity >= _originBackFlingVelocity);
     if (shouldPop) {
-      _finished = true;
-      navigator.didStopUserGesture();
+      _watchForTerminalStatus((status) => status == AnimationStatus.dismissed);
       navigator.pop();
+      if (controller.status == AnimationStatus.dismissed) _finish();
       return;
     }
     _springBack(velocity: velocity, width: width);
   }
 
   void abort() {
-    if (_finished) return;
-    _finished = true;
-    if (navigator.mounted) navigator.didStopUserGesture();
+    _finish();
   }
 
   void _springBack({required double velocity, required double width}) {
-    _finished = true;
     final normalizedVelocity = width <= 0 ? 0.0 : -velocity / width;
     final simulation = SpringSimulation(
       const SpringDescription(mass: 1, stiffness: 450, damping: 42),
@@ -282,19 +294,52 @@ class _OriginBackGestureController<T> {
       1,
       normalizedVelocity,
     );
+    _watchForSpringTerminalStatus();
     controller.animateWith(simulation);
-    if (!controller.isAnimating) {
-      navigator.didStopUserGesture();
-      return;
-    }
-    late AnimationStatusListener stopGesture;
-    stopGesture = (status) {
-      if (status.isAnimating) return;
-      controller.removeStatusListener(stopGesture);
-      controller.value = 1;
-      navigator.didStopUserGesture();
+    if (!controller.isAnimating) _finishSpring();
+  }
+
+  void _watchForTerminalStatus(
+      bool Function(AnimationStatus status) isTerminal) {
+    _removeStatusListener();
+    _statusListener = (status) {
+      if (isTerminal(status)) _finish();
     };
-    controller.addStatusListener(stopGesture);
+    controller.addStatusListener(_statusListener!);
+  }
+
+  void _removeStatusListener() {
+    final statusListener = _statusListener;
+    if (statusListener == null) return;
+    controller.removeStatusListener(statusListener);
+    _statusListener = null;
+  }
+
+  void _watchForSpringTerminalStatus() {
+    _removeStatusListener();
+    _statusListener = (status) {
+      if (status == AnimationStatus.completed) {
+        _finishSpring();
+      } else if (status == AnimationStatus.dismissed) {
+        _finish();
+      }
+    };
+    controller.addStatusListener(_statusListener!);
+  }
+
+  void _finishSpring() {
+    if (!_active) return;
+    _removeStatusListener();
+    if (controller.status == AnimationStatus.completed) controller.value = 1;
+    _finish();
+  }
+
+  void _finish() {
+    if (!_active) return;
+    _active = false;
+    _removeStatusListener();
+    if (navigator.mounted) navigator.didStopUserGesture();
+    onFinished();
   }
 }
 

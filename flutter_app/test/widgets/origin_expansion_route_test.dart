@@ -245,7 +245,8 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final key = GlobalKey();
-    await tester.pumpWidget(_buildSource(key));
+    final observer = _GestureObserver();
+    await tester.pumpWidget(_buildSource(key, navigatorObservers: [observer]));
     await _openSnapshotRoute(tester, key);
 
     final gesture = await tester.startGesture(const Offset(1, 300));
@@ -258,9 +259,108 @@ void main() {
       timeStamp: const Duration(milliseconds: 600),
     );
     await gesture.up(timeStamp: const Duration(milliseconds: 700));
+
+    expect(
+      Navigator.of(tester.element(find.byKey(const ValueKey('route-context'))))
+          .userGestureInProgress,
+      isTrue,
+    );
+    expect(observer.starts, 1);
+    expect(observer.stops, 0);
+    await tester.pump(const Duration(milliseconds: 110));
+    expect(observer.stops, 0);
     await tester.pumpAndSettle();
 
     expect(find.text('Destination'), findsNothing);
+    expect(
+      Navigator.of(tester.element(find.byKey(const ValueKey('route-context'))))
+          .userGestureInProgress,
+      isFalse,
+    );
+    expect(observer.stops, 1);
+  });
+
+  testWidgets('interrupted cancellation stops once without restoring dismissal',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final key = GlobalKey();
+    final observer = _GestureObserver();
+    final statuses = <AnimationStatus>[];
+    debugOriginExpansionStatusObserver = (status, _) => statuses.add(status);
+    addTearDown(() => debugOriginExpansionStatusObserver = null);
+    await tester.pumpWidget(_buildSource(key, navigatorObservers: [observer]));
+    await _openSnapshotRoute(tester, key);
+    statuses.clear();
+
+    final gesture = await tester.startGesture(const Offset(1, 300));
+    await gesture.moveBy(
+      const Offset(20, 0),
+      timeStamp: const Duration(milliseconds: 100),
+    );
+    await gesture.moveBy(
+      const Offset(60, 0),
+      timeStamp: const Duration(milliseconds: 500),
+    );
+    await gesture.up(timeStamp: const Duration(milliseconds: 600));
+    await tester.pump();
+
+    Navigator.of(tester.element(find.text('Destination'))).pop();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Destination'), findsNothing);
+    expect(
+      Navigator.of(tester.element(find.byKey(const ValueKey('route-context'))))
+          .userGestureInProgress,
+      isFalse,
+    );
+    expect(observer.starts, 1);
+    expect(observer.stops, 1);
+    final dismissedIndex = statuses.lastIndexOf(AnimationStatus.dismissed);
+    expect(dismissedIndex, isNonNegative);
+    expect(
+      statuses.skip(dismissedIndex + 1),
+      isNot(contains(AnimationStatus.completed)),
+    );
+  });
+
+  testWidgets('removing a route during spring cleanup stops the gesture once',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final key = GlobalKey();
+    final observer = _GestureObserver();
+    await tester.pumpWidget(_buildSource(key, navigatorObservers: [observer]));
+    await _openSnapshotRoute(tester, key);
+
+    final gesture = await tester.startGesture(const Offset(1, 300));
+    await gesture.moveBy(
+      const Offset(20, 0),
+      timeStamp: const Duration(milliseconds: 100),
+    );
+    await gesture.moveBy(
+      const Offset(60, 0),
+      timeStamp: const Duration(milliseconds: 500),
+    );
+    await gesture.up(timeStamp: const Duration(milliseconds: 600));
+    await tester.pump();
+
+    final route = ModalRoute.of(tester.element(find.text('Destination')))!;
+    Navigator.of(tester.element(find.text('Destination'))).removeRoute(route);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Destination'), findsNothing);
+    expect(observer.starts, 1);
+    expect(observer.stops, 1);
+    expect(
+      Navigator.of(tester.element(find.byKey(const ValueKey('route-context'))))
+          .userGestureInProgress,
+      isFalse,
+    );
   });
 
   testWidgets('fast edge fling pops below the distance threshold',
@@ -370,8 +470,12 @@ Positioned _snapshotPositioned(WidgetTester tester) {
   );
 }
 
-Widget _buildSource(GlobalKey key) {
+Widget _buildSource(
+  GlobalKey key, {
+  List<NavigatorObserver> navigatorObservers = const [],
+}) {
   return MaterialApp(
+    navigatorObservers: navigatorObservers,
     home: Scaffold(
       body: Builder(
         builder: (context) => SizedBox(
@@ -417,5 +521,23 @@ class _TrackingAnimation extends Animation<double> {
   @override
   void removeStatusListener(AnimationStatusListener listener) {
     _statusListeners.remove(listener);
+  }
+}
+
+class _GestureObserver extends NavigatorObserver {
+  int starts = 0;
+  int stops = 0;
+
+  @override
+  void didStartUserGesture(
+    Route<dynamic> route,
+    Route<dynamic>? previousRoute,
+  ) {
+    starts++;
+  }
+
+  @override
+  void didStopUserGesture() {
+    stops++;
   }
 }
