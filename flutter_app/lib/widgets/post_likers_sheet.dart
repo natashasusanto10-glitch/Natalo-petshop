@@ -9,6 +9,7 @@ import 'official_brand_avatar.dart';
 import '../services/post_likers_service.dart';
 import '../utils/haptics.dart';
 import 'profile_avatar.dart';
+import '../constants/official_brand.dart';
 
 const _brandBlue = NataloColors.primary;
 
@@ -406,7 +407,7 @@ class _LikerRow extends StatelessWidget {
                           // Official → brand name "Natalo Petshop" (emas);
                           // user biasa → username.
                           liker.isOfficial
-                              ? liker.name
+                              ? kOfficialBrandName
                               : (liker.username != null &&
                                       liker.username!.isNotEmpty
                                   ? liker.username!
@@ -431,7 +432,7 @@ class _LikerRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    liker.isOfficial ? 'Akun Resmi' : liker.name,
+                    liker.isOfficial ? kOfficialBrandName : liker.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

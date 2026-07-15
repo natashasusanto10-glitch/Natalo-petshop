@@ -1,3 +1,5 @@
+import '../constants/official_brand.dart';
+
 /// Public profile model — shape /api/u/{username} response. Subset
 /// User row yang aman tampil ke siapapun + stats publik.
 class PublicProfile {
@@ -40,8 +42,9 @@ class PublicProfile {
   /// Public handle untuk header — bare `username` kalau set, fallback
   /// nama. URL path tetap pakai username yang asli (lowercase).
   /// Match IG/TikTok pattern: identity label TIDAK pakai `@`.
-  String get displayHandle =>
-      (username != null && username!.isNotEmpty) ? username! : name;
+  String get displayHandle => isOfficial
+      ? kOfficialBrandName
+      : ((username != null && username!.isNotEmpty) ? username! : name);
 
   factory PublicProfile.fromJson(
     Map<String, dynamic> json, {

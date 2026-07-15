@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../services/api_client.dart';
 import '../utils/haptics.dart';
 import 'profile_avatar.dart';
+import '../constants/official_brand.dart';
 
 /// User suggestion entry untuk @mention picker. Subset dari User model
 /// yang dibalikin /api/users/search?q=.
@@ -30,17 +31,17 @@ class MentionUser {
   });
 
   /// Nama tampil di picker — brand untuk admin, nama personal untuk user.
-  String get displayLabel => isOfficial ? 'Natalo Petshop' : name;
+  String get displayLabel => isOfficial ? kOfficialBrandName : name;
 
   factory MentionUser.fromJson(Map<String, dynamic> json) {
     return MentionUser(
       id: (json['id'] ?? '').toString(),
       name: (json['name'] ?? '').toString(),
       username: (json['username'] ?? '').toString(),
-      profilePhotoUrl: (json['profilePhotoUrl'] as String?)?.trim().isNotEmpty ==
-              true
-          ? json['profilePhotoUrl'] as String
-          : null,
+      profilePhotoUrl:
+          (json['profilePhotoUrl'] as String?)?.trim().isNotEmpty == true
+              ? json['profilePhotoUrl'] as String
+              : null,
       isOfficial: json['isOfficial'] == true,
     );
   }
@@ -323,8 +324,9 @@ class _SuggestionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textPrimary = darkTheme ? Colors.white : const Color(0xFF0F172A);
-    final textMuted =
-        darkTheme ? Colors.white.withValues(alpha: 0.55) : const Color(0xFF64748B);
+    final textMuted = darkTheme
+        ? Colors.white.withValues(alpha: 0.55)
+        : const Color(0xFF64748B);
 
     return InkWell(
       onTap: onTap,
