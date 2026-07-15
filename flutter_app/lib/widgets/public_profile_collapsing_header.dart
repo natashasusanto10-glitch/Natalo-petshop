@@ -11,6 +11,8 @@ class PublicProfileCollapsingHeaderDelegate
     extends SliverPersistentHeaderDelegate {
   static const double collapseRange = 220;
   static const double toolbarHeight = 56;
+  static const double regularExpandedHeight = 280;
+  static const double officialExpandedHeight = 390;
 
   final TabController controller;
   final String title;

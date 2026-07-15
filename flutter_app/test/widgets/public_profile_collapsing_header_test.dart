@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/models/public_profile.dart';
+import 'package:natalo_petshop_flutter/screens/public_profile_screen.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_collapsing_header.dart';
 
 void main() {
@@ -119,4 +121,83 @@ void main() {
       reverse,
     );
   });
+
+  testWidgets('real regular header caps long bio and keeps actions visible',
+      (tester) async {
+    const profile = PublicProfile(
+      id: 'profile-1',
+      name: 'Mona dengan nama profil yang cukup panjang',
+      username: 'mona.pet',
+      bio: 'Baris pertama bio yang panjang dan informatif.\n'
+          'Baris kedua berisi cerita hewan peliharaan.\n'
+          'Baris ketiga masih berlanjut.\n'
+          'Baris keempat tidak boleh mendorong tombol keluar layar.\n'
+          'Baris kelima juga harus dipotong dengan rapi.',
+      postCount: 83,
+      followersCount: 4378,
+      followingCount: 4,
+    );
+
+    for (final width in <double>[393, 360]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: MediaQueryData(
+              size: Size(width, 844),
+              padding: const EdgeInsets.only(top: 47),
+            ),
+            child: DefaultTabController(
+              length: 3,
+              child: Builder(
+                builder: (context) {
+                  final delegate = PublicProfileCollapsingHeaderDelegate(
+                    controller: DefaultTabController.of(context),
+                    title: profile.displayHandle,
+                    topPadding: 47,
+                    expandedHeight: PublicProfileCollapsingHeaderDelegate
+                        .regularExpandedHeight,
+                    onBack: () {},
+                    onOverflow: () {},
+                    expandedHeader: const PublicProfileExpandedHeader(
+                      profile: profile,
+                      followBusy: false,
+                      onFollowToggle: _noop,
+                      onShareProfile: _noop,
+                    ),
+                  );
+                  return Scaffold(
+                    body: SizedBox(
+                      width: width,
+                      height: delegate.maxExtent,
+                      child: delegate.build(context, 0, false),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(
+          find.byKey(const Key('public_profile_action_row')), findsOneWidget);
+      final bio = tester.widget<Text>(find.textContaining('Baris pertama'));
+      expect(bio.maxLines, 3);
+      expect(bio.overflow, TextOverflow.ellipsis);
+    }
+  });
+
+  testWidgets('PublicProfileScreen scaffold never installs bottom navigation',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: PublicProfileScreen(username: 'mona.pet')),
+    );
+
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+    expect(scaffold.bottomNavigationBar, isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }
+
+void _noop() {}

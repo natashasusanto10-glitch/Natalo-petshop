@@ -807,14 +807,16 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
                   ? kOfficialBrandName
                   : profile.displayHandle,
               topPadding: MediaQuery.paddingOf(context).top,
-              expandedHeight: profile.isOfficial ? 390 : 250,
+              expandedHeight: profile.isOfficial
+                  ? PublicProfileCollapsingHeaderDelegate.officialExpandedHeight
+                  : PublicProfileCollapsingHeaderDelegate.regularExpandedHeight,
               isOfficial: profile.isOfficial,
               onBack: () => Navigator.maybePop(context),
               onOverflow: !profile.isOwner && !profile.isOfficial
                   ? _openModeration
                   : null,
               onTabTap: _onTabTapped,
-              expandedHeader: _Header(
+              expandedHeader: PublicProfileExpandedHeader(
                 profile: profile,
                 followBusy: _followBusy,
                 onFollowToggle: profile.isOwner ? null : _toggleFollow,
@@ -937,7 +939,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   }
 }
 
-class _Header extends StatelessWidget {
+/// Expanded identity surface used by the public-profile collapsing sliver.
+/// Public for focused responsive tests; it remains stateless and receives all
+/// actions from [PublicProfileScreen].
+class PublicProfileExpandedHeader extends StatelessWidget {
   final PublicProfile profile;
   final bool followBusy;
   final VoidCallback? onFollowToggle;
@@ -947,7 +952,8 @@ class _Header extends StatelessWidget {
   final VoidCallback? onShareProfile;
   final VoidCallback? onOpenCatalog;
 
-  const _Header({
+  const PublicProfileExpandedHeader({
+    super.key,
     required this.profile,
     required this.followBusy,
     this.onFollowToggle,
@@ -1060,6 +1066,8 @@ class _Header extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               profile.bio!,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: cs.onSurface,
                 fontSize: 14,
@@ -1072,6 +1080,7 @@ class _Header extends StatelessWidget {
           // Baris tombol: aksi utama (Edit/Follow/Mengikuti) + Bagikan.
           // Tombol Bagikan = slot kedua ala IG, square icon di sampingnya.
           Row(
+            key: const Key('public_profile_action_row'),
             children: [
               Expanded(child: _buildPrimaryButton(cs)),
               if (onShareProfile != null) ...[
