@@ -22,6 +22,7 @@ import 'feed_media_picker_screen.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/profile_avatar.dart';
 import '../widgets/profile_content_tab_bar.dart';
+import '../widgets/profile_grid_geometry.dart';
 import '../widgets/update_profile_photo_sheet.dart';
 import '../widgets/username_prompt_banner.dart';
 import 'member_post_detail_screen.dart';
@@ -864,12 +865,7 @@ class _PostGrid extends StatelessWidget {
       removeTop: true,
       child: GridView.builder(
         padding: const EdgeInsets.only(bottom: 100),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          mainAxisSpacing: 2,
-          crossAxisSpacing: 2,
-          childAspectRatio: 1,
-        ),
+        gridDelegate: profileGridDelegate(),
         itemCount: posts.length,
         itemBuilder: (context, index) {
           return _PostThumbnail(

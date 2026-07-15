@@ -29,6 +29,7 @@ import '../widgets/moderation_action_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/profile_avatar.dart';
 import '../widgets/profile_content_tab_bar.dart';
+import '../widgets/profile_grid_geometry.dart';
 import 'member_post_detail_screen.dart';
 import 'public_profile_follow_list_screen.dart';
 
@@ -883,7 +884,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     // atasnya menyingkap latar. Tanpa lapisan ini yang tersingkap putih
     // (cs.surface) → terlihat seperti garis/celah memutus hero dari
     // AppBar. Hanya tampil saat scroll dekat puncak — kalau selalu ada,
-    // navy mengintip lewat celah 1.5px antar tile grid saat grid
+    // navy mengintip lewat celah 1px antar tile grid saat grid
     // ter-scroll ke region backdrop.
     return Stack(
       children: [
@@ -936,12 +937,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
             )
           else
             SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                mainAxisSpacing: 1.5,
-                crossAxisSpacing: 1.5,
-                childAspectRatio: 1,
-              ),
+              gridDelegate: profileGridDelegate(),
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
                   try {
@@ -1909,15 +1905,11 @@ class _ProfileGridLoading extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return AspectRatio(
-      aspectRatio: 3 / 2,
+      aspectRatio: profileGridCrossAxisCount * profileGridChildAspectRatio / 2,
       child: GridView.builder(
         padding: EdgeInsets.zero,
         physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          mainAxisSpacing: 1.5,
-          crossAxisSpacing: 1.5,
-        ),
+        gridDelegate: profileGridDelegate(),
         itemCount: 6,
         itemBuilder: (_, __) => ColoredBox(
           color: cs.surfaceContainerHighest,
