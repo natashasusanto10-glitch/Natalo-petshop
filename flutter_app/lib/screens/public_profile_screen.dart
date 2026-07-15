@@ -150,11 +150,14 @@ class PublicProfileScreen extends StatefulWidget {
   final String username;
   @visibleForTesting
   final PublicProfileResult? initialResult;
+  @visibleForTesting
+  final ProfileWarmHandoffFactory? warmHandoffFactory;
 
   const PublicProfileScreen({
     super.key,
     required this.username,
     this.initialResult,
+    this.warmHandoffFactory,
   });
 
   @override
@@ -187,7 +190,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _scrollController = ScrollController();
-    _videoPrewarmer = ProfileVideoPrewarmer(factory: _createWarmHandoff);
+    _videoPrewarmer = ProfileVideoPrewarmer(
+      factory: widget.warmHandoffFactory ?? _createWarmHandoff,
+    );
     _tabController =
         TabController(length: _profileContentTabs.length, vsync: this)
           ..addListener(_onTabControllerChanged);

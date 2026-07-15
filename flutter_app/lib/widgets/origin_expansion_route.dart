@@ -3,6 +3,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+@visibleForTesting
+void Function(AnimationStatus status, bool hasSnapshot)?
+    debugOriginExpansionStatusObserver;
+
 /// Pushes [destinationBuilder] with a snapshot expanding from [originKey].
 ///
 /// The source must be a [RepaintBoundary] to produce a bitmap snapshot. When
@@ -28,26 +32,30 @@ Future<T?> pushOriginExpansion<T>(
     return null;
   }
 
-  return Navigator.of(context).push(
-    PageRouteBuilder<T>(
-      opaque: false,
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 240),
-      reverseTransitionDuration: const Duration(milliseconds: 220),
-      pageBuilder: (context, animation, secondaryAnimation) {
-        return destinationBuilder(context);
-      },
-      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        return OriginExpansionTransition(
-          animation: animation,
-          origin: origin,
-          snapshot: snapshot,
-          snapshotFallbackColor: snapshotFallbackColor,
-          child: child,
-        );
-      },
-    ),
+  final route = PageRouteBuilder<T>(
+    opaque: false,
+    barrierColor: Colors.transparent,
+    transitionDuration: const Duration(milliseconds: 240),
+    reverseTransitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (context, animation, secondaryAnimation) {
+      return destinationBuilder(context);
+    },
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      return OriginExpansionTransition(
+        animation: animation,
+        origin: origin,
+        snapshot: snapshot,
+        snapshotFallbackColor: snapshotFallbackColor,
+        child: child,
+      );
+    },
   );
+  try {
+    return await Navigator.of(context).push(route);
+  } finally {
+    await route.completed;
+    snapshot?.dispose();
+  }
 }
 
 Future<ui.Image?> _captureSnapshot(
@@ -86,9 +94,36 @@ class OriginExpansionTransition extends StatefulWidget {
 
 class _OriginExpansionTransitionState extends State<OriginExpansionTransition> {
   @override
+  void initState() {
+    super.initState();
+    widget.animation.addStatusListener(_onAnimationStatus);
+    _reportAnimationStatus(widget.animation.status);
+  }
+
+  @override
+  void didUpdateWidget(covariant OriginExpansionTransition oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.animation == widget.animation) return;
+    oldWidget.animation.removeStatusListener(_onAnimationStatus);
+    widget.animation.addStatusListener(_onAnimationStatus);
+    _reportAnimationStatus(widget.animation.status);
+  }
+
+  @override
   void dispose() {
-    widget.snapshot?.dispose();
+    widget.animation.removeStatusListener(_onAnimationStatus);
     super.dispose();
+  }
+
+  void _onAnimationStatus(AnimationStatus status) {
+    _reportAnimationStatus(status);
+  }
+
+  void _reportAnimationStatus(AnimationStatus status) {
+    debugOriginExpansionStatusObserver?.call(
+      status,
+      widget.origin != null && widget.snapshot != null,
+    );
   }
 
   @override
@@ -148,7 +183,7 @@ class _OriginExpansionTransitionState extends State<OriginExpansionTransition> {
                             BorderRadius.circular(12 * (1 - progress)),
                         child: RawImage(
                           key: const ValueKey('origin-expansion-snapshot'),
-                          image: snapshot,
+                          image: snapshot.clone(),
                           fit: BoxFit.cover,
                         ),
                       ),
