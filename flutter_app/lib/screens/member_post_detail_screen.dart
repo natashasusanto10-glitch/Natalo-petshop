@@ -2041,7 +2041,7 @@ class _PostCaptionState extends State<PostCaption>
                     ? NataloColors.officialGoldOnLight
                     : null)),
         if (suffixIndex >= 0 && !expanded) ...[
-          TextSpan(text: text.substring(0, suffixIndex)),
+          TextSpan(text: text.substring(0, suffixIndex + 4)),
           TextSpan(
               text: 'selengkapnya',
               recognizer: _expandRecognizer,
