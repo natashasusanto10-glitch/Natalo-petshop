@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type React from "react";
 import ProductVideoDraft, { type ProductVideoDraftHandle } from "./ProductVideoDraft";
 import { canRemoveImage, removeImageAt } from "@/lib/product/product-media";
 import { uploadProductImageFiles } from "../MultiImageUpload";
@@ -14,14 +15,16 @@ export type ProductVideoDraftValue = {
 };
 export type ProductVideoIntent = "keep" | "remove" | "replace";
 
-export function ProductMediaRail({ images, video, onImagesChange, onVideoIntentChange }: {
+export function ProductMediaRail({ images, video, onImagesChange, onVideoIntentChange, videoDraftRef }: {
   images: string[];
   video?: ProductVideoDraftValue | null;
   onImagesChange(images: string[]): void;
   onVideoIntentChange(intent: ProductVideoIntent): void;
+  videoDraftRef?: React.Ref<ProductVideoDraftHandle>;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<ProductVideoDraftHandle>(null);
+  const activeVideoRef = (videoDraftRef ?? videoRef) as React.RefObject<ProductVideoDraftHandle>;
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { if (!preview) return; const close = (event: KeyboardEvent) => { if (event.key === "Escape") setPreview(null); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [preview]);
@@ -47,10 +50,10 @@ export function ProductMediaRail({ images, video, onImagesChange, onVideoIntentC
     </div>
     <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple className="hidden" onChange={(event) => { void addFiles(event.target.files); event.currentTarget.value = ""; }} />
     <div className="flex items-center gap-2">
-      <button type="button" aria-label="Preview atau edit video" onClick={() => videoRef.current?.openPicker()} className="h-20 w-20 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 p-1">
+      <button type="button" aria-label="Preview atau edit video" onClick={() => activeVideoRef.current?.openPicker()} className="h-20 w-20 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 p-1">
         {video?.videoThumbnailUrl ? <img src={video.videoThumbnailUrl} alt="Video produk" className="h-full w-full rounded-lg object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-zinc-500">Video</div>}
       </button>
-      <div className="min-w-0 flex-1"><ProductVideoDraft ref={videoRef} onIntentChange={onVideoIntentChange} initial={video ? { videoGuid: video.videoGuid ?? null, videoStatus: video.videoStatus ?? null, videoThumbnailUrl: video.videoThumbnailUrl ?? null, videoDurationSec: video.videoDurationSec ?? null } : undefined} /></div>
+      <div className="min-w-0 flex-1"><ProductVideoDraft ref={activeVideoRef} onIntentChange={onVideoIntentChange} initial={video ? { videoGuid: video.videoGuid ?? null, videoStatus: video.videoStatus ?? null, videoThumbnailUrl: video.videoThumbnailUrl ?? null, videoDurationSec: video.videoDurationSec ?? null } : undefined} /></div>
     </div>
     {error ? <p className="text-xs text-red-600">{error}</p> : null}
     {preview ? <div role="dialog" aria-modal="true" aria-label="Preview foto" className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/70 p-6" onClick={() => setPreview(null)}><button type="button" aria-label="Tutup preview" onClick={() => setPreview(null)} className="absolute right-4 top-4 rounded-full bg-white px-3 py-1 text-lg">×</button><img src={preview} alt="Preview foto" className="max-h-full max-w-full rounded-xl object-contain" /></div> : null}

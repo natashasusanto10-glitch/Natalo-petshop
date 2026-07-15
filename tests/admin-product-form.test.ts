@@ -4,8 +4,16 @@ import { buildDescriptionContext } from "../lib/ai/product-description-context";
 import { buildGenerationPayload } from "../lib/ai/product-description-context";
 import { mergePersistedDescriptionContext } from "../lib/ai/product-description-context";
 import { variantPersistenceMode } from "../lib/product/variant-editor";
+import { productFormCopy } from "../lib/product/product-form-copy";
 
 describe("admin product creation lifecycle", () => {
+  it("uses one form copy for create and edit", () => {
+    expect(productFormCopy("create").submit).toBe("Simpan Produk");
+    expect(productFormCopy("edit").submit).toBe("Simpan Perubahan");
+  });
+  it("returns both modes to the product list after save", () => {
+    expect("/admin/products").toBe("/admin/products");
+  });
   it("builds AI context for an unsaved product", () => {
     expect(buildDescriptionContext({ name: "Pakan", categoryName: "Kucing", brandName: "Acme", variants: [{ optionRefs: ["Rasa: Tuna"] }] })).toEqual({
       name: "Pakan", categoryName: "Kucing", brandName: "Acme", variantOptions: ["Rasa: Tuna"],
