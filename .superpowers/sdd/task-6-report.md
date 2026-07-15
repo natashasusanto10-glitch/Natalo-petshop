@@ -17,3 +17,7 @@ Implemented a shared `ProductForm` for create and edit flows.
 ## Concern
 
 The current video API exposes provisioning/upload and processing status but no explicit finalize endpoint for creation-state promotion. The form commits the video after product creation; final visibility remains governed by the existing video/webhook lifecycle.
+
+## Follow-up fix
+
+Added explicit `/finalize` and `/compensate` admin routes, hidden create finalization after video commit, draft removal DELETE handling, compensation for failed create/video flows, strict incomplete-variant rejection, and video metadata on POST. Focused tests remain 17 passed.
