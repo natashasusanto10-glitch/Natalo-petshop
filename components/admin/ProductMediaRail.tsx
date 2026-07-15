@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import ProductVideoDraft, { type ProductVideoDraftHandle } from "./ProductVideoDraft";
 import { canRemoveImage, removeImageAt } from "@/lib/product/product-media";
+import { uploadProductImageFiles } from "../MultiImageUpload";
 export { canRemoveImage, removeImageAt } from "@/lib/product/product-media";
 
 export type ProductVideoDraftValue = {
@@ -28,14 +29,9 @@ export function ProductMediaRail({ images, video, onImagesChange, onVideoIntentC
   async function addFiles(files: FileList | null) {
     if (!files) return;
     const incoming = Array.from(files).slice(0, 9 - images.length);
-    const uploaded = await Promise.all(incoming.map(async (file) => {
-      const body = new FormData(); body.append("file", file);
-      const response = await fetch("/api/admin/upload", { method: "POST", body });
-      if (!response.ok) throw new Error(`Gagal upload ${file.name}`);
-      return String((await response.json()).url);
-    }).map((promise) => promise.catch(() => null)));
-    const urls = uploaded.filter((url): url is string => Boolean(url));
-    if (urls.length !== incoming.length) setError("Sebagian foto gagal di-upload.");
+    const result = await uploadProductImageFiles(incoming, 9 - images.length);
+    const urls = result.uploaded;
+    if (result.failed.length) setError("Sebagian foto gagal di-upload.");
     onImagesChange([...images, ...urls].slice(0, 9));
   }
 
