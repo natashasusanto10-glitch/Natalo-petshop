@@ -39,7 +39,7 @@ function qualityLabel(h: number): string {
   return `${h}p`;
 }
 
-export function ProductVideoUpload({
+function LegacyProductVideoUpload({
   productId,
   initial,
 }: {
@@ -336,6 +336,9 @@ export function ProductVideoUpload({
     </div>
   );
 }
+
+// Compatibility entry point: new forms should use the draft-safe component.
+export { ProductVideoDraft as ProductVideoUpload } from "./ProductVideoDraft";
 
 function StatusBadge({ status }: { status: string | null }) {
   if (status === "ready")

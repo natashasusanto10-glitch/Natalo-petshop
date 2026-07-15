@@ -210,6 +210,7 @@ export default async function AdminProductEditPage({
                     <ProductVideoUpload
                       productId={product.id}
                       initial={{
+                        videoGuid: product.videoGuid,
                         videoStatus: product.videoStatus,
                         videoThumbnailUrl: product.videoThumbnailUrl,
                         videoDurationSec: product.videoDurationSec,
