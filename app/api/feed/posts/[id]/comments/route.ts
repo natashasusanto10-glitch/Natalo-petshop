@@ -7,7 +7,7 @@
  * ADMIN sessions may use this same endpoint for comments and replies. The
  * server derives `isAdminOfficial` from the authenticated session (never from
  * client input), masks the response identity through the brand helpers so it
- * is rendered publicly as Natalo Official, and retains `authorId` internally
+ * is rendered publicly as Natalo Petshop Official, and retains `authorId` internally
  * for traceability/audit.
  */
 import { after, NextRequest, NextResponse } from "next/server";
