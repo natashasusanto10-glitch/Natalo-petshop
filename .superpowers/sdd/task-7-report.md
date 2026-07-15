@@ -9,3 +9,5 @@ Implemented stale product-creation visibility and cleanup.
 - No Vercel schedule was added because the endpoint is intentionally POST-only and existing Vercel cron routes are GET-based.
 
 Verification: `npx vitest run tests/admin-product-visibility.test.ts tests/admin-product-form.test.ts tests/admin-product-media.test.ts tests/product-video-draft.test.ts` — 19 tests passed.
+
+Reviewer follow-up: random-seed public SQL and its ID fetch now require `creationState = "ready"`. Compensation uses a conditional `deleteMany` so a concurrent finalization cannot delete a ready product; Bunny cleanup only runs when exactly one creating row was deleted.

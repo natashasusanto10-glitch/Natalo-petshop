@@ -121,7 +121,7 @@ export async function compensateCreatedProduct(id: string): Promise<boolean> {
   if (!product || !shouldDeleteCreatingProduct(product.creationState as ProductCreationState)) {
     return false;
   }
-  await prisma.product.delete({ where: { id } });
-  if (product.videoGuid) await deleteProductVideo(product.videoGuid);
-  return true;
+  const deleted = await prisma.product.deleteMany({ where: { id, creationState: "creating" } });
+  if (deleted.count === 1 && product.videoGuid) await deleteProductVideo(product.videoGuid);
+  return deleted.count === 1;
 }
