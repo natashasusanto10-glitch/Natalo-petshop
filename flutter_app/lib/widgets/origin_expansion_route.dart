@@ -269,10 +269,13 @@ class _OriginBackGestureController<T> {
 
   void dragEnd({required double velocity, required double width}) {
     if (!_active) return;
+    if (!getIsCurrent()) {
+      abort();
+      return;
+    }
     final dragFraction = 1 - controller.value;
-    final shouldPop = getIsCurrent() &&
-        (dragFraction >= _originBackCompletionFraction ||
-            velocity >= _originBackFlingVelocity);
+    final shouldPop = dragFraction >= _originBackCompletionFraction ||
+        velocity >= _originBackFlingVelocity;
     if (shouldPop) {
       _watchForTerminalStatus((status) => status == AnimationStatus.dismissed);
       navigator.pop();

@@ -363,6 +363,51 @@ void main() {
     );
   });
 
+  testWidgets('drag end aborts when the route was removed during the drag',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final key = GlobalKey();
+    final observer = _GestureObserver();
+    final statuses = <AnimationStatus>[];
+    debugOriginExpansionStatusObserver = (status, _) => statuses.add(status);
+    addTearDown(() => debugOriginExpansionStatusObserver = null);
+    await tester.pumpWidget(_buildSource(key, navigatorObservers: [observer]));
+    await _openSnapshotRoute(tester, key);
+    statuses.clear();
+
+    final gesture = await tester.startGesture(const Offset(1, 300));
+    await gesture.moveBy(
+      const Offset(20, 0),
+      timeStamp: const Duration(milliseconds: 100),
+    );
+    await gesture.moveBy(
+      const Offset(60, 0),
+      timeStamp: const Duration(milliseconds: 500),
+    );
+
+    final navigator = Navigator.of(
+      tester.element(find.text('Destination')),
+    );
+    final route = ModalRoute.of(tester.element(find.text('Destination')))!;
+    navigator.push<void>(
+      MaterialPageRoute<void>(builder: (_) => const Text('Covering route')),
+    );
+    await tester.pump();
+    navigator.removeRoute(route);
+    await gesture.up(timeStamp: const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Destination'), findsNothing);
+    expect(find.text('Covering route'), findsOneWidget);
+    expect(observer.starts, 1);
+    expect(observer.stops, 1);
+    expect(navigator.userGestureInProgress, isFalse);
+    expect(statuses, isNot(contains(AnimationStatus.completed)));
+  });
+
   testWidgets('fast edge fling pops below the distance threshold',
       (tester) async {
     tester.view.physicalSize = const Size(400, 800);
