@@ -559,9 +559,11 @@ export async function listFeedPosts({
 export async function listSavedFeedPosts({
   userId,
   cursor,
+  limit = FEED_PAGE_SIZE,
 }: {
   userId: string;
   cursor?: string | null;
+  limit?: number;
 }): Promise<FeedListResponse> {
   const saves = await prisma.feedSave.findMany({
     where: {
@@ -569,7 +571,7 @@ export async function listSavedFeedPosts({
       post: { is: PUBLIC_FEED_POST_WHERE },
     },
     orderBy: [{ createdAt: "desc" }, { postId: "desc" }],
-    take: FEED_PAGE_SIZE + 1,
+    take: limit + 1,
     ...(cursor
       ? {
           cursor: { userId_postId: { userId, postId: cursor } },
@@ -579,8 +581,8 @@ export async function listSavedFeedPosts({
     select: { postId: true },
   });
 
-  const hasMore = saves.length > FEED_PAGE_SIZE;
-  const page = hasMore ? saves.slice(0, FEED_PAGE_SIZE) : saves;
+  const hasMore = saves.length > limit;
+  const page = hasMore ? saves.slice(0, limit) : saves;
   if (page.length === 0) return { items: [], nextCursor: null };
 
   const postIds = page.map((save) => save.postId);

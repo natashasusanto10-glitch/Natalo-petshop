@@ -14,9 +14,15 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const rawLimit = request.nextUrl.searchParams.get("limit");
+  const requestedLimit = rawLimit === null ? Number.NaN : Number(rawLimit);
+  const limit = Number.isInteger(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), 30)
+    : 20;
   const result = await listSavedFeedPosts({
     userId: session.sub,
     cursor: request.nextUrl.searchParams.get("cursor"),
+    limit,
   });
   return NextResponse.json(result);
 }

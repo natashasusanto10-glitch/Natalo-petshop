@@ -4,7 +4,7 @@ import { assertSameOrigin } from "@/lib/csrf";
 import { PUBLIC_FEED_POST_WHERE } from "@/lib/feed/queries";
 import { prisma } from "@/lib/prisma";
 
-async function authorizePublicPost(
+async function authorizeViewer(
   request: NextRequest,
   params: Promise<{ id: string }>,
 ) {
@@ -34,8 +34,18 @@ async function authorizePublicPost(
     };
   }
 
+  return { session, postId };
+}
+
+async function authorizePublicPost(
+  request: NextRequest,
+  params: Promise<{ id: string }>,
+) {
+  const authorized = await authorizeViewer(request, params);
+  if ("response" in authorized) return authorized;
+
   const post = await prisma.feedPost.findFirst({
-    where: { id: postId, ...PUBLIC_FEED_POST_WHERE },
+    where: { id: authorized.postId, ...PUBLIC_FEED_POST_WHERE },
     select: { id: true },
   });
   if (!post) {
@@ -47,7 +57,7 @@ async function authorizePublicPost(
     };
   }
 
-  return { session, postId };
+  return authorized;
 }
 
 export async function PUT(
@@ -78,7 +88,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const authorized = await authorizePublicPost(request, params);
+  // Removing a private bookmark must remain possible even when the post was
+  // later hidden, rejected, or deleted from public feeds.
+  const authorized = await authorizeViewer(request, params);
   if ("response" in authorized) return authorized.response;
 
   await prisma.feedSave.deleteMany({
