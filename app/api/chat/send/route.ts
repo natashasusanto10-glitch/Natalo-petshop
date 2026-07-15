@@ -27,13 +27,14 @@ import {
   type OrderAggregate,
 } from "@/lib/chat/rooms";
 import { autoReopenIfResolved, autoGreetingOrAwayIfNew } from "@/lib/chat/auto-effects";
+import { buildOrderContextV1, type OrderContextV1 } from "@/lib/chat/order-contract";
+import { CHAT_TEXT_MAX_LEN, validateChatSendContent } from "@/lib/chat/send-content";
 
 export const dynamic = "force-dynamic";
 
 const ROOM_COLLECTION = "customerChats";
 const MESSAGE_SUBCOLLECTION = "messages";
 
-const TEXT_MAX_LEN = 4000;
 const RATE_LIMIT_MAX = 20;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 // Lookback lebih besar dari limit (20). Query di bawah SENGAJA tidak
@@ -52,7 +53,7 @@ type ProductContext = {
   price?: number;
   stock?: number;
 };
-type OrderContext = { orderNumber: string; status?: string; total?: number };
+type OrderContext = OrderContextV1;
 
 type ParsedContext =
   | { type: "product"; productId: string }
@@ -130,9 +131,13 @@ export async function POST(request: NextRequest) {
   const text = typeof b.text === "string" ? b.text.trim() : "";
   const clientMsgId = b.clientMsgId;
 
-  if (!text || text.length > TEXT_MAX_LEN) {
+  if (text.length > CHAT_TEXT_MAX_LEN || (!text && !parseContext(b.context))) {
     return NextResponse.json(
-      { error: "Pesan tidak boleh kosong dan maksimal 4000 karakter." },
+      {
+        error: text.length > CHAT_TEXT_MAX_LEN
+          ? "Pesan maksimal 4000 karakter."
+          : "Pesan tidak boleh kosong tanpa konteks yang valid.",
+      },
       { status: 400 },
     );
   }
@@ -231,11 +236,29 @@ export async function POST(request: NextRequest) {
   } else if (context?.type === "order") {
     const order = await prisma.order.findFirst({
       where: { orderNumber: context.orderNumber, userId: session.sub },
-      select: { orderNumber: true, status: true, total: true },
+      select: {
+        orderNumber: true,
+        status: true,
+        paymentStatus: true,
+        paymentProofStatus: true,
+        paymentProofUrl: true,
+        paymentProofVersion: true,
+        total: true,
+        createdAt: true,
+        _count: { select: { items: true } },
+      },
     });
     if (order) {
-      orderContext = { orderNumber: order.orderNumber, status: order.status, total: order.total };
+      orderContext = buildOrderContextV1({ ...order, itemCount: order._count.items });
     }
+  }
+
+  const contentValidation = validateChatSendContent(
+    text,
+    Boolean(productContext || orderContext),
+  );
+  if (!contentValidation.ok) {
+    return NextResponse.json({ error: contentValidation.error }, { status: 400 });
   }
 
   // 6b. Re-derive kutipan balasan dari pesan asli DI ROOM INI (anti-spoof +
@@ -287,11 +310,14 @@ export async function POST(request: NextRequest) {
       senderRole: "customer",
       senderId: session.sub,
       senderName: snapshot.customerName || undefined,
-      type: "text",
-      text,
+      type: text ? "text" : orderContext ? "order_context" : "product_context",
+      ...(text ? { text } : {}),
       clientMsgId,
       ...(productContext ? { product: productContext } : {}),
-      ...(orderContext ? { order: orderContext } : {}),
+      ...(orderContext ? {
+        order: orderContext.order,
+        schemaVersion: orderContext.schemaVersion,
+      } : {}),
       ...(replyTo ? { replyTo } : {}),
       customerName: snapshot.customerName,
       customerPhone: snapshot.customerPhone,

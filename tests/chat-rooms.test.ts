@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildCustomerSnapshot,
+  upsertOrderContextMessage,
   writeCustomerMessage,
   type FirestoreLike,
   type CollectionRefLike,
@@ -285,4 +286,49 @@ test("writeCustomerMessage: room existing berstatus waiting_customer TIDAK ditim
   assert.equal(room?.status, "waiting_customer"); // tak berubah
   assert.equal(room?.statusChangedAt, 2000);
   assert.equal(room?.statusChangedBy, "staff-2");
+});
+
+test("order context auto-forward upserts one deterministic bubble and preserves createdAt", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  const firestore = makeFakeFirestore(store);
+  const base = {
+    chatId: "cust_u8",
+    customerId: "u8",
+    orderId: "order8",
+    schemaVersion: 1,
+    order: {
+      orderNumber: "ORD-8",
+      status: "PENDING",
+      paymentStatus: "PENDING",
+      paymentProofStatus: "PENDING_REVIEW",
+      total: 80000,
+      itemCount: 2,
+      hasPaymentProof: true,
+      proofVersion: 1,
+      createdAt: "2026-07-15T00:00:00.000Z",
+    },
+  };
+  const first = await upsertOrderContextMessage({ firestore, now: () => 1000 }, base);
+  const second = await upsertOrderContextMessage(
+    { firestore, now: () => 2000 },
+    { ...base, order: { ...base.order, proofVersion: 2 } },
+  );
+
+  assert.equal(first.messageId, "order_context_order8");
+  assert.equal(second.messageId, first.messageId);
+  assert.equal(first.created, true);
+  assert.equal(second.created, false);
+  const messages = [...store.entries()].filter(([key]) => key.startsWith("customerChats/cust_u8/messages/"));
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0][1].createdAt, 1000);
+  assert.equal(messages[0][1].updatedAt, 2000);
+  assert.equal((messages[0][1].order as Record<string, unknown>).proofVersion, 2);
+
+  const stale = await upsertOrderContextMessage(
+    { firestore, now: () => 3000 },
+    base,
+  );
+  assert.equal(stale.applied, false);
+  assert.equal((messages[0][1].order as Record<string, unknown>).proofVersion, 2);
+  assert.equal(messages[0][1].updatedAt, 2000);
 });

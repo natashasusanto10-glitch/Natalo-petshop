@@ -14,6 +14,7 @@ import {
 import { creditWallet } from "@/lib/refund-wallet";
 import { SELF_PICKUP_METHOD, createPickupCode } from "@/lib/self-pickup";
 import { AdminAction, logAdminAction } from "@/lib/admin-audit";
+import { confirmOrderPayment } from "@/lib/order-payment-confirmation";
 // Notifikasi order via WhatsApp dihapus — admin actions update status,
 // customer dapat info via sendOrderStatusEmail + sendOrderStatusPush.
 // Fonnte hanya dipakai untuk OTP (register & login).
@@ -65,74 +66,7 @@ async function getEmailContext(orderId: string) {
 
 export async function markAsPaid(orderId: string) {
   const session = await requireAdmin();
-  const current = await prisma.order.findUnique({
-    where: { id: orderId },
-    select: { status: true, paymentStatus: true, orderType: true, orderNumber: true, total: true },
-  });
-  if (!current) return;
-
-  if (current.status === "CANCELLED" || current.status === "REFUNDED") {
-    throw new Error(
-      `Tidak bisa konfirmasi pembayaran: order sudah ${
-        current.status === "CANCELLED" ? "dibatalkan" : "di-refund"
-      }.`
-    );
-  }
-
-  if (current.paymentStatus === "PAID") {
-    throw new Error("Pembayaran sudah dikonfirmasi sebelumnya.");
-  }
-  if (current.paymentStatus === "REFUNDED") {
-    throw new Error("Pembayaran sudah di-refund, tidak bisa di-mark PAID.");
-  }
-
-  const result = await prisma.$transaction(async (tx) => {
-    const updated = await tx.order.updateMany({
-    where: {
-      id: orderId,
-      status: { notIn: ["CANCELLED", "REFUNDED"] },
-      paymentStatus: { notIn: ["PAID", "REFUNDED"] },
-    },
-    data:
-      current.status === "PENDING" && current.orderType === SELF_PICKUP_METHOD
-        ? { paymentStatus: "PAID", status: "PROCESSING", pickupStatus: "PREPARING" }
-        : current.status === "PENDING"
-        ? { paymentStatus: "PAID", status: "PAID" }
-        : current.orderType === SELF_PICKUP_METHOD
-        ? { paymentStatus: "PAID", pickupStatus: "PREPARING" }
-        : { paymentStatus: "PAID" },
-    });
-    if (updated.count > 0) {
-      await recordOrderStatusEvent(tx, orderId, "PAID", {
-        actorType: "ADMIN",
-        actorId: session.sub,
-        idempotencyKey: `admin-payment:${orderId}`,
-      });
-      if (current.status === "PENDING" && current.orderType === SELF_PICKUP_METHOD) {
-        await recordOrderStatusEvent(tx, orderId, "PROCESSING", {
-          actorType: "ADMIN",
-          actorId: session.sub,
-          idempotencyKey: `admin-processing-after-payment:${orderId}`,
-        });
-      }
-    }
-    return updated;
-  });
-  if (result.count === 0) {
-    throw new Error("Order sudah berubah, refresh halaman dulu.");
-  }
-
-  const ctx = await getEmailContext(orderId);
-  if (ctx) {
-    await sendOrderStatusEmail("PAID", ctx).catch(() => {});
-    await sendOrderStatusPush(orderId, ctx.orderNumber, "PAID").catch(() => {});
-  }
-
-  if (current.orderType !== SELF_PICKUP_METHOD) {
-    await createBiteshipShipment(orderId).catch((error) => {
-      console.error("[biteship] create shipment after manual payment failed", error);
-    });
-  }
+  const current = await confirmOrderPayment({ orderId, actorId: session.sub });
 
   logAdminAction({
     actorUserId: session.sub,

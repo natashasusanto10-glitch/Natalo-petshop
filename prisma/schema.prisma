@@ -34,6 +34,14 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum PaymentProofStatus {
+  NOT_UPLOADED
+  PENDING_REVIEW
+  VERIFIED
+  REJECTED
+  REPLACED
+}
+
 enum VoucherSourceType {
   // Voucher publik admin promo + voucher claim user (BDAY, POIN). Tampil
   // di daftar voucher pembeli. Maks 1 per checkout.
@@ -533,6 +541,12 @@ model Order {
   paymentReference        String?
   paymentUrl              String?
   paymentProofUrl         String?
+  paymentProofUploadedAt  DateTime?
+  paymentProofVersion     Int                @default(0)
+  paymentProofStatus      PaymentProofStatus @default(NOT_UPLOADED)
+  paymentProofReviewedAt  DateTime?
+  paymentProofReviewedBy  String?
+  paymentProofRejectReason String?
   manualBank              String?
   uniqueCode              Int?
   voucherCode             String? // Customer voucher (CUSTOMER source type)
@@ -587,6 +601,7 @@ model Order {
   timelineEvents          OrderStatusHistory[]
   voucherUsages           VoucherUsage[]
   refundCases             RefundCase[]
+  paymentProofHistory     OrderPaymentProof[]
   createdAt               DateTime        @default(now())
   updatedAt               DateTime        @updatedAt
 
@@ -601,6 +616,51 @@ model Order {
   // WHERE status='SHIPPED' AND shippedAt < threshold. Status pertama
   // karena selectivity tinggi (hanya beberapa order yang SHIPPED).
   @@index([status, shippedAt])
+}
+
+/// Immutable-per-version audit trail for manual-transfer proofs. The Order
+/// fields above are the current snapshot used by hot paths; these rows retain
+/// replacement/review history for support and dispute resolution.
+model OrderPaymentProof {
+  id           String             @id @default(cuid())
+  orderId      String
+  order        Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  version      Int
+  url          String
+  status       PaymentProofStatus @default(PENDING_REVIEW)
+  uploadedAt   DateTime           @default(now())
+  reviewedAt   DateTime?
+  reviewedBy   String?
+  rejectReason String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@unique([orderId, version])
+  @@index([orderId, uploadedAt])
+  @@index([status, uploadedAt])
+}
+
+/// Transactional outbox for durable delivery from PostgreSQL to customer-chat
+/// Firestore. `eventKey` is stable per order, so proof replacement refreshes
+/// one pending event and one deterministic chat bubble instead of duplicating.
+model ChatOutboxEvent {
+  id          String   @id @default(cuid())
+  eventKey    String   @unique
+  type        String
+  aggregateId String
+  payload     Json
+  generation  Int      @default(1)
+  status      String   @default("PENDING")
+  attempts    Int      @default(0)
+  availableAt DateTime @default(now())
+  lockedAt    DateTime?
+  processedAt DateTime?
+  lastError   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, availableAt])
+  @@index([aggregateId, createdAt])
 }
 
 model OrderStatusHistory {

@@ -3,6 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { uploadToUT } from "@/lib/uploadthing";
 import { getSession } from "@/lib/auth";
 import { validateImageMagicBytes } from "@/lib/upload/validate-image-bytes";
+import { buildOrderContextV1 } from "@/lib/chat/order-contract";
+import {
+  ORDER_CONTEXT_OUTBOX_TYPE,
+  orderContextOutboxKey,
+  processOrderContextOutboxEvent,
+} from "@/lib/chat/order-outbox";
 
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_SIZE = 5 * 1024 * 1024;
@@ -13,8 +19,24 @@ export async function POST(
 ) {
   const { orderNumber } = await params;
 
+  if (!orderNumber || orderNumber.length > 80) {
+    return NextResponse.json({ error: "Nomor order tidak valid" }, { status: 400 });
+  }
+
   const order = await prisma.order
-    .findUnique({ where: { orderNumber } })
+    .findUnique({
+      where: { orderNumber },
+      select: {
+        id: true,
+        orderNumber: true,
+        userId: true,
+        trackingToken: true,
+        paymentProofUrl: true,
+        paymentProofVersion: true,
+        paymentProofStatus: true,
+        paymentStatus: true,
+      },
+    })
     .catch(() => null);
   if (!order) {
     return NextResponse.json({ error: "Order tidak ditemukan" }, { status: 404 });
@@ -39,6 +61,12 @@ export async function POST(
     return NextResponse.json(
       { error: "Tidak punya akses ke order ini" },
       { status: 403 },
+    );
+  }
+  if (order.paymentProofStatus === "VERIFIED" || order.paymentStatus === "PAID") {
+    return NextResponse.json(
+      { error: "Pembayaran sudah diverifikasi dan bukti tidak dapat diganti" },
+      { status: 409 },
     );
   }
 
@@ -66,14 +94,104 @@ export async function POST(
 
   try {
     const { url } = await uploadToUT(file, `proof-${orderNumber}`);
-    await prisma.order.update({
-      where: { orderNumber },
-      data: { paymentProofUrl: url },
+    const now = new Date();
+    const saved = await prisma.$transaction(async (tx) => {
+      const updated = await tx.order.update({
+        where: { id: order.id },
+        data: {
+          paymentProofUrl: url,
+          paymentProofUploadedAt: now,
+          paymentProofVersion: { increment: 1 },
+          paymentProofStatus: "PENDING_REVIEW",
+          paymentProofReviewedAt: null,
+          paymentProofReviewedBy: null,
+          paymentProofRejectReason: null,
+        },
+        select: {
+          id: true,
+          userId: true,
+          orderNumber: true,
+          status: true,
+          paymentStatus: true,
+          paymentProofStatus: true,
+          paymentProofUrl: true,
+          paymentProofVersion: true,
+          total: true,
+          createdAt: true,
+          _count: { select: { items: true } },
+        },
+      });
+      await tx.orderPaymentProof.updateMany({
+        where: { orderId: order.id, version: { lt: updated.paymentProofVersion } },
+        data: { status: "REPLACED" },
+      });
+      await tx.orderPaymentProof.create({
+        data: {
+          orderId: updated.id,
+          version: updated.paymentProofVersion,
+          url,
+          status: "PENDING_REVIEW",
+          uploadedAt: now,
+        },
+      });
+
+      let outboxEventId: string | null = null;
+      if (updated.userId) {
+        const context = buildOrderContextV1({
+          ...updated,
+          itemCount: updated._count.items,
+        });
+        const event = await tx.chatOutboxEvent.upsert({
+          where: { eventKey: orderContextOutboxKey(updated.id) },
+          create: {
+            eventKey: orderContextOutboxKey(updated.id),
+            type: ORDER_CONTEXT_OUTBOX_TYPE,
+            aggregateId: updated.id,
+            payload: { ...context, orderId: updated.id, customerId: updated.userId },
+          },
+          update: {
+            type: ORDER_CONTEXT_OUTBOX_TYPE,
+            payload: { ...context, orderId: updated.id, customerId: updated.userId },
+            generation: { increment: 1 },
+            status: "PENDING",
+            attempts: 0,
+            availableAt: now,
+            lockedAt: null,
+            processedAt: null,
+            lastError: null,
+          },
+          select: { id: true },
+        });
+        outboxEventId = event.id;
+      }
+      return { updated, outboxEventId };
     });
-    return NextResponse.json({ url });
+
+    console.info(JSON.stringify({
+      event: "payment_proof_uploaded",
+      orderNumber,
+      proofVersion: saved.updated.paymentProofVersion,
+      outboxEventId: saved.outboxEventId,
+    }));
+    if (saved.outboxEventId) {
+      // Delivery failure is persisted by the outbox processor and retried by
+      // cron; it must never turn a successful proof upload into an HTTP 500.
+      await processOrderContextOutboxEvent(saved.outboxEventId).catch(() => false);
+    }
+    return NextResponse.json({
+      url,
+      paymentProofStatus: saved.updated.paymentProofStatus,
+      proofVersion: saved.updated.paymentProofVersion,
+      chatForwardQueued: Boolean(saved.outboxEventId),
+    });
   } catch (e) {
+    console.error(JSON.stringify({
+      event: "payment_proof_upload_failed",
+      orderNumber,
+      error: e instanceof Error ? e.message.slice(0, 300) : "unknown",
+    }));
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Upload gagal" },
+      { error: "Upload bukti pembayaran gagal. Silakan coba lagi." },
       { status: 500 },
     );
   }

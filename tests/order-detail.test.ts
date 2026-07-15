@@ -17,6 +17,12 @@ test("order detail serialization exposes product metadata and review state", () 
     status: "DELIVERED",
     paymentStatus: "PAID",
     paymentProvider: "MANUAL",
+    paymentProofUrl: "https://cdn.example/proof.jpg",
+    paymentProofStatus: "REJECTED",
+    paymentProofVersion: 2,
+    paymentProofUploadedAt: new Date("2026-01-01T01:00:00.000Z"),
+    paymentProofReviewedAt: new Date("2026-01-01T02:00:00.000Z"),
+    paymentProofRejectReason: "Nominal tidak terlihat",
     paymentUrl: null,
     paymentReference: null,
     subtotal: 100000,
@@ -65,6 +71,10 @@ test("order detail serialization exposes product metadata and review state", () 
   assert.equal(order.items[0].productSlug, "produk");
   assert.equal(order.items[0].productImage, "/produk.jpg");
   assert.equal(order.items[0].reviewed, true);
+  assert.equal(order.paymentProofStatus, "REJECTED");
+  assert.equal(order.paymentProofVersion, 2);
+  assert.equal(order.paymentProofUploadedAt, "2026-01-01T01:00:00.000Z");
+  assert.equal(order.paymentProofRejectReason, "Nominal tidak terlihat");
 });
 
 test("order detail page hides bottom navigation for focused mobile flow", () => {

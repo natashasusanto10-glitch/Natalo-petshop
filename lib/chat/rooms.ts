@@ -137,7 +137,8 @@ export type WriteCustomerMessageInput = {
   text?: string;
   image?: { url: string };
   product?: { productId: string; slug?: string; name: string; imageUrl?: string; price?: number; stock?: number };
-  order?: { orderNumber: string; status?: string; total?: number };
+  order?: Partial<OrderContextV1["order"]> & { orderNumber: string };
+  schemaVersion?: number;
   // Kutipan balasan — sudah di-derive-ulang server (route) dari pesan asli.
   replyTo?: { id: string; senderName?: string; type?: string; text?: string };
   auto?: boolean;
@@ -160,6 +161,92 @@ export type WriteCustomerMessageResult = {
   messageId: string;
   deduped: boolean;
 };
+
+export type WriteOrderContextInput = {
+  chatId: string;
+  customerId: string;
+  orderId: string;
+  schemaVersion: number;
+  order: {
+    orderNumber: string;
+    status: string;
+    paymentStatus: string;
+    paymentProofStatus: string;
+    total: number;
+    itemCount: number;
+    hasPaymentProof: boolean;
+    proofVersion: number;
+    createdAt: string;
+  };
+};
+
+/**
+ * Upsert one system-generated order bubble using a deterministic document ID.
+ * Unlike query-before-write client message dedupe, concurrent retries target
+ * the same Firestore document and therefore cannot create duplicate bubbles.
+ */
+import type { OrderContextV1 } from "@/lib/chat/order-contract";
+export async function upsertOrderContextMessage(
+  deps: WriteCustomerMessageDeps,
+  input: WriteOrderContextInput,
+): Promise<{ messageId: string; created: boolean; applied: boolean }> {
+  const roomRef = deps.firestore.collection(ROOM_COLLECTION).doc(input.chatId);
+  const messageId = `order_context_${input.orderId}`;
+  const messageRef = roomRef.collection(MESSAGE_SUBCOLLECTION).doc(messageId);
+  const nowMs = deps.now();
+  let created = false;
+  let applied = true;
+
+  await deps.firestore.runTransaction(async (tx) => {
+    const [roomSnap, messageSnap] = await Promise.all([
+      tx.get(roomRef),
+      tx.get(messageRef),
+    ]);
+    created = !messageSnap.exists;
+    const existingOrder = messageSnap.data()?.order as Record<string, unknown> | undefined;
+    const existingProofVersion = existingOrder?.proofVersion;
+    if (
+      typeof existingProofVersion === "number" &&
+      existingProofVersion > input.order.proofVersion
+    ) {
+      applied = false;
+      return;
+    }
+    const roomData = roomSnap.exists ? roomSnap.data() : undefined;
+    const roomUpdate: Record<string, unknown> = {
+      customerId: input.customerId,
+      updatedAt: nowMs,
+      lastMessageType: "order_context",
+      lastMessageAt: nowMs,
+      lastMessageSender: "customer",
+      lastMessageText: `Pesanan ${input.order.orderNumber}`,
+    };
+    if (!roomData || roomData.createdAt === undefined) roomUpdate.createdAt = nowMs;
+    if (!roomData || roomData.status === undefined) {
+      roomUpdate.status = "waiting_staff";
+      roomUpdate.statusChangedAt = nowMs;
+      roomUpdate.statusChangedBy = "system";
+    }
+    tx.set(roomRef, roomUpdate, { merge: true });
+
+    tx.set(messageRef, {
+      clientMsgId: `payment-proof-${input.orderId}`,
+      senderRole: "customer",
+      senderId: input.customerId,
+      type: "order_context",
+      schemaVersion: input.schemaVersion,
+      order: input.order,
+      auto: true,
+      createdAt: messageSnap.exists && typeof messageSnap.data()?.createdAt === "number"
+        ? messageSnap.data()?.createdAt
+        : nowMs,
+      updatedAt: nowMs,
+      status: "sent",
+    }, { merge: true });
+  });
+
+  return { messageId, created, applied };
+}
 
 export async function writeCustomerMessage(
   deps: WriteCustomerMessageDeps,
@@ -228,6 +315,7 @@ export async function writeCustomerMessage(
     if (input.image !== undefined) messageDoc.image = input.image;
     if (input.product !== undefined) messageDoc.product = input.product;
     if (input.order !== undefined) messageDoc.order = input.order;
+    if (input.schemaVersion !== undefined) messageDoc.schemaVersion = input.schemaVersion;
     if (input.replyTo !== undefined) messageDoc.replyTo = input.replyTo;
     if (input.auto !== undefined) messageDoc.auto = input.auto;
     if (input.staffOnly !== undefined) messageDoc.staffOnly = input.staffOnly;

@@ -19,12 +19,14 @@ class ChatComposer extends StatefulWidget {
   /// sudah pasti teksnya tidak kosong — tombol kirim hanya tampil saat ada
   /// teks, dan `onSubmitted` di-guard sama di sini).
   final ValueChanged<String> onSend;
+  final bool canSendWithoutText;
 
   const ChatComposer({
     super.key,
     required this.controller,
     required this.onAttachPhoto,
     required this.onSend,
+    this.canSendWithoutText = false,
   });
 
   @override
@@ -54,7 +56,7 @@ class _ChatComposerState extends State<ChatComposer> {
 
   void _submit() {
     final text = widget.controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && !widget.canSendWithoutText) return;
     widget.onSend(text);
   }
 
@@ -92,8 +94,9 @@ class _ChatComposerState extends State<ChatComposer> {
               Expanded(
                 child: Container(
                   constraints: const BoxConstraints(minHeight: 40),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md,
+                  ),
                   decoration: BoxDecoration(
                     color: NataloColors.surface,
                     borderRadius: AppRadius.pill,
@@ -121,8 +124,9 @@ class _ChatComposerState extends State<ChatComposer> {
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
                       isDense: true,
-                      contentPadding:
-                          EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                      contentPadding: EdgeInsets.symmetric(
+                        vertical: AppSpacing.sm,
+                      ),
                     ),
                     onSubmitted: (_) => _submit(),
                   ),
@@ -131,13 +135,16 @@ class _ChatComposerState extends State<ChatComposer> {
               const SizedBox(width: AppSpacing.sm),
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 150),
-                child: _hasText
+                child: (_hasText || widget.canSendWithoutText)
                     ? _SendButton(
-                        key: const ValueKey('chat-send'), onTap: _submit)
+                        key: const ValueKey('chat-send'),
+                        onTap: _submit,
+                      )
                     : const SizedBox(
                         key: ValueKey('chat-send-empty'),
                         width: 40,
-                        height: 40),
+                        height: 40,
+                      ),
               ),
             ],
           ),

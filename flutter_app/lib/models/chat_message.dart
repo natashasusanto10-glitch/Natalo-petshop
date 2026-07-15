@@ -114,15 +114,81 @@ class ChatOrderRef {
   final String orderNumber;
   final String? status;
   final int? total;
+  final int itemCount;
+  final String? paymentProofStatus;
+  final String? paymentStatus;
+  final bool hasPaymentProof;
+  final int proofVersion;
+  final DateTime? createdAt;
+  final int schemaVersion;
 
-  const ChatOrderRef({required this.orderNumber, this.status, this.total});
+  const ChatOrderRef({
+    required this.orderNumber,
+    this.status,
+    this.total,
+    this.itemCount = 0,
+    this.paymentProofStatus,
+    this.paymentStatus,
+    this.hasPaymentProof = false,
+    this.proofVersion = 0,
+    this.createdAt,
+    this.schemaVersion = 1,
+  });
 
   factory ChatOrderRef.fromJson(Map<String, dynamic> json) {
     return ChatOrderRef(
-      orderNumber: _string(json['orderNumber']),
-      status: _stringOrNull(json['status']),
-      total: _asIntOrNull(json['total']),
+      orderNumber: _string(json['orderNumber'] ?? json['order_number']),
+      status: _stringOrNull(json['status'] ?? json['orderStatus']),
+      total: _asIntOrNull(json['total'] ?? json['grandTotal']),
+      itemCount: _asInt(json['itemCount'] ?? json['item_count']),
+      paymentProofStatus: _stringOrNull(
+        json['paymentProofStatus'] ?? json['payment_proof_status'],
+      ),
+      paymentStatus: _stringOrNull(
+        json['paymentStatus'] ?? json['payment_status'],
+      ),
+      hasPaymentProof: json['hasPaymentProof'] == true ||
+          json['has_payment_proof'] == true ||
+          _stringOrNull(json['paymentProofUrl']) != null,
+      proofVersion: _asInt(json['proofVersion'] ?? json['proof_version']),
+      createdAt: _asDateTimeOrNull(json['createdAt'] ?? json['created_at']),
+      schemaVersion: _asInt(
+        json['schemaVersion'] ?? json['schema_version'],
+        fallback: 1,
+      ),
     );
+  }
+
+  Map<String, dynamic> toSendContext() => {
+        'type': 'order',
+        'orderNumber': orderNumber,
+        'schemaVersion': schemaVersion,
+      };
+}
+
+String chatOrderStatusLabel(String? status, {String? paymentProofStatus}) {
+  final proof = paymentProofStatus?.trim().toUpperCase();
+  if (proof == 'PENDING_REVIEW') return 'Menunggu verifikasi';
+  if (proof == 'VERIFIED') return 'Pembayaran terverifikasi';
+  if (proof == 'REJECTED') return 'Bukti perlu diperbarui';
+  switch (status?.trim().toUpperCase()) {
+    case 'PENDING':
+    case 'UNPAID':
+      return 'Menunggu pembayaran';
+    case 'PAID':
+      return 'Pembayaran diterima';
+    case 'PROCESSING':
+      return 'Sedang diproses';
+    case 'SHIPPED':
+      return 'Sedang dikirim';
+    case 'DELIVERED':
+    case 'COMPLETED':
+      return 'Selesai';
+    case 'CANCELLED':
+    case 'CANCELED':
+      return 'Dibatalkan';
+    default:
+      return 'Lihat status pesanan';
   }
 }
 
@@ -222,7 +288,13 @@ class ChatMessage {
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     final productRaw = json['product'];
     final imageRaw = json['image'];
-    final orderRaw = json['order'];
+    final contextRaw = json['context'];
+    final orderRaw = json['order'] ??
+        json['orderContext'] ??
+        json['order_context'] ??
+        (contextRaw is Map && contextRaw['type'] == 'order'
+            ? contextRaw['order'] ?? contextRaw
+            : null);
     final replyRaw = json['replyTo'];
     return ChatMessage(
       id: _string(json['id']),
@@ -234,7 +306,16 @@ class ChatMessage {
           : null,
       image: imageRaw is Map ? Map<String, dynamic>.from(imageRaw) : null,
       order: orderRaw is Map
-          ? ChatOrderRef.fromJson(Map<String, dynamic>.from(orderRaw))
+          ? ChatOrderRef.fromJson({
+              ...Map<String, dynamic>.from(orderRaw),
+              if (!orderRaw.containsKey('schemaVersion'))
+                'schemaVersion': json['schemaVersion'] ??
+                    json['schema_version'] ??
+                    (contextRaw is Map
+                        ? contextRaw['schemaVersion'] ??
+                            contextRaw['schema_version']
+                        : null),
+            })
           : null,
       replyTo: replyRaw is Map
           ? ChatReplyRef.fromJson(Map<String, dynamic>.from(replyRaw))
@@ -290,5 +371,18 @@ int? _asIntOrNull(Object? value) {
   if (value is int) return value;
   if (value is num) return value.toInt();
   if (value is String) return int.tryParse(value);
+  return null;
+}
+
+DateTime? _asDateTimeOrNull(Object? value) {
+  if (value is DateTime) return value;
+  if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+  if (value is num) return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+  if (value is String) {
+    final parsed = DateTime.tryParse(value);
+    if (parsed != null) return parsed;
+    final millis = int.tryParse(value);
+    return millis == null ? null : DateTime.fromMillisecondsSinceEpoch(millis);
+  }
   return null;
 }

@@ -61,6 +61,10 @@
     {
       "path": "/api/cron/product-video-gc",
       "schedule": "30 3 * * 1"
+    },
+    {
+      "path": "/api/cron/chat-order-outbox",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

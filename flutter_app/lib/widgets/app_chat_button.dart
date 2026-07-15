@@ -28,8 +28,15 @@ import 'app_ui.dart';
 class AppChatButton extends StatefulWidget {
   /// Override warna ikon (mis. putih di hero biru Beranda). Null = onSurface.
   final Color? iconColor;
+  final Object? routeArguments;
+  final String tooltip;
 
-  const AppChatButton({super.key, this.iconColor});
+  const AppChatButton({
+    super.key,
+    this.iconColor,
+    this.routeArguments,
+    this.tooltip = 'Chat',
+  });
 
   @override
   State<AppChatButton> createState() => _AppChatButtonState();
@@ -51,13 +58,17 @@ class _AppChatButtonState extends State<AppChatButton>
     );
     _pulseScale = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 1.4)
-            .chain(CurveTween(curve: Curves.easeOutCubic)),
+        tween: Tween(
+          begin: 1.0,
+          end: 1.4,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
         weight: 40,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 1.4, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeInOutCubic)),
+        tween: Tween(
+          begin: 1.4,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeInOutCubic)),
         weight: 60,
       ),
     ]).animate(_pulseCtrl);
@@ -73,8 +84,9 @@ class _AppChatButtonState extends State<AppChatButton>
   @override
   void dispose() {
     chatStore.removeListener(_onChatChanged);
-    pushNotificationService.notificationRefreshTick
-        .removeListener(_onRefreshTick);
+    pushNotificationService.notificationRefreshTick.removeListener(
+      _onRefreshTick,
+    );
     _pulseCtrl.dispose();
     super.dispose();
   }
@@ -106,9 +118,13 @@ class _AppChatButtonState extends State<AppChatButton>
           alignment: Alignment.center,
           children: [
             AppHeaderIconButton(
-              tooltip: 'Chat',
+              tooltip: widget.tooltip,
               color: widget.iconColor,
-              onPressed: () => Navigator.pushNamed(context, '/chat'),
+              onPressed: () => Navigator.pushNamed(
+                context,
+                '/chat',
+                arguments: widget.routeArguments,
+              ),
               // Ikon chat gaya marketplace (gelembung membulat + 3 titik),
               // custom-paint — Material tak punya glyph bulat+titik. Warisi
               // warna & ukuran dari ambient IconTheme (24 header custom / 25
@@ -178,9 +194,8 @@ class ChatDotsBubbleIcon extends StatelessWidget {
     final s = size ?? iconTheme.size ?? 24.0;
     // Fallback ke onSurface (bukan textPrimary hardcoded) supaya benar di dark
     // mode juga. Di dalam IconButton, iconTheme.color sudah = onSurface.
-    final c = color ??
-        iconTheme.color ??
-        Theme.of(context).colorScheme.onSurface;
+    final c =
+        color ?? iconTheme.color ?? Theme.of(context).colorScheme.onSurface;
     return SizedBox(
       width: s,
       height: s,
@@ -219,8 +234,10 @@ class _ChatDotsBubblePainter extends CustomPainter {
     const gapStart = 98 * math.pi / 180; // ujung celah dekat titik bawah
     const gapEnd = 146 * math.pi / 180; // ujung celah sisi kiri
     const tipX = 4.4, tipY = 20.9; // ujung runcing ekor (kiri-bawah)
-    final rect =
-        Rect.fromCircle(center: Offset(cx * k, cyc * k), radius: r * k);
+    final rect = Rect.fromCircle(
+      center: Offset(cx * k, cyc * k),
+      radius: r * k,
+    );
     final bubble = Path()
       ..moveTo(
         (cx + r * math.cos(gapEnd)) * k,

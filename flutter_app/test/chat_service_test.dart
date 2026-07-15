@@ -125,6 +125,27 @@ void main() {
       expect(capturedBody!['context'], {'type': 'product', 'productId': 'p1'});
     });
 
+    test('context order dapat dikirim tanpa teks tambahan', () async {
+      Map<String, dynamic>? capturedBody;
+      final fake = _FakeApiClient(postJsonHandler: (path, body) {
+        capturedBody = body as Map<String, dynamic>;
+        return {'ok': true, 'messageId': 'm-order', 'deduped': false};
+      });
+      final service = ChatService(client: fake);
+
+      await service.sendText(
+        '',
+        context: {'type': 'order', 'orderNumber': 'ORD-1'},
+        clientMsgId: 'client_order_1',
+      );
+
+      expect(capturedBody!['text'], '');
+      expect(capturedBody!['context'], {
+        'type': 'order',
+        'orderNumber': 'ORD-1',
+      });
+    });
+
     test('deduped=true tetap ok=true (retry idempoten)', () async {
       final fake = _FakeApiClient(postJsonHandler: (path, body) {
         return {'ok': true, 'messageId': 'm1', 'deduped': true};

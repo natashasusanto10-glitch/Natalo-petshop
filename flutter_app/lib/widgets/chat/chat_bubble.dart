@@ -56,6 +56,8 @@ class ChatBubble extends StatelessWidget {
             product: message.product,
             order: message.order,
             isCustomer: isCustomer,
+            sendStatus: message.status,
+            onRetry: onRetry,
           ),
         ],
       ],
@@ -217,8 +219,8 @@ class _ReplyQuote extends StatelessWidget {
         children: [
           if (who != null && who.isNotEmpty)
             Text(who,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w800,
@@ -338,12 +340,16 @@ class ChatContextChip extends StatefulWidget {
   final ChatProductRef? product;
   final ChatOrderRef? order;
   final bool isCustomer;
+  final ChatSendStatus? sendStatus;
+  final VoidCallback? onRetry;
 
   const ChatContextChip({
     super.key,
     this.product,
     this.order,
     required this.isCustomer,
+    this.sendStatus,
+    this.onRetry,
   }) : assert(product != null || order != null,
             'ChatContextChip butuh product atau order');
 
@@ -395,6 +401,122 @@ class _ChatContextChipState extends State<ChatContextChip> {
   Widget build(BuildContext context) {
     final product = widget.product;
     final order = widget.order;
+
+    if (order != null && product == null) {
+      final status = chatOrderStatusLabel(
+        order.status,
+        paymentProofStatus: order.paymentProofStatus,
+      );
+      final details = <String>[
+        if (order.total != null) formatRupiah(order.total!),
+        if (order.itemCount > 0) '${order.itemCount} item',
+      ].join(' · ');
+      return Semantics(
+        button: true,
+        label: 'Buka detail pesanan ${order.orderNumber}, $status',
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.sizeOf(context).width * 0.78,
+          ),
+          child: Material(
+            color: NataloColors.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: AppRadius.large,
+              side: const BorderSide(color: NataloColors.border),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: _onTap,
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: NataloColors.primarySoft,
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                      ),
+                      child: const Icon(
+                        Icons.receipt_long_outlined,
+                        size: 21,
+                        color: NataloColors.primary,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm + 2),
+                    Flexible(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'PESANAN',
+                            style: TextStyle(
+                              fontSize: 10,
+                              letterSpacing: .5,
+                              fontWeight: FontWeight.w800,
+                              color: NataloColors.textTertiary,
+                            ),
+                          ),
+                          Text(
+                            order.orderNumber,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: NataloColors.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            details.isEmpty ? status : '$status\n$details',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              height: 1.3,
+                              color: NataloColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.xs),
+                    widget.sendStatus == ChatSendStatus.failed
+                        ? IconButton(
+                            onPressed: widget.onRetry,
+                            tooltip: 'Coba kirim lagi',
+                            visualDensity: VisualDensity.compact,
+                            icon: const Icon(
+                              Icons.error_outline_rounded,
+                              size: 20,
+                              color: NataloColors.danger,
+                            ),
+                          )
+                        : widget.sendStatus == ChatSendStatus.sending ||
+                                _loading
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 1.8),
+                              )
+                            : const Icon(
+                                Icons.chevron_right_rounded,
+                                size: 20,
+                                color: NataloColors.textTertiary,
+                              ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     final IconData leadingIcon = product != null
         ? Icons.shopping_bag_outlined

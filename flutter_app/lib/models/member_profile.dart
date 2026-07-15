@@ -16,6 +16,7 @@ export 'member_voucher.dart';
 class MemberProfile {
   final String id;
   final String name;
+
   /// Public handle (IG/TikTok-style). 3-30 char, lowercase alfanum +
   /// `_` + `.`. Nullable buat user existing yang belum set — UI
   /// fallback ke `name` di feed/komentar, plus banner prompt di home.
@@ -24,6 +25,7 @@ class MemberProfile {
   final String? phone;
   final String role;
   final DateTime? birthDate;
+
   /// Timestamp lock birthDate. Diset server saat user dapat voucher
   /// ulang tahun pertama. UI render tgl lahir read-only kalau != null.
   /// Untuk ubah, user harus hubungi admin via WA dengan verifikasi.
@@ -31,6 +33,7 @@ class MemberProfile {
   final DateTime? createdAt;
   final int points;
   final String? profilePhotoUrl;
+
   /// Bio user — short description max 150 char yang muncul di header
   /// profile screen. Nullable / empty → tampilkan placeholder
   /// "Tambahkan bio" di edit form.
@@ -279,7 +282,8 @@ class MemberVoucher {
   bool get isProductScope => discountScope != 'SHIPPING';
 
   /// True kalau voucher ini scoped ke brand tertentu.
-  bool get isBrandExclusive => brandName != null && brandName!.trim().isNotEmpty;
+  bool get isBrandExclusive =>
+      brandName != null && brandName!.trim().isNotEmpty;
 }
 
 class OrderSummary {
@@ -299,18 +303,23 @@ class OrderSummary {
   final String? courierCode;
   final String? courierService;
   final String? trackingNumber;
+
   /// Info driver untuk kurir INSTANT (Gojek/Grab/Lalamove) yang tidak
   /// punya resi tradisional. Free-form text dari admin — biasanya berisi
   /// nama driver, HP, plat nomor, atau link GPS. Mutually exclusive
   /// dengan trackingNumber (cuma salah satu yang terisi per order).
   final String? shippingDriverInfo;
+
   /// Timestamp kapan admin tandai SHIPPED (=shippedAt). Pakai untuk
   /// tampilkan estimated auto-confirm date di order detail.
   final DateTime? shippedAt;
+
   /// Timestamp ketika pesanan pickup sudah selesai disiapkan oleh toko.
   final DateTime? readyForPickupAt;
+
   /// Timestamp ketika pesanan pickup diserahkan kepada customer.
   final DateTime? pickedUpAt;
+
   /// Pre-computed timestamp kapan order akan otomatis ditandai DELIVERED
   /// kalau user tidak tap "Sudah Diterima" duluan (cron auto-confirm
   /// jalan di hari ke-7 setelah shippedAt). Null kalau belum SHIPPED.
@@ -334,10 +343,12 @@ class OrderSummary {
   final double subtotal;
   final double shippingCost;
   final double discount;
+
   /// Diskon yang khusus apply ke produk (dari voucher tipe
   /// PUBLIC_PRODUCT_DISCOUNT + LOYALTY_POINT_CLAIM + private scope PRODUCT).
   /// Granular split dari `discount` aggregate untuk transparency UI.
   final double productDiscount;
+
   /// Diskon yang khusus apply ke ongkir (dari voucher PUBLIC_FREE_SHIPPING +
   /// private scope SHIPPING). UI tampil "Diskon Ongkir -Rp X" terpisah dari
   /// diskon produk.
@@ -355,14 +366,19 @@ class OrderSummary {
   final String paymentProvider; // MANUAL/MIDTRANS
   final String? paymentUrl;
   final String? paymentProofUrl;
+  final String? paymentProofStatus;
+  final int paymentProofVersion;
+  final DateTime? paymentProofUploadedAt;
   final String? manualBank;
   // Legacy + per-tipe voucher codes — backend save voucher ke salah satu
   // slot berdasarkan tipe. UI iterate semua slot non-null untuk tampilan
   // voucher list. Lihat /api/orders/route.ts untuk mapping.
   final String? voucherCode;
+
   /// Voucher gratis ongkir (PUBLIC_FREE_SHIPPING). Disimpan terpisah
   /// dari shippingVoucherCode legacy slot.
   final String? freeShippingVoucherCode;
+
   /// Voucher private dari penjual (PRIVATE_MANUAL_CODE). Alias
   /// manualVoucherCode di backend flow baru. UI fallback chain
   /// keduanya untuk display.
@@ -371,6 +387,7 @@ class OrderSummary {
   final String? shippingVoucherCode;
   final String? loyaltyVoucherCode;
   final String? manualVoucherCode;
+
   /// Per-voucher discount amount + tipe — dari VoucherUsage[] backend.
   /// UI tampilin "NATA-DISC (-Rp 2.500)" inline per voucher untuk
   /// transparency. Empty = order belum/tidak pakai voucher.
@@ -387,6 +404,7 @@ class OrderSummary {
   final DateTime? deliveredAt;
   final DateTime? completedAt;
   final DateTime? statusUpdatedAt;
+
   /// Riwayat status akurat dari backend. Kosong untuk pesanan legacy.
   final List<OrderTimelineEvent> timelineEvents;
 
@@ -452,6 +470,9 @@ class OrderSummary {
     this.paymentProvider = 'MANUAL',
     this.paymentUrl,
     this.paymentProofUrl,
+    this.paymentProofStatus,
+    this.paymentProofVersion = 0,
+    this.paymentProofUploadedAt,
     this.manualBank,
     this.voucherCode,
     this.freeShippingVoucherCode,
@@ -538,9 +559,7 @@ class OrderSummary {
       readyForPickupAt: _asDateTimeOrNull(
         json['readyForPickupAt'] ?? json['ready_for_pickup_at'],
       ),
-      pickedUpAt: _asDateTimeOrNull(
-        json['pickedUpAt'] ?? json['picked_up_at'],
-      ),
+      pickedUpAt: _asDateTimeOrNull(json['pickedUpAt'] ?? json['picked_up_at']),
       autoConfirmAt: _asDateTimeOrNull(json['autoConfirmAt']),
       trackingToken: _nullableString(json['trackingToken']),
       biteshipTrackingUrl: _nullableString(json['biteshipTrackingUrl']),
@@ -579,10 +598,18 @@ class OrderSummary {
       ),
       paymentUrl: _nullableString(json['paymentUrl']),
       paymentProofUrl: _nullableString(json['paymentProofUrl']),
+      paymentProofStatus: _nullableString(
+        json['paymentProofStatus'] ?? json['payment_proof_status'],
+      ),
+      paymentProofVersion: _asInt(
+        json['paymentProofVersion'] ?? json['proofVersion'],
+      ),
+      paymentProofUploadedAt: _asDateTimeOrNull(
+        json['paymentProofUploadedAt'] ?? json['payment_proof_uploaded_at'],
+      ),
       manualBank: _nullableString(json['manualBank']),
       voucherCode: _nullableString(json['voucherCode']),
-      freeShippingVoucherCode:
-          _nullableString(json['freeShippingVoucherCode']),
+      freeShippingVoucherCode: _nullableString(json['freeShippingVoucherCode']),
       privateVoucherCode: _nullableString(json['privateVoucherCode']),
       productVoucherCode: _nullableString(json['productVoucherCode']),
       shippingVoucherCode: _nullableString(json['shippingVoucherCode']),
@@ -601,10 +628,12 @@ class OrderSummary {
       detailUrl: _nullableString(json['detailUrl']),
       createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString()) ??
           DateTime.now(),
-      deliveredAt:
-          _asDateTimeOrNull(json['deliveredAt'] ?? json['delivered_at']),
-      completedAt:
-          _asDateTimeOrNull(json['completedAt'] ?? json['completed_at']),
+      deliveredAt: _asDateTimeOrNull(
+        json['deliveredAt'] ?? json['delivered_at'],
+      ),
+      completedAt: _asDateTimeOrNull(
+        json['completedAt'] ?? json['completed_at'],
+      ),
       statusUpdatedAt: _asDateTimeOrNull(
         json['statusUpdatedAt'] ?? json['status_updated_at'],
       ),

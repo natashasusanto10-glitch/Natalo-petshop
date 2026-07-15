@@ -150,7 +150,11 @@ class OrderService {
       contentType: file.mimeType ?? _mimeTypeFromPath(file.path),
     );
 
-    return (data['url'] ?? '').toString();
+    final url = (data['url'] ?? '').toString().trim();
+    if (url.isEmpty) {
+      throw const FormatException('Respons upload bukti tidak memiliki URL.');
+    }
+    return url;
   }
 
   Future<ReorderResult> reorder({
@@ -201,7 +205,8 @@ class OrderService {
         if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
       },
     );
-    final data = response is Map<String, dynamic> ? response : const <String, dynamic>{};
+    final data =
+        response is Map<String, dynamic> ? response : const <String, dynamic>{};
     final auto = data['autoRefundedAmount'];
     final reversed = data['reversedSaldo'];
     final modeRaw = data['mode'];
@@ -234,9 +239,8 @@ class OrderService {
     final response = await apiClient.postJson(
       '/api/orders/${Uri.encodeComponent(orderNumber)}/confirm-delivered',
     );
-    final data = response is Map<String, dynamic>
-        ? response
-        : const <String, dynamic>{};
+    final data =
+        response is Map<String, dynamic> ? response : const <String, dynamic>{};
     return ConfirmDeliveredResult(
       alreadyConfirmed: data['alreadyConfirmed'] == true,
       message: data['message'] is String
@@ -379,9 +383,8 @@ List<String> _parseSkippedReasons(dynamic raw) {
           // Variant info kalau ada (e.g. "4kg / Beef") supaya user tau
           // varian spesifik yang gak available.
           final variant = (e['variantLabel'] ?? '').toString().trim();
-          final productLabel = variant.isNotEmpty && name.isNotEmpty
-              ? '$name ($variant)'
-              : name;
+          final productLabel =
+              variant.isNotEmpty && name.isNotEmpty ? '$name ($variant)' : name;
           if (productLabel.isEmpty) return reason;
           // Strip trailing period dari reason supaya format konsisten dgn dash.
           final cleanReason = reason.endsWith('.')
