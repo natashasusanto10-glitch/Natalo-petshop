@@ -159,6 +159,11 @@ export async function PATCH(
         if (optionIds.length !== v.optionRefs.length) continue;
         await tx.productVariant.create({ data: { productId: id, sku: v.sku || null, price: v.price, stock: v.stock, weightGram: v.weightGram, imageUrl: v.imageUrl || null, isActive: v.isActive, options: { create: optionIds.map((optionId) => ({ optionId })) } } });
       }
+      const active = await tx.productVariant.findMany({ where: { productId: id, deletedAt: null, isActive: true }, select: { price: true, stock: true, weightGram: true } });
+      if (active.length) {
+        const cheapest = active.reduce((a, b) => (b.price < a.price ? b : a));
+        await tx.product.update({ where: { id }, data: { price: cheapest.price, stock: active.reduce((sum, v) => sum + v.stock, 0), weightGram: cheapest.weightGram, discountPrice: null } });
+      }
     }
     return result;
   }).catch((err) => { if (err.code === "P2025") return null; throw err; });
