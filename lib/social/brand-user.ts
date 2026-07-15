@@ -13,7 +13,7 @@
  * dengan /api/u/[username] yang sudah null-kan foto official.
  */
 
-export const OFFICIAL_BRAND_NAME = "Natalo Petshop";
+export const OFFICIAL_BRAND_NAME = "Natalo Petshop Official";
 
 /** Username kanonik brand — dipakai untuk deep-link /u/{handle}. */
 export const OFFICIAL_BRAND_USERNAME = "natalopetshop";

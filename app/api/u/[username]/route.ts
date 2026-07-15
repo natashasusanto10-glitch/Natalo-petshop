@@ -30,7 +30,11 @@ import {
   getViewerSavedPostIds,
   resolveFeedProductDiscount,
 } from "@/lib/feed/queries";
-import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
+import {
+  OFFICIAL_BRAND_NAME,
+  brandDisplayName,
+  brandPhotoUrl,
+} from "@/lib/social/brand-user";
 import { feedAccessibilityPayload } from "@/lib/feed/accessibility";
 
 // Postingan customer biasa: video komunitas + foto carousel.
@@ -48,7 +52,6 @@ const ADMIN_VISIBLE_KINDS: FeedPostKind[] = [
 // Branding akun official — saat target.role ADMIN, tampilkan sebagai
 // brand "Natalo Petshop" (BUKAN nama asli pemilik). Hide foto + bio
 // pribadi (privacy), Flutter render badge official + logo brand.
-const OFFICIAL_BRAND_NAME = "Natalo Petshop";
 const OFFICIAL_BRAND_BIO = "Akun resmi Natalo Petshop & Aquarium 🐾";
 
 const MAX_LIMIT = 50;
