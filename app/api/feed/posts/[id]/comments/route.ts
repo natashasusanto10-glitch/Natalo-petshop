@@ -4,8 +4,11 @@
  *
  * Spec 10.7: comments lazy-loaded. User tap icon comment → load 20+pagination.
  * Posting: transaction supaya commentCount counter di-sync atomic.
- * Admin reply (parentCommentId set, isAdminOfficial=true) belum di-implement
- * dalam endpoint ini — admin akan reply via /api/admin/feed/* di F5.
+ * ADMIN sessions may use this same endpoint for comments and replies. The
+ * server derives `isAdminOfficial` from the authenticated session (never from
+ * client input), masks the response identity through the brand helpers so it
+ * is rendered publicly as Natalo Petshop Official, and retains `authorId` internally
+ * for traceability/audit.
  */
 import { after, NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
