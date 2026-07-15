@@ -2223,6 +2223,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                           onMentionTap: (handle) => Navigator.of(context)
                               .pushNamed('/u', arguments: handle),
                         ),
+                        FeedPostSocialProof(post: post),
                       ],
                     ),
                   ),

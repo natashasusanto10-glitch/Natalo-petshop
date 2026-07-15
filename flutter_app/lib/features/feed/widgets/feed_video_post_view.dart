@@ -3212,6 +3212,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                                       context,
                                     ).pushNamed('/u', arguments: handle),
                                   ),
+                                  FeedPostSocialProof(post: post),
                                 ],
                               ),
                             ),

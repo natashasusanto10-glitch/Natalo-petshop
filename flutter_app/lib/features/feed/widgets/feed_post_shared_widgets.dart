@@ -13,6 +13,8 @@ import '../../../state/member_store.dart';
 import '../../../utils/formatters.dart';
 import '../../../utils/haptics.dart';
 import '../../../widgets/app_toast.dart';
+import '../../../widgets/official_brand_avatar.dart';
+import '../../../widgets/post_likers_sheet.dart';
 import 'feed_action_rail.dart';
 import 'feed_creator_overlay.dart';
 import 'feed_product_anchor_card.dart';
@@ -31,6 +33,127 @@ const feedPostGoldColor = Color(0xFFF4D47C);
 const feedPostOverlayBottomGap = 16.0;
 const feedPostActionRailBottomGap = 4.0;
 const feedPostActionRailRightInset = 10.0;
+
+/// Instagram-style social proof shown below the caption in Feed/fullscreen.
+/// The data remains owned by [FeedPost], so Feed, Postingan, and fullscreen
+/// all render the same server-backed liker snapshot.
+class FeedPostSocialProof extends StatelessWidget {
+  final FeedPost post;
+
+  const FeedPostSocialProof({super.key, required this.post});
+
+  @override
+  Widget build(BuildContext context) {
+    if (post.likeCount <= 0) return const SizedBox.shrink();
+    final primary = post.recentLikers.isNotEmpty
+        ? post.recentLikers.first
+        : null;
+    final primaryName = primary?.displayName ?? 'beberapa orang';
+    final others = post.likeCount - 1;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => PostLikersSheet.show(context, postId: post.id),
+      child: Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Row(
+          children: [
+            _FeedSocialProofAvatars(
+              likers: post.recentLikers,
+              likeCount: post.likeCount,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(text: 'Disukai oleh '),
+                    TextSpan(
+                      text: primaryName,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    if (others > 0) ...[
+                      const TextSpan(text: ' dan '),
+                      TextSpan(
+                        text: '$others orang lainnya',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ],
+                  ],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  height: 1.25,
+                  shadows: [Shadow(color: Colors.black87, blurRadius: 5)],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FeedSocialProofAvatars extends StatelessWidget {
+  final List<FeedAuthor> likers;
+  final int likeCount;
+
+  const _FeedSocialProofAvatars({required this.likers, required this.likeCount});
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 22.0;
+    final visible = likers.take(2).toList(growable: false);
+    final hasOthers = likeCount > 1;
+    return SizedBox(
+      width: hasOthers ? size + 12 : size,
+      height: size,
+      child: Stack(
+        children: [
+          if (hasOthers)
+            Positioned(
+              left: 10,
+              child: _avatar(visible.length > 1 ? visible[1] : null, size),
+            ),
+          Positioned(
+            left: 0,
+            child: _avatar(visible.isNotEmpty ? visible.first : null, size),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _avatar(FeedAuthor? author, double size) {
+    if (author?.isOfficialAccount == true) {
+      return OfficialBrandAvatar(size: size);
+    }
+    final url = author?.profilePhotoUrl;
+    return ClipOval(
+      child: url == null || url.isEmpty
+          ? Container(
+              width: size,
+              height: size,
+              color: Colors.white.withValues(alpha: 0.75),
+              alignment: Alignment.center,
+              child: Text(
+                (author?.displayName ?? 'N').characters.first.toUpperCase(),
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+              ),
+            )
+          : CachedNetworkImage(
+              imageUrl: url,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+            ),
+    );
+  }
+}
 
 @visibleForTesting
 bool resolveFeedAuthorFollowStateForViewer({
