@@ -5,6 +5,7 @@ import { createBiteshipShipmentIfReady } from "@/lib/biteship";
 import { sendOrderStatusPush } from "@/lib/push";
 import { SELF_PICKUP_METHOD } from "@/lib/self-pickup";
 import { recordOrderStatusEvent } from "@/lib/order-transitions";
+import { applyMidtransPaidStatus } from "@/lib/midtrans-order-status";
 // Notifikasi payment confirmed via WhatsApp dihapus — customer dapat
 // konfirmasi via email + push (sendOrderStatusPush) saja. Fonnte sekarang
 // hanya untuk OTP register & login.
@@ -105,41 +106,18 @@ export async function POST(request: NextRequest) {
   }
 
   const updatedOrder = await prisma.$transaction(async (tx) => {
+    if (paymentStatus === "PAID") {
+      return applyMidtransPaidStatus(tx, order, notification.transaction_status);
+    }
+
     const updated = await tx.order.update({
-      where: { orderNumber: notification.order_id },
+      where: { id: order.id },
       data: {
-      paymentStatus,
-      status:
-        paymentStatus === "PAID" &&
-        order.status === "PENDING" &&
-        order.orderType === SELF_PICKUP_METHOD
-          ? "PROCESSING"
-          : paymentStatus === "PAID" && order.status === "PENDING"
-          ? "PAID"
-          : paymentStatus === "REFUNDED"
-          ? "REFUNDED"
-          : undefined,
-      pickupStatus:
-        paymentStatus === "PAID" && order.orderType === SELF_PICKUP_METHOD
-          ? "PREPARING"
-          : undefined,
+        paymentStatus,
+        status: paymentStatus === "REFUNDED" ? "REFUNDED" : undefined,
       },
     });
-    if (paymentStatus === "PAID") {
-      await recordOrderStatusEvent(tx, order.id, "PAID", {
-        actorType: "PAYMENT_PROVIDER",
-        actorId: "MIDTRANS",
-        idempotencyKey: `midtrans:${order.id}:paid`,
-        metadata: { transactionStatus: notification.transaction_status },
-      });
-      if (order.status === "PENDING" && order.orderType === SELF_PICKUP_METHOD) {
-        await recordOrderStatusEvent(tx, order.id, "PROCESSING", {
-          actorType: "PAYMENT_PROVIDER",
-          actorId: "MIDTRANS",
-          idempotencyKey: `midtrans:${order.id}:processing-after-paid`,
-        });
-      }
-    } else if (paymentStatus === "REFUNDED") {
+    if (paymentStatus === "REFUNDED") {
       await recordOrderStatusEvent(tx, order.id, "REFUNDED", {
         actorType: "PAYMENT_PROVIDER",
         actorId: "MIDTRANS",
