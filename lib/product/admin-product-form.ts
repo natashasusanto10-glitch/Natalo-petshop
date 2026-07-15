@@ -63,6 +63,14 @@ export function productIsVisibleWhere(): { creationState: "ready" } {
   return { creationState: "ready" };
 }
 
+export function mergeProductVisibility<T extends Record<string, unknown>>(where: T): T & { creationState: "ready" } {
+  return { ...where, creationState: "ready" };
+}
+
+export function cleanupWhere(now: Date = new Date()): { creationState: "creating"; createdAt: { lt: Date } } {
+  return { creationState: "creating", createdAt: { lt: new Date(now.getTime() - 60 * 60 * 1000) } };
+}
+
 export function shouldDeleteCreatingProduct(state: ProductCreationState): boolean {
   return state === "creating";
 }
