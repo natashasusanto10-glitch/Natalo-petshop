@@ -183,7 +183,7 @@ class _OriginExpansionTransitionState extends State<OriginExpansionTransition> {
                             BorderRadius.circular(12 * (1 - progress)),
                         child: RawImage(
                           key: const ValueKey('origin-expansion-snapshot'),
-                          image: snapshot.clone(),
+                          image: snapshot,
                           fit: BoxFit.cover,
                         ),
                       ),

@@ -28,6 +28,15 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(RawImage), findsOneWidget);
+    final firstImage = tester.widget<RawImage>(find.byType(RawImage)).image;
+    expect(firstImage, isNotNull);
+
+    await tester.pump(const Duration(milliseconds: 40));
+
+    expect(
+      tester.widget<RawImage>(find.byType(RawImage)).image,
+      same(firstImage),
+    );
   });
 
   testWidgets('uses a reversible fade when the source boundary is unavailable',
