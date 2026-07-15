@@ -315,13 +315,26 @@ class _FollowListPaneState extends State<_FollowListPane>
       });
       setFollowOverride(user.id, state.isFollowing);
       widget.onFollowChanged(updated, state, wasFollowing);
+    } on FollowSessionChangedException {
+      if (mounted) setState(() => _busyUserIds.remove(user.id));
     } on ApiException catch (e) {
       if (!mounted) return;
+      final stableFollowing = resolveFollowState(user.id, wasFollowing);
+      final rollback = user.copyWith(
+        isFollowing: stableFollowing,
+        followersCount: _nonNegative(
+          user.followersCount +
+              (stableFollowing == wasFollowing
+                  ? 0
+                  : stableFollowing
+                      ? 1
+                      : -1),
+        ),
+      );
       setState(() {
         _busyUserIds.remove(user.id);
-        _replaceUser(user);
+        _replaceUser(rollback);
       });
-      setFollowOverride(user.id, wasFollowing);
       if (e.isUnauthorized) {
         Navigator.pushNamed(context, '/member/login');
       } else {
@@ -329,11 +342,22 @@ class _FollowListPaneState extends State<_FollowListPane>
       }
     } catch (_) {
       if (!mounted) return;
+      final stableFollowing = resolveFollowState(user.id, wasFollowing);
+      final rollback = user.copyWith(
+        isFollowing: stableFollowing,
+        followersCount: _nonNegative(
+          user.followersCount +
+              (stableFollowing == wasFollowing
+                  ? 0
+                  : stableFollowing
+                      ? 1
+                      : -1),
+        ),
+      );
       setState(() {
         _busyUserIds.remove(user.id);
-        _replaceUser(user);
+        _replaceUser(rollback);
       });
-      setFollowOverride(user.id, wasFollowing);
       _showSnack('Gagal memproses follow. Coba lagi.');
     }
   }

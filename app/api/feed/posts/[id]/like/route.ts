@@ -1,16 +1,7 @@
 /**
- * POST /api/feed/posts/[id]/like
- *
- * Toggle like — kalau user belum like, create FeedLike + increment counter.
- * Kalau sudah like, hapus FeedLike + decrement counter. Idempotent dari
- * sisi UI (FE tinggal toggle visual + call ini; server normalize).
- *
- * Pattern: pakai transaction untuk atomic counter update + like row.
- * Tanpa transaction, race condition saat 2 request concurrent bisa
- * menghasilkan counter drift dari ground truth (FeedLike count).
- *
- * Auth wajib — anon tidak boleh like. Rate limit skip dulu (per-user
- * action, monitorable; kalau ada spam pattern bisa add limit nanti).
+ * POST /api/feed/posts/[id]/like   - legacy toggle
+ * PUT /api/feed/posts/[id]/like    - desired state: liked
+ * DELETE /api/feed/posts/[id]/like - desired state: unliked
  */
 import { after, NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
@@ -18,10 +9,18 @@ import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { sendLikeNotification } from "@/lib/feed/activity-notifications";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
+import {
+  lockFeedInteractionActor,
+  reconcileFeedLikeState,
+  type FeedLikeIntent,
+} from "@/lib/feed/like-state";
 
-export async function POST(
+type RouteContext = { params: Promise<{ id: string }> };
+
+async function handlePostLike(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: RouteContext,
+  intent: FeedLikeIntent,
 ) {
   const csrfReject = assertSameOrigin(request);
   if (csrfReject) return csrfReject;
@@ -36,61 +35,74 @@ export async function POST(
     return NextResponse.json({ error: "Post ID required" }, { status: 400 });
   }
 
-  const post = await prisma.feedPost
-    .findUnique({
+  const result = await prisma.$transaction(async (tx) => {
+    const actorAvailable = await lockFeedInteractionActor(tx, session.sub);
+    if (!actorAvailable) return { kind: "account-unavailable" } as const;
+
+    const lockedPosts = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "FeedPost"
+      WHERE "id" = ${postId}
+      FOR UPDATE
+    `;
+    if (lockedPosts.length === 0) return null;
+
+    const post = await tx.feedPost.findUnique({
       where: { id: postId },
-      select: { id: true, status: true, deletedAt: true },
-    })
-    .catch(() => null);
-  if (!post || post.status !== "ACTIVE" || post.deletedAt) {
+      select: { status: true, deletedAt: true, likeCount: true },
+    });
+    if (!post || post.status !== "ACTIVE" || post.deletedAt) return null;
+
+    const state = await reconcileFeedLikeState(
+      {
+        async hasLike() {
+          const like = await tx.feedLike.findUnique({
+            where: { userId_postId: { userId: session.sub, postId } },
+            select: { userId: true },
+          });
+          return Boolean(like);
+        },
+        async createLike() {
+          await tx.feedLike.upsert({
+            where: { userId_postId: { userId: session.sub, postId } },
+            create: { userId: session.sub, postId },
+            update: {},
+          });
+        },
+        async deleteLike() {
+          await tx.feedLike.deleteMany({
+            where: { userId: session.sub, postId },
+          });
+        },
+        countLikes() {
+          return tx.feedLike.count({ where: { postId } });
+        },
+        async readLikeCount() {
+          return post.likeCount;
+        },
+        async writeLikeCount(likeCount) {
+          await tx.feedPost.update({
+            where: { id: postId },
+            data: { likeCount },
+          });
+        },
+      },
+      intent,
+    );
+    return { kind: "state", ...state } as const;
+  });
+
+  if (result?.kind === "account-unavailable") {
+    return NextResponse.json({ error: "Sesi tidak berlaku" }, { status: 401 });
+  }
+  if (!result) {
     return NextResponse.json(
       { error: "Post tidak ditemukan" },
-      { status: 404 }
+      { status: 404 },
     );
   }
 
-  // Toggle dalam transaction supaya counter tidak drift saat concurrent.
-  // Try-create: kalau sudah ada (P2002 unique violation), berarti unlike.
-  const result = await prisma.$transaction(async (tx) => {
-    const existing = await tx.feedLike.findUnique({
-      where: { userId_postId: { userId: session.sub, postId } },
-    });
-
-    if (existing) {
-      await tx.feedLike.delete({
-        where: { userId_postId: { userId: session.sub, postId } },
-      });
-      const updated = await tx.feedPost.update({
-        where: { id: postId },
-        // decrement floor di 0 supaya tidak negative kalau ada drift.
-        data: { likeCount: { decrement: 1 } },
-        select: { likeCount: true },
-      });
-      return {
-        liked: false,
-        likeCount: Math.max(0, updated.likeCount),
-      };
-    }
-
-    await tx.feedLike.create({
-      data: { userId: session.sub, postId },
-    });
-    const updated = await tx.feedPost.update({
-      where: { id: postId },
-      data: { likeCount: { increment: 1 } },
-      select: { likeCount: true },
-    });
-    return {
-      liked: true,
-      likeCount: updated.likeCount,
-    };
-  });
-
-  // Non-blocking via `after()` (bukan `void`) — void promise bisa dibekukan
-  // Vercel sebelum jalan → notif like hilang; after() dijamin eksekusi
-  // setelah response, jadi like tetap terasa instan. Helper batches recent
-  // likes and skips self/admin cases; error ditelan internal.
-  if (result.liked) {
+  if (result.changed && result.liked) {
     after(() =>
       sendLikeNotification({
         postId,
@@ -130,4 +142,16 @@ export async function POST(
       avatarUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
     })),
   });
+}
+
+export function POST(request: NextRequest, context: RouteContext) {
+  return handlePostLike(request, context, "toggle");
+}
+
+export function PUT(request: NextRequest, context: RouteContext) {
+  return handlePostLike(request, context, true);
+}
+
+export function DELETE(request: NextRequest, context: RouteContext) {
+  return handlePostLike(request, context, false);
 }

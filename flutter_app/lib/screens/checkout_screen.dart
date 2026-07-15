@@ -280,6 +280,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       items: _checkoutItems,
     );
     if (!mounted) return;
+    if (!result.fromApi) {
+      setState(() {
+        _shippingRates = const [ShippingRate.selfPickup];
+        _selectedRate = ShippingRate.selfPickup;
+        _shippingRateSelectedByUser = false;
+        _selectedFreeShippingVoucher = null;
+        _shippingMessage =
+            result.message ?? 'Ongkir belum dapat dihitung. Silakan coba lagi.';
+      });
+      return;
+    }
     final courierRates =
         result.rates.where((rate) => !rate.isSelfPickup).toList();
     final rates = [ShippingRate.selfPickup, ...courierRates];
@@ -683,8 +694,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (_selectedFreeShippingVoucher == null && !_selectedRate.isSelfPickup) {
       final candidate = available
           .where((v) =>
-              (v.isFreeShipping || v.isShippingDiscount) &&
-              !v.isBrandExclusive)
+              (v.isFreeShipping || v.isShippingDiscount) && !v.isBrandExclusive)
           .toList()
         ..sort((a, b) => b.discount.compareTo(a.discount));
       if (candidate.isNotEmpty) {

@@ -87,6 +87,12 @@ class _SettingsContent extends StatelessWidget {
                   Navigator.pushNamed(context, '/settings/notifications'),
             ),
             SettingsListItem(
+              icon: Icons.bookmark_border_rounded,
+              title: 'Postingan Tersimpan',
+              subtitle: 'Lihat lagi postingan Feed yang kamu simpan',
+              onTap: () => Navigator.pushNamed(context, '/member/saved'),
+            ),
+            SettingsListItem(
               icon: Icons.privacy_tip_outlined,
               title: 'Privasi Akun',
               subtitle: 'Pengaturan data dan privasi akun',
@@ -727,112 +733,112 @@ Future<void> _confirmLogout(BuildContext context) async {
     builder: (ctx) {
       final cs = Theme.of(ctx).colorScheme;
       return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 28),
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.14),
-              blurRadius: 28,
-              offset: const Offset(0, 14),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 76,
-              height: 76,
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFE8E8),
-                shape: BoxShape.circle,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.14),
+                blurRadius: 28,
+                offset: const Offset(0, 14),
               ),
-              child: const Icon(
-                Icons.logout_rounded,
-                color: _dangerRed,
-                size: 34,
-              ),
-            ),
-            const SizedBox(height: 22),
-            Text(
-              'Keluar dari akun?',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 22,
-                height: 1.25,
-                fontWeight: FontWeight.w800,
-                color: cs.onSurface,
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'Kamu perlu masuk kembali untuk melihat pesanan, poin, voucher, wishlist, dan data akunmu.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 15.5,
-                height: 1.55,
-                fontWeight: FontWeight.w500,
-                color: cs.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 28),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(ctx).pop(false),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(50),
-                      backgroundColor: cs.surface,
-                      foregroundColor: _brandBlue,
-                      side: BorderSide(
-                        color: cs.outlineVariant,
-                        width: 1.2,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      textStyle: const TextStyle(
-                        fontSize: 15.5,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    child: const Text('Batal'),
-                  ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 76,
+                height: 76,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFFE8E8),
+                  shape: BoxShape.circle,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.of(ctx).pop(true),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(50),
-                      elevation: 0,
-                      backgroundColor: _dangerRed,
-                      foregroundColor: Colors.white,
-                      shadowColor: const Color(0x33EF4444),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      textStyle: const TextStyle(
-                        fontSize: 15.5,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    child: const Text('Keluar'),
-                  ),
+                child: const Icon(
+                  Icons.logout_rounded,
+                  color: _dangerRed,
+                  size: 34,
                 ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(height: 22),
+              Text(
+                'Keluar dari akun?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 22,
+                  height: 1.25,
+                  fontWeight: FontWeight.w800,
+                  color: cs.onSurface,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Kamu perlu masuk kembali untuk melihat pesanan, poin, voucher, wishlist, dan data akunmu.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 15.5,
+                  height: 1.55,
+                  fontWeight: FontWeight.w500,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 28),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(50),
+                        backgroundColor: cs.surface,
+                        foregroundColor: _brandBlue,
+                        side: BorderSide(
+                          color: cs.outlineVariant,
+                          width: 1.2,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      child: const Text('Batal'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(ctx).pop(true),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(50),
+                        elevation: 0,
+                        backgroundColor: _dangerRed,
+                        foregroundColor: Colors.white,
+                        shadowColor: const Color(0x33EF4444),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      child: const Text('Keluar'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
     },
   );
   if (confirmed != true) return;

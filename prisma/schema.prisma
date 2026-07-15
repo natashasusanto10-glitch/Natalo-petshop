@@ -34,6 +34,14 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum PaymentProofStatus {
+  NOT_UPLOADED
+  PENDING_REVIEW
+  VERIFIED
+  REJECTED
+  REPLACED
+}
+
 enum VoucherSourceType {
   // Voucher publik admin promo + voucher claim user (BDAY, POIN). Tampil
   // di daftar voucher pembeli. Maks 1 per checkout.
@@ -67,26 +75,26 @@ enum VoucherDiscountScope {
 }
 
 model User {
-  id                  String               @id @default(cuid())
-  name                String
+  id                     String               @id @default(cuid())
+  name                   String
   /// Public handle untuk @mention + URL profile (IG/TikTok style).
   /// Format: 3-30 char lowercase alfanumerik + `_` + `.` (no `..`,
   /// no leading/trailing `.`). Case-insensitive unique. Nullable
   /// untuk user existing yang belum pilih — UI tampil banner prompt
   /// + di feed fallback ke `name`. Mandatory di sign-up flow user
   /// baru.
-  username            String?              @unique
+  username               String?              @unique
   /// Timestamp terakhir kali username di-set/ganti. Dipakai untuk
   /// audit + future "min interval" rate limit. Nullable kalau user
   /// belum pernah set.
-  usernameUpdatedAt   DateTime?
-  phone               String?              @unique
-  email               String?              @unique
-  passwordHash        String?
-  role                String               @default("CUSTOMER")
-  tokenVersion        Int                  @default(0)
-  birthDate           DateTime?
-  birthdayVoucherYear Int?
+  usernameUpdatedAt      DateTime?
+  phone                  String?              @unique
+  email                  String?              @unique
+  passwordHash           String?
+  role                   String               @default("CUSTOMER")
+  tokenVersion           Int                  @default(0)
+  birthDate              DateTime?
+  birthdayVoucherYear    Int?
   /// Tahun terakhir user dikirim teaser push "Besok ultahmu!" oleh
   /// cron /api/cron/birthday-reminder. Anti-spam: cek field ini sebelum
   /// kirim → tidak duplicate kalau cron re-run dalam hari yang sama.
@@ -98,55 +106,56 @@ model User {
   ///   - Admin bisa override via endpoint admin manual (audit log)
   /// Pattern dari Shopee anti-abuse: cegah user ganti2 tgl lahir untuk
   /// trigger voucher ulang tahun di luar timing aslinya.
-  birthDateLockedAt   DateTime?
+  birthDateLockedAt      DateTime?
   /// URL foto profil — disimpan ke UploadThing CDN. Nullable: user yang
   /// belum upload pakai fallback initial avatar di UI. Dipakai di feed
   /// posts, comments, member screen, dst.
-  profilePhotoUrl     String?
+  profilePhotoUrl        String?
   /// Bio user — short description (max 150 char) yang muncul di header
   /// profile, IG-style. Nullable: user yang belum isi pakai empty text
   /// + placeholder "Tambahkan bio". Dipakai juga di /feed/u/[id] public
   /// profile page (future) dan comment hover di web.
-  bio                 String?
+  bio                    String?
   /// Social graph counters. Maintained by the NestJS social service follow
   /// transaction. Kept denormalized so profile reads stay cheap.
-  followersCount      Int                  @default(0)
-  followingCount      Int                  @default(0)
-  orders              Order[]
-  points              CustomerPoint[]
-  reviews             Review[]
-  reviewReplies       ReviewReply[]        @relation("AdminReplies")
-  reviewVotes         ReviewVote[]         @relation("ReviewVotes")
-  addresses           Address[]
-  favorites           Favorite[]
-  pets                Pet[]
-  cartItems           CartItem[]
-  stockNotifications  StockNotification[]
-  productViews        UserProductView[]
-  voucherUsages       VoucherUsage[]
-  announcementReads   AnnouncementRead[]
+  followersCount         Int                  @default(0)
+  followingCount         Int                  @default(0)
+  orders                 Order[]
+  points                 CustomerPoint[]
+  reviews                Review[]
+  reviewReplies          ReviewReply[]        @relation("AdminReplies")
+  reviewVotes            ReviewVote[]         @relation("ReviewVotes")
+  addresses              Address[]
+  favorites              Favorite[]
+  pets                   Pet[]
+  cartItems              CartItem[]
+  stockNotifications     StockNotification[]
+  productViews           UserProductView[]
+  voucherUsages          VoucherUsage[]
+  announcementReads      AnnouncementRead[]
   // Refund wallet — 1:1 dengan user, lazy-init saat first credit.
-  refundWallet        RefundWallet?
-  refundLedgers       RefundWalletLedger[]
-  refundCases         RefundCase[]
+  refundWallet           RefundWallet?
+  refundLedgers          RefundWalletLedger[]
+  refundCases            RefundCase[]
   // Feed relations — admin post & user community video, plus engagement.
-  feedPosts           FeedPost[]           @relation("FeedAuthor")
-  moderatedFeedPosts  FeedPost[]           @relation("FeedModerator")
-  feedComments        FeedComment[]        @relation("FeedCommentAuthor")
-  hiddenComments      FeedComment[]        @relation("FeedCommentModerator")
-  feedLikes           FeedLike[]
-  feedCommentLikes    FeedCommentLike[]
-  feedReportsFiled    FeedReport[]         @relation("FeedReporter")
-  feedReportsResolved FeedReport[]         @relation("FeedReportResolver")
-  feedModerationLogs  FeedModerationLog[]  @relation("FeedModerationActor")
-  following           UserFollow[]         @relation("UserFollowing")
-  followers           UserFollow[]         @relation("UserFollowers")
-  usernameHistory     UsernameHistory[]
-  adminActionLogs     AdminActionLog[]
-  abuseFlags          AbuseFlag[]          @relation("AbuseFlagTarget")
-  reviewedAbuseFlags  AbuseFlag[]          @relation("AbuseFlagReviewer")
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  feedPosts              FeedPost[]           @relation("FeedAuthor")
+  moderatedFeedPosts     FeedPost[]           @relation("FeedModerator")
+  feedComments           FeedComment[]        @relation("FeedCommentAuthor")
+  hiddenComments         FeedComment[]        @relation("FeedCommentModerator")
+  feedLikes              FeedLike[]
+  feedSaves              FeedSave[]
+  feedCommentLikes       FeedCommentLike[]
+  feedReportsFiled       FeedReport[]         @relation("FeedReporter")
+  feedReportsResolved    FeedReport[]         @relation("FeedReportResolver")
+  feedModerationLogs     FeedModerationLog[]  @relation("FeedModerationActor")
+  following              UserFollow[]         @relation("UserFollowing")
+  followers              UserFollow[]         @relation("UserFollowers")
+  usernameHistory        UsernameHistory[]
+  adminActionLogs        AdminActionLog[]
+  abuseFlags             AbuseFlag[]          @relation("AbuseFlagTarget")
+  reviewedAbuseFlags     AbuseFlag[]          @relation("AbuseFlagReviewer")
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
 }
 
 /// Audit log untuk semua admin action critical — refund, order status
@@ -160,28 +169,28 @@ model User {
 /// Fire-and-forget — logging failure tidak boleh block admin action.
 /// Field `summary` human-readable, `metadata` JSON untuk detail terstruktur.
 model AdminActionLog {
-  id           String   @id @default(cuid())
-  actorUserId  String
-  actor        User     @relation(fields: [actorUserId], references: [id])
+  id          String   @id @default(cuid())
+  actorUserId String
+  actor       User     @relation(fields: [actorUserId], references: [id])
   /// Action category enum-like string. Convention SCREAMING_SNAKE_CASE.
   /// Examples: ORDER_MARK_PAID, ORDER_CANCELLED, REFUND_ISSUED,
   /// VOUCHER_CREATED, USER_ROLE_CHANGED.
-  action       String
+  action      String
   /// Entity type yang di-affect. Examples: Order, RefundCase, Voucher,
   /// User, FeedPost.
-  targetType   String
+  targetType  String
   /// ID record yang di-affect. Pakai untuk join lookup atau filter.
-  targetId     String
+  targetId    String
   /// Short human-readable description untuk display di log feed.
   /// Example: "Issue refund Rp1.626.000 ke order ORD-20260524-M8LKOW"
-  summary      String
+  summary     String
   /// Optional structured detail JSON. Example untuk refund:
   /// { "amount": 1626000, "reason": "OUT_OF_STOCK", "itemId": "..." }
-  metadata     Json?
+  metadata    Json?
   /// IP address request untuk audit trail. Nullable kalau request
   /// dari internal worker / cron yang gak punya client IP.
-  ipAddress    String?
-  createdAt    DateTime @default(now())
+  ipAddress   String?
+  createdAt   DateTime @default(now())
 
   @@index([actorUserId, createdAt])
   @@index([targetType, targetId])
@@ -232,30 +241,30 @@ model UserFollow {
 }
 
 model CartItem {
-  id                    String    @id @default(cuid())
-  userId                String
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId             String
-  variantId             String?
-  variantLabel          String?
-  name                  String
-  price                 Int
-  quantity              Int
-  weightGram            Int       @default(500)
-  imageUrl              String?
-  stock                 Int?
+  id                   String    @id @default(cuid())
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId            String
+  variantId            String?
+  variantLabel         String?
+  name                 String
+  price                Int
+  quantity             Int
+  weightGram           Int       @default(500)
+  imageUrl             String?
+  stock                Int?
   // Track last abandoned-cart push notification — supaya cron tidak
   // spam user yang sama tiap jam. Set timestamp setelah push terkirim,
   // clear (set null) saat user checkout atau update cart.
-  notifiedAbandonedAt   DateTime?
+  notifiedAbandonedAt  DateTime?
   // Tanda "pertama kali dicurigai abandoned" oleh cron — dipakai untuk
   // syarat 2-putaran-berturut sebelum benar-benar kirim notifikasi.
   // Reset otomatis jadi null setiap kali row ini disinkron ulang (row
   // lama di-delete, row baru dibuat oleh PUT /api/cart replace-total),
   // sehingga tidak perlu invalidasi manual.
-  abandonedCandidateAt  DateTime?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  abandonedCandidateAt DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   @@unique([userId, productId, variantId])
   @@index([userId])
@@ -398,7 +407,7 @@ model Product {
   // Video produk (Bunny Stream, library TERPISAH dari feed — lihat
   // lib/product/product-video.ts). Satu video per produk.
   videoUrl              String? // HLS playlist.m3u8 dari CDN Bunny; null = tidak ada
-  videoGuid             String? @unique // GUID Bunny — dipakai webhook + GC produk
+  videoGuid             String?                     @unique // GUID Bunny — dipakai webhook + GC produk
   videoStatus           String? // "uploading" | "processing" | "ready" | "failed"
   videoThumbnailUrl     String? // auto-thumbnail Bunny, diisi saat ready
   videoDurationSec      Int?
@@ -481,78 +490,84 @@ model ProductRecommendationRule {
 }
 
 model Order {
-  id                      String          @id @default(cuid())
-  orderNumber             String          @unique
-  userId                  String?
-  user                    User?           @relation(fields: [userId], references: [id])
-  customerName            String
-  customerPhone           String
-  customerEmail           String?
-  shippingAddress         String
-  shippingCity            String?
-  shippingPostalCode      String?
-  shippingLatitude        Float?
-  shippingLongitude       Float?
-  shippingPinpointAddress String?
-  shippingAreaId          String?
-  shippingAreaLabel       String?
-  shippingProvinceName    String?
-  shippingDistrictName    String?
-  orderType               String          @default("DELIVERY")
-  shippingMethod          String          @default("DELIVERY")
-  courierCode             String?
-  courierService          String?
-  trackingNumber          String?
+  id                       String             @id @default(cuid())
+  orderNumber              String             @unique
+  userId                   String?
+  user                     User?              @relation(fields: [userId], references: [id])
+  customerName             String
+  customerPhone            String
+  customerEmail            String?
+  shippingAddress          String
+  shippingCity             String?
+  shippingPostalCode       String?
+  shippingLatitude         Float?
+  shippingLongitude        Float?
+  shippingPinpointAddress  String?
+  shippingAreaId           String?
+  shippingAreaLabel        String?
+  shippingProvinceName     String?
+  shippingDistrictName     String?
+  orderType                String             @default("DELIVERY")
+  shippingMethod           String             @default("DELIVERY")
+  courierCode              String?
+  courierService           String?
+  trackingNumber           String?
   // Info driver untuk kurir INSTANT (Gojek/Grab/Lalamove/Borzo) yang
   // tidak punya resi tradisional. Format bebas — biasanya admin isi
   // "Nama: ... | HP: ... | Plat: ..." atau link share GPS dari aplikasi
   // kurir. Lihat markAsShipped validation: salah satu dari trackingNumber
   // atau shippingDriverInfo wajib diisi saat tandai SHIPPED.
-  shippingDriverInfo      String?
-  trackingToken           String?         @unique
-  biteshipOrderId         String?
-  biteshipTrackingUrl     String?
-  shipmentStatus          String?
-  biteshipRequest         Json?
-  biteshipResponse        Json?
-  biteshipError           String?
-  pickupStoreName         String?
-  pickupStoreAddress      String?
-  pickupStoreLatitude     Float?
-  pickupStoreLongitude    Float?
-  pickupHours             String?
-  pickupCode              String?         @unique
-  pickupQrCode            String?
-  pickupStatus            String?
-  readyForPickupAt        DateTime?
-  pickedUpAt              DateTime?
-  pickedUpByAdminId       String?
-  subtotal                Int
-  shippingCost            Int             @default(0)
-  discount                Int             @default(0)
-  total                   Int
-  status                  OrderStatus     @default(PENDING)
-  paymentProvider         PaymentProvider @default(MANUAL)
-  paymentStatus           PaymentStatus   @default(UNPAID)
-  paymentReference        String?
-  paymentUrl              String?
-  paymentProofUrl         String?
-  manualBank              String?
-  uniqueCode              Int?
-  voucherCode             String? // Customer voucher (CUSTOMER source type)
-  manualVoucherCode       String? // Seller manual voucher (SELLER_MANUAL)
-  freeShippingVoucherCode String?
-  shippingVoucherCode     String? // Generic shipping voucher slot (from migration 20260518010000)
-  productVoucherCode      String?
-  loyaltyVoucherCode      String?
-  privateVoucherCode      String?
-  productDiscount         Int             @default(0)
-  shippingDiscount        Int             @default(0)
+  shippingDriverInfo       String?
+  trackingToken            String?            @unique
+  biteshipOrderId          String?
+  biteshipTrackingUrl      String?
+  shipmentStatus           String?
+  biteshipRequest          Json?
+  biteshipResponse         Json?
+  biteshipError            String?
+  pickupStoreName          String?
+  pickupStoreAddress       String?
+  pickupStoreLatitude      Float?
+  pickupStoreLongitude     Float?
+  pickupHours              String?
+  pickupCode               String?            @unique
+  pickupQrCode             String?
+  pickupStatus             String?
+  readyForPickupAt         DateTime?
+  pickedUpAt               DateTime?
+  pickedUpByAdminId        String?
+  subtotal                 Int
+  shippingCost             Int                @default(0)
+  discount                 Int                @default(0)
+  total                    Int
+  status                   OrderStatus        @default(PENDING)
+  paymentProvider          PaymentProvider    @default(MANUAL)
+  paymentStatus            PaymentStatus      @default(UNPAID)
+  paymentReference         String?
+  paymentUrl               String?
+  paymentProofUrl          String?
+  paymentProofUploadedAt   DateTime?
+  paymentProofVersion      Int                @default(0)
+  paymentProofStatus       PaymentProofStatus @default(NOT_UPLOADED)
+  paymentProofReviewedAt   DateTime?
+  paymentProofReviewedBy   String?
+  paymentProofRejectReason String?
+  manualBank               String?
+  uniqueCode               Int?
+  voucherCode              String? // Customer voucher (CUSTOMER source type)
+  manualVoucherCode        String? // Seller manual voucher (SELLER_MANUAL)
+  freeShippingVoucherCode  String?
+  shippingVoucherCode      String? // Generic shipping voucher slot (from migration 20260518010000)
+  productVoucherCode       String?
+  loyaltyVoucherCode       String?
+  privateVoucherCode       String?
+  productDiscount          Int                @default(0)
+  shippingDiscount         Int                @default(0)
   // Saldo refund yang user pakai untuk bayar order ini. Dikurangkan
   // setelah subtotal + ongkir - diskon (lihat spec rumus). Saat order
   // di-create, di-debit dari RefundWallet via helper atomic + ledger.
-  refundBalanceUsed       Int             @default(0)
-  notes                   String?
+  refundBalanceUsed        Int                @default(0)
+  notes                    String?
 
   // Timestamp saat admin tandai SHIPPED (markAsShipped action). Dipakai
   // oleh cron /api/cron/auto-confirm-delivered untuk auto-mark DELIVERED
@@ -560,7 +575,7 @@ model Order {
   // pakai updatedAt karena field itu kena trigger update setiap kali
   // order touched (cancellation request, refund case, dll) → cron bisa
   // gak pernah jalan.
-  shippedAt               DateTime?
+  shippedAt                 DateTime?
   // Timestamp saat user di-kirim H-3 reminder push "Sudah Diterima?".
   // Cron /api/cron/order-confirm-reminder set field ini supaya tidak
   // kirim ulang reminder yang sama. Null = belum pernah di-remind.
@@ -580,19 +595,20 @@ model Order {
   // (status=REJECTED) supaya user lihat reject reason; kalau user submit
   // ulang, field di-overwrite. Bisa di-migrate ke OrderCancellationRequest
   // model nanti kalau butuh history multi-attempt.
-  cancellationRequestStatus     String?   // null | "PENDING" | "APPROVED" | "REJECTED"
-  cancellationReason            String?   // alasan dari user (opsional)
-  cancellationRequestedAt       DateTime?
-  cancellationRespondedAt       DateTime?
+  cancellationRequestStatus      String? // null | "PENDING" | "APPROVED" | "REJECTED"
+  cancellationReason             String? // alasan dari user (opsional)
+  cancellationRequestedAt        DateTime?
+  cancellationRespondedAt        DateTime?
   cancellationRespondedByAdminId String?
-  cancellationRejectReason      String?   // diisi kalau admin tolak
+  cancellationRejectReason       String? // diisi kalau admin tolak
 
-  items                   OrderItem[]
-  timelineEvents          OrderStatusHistory[]
-  voucherUsages           VoucherUsage[]
-  refundCases             RefundCase[]
-  createdAt               DateTime        @default(now())
-  updatedAt               DateTime        @updatedAt
+  items               OrderItem[]
+  timelineEvents      OrderStatusHistory[]
+  voucherUsages       VoucherUsage[]
+  refundCases         RefundCase[]
+  paymentProofHistory OrderPaymentProof[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@index([biteshipOrderId])
   @@index([shipmentStatus])
@@ -605,6 +621,51 @@ model Order {
   // WHERE status='SHIPPED' AND shippedAt < threshold. Status pertama
   // karena selectivity tinggi (hanya beberapa order yang SHIPPED).
   @@index([status, shippedAt])
+}
+
+/// Immutable-per-version audit trail for manual-transfer proofs. The Order
+/// fields above are the current snapshot used by hot paths; these rows retain
+/// replacement/review history for support and dispute resolution.
+model OrderPaymentProof {
+  id           String             @id @default(cuid())
+  orderId      String
+  order        Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  version      Int
+  url          String
+  status       PaymentProofStatus @default(PENDING_REVIEW)
+  uploadedAt   DateTime           @default(now())
+  reviewedAt   DateTime?
+  reviewedBy   String?
+  rejectReason String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@unique([orderId, version])
+  @@index([orderId, uploadedAt])
+  @@index([status, uploadedAt])
+}
+
+/// Transactional outbox for durable delivery from PostgreSQL to customer-chat
+/// Firestore. `eventKey` is stable per order, so proof replacement refreshes
+/// one pending event and one deterministic chat bubble instead of duplicating.
+model ChatOutboxEvent {
+  id          String    @id @default(cuid())
+  eventKey    String    @unique
+  type        String
+  aggregateId String
+  payload     Json
+  generation  Int       @default(1)
+  status      String    @default("PENDING")
+  attempts    Int       @default(0)
+  availableAt DateTime  @default(now())
+  lockedAt    DateTime?
+  processedAt DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, availableAt])
+  @@index([aggregateId, createdAt])
 }
 
 model OrderStatusHistory {
@@ -1180,6 +1241,10 @@ model FeedPost {
   videoDurationSec  Int?
   videoWidth        Int?
   videoHeight       Int?
+  videoAltText      String?
+  hasAudio          Boolean?
+  subtitleUrl       String?
+  subtitleLanguage  String?
   thumbnailUrl      String? // Wajib kalau ada videoUrl
   // Blurhash LQIP — string ~30 byte yang di-decode ke canvas 32x32 di
   // client sebagai placeholder instan sebelum thumbnailUrl fully decoded.
@@ -1190,17 +1255,17 @@ model FeedPost {
   // Bunny Stream integration. NULL = post pakai UploadThing direct URL
   // (legacy). Saat di-set, videoUrl menyimpan playlist.m3u8 dari Bunny CDN
   // dan playback pakai HLS adaptive bitrate.
-  videoGuid         String? @unique
+  videoGuid         String?  @unique
   // Encoding lifecycle untuk Bunny videos.
   //   "ready"      — playable (default untuk UploadThing legacy posts)
   //   "uploading"  — user sedang upload raw file ke Bunny
   //   "processing" — Bunny sedang encode HLS variants
   //   "failed"     — Bunny encode gagal, post tidak boleh tayang
-  encodingStatus    String  @default("ready")
+  encodingStatus    String   @default("ready")
 
   // Publish-push: opsi "Beri tahu pelanggan" saat admin publish.
   notifyOnPublish   Boolean   @default(false)
-  pushSegment       String?   // "all" | "members" | "active30d"
+  pushSegment       String? // "all" | "members" | "active30d"
   publishPushSentAt DateTime? // guard idempoten — set saat push terkirim
 
   // Product linkage — nullable untuk VIDEO_ONLY + COMMUNITY tanpa tag.
@@ -1216,13 +1281,16 @@ model FeedPost {
 
   // Denormalized engagement counters — maintained oleh service layer.
   // Pakai @default(0) supaya tidak null saat insert.
-  likeCount    Int @default(0)
-  commentCount Int @default(0)
-  viewCount    Int @default(0)
+  likeCount         Int      @default(0)
+  commentCount      Int      @default(0)
+  viewCount         Int      @default(0)
+  // Commit-safe cursor untuk incremental comment sync. Database trigger
+  // menaikkannya saat FeedComment dibuat/diubah sambil mengunci row post.
+  commentSyncCursor DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')"))
   // Increment via POST /api/feed/posts/[id]/share after the platform's
   // native share dialog resolves successfully. Cancelled/failed shares
   // do not count.
-  shareCount   Int @default(0)
+  shareCount        Int      @default(0)
 
   // Moderation trail
   moderatedById  String?
@@ -1241,6 +1309,7 @@ model FeedPost {
 
   comments       FeedComment[]
   likes          FeedLike[]
+  saves          FeedSave[]
   reports        FeedReport[]
   moderationLogs FeedModerationLog[]
   // Shop the Look: many-to-many ke Product (up to 3 tags per post).
@@ -1284,6 +1353,7 @@ model FeedMedia {
   /// Optional — untuk image biasanya null (URL itself adalah final),
   /// untuk video bisa dipakai sebagai poster thumbnail.
   thumbnailUrl   String?
+  altText        String?
   /// UploadThing file key — disimpan untuk hard-delete asset saat post
   /// di-delete via /admin/feed/posts/[id]/cleanup.
   uploadthingKey String?
@@ -1375,16 +1445,33 @@ model FeedComment {
   /// untuk parent supaya thread tetep readable).
   deletedAt DateTime?
 
-  likeCount Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  likeCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  // Ditulis trigger database dari FeedPost.commentSyncCursor.
+  syncVersion DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')"))
 
   likes   FeedCommentLike[]
   reports FeedReport[]
 
   @@index([postId, isHidden, createdAt])
+  @@index([postId, syncVersion])
   @@index([authorId])
   @@index([parentCommentId])
+}
+
+/// Durable removal ledger for hard-deleted feed comments. This table has no
+/// foreign keys by design: deleting a User can cascade through FeedComment,
+/// while clients still need tombstones for surviving posts. A database
+/// trigger removes rows when the FeedPost itself is hard-deleted.
+model FeedCommentTombstone {
+  commentId       String   @id
+  postId          String
+  parentCommentId String?
+  syncVersion     DateTime
+  removedAt       DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')"))
+
+  @@index([postId, syncVersion])
 }
 
 /// Composite PK (userId, postId) — natural unique, idempotent like toggle.
@@ -1396,6 +1483,19 @@ model FeedLike {
   createdAt DateTime @default(now())
 
   @@id([userId, postId])
+  @@index([postId])
+}
+
+/// Composite PK keeps save/unsave idempotent per viewer and post.
+model FeedSave {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId    String
+  post      FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, postId])
+  @@index([userId, createdAt, postId])
   @@index([postId])
 }
 
@@ -1617,18 +1717,18 @@ model RefundCase {
 ///   - MEDIUM — pola jelas tapi belum confirmed abuse
 ///   - HIGH — strong signal, butuh review urgent
 model AbuseFlag {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   userId            String
-  user              User     @relation("AbuseFlagTarget", fields: [userId], references: [id], onDelete: Cascade)
+  user              User      @relation("AbuseFlagTarget", fields: [userId], references: [id], onDelete: Cascade)
   ruleCode          String
-  severity          String   @default("MEDIUM")
+  severity          String    @default("MEDIUM")
   details           Json?
-  status            String   @default("OPEN")
+  status            String    @default("OPEN")
   reviewedAt        DateTime?
   reviewedByAdminId String?
-  reviewedBy        User?    @relation("AbuseFlagReviewer", fields: [reviewedByAdminId], references: [id])
+  reviewedBy        User?     @relation("AbuseFlagReviewer", fields: [reviewedByAdminId], references: [id])
   adminNote         String?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime  @default(now())
 
   @@index([userId, status])
   @@index([status, severity, createdAt])

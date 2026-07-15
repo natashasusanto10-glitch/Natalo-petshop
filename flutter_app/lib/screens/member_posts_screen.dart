@@ -46,6 +46,8 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
   String? _nextCursor;
   bool _loadingMore = false;
   bool _initialLoadDone = false;
+  String? _preparedPostId;
+  PostVideoWarmHandoff? _preparedHandoff;
 
   static const _filters = [
     _PostsFilter(
@@ -76,10 +78,51 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
 
   @override
   void dispose() {
+    unawaited(_preparedHandoff?.disposeIfUnclaimed());
     _scrollController
       ..removeListener(_handleScrollLoadMore)
       ..dispose();
     super.dispose();
+  }
+
+  PostVideoWarmHandoff? _createWarmHandoff(FeedPost post) {
+    return PostVideoWarmHandoff.createIfVideo(
+      isVideo: post.isVideo,
+      postId: post.id,
+      url: videoQualityService.resolvePlaybackUrl(
+        post.videoPlaybackUrl,
+        dataSaverUrl: post.videoDataSaverUrl,
+        userPreference: appSettingsStore.feedVideoQuality,
+      ),
+      hasAudio: post.hasAudio != false,
+    );
+  }
+
+  void _preparePostVideo(FeedPost post) {
+    if (_openingPost || !post.isVideo || _preparedPostId == post.id) return;
+    final stale = _preparedHandoff;
+    _preparedHandoff = _createWarmHandoff(post);
+    _preparedPostId = _preparedHandoff == null ? null : post.id;
+    unawaited(stale?.disposeIfUnclaimed());
+  }
+
+  void _cancelPreparedPost([String? postId]) {
+    if (postId != null && _preparedPostId != postId) return;
+    final stale = _preparedHandoff;
+    _preparedHandoff = null;
+    _preparedPostId = null;
+    unawaited(stale?.disposeIfUnclaimed());
+  }
+
+  PostVideoWarmHandoff? _takePreparedPost(FeedPost post) {
+    if (_preparedPostId != post.id) {
+      _cancelPreparedPost();
+      return null;
+    }
+    final handoff = _preparedHandoff;
+    _preparedHandoff = null;
+    _preparedPostId = null;
+    return handoff;
   }
 
   Future<void> _loadPosts() async {
@@ -306,15 +349,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     _openingPost = true;
     AppHaptics.tap();
     final post = posts[initialIndex];
-    final handoff = PostVideoWarmHandoff.createIfVideo(
-      isVideo: post.isVideo,
-      postId: post.id,
-      url: videoQualityService.resolvePlaybackUrl(
-        post.videoPlaybackUrl,
-        dataSaverUrl: post.videoDataSaverUrl,
-        userPreference: appSettingsStore.feedVideoQuality,
-      ),
-    );
+    final handoff = _takePreparedPost(post) ?? _createWarmHandoff(post);
     try {
       await Navigator.push<void>(
         context,
@@ -325,6 +360,11 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
             initialIndex: initialIndex,
             authorIsOfficial: memberStore.profile?.isAdmin ?? false,
             warmVideoHandoff: handoff,
+            initialNextCursor: _nextCursor,
+            loadMoreScopedPosts: (cursor) => feedService.fetchMyPosts(
+              filter: 'all',
+              cursor: cursor,
+            ),
           ),
         ),
       );
@@ -452,6 +492,8 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
                     return _GalleryPostTile(
                       post: post,
                       onTap: () => _openPostDetail(visiblePosts, index),
+                      onTapDown: () => _preparePostVideo(post),
+                      onTapCancel: () => _cancelPreparedPost(post.id),
                     );
                   },
                 ),
@@ -807,10 +849,14 @@ class _FeedGalleryTabs extends StatelessWidget {
 class _GalleryPostTile extends StatelessWidget {
   final FeedPost post;
   final VoidCallback onTap;
+  final VoidCallback? onTapDown;
+  final VoidCallback? onTapCancel;
 
   const _GalleryPostTile({
     required this.post,
     required this.onTap,
+    this.onTapDown,
+    this.onTapCancel,
   });
 
   @override
@@ -819,6 +865,8 @@ class _GalleryPostTile extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+        onTapDown: (_) => onTapDown?.call(),
+        onTapCancel: onTapCancel,
         borderRadius: BorderRadius.circular(8),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),

@@ -28,6 +28,10 @@ import {
 } from "@/lib/feed/mentions";
 import { listFeedPosts } from "@/lib/feed/queries";
 import { ADMIN_VIDEO_CONFIG, USER_VIDEO_CONFIG } from "@/lib/feed/video-config";
+import {
+  parseFeedAccessibilityMetadata,
+  parseFeedAltText,
+} from "@/lib/feed/accessibility";
 
 // Make sure the feed list never gets cached at the edge — newly approved
 // posts must appear on the next pull without waiting for a revalidation
@@ -86,6 +90,10 @@ type CreatePostBody = {
   videoHeight?: number | null;
   videoMimeType?: string | null;
   videoSizeBytes?: number | null;
+  videoAltText?: string | null;
+  hasAudio?: boolean | null;
+  subtitleUrl?: string | null;
+  subtitleLanguage?: string | null;
   productId?: string | null;
   productIds?: unknown;
   promoOriginalPrice?: number | null;
@@ -109,6 +117,7 @@ type CreatePostBody = {
     key?: string | null;
     width?: number | null;
     height?: number | null;
+    altText?: string | null;
   }>;
 };
 
@@ -145,6 +154,12 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => ({}))) as CreatePostBody;
+  const accessibility = parseFeedAccessibilityMetadata(
+    body as Record<string, unknown>,
+  );
+  if (!accessibility.ok) {
+    return NextResponse.json({ error: accessibility.error }, { status: 400 });
+  }
   const title = String(body.title ?? "").trim();
   const description = body.description ? String(body.description).trim() : null;
 
@@ -259,18 +274,29 @@ export async function POST(request: NextRequest) {
     key?: string | null;
     width?: number | null;
     height?: number | null;
+    altText: string | null;
   };
   let photoInputs: PhotoInput[] = [];
   if (kind === "PHOTO_CAROUSEL") {
     const rawImages = Array.isArray(body.images) ? body.images : [];
+    let altTextError: string | null = null;
     photoInputs = rawImages
-      .map((item): PhotoInput | null => {
+      .map((item, index): PhotoInput | null => {
         if (!item || typeof item !== "object") return null;
-        const url = String((item as Record<string, unknown>).url ?? "").trim();
+        const image = item as Record<string, unknown>;
+        const url = String(image.url ?? "").trim();
         if (!url) return null;
-        const key = (item as Record<string, unknown>).key;
-        const width = (item as Record<string, unknown>).width;
-        const height = (item as Record<string, unknown>).height;
+        const key = image.key;
+        const width = image.width;
+        const height = image.height;
+        const altText = parseFeedAltText(
+          image.altText ?? null,
+          `Alt text foto ${index + 1}`,
+        );
+        if (!altText.ok) {
+          altTextError = altText.error;
+          return null;
+        }
         return {
           url,
           key: typeof key === "string" ? key : null,
@@ -282,9 +308,13 @@ export async function POST(request: NextRequest) {
             typeof height === "number" && Number.isFinite(height)
               ? Math.floor(height)
               : null,
+          altText: altText.data,
         };
       })
       .filter((item): item is PhotoInput => item !== null);
+    if (altTextError) {
+      return NextResponse.json({ error: altTextError }, { status: 400 });
+    }
     if (photoInputs.length < PHOTO_CAROUSEL_MIN_IMAGES) {
       return NextResponse.json(
         { error: "Pilih minimal 1 foto untuk melanjutkan." },
@@ -491,6 +521,7 @@ export async function POST(request: NextRequest) {
           Number.isFinite(Number(body.videoHeight)) && Number(body.videoHeight) > 0
             ? Math.floor(Number(body.videoHeight))
             : null,
+        ...accessibility.data,
         productId,
         promoOriginalPrice,
         promoDiscountPrice,
@@ -505,6 +536,10 @@ export async function POST(request: NextRequest) {
         status: true,
         kind: true,
         tab: true,
+        videoAltText: true,
+        hasAudio: true,
+        subtitleUrl: true,
+        subtitleLanguage: true,
       },
     });
 
@@ -546,6 +581,7 @@ export async function POST(request: NextRequest) {
           uploadthingKey: photo.key,
           width: photo.width,
           height: photo.height,
+          altText: photo.altText,
           sortOrder: index,
         })),
       });

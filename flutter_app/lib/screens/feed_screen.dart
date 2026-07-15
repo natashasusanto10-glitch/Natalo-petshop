@@ -5,7 +5,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:cached_video_player_plus/cached_video_player_plus.dart';
@@ -17,6 +16,7 @@ import '../features/feed/widgets/feed_action_rail.dart';
 import '../features/feed/video/adaptive_video_preload_policy.dart';
 import '../features/feed/video/preload_generation.dart';
 import '../features/feed/video/single_dispose_guard.dart';
+import '../features/feed/video/video_media_cache.dart';
 import '../features/feed/video/video_preload_metrics.dart';
 import '../features/feed/widgets/feed_creator_overlay.dart';
 import '../features/feed/widgets/feed_post_shared_widgets.dart';
@@ -695,6 +695,7 @@ class _FeedScreenState extends State<FeedScreen> {
       final cachedPlayer = CachedVideoPlayerPlus.networkUrl(
         Uri.parse(resolvedUrl),
         invalidateCacheIfOlderThan: const Duration(days: 7),
+        cacheKey: videoMediaCacheKey(mediaId: id, url: resolvedUrl),
       );
       _preloadedCachedPlayers[id] = cachedPlayer;
       _preloadedUrls[id] = resolvedUrl;
@@ -771,7 +772,7 @@ class _FeedScreenState extends State<FeedScreen> {
           );
           if (!_disposing) _preloadRevision.value++;
           try {
-            await DefaultCacheManager().removeFile(resolvedUrl);
+            await evictVideoMediaCache(mediaId: id, url: resolvedUrl);
           } catch (_) {}
           recordVideoPreloadMetric(
             'failed',
@@ -1477,6 +1478,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   int _commentCount = 0;
   int _shareCount = 0;
   bool _shareInFlight = false;
+  bool _commentDrawerOpen = false;
   bool _hideOverlayForLongPress = false;
   bool _hideOverlayForPinchZoom = false;
 
@@ -1674,6 +1676,8 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     try {
       final result = await feedStore.toggleLike(widget.post.id);
       feedLocalStore.setLiked(widget.post.id, result.liked);
+    } on FeedViewerChangedException {
+      // Ignore stale completion from the previous authenticated viewer.
     } catch (error) {
       if (!mounted) return;
       if (error is ApiException && error.statusCode == 401) {
@@ -1715,33 +1719,18 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     _heartBurstController.forward(from: 0);
   }
 
-  void _onComment() {
+  Future<void> _onComment() async {
+    if (_commentDrawerOpen) return;
+    _commentDrawerOpen = true;
     AppHaptics.tap();
-    // TODO: open comment sheet (reuse FeedCommentSheet — sama dengan video).
-    // Untuk MVP carousel, buka modal sheet dengan post comments.
-    showModalBottomSheet(
-      context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        snap: true,
-        // Explicit snap points: tarik ke salah satu dari 3 size. Bukan
-        // free-drag. Match Apple Maps / Spotify pattern — bottom sheet
-        // selalu terasa "settled" di posisi yang jelas, bukan random
-        // height yang berubah-ubah.
-        snapSizes: const [0.5, 0.7, 0.95],
-        builder: (_, scrollController) => FeedCommentSheet(
-          post: widget.post,
-          applyKeyboardInset: true,
-          sheetScrollController: scrollController,
-          onClose: () => Navigator.pop(context),
-        ),
-      ),
-    );
+    FocusScope.of(context).unfocus();
+    widget.onOverlayStateChanged(true);
+    try {
+      await showFeedCommentDrawer(context, post: widget.post);
+    } finally {
+      _commentDrawerOpen = false;
+      widget.onOverlayStateChanged(false);
+    }
   }
 
   Future<void> _onShare() async {

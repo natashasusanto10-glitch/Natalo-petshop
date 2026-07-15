@@ -105,4 +105,77 @@ void main() {
     });
     expect(m.imageUrl, isNull);
   });
+
+  test('parse order_context v1 dan teruskan schemaVersion root', () {
+    final m = ChatMessage.fromJson({
+      'id': 'm-order-v1',
+      'senderRole': 'system',
+      'type': 'order_context',
+      'schemaVersion': 3,
+      'order': {
+        'orderNumber': 'ORD-20260715-ABC',
+        'status': 'PENDING',
+        'paymentStatus': 'UNPAID',
+        'paymentProofStatus': 'PENDING_REVIEW',
+        'total': 2983946,
+        'itemCount': 4,
+        'hasPaymentProof': true,
+        'proofVersion': 2,
+        'createdAt': '2026-07-15T02:00:00.000Z',
+      },
+      'createdAt': 8,
+    });
+
+    expect(m.order?.orderNumber, 'ORD-20260715-ABC');
+    expect(m.order?.schemaVersion, 3);
+    expect(m.order?.itemCount, 4);
+    expect(m.order?.paymentStatus, 'UNPAID');
+    expect(m.order?.paymentProofStatus, 'PENDING_REVIEW');
+    expect(m.order?.hasPaymentProof, isTrue);
+    expect(m.order?.proofVersion, 2);
+    expect(m.order?.createdAt, DateTime.utc(2026, 7, 15, 2));
+    expect(
+      chatOrderStatusLabel(
+        m.order?.status,
+        paymentProofStatus: m.order?.paymentProofStatus,
+      ),
+      'Menunggu verifikasi',
+    );
+  });
+
+  test('parse order legacy snake_case dari context wrapper', () {
+    final m = ChatMessage.fromJson({
+      'id': 'm-order-legacy',
+      'type': 'text',
+      'context': {
+        'type': 'order',
+        'order_number': 'ORD-LEGACY',
+        'payment_proof_status': 'VERIFIED',
+        'item_count': '2',
+        'grandTotal': '125000',
+      },
+      'createdAt': 9,
+    });
+
+    expect(m.order?.orderNumber, 'ORD-LEGACY');
+    expect(m.order?.itemCount, 2);
+    expect(m.order?.total, 125000);
+    expect(m.order?.schemaVersion, 1);
+  });
+
+  test('schemaVersion diwariskan dari context wrapper bertingkat', () {
+    final m = ChatMessage.fromJson({
+      'id': 'm-order-wrapper',
+      'type': 'order_context',
+      'context': {
+        'type': 'order',
+        'schemaVersion': 4,
+        'order': {'orderNumber': 'ORD-WRAPPED'},
+      },
+      'createdAt': 10,
+    });
+
+    expect(m.order?.orderNumber, 'ORD-WRAPPED');
+    expect(m.order?.schemaVersion, 4);
+  });
 }

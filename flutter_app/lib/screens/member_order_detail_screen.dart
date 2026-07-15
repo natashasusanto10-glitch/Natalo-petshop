@@ -442,7 +442,13 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
           appBar: AppBar(
             title: const Text('Detail Pesanan'),
             // SizedBox 12: jarak tepi kanan (ikon shrinkWrap mepet tepi).
-            actions: const [AppChatButton(), SizedBox(width: 12)],
+            actions: [
+              AppChatButton(
+                routeArguments: _orderChatContext(order),
+                tooltip: 'Chat tentang pesanan ini',
+              ),
+              const SizedBox(width: 12),
+            ],
           ),
           body: NataloPawRefreshIndicator(
             onRefresh: _refreshOrder,
@@ -711,8 +717,7 @@ class _PaymentActionCard extends StatelessWidget {
     final bank = _bankAccounts[order.manualBank ?? 'BCA_NATASHA'] ??
         _bankAccounts['BCA_NATASHA']!;
     final totalTransfer = order.total + (order.uniqueCode ?? 0);
-    final hasProof = order.paymentProofUrl != null &&
-        order.paymentProofUrl!.trim().isNotEmpty;
+    final hasProof = _hasActivePaymentProof(order);
     final deadline = order.paymentDeadline;
     final expired =
         !hasProof && deadline != null && DateTime.now().isAfter(deadline);
@@ -1189,9 +1194,16 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
   bool _uploading = false;
   String? _proofUrl;
 
-  bool get _hasProof =>
+  bool get _hasStoredProof =>
       (_proofUrl?.isNotEmpty ?? false) ||
       (widget.order.paymentProofUrl?.isNotEmpty ?? false);
+
+  String get _proofStatus {
+    if (_proofUrl?.isNotEmpty ?? false) return 'PENDING_REVIEW';
+    final status = widget.order.paymentProofStatus?.trim().toUpperCase();
+    if (status != null && status.isNotEmpty) return status;
+    return _hasStoredProof ? 'PENDING_REVIEW' : 'NOT_UPLOADED';
+  }
 
   Future<void> _pickAndUpload() async {
     final picked = await _picker.pickImage(
@@ -1218,11 +1230,13 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Upload gagal: $error'),
+        const SnackBar(
+          content: Text(
+            'Bukti belum berhasil diunggah. Periksa koneksi lalu coba lagi.',
+          ),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -1231,11 +1245,41 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
     }
   }
 
+  void _openChat() {
+    final contextData = _orderChatContext(widget.order);
+    final orderData = contextData['order'] as Map<String, dynamic>;
+    if (_proofUrl?.isNotEmpty ?? false) {
+      orderData['hasPaymentProof'] = true;
+      orderData['paymentProofStatus'] = 'PENDING_REVIEW';
+    }
+    Navigator.pushNamed(context, '/chat', arguments: contextData);
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final statusColor =
-        _hasProof ? const Color(0xFF16A34A) : const Color(0xFFF59E0B);
+    final proofRejected = _proofStatus == 'REJECTED';
+    final proofVerified = _proofStatus == 'VERIFIED';
+    final hasActiveProof = _hasStoredProof && !proofRejected;
+    final statusColor = proofRejected
+        ? const Color(0xFFDC2626)
+        : hasActiveProof
+            ? const Color(0xFF16A34A)
+            : const Color(0xFFF59E0B);
+    final title = proofRejected
+        ? 'Bukti Perlu Diperbarui'
+        : proofVerified
+            ? 'Pembayaran Terverifikasi'
+            : hasActiveProof
+                ? 'Menunggu Verifikasi'
+                : 'Bukti Transfer';
+    final subtitle = proofRejected
+        ? 'Upload ulang bukti transfer yang lebih jelas atau sesuai.'
+        : proofVerified
+            ? 'Bukti pembayaran sudah diperiksa admin.'
+            : hasActiveProof
+                ? 'Admin akan mengecek pembayaran manual.'
+                : 'Upload foto bukti pembayaran manual.';
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -1258,9 +1302,11 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
           Row(
             children: [
               _OrderDetailIconTile(
-                icon: _hasProof
-                    ? Icons.verified_outlined
-                    : Icons.receipt_long_outlined,
+                icon: proofRejected
+                    ? Icons.error_outline_rounded
+                    : hasActiveProof
+                        ? Icons.verified_outlined
+                        : Icons.receipt_long_outlined,
                 color: statusColor,
                 size: 44,
               ),
@@ -1270,7 +1316,7 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _hasProof ? 'Bukti Transfer Terkirim' : 'Bukti Transfer',
+                      title,
                       style: TextStyle(
                         color: cs.onSurface,
                         fontSize: 16,
@@ -1278,9 +1324,7 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
                       ),
                     ),
                     Text(
-                      _hasProof
-                          ? 'Admin akan mengecek pembayaran manual.'
-                          : 'Upload foto bukti pembayaran manual.',
+                      subtitle,
                       style: TextStyle(
                         color: cs.onSurfaceVariant,
                         fontSize: 12,
@@ -1295,7 +1339,7 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
           // Preview thumbnail bukti yang sudah di-upload — tap untuk lihat
           // full-screen. Sebelumnya user cuma dapat flag boolean tanpa bisa
           // memastikan foto yang ke-upload benar/jelas.
-          if (_hasProof &&
+          if (_hasStoredProof &&
               (_proofUrl ?? widget.order.paymentProofUrl) != null) ...[
             const SizedBox(height: 14),
             _ProofThumbnail(
@@ -1305,14 +1349,19 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
           const SizedBox(height: 14),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 180),
-            child: _hasProof
-                ? const Padding(
-                    padding: EdgeInsets.only(bottom: 12),
+            child: _hasStoredProof
+                ? Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
                     child: AppInfoBanner(
-                      icon: Icons.check_circle_outline_rounded,
-                      message:
-                          'Bukti tersimpan. Admin akan verifikasi pembayaran.',
-                      color: Color(0xFF16A34A),
+                      icon: proofRejected
+                          ? Icons.error_outline_rounded
+                          : Icons.check_circle_outline_rounded,
+                      message: proofRejected
+                          ? 'Bukti ditolak. Periksa kembali lalu upload bukti baru.'
+                          : proofVerified
+                              ? 'Bukti pembayaran sudah diverifikasi admin.'
+                              : 'Bukti tersimpan dan sedang menunggu pemeriksaan admin.',
+                      color: statusColor,
                     ),
                   )
                 : const SizedBox.shrink(),
@@ -1326,11 +1375,17 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
                     child: ElevatedButton.icon(
                       onPressed: _pickAndUpload,
                       icon: Icon(
-                        _hasProof
+                        _hasStoredProof
                             ? Icons.refresh_rounded
                             : Icons.upload_file_rounded,
                       ),
-                      label: Text(_hasProof ? 'Ganti Bukti' : 'Upload Bukti'),
+                      label: Text(
+                        proofRejected
+                            ? 'Upload Ulang'
+                            : _hasStoredProof
+                                ? 'Ganti Bukti'
+                                : 'Upload Bukti',
+                      ),
                       style: ElevatedButton.styleFrom(
                         minimumSize: const Size.fromHeight(50),
                         backgroundColor: _brandBlue,
@@ -1339,6 +1394,22 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
                     ),
                   ),
           ),
+          if (_hasStoredProof && !_uploading) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _openChat,
+                icon: const ChatDotsBubbleIcon(size: 19),
+                label: const Text('Buka Chat'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  foregroundColor: _brandBlue,
+                  side: const BorderSide(color: _brandBlue),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -2989,6 +3060,12 @@ bool _shouldShowPaymentProof(OrderSummary order) {
   return manual && !paid;
 }
 
+bool _hasActivePaymentProof(OrderSummary order) {
+  final hasUrl = (order.paymentProofUrl ?? '').trim().isNotEmpty;
+  if (!hasUrl) return false;
+  return order.paymentProofStatus?.trim().toUpperCase() != 'REJECTED';
+}
+
 bool _shouldShowPaymentAction(OrderSummary order) {
   if (_isFinalizedOrder(order)) return false;
   final paid = order.paymentStatus.toUpperCase() == 'PAID';
@@ -3317,6 +3394,7 @@ class _ShippingInfoCard extends StatelessWidget {
 class _ConfirmDeliveredCard extends StatelessWidget {
   final bool loading;
   final VoidCallback onConfirm;
+
   /// Estimasi kapan order auto-DELIVERED via cron (default H+7 sejak
   /// shipped). Tampilkan small text "Otomatis selesai DD MMM YYYY"
   /// di bawah button supaya user tau timing-nya + decision aid.
@@ -3688,3 +3766,23 @@ void _showSnack(BuildContext context, String message) {
     SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
   );
 }
+
+Map<String, dynamic> _orderChatContext(OrderSummary order) => {
+      'type': 'order',
+      'orderNumber': order.orderNumber,
+      'schemaVersion': 1,
+      'order': {
+        'orderNumber': order.orderNumber,
+        'status': order.status,
+        'paymentStatus': order.paymentStatus,
+        'paymentProofStatus': order.paymentProofStatus ??
+            ((order.paymentProofUrl ?? '').trim().isNotEmpty
+                ? 'PENDING_REVIEW'
+                : null),
+        'total': order.total.round(),
+        'itemCount': order.itemCount,
+        'hasPaymentProof': (order.paymentProofUrl ?? '').trim().isNotEmpty,
+        'proofVersion': order.paymentProofVersion,
+        'createdAt': order.createdAt.millisecondsSinceEpoch,
+      },
+    };

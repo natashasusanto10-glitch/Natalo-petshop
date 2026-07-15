@@ -25,6 +25,8 @@ import {
 import { bunnyThumbnailUrl, signBunnyUrl } from "@/lib/feed/bunny";
 import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
+import { getViewerSavedPostIds } from "@/lib/feed/queries";
+import { feedAccessibilityPayload } from "@/lib/feed/accessibility";
 
 export async function GET(request: NextRequest) {
   const session = await getSession("CUSTOMER");
@@ -87,6 +89,10 @@ export async function GET(request: NextRequest) {
         videoDurationSec: true,
         videoWidth: true,
         videoHeight: true,
+        videoAltText: true,
+        hasAudio: true,
+        subtitleUrl: true,
+        subtitleLanguage: true,
         createdAt: true,
         status: true,
         moderationNote: true,
@@ -104,6 +110,7 @@ export async function GET(request: NextRequest) {
             width: true,
             height: true,
             sortOrder: true,
+            altText: true,
           },
         },
         likes: {
@@ -180,6 +187,11 @@ export async function GET(request: NextRequest) {
           ).map((l) => l.postId)
         );
 
+  const viewerSavedIds = await getViewerSavedPostIds(
+    session.sub,
+    slicedPosts.map((post) => post.id)
+  );
+
   return NextResponse.json({
     posts: slicedPosts.map((post) => {
       const signedMedia = post.media.map((item) => {
@@ -200,6 +212,7 @@ export async function GET(request: NextRequest) {
           width: item.width,
           height: item.height,
           sortOrder: item.sortOrder,
+          altText: item.altText,
         };
       });
       const isPhotoPost = post.kind === "PHOTO_CAROUSEL";
@@ -228,6 +241,7 @@ export async function GET(request: NextRequest) {
               width: post.videoWidth,
               height: post.videoHeight,
               sortOrder: 0,
+              altText: post.videoAltText,
             },
           ]
         : [];
@@ -253,6 +267,7 @@ export async function GET(request: NextRequest) {
         mediaItems,
         videoDurationSec: post.videoDurationSec,
         durationSec: post.videoDurationSec,
+        ...feedAccessibilityPayload(post, signBunnyUrl),
         aspectWidth: isPhotoPost
           ? firstMedia?.width ?? 4
           : post.videoWidth ?? 9,
@@ -267,12 +282,16 @@ export async function GET(request: NextRequest) {
         shareCount: post.shareCount,
         viewCount: post.viewCount,
         viewerLiked: viewerLikedIds.has(post.id),
+        viewerSaved: viewerSavedIds.has(post.id),
         recentLikers: post.likes.map((like) => ({
           id: like.user.id,
           name: brandDisplayName(like.user.role, like.user.name),
           username: like.user.username,
           role: like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
-          profilePhotoUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
+          profilePhotoUrl: brandPhotoUrl(
+            like.user.role,
+            like.user.profilePhotoUrl
+          ),
           avatarUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
         })),
         // Produk yang di-tag → Flutter FeedPost.fromJson baca `products`

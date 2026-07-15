@@ -9,12 +9,14 @@
  * legacy/admin callers, but the storefront no longer exposes tab columns.
  */
 import { prisma } from "@/lib/prisma";
-import type { FeedPostTab } from "@prisma/client";
+import type { FeedPostTab, Prisma } from "@prisma/client";
 import { resolveActiveDiscount } from "@/lib/product-pricing";
 import { extractMentionHandles } from "./mentions";
 import { signBunnyUrl } from "./bunny";
 import { buildFeedVideoPlaybackUrls } from "./video-playback-urls";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
+import { feedAccessibilityPayload } from "./accessibility";
+import { visibleFeedCommentRootWhere } from "./comment-sync";
 import type {
   FeedCommentItem,
   FeedCommentsResponse,
@@ -24,6 +26,46 @@ import type {
 
 const FEED_PAGE_SIZE = 10;
 const COMMENT_PAGE_SIZE = 20;
+
+export const PUBLIC_FEED_POST_WHERE = {
+  status: "ACTIVE",
+  deletedAt: null,
+  encodingStatus: "ready",
+  OR: [
+    { videoUrl: { not: null }, thumbnailUrl: { not: null } },
+    { kind: "PRODUCT_ONLY" },
+    { kind: "PROMO", productId: { not: null } },
+    { kind: "PHOTO_CAROUSEL" },
+  ],
+} satisfies Prisma.FeedPostWhereInput;
+
+/** Resolve saved state for a whole page in one query. */
+export async function getViewerSavedPostIds(
+  viewerUserId: string | null | undefined,
+  postIds: readonly string[]
+): Promise<Set<string>> {
+  if (!viewerUserId || postIds.length === 0) return new Set<string>();
+
+  const saves = await prisma.feedSave.findMany({
+    where: {
+      userId: viewerUserId,
+      postId: { in: [...new Set(postIds)] },
+    },
+    select: { postId: true },
+  });
+  return new Set(saves.map((save) => save.postId));
+}
+
+export function orderFeedItemsByPostIds(
+  postIds: readonly string[],
+  items: readonly FeedPostListItem[]
+): FeedPostListItem[] {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  return postIds.flatMap((postId) => {
+    const item = byId.get(postId);
+    return item ? [item] : [];
+  });
+}
 
 /**
  * Resolve diskon AKTIF untuk produk di feed — pakai logika canonical yang
@@ -54,16 +96,22 @@ export function resolveFeedProductDiscount(
     }>;
   },
   now: Date,
-  tagPromoPrice?: number | null,
-): { discountPrice: number | null; discountSource: "FLASH_SALE" | "PROMO_TOKO" | null } {
+  tagPromoPrice?: number | null
+): {
+  discountPrice: number | null;
+  discountSource: "FLASH_SALE" | "PROMO_TOKO" | null;
+} {
   const promoItems = (product.discountItems ?? [])
     .filter((it) => it.variantId === null)
-    .map((it) => ({ discountedPrice: it.discountedPrice, endsAt: it.discount.endsAt }));
+    .map((it) => ({
+      discountedPrice: it.discountedPrice,
+      endsAt: it.discount.endsAt,
+    }));
   let best = resolveActiveDiscount(
     product.price,
     { discountPrice: product.discountPrice, endsAt: product.flashSaleEndsAt },
     promoItems,
-    now,
+    now
   );
   if (
     tagPromoPrice != null &&
@@ -76,7 +124,7 @@ export function resolveFeedProductDiscount(
       effectivePrice: tagPromoPrice,
       discountAmount: product.price - tagPromoPrice,
       discountPercent: Math.round(
-        ((product.price - tagPromoPrice) / product.price) * 100,
+        ((product.price - tagPromoPrice) / product.price) * 100
       ),
       endsAt: now,
     };
@@ -92,6 +140,8 @@ type FeedListOptions = {
   /** Filter to only posts that tag this product (Shop the Look + legacy
    *  productId). Used when entering /feed from a product page. */
   productSlug?: string | null;
+  /** Internal batch filter used by the saved-post listing. */
+  postIds?: readonly string[];
 };
 
 /**
@@ -104,6 +154,7 @@ export async function listFeedPosts({
   cursor,
   viewerUserId,
   productSlug,
+  postIds,
 }: FeedListOptions): Promise<FeedListResponse> {
   // Resolve product slug → id sekali, supaya WHERE clause bisa pakai
   // productId match (lebih efisien dari nested slug lookup di setiap row).
@@ -127,24 +178,8 @@ export async function listFeedPosts({
 
   const posts = await prisma.feedPost.findMany({
     where: {
-      status: "ACTIVE",
-      // Soft-deleted posts stay in DB for audit/restore but must never
-      // surface in the public feed.
-      deletedAt: null,
-      // Bunny videos in `uploading` / `processing` / `failed` are not
-      // playable — exclude them. Legacy UploadThing posts default to
-      // `ready` so they continue to surface.
-      encodingStatus: "ready",
-      // Defensive: skip posts whose video assets are missing.
-      OR: [
-        { videoUrl: { not: null }, thumbnailUrl: { not: null } },
-        { kind: "PRODUCT_ONLY" },
-        { kind: "PROMO", productId: { not: null } },
-        // PHOTO_CAROUSEL: pass WHERE filter — media check di-handle
-        // post-query (Prisma _count workaround). Photo post tidak punya
-        // videoUrl, jadi tanpa OR ini akan filtered out di atas.
-        { kind: "PHOTO_CAROUSEL" },
-      ],
+      ...PUBLIC_FEED_POST_WHERE,
+      ...(postIds ? { id: { in: [...postIds] } } : {}),
       ...(tab ? { tab } : {}),
       // Shop the Look filter: match BOTH legacy productId AND multi-tag.
       ...(productIdFilter
@@ -236,20 +271,20 @@ export async function listFeedPosts({
               discountPrice: true,
               flashSaleEndsAt: true,
               discountItems: {
-            where: {
-              isItemActive: true,
-              discount: {
-                isActive: true,
-                startsAt: { lte: now },
-                endsAt: { gt: now },
+                where: {
+                  isItemActive: true,
+                  discount: {
+                    isActive: true,
+                    startsAt: { lte: now },
+                    endsAt: { gt: now },
+                  },
+                },
+                select: {
+                  variantId: true,
+                  discountedPrice: true,
+                  discount: { select: { endsAt: true } },
+                },
               },
-            },
-            select: {
-              variantId: true,
-              discountedPrice: true,
-              discount: { select: { endsAt: true } },
-            },
-          },
               stock: true,
               weightGram: true,
               imageUrl: true,
@@ -272,6 +307,7 @@ export async function listFeedPosts({
           width: true,
           height: true,
           sortOrder: true,
+          altText: true,
         },
         orderBy: { sortOrder: "asc" },
       },
@@ -305,6 +341,11 @@ export async function listFeedPosts({
     });
     viewerLikedIds = new Set(likes.map((l) => l.postId));
   }
+
+  const viewerSavedIds = await getViewerSavedPostIds(
+    viewerUserId,
+    posts.map((post) => post.id)
+  );
 
   // Follow state viewer→author, batch 1 query (pola sama dgn viewerLikedIds,
   // no N+1) — dipakai chip "Ikuti/Mengikuti" di samping nama kreator di
@@ -375,130 +416,138 @@ export async function listFeedPosts({
       videoGuid: p.videoGuid,
     });
     return {
-    id: p.id,
-    kind: p.kind,
-    tab: p.tab,
-    status: p.status,
-    title: p.title,
-    description: p.description,
-    // Sign URL dengan Bunny CDN token kalau BUNNY_TOKEN_SECURITY_KEY di-set
-    // (defense untuk hotlink protection). Tanpa env, return as-is.
-    videoUrl: playbackUrls.videoUrl,
-    videoDataSaverUrl: playbackUrls.videoDataSaverUrl,
-    thumbnailUrl: signBunnyUrl(p.thumbnailUrl) ?? null,
-    thumbnailBlurhash: p.thumbnailBlurhash,
-    videoDurationSec: p.videoDurationSec,
-    videoWidth: p.videoWidth,
-    videoHeight: p.videoHeight,
-    product: p.product
-      ? (() => {
-          // discountPrice = harga AKTIF (effectivePrice) hasil
-          // resolveActiveDiscount, BUKAN raw Product.discountPrice. Plus
-          // discountSource supaya app label "Flash Sale" vs "Diskon" benar.
-          const d = resolveFeedProductDiscount(p.product!, now);
+      id: p.id,
+      kind: p.kind,
+      tab: p.tab,
+      status: p.status,
+      title: p.title,
+      description: p.description,
+      // Sign URL dengan Bunny CDN token kalau BUNNY_TOKEN_SECURITY_KEY di-set
+      // (defense untuk hotlink protection). Tanpa env, return as-is.
+      videoUrl: playbackUrls.videoUrl,
+      videoDataSaverUrl: playbackUrls.videoDataSaverUrl,
+      thumbnailUrl: signBunnyUrl(p.thumbnailUrl) ?? null,
+      thumbnailBlurhash: p.thumbnailBlurhash,
+      videoDurationSec: p.videoDurationSec,
+      videoWidth: p.videoWidth,
+      videoHeight: p.videoHeight,
+      ...feedAccessibilityPayload(p, signBunnyUrl),
+      product: p.product
+        ? (() => {
+            // discountPrice = harga AKTIF (effectivePrice) hasil
+            // resolveActiveDiscount, BUKAN raw Product.discountPrice. Plus
+            // discountSource supaya app label "Flash Sale" vs "Diskon" benar.
+            const d = resolveFeedProductDiscount(p.product!, now);
+            return {
+              id: p.product!.id,
+              slug: p.product!.slug,
+              name: p.product!.name,
+              price: p.product!.price,
+              discountPrice: d.discountPrice,
+              discountSource: d.discountSource,
+              stock: p.product!.stock,
+              weightGram: p.product!.weightGram,
+              isAvailable: p.product!.isActive,
+              imageUrl: p.product!.imageUrl,
+              hasVariants: p.product!.hasVariants,
+              avgRating: p.product!.avgRating ?? 0,
+              reviewCount: p.product!.reviewCount ?? 0,
+              soldCount: soldCountMap.get(p.product!.id) ?? 0,
+            };
+          })()
+        : null,
+      // Shop the Look: keep inactive tagged products visible for context, but
+      // mark them unavailable so UI can disable commerce safely.
+      taggedProducts: p.taggedProducts
+        .filter((tp) => tp.product)
+        .map((tp) => {
+          // Per-tag promoPrice ikut dipertimbangkan (lowest wins).
+          const d = resolveFeedProductDiscount(tp.product!, now, tp.promoPrice);
           return {
-            id: p.product!.id,
-            slug: p.product!.slug,
-            name: p.product!.name,
-            price: p.product!.price,
+            id: tp.product!.id,
+            slug: tp.product!.slug,
+            name: tp.product!.name,
+            price: tp.product!.price,
             discountPrice: d.discountPrice,
             discountSource: d.discountSource,
-            stock: p.product!.stock,
-            weightGram: p.product!.weightGram,
-            isAvailable: p.product!.isActive,
-            imageUrl: p.product!.imageUrl,
-            hasVariants: p.product!.hasVariants,
-            avgRating: p.product!.avgRating ?? 0,
-            reviewCount: p.product!.reviewCount ?? 0,
-            soldCount: soldCountMap.get(p.product!.id) ?? 0,
+            stock: tp.product!.stock,
+            weightGram: tp.product!.weightGram,
+            isAvailable: tp.product!.isActive,
+            imageUrl: tp.product!.imageUrl,
+            position: tp.position,
+            promoPrice: tp.promoPrice ?? null,
+            hasVariants: tp.product!.hasVariants,
+            avgRating: tp.product!.avgRating ?? 0,
+            reviewCount: tp.product!.reviewCount ?? 0,
+            soldCount: soldCountMap.get(tp.product!.id) ?? 0,
           };
-        })()
-      : null,
-    // Shop the Look: keep inactive tagged products visible for context, but
-    // mark them unavailable so UI can disable commerce safely.
-    taggedProducts: p.taggedProducts
-      .filter((tp) => tp.product)
-      .map((tp) => {
-        // Per-tag promoPrice ikut dipertimbangkan (lowest wins).
-        const d = resolveFeedProductDiscount(tp.product!, now, tp.promoPrice);
+        }),
+      promo:
+        p.kind === "PROMO" &&
+        p.promoOriginalPrice != null &&
+        p.promoDiscountPrice != null
+          ? {
+              originalPrice: p.promoOriginalPrice,
+              discountPrice: p.promoDiscountPrice,
+              startsAt: p.promoStartsAt?.toISOString() ?? null,
+              endsAt: p.promoEndsAt?.toISOString() ?? null,
+            }
+          : null,
+      // PHOTO_CAROUSEL media — 1-8 image entries ordered by sortOrder.
+      // Video posts return empty array (kind != PHOTO_CAROUSEL).
+      media: p.media.map((m) => {
+        const mediaPlaybackUrls = buildFeedVideoPlaybackUrls({
+          videoUrl: m.url,
+        });
         return {
-          id: tp.product!.id,
-          slug: tp.product!.slug,
-          name: tp.product!.name,
-          price: tp.product!.price,
-          discountPrice: d.discountPrice,
-          discountSource: d.discountSource,
-          stock: tp.product!.stock,
-          weightGram: tp.product!.weightGram,
-          isAvailable: tp.product!.isActive,
-          imageUrl: tp.product!.imageUrl,
-          position: tp.position,
-          promoPrice: tp.promoPrice ?? null,
-          hasVariants: tp.product!.hasVariants,
-          avgRating: tp.product!.avgRating ?? 0,
-          reviewCount: tp.product!.reviewCount ?? 0,
-          soldCount: soldCountMap.get(tp.product!.id) ?? 0,
+          id: m.id,
+          mediaType: m.mediaType,
+          url: mediaPlaybackUrls.videoUrl ?? m.url,
+          ...(m.mediaType === "video"
+            ? { videoDataSaverUrl: mediaPlaybackUrls.videoDataSaverUrl }
+            : {}),
+          thumbnailUrl: m.thumbnailUrl,
+          width: m.width,
+          height: m.height,
+          sortOrder: m.sortOrder,
+          altText: m.altText,
         };
       }),
-    promo:
-      p.kind === "PROMO" &&
-      p.promoOriginalPrice != null &&
-      p.promoDiscountPrice != null
-        ? {
-            originalPrice: p.promoOriginalPrice,
-            discountPrice: p.promoDiscountPrice,
-            startsAt: p.promoStartsAt?.toISOString() ?? null,
-            endsAt: p.promoEndsAt?.toISOString() ?? null,
-          }
-        : null,
-    // PHOTO_CAROUSEL media — 1-8 image entries ordered by sortOrder.
-    // Video posts return empty array (kind != PHOTO_CAROUSEL).
-    media: p.media.map((m) => {
-      const mediaPlaybackUrls = buildFeedVideoPlaybackUrls({ videoUrl: m.url });
-      return {
-        id: m.id,
-        mediaType: m.mediaType,
-        url: mediaPlaybackUrls.videoUrl ?? m.url,
-        ...(m.mediaType === "video"
-          ? { videoDataSaverUrl: mediaPlaybackUrls.videoDataSaverUrl }
-          : {}),
-        thumbnailUrl: m.thumbnailUrl,
-        width: m.width,
-        height: m.height,
-        sortOrder: m.sortOrder,
-      };
-    }),
-    likeCount: p.likeCount,
-    commentCount: p.commentCount,
-    viewCount: p.viewCount,
-    shareCount: p.shareCount,
-    author: {
-      id: p.author.id,
-      // Akun official (admin) → brand "Natalo Petshop" + foto null (klien
-      // render logo). Nama asli/foto pemilik tidak boleh bocor.
-      name: brandDisplayName(p.author.role, p.author.name),
-      username: p.author.username ?? null,
-      role: (p.authorRole === "ADMIN" ? "ADMIN" : "CUSTOMER") as
-        | "ADMIN"
-        | "CUSTOMER",
-      profilePhotoUrl: brandPhotoUrl(p.author.role, p.author.profilePhotoUrl),
-      // Chip "Ikuti/Mengikuti" di feed app — snapshot saat fetch; toggle
-      // selanjutnya di-track client-side (followOverrides).
-      isFollowing: viewerFollowedAuthorIds.has(p.author.id),
-    },
-    recentLikers: p.likes.map((like) => ({
-      id: like.user.id,
-      name: brandDisplayName(like.user.role, like.user.name),
-      username: like.user.username ?? null,
-      role: (like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as
-        | "ADMIN"
-        | "CUSTOMER",
-      profilePhotoUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
-      avatarUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
-    })),
-    publishedAt: p.publishedAt?.toISOString() ?? null,
-    createdAt: p.createdAt.toISOString(),
-    viewerLiked: viewerLikedIds.has(p.id),
+      likeCount: p.likeCount,
+      commentCount: p.commentCount,
+      viewCount: p.viewCount,
+      shareCount: p.shareCount,
+      author: {
+        id: p.author.id,
+        // Akun official (admin) → brand "Natalo Petshop" + foto null (klien
+        // render logo). Nama asli/foto pemilik tidak boleh bocor.
+        name: brandDisplayName(p.author.role, p.author.name),
+        username: p.author.username ?? null,
+        role: (p.authorRole === "ADMIN" ? "ADMIN" : "CUSTOMER") as
+          | "ADMIN"
+          | "CUSTOMER",
+        profilePhotoUrl: brandPhotoUrl(p.author.role, p.author.profilePhotoUrl),
+        // Chip "Ikuti/Mengikuti" di feed app — snapshot saat fetch; toggle
+        // selanjutnya di-track client-side (followOverrides).
+        isFollowing: viewerFollowedAuthorIds.has(p.author.id),
+      },
+      recentLikers: p.likes.map((like) => ({
+        id: like.user.id,
+        name: brandDisplayName(like.user.role, like.user.name),
+        username: like.user.username ?? null,
+        role: (like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as
+          | "ADMIN"
+          | "CUSTOMER",
+        profilePhotoUrl: brandPhotoUrl(
+          like.user.role,
+          like.user.profilePhotoUrl
+        ),
+        avatarUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
+      })),
+      publishedAt: p.publishedAt?.toISOString() ?? null,
+      createdAt: p.createdAt.toISOString(),
+      viewerLiked: viewerLikedIds.has(p.id),
+      viewerSaved: viewerSavedIds.has(p.id),
     };
   });
 
@@ -508,11 +557,84 @@ export async function listFeedPosts({
   };
 }
 
+export async function listSavedFeedPosts({
+  userId,
+  cursor,
+  limit = FEED_PAGE_SIZE,
+}: {
+  userId: string;
+  cursor?: string | null;
+  limit?: number;
+}): Promise<FeedListResponse> {
+  const saves = await prisma.feedSave.findMany({
+    where: {
+      userId,
+      post: { is: PUBLIC_FEED_POST_WHERE },
+    },
+    orderBy: [{ createdAt: "desc" }, { postId: "desc" }],
+    take: limit + 1,
+    ...(cursor
+      ? {
+          cursor: { userId_postId: { userId, postId: cursor } },
+          skip: 1,
+        }
+      : {}),
+    select: { postId: true },
+  });
+
+  const hasMore = saves.length > limit;
+  const page = hasMore ? saves.slice(0, limit) : saves;
+  if (page.length === 0) return { items: [], nextCursor: null };
+
+  const postIds = page.map((save) => save.postId);
+  const serialized = await listFeedPosts({
+    viewerUserId: userId,
+    postIds,
+  });
+
+  return {
+    items: orderFeedItemsByPostIds(postIds, serialized.items),
+    nextCursor: hasMore ? page[page.length - 1].postId : null,
+  };
+}
+
 type CommentListOptions = {
   postId: string;
   cursor?: string | null;
   viewerUserId?: string | null;
+  additionalRootIds?: readonly string[];
+  db?: Pick<
+    Prisma.TransactionClient,
+    "feedComment" | "feedCommentLike" | "user"
+  >;
 };
+
+const FEED_COMMENT_THREAD_INCLUDE = {
+  author: {
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      role: true,
+      profilePhotoUrl: true,
+    },
+  },
+  replies: {
+    where: { isHidden: false, deletedAt: null },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    include: {
+      author: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          role: true,
+          profilePhotoUrl: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.FeedCommentInclude;
 
 function mapFeedComment(
   c: {
@@ -520,6 +642,7 @@ function mapFeedComment(
     postId: string;
     parentCommentId: string | null;
     content: string;
+    deletedAt: Date | null;
     isAdminOfficial: boolean;
     isHidden: boolean;
     likeCount: number;
@@ -536,6 +659,7 @@ function mapFeedComment(
       postId: string;
       parentCommentId: string | null;
       content: string;
+      deletedAt: Date | null;
       isAdminOfficial: boolean;
       isHidden: boolean;
       likeCount: number;
@@ -552,24 +676,26 @@ function mapFeedComment(
   viewerLikedIds: Set<string>,
   officialHandles: Set<string> = new Set()
 ): FeedCommentItem {
+  const isDeleted = c.deletedAt !== null;
   // Mention handle di content yang merupakan akun official → kirim ke
   // client untuk brand-override render. Skip kalau tidak ada official
   // handle yang ke-mention (mayoritas komentar).
   const officialMentions =
-    officialHandles.size > 0
+    !isDeleted && officialHandles.size > 0
       ? [...extractMentionHandles(c.content)].filter((h) =>
-          officialHandles.has(h),
+          officialHandles.has(h)
         )
       : [];
   return {
     id: c.id,
     postId: c.postId,
     parentCommentId: c.parentCommentId,
-    content: c.content,
+    content: isDeleted ? "Komentar dihapus" : c.content,
+    isDeleted,
     isAdminOfficial: c.isAdminOfficial,
     officialMentions,
     isHidden: c.isHidden,
-    likeCount: c.likeCount,
+    likeCount: isDeleted ? 0 : c.likeCount,
     createdAt: c.createdAt.toISOString(),
     author: {
       id: c.author.id,
@@ -581,10 +707,10 @@ function mapFeedComment(
         | "CUSTOMER",
       profilePhotoUrl: brandPhotoUrl(c.author.role, c.author.profilePhotoUrl),
     },
-    viewerLiked: viewerLikedIds.has(c.id),
+    viewerLiked: !isDeleted && viewerLikedIds.has(c.id),
     replies:
       c.replies?.map((reply) =>
-        mapFeedComment(reply, viewerLikedIds, officialHandles),
+        mapFeedComment(reply, viewerLikedIds, officialHandles)
       ) ?? [],
     replyCount: c.replies?.length ?? 0,
   };
@@ -599,20 +725,21 @@ function mapFeedComment(
  */
 async function resolveOfficialMentionHandles(
   contents: string[],
+  db: Pick<Prisma.TransactionClient, "user"> = prisma
 ): Promise<Set<string>> {
   const handles = new Set<string>();
   for (const content of contents) {
     for (const h of extractMentionHandles(content)) handles.add(h);
   }
   if (handles.size === 0) return new Set();
-  const admins = await prisma.user.findMany({
+  const admins = await db.user.findMany({
     where: { username: { in: [...handles] }, role: "ADMIN" },
     select: { username: true },
   });
   return new Set(
     admins
       .map((a) => a.username?.toLowerCase())
-      .filter((u): u is string => Boolean(u)),
+      .filter((u): u is string => Boolean(u))
   );
 }
 
@@ -624,54 +751,55 @@ export async function listFeedComments({
   postId,
   cursor,
   viewerUserId,
+  additionalRootIds = [],
+  db = prisma,
 }: CommentListOptions): Promise<FeedCommentsResponse> {
-  const comments = await prisma.feedComment.findMany({
-    where: {
-      postId,
-      parentCommentId: null,
-      isHidden: false,
-      // Hide komentar yang user hapus sendiri. isHidden=admin moderation;
-      // deletedAt=user self-delete. Semantik beda, dua-duanya filter out.
-      deletedAt: null,
-    },
+  const comments = await db.feedComment.findMany({
+    where: visibleFeedCommentRootWhere(postId),
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: COMMENT_PAGE_SIZE + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    include: {
-      author: {
-        select: {
-          id: true,
-          name: true,
-          username: true,
-          role: true,
-          profilePhotoUrl: true,
-        },
-      },
-      replies: {
-        where: { isHidden: false, deletedAt: null },
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        include: {
-          author: {
-            select: {
-              id: true,
-              name: true,
-              username: true,
-              role: true,
-              profilePhotoUrl: true,
-            },
-          },
-        },
-      },
-    },
+    include: FEED_COMMENT_THREAD_INCLUDE,
   });
 
+  const hasMore = comments.length > COMMENT_PAGE_SIZE;
+  const page = hasMore ? comments.slice(0, COMMENT_PAGE_SIZE) : comments;
+  const pageIds = new Set(page.map((comment) => comment.id));
+  const extraRootIds = [...new Set(additionalRootIds)].filter(
+    (commentId) => !pageIds.has(commentId)
+  );
+  const extraComments =
+    extraRootIds.length === 0
+      ? []
+      : await db.feedComment.findMany({
+          where: {
+            AND: [
+              visibleFeedCommentRootWhere(postId),
+              {
+                id: { in: extraRootIds },
+              },
+            ],
+          },
+          include: FEED_COMMENT_THREAD_INCLUDE,
+        });
+  const extraById = new Map(
+    extraComments.map((comment) => [comment.id, comment])
+  );
+  const combined = [
+    ...page,
+    ...extraRootIds.flatMap((commentId) => {
+      const comment = extraById.get(commentId);
+      return comment ? [comment] : [];
+    }),
+  ];
+
   let viewerLikedIds = new Set<string>();
-  if (viewerUserId && comments.length > 0) {
-    const commentIds = comments.flatMap((c) => [
+  if (viewerUserId && combined.length > 0) {
+    const commentIds = combined.flatMap((c) => [
       c.id,
       ...c.replies.map((reply) => reply.id),
     ]);
-    const likes = await prisma.feedCommentLike.findMany({
+    const likes = await db.feedCommentLike.findMany({
       where: {
         userId: viewerUserId,
         commentId: { in: commentIds },
@@ -681,24 +809,22 @@ export async function listFeedComments({
     viewerLikedIds = new Set(likes.map((l) => l.commentId));
   }
 
-  const hasMore = comments.length > COMMENT_PAGE_SIZE;
-  const sliced = hasMore ? comments.slice(0, COMMENT_PAGE_SIZE) : comments;
-
   // Resolve handle official yang ke-mention di seluruh page (parent +
   // reply) → 1 query. Dipakai untuk brand-override render di client.
   const officialHandles = await resolveOfficialMentionHandles(
-    sliced.flatMap((c) => [
+    combined.flatMap((c) => [
       c.content,
       ...c.replies.map((reply) => reply.content),
     ]),
+    db
   );
 
-  const items: FeedCommentItem[] = sliced.map((c) =>
+  const items: FeedCommentItem[] = combined.map((c) =>
     mapFeedComment(c, viewerLikedIds, officialHandles)
   );
 
   return {
     items,
-    nextCursor: hasMore ? sliced[sliced.length - 1].id : null,
+    nextCursor: hasMore ? page[page.length - 1].id : null,
   };
 }

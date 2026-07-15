@@ -8,7 +8,11 @@ import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_post_vie
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/scoped_video_feed_screen.dart';
 import 'package:natalo_petshop_flutter/services/video_quality_service.dart';
+import 'package:natalo_petshop_flutter/state/feed_store.dart';
+import 'package:natalo_petshop_flutter/state/member_store.dart';
 import 'package:natalo_petshop_flutter/state/settings_store.dart';
+import 'package:natalo_petshop_flutter/utils/android_back_overlays.dart';
+import 'package:natalo_petshop_flutter/widgets/feed_comment_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
@@ -50,7 +54,11 @@ class _FakeSession implements PlaybackSession {
   Duration get position => _pos;
 }
 
-FeedPost _fakeVideoPost(String id, {String? videoDataSaverUrl}) {
+FeedPost _fakeVideoPost(
+  String id, {
+  String? videoDataSaverUrl,
+  int commentCount = 0,
+}) {
   return FeedPost.fromJson({
     'id': id,
     'slug': id,
@@ -62,8 +70,19 @@ FeedPost _fakeVideoPost(String id, {String? videoDataSaverUrl}) {
     'aspectRatio': 0.5625,
     'author': {'id': 'author-1', 'name': 'Tester'},
     'likeCount': 0,
-    'commentCount': 0,
+    'commentCount': commentCount,
     'shareCount': 0,
+    'createdAt': DateTime.now().toIso8601String(),
+  });
+}
+
+FeedPost _fakePhotoPost(String id) {
+  return FeedPost.fromJson({
+    'id': id,
+    'slug': id,
+    'kind': 'USER_PHOTO',
+    'mediaUrl': 'https://example.com/$id.jpg',
+    'author': {'id': 'author-1', 'name': 'Tester'},
     'createdAt': DateTime.now().toIso8601String(),
   });
 }
@@ -74,6 +93,63 @@ void main() {
     // leave a pending Timer past test teardown (it fires synchronously
     // instead when updateInterval is zero).
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    feedStore.clear();
+  });
+
+  testWidgets('background hydration preserves newer canonical comment state',
+      (tester) async {
+    final hydration = Completer<List<FeedPost>>();
+    const postId = 'hydration-race';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(
+          posts: [_fakeVideoPost(postId)],
+          initialIndex: 0,
+          hydration: ScopedVideoFeedHydration(
+            posts: hydration.future,
+            requestedAt: DateTime.now(),
+            viewerGeneration: memberStore.viewerGeneration,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    feedStore.setCommentCount(postId, 9);
+    hydration.complete([_fakeVideoPost(postId, commentCount: 1)]);
+    await tester.pump();
+
+    expect(feedStore.get(postId)?.commentCount, 9,
+        reason: 'an older hydration response must not undo a newer mutation');
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('hydration requested by another viewer is ignored',
+      (tester) async {
+    final hydration = Completer<List<FeedPost>>();
+    const postId = 'hydration-viewer-race';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(
+          posts: [_fakeVideoPost(postId)],
+          initialIndex: 0,
+          hydration: ScopedVideoFeedHydration(
+            posts: hydration.future,
+            requestedAt: DateTime.now(),
+            viewerGeneration: memberStore.viewerGeneration + 1,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    hydration.complete([_fakeVideoPost(postId, commentCount: 7)]);
+    await tester.pump();
+
+    expect(feedStore.get(postId)?.commentCount, 0);
+    await tester.pump(const Duration(milliseconds: 600));
   });
 
   testWidgets('ScopedVideoFeedScreen opens at initialIndex', (tester) async {
@@ -94,6 +170,130 @@ void main() {
     // paint; flush it so the test binding doesn't flag a pending timer at
     // teardown. pumpAndSettle() is avoided repo-wide because it hangs when
     // video/image/shimmer surfaces render (never settles).
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('loads next profile pages and skips photo-only page',
+      (tester) async {
+    final requestedCursors = <String?>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(
+          posts: [_fakeVideoPost('a')],
+          initialIndex: 0,
+          initialNextCursor: 'page-2',
+          loadMorePosts: (cursor) async {
+            requestedCursors.add(cursor);
+            if (cursor == 'page-2') {
+              return FeedPage(
+                items: [_fakePhotoPost('photo')],
+                nextCursor: 'page-3',
+              );
+            }
+            return FeedPage(
+              items: [_fakeVideoPost('b')],
+              nextCursor: null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final pageView = tester.widget<PageView>(find.byType(PageView));
+    final delegate = pageView.childrenDelegate as SliverChildBuilderDelegate;
+    expect(requestedCursors, ['page-2', 'page-3']);
+    expect(delegate.childCount, 2);
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('stops pagination when the server cursor does not advance',
+      (tester) async {
+    var requestCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(
+          posts: [_fakeVideoPost('a')],
+          initialIndex: 0,
+          initialNextCursor: 'stuck-cursor',
+          loadMorePosts: (cursor) async {
+            requestCount++;
+            return FeedPage(
+              items: [_fakePhotoPost('photo-$requestCount')],
+              nextCursor: cursor,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(requestCount, 1);
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('stops pagination when cursors form a cycle', (tester) async {
+    final requestedCursors = <String?>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(
+          posts: [_fakeVideoPost('a')],
+          initialIndex: 0,
+          initialNextCursor: 'cursor-a',
+          loadMorePosts: (cursor) async {
+            requestedCursors.add(cursor);
+            return FeedPage(
+              items: [_fakePhotoPost('photo-${requestedCursors.length}')],
+              nextCursor: cursor == 'cursor-a' ? 'cursor-b' : 'cursor-a',
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(requestedCursors, ['cursor-a', 'cursor-b']);
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('continues pagination after a long run of photo-only pages',
+      (tester) async {
+    var requestCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(
+          posts: [_fakeVideoPost('a')],
+          initialIndex: 0,
+          initialNextCursor: 'page-1',
+          loadMorePosts: (cursor) async {
+            requestCount++;
+            if (requestCount <= 8) {
+              return FeedPage(
+                items: [_fakePhotoPost('photo-$requestCount')],
+                nextCursor: 'page-${requestCount + 1}',
+              );
+            }
+            return FeedPage(
+              items: [_fakeVideoPost('b')],
+              nextCursor: null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (requestCount == 9) break;
+    }
+
+    final pageView = tester.widget<PageView>(find.byType(PageView));
+    final delegate = pageView.childrenDelegate as SliverChildBuilderDelegate;
+    expect(requestCount, 9);
+    expect(delegate.childCount, 2);
     await tester.pump(const Duration(milliseconds: 600));
   });
 
@@ -140,6 +340,201 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
   });
 
+  testWidgets('edge swipe right dismisses and returns last-active payload',
+      (tester) async {
+    final posts = [_fakeVideoPost('a'), _fakeVideoPost('b')];
+    ScopedVideoFeedResult? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () async {
+              result = await Navigator.of(context).push<ScopedVideoFeedResult>(
+                MaterialPageRoute<ScopedVideoFeedResult>(
+                  builder: (_) => ScopedVideoFeedScreen(
+                    posts: posts,
+                    initialIndex: 1,
+                  ),
+                ),
+              );
+            },
+            child: const Text('open swipe'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open swipe'));
+    await tester.pump();
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
+    }
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 400));
+
+    await tester.dragFrom(const Offset(24, 400), const Offset(220, 0));
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
+    }
+
+    expect(find.byType(ScopedVideoFeedScreen), findsNothing);
+    expect(result, isNotNull);
+    expect(result!.postId, 'b');
+    expect(result!.index, 1);
+    expect(result!.timestamp, Duration.zero);
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('horizontal swipe away from left edge does not dismiss',
+      (tester) async {
+    final posts = [_fakeVideoPost('a')];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(posts: posts, initialIndex: 0),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+
+    await tester.dragFrom(const Offset(100, 400), const Offset(300, 0));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+  });
+
+  testWidgets('short slow edge drag springs back without dismissing',
+      (tester) async {
+    final posts = [_fakeVideoPost('a')];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(posts: posts, initialIndex: 0),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+
+    final gesture = await tester.startGesture(const Offset(16, 400));
+    await gesture.moveBy(const Offset(55, 0));
+    await tester.pump(const Duration(milliseconds: 350));
+    await gesture.up();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    expect(
+      tester
+          .getTopLeft(
+            find.byKey(const ValueKey('scoped-video-page-view')),
+          )
+          .dx,
+      moreOrLessEquals(0),
+    );
+  });
+
+  testWidgets('pinch beginning at the left edge does not dismiss',
+      (tester) async {
+    final posts = [_fakeVideoPost('a')];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(posts: posts, initialIndex: 0),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+
+    final firstPointer = await tester.startGesture(const Offset(16, 400));
+    final secondPointer = await tester.startGesture(const Offset(180, 400));
+    await firstPointer.moveBy(const Offset(80, 0));
+    await secondPointer.moveBy(const Offset(-80, 0));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    expect(
+      tester
+          .getTopLeft(
+            find.byKey(const ValueKey('scoped-video-page-view')),
+          )
+          .dx,
+      moreOrLessEquals(0),
+    );
+
+    await firstPointer.up();
+    await secondPointer.up();
+  });
+
+  testWidgets('edge drag that turns vertical yields to the PageView',
+      (tester) async {
+    final posts = [_fakeVideoPost('a'), _fakeVideoPost('b')];
+    String? activePostId;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(
+          posts: posts,
+          initialIndex: 0,
+          onActivePostChanged: (postId) => activePostId = postId,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+
+    final gesture = await tester.startGesture(const Offset(16, 400));
+    await gesture.moveBy(const Offset(18, 2));
+    await tester.pump();
+    await gesture.moveBy(const Offset(4, -500));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    expect(activePostId, 'b');
+    expect(
+      tester
+          .getTopLeft(
+            find.byKey(const ValueKey('scoped-video-page-view')),
+          )
+          .dx,
+      moreOrLessEquals(0),
+    );
+  });
+
+  test('high rightward velocity dismisses before the distance threshold', () {
+    expect(
+      ScopedVideoFeedScreen.shouldDismissEdgeSwipe(
+        offset: 70,
+        width: 400,
+        velocity: 1200,
+      ),
+      isTrue,
+    );
+    expect(
+      ScopedVideoFeedScreen.shouldDismissEdgeSwipe(
+        offset: 70,
+        width: 400,
+        velocity: 500,
+      ),
+      isFalse,
+    );
+  });
+
+  testWidgets('fullscreen controls use 48px back target and top scrim',
+      (tester) async {
+    final posts = [_fakeVideoPost('a')];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(posts: posts, initialIndex: 0),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(
+      tester.getSize(find.byKey(const ValueKey('scoped-video-back-target'))),
+      const Size(48, 48),
+    );
+    expect(
+      find.byKey(const ValueKey('scoped-video-top-scrim')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('toolbar back returns typed last-active post payload',
       (tester) async {
     final posts = [_fakeVideoPost('a'), _fakeVideoPost('b')];
@@ -170,6 +565,8 @@ void main() {
       if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
     }
     expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
     await tester.tap(find.byIcon(Icons.chevron_left_rounded));
     await tester.pump(const Duration(milliseconds: 400));
 
@@ -177,6 +574,98 @@ void main() {
     expect(result!.postId, 'b');
     expect(result!.index, 1);
     expect(result!.timestamp, Duration.zero);
+  });
+
+  testWidgets('prepare-close failure cannot lock the fullscreen route',
+      (tester) async {
+    ScopedVideoFeedResult? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () async {
+              result = await Navigator.of(context).push<ScopedVideoFeedResult>(
+                MaterialPageRoute<ScopedVideoFeedResult>(
+                  builder: (_) => ScopedVideoFeedScreen(
+                    posts: [_fakeVideoPost('a')],
+                    initialIndex: 0,
+                    onPrepareClose: (_, __) async => throw StateError('failed'),
+                  ),
+                ),
+              );
+            },
+            child: const Text('open failing close'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open failing close'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
+    }
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.chevron_left_rounded));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
+    }
+
+    expect(find.byType(ScopedVideoFeedScreen), findsNothing);
+    expect(result?.postId, 'a');
+  });
+
+  testWidgets('prepare-close timeout cannot lock the fullscreen route',
+      (tester) async {
+    ScopedVideoFeedResult? result;
+    final neverCompletes = Completer<void>();
+    ScopedVideoFeedCloseSignal? closeSignal;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () async {
+              result = await Navigator.of(context).push<ScopedVideoFeedResult>(
+                MaterialPageRoute<ScopedVideoFeedResult>(
+                  builder: (_) => ScopedVideoFeedScreen(
+                    posts: [_fakeVideoPost('a')],
+                    initialIndex: 0,
+                    onPrepareClose: (_, signal) {
+                      closeSignal = signal;
+                      return neverCompletes.future;
+                    },
+                  ),
+                ),
+              );
+            },
+            child: const Text('open hanging close'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open hanging close'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
+    }
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.chevron_left_rounded));
+    for (var i = 0; i < 16; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
+    }
+
+    expect(find.byType(ScopedVideoFeedScreen), findsNothing);
+    expect(result?.postId, 'a');
+    expect(closeSignal?.isCancelled, isTrue);
+    neverCompletes.complete();
+    await tester.pump();
   });
 
   testWidgets('system back returns typed last-active post payload',
@@ -216,6 +705,96 @@ void main() {
     expect(result!.postId, 'a');
     expect(result!.index, 0);
     expect(result!.timestamp, Duration.zero);
+  });
+
+  testWidgets(
+      'comments lock scoped navigation and consume repeated back before route',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    resetAndroidBackOverlays();
+    addTearDown(resetAndroidBackOverlays);
+    final posts = [_fakeVideoPost('a'), _fakeVideoPost('b')];
+    final activePosts = <String>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => ScopedVideoFeedScreen(
+                  posts: posts,
+                  initialIndex: 0,
+                  onActivePostChanged: activePosts.add,
+                ),
+              ),
+            ),
+            child: const Text('open comments'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open comments'));
+    final commentAction = find.byKey(
+      const ValueKey('feed-comment-action'),
+    );
+    for (var i = 0; i < 10 && commentAction.evaluate().isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(commentAction, findsWidgets);
+    await tester.tap(
+      commentAction.hitTestable().first,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 320));
+
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+    expect(
+      tester.widget<PageView>(find.byType(PageView)).physics,
+      isA<NeverScrollableScrollPhysics>(),
+    );
+
+    await tester.dragFrom(
+      const Offset(200, 120),
+      const Offset(0, -650),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(activePosts, isEmpty,
+        reason: 'vertical paging stays locked while comments are active');
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+
+    await tester.dragFrom(
+      const Offset(5, 120),
+      const Offset(300, 0),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.binding.handlePopRoute();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(find.byType(FeedCommentSheet), findsNothing);
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget,
+        reason: 'both back presses are owned by the closing comments');
+    expect(
+      tester.widget<PageView>(find.byType(PageView)).physics,
+      isNot(isA<NeverScrollableScrollPhysics>()),
+    );
+
+    await tester.binding.handlePopRoute();
+    for (var i = 0;
+        i < 10 && find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty;
+        i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byType(ScopedVideoFeedScreen), findsNothing);
   });
 
   // ── T7 — full-managed: adaptive preload, max 5 live sessions

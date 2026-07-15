@@ -6,6 +6,28 @@ import '../models/feed_post.dart';
 import '../services/feed_service.dart';
 import 'member_store.dart';
 
+typedef FeedSavedSetter = Future<bool> Function(
+  String postId, {
+  required bool saved,
+});
+
+typedef FeedLikeToggler = Future<FeedLikeResult> Function(
+  String postId, {
+  required bool currentlyLiked,
+});
+
+/// A like/save request completed after the authenticated viewer changed.
+///
+/// Callers must ignore this completion. Its payload belongs to the previous
+/// account and must not update local persistence or show an error to the new
+/// viewer.
+class FeedViewerChangedException implements Exception {
+  const FeedViewerChangedException();
+
+  @override
+  String toString() => 'Feed viewer changed while request was in flight';
+}
+
 /// Shared, postId-keyed store untuk semua feed post di app.
 ///
 /// **Single source of truth** untuk interaksi (like/comment count) supaya
@@ -30,17 +52,47 @@ import 'member_store.dart';
 /// post yang punya local action AFTER `fetchedAt`. Non-interaction fields
 /// (caption, thumbnailUrl, dll) tetap di-apply — itu tidak race-prone.
 class FeedStore extends ChangeNotifier {
-  FeedStore._();
+  FeedStore._({FeedSavedSetter? savedSetter, FeedLikeToggler? likeToggler})
+      : _setSaved = savedSetter ?? feedService.setSaved,
+        _toggleLike = likeToggler ?? feedService.toggleLike,
+        _viewerGeneration = memberStore.viewerGeneration,
+        _observesMemberStore = true {
+    memberStore.addListener(_onMemberStoreChanged);
+  }
+
+  @visibleForTesting
+  FeedStore.forTesting({
+    required FeedSavedSetter savedSetter,
+    FeedLikeToggler? likeToggler,
+    int viewerGeneration = 0,
+  })  : _setSaved = savedSetter,
+        _toggleLike = likeToggler ?? feedService.toggleLike,
+        _viewerGeneration = viewerGeneration,
+        _observesMemberStore = false;
+
+  final FeedSavedSetter _setSaved;
+  final FeedLikeToggler _toggleLike;
+  final bool _observesMemberStore;
+  int _viewerGeneration;
+  DateTime _viewerChangedAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   final Map<String, FeedPost> _byId = {};
   final Map<String, DateTime> _lastLocalActionAt = {};
+  final Map<String, DateTime> _lastViewerActionAt = {};
+  final Map<String, DateTime> _removedAt = {};
 
   /// Cegah parallel REQUEST untuk post sama — hanya satu request like di
   /// jaringan per post. Tap tambahan dicatat sebagai intent, bukan dibuang.
-  final Set<String> _likeInFlight = {};
+  final Map<String, int> _likeInFlight = {};
 
   /// Intent liked terakhir per post (lihat [toggleLike]).
   final Map<String, bool> _likeDesired = {};
+  final Map<String, FeedPost> _likeBaselines = {};
+
+  /// Save uses idempotent desired-state endpoints, but keeps the same
+  /// latest-intent-wins behavior as likes for rapid repeated taps.
+  final Map<String, int> _saveInFlight = {};
+  final Map<String, bool> _saveDesired = {};
 
   /// Cegah parallel ensureLoaded untuk post sama (deep link spam).
   final Map<String, Future<FeedPost?>> _ensureInFlight = {};
@@ -50,6 +102,10 @@ class FeedStore extends ChangeNotifier {
   FeedPost? get(String postId) => _byId[postId];
 
   bool has(String postId) => _byId.containsKey(postId);
+
+  bool wasRemoved(String postId) => _removedAt.containsKey(postId);
+
+  int get viewerGeneration => _viewerGeneration;
 
   /// Bulk read — useful saat screen butuh render list of postIds (list
   /// dari feedPostIds order saat ini).
@@ -70,6 +126,7 @@ class FeedStore extends ChangeNotifier {
   void seed(Iterable<FeedPost> posts) {
     var changed = false;
     for (final post in posts) {
+      if (_removedAt.containsKey(post.id)) continue;
       if (!_byId.containsKey(post.id)) {
         _byId[post.id] = post;
         changed = true;
@@ -94,8 +151,20 @@ class FeedStore extends ChangeNotifier {
     DateTime? fetchedAt,
   }) {
     final cutoff = fetchedAt ?? DateTime.now();
+    // Equality is intentionally treated as stale. Some platforms expose a
+    // coarse wall-clock resolution, so a request started immediately before
+    // an account switch can share the exact timestamp of the switch.
+    final responseBelongsToCurrentViewer = cutoff.isAfter(_viewerChangedAt);
     var changed = false;
-    for (final incoming in posts) {
+    for (final rawIncoming in posts) {
+      final incoming = responseBelongsToCurrentViewer
+          ? rawIncoming
+          : _withoutViewerState(rawIncoming);
+      final removedAt = _removedAt[incoming.id];
+      if (removedAt != null && removedAt.isAfter(cutoff)) {
+        continue;
+      }
+      _removedAt.remove(incoming.id);
       final existing = _byId[incoming.id];
       if (existing == null) {
         _byId[incoming.id] = incoming;
@@ -147,6 +216,7 @@ class FeedStore extends ChangeNotifier {
   /// atau setelah edit caption response). Tidak stale-check — caller
   /// sudah punya post yang lebih fresh.
   void applyPostUpdate(FeedPost post) {
+    _removedAt.remove(post.id);
     _byId[post.id] = post;
     notifyListeners();
   }
@@ -154,7 +224,12 @@ class FeedStore extends ChangeNotifier {
   /// Remove dari store (e.g. setelah delete post).
   void removePost(String postId) {
     if (_byId.remove(postId) != null) {
+      _removedAt[postId] = DateTime.now();
       _lastLocalActionAt.remove(postId);
+      _lastViewerActionAt.remove(postId);
+      _likeDesired.remove(postId);
+      _likeBaselines.remove(postId);
+      _saveDesired.remove(postId);
       notifyListeners();
     }
   }
@@ -210,7 +285,16 @@ class FeedStore extends ChangeNotifier {
       likeCount: likeCount < 0 ? 0 : likeCount,
       recentLikers: _reconcileCurrentUserLiker(p.recentLikers, liked),
     );
-    _lastLocalActionAt[postId] = DateTime.now();
+    _markViewerAction(postId);
+    notifyListeners();
+  }
+
+  /// Apply a known saved state and protect it from older list responses.
+  void setSavedState(String postId, {required bool saved}) {
+    final post = _byId[postId];
+    if (post == null || post.viewerSaved == saved) return;
+    _byId[postId] = post.copyWith(viewerSaved: saved);
+    _markViewerAction(postId);
     notifyListeners();
   }
 
@@ -229,6 +313,7 @@ class FeedStore extends ChangeNotifier {
   /// Return state sesuai intent tap ini (optimistis kalau coalesced) —
   /// caller boleh ignore; store sudah notify listeners.
   Future<FeedLikeResult> toggleLike(String postId) async {
+    final actionGeneration = _viewerGeneration;
     final oldPost = _byId[postId];
     if (oldPost == null) {
       // Defensive: post not in store (e.g. caller lupa seed, atau post
@@ -237,7 +322,9 @@ class FeedStore extends ChangeNotifier {
       // toggle berdasar DB state, bukan trust client param). Hasil tidak
       // di-cache karena no anchor post; caller bertanggung jawab handle.
       try {
-        return await feedService.toggleLike(postId, currentlyLiked: false);
+        final result = await _toggleLike(postId, currentlyLiked: false);
+        _ensureCurrentViewer(actionGeneration);
+        return result;
       } catch (e) {
         rethrow;
       }
@@ -257,15 +344,16 @@ class FeedStore extends ChangeNotifier {
       likeCount: optimisticCount,
       recentLikers: _reconcileCurrentUserLiker(oldPost.recentLikers, newLiked),
     );
-    _lastLocalActionAt[postId] = DateTime.now();
+    _likeBaselines.putIfAbsent(postId, () => oldPost);
+    _markViewerAction(postId);
     _likeDesired[postId] = newLiked;
     notifyListeners();
 
-    if (_likeInFlight.contains(postId)) {
+    if (_likeInFlight[postId] == actionGeneration) {
       // Chain aktif yang akan menyamakan server dengan intent terbaru.
       return FeedLikeResult(liked: newLiked, likeCount: optimisticCount);
     }
-    _likeInFlight.add(postId);
+    _likeInFlight[postId] = actionGeneration;
 
     // State liked terakhir yang TERKONFIRMASI server. Sebelum request
     // pertama sukses, itu adalah state sebelum tap ini.
@@ -274,12 +362,14 @@ class FeedStore extends ChangeNotifier {
 
     try {
       while (true) {
+        _ensureCurrentViewer(actionGeneration);
         final desired = _likeDesired[postId];
         if (desired == null || desired == serverLiked) break;
-        final result = await feedService.toggleLike(
+        final result = await _toggleLike(
           postId,
           currentlyLiked: serverLiked,
         );
+        _ensureCurrentViewer(actionGeneration);
         serverLiked = result.liked;
         lastResult = result;
       }
@@ -301,7 +391,7 @@ class FeedStore extends ChangeNotifier {
                   lastResult.liked,
                 ),
         );
-        _lastLocalActionAt[postId] = DateTime.now();
+        _markViewerAction(postId);
         notifyListeners();
       }
       return lastResult ??
@@ -310,6 +400,7 @@ class FeedStore extends ChangeNotifier {
             likeCount: current?.likeCount ?? optimisticCount,
           );
     } catch (e) {
+      if (actionGeneration != _viewerGeneration) rethrow;
       // Rollback ke state server terakhir yang terkonfirmasi (bukan buta
       // ke oldPost — sebagian chain mungkin sudah tercatat di server).
       _likeDesired.remove(postId);
@@ -333,8 +424,126 @@ class FeedStore extends ChangeNotifier {
       notifyListeners();
       rethrow;
     } finally {
-      _likeInFlight.remove(postId);
+      if (_likeInFlight[postId] == actionGeneration) {
+        _likeInFlight.remove(postId);
+        _likeBaselines.remove(postId);
+      }
     }
+  }
+
+  /// Toggle saved state optimistically and converge the server to the latest
+  /// desired state. Additional taps during a request update intent instead of
+  /// starting parallel requests or being dropped.
+  Future<bool> toggleSaved(String postId) async {
+    final actionGeneration = _viewerGeneration;
+    final oldPost = _byId[postId];
+    if (oldPost == null) {
+      final result = await _setSaved(postId, saved: true);
+      _ensureCurrentViewer(actionGeneration);
+      return result;
+    }
+
+    final wasSaved = oldPost.viewerSaved;
+    final desiredSaved = !wasSaved;
+    _byId[postId] = oldPost.copyWith(viewerSaved: desiredSaved);
+    _markViewerAction(postId);
+    _saveDesired[postId] = desiredSaved;
+    notifyListeners();
+
+    if (_saveInFlight[postId] == actionGeneration) return desiredSaved;
+    _saveInFlight[postId] = actionGeneration;
+
+    var serverSaved = wasSaved;
+    try {
+      while (true) {
+        _ensureCurrentViewer(actionGeneration);
+        final desired = _saveDesired[postId];
+        if (desired == null || desired == serverSaved) break;
+        serverSaved = await _setSaved(postId, saved: desired);
+        _ensureCurrentViewer(actionGeneration);
+        // A successful response may still reject the requested state. Treat
+        // that response as authoritative instead of retrying forever.
+        if (serverSaved != desired) break;
+      }
+
+      _saveDesired.remove(postId);
+      final current = _byId[postId];
+      if (current != null && current.viewerSaved != serverSaved) {
+        _byId[postId] = current.copyWith(viewerSaved: serverSaved);
+        _markViewerAction(postId);
+        notifyListeners();
+      }
+      return serverSaved;
+    } catch (_) {
+      if (actionGeneration != _viewerGeneration) rethrow;
+      _saveDesired.remove(postId);
+      final current = _byId[postId];
+      if (current != null) {
+        _byId[postId] = current.copyWith(viewerSaved: serverSaved);
+        notifyListeners();
+      }
+      rethrow;
+    } finally {
+      if (_saveInFlight[postId] == actionGeneration) {
+        _saveInFlight.remove(postId);
+      }
+    }
+  }
+
+  void _markViewerAction(String postId) {
+    final now = DateTime.now();
+    _lastLocalActionAt[postId] = now;
+    _lastViewerActionAt[postId] = now;
+  }
+
+  void _ensureCurrentViewer(int generation) {
+    if (generation != _viewerGeneration) {
+      throw const FeedViewerChangedException();
+    }
+  }
+
+  void _onMemberStoreChanged() {
+    rebaseForViewer(memberStore.viewerGeneration);
+  }
+
+  /// Invalidates viewer-owned state without discarding public post data.
+  ///
+  /// Generation checks also make completions from the previous viewer inert.
+  /// In-flight optimistic likes restore their pre-request public count until a
+  /// fresh server snapshot arrives for the new account.
+  @visibleForTesting
+  void rebaseForViewer(int generation) {
+    if (generation == _viewerGeneration) return;
+    _viewerGeneration = generation;
+    _viewerChangedAt = DateTime.now();
+
+    for (final entry in _lastViewerActionAt.entries) {
+      if (_lastLocalActionAt[entry.key] == entry.value) {
+        _lastLocalActionAt.remove(entry.key);
+      }
+    }
+    _lastViewerActionAt.clear();
+
+    final baselines = Map<String, FeedPost>.from(_likeBaselines);
+    _likeDesired.clear();
+    _likeBaselines.clear();
+    _likeInFlight.clear();
+    _saveDesired.clear();
+    _saveInFlight.clear();
+
+    for (final entry in _byId.entries.toList(growable: false)) {
+      final post = entry.value;
+      final baseline = baselines[entry.key];
+      _byId[entry.key] = post.copyWith(
+        author: _copyAuthorWithFollowing(post.author, false),
+        likeCount: baseline?.likeCount ?? post.likeCount,
+        recentLikers: baseline?.recentLikers ?? post.recentLikers,
+        isLiked: false,
+        viewerLiked: false,
+        viewerSaved: false,
+      );
+    }
+    notifyListeners();
   }
 
   /// Pastikan post terload — useful saat user buka detail via deep link
@@ -367,9 +576,23 @@ class FeedStore extends ChangeNotifier {
   void clear() {
     _byId.clear();
     _lastLocalActionAt.clear();
+    _lastViewerActionAt.clear();
+    _removedAt.clear();
     _likeInFlight.clear();
+    _likeDesired.clear();
+    _likeBaselines.clear();
+    _saveInFlight.clear();
+    _saveDesired.clear();
     _ensureInFlight.clear();
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    if (_observesMemberStore) {
+      memberStore.removeListener(_onMemberStoreChanged);
+    }
+    super.dispose();
   }
 
   @visibleForTesting
@@ -377,6 +600,30 @@ class FeedStore extends ChangeNotifier {
 }
 
 final FeedStore feedStore = FeedStore._();
+
+FeedAuthor _copyAuthorWithFollowing(FeedAuthor author, bool isFollowing) {
+  if (author.isFollowing == isFollowing) return author;
+  return FeedAuthor(
+    id: author.id,
+    name: author.name,
+    username: author.username,
+    avatarUrl: author.avatarUrl,
+    profilePhotoUrl: author.profilePhotoUrl,
+    role: author.role,
+    isAdmin: author.isAdmin,
+    isOfficial: author.isOfficial,
+    isFollowing: isFollowing,
+  );
+}
+
+FeedPost _withoutViewerState(FeedPost post) {
+  return post.copyWith(
+    author: _copyAuthorWithFollowing(post.author, false),
+    isLiked: false,
+    viewerLiked: false,
+    viewerSaved: false,
+  );
+}
 
 List<FeedAuthor> _reconcileCurrentUserLiker(
   List<FeedAuthor> existing,

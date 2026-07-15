@@ -44,6 +44,9 @@ import '../widgets/favorite_button.dart';
 import '../widgets/flash_sale_countdown.dart';
 import '../widgets/moderation_action_sheet.dart';
 import '../widgets/product_detail_video_slide.dart';
+import '../widgets/product_detail/product_quick_info_row.dart';
+import '../widgets/product_detail/product_shipping_section.dart';
+import '../widgets/product_detail/shopping_assurance_sheet.dart';
 import 'image_viewer_screen.dart';
 
 const _brandBlue = NataloColors.primary;
@@ -658,6 +661,41 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
             ),
           ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: [
+                  ProductShippingSection(
+                    product: product,
+                    variant: _selectedVariant,
+                    variantLabel: _variantLabelFor(_selectedVariant),
+                    onVariantRequested: _openVariantSheet,
+                    onLoginRequested: () async {
+                      await Navigator.pushNamed(context, '/member/login');
+                    },
+                    onAddressRequested: () async {
+                      await Navigator.pushNamed(context, '/member/addresses');
+                    },
+                  ),
+                  Divider(
+                    height: 1,
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                  ProductQuickInfoRow(
+                    icon: Icons.verified_user_outlined,
+                    title: 'Belanja aman',
+                    detail: 'Sesuai kebijakan Natalo',
+                    semanticLabel: 'Buka informasi perlindungan belanja Natalo',
+                    onTap: () {
+                      AppHaptics.tap();
+                      showShoppingAssuranceSheet(context);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
           SliverPersistentHeader(
             pinned: true,
             delegate: _ProductSectionTabsDelegate(
@@ -1101,67 +1139,82 @@ class _ProductInfo extends StatelessWidget {
           const SizedBox(height: 16),
         ] else
           const SizedBox(height: 18),
-        // Judul full-width; favorit pindah ke baris meta di bawah supaya
-        // judul panjang tidak berebut ruang dengan tombol hati.
-        _ExpandableProductTitle(title: product.title),
-        const SizedBox(height: 8),
-        // Baris meta padat: rating • ulasan • terjual di kiri, favorit
-        // sejajar di kanan. Baris SELALU render (favorit butuh rumah)
-        // walau meta kosong.
+        // Wishlist mengikuti baris judul. Tombol tetap punya area sentuh
+        // 44x44 transparan, sementara judul memakai sisa lebar secara
+        // fleksibel supaya tidak overflow pada layar kecil/font besar.
         Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: (hasRating || hasReviews || hasSold)
-                  ? Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        if (hasRating) ...[
-                          const Icon(Icons.star_rounded,
-                              size: 18, color: _starAmber),
-                          const SizedBox(width: 4),
-                          Text(
-                            product.rating.toStringAsFixed(1),
-                            style: TextStyle(
-                              color: cs.onSurfaceVariant,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                        if (hasReviews) ...[
-                          if (hasRating) const _InfoDot(),
-                          Text(
-                            '${product.reviewCount} ulasan',
-                            style: TextStyle(
-                              color: cs.onSurfaceVariant,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                        if (hasSold) ...[
-                          if (hasRating || hasReviews) const _InfoDot(),
-                          Text(
-                            '${_formatCompactCount(product.soldCount)} terjual',
-                            style: TextStyle(
-                              color: cs.onSurfaceVariant,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ],
-                    )
-                  : const SizedBox.shrink(),
+              child: _ExpandableProductTitle(title: product.title),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             FavoriteButton(
               product: product,
               size: 44,
             ),
           ],
         ),
+        // Jangan sisakan placeholder atau margin ketika belum ada social
+        // proof. Konten berikutnya otomatis naik mengikuti tinggi aktual.
+        if (hasRating || hasReviews || hasSold) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (hasRating)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.star_rounded,
+                      size: 18,
+                      color: _starAmber,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      product.rating.toStringAsFixed(1),
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              if (hasReviews)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (hasRating) const _InfoDot(),
+                    Text(
+                      '${product.reviewCount} ulasan',
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              if (hasSold)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (hasRating || hasReviews) const _InfoDot(),
+                    Text(
+                      '${_formatCompactCount(product.soldCount)} terjual',
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ],
       ],
     );
   }

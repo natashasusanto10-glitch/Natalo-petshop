@@ -1,55 +1,37 @@
 /**
  * DELETE /api/feed/comments/[id]
  *
- * User-facing endpoint untuk delete komentar feed sendiri. Soft-delete
- * pattern: set FeedComment.deletedAt = now() + decrement
- * FeedPost.commentCount atomic.
- *
- * Authorization:
- *   - Author komentar (authorId == session.sub) — bisa delete kapanpun
- *   - Admin — bisa delete komentar siapa saja (pakai admin moderation
- *     PATCH `isHidden=true` untuk distinguish; tapi endpoint ini juga
- *     allow admin DELETE sebagai shortcut)
- *
- * Soft delete reasons:
- *   - Audit trail tetap ada (row tidak hilang)
- *   - Admin bisa lihat history kalau ada dispute
- *   - Reply tetap tersimpan untuk audit, tetapi thread parent yang dihapus
- *     tidak dikirim ke query publik
- *
- * Idempotent: kalau komentar udah di-delete sebelumnya, return 200
- * dengan alreadyDeleted=true. Cegah error toast saat double-tap.
- *
- * FeedPost.commentCount menghitung parent + reply yang masih terlihat.
- * Setelah delete, counter direkonsiliasi dari database di dalam lock post.
+ * Soft-delete a comment owned by the viewer. Admins retain the existing
+ * shortcut permission. The post row serializes create/delete/sync snapshots,
+ * and the visible counter is reconciled from the database after every call.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { assertSameOrigin } from "@/lib/csrf";
+import {
+  countedFeedCommentWhere,
+  readDatabaseClock,
+} from "@/lib/feed/comment-sync";
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const csrfReject = assertSameOrigin(request);
   if (csrfReject) return csrfReject;
 
-  const session =
-    (await getSession("ADMIN")) ?? (await getSession("CUSTOMER"));
+  const session = (await getSession("ADMIN")) ?? (await getSession("CUSTOMER"));
   if (!session) {
     return NextResponse.json(
       { error: "Login dulu untuk hapus komentar." },
-      { status: 401 },
+      { status: 401 }
     );
   }
 
   const { id: commentId } = await params;
   if (!commentId) {
-    return NextResponse.json(
-      { error: "Comment ID kosong." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Comment ID kosong." }, { status: 400 });
   }
 
   const comment = await prisma.feedComment.findUnique({
@@ -58,30 +40,14 @@ export async function DELETE(
       id: true,
       authorId: true,
       postId: true,
-      parentCommentId: true,
       deletedAt: true,
     },
   });
   if (!comment) {
     return NextResponse.json(
       { error: "Komentar tidak ditemukan." },
-      { status: 404 },
+      { status: 404 }
     );
-  }
-
-  // Idempotent — return success kalau already deleted, biar UI tidak
-  // show error untuk double-tap.
-  if (comment.deletedAt) {
-    const post = await prisma.feedPost.findUnique({
-      where: { id: comment.postId },
-      select: { commentCount: true },
-    });
-    return NextResponse.json({
-      ok: true,
-      alreadyDeleted: true,
-      commentId: comment.id,
-      commentCount: post?.commentCount ?? 0,
-    });
   }
 
   const isAdmin = session.role === "ADMIN";
@@ -89,56 +55,87 @@ export async function DELETE(
   if (!isAdmin && !isAuthor) {
     return NextResponse.json(
       { error: "Kamu tidak berhak menghapus komentar ini." },
-      { status: 403 },
+      { status: 403 }
     );
   }
 
-  // Lock per post membuat delete parent/reply dan create paralel terserialisasi.
-  // Recount authoritative mencegah double decrement dan reply dari parent
-  // terhapus ikut tampil di counter.
-  const commentCount = await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`
-      SELECT "id" FROM "FeedPost"
+  const result = await prisma.$transaction(async (tx) => {
+    const lockedPosts = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "FeedPost"
       WHERE "id" = ${comment.postId}
       FOR UPDATE
     `;
+    if (lockedPosts.length === 0) return null;
+
     const current = await tx.feedComment.findUnique({
       where: { id: commentId },
-      select: { deletedAt: true },
-    });
-    if (!current || current.deletedAt) {
-      const post = await tx.feedPost.findUnique({
-        where: { id: comment.postId },
-        select: { commentCount: true },
-      });
-      return post?.commentCount ?? 0;
-    }
-    await tx.feedComment.update({
-      where: { id: commentId },
-      data: { deletedAt: new Date() },
-    });
-    const visibleCount = await tx.feedComment.count({
-      where: {
-        postId: comment.postId,
-        deletedAt: null,
-        isHidden: false,
-        OR: [
-          { parentCommentId: null },
-          { parent: { deletedAt: null, isHidden: false } },
-        ],
+      select: {
+        authorId: true,
+        postId: true,
+        deletedAt: true,
+        isHidden: true,
       },
+    });
+    if (!current || current.postId !== comment.postId) return null;
+    if (session.role !== "ADMIN" && current.authorId !== session.sub) {
+      return { forbidden: true } as const;
+    }
+
+    const moderationDelete =
+      session.role === "ADMIN" && current.authorId !== session.sub;
+    const alreadyDeleted = Boolean(current.deletedAt);
+    if (!alreadyDeleted || (moderationDelete && !current.isHidden)) {
+      const deletedAt = await readDatabaseClock(tx);
+      await tx.feedComment.update({
+        where: { id: commentId },
+        data: moderationDelete
+          ? {
+              deletedAt: current.deletedAt ?? deletedAt,
+              isHidden: true,
+              hiddenById: session.sub,
+              hiddenAt: deletedAt,
+              hiddenReason: "Dihapus moderator",
+            }
+          : { deletedAt },
+      });
+    }
+
+    const commentCount = await tx.feedComment.count({
+      where: countedFeedCommentWhere(comment.postId),
     });
     await tx.feedPost.update({
       where: { id: comment.postId },
-      data: { commentCount: visibleCount },
+      data: { commentCount },
     });
-    return visibleCount;
+    return { forbidden: false, alreadyDeleted, commentCount } as const;
   });
+
+  if (!result) {
+    return NextResponse.json(
+      { error: "Komentar tidak ditemukan." },
+      { status: 404 }
+    );
+  }
+  if (result.forbidden) {
+    return NextResponse.json(
+      { error: "Kamu tidak berhak menghapus komentar ini." },
+      { status: 403 }
+    );
+  }
+  if (result.alreadyDeleted) {
+    return NextResponse.json({
+      ok: true,
+      alreadyDeleted: true,
+      commentId: comment.id,
+      commentCount: result.commentCount,
+    });
+  }
 
   return NextResponse.json({
     ok: true,
     commentId: comment.id,
-    commentCount,
+    commentCount: result.commentCount,
     deletedBy: isAuthor ? "author" : "admin",
   });
 }

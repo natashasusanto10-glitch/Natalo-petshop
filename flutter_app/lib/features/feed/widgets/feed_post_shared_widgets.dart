@@ -30,6 +30,26 @@ const feedPostGoldColor = Color(0xFFF4D47C);
 const feedPostOverlayBottomGap = 16.0;
 const feedPostActionRailRightInset = 10.0;
 
+@visibleForTesting
+bool resolveFeedAuthorFollowStateForViewer({
+  required bool authorSnapshot,
+  required int snapshotViewerGeneration,
+  required int activeViewerGeneration,
+  required bool? override,
+  required bool? canonical,
+  required int? canonicalViewerGeneration,
+}) {
+  if (override != null) return override;
+  if (canonicalViewerGeneration == activeViewerGeneration &&
+      canonical != null) {
+    return canonical;
+  }
+  if (snapshotViewerGeneration == activeViewerGeneration) {
+    return authorSnapshot;
+  }
+  return false;
+}
+
 /// Jarak dasar overlay bawah feed (rail durasi / caption / action rail)
 /// dari tepi bawah layar — dipakai SEMUA state (loading, foto, video)
 /// supaya spacing konsisten.
@@ -58,11 +78,81 @@ class FeedPostCreatorIdentity extends StatefulWidget {
   });
 
   @override
-  State<FeedPostCreatorIdentity> createState() => _FeedPostCreatorIdentityState();
+  State<FeedPostCreatorIdentity> createState() =>
+      _FeedPostCreatorIdentityState();
 }
 
 class _FeedPostCreatorIdentityState extends State<FeedPostCreatorIdentity> {
   bool _busy = false;
+  late int _activeViewerGeneration;
+  late int _snapshotViewerGeneration;
+  int? _canonicalViewerGeneration;
+  bool? _canonicalFollowing;
+
+  @override
+  void initState() {
+    super.initState();
+    _activeViewerGeneration = memberStore.viewerGeneration;
+    _snapshotViewerGeneration = _activeViewerGeneration;
+    memberStore.addListener(_onViewerChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant FeedPostCreatorIdentity oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.author.id != widget.author.id) {
+      _snapshotViewerGeneration = memberStore.viewerGeneration;
+      _canonicalViewerGeneration = null;
+      _canonicalFollowing = null;
+    } else if (_snapshotViewerGeneration == memberStore.viewerGeneration &&
+        oldWidget.author.isFollowing != widget.author.isFollowing) {
+      // A same-generation server refresh may replace the original snapshot.
+      // Once a viewer switch invalidates it (-1), widget updates cannot make
+      // an old response trustworthy again; only fetchState can do that.
+      _snapshotViewerGeneration = memberStore.viewerGeneration;
+    }
+  }
+
+  @override
+  void dispose() {
+    memberStore.removeListener(_onViewerChanged);
+    super.dispose();
+  }
+
+  void _onViewerChanged() {
+    final generation = memberStore.viewerGeneration;
+    if (generation == _activeViewerGeneration) return;
+    _activeViewerGeneration = generation;
+    _snapshotViewerGeneration = -1;
+    _canonicalViewerGeneration = null;
+    _canonicalFollowing = null;
+    _busy = false;
+    if (mounted) setState(() {});
+    unawaited(_refreshFollowStateForViewer(generation, widget.author.id));
+  }
+
+  Future<void> _refreshFollowStateForViewer(
+    int viewerGeneration,
+    String authorId,
+  ) async {
+    if (authorId.isEmpty || memberStore.profile?.id == authorId) return;
+    try {
+      final state = await followService.fetchState(authorId);
+      if (!mounted ||
+          memberStore.viewerGeneration != viewerGeneration ||
+          widget.author.id != authorId) {
+        return;
+      }
+      setState(() {
+        _canonicalViewerGeneration = viewerGeneration;
+        _canonicalFollowing = state.isFollowing;
+      });
+    } on FollowSessionChangedException {
+      // A newer viewer generation owns the chip now.
+    } catch (_) {
+      // Revalidation is best-effort. The stale snapshot remains suppressed.
+    }
+  }
 
   Future<void> _toggleFollow(bool currentlyFollowing) async {
     if (_busy) return;
@@ -83,9 +173,12 @@ class _FeedPostCreatorIdentityState extends State<FeedPostCreatorIdentity> {
       } else {
         await followService.unfollow(author.id);
       }
+    } on FollowSessionChangedException {
+      // The response belongs to the previous authenticated viewer. The new
+      // session owns the global follow state, so do not show a false error or
+      // publish any rollback from the old account.
     } catch (_) {
       if (mounted) {
-        setFollowOverride(author.id, currentlyFollowing);
         AppToast.show(context, 'Gagal memperbarui. Coba lagi.');
       }
     } finally {
@@ -117,7 +210,14 @@ class _FeedPostCreatorIdentityState extends State<FeedPostCreatorIdentity> {
         return ValueListenableBuilder<Map<String, bool>>(
           valueListenable: followOverrides,
           builder: (context, overrides, _) {
-            final following = overrides[author.id] ?? author.isFollowing;
+            final following = resolveFeedAuthorFollowStateForViewer(
+              authorSnapshot: author.isFollowing,
+              snapshotViewerGeneration: _snapshotViewerGeneration,
+              activeViewerGeneration: memberStore.viewerGeneration,
+              override: overrides[author.id],
+              canonical: _canonicalFollowing,
+              canonicalViewerGeneration: _canonicalViewerGeneration,
+            );
             // Akun official KINI bisa di-follow (brand punya handle
             // "natalopetshop"); hanya self yang tidak dapat chip (tak bisa
             // follow diri sendiri).
@@ -182,7 +282,8 @@ class FeedPostSnapBackZoomMedia extends StatefulWidget {
   });
 
   @override
-  State<FeedPostSnapBackZoomMedia> createState() => _FeedPostSnapBackZoomMediaState();
+  State<FeedPostSnapBackZoomMedia> createState() =>
+      _FeedPostSnapBackZoomMediaState();
 }
 
 class _FeedPostSnapBackZoomMediaState extends State<FeedPostSnapBackZoomMedia>
@@ -379,8 +480,7 @@ Widget feedPostBuildFlyingBurstHeart({
   required Size screenSize,
 }) {
   if (opacity == 0) return const SizedBox.shrink();
-  final origin =
-      tap ?? Offset(screenSize.width / 2, screenSize.height / 2);
+  final origin = tap ?? Offset(screenSize.width / 2, screenSize.height / 2);
   final pos = target != null ? Offset.lerp(origin, target, travel)! : origin;
   return Stack(
     children: [
@@ -1179,7 +1279,6 @@ class _FeedPrimaryProductButton extends StatelessWidget {
     );
   }
 }
-
 
 class _FeedProductThumb extends StatelessWidget {
   final String? url;

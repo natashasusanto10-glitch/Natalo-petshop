@@ -149,14 +149,25 @@ class _PostLikersSheetState extends State<PostLikersSheet> {
         );
       });
       setFollowOverride(liker.id, state.isFollowing);
+    } on FollowSessionChangedException {
+      if (mounted) setState(() => _followBusy.remove(liker.id));
     } on ApiException catch (e) {
       if (!mounted) return;
+      final stableFollowing = resolveFollowState(liker.id, wasFollowing);
+      final stableFollowers = (liker.followersCount +
+              (stableFollowing == wasFollowing
+                  ? 0
+                  : stableFollowing
+                      ? 1
+                      : -1))
+          .clamp(0, 1 << 30);
       setState(() {
         _followBusy.remove(liker.id);
-        // Rollback optimistic update.
-        _items[index] = _items[index].copyWith(isFollowing: wasFollowing);
+        _items[index] = _items[index].copyWith(
+          isFollowing: stableFollowing,
+          followersCount: stableFollowers,
+        );
       });
-      setFollowOverride(liker.id, wasFollowing);
       if (e.isUnauthorized) {
         Navigator.pop(context);
         Navigator.pushNamed(context, '/member/login');
@@ -167,11 +178,21 @@ class _PostLikersSheetState extends State<PostLikersSheet> {
       }
     } catch (_) {
       if (!mounted) return;
+      final stableFollowing = resolveFollowState(liker.id, wasFollowing);
+      final stableFollowers = (liker.followersCount +
+              (stableFollowing == wasFollowing
+                  ? 0
+                  : stableFollowing
+                      ? 1
+                      : -1))
+          .clamp(0, 1 << 30);
       setState(() {
         _followBusy.remove(liker.id);
-        _items[index] = _items[index].copyWith(isFollowing: wasFollowing);
+        _items[index] = _items[index].copyWith(
+          isFollowing: stableFollowing,
+          followersCount: stableFollowers,
+        );
       });
-      setFollowOverride(liker.id, wasFollowing);
     }
   }
 

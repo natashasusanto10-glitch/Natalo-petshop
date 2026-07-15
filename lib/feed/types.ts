@@ -4,6 +4,7 @@
  * Sumber kebenaran: prisma/schema.prisma (FeedPost, FeedComment, dll).
  * Tujuan file ini bukan duplikasi schema, tapi shape "trimmed" untuk
  * konsumsi UI: hanya field yang dipakai render, plus `viewerLiked` /
+ * `viewerSaved` /
  * `viewerCanModerate` hints yang di-compute server-side.
  */
 import type { FeedPostKind, FeedPostStatus, FeedPostTab } from "@prisma/client";
@@ -95,6 +96,10 @@ export type FeedPostListItem = {
   videoDurationSec: number | null;
   videoWidth: number | null;
   videoHeight: number | null;
+  videoAltText: string | null;
+  hasAudio: boolean | null;
+  subtitleUrl: string | null;
+  subtitleLanguage: string | null;
   product: FeedPostProduct;
   // Shop the Look — semua produk yang di-tag (admin max 5, user max 3).
   // Sorted by position ascending. `product` (single) tetap dipertahankan
@@ -118,6 +123,7 @@ export type FeedPostListItem = {
     width: number | null;
     height: number | null;
     sortOrder: number;
+    altText: string | null;
   }>;
   likeCount: number;
   commentCount: number;
@@ -129,6 +135,7 @@ export type FeedPostListItem = {
   createdAt: string;
   // Per-viewer state — server compute kalau session ada, false kalau anon.
   viewerLiked: boolean;
+  viewerSaved: boolean;
 };
 
 export type FeedListResponse = {
@@ -141,6 +148,8 @@ export type FeedCommentItem = {
   postId: string;
   parentCommentId: string | null;
   content: string;
+  /** Parent self-deleted but retained as an anchor for visible replies. */
+  isDeleted: boolean;
   isAdminOfficial: boolean;
   isHidden: boolean;
   likeCount: number;
@@ -161,4 +170,13 @@ export type FeedCommentItem = {
 export type FeedCommentsResponse = {
   items: FeedCommentItem[];
   nextCursor: string | null;
+};
+
+export type FeedCommentsSyncResponse = FeedCommentsResponse & {
+  commentCount: number;
+  syncCursor: string;
+  syncTime: string;
+  changedItems: FeedCommentItem[];
+  removedCommentIds: string[];
+  syncResetRequired: boolean;
 };

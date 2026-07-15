@@ -3,13 +3,70 @@ import 'feed_post.dart';
 class FeedCommentPage {
   final List<FeedComment> items;
   final String? nextCursor;
+  final int? commentCount;
+  final DateTime? syncCursor;
+  final DateTime? syncTime;
+  final Set<String> removedCommentIds;
+  final bool syncResetRequired;
 
   const FeedCommentPage({
     required this.items,
     this.nextCursor,
+    this.commentCount,
+    this.syncCursor,
+    this.syncTime,
+    this.removedCommentIds = const {},
+    this.syncResetRequired = false,
   });
 
   static const empty = FeedCommentPage(items: [], nextCursor: null);
+
+  Set<String> get removedIds => removedCommentIds;
+
+  factory FeedCommentPage.fromApiJson(Map<String, dynamic> json) {
+    final itemsJson =
+        (json['items'] ?? json['comments'] ?? json['data']) as List?;
+    final changedItemsJson = json['changedItems'] as List?;
+    final syncJson = json['sync'] is Map<String, dynamic>
+        ? json['sync'] as Map<String, dynamic>
+        : const <String, dynamic>{};
+    final rawRemovedIds = json['removedCommentIds'] ??
+        json['removedIds'] ??
+        syncJson['removedCommentIds'] ??
+        syncJson['removedIds'];
+
+    final itemsById = <String, FeedComment>{};
+    for (final raw in <dynamic>[
+      ...?itemsJson,
+      ...?changedItemsJson,
+    ].whereType<Map<String, dynamic>>()) {
+      final comment = FeedComment.fromApiJson(raw);
+      // Assignment keeps the first insertion position while allowing the
+      // explicit delta payload to replace an older duplicate value.
+      itemsById[comment.id] = comment;
+    }
+
+    return FeedCommentPage(
+      items: List<FeedComment>.unmodifiable(itemsById.values),
+      nextCursor: _nullableString(json['nextCursor']),
+      commentCount: _nullableInt(json['commentCount']),
+      syncCursor: _nullableDateTime(
+        json['syncCursor'] ?? syncJson['cursor'],
+      ),
+      syncTime: _nullableDateTime(
+        json['syncTime'] ?? syncJson['time'] ?? json['serverTime'],
+      ),
+      removedCommentIds: Set<String>.unmodifiable(
+        rawRemovedIds is List
+            ? rawRemovedIds
+                .map((id) => id.toString().trim())
+                .where((id) => id.isNotEmpty)
+            : const <String>[],
+      ),
+      syncResetRequired: json['syncResetRequired'] == true ||
+          syncJson['resetRequired'] == true,
+    );
+  }
 }
 
 class FeedCommentCreateResult {
@@ -93,6 +150,151 @@ List<FeedCommentThreadItem> flattenFeedCommentThreads(
     }
   }
   return result;
+}
+
+class FeedCommentRemovalResult {
+  final List<FeedComment> comments;
+  final Set<String> removedIds;
+
+  const FeedCommentRemovalResult({
+    required this.comments,
+    required this.removedIds,
+  });
+}
+
+/// Merge a refreshed first page into comments already loaded by the drawer.
+///
+/// The API is authoritative for every ID it returns, while older paginated
+/// rows stay visible until an explicit tombstone removes them. A sync reset
+/// intentionally drops the cached tail because the server can no longer
+/// provide a complete tombstone history for that cursor.
+List<FeedComment> mergeFeedCommentRefresh({
+  required List<FeedComment> current,
+  required List<FeedComment> incoming,
+  Iterable<String> removedIds = const <String>[],
+  Iterable<String> preserveLocalLikeIds = const <String>[],
+  bool reset = false,
+}) {
+  final removed = removedIds.toSet();
+  final preserveLikes = preserveLocalLikeIds.toSet();
+  final currentById = <String, FeedComment>{};
+
+  void index(FeedComment comment) {
+    currentById[comment.id] = comment;
+    for (final reply in comment.replies) {
+      index(reply);
+    }
+  }
+
+  for (final comment in current) {
+    index(comment);
+  }
+
+  FeedComment? pruneCachedNode(FeedComment comment) {
+    if (removed.contains(comment.id) ||
+        (comment.parentCommentId != null &&
+            removed.contains(comment.parentCommentId))) {
+      return null;
+    }
+    final replies = comment.replies
+        .map(pruneCachedNode)
+        .whereType<FeedComment>()
+        .toList(growable: false);
+    final removedReplyCount = comment.replies.length - replies.length;
+    final nextReplyCount = comment.replyCount > removedReplyCount
+        ? comment.replyCount - removedReplyCount
+        : replies.length;
+    return comment.copyWith(
+      replies: replies,
+      replyCount:
+          nextReplyCount < replies.length ? replies.length : nextReplyCount,
+    );
+  }
+
+  FeedComment mergeNode(FeedComment remote) {
+    final local = currentById[remote.id];
+    final remoteReplyIds = remote.replies.map((reply) => reply.id).toSet();
+    final replies = <FeedComment>[
+      for (final reply in remote.replies)
+        if (!removed.contains(reply.id)) mergeNode(reply),
+      if (!reset && local != null)
+        for (final reply in local.replies)
+          if (!removed.contains(reply.id) && !remoteReplyIds.contains(reply.id))
+            ...[pruneCachedNode(reply)].whereType<FeedComment>(),
+    ]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    final mergedReplyCount =
+        remote.replyCount < replies.length ? replies.length : remote.replyCount;
+    final merged = remote.copyWith(
+      replies: replies,
+      replyCount: mergedReplyCount,
+    );
+    if (local == null || !preserveLikes.contains(remote.id)) return merged;
+    return merged.copyWith(
+      viewerLiked: local.viewerLiked,
+      likeCount: local.likeCount,
+    );
+  }
+
+  bool isRemoved(FeedComment comment) =>
+      removed.contains(comment.id) ||
+      (comment.parentCommentId != null &&
+          removed.contains(comment.parentCommentId));
+
+  final incomingIds = incoming.map((comment) => comment.id).toSet();
+  final merged = <FeedComment>[
+    for (final comment in incoming)
+      if (!isRemoved(comment)) mergeNode(comment),
+  ];
+  if (!reset) {
+    for (final comment in current) {
+      if (isRemoved(comment) || incomingIds.contains(comment.id)) continue;
+      final pruned = pruneCachedNode(comment);
+      if (pruned != null) merged.add(pruned);
+    }
+  }
+  return merged;
+}
+
+/// Remove one comment from a nested comment page while preserving the server
+/// reply total. A parent deletion also removes every loaded child ID so UI
+/// state such as an active reply target can be invalidated safely.
+FeedCommentRemovalResult removeFeedCommentFromThreads(
+  List<FeedComment> comments,
+  FeedComment removed,
+) {
+  final removesThread = removed.parentCommentId == null;
+  final removedIds = <String>{
+    removed.id,
+    if (removesThread) ...removed.replies.map((reply) => reply.id),
+    if (removesThread)
+      ...comments
+          .where((comment) => comment.parentCommentId == removed.id)
+          .map((comment) => comment.id),
+  };
+  final updated = comments
+      .where((comment) => !removedIds.contains(comment.id))
+      .map((comment) {
+    final containsNestedReply =
+        comment.replies.any((reply) => reply.id == removed.id);
+    final isLegacyFlatParent = removed.parentCommentId == comment.id;
+    if (!containsNestedReply && !isLegacyFlatParent) {
+      return comment;
+    }
+    final replies = comment.replies
+        .where((reply) => reply.id != removed.id)
+        .toList(growable: false);
+    final remainingTotal =
+        comment.replyCount > 0 ? comment.replyCount - 1 : replies.length;
+    return comment.copyWith(
+      replies: replies,
+      replyCount:
+          remainingTotal < replies.length ? replies.length : remainingTotal,
+    );
+  }).toList(growable: false);
+  return FeedCommentRemovalResult(
+    comments: updated,
+    removedIds: removedIds,
+  );
 }
 
 class FeedComment {
@@ -242,6 +444,18 @@ int _asInt(Object? value) {
   if (value is int) return value;
   if (value is num) return value.round();
   return int.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+int? _nullableInt(Object? value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.round();
+  return int.tryParse(value.toString());
+}
+
+DateTime? _nullableDateTime(Object? value) {
+  final parsed = DateTime.tryParse(value?.toString() ?? '');
+  return parsed?.toUtc();
 }
 
 String? _nullableString(Object? value) {

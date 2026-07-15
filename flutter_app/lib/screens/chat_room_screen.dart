@@ -19,6 +19,7 @@ import '../state/member_store.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/natalo_colors.dart';
+import '../utils/formatters.dart';
 import '../widgets/app_login_gate.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
@@ -178,6 +179,31 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// kontekstnya), jangan kirim ulang `widget.productContext` di pesan
   /// berikutnya.
   bool _contextSent = false;
+  Map<String, dynamic>? _entryContext;
+
+  bool get _hasEntryContext => !_contextSent && _entryContext != null;
+
+  ChatOrderRef? get _entryOrder {
+    final context = _entryContext;
+    if (context == null || context['type'] != 'order') return null;
+    final raw = context['order'];
+    final map = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : Map<String, dynamic>.from(context);
+    return ChatOrderRef.fromJson(map);
+  }
+
+  void _suppressForwardedOrderContext(Iterable<ChatMessage> messages) {
+    final entry = _entryOrder;
+    if (entry == null || entry.orderNumber.isEmpty) return;
+    final alreadyForwarded = messages.any(
+      (message) => message.order?.orderNumber == entry.orderNumber,
+    );
+    if (alreadyForwarded) {
+      _contextSent = true;
+      _entryContext = null;
+    }
+  }
 
   /// Status room ('open'/'resolved' dst). **Belum ada sumber data**: respons
   /// `GET /api/chat/{chatId}` yang di-ship (Plan 2) hanya balas
@@ -195,6 +221,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   @override
   void initState() {
     super.initState();
+    _entryContext = widget.productContext == null
+        ? null
+        : Map<String, dynamic>.from(widget.productContext!);
     WidgetsBinding.instance.addObserver(this);
     // Wake FCM (brief §9): push masuk foreground -> tick berubah -> fetch
     // sekali tanpa nunggu polling 4 detik berikutnya. Listener dipasang
@@ -262,6 +291,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
         _messages
           ..clear()
           ..addAll(merged);
+        _suppressForwardedOrderContext(_messages);
         _loading = false;
       });
       // Seed dedupe reopen: tandai SEMUA pesan reopen yang sudah ada di
@@ -391,6 +421,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       _messages
         ..clear()
         ..addAll(merged);
+      _suppressForwardedOrderContext(_messages);
     });
     for (final s in incoming) {
       final id = s.clientMsgId;
@@ -756,7 +787,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// serta retry yang benar-benar mengirim ulang = Task 5.
   Future<void> _onSendText(String text) async {
     if (!_guardChatEnabled()) return;
+    final messageText = text.trim();
+    final entryOrder = _entryOrder;
+    final contextOnlyOrder = messageText.isEmpty && entryOrder != null;
+    if (messageText.isEmpty && !contextOnlyOrder) return;
     final clientMsgId = newClientMsgId();
+    final sendContext = _contextSent ? null : _entryContext;
+    if (sendContext != null) {
+      _contextSent = true;
+      _pendingContext[clientMsgId] = sendContext;
+    }
     // Konsumsi balasan (kalau ada) SEBELUM await — banner hilang begitu kirim
     // mulai (paritas WA). Optimistic membawa kutipan lokal supaya bubble tampil
     // langsung; server tetap men-derive-ulang kutipan by id (anti-palsu).
@@ -766,8 +806,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     final optimistic = ChatMessage(
       id: clientMsgId,
       sender: ChatSender.customer,
-      type: ChatMsgType.text,
-      text: text,
+      type: contextOnlyOrder ? ChatMsgType.orderContext : ChatMsgType.text,
+      text: messageText.isEmpty ? null : messageText,
+      order: sendContext?['type'] == 'order' ? entryOrder : null,
       replyTo: replyToId != null ? _optimisticReplyRef(replyingMsg!) : null,
       createdAt: _nextOptimisticCreatedAtNow(),
       clientMsgId: clientMsgId,
@@ -807,12 +848,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     // itu tetap "terpakai" (tak pernah bocor ke pesan lain) — deterministik
     // & tetap bisa dipulihkan kapan pun via retry pesan ini, bukan pindah
     // ke pesan berikutnya.
-    final sendContext = _contextSent ? null : widget.productContext;
-    if (sendContext != null) {
-      _contextSent = true;
-      _pendingContext[clientMsgId] = sendContext;
-    }
-
     try {
       // Oper `clientMsgId` yang SAMA dgn bubble optimistic — supaya baris
       // server yang datang di poll berikutnya (proyeksi proxy MEMBAWA
@@ -821,7 +856,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       // ChatService akan generate id berbeda → optimistic & server row tak
       // pernah bisa di-match).
       await chatService.sendText(
-        text,
+        messageText,
         context: sendContext,
         replyToId: replyToId,
         clientMsgId: clientMsgId,
@@ -832,6 +867,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       // sini lagi) — sukses kirim cuma perlu membersihkan `_pendingContext`
       // (tak butuh lagi ditahan utk retry, pesan ini sudah confirmed).
       _pendingContext.remove(clientMsgId);
+      _entryContext = null;
       // Analitik — funnel MVP chat (spec §11): SUKSES kirim saja (bukan
       // optimistic add, bukan gagal) — fire-and-forget, tak pernah
       // menyentuh alur kirim/retry.
@@ -948,6 +984,89 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
             tooltip: 'Batal balas',
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _entryContextBanner() {
+    if (!_hasEntryContext) return const SizedBox.shrink();
+    final order = _entryOrder;
+    final context = _entryContext!;
+    final isOrder = order != null;
+    final title = isOrder
+        ? order.orderNumber
+        : (context['name'] ?? context['productName'] ?? 'Produk').toString();
+    final subtitle = isOrder
+        ? [
+            chatOrderStatusLabel(
+              order.status,
+              paymentProofStatus: order.paymentProofStatus,
+            ),
+            if (order.total != null) formatRupiah(order.total!),
+          ].join(' · ')
+        : 'Konteks produk akan disertakan';
+    return Semantics(
+      container: true,
+      label: isOrder
+          ? 'Konteks pesanan $title. Tekan tutup untuk melepas.'
+          : 'Konteks produk $title. Tekan tutup untuk melepas.',
+      child: Container(
+        color: NataloColors.white,
+        padding: const EdgeInsets.fromLTRB(12, 7, 6, 7),
+        child: Row(
+          children: [
+            Container(
+              width: 3,
+              height: 38,
+              decoration: BoxDecoration(
+                color: NataloColors.primary,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Icon(
+              isOrder
+                  ? Icons.receipt_long_outlined
+                  : Icons.shopping_bag_outlined,
+              size: 19,
+              color: NataloColors.primary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isOrder ? 'Pesanan $title' : title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      color: NataloColors.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: NataloColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: () => setState(() => _entryContext = null),
+              tooltip: 'Lepas konteks',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.close_rounded, size: 19),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1225,7 +1344,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
           '/member/login',
           arguments: {
             'redirect': '/chat',
-            if (widget.productContext != null) 'arguments': widget.productContext,
+            if (_entryContext != null) 'arguments': _entryContext,
           },
         ),
       );
@@ -1265,10 +1384,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       mainAxisSize: MainAxisSize.min,
       children: [
         _replyBanner(),
+        _entryContextBanner(),
         ChatComposer(
           controller: _composerController,
           onAttachPhoto: _onAttachPhoto,
           onSend: _onSendText,
+          canSendWithoutText: _hasEntryContext,
         ),
       ],
     );
@@ -1403,6 +1524,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
                 product: message.product,
                 order: message.order,
                 isCustomer: isCustomer,
+                sendStatus: message.status,
+                onRetry: () => _onRetry(message),
               )
             : ChatBubble(message: message, onRetry: () => _onRetry(message));
         break;

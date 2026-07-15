@@ -236,9 +236,11 @@ void main() {
     VideoPlayerSession createSession({
       Future<void>? recreateGate,
       void Function(String, Map<String, Object>)? metricSink,
+      bool hasAudio = true,
     }) {
       return VideoPlayerSession(
         url: 'https://cdn/video.mp4',
+        hasAudio: hasAudio,
         debugMetricSink: metricSink,
         debugHeartbeatService: heartbeatService,
         debugInitAttempt: (_) async {
@@ -304,6 +306,22 @@ void main() {
       heartbeats.add(_heartbeat(player.playerId, 2));
       await pumpEventQueue();
       expect(player.log.last, 'volume:0.75');
+      await session.dispose();
+    });
+
+    test('media marked without audio never opens the volume gate', () async {
+      final session = createSession(hasAudio: false);
+      await pumpEventQueue();
+      player.log.clear();
+
+      await session.setVolume(1);
+      await session.play();
+      heartbeats.add(_heartbeat(player.playerId, 1));
+      await pumpEventQueue();
+
+      expect(player.log, isNot(contains('volume:1.0')));
+      expect(player.log.where((entry) => entry.startsWith('volume:')).toSet(),
+          {'volume:0.0'});
       await session.dispose();
     });
 

@@ -8,6 +8,7 @@ import '../../../services/video_quality_service.dart';
 import '../../../state/settings_store.dart';
 import 'post_video_coordinator.dart';
 import 'frame_output_heartbeat_service.dart';
+import 'video_media_cache.dart';
 import 'video_playback_health_monitor.dart';
 
 /// Satu percobaan init (plugin-free seam). Melempar bila gagal; pada sukses,
@@ -47,6 +48,7 @@ typedef VideoSessionVolumeOperation = Future<void> Function(double volume);
 class VideoPlayerSession implements PlaybackSession {
   VideoPlayerSession({
     required String url,
+    bool hasAudio = true,
     String? userQualityPreference,
     Future<String?> Function()? urlRefresher,
     String? analyticsPostId,
@@ -64,6 +66,7 @@ class VideoPlayerSession implements PlaybackSession {
     @visibleForTesting VideoSessionVolumeOperation? debugSetVolume,
     @visibleForTesting VideoSessionOperation? debugDisposePlayer,
   })  : _currentUrl = url,
+        _hasAudio = hasAudio,
         _userQualityPreference =
             userQualityPreference ?? appSettingsStore.feedVideoQuality,
         _urlRefresher = urlRefresher,
@@ -107,6 +110,7 @@ class VideoPlayerSession implements PlaybackSession {
   static const int _maxRetries = 1;
 
   String _currentUrl;
+  final bool _hasAudio;
   final String _userQualityPreference;
   final Future<String?> Function()? _urlRefresher;
   final VideoInitAttempt? _debugInitAttempt;
@@ -136,6 +140,9 @@ class VideoPlayerSession implements PlaybackSession {
 
   bool _disposed = false;
   bool _initInFlight = false;
+  Completer<void>? _initCompletion;
+  Future<void>? _disposeFuture;
+  bool _debugPlayerReady = false;
   bool _initialized = false;
   Object? _error;
   bool _hasVisualOutput = false;
@@ -175,6 +182,8 @@ class VideoPlayerSession implements PlaybackSession {
 
   Future<void> _init() async {
     if (_initInFlight || _disposed || _initialized) return;
+    final completion = Completer<void>();
+    _initCompletion = completion;
     _initInFlight = true;
     // Bump: view merender loading + membersihkan pesan error lama.
     _error = null;
@@ -233,6 +242,10 @@ class VideoPlayerSession implements PlaybackSession {
       }
     } finally {
       _initInFlight = false;
+      if (!completion.isCompleted) completion.complete();
+      if (identical(_initCompletion, completion)) {
+        _initCompletion = null;
+      }
     }
   }
 
@@ -243,6 +256,7 @@ class VideoPlayerSession implements PlaybackSession {
     final attempt = _debugInitAttempt;
     if (attempt != null) {
       await attempt(url);
+      _debugPlayerReady = true;
       return;
     }
     if (url.trim().isEmpty) {
@@ -263,6 +277,10 @@ class VideoPlayerSession implements PlaybackSession {
       final wrapper = CachedVideoPlayerPlus.networkUrl(
         Uri.parse(resolved),
         invalidateCacheIfOlderThan: const Duration(days: 7),
+        cacheKey: videoMediaCacheKey(
+          mediaId: _analyticsPostId ?? resolved,
+          url: resolved,
+        ),
       );
       await wrapper.initialize();
       _wrapper = wrapper;
@@ -297,8 +315,10 @@ class VideoPlayerSession implements PlaybackSession {
   Future<void> _cleanupResources() async {
     final wrapper = _wrapper;
     final controller = _controller;
+    final disposeDebugPlayer = _debugPlayerReady;
     _wrapper = null;
     _controller = null;
+    _debugPlayerReady = false;
     _visualIntentGeneration++;
     _hasVisualOutput = false;
     _awaitingVisualOutput = false;
@@ -312,7 +332,7 @@ class VideoPlayerSession implements PlaybackSession {
       } else {
         if (controller != null) {
           await controller.dispose();
-        } else {
+        } else if (disposeDebugPlayer) {
           await _debugDisposePlayer?.call();
         }
       }
@@ -443,7 +463,7 @@ class VideoPlayerSession implements PlaybackSession {
   @override
   Future<void> setVolume(double volume) async {
     if (_disposed) return;
-    _wantVolume = volume;
+    _wantVolume = _hasAudio ? volume : 0;
     final ctrl = _controller;
     if (_initialized && (ctrl != null || _debugInitAttempt != null)) {
       await _applyEffectiveVolume();
@@ -811,15 +831,28 @@ class VideoPlayerSession implements PlaybackSession {
       postId.hashCode.toUnsigned(32).toRadixString(16);
 
   @override
-  Future<void> dispose() async {
-    if (_disposed) return;
+  Future<void> dispose() {
+    final existing = _disposeFuture;
+    if (existing != null) return existing;
+    final future = _disposeOnce();
+    _disposeFuture = future;
+    return future;
+  }
+
+  Future<void> _disposeOnce() async {
     _disposed = true;
     _healthMonitor.dispose();
     _initialized = false;
-    // Prefer dispose via wrapper (handle cache reference + underlying
-    // controller sekaligus). Kalau init masih in-flight, `_init` mendeteksi
-    // `_disposed` dan membuang hasilnya sendiri.
+    // Tutup audio segera, lalu tunggu init yang sedang berjalan selesai.
+    // Completion init melihat `_disposed` dan tidak boleh menerapkan playback;
+    // setelah completion, cleanup terakhir menjadi idempoten karena resource
+    // diambil+dinolkan secara atomik oleh `_cleanupResources`.
     await _quiesceCurrentPlayer();
+    while (_initInFlight) {
+      final completion = _initCompletion;
+      if (completion == null) break;
+      await completion.future;
+    }
     await _cleanupResources();
   }
 }

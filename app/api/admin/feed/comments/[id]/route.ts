@@ -2,33 +2,36 @@
  * PATCH /api/admin/feed/comments/[id]
  *   Body: { action: "hide" | "unhide", reason?: string }
  *
- * DELETE /api/admin/feed/comments/[id]  — hard delete.
- *
- * Counter rules:
- * - Hide (top-level): decrement commentCount supaya badge match jumlah
- *   visible. Sebelumnya leave counter as-is → badge "10" tapi sheet
- *   render 7 (3 hidden) = confusing UX.
- * - Unhide (top-level): increment back.
- * - Delete (top-level): decrement (same as hide).
- * - Reply (parentCommentId != null): counter tidak terpengaruh (badge
- *   hanya count top-level).
+ * DELETE /api/admin/feed/comments/[id]
+ *   Soft-delete while retaining a synchronization tombstone.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
+import {
+  countedFeedCommentWhere,
+  readDatabaseClock,
+} from "@/lib/feed/comment-sync";
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+type RouteContext = { params: Promise<{ id: string }> };
+
+async function requireAdmin(request: NextRequest) {
   const csrfReject = assertSameOrigin(request);
-  if (csrfReject) return csrfReject;
+  if (csrfReject) return { response: csrfReject };
 
   const session = await getSession("ADMIN");
   if (!session || session.role !== "ADMIN") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return {
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
   }
+  return { session };
+}
+
+export async function PATCH(request: NextRequest, { params }: RouteContext) {
+  const authorized = await requireAdmin(request);
+  if ("response" in authorized) return authorized.response;
 
   const { id: commentId } = await params;
   if (!commentId) {
@@ -38,104 +41,155 @@ export async function PATCH(
   const body = await request.json().catch(() => ({}));
   const action = String((body as { action?: unknown }).action ?? "");
   const rawReason = (body as { reason?: unknown }).reason;
-  const reason = typeof rawReason === "string" ? rawReason.trim().slice(0, 500) : "";
-
+  const reason =
+    typeof rawReason === "string" ? rawReason.trim().slice(0, 500) : "";
   if (action !== "hide" && action !== "unhide") {
     return NextResponse.json(
       { error: "Action harus 'hide' atau 'unhide'." },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
-  const comment = await prisma.feedComment.findUnique({
+  const locator = await prisma.feedComment.findUnique({
     where: { id: commentId },
-    select: { id: true, isHidden: true, postId: true, parentCommentId: true },
+    select: { postId: true },
   });
-  if (!comment) {
-    return NextResponse.json({ error: "Komentar tidak ditemukan." }, { status: 404 });
-  }
-  if (action === "hide" && comment.isHidden) {
-    return NextResponse.json({ error: "Komentar sudah disembunyikan." }, { status: 409 });
-  }
-  if (action === "unhide" && !comment.isHidden) {
-    return NextResponse.json({ error: "Komentar belum disembunyikan." }, { status: 409 });
+  if (!locator) {
+    return NextResponse.json(
+      { error: "Komentar tidak ditemukan." },
+      { status: 404 }
+    );
   }
 
-  // Transaction supaya update comment + adjust counter atomic.
-  const updated = await prisma.$transaction(async (tx) => {
-    const comm = await tx.feedComment.update({
+  const result = await prisma.$transaction(async (tx) => {
+    const lockedPosts = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "FeedPost"
+      WHERE "id" = ${locator.postId}
+      FOR UPDATE
+    `;
+    if (lockedPosts.length === 0) return { kind: "not-found" } as const;
+
+    const comment = await tx.feedComment.findUnique({
+      where: { id: commentId },
+      select: { isHidden: true, deletedAt: true, postId: true },
+    });
+    if (!comment || comment.postId !== locator.postId || comment.deletedAt) {
+      return { kind: "not-found" } as const;
+    }
+    if (action === "hide" && comment.isHidden) {
+      return { kind: "already-hidden" } as const;
+    }
+    if (action === "unhide" && !comment.isHidden) {
+      return { kind: "already-visible" } as const;
+    }
+
+    const visibilityChangedAt = await readDatabaseClock(tx);
+    const updated = await tx.feedComment.update({
       where: { id: commentId },
       data: {
         isHidden: action === "hide",
-        hiddenById: action === "hide" ? session.sub : null,
-        hiddenAt: action === "hide" ? new Date() : null,
+        hiddenById: action === "hide" ? authorized.session.sub : null,
+        hiddenAt: action === "hide" ? visibilityChangedAt : null,
         hiddenReason: action === "hide" ? reason || null : null,
+        updatedAt: visibilityChangedAt,
       },
       select: { id: true, isHidden: true, hiddenReason: true },
     });
-
-    // Adjust commentCount hanya untuk top-level comment.
-    if (comment.parentCommentId === null) {
-      const delta = action === "hide" ? -1 : 1;
-      await tx.feedPost.update({
-        where: { id: comment.postId },
-        data: { commentCount: { increment: delta } },
-      });
-      // Floor cleanup kalau drift.
-      await tx.feedPost.updateMany({
-        where: { id: comment.postId, commentCount: { lt: 0 } },
-        data: { commentCount: 0 },
-      });
-    }
-
-    return comm;
+    const commentCount = await tx.feedComment.count({
+      where: countedFeedCommentWhere(locator.postId),
+    });
+    await tx.feedPost.update({
+      where: { id: locator.postId },
+      data: { commentCount },
+    });
+    return { kind: "updated", comment: updated } as const;
   });
 
-  return NextResponse.json({ ok: true, comment: updated });
+  if (result.kind === "not-found") {
+    return NextResponse.json(
+      { error: "Komentar tidak ditemukan." },
+      { status: 404 }
+    );
+  }
+  if (result.kind === "already-hidden") {
+    return NextResponse.json(
+      { error: "Komentar sudah disembunyikan." },
+      { status: 409 }
+    );
+  }
+  if (result.kind === "already-visible") {
+    return NextResponse.json(
+      { error: "Komentar belum disembunyikan." },
+      { status: 409 }
+    );
+  }
+  return NextResponse.json({ ok: true, comment: result.comment });
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const csrfReject = assertSameOrigin(request);
-  if (csrfReject) return csrfReject;
-
-  const session = await getSession("ADMIN");
-  if (!session || session.role !== "ADMIN") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
+  const authorized = await requireAdmin(request);
+  if ("response" in authorized) return authorized.response;
 
   const { id: commentId } = await params;
   if (!commentId) {
     return NextResponse.json({ error: "Comment ID required" }, { status: 400 });
   }
 
-  const comment = await prisma.feedComment.findUnique({
+  const locator = await prisma.feedComment.findUnique({
     where: { id: commentId },
-    select: { id: true, postId: true, parentCommentId: true },
+    select: { postId: true },
   });
-  if (!comment) {
-    return NextResponse.json({ error: "Komentar tidak ditemukan." }, { status: 404 });
+  if (!locator) {
+    return NextResponse.json(
+      { error: "Komentar tidak ditemukan." },
+      { status: 404 }
+    );
   }
 
-  // Transaction: delete + decrement counter (hanya top-level mengikuti
-  // logic POST yang increment hanya saat parentCommentId=null).
-  await prisma.$transaction(async (tx) => {
-    await tx.feedComment.delete({ where: { id: commentId } });
-    if (comment.parentCommentId === null) {
-      // Decrement, floor di 0.
-      await tx.feedPost.update({
-        where: { id: comment.postId },
-        data: { commentCount: { decrement: 1 } },
-      });
-      // Floor cleanup — kalau counter drifted negative, normalize.
-      await tx.feedPost.updateMany({
-        where: { id: comment.postId, commentCount: { lt: 0 } },
-        data: { commentCount: 0 },
+  const found = await prisma.$transaction(async (tx) => {
+    const lockedPosts = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "FeedPost"
+      WHERE "id" = ${locator.postId}
+      FOR UPDATE
+    `;
+    if (lockedPosts.length === 0) return false;
+
+    const comment = await tx.feedComment.findUnique({
+      where: { id: commentId },
+      select: { deletedAt: true, postId: true, isHidden: true },
+    });
+    if (!comment || comment.postId !== locator.postId) return false;
+
+    if (!comment.deletedAt || !comment.isHidden) {
+      const deletedAt = await readDatabaseClock(tx);
+      await tx.feedComment.update({
+        where: { id: commentId },
+        data: {
+          deletedAt: comment.deletedAt ?? deletedAt,
+          isHidden: true,
+          hiddenById: authorized.session.sub,
+          hiddenAt: deletedAt,
+          hiddenReason: "Dihapus moderator",
+        },
       });
     }
+    const commentCount = await tx.feedComment.count({
+      where: countedFeedCommentWhere(locator.postId),
+    });
+    await tx.feedPost.update({
+      where: { id: locator.postId },
+      data: { commentCount },
+    });
+    return true;
   });
 
+  if (!found) {
+    return NextResponse.json(
+      { error: "Komentar tidak ditemukan." },
+      { status: 404 }
+    );
+  }
   return NextResponse.json({ ok: true });
 }

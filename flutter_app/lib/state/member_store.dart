@@ -5,8 +5,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/member_profile.dart';
 import '../services/api_client.dart';
+import '../services/follow_service.dart';
 import '../services/member_service.dart';
 import 'cart_store.dart';
+import 'feed_comment_session_store.dart';
+import 'feed_comment_sync_coordinator.dart';
 import 'follow_override_store.dart';
 
 /// Member auth + profile store. Setelah login success, cache profile +
@@ -22,6 +25,7 @@ class MemberStore extends ChangeNotifier {
   String? _sessionToken;
   bool _initialized = false;
   bool _initializing = false;
+  int _viewerGeneration = 0;
   List<MemberAddress> _addresses = const [];
   List<OrderSummary> _orders = const [];
 
@@ -30,6 +34,7 @@ class MemberStore extends ChangeNotifier {
   bool get isLoggedIn => _profile != null;
   bool get initialized => _initialized;
   bool get initializing => _initializing;
+  int get viewerGeneration => _viewerGeneration;
   List<MemberAddress> get addresses => _addresses;
   List<OrderSummary> get orders => _orders;
 
@@ -176,18 +181,26 @@ class MemberStore extends ChangeNotifier {
 
   void _clearFollowStateForAccountChange(String nextMemberId) {
     final currentMemberId = _profile?.id;
-    if (currentMemberId != null && currentMemberId != nextMemberId) {
+    if (currentMemberId != nextMemberId) {
+      _viewerGeneration++;
       clearFollowOverrides();
+      followService.clearSessionState();
+      feedCommentSyncCoordinator.clear();
+      feedCommentSessionStore.clear();
     }
   }
 
   Future<void> logout() async {
+    _viewerGeneration++;
     _profile = null;
     _sessionToken = null;
     _addresses = const [];
     _orders = const [];
     cartStore.resetLoginMergeGuard();
     clearFollowOverrides();
+    followService.clearSessionState();
+    feedCommentSyncCoordinator.clear();
+    feedCommentSessionStore.clear();
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();

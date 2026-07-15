@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import type { OrderContextV1 } from "@/lib/chat/order-contract";
 
 export function chatIdForUser(userId: string): string {
   return `cust_${userId}`;
@@ -14,7 +15,8 @@ export type CustomerMessage = {
   text?: string;
   image?: { url: string };
   product?: { productId: string; slug?: string; name: string; imageUrl?: string; price?: number; stock?: number };
-  order?: { orderNumber: string; status?: string; total?: number };
+  order?: Partial<OrderContextV1["order"]> & { orderNumber: string };
+  schemaVersion?: number;
   // Kutipan balasan — hanya field aman (id/senderName/type/text preview).
   // TAK ADA data internal; text sudah di-preview server saat penulisan.
   replyTo?: { id?: string; senderName?: string; type?: string; text?: string };
@@ -65,9 +67,16 @@ export function projectMessageForCustomer(raw: unknown): CustomerMessage | null 
     const order: Partial<NonNullable<CustomerMessage["order"]>> = {};
     if (typeof o.orderNumber === "string") order.orderNumber = o.orderNumber;
     if (typeof o.status === "string") order.status = o.status;
+    if (typeof o.paymentStatus === "string") order.paymentStatus = o.paymentStatus;
+    if (typeof o.paymentProofStatus === "string") order.paymentProofStatus = o.paymentProofStatus;
     if (typeof o.total === "number") order.total = o.total;
+    if (typeof o.itemCount === "number") order.itemCount = o.itemCount;
+    if (typeof o.hasPaymentProof === "boolean") order.hasPaymentProof = o.hasPaymentProof;
+    if (typeof o.proofVersion === "number") order.proofVersion = o.proofVersion;
+    if (typeof o.createdAt === "string") order.createdAt = o.createdAt;
     out.order = order as CustomerMessage["order"];
   }
+  if (typeof m.schemaVersion === "number") out.schemaVersion = m.schemaVersion;
   if (m.replyTo && typeof m.replyTo === "object") {
     const r = m.replyTo as Record<string, unknown>;
     // Allowlist per-field — sama disiplin dgn product/order (jangan cast objek utuh).

@@ -25,7 +25,7 @@ class ShippingService {
     final areaId = address.areaId?.trim() ?? '';
     if (areaId.isEmpty) {
       return const ShippingRateResult(
-        rates: _localFallbackRates,
+        rates: [ShippingRate.selfPickup],
         message: 'Alamat belum punya area pengiriman Biteship.',
         fromApi: false,
       );
@@ -42,8 +42,10 @@ class ShippingService {
           'items': items.map((item) {
             return {
               'name': item.product.title,
-              'price': item.product.finalPrice.round(),
-              'weightGram': item.product.weightGram,
+              // Gunakan snapshot cart item agar simulasi detail produk dan
+              // checkout menghormati harga + berat varian yang dipilih.
+              'price': item.unitPrice,
+              'weightGram': item.weightGram,
               'quantity': item.quantity,
             };
           }).toList(),
@@ -66,7 +68,9 @@ class ShippingService {
       );
     } catch (error) {
       return ShippingRateResult(
-        rates: _localFallbackRates,
+        // Jangan menawarkan tarif kurir hard-coded saat API gagal. Checkout
+        // hanya boleh mengirim layanan yang telah dikonfirmasi backend.
+        rates: const [ShippingRate.selfPickup],
         message: error.toString(),
         fromApi: false,
       );
@@ -131,8 +135,8 @@ class ShippingArea {
     return ShippingArea(
       id: (json['id'] ?? '').toString(),
       name: (json['name'] ?? json['label'] ?? '').toString(),
-      postalCode: json['postal_code']?.toString() ??
-          json['postalCode']?.toString(),
+      postalCode:
+          json['postal_code']?.toString() ?? json['postalCode']?.toString(),
       administrativeDivisionLevel1Name:
           json['administrative_division_level_1_name']?.toString() ??
               json['provinceName']?.toString(),
@@ -179,29 +183,5 @@ class ShippingOrigin {
     );
   }
 }
-
-const _localFallbackRates = [
-  ShippingRate.selfPickup,
-  ShippingRate(
-    courierName: 'Natalo Instant',
-    courierCode: 'NATALO',
-    serviceName: 'Instant Medan',
-    serviceCode: 'instant-medan',
-    serviceType: 'instant',
-    price: 12000,
-    duration: '1-3 jam',
-    available: true,
-  ),
-  ShippingRate(
-    courierName: 'Natalo Same Day',
-    courierCode: 'NATALO',
-    serviceName: 'Same Day',
-    serviceCode: 'same-day',
-    serviceType: 'same_day',
-    price: 18000,
-    duration: 'Hari ini',
-    available: true,
-  ),
-];
 
 final shippingService = ShippingService();

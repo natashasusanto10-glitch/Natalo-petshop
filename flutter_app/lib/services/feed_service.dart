@@ -21,6 +21,25 @@ class FeedLikeResult {
   });
 }
 
+enum FeedDesiredStateVerb { put, delete }
+
+FeedDesiredStateVerb feedDesiredStateVerb(bool desiredActive) =>
+    desiredActive ? FeedDesiredStateVerb.put : FeedDesiredStateVerb.delete;
+
+Map<String, dynamic> buildFeedCommentsQuery({
+  String? cursor,
+  int limit = 30,
+  DateTime? syncCursor,
+  DateTime? syncTime,
+}) =>
+    {
+      if (cursor != null) 'cursor': cursor,
+      'limit': limit,
+      if (syncCursor != null)
+        'syncCursor': syncCursor.toUtc().toIso8601String(),
+      if (syncTime != null) 'syncTime': syncTime.toUtc().toIso8601String(),
+    };
+
 /// Feed API: list, like, comment, share, upload. Stub minimal — endpoint REST
 /// di Next.js (`/api/feed/posts/**`).
 class FeedService {
@@ -130,6 +149,47 @@ class FeedService {
     return FeedPage(items: items, nextCursor: nextCursor);
   }
 
+  /// Fetch the authenticated viewer's saved posts, newest save first.
+  Future<FeedPage> fetchSavedPosts({
+    String? cursor,
+    int limit = 20,
+  }) async {
+    final data = await apiClient.getJson(
+      '/api/feed/saved',
+      query: {
+        if (cursor != null) 'cursor': cursor,
+        'limit': '$limit',
+      },
+      timeout: const Duration(seconds: 15),
+    );
+    final raw =
+        data is Map ? (data['items'] ?? data['posts'] ?? data['data']) : data;
+    final items = raw is List
+        ? raw
+            .whereType<Map<String, dynamic>>()
+            .map(FeedPost.fromJson)
+            // The collection itself is authoritative even if an older API
+            // payload omits the per-viewer field.
+            .map((post) => post.copyWith(viewerSaved: true))
+            .toList()
+        : const <FeedPost>[];
+    final nextCursor = data is Map ? data['nextCursor'] as String? : null;
+    return FeedPage(items: items, nextCursor: nextCursor);
+  }
+
+  /// Set the saved state explicitly. PUT/DELETE are idempotent, allowing the
+  /// store to converge to the latest tap even while a request is in flight.
+  Future<bool> setSaved(String postId, {required bool saved}) async {
+    final path = '/api/feed/posts/${Uri.encodeComponent(postId)}/save';
+    final data = saved
+        ? await apiClient.putJson(path)
+        : await apiClient.deleteJson(path);
+    if (data is Map<String, dynamic>) {
+      return data['saved'] as bool? ?? saved;
+    }
+    return saved;
+  }
+
   /// Track view event — fire-and-forget. Backend increment viewCount
   /// + record analytics event. Client debounce sendiri (avoid
   /// double-count) via FeedLocalStore.hasViewedThisSession.
@@ -151,33 +211,31 @@ class FeedService {
     String postId, {
     required bool currentlyLiked,
   }) async {
-    final uri = ApiConfig.uri('/api/feed/posts/$postId/like');
+    final desiredLiked = !currentlyLiked;
+    final path = '/api/feed/posts/${Uri.encodeComponent(postId)}/like';
     try {
-      // Backend endpoint POST ini bersifat toggle: kalau user sudah like,
-      // request POST akan unlike. Jangan kirim DELETE karena route Next.js
-      // tidak expose DELETE dan akan memicu "toggle like failed".
-      final req = http.Request('POST', uri)..headers.addAll(_headers);
-      final streamed = await req.send().timeout(const Duration(seconds: 6));
-      final res = await http.Response.fromStream(streamed);
-      if (res.statusCode == 401) {
-        throw const ApiException('unauthorized', statusCode: 401);
-      }
-      if (res.statusCode < 200 || res.statusCode >= 300) {
-        throw ApiException('toggle like failed', statusCode: res.statusCode);
-      }
-      final body = jsonDecode(res.body);
-      if (body is Map<String, dynamic>) {
+      final verb = feedDesiredStateVerb(desiredLiked);
+      final data = verb == FeedDesiredStateVerb.put
+          ? await apiClient.putJson(
+              path,
+              timeout: const Duration(seconds: 6),
+            )
+          : await apiClient.deleteJson(
+              path,
+              timeout: const Duration(seconds: 6),
+            );
+      if (data is Map<String, dynamic>) {
         return FeedLikeResult(
-          liked: body['liked'] as bool? ?? !currentlyLiked,
-          likeCount: (body['likeCount'] as num?)?.toInt() ?? 0,
-          recentLikers: (body['recentLikers'] as List? ?? const [])
+          liked: data['liked'] as bool? ?? desiredLiked,
+          likeCount: (data['likeCount'] as num?)?.toInt() ?? 0,
+          recentLikers: (data['recentLikers'] as List? ?? const [])
               .whereType<Map<String, dynamic>>()
               .map(FeedAuthor.fromJson)
               .where((liker) => liker.id.isNotEmpty)
               .toList(),
         );
       }
-      return FeedLikeResult(liked: !currentlyLiked, likeCount: 0);
+      return FeedLikeResult(liked: desiredLiked, likeCount: 0);
     } catch (e) {
       if (e is ApiException) rethrow;
       throw ApiException(e.toString(), cause: e);
@@ -196,12 +254,19 @@ class FeedService {
     String postId, {
     String? cursor,
     int limit = 30,
+    DateTime? syncCursor,
+    DateTime? syncTime,
   }) async {
     try {
-      final uri = ApiConfig.uri('/api/feed/posts/$postId/comments', {
-        if (cursor != null) 'cursor': cursor,
-        'limit': limit,
-      });
+      final uri = ApiConfig.uri(
+        '/api/feed/posts/${Uri.encodeComponent(postId)}/comments',
+        buildFeedCommentsQuery(
+          cursor: cursor,
+          limit: limit,
+          syncCursor: syncCursor,
+          syncTime: syncTime,
+        ),
+      );
       final res = await http
           .get(uri, headers: _headers)
           .timeout(const Duration(seconds: 12));
@@ -213,16 +278,7 @@ class FeedService {
       }
       final body = jsonDecode(res.body);
       if (body is! Map<String, dynamic>) return FeedCommentPage.empty;
-      final itemsJson =
-          (body['items'] ?? body['comments'] ?? body['data']) as List?;
-      final items = (itemsJson ?? const [])
-          .whereType<Map<String, dynamic>>()
-          .map(FeedComment.fromApiJson)
-          .toList();
-      return FeedCommentPage(
-        items: items,
-        nextCursor: body['nextCursor'] as String?,
-      );
+      return FeedCommentPage.fromApiJson(body);
     } catch (e) {
       if (kDebugMode) debugPrint('[feedService.fetchComments] $e');
       if (e is ApiException) rethrow;
@@ -280,25 +336,29 @@ class FeedService {
   Future<int> toggleCommentLike(
     String commentId, {
     required bool currentlyLiked,
+  }) =>
+      setCommentLiked(commentId, liked: !currentlyLiked);
+
+  /// Set an explicit state so retries and rapid taps cannot toggle the server
+  /// in the wrong direction.
+  Future<int> setCommentLiked(
+    String commentId, {
+    required bool liked,
   }) async {
-    final uri = ApiConfig.uri('/api/feed/comments/$commentId/like');
+    final path = '/api/feed/comments/${Uri.encodeComponent(commentId)}/like';
     try {
-      // Sama seperti post like: backend comment like memakai POST toggle.
-      final req = http.Request('POST', uri)..headers.addAll(_headers);
-      final streamed = await req.send().timeout(const Duration(seconds: 6));
-      final res = await http.Response.fromStream(streamed);
-      if (res.statusCode == 401) {
-        throw const ApiException('unauthorized', statusCode: 401);
-      }
-      if (res.statusCode < 200 || res.statusCode >= 300) {
-        throw ApiException(
-          'toggle comment like failed',
-          statusCode: res.statusCode,
-        );
-      }
-      final body = jsonDecode(res.body);
-      if (body is Map<String, dynamic>) {
-        return (body['likeCount'] as num?)?.toInt() ?? 0;
+      final verb = feedDesiredStateVerb(liked);
+      final data = verb == FeedDesiredStateVerb.put
+          ? await apiClient.putJson(
+              path,
+              timeout: const Duration(seconds: 6),
+            )
+          : await apiClient.deleteJson(
+              path,
+              timeout: const Duration(seconds: 6),
+            );
+      if (data is Map<String, dynamic>) {
+        return (data['likeCount'] as num?)?.toInt() ?? 0;
       }
       return 0;
     } catch (e) {

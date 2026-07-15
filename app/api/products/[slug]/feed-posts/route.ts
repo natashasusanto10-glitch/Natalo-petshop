@@ -15,13 +15,17 @@
  *   - Limit: ?limit=N (default 12, max 24)
  *   - Pagination: ?offset=N
  *
- * Cache 60s — UGC tidak diharapkan update tiap detik, satu menit window OK.
+ * Dynamic because `viewerSaved` is session-specific and must never be shared
+ * between viewers by a route cache.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import { getViewerSavedPostIds } from "@/lib/feed/queries";
 import { prisma } from "@/lib/prisma";
 import { signBunnyUrl } from "@/lib/feed/bunny";
+import { feedAccessibilityPayload } from "@/lib/feed/accessibility";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 const DEFAULT_LIMIT = 12;
 const MAX_LIMIT = 24;
@@ -89,6 +93,10 @@ export async function GET(
       title: true,
       thumbnailUrl: true,
       videoDurationSec: true,
+      videoAltText: true,
+      hasAudio: true,
+      subtitleUrl: true,
+      subtitleLanguage: true,
       likeCount: true,
       commentCount: true,
       createdAt: true,
@@ -96,7 +104,7 @@ export async function GET(
       media: {
         orderBy: { sortOrder: "asc" },
         take: 1,
-        select: { url: true, thumbnailUrl: true },
+        select: { url: true, thumbnailUrl: true, altText: true },
       },
     },
   });
@@ -124,6 +132,11 @@ export async function GET(
       },
     },
   });
+  const session = await getSession("CUSTOMER");
+  const viewerSavedIds = await getViewerSavedPostIds(
+    session?.sub,
+    posts.map((post) => post.id),
+  );
 
   return NextResponse.json({
     productSlug: slug,
@@ -143,9 +156,15 @@ export async function GET(
         kind: p.kind,
         title: p.title,
         thumbnailUrl: signBunnyUrl(coverUrl) ?? null,
+        altText:
+          p.kind === "PHOTO_CAROUSEL"
+            ? firstMedia?.altText ?? null
+            : p.videoAltText,
         videoDurationSec: p.videoDurationSec,
+        ...feedAccessibilityPayload(p, signBunnyUrl),
         likeCount: p.likeCount,
         commentCount: p.commentCount,
+        viewerSaved: viewerSavedIds.has(p.id),
         createdAt: p.createdAt.toISOString(),
         author: {
           id: p.author.id,

@@ -221,9 +221,9 @@ void main() {
     CachedVideoPlayerPlus.cacheManager = _NoopCacheManager();
     CachedVideoPlayerPlus.metadataStorage = _NoopMetadataStorage();
 
-    // Tap-video kini fetch post feed ASLI by ID sebelum membuka viewer
-    // (supaya author/like/komentar lengkap — data profil tidak bawa
-    // author). feedService tidak injectable, jadi pakai seam test-only.
+    // Tetap pasang seam URL-refresh dengan respons valid. Membuka fullscreen
+    // tidak boleh memanggil seam ini; ia hanya dipakai jika signed URL perlu
+    // diperbarui oleh session.
     debugScopedFeedPostFetcher = (id) async => _fakeVideoPost(id: id);
   });
 
@@ -332,9 +332,10 @@ void main() {
 
       // Back chevron closes the viewer.
       await tester.tap(find.byIcon(Icons.chevron_left_rounded));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400)); // morph-out (260ms)
-      await tester.pump();
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
+      }
       expect(find.byType(ScopedVideoFeedScreen), findsNothing,
           reason: 'back should close the scoped feed');
 
@@ -354,14 +355,12 @@ void main() {
   }
 
   testWidgets(
-    'shopping video keeps its product chip when single-post fetch omits products',
+    'shopping video keeps product context from the already-rendered post',
     (tester) async {
       final shoppingPost = _fakeVideoPost(
         id: 'shopping-video',
         withTaggedProduct: true,
       );
-      // Simulate an older backend response: complete video, no product links.
-      debugScopedFeedPostFetcher = (id) async => _fakeVideoPost(id: id);
 
       await pumpAndInitialize(tester, posts: [shoppingPost]);
       await openScopedFeed(tester);
@@ -378,6 +377,35 @@ void main() {
         reason: 'fullscreen must keep the social-commerce product anchor',
       );
 
+      await disposeTree(tester);
+    },
+  );
+
+  testWidgets(
+    'opening fullscreen does not wait for background fetch-by-id hydration',
+    (tester) async {
+      var fetchCalls = 0;
+      final blockedFetch = Completer<FeedPost?>();
+      debugScopedFeedPostFetcher = (id) {
+        fetchCalls++;
+        return blockedFetch.future;
+      };
+
+      await pumpAndInitialize(tester);
+      await tester.tapAt(const Offset(200, 600));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+        if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
+      }
+
+      expect(find.byType(ScopedVideoFeedScreen), findsOneWidget,
+          reason: 'route must render promptly from local post data even while '
+              'the fetch seam never completes');
+      expect(fetchCalls, 1,
+          reason: 'fresh data may load in background, but must not block the '
+              'initial fullscreen frame');
+
+      blockedFetch.complete(_fakeVideoPost());
       await disposeTree(tester);
     },
   );
@@ -431,37 +459,31 @@ void main() {
   );
 
   testWidgets(
-    'T3b hardening: fetch-fail while app is backgrounded → handoff does NOT '
-    'resume (no ghost audio)',
+    'closing fullscreen while app is backgrounded does not resume origin audio',
     (tester) async {
-      // Fetch returns nothing → scoped feed never opens → _endHandoff(resume).
-      debugScopedFeedPostFetcher = (id) async => null;
       final controller = await pumpAndInitialize(tester);
+      await openScopedFeed(tester);
 
-      // Background the app (page observer pauses all sessions).
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       await tester.pump(const Duration(milliseconds: 20));
-      expect(controller.value.isPlaying, isFalse,
-          reason: 'background must pause the origin controller');
+      expect(controller.value.isPlaying, isFalse);
 
-      // Tap the inline video → handoff starts, fetch fails (empty), finally
-      // runs _endHandoff(resume:true) — but lifecycle is paused, so the guard
-      // must SKIP resumeAll (otherwise ghost audio behind a backgrounded app).
-      await tester.tapAt(const Offset(200, 600));
-      for (var i = 0; i < 30; i++) {
+      // Dispatch back selagi background dan pastikan audio tetap mati selama
+      // animasi route ditahan oleh lifecycle paused.
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(controller.value.isPlaying, isFalse,
+          reason: 'pending route pop must stay silent in background');
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      // Resume supplies the frame PopScope needs to publish canPop=true.
+      // Continue until the reverse transition has actually completed rather
+      // than coupling the assertion to one exact animation duration.
+      for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 50));
+        if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
       }
-      expect(find.byType(ScopedVideoFeedScreen), findsNothing,
-          reason: 'empty fetch must not open the viewer');
-      expect(controller.value.isPlaying, isFalse,
-          reason:
-              'resume must be skipped while backgrounded (fetch-fail path)');
-
-      // Empty-fetch shows an AppToast that auto-dismisses via a Timer — flush
-      // it so the binding doesn't flag a pending timer at teardown.
-      for (var i = 0; i < 60; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-      }
+      expect(find.byType(ScopedVideoFeedScreen), findsNothing);
       await disposeTree(tester);
     },
   );

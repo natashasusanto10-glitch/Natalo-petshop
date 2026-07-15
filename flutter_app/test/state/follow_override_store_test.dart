@@ -43,4 +43,78 @@ void main() {
 
     expect(result.items.single.isFollowing, isTrue);
   });
+
+  test('server snapshot cannot overwrite a pending mutation', () {
+    beginFollowMutation('user-1', true);
+    final revision = followStateRevision('user-1');
+
+    final applied = reconcileFollowStateFromServer(
+      'user-1',
+      false,
+      observedRevision: revision,
+    );
+
+    expect(applied, isFalse);
+    expect(resolveFollowState('user-1', false), isTrue);
+  });
+
+  test('late response cannot overwrite a newer local action', () {
+    final observedRevision = followStateRevision('user-1');
+    setFollowOverride('user-1', true);
+
+    final applied = reconcileFollowStateFromServer(
+      'user-1',
+      false,
+      observedRevision: observedRevision,
+    );
+
+    expect(applied, isFalse);
+    expect(resolveFollowState('user-1', false), isTrue);
+  });
+
+  test('mutation bumps revision even after widget wrote optimistic value', () {
+    setFollowOverride('user-1', true);
+    beginFollowMutation('user-1', true);
+    final readRevision = followStateRevision('user-1');
+    confirmFollowMutation('user-1', true);
+
+    final applied = reconcileFollowStateFromServer(
+      'user-1',
+      false,
+      observedRevision: readRevision,
+    );
+
+    expect(applied, isFalse);
+    expect(resolveFollowState('user-1', false), isTrue);
+  });
+
+  test('abandon invalidates a server read started while mutation was pending',
+      () {
+    beginFollowMutation('user-1', true);
+    final readRevision = followStateRevision('user-1');
+    abandonFollowMutation('user-1');
+
+    final applied = reconcileFollowStateFromServer(
+      'user-1',
+      false,
+      observedRevision: readRevision,
+    );
+
+    expect(applied, isFalse);
+    expect(followStateRevision('user-1'), greaterThan(readRevision));
+  });
+
+  test('fresh server state self-heals when no mutation is pending', () {
+    setFollowOverride('user-1', true);
+    final observedRevision = followStateRevision('user-1');
+
+    final applied = reconcileFollowStateFromServer(
+      'user-1',
+      false,
+      observedRevision: observedRevision,
+    );
+
+    expect(applied, isTrue);
+    expect(resolveFollowState('user-1', true), isFalse);
+  });
 }

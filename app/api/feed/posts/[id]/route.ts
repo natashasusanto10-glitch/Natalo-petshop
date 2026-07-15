@@ -7,8 +7,16 @@ import { MY_FEED_VISIBLE_STATUSES } from "@/lib/feed/my-posts";
 import { deleteFeedAssets } from "@/lib/feed/cleanup";
 import { signBunnyUrl } from "@/lib/feed/bunny";
 import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
-import { resolveFeedProductDiscount } from "@/lib/feed/queries";
+import {
+  getViewerSavedPostIds,
+  resolveFeedProductDiscount,
+} from "@/lib/feed/queries";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
+import {
+  feedAccessibilityPayload,
+  parseFeedAccessibilityMetadata,
+  parseFeedAltText,
+} from "@/lib/feed/accessibility";
 
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESC_LENGTH = 2000;
@@ -61,7 +69,7 @@ function singlePostProductSelect(now: Date) {
  */
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
   if (!id) {
@@ -85,6 +93,10 @@ export async function GET(
       videoDurationSec: true,
       videoWidth: true,
       videoHeight: true,
+      videoAltText: true,
+      hasAudio: true,
+      subtitleUrl: true,
+      subtitleLanguage: true,
       createdAt: true,
       likeCount: true,
       commentCount: true,
@@ -116,6 +128,7 @@ export async function GET(
           mediaType: true,
           width: true,
           height: true,
+          altText: true,
         },
       },
       likes: {
@@ -139,20 +152,27 @@ export async function GET(
   if (!post) {
     return NextResponse.json(
       { error: "Postingan tidak ditemukan." },
-      { status: 404 },
+      { status: 404 }
     );
   }
 
   const session = await getSession("CUSTOMER").catch(() => null);
   let viewerLiked = false;
+  let viewerSaved = false;
   if (session?.sub) {
-    const like = await prisma.feedLike
-      .findUnique({
-        where: { userId_postId: { userId: session.sub, postId: post.id } },
-        select: { userId: true },
-      })
-      .catch(() => null);
+    const [like, savedIds] = await Promise.all([
+      prisma.feedLike
+        .findUnique({
+          where: { userId_postId: { userId: session.sub, postId: post.id } },
+          select: { userId: true },
+        })
+        .catch(() => null),
+      getViewerSavedPostIds(session.sub, [post.id]).catch(
+        () => new Set<string>()
+      ),
+    ]);
     viewerLiked = Boolean(like);
+    viewerSaved = savedIds.has(post.id);
   }
 
   const playbackUrls = buildFeedVideoPlaybackUrls({
@@ -174,14 +194,14 @@ export async function GET(
     .filter(
       (entry, index, all) =>
         all.findIndex(
-          (candidate) => candidate.product.id === entry.product.id,
-        ) === index,
+          (candidate) => candidate.product.id === entry.product.id
+        ) === index
     )
     .map((entry) => {
       const discount = resolveFeedProductDiscount(
         entry.product,
         now,
-        entry.promoPrice,
+        entry.promoPrice
       );
       return {
         ...entry.product,
@@ -207,11 +227,13 @@ export async function GET(
     videoDurationSec: post.videoDurationSec,
     videoWidth: post.videoWidth,
     videoHeight: post.videoHeight,
+    ...feedAccessibilityPayload(post, signBunnyUrl),
     createdAt: post.createdAt.toISOString(),
     likeCount: post.likeCount,
     commentCount: post.commentCount,
     viewCount: post.viewCount,
     viewerLiked,
+    viewerSaved,
     products,
     taggedProducts: products,
     author: {
@@ -220,7 +242,10 @@ export async function GET(
       name: brandDisplayName(post.author.role, post.author.name),
       username: post.author.username,
       role: post.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
-      profilePhotoUrl: brandPhotoUrl(post.author.role, post.author.profilePhotoUrl),
+      profilePhotoUrl: brandPhotoUrl(
+        post.author.role,
+        post.author.profilePhotoUrl
+      ),
     },
     media: post.media.map((m) => {
       const mediaPlaybackUrls = buildFeedVideoPlaybackUrls({ videoUrl: m.url });
@@ -234,6 +259,7 @@ export async function GET(
         mediaType: m.mediaType,
         width: m.width,
         height: m.height,
+        altText: m.altText,
       };
     }),
     recentLikers: post.likes.map((l) => ({
@@ -267,6 +293,11 @@ export async function GET(
  *     description?: string | null,
  *     petType?: string | null,
  *     productIds?: string[],
+ *     videoAltText?: string | null,
+ *     hasAudio?: boolean | null,
+ *     subtitleUrl?: string | null,
+ *     subtitleLanguage?: string | null,
+ *     media?: Array<{ id: string, altText: string | null }>,
  *   }
  */
 export async function PATCH(
@@ -313,6 +344,7 @@ export async function PATCH(
       description: true,
       productId: true,
       kind: true,
+      media: { select: { id: true } },
     },
   });
 
@@ -334,7 +366,20 @@ export async function PATCH(
     // Legacy admin-only fields (single promo) — backward compat.
     promoOriginalPrice?: number | null;
     promoDiscountPrice?: number | null;
+    videoAltText?: string | null;
+    hasAudio?: boolean | null;
+    subtitleUrl?: string | null;
+    subtitleLanguage?: string | null;
+    media?: unknown;
   };
+
+  const accessibility = parseFeedAccessibilityMetadata(
+    body as Record<string, unknown>,
+    { partial: true }
+  );
+  if (!accessibility.ok) {
+    return NextResponse.json({ error: accessibility.error }, { status: 400 });
+  }
 
   // Validate fields
   const updates: {
@@ -344,7 +389,57 @@ export async function PATCH(
     status?: typeof post.status;
     promoOriginalPrice?: number | null;
     promoDiscountPrice?: number | null;
-  } = {};
+    videoAltText?: string | null;
+    hasAudio?: boolean | null;
+    subtitleUrl?: string | null;
+    subtitleLanguage?: string | null;
+  } = { ...accessibility.data };
+
+  let mediaAltTextUpdates: Array<{
+    id: string;
+    altText: string | null;
+  }> | null = null;
+  if (typeof body.media !== "undefined") {
+    if (!Array.isArray(body.media) || body.media.length > 8) {
+      return NextResponse.json(
+        { error: "Media harus berupa array maksimal 8 item." },
+        { status: 400 }
+      );
+    }
+
+    const ownedMediaIds = new Set(post.media.map((item) => item.id));
+    const seenMediaIds = new Set<string>();
+    mediaAltTextUpdates = [];
+    for (const [index, item] of body.media.entries()) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return NextResponse.json(
+          { error: `Media ${index + 1} tidak valid.` },
+          { status: 400 }
+        );
+      }
+      const media = item as Record<string, unknown>;
+      const mediaId = typeof media.id === "string" ? media.id.trim() : "";
+      if (
+        !mediaId ||
+        !ownedMediaIds.has(mediaId) ||
+        seenMediaIds.has(mediaId)
+      ) {
+        return NextResponse.json(
+          { error: `Media ${index + 1} tidak ditemukan atau duplikat.` },
+          { status: 400 }
+        );
+      }
+      const altText = parseFeedAltText(
+        media.altText ?? null,
+        `Alt text media ${index + 1}`
+      );
+      if (!altText.ok) {
+        return NextResponse.json({ error: altText.error }, { status: 400 });
+      }
+      seenMediaIds.add(mediaId);
+      mediaAltTextUpdates.push({ id: mediaId, altText: altText.data });
+    }
+  }
 
   // Admin promo pricing — cuma valid kalau post kind=PROMO + admin session.
   if (isAdmin && post.kind === "PROMO") {
@@ -527,6 +622,15 @@ export async function PATCH(
       }
     }
 
+    if (mediaAltTextUpdates !== null) {
+      for (const media of mediaAltTextUpdates) {
+        await tx.feedMedia.updateMany({
+          where: { id: media.id, postId: post.id },
+          data: { altText: media.altText },
+        });
+      }
+    }
+
     await tx.feedModerationLog.create({
       data: {
         postId: post.id,
@@ -633,7 +737,7 @@ export async function DELETE(
       videoGuid: post.videoGuid,
       mediaItems: post.media,
       context: `user-delete ${postId}`,
-    }),
+    })
   );
 
   return NextResponse.json({ ok: true });

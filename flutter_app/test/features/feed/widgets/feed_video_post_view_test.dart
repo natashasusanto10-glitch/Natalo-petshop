@@ -16,7 +16,9 @@ import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_post_vie
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_scrubber.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/state/settings_store.dart';
+import 'package:natalo_petshop_flutter/utils/android_back_overlays.dart';
 import 'package:natalo_petshop_flutter/utils/app_route_observer.dart';
+import 'package:natalo_petshop_flutter/widgets/feed_comment_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
@@ -280,6 +282,7 @@ FeedPost _fakeVideoPost({
   double aspectRatio = 0.5625,
   bool hls = false,
   bool liked = false,
+  String? videoAltText,
 }) {
   return FeedPost.fromJson({
     'id': id,
@@ -294,6 +297,7 @@ FeedPost _fakeVideoPost({
     'thumbnailUrl': 'https://example.com/$id.jpg',
     'durationSec': 10,
     'aspectRatio': aspectRatio,
+    'videoAltText': videoAltText,
     'author': {'id': 'author-1', 'name': 'Tester'},
     'likeCount': 0,
     'commentCount': 0,
@@ -506,6 +510,166 @@ void main() {
     return const StandardMethodCodec().encodeSuccessEnvelope(null);
   });
   _registerLegacyFrameOutputRecoveryTests();
+  testWidgets('comment action raises the embedded drawer', (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    VideoPlayerPlatform.instance = _FakeVideoPlayerPlatform();
+    await appSettingsStore.setFeedAutoplay(false);
+    addTearDown(() => appSettingsStore.setFeedAutoplay(true));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeedVideoPostView(
+          post: _fakeVideoPost(id: 'comment-drawer-regression', hls: true),
+          isActive: true,
+          preloadedController: null,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsLabel('Komentar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 320));
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byType(FeedCommentSheet)).dy,
+      lessThan(tester.view.physicalSize.height),
+    );
+  });
+
+  testWidgets('comment drawer consumes double back while closing and reopens',
+      (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    VideoPlayerPlatform.instance = _FakeVideoPlayerPlatform();
+    resetAndroidBackOverlays();
+    addTearDown(resetAndroidBackOverlays);
+    await appSettingsStore.setFeedAutoplay(false);
+    addTearDown(() => appSettingsStore.setFeedAutoplay(true));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeedVideoPostView(
+          post: _fakeVideoPost(id: 'comment-double-back', hls: true),
+          isActive: true,
+          preloadedController: null,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsLabel('Komentar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 320));
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+
+    expect(consumeAndroidBackOverlay(), isTrue);
+    expect(consumeAndroidBackOverlay(), isTrue,
+        reason: 'closing retains Android back ownership');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pump();
+
+    expect(find.byType(FeedCommentSheet), findsNothing);
+    expect(consumeAndroidBackOverlay(), isFalse);
+
+    await tester.tap(find.bySemanticsLabel('Komentar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 320));
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+
+    expect(consumeAndroidBackOverlay(), isTrue);
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pump();
+    expect(find.byType(FeedCommentSheet), findsNothing);
+  });
+
+  testWidgets('deactivation and dispose force-clean comment drawer lifecycle',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    VideoPlayerPlatform.instance = _FakeVideoPlayerPlatform();
+    resetAndroidBackOverlays();
+    addTearDown(resetAndroidBackOverlays);
+    await appSettingsStore.setFeedAutoplay(false);
+    addTearDown(() => appSettingsStore.setFeedAutoplay(true));
+    final overlayStates = <bool>[];
+    final pauseReasons = <CoverPauseReason>[];
+    var playRequests = 0;
+    final active = ValueNotifier<bool>(true);
+    addTearDown(active.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ValueListenableBuilder<bool>(
+          valueListenable: active,
+          builder: (context, isActive, _) => FeedVideoPostView(
+            key: const ValueKey('lifecycle-comment-view'),
+            post: _fakeVideoPost(id: 'comment-lifecycle', hls: true),
+            isActive: isActive,
+            preloadedController: null,
+            ownsController: false,
+            playbackManagedExternally: true,
+            onOverlayStateChanged: overlayStates.add,
+            onMediaZoomChanged: (_) {},
+            onRequestPause: pauseReasons.add,
+            onRequestPlay: () => playRequests++,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.bySemanticsLabel('Komentar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 320));
+    expect(overlayStates, [true]);
+
+    active.value = false;
+    await tester.pump();
+    expect(find.byType(FeedCommentSheet), findsNothing);
+    expect(overlayStates, [true, false]);
+    expect(consumeAndroidBackOverlay(), isFalse);
+    expect(pauseReasons, isEmpty);
+    expect(playRequests, 0,
+        reason: 'an initial-height drawer did not own a playback pause');
+
+    active.value = true;
+    await tester.pump();
+    await tester.tap(find.bySemanticsLabel('Komentar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 320));
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(const ValueKey('feed-comment-drag-handle')),
+      const Offset(0, -380),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(pauseReasons, [CoverPauseReason.commentSheetFull]);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(overlayStates, [true, false, true, false]);
+    expect(playRequests, 1,
+        reason: 'forced cleanup releases only the pause the drawer acquired');
+    expect(consumeAndroidBackOverlay(), isFalse);
+  });
+
   testWidgets('delayed preload claim blocks concurrent local initialization',
       (tester) async {
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -747,6 +911,34 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(find.byType(FeedVideoPostView), findsOneWidget);
+  });
+
+  testWidgets('media surface exposes explicit alt text semantics',
+      (tester) async {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeedVideoPostView(
+          post: _fakeVideoPost(
+            videoAltText: 'Kucing putih sedang makan dari mangkuk biru',
+          ),
+          isActive: false,
+          preloadedController: null,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ),
+    );
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(
+      find.bySemanticsLabel('Kucing putih sedang makan dari mangkuk biru'),
+      findsOneWidget,
+    );
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
   });
 
   // Aturan fit ala IG Reels: video ±9:16 → cover full-bleed (crop tipis);
@@ -1020,7 +1212,11 @@ void main() {
       // Bongkar tree: ownsController=false → borrowed TIDAK di-dispose oleh
       // widget (dibuktikan borrowed masih usable + di-dispose oleh tearDown).
       await tester.pumpWidget(const SizedBox());
-      await tester.pump(const Duration(milliseconds: 50));
+      // Double-tap intentionally exercises the like path. In widget tests the
+      // API is unavailable, so its warning toast owns a delayed-dismiss timer;
+      // drain it explicitly before invariant verification.
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
       expect(borrowed.value.isInitialized, isTrue,
           reason: 'ownsController:false → controller tidak di-dispose widget');
     });

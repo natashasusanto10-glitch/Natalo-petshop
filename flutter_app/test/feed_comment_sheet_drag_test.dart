@@ -1,5 +1,23 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_post_view.dart';
+import 'package:natalo_petshop_flutter/models/feed_comment.dart';
+import 'package:natalo_petshop_flutter/models/feed_post.dart';
+import 'package:natalo_petshop_flutter/widgets/feed_comment_sheet.dart';
+
+FeedComment _comment(String id, String username) => FeedComment(
+      id: id,
+      postId: 'post-1',
+      content: 'Comment',
+      isAdminOfficial: false,
+      isHidden: false,
+      likeCount: 0,
+      createdAt: DateTime(2026),
+      author: FeedAuthor(
+        id: 'author-$id',
+        name: username,
+        username: username,
+      ),
+      viewerLiked: false,
+    );
 
 void main() {
   group('commentSnapTargetFor', () {
@@ -28,8 +46,7 @@ void main() {
       );
     });
 
-    test('size 0.75 with max 0.93 (below midpoint 0.765) snaps to initial',
-        () {
+    test('size 0.75 with max 0.93 (below midpoint 0.765) snaps to initial', () {
       expect(
         commentSnapTargetFor(size: 0.75, velocity: 0, maxExtent: 0.93),
         CommentSnapTarget.initial,
@@ -85,6 +102,47 @@ void main() {
       expect(
         shouldPauseForCommentExtent(extent: 0.60, maxExtent: 0.93),
         isFalse,
+      );
+    });
+  });
+
+  group('preserveFeedReplyDraft', () {
+    test('keeps typed text when reply mode is selected', () {
+      final target = _comment('one', 'alice');
+
+      expect(
+        preserveFeedReplyDraft(
+          draft: 'Pesan yang sudah ditulis',
+          nextTarget: target,
+        ),
+        '@alice Pesan yang sudah ditulis',
+      );
+    });
+
+    test('switching targets replaces only the automatic mention', () {
+      final first = _comment('one', 'alice');
+      final second = _comment('two', 'budi');
+
+      expect(
+        preserveFeedReplyDraft(
+          draft: '@alice Isi draft tetap ada',
+          previousTarget: first,
+          nextTarget: second,
+        ),
+        '@budi Isi draft tetap ada',
+      );
+    });
+
+    test('clearing a deleted reply target keeps the typed body', () {
+      final deleted = _comment('one', 'alice');
+
+      expect(
+        preserveFeedReplyDraft(
+          draft: '@alice Balasan yang belum dikirim',
+          previousTarget: deleted,
+          nextTarget: null,
+        ),
+        'Balasan yang belum dikirim',
       );
     });
   });
