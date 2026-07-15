@@ -89,6 +89,8 @@ export async function PATCH(
   if (typeof body.imageUrl === "string") {
     data.imageUrl = body.imageUrl.trim() || null;
   }
+  const existingProduct = await prisma.product.findUnique({ where: { id }, select: { price: true, stock: true, weightGram: true } });
+  if (!existingProduct) return NextResponse.json({ error: "Produk tidak ditemukan" }, { status: 404 });
   if (Array.isArray(body.imageUrls) || Array.isArray(body.gallery)) {
     const imageUrls = Array.isArray(body.imageUrls)
       ? body.imageUrls.filter((value): value is string => typeof value === "string")
@@ -104,9 +106,9 @@ export async function PATCH(
       return NextResponse.json({ error: error instanceof Error ? error.message : "Payload foto tidak valid" }, { status: 400 });
     }
   }
-  if (typeof body.categoryId === "string") data.category = { connect: { id: body.categoryId.trim() } };
+  if (typeof body.categoryId === "string") data.category = body.categoryId.trim() ? { connect: { id: body.categoryId.trim() } } : { disconnect: true };
   if (body.categoryId === null) data.category = { disconnect: true };
-  if (typeof body.brandId === "string") data.brand = { connect: { id: body.brandId.trim() } };
+  if (typeof body.brandId === "string") data.brand = body.brandId.trim() ? { connect: { id: body.brandId.trim() } } : { disconnect: true };
   if (body.brandId === null) data.brand = { disconnect: true };
   if (typeof body.sku === "string") data.sku = body.sku.trim() || null;
   let variantPayload: { hasVariants: boolean; attributes: any[]; variants: any[] } | undefined;
@@ -119,9 +121,13 @@ export async function PATCH(
     if (!parsedVariants.success) return NextResponse.json({ error: "Payload varian tidak valid", issues: parsedVariants.error.issues }, { status: 422 });
     variantPayload = parsedVariants.data;
     data.hasVariants = variantPayload.hasVariants;
-    if (!variantPayload.hasVariants && (typeof body.price !== "number" || body.price <= 0 || typeof body.stock !== "number" || body.stock < 0 || typeof body.weightGram !== "number" || body.weightGram <= 0)) {
+    const effectivePrice = typeof body.price === "number" ? body.price : existingProduct.price;
+    const effectiveStock = typeof body.stock === "number" ? body.stock : existingProduct.stock;
+    const effectiveWeight = typeof body.weightGram === "number" ? body.weightGram : existingProduct.weightGram;
+    if (!variantPayload.hasVariants && (effectivePrice <= 0 || effectiveStock < 0 || effectiveWeight <= 0)) {
       return NextResponse.json({ error: "Produk tanpa varian wajib memiliki harga, stok, dan berat yang valid" }, { status: 400 });
     }
+    if (!variantPayload.hasVariants) { data.price = Math.round(effectivePrice); data.stock = Math.round(effectiveStock); data.weightGram = Math.round(effectiveWeight); }
   }
   if (Object.keys(data).length > 0) data.lastEditedAt = new Date();
   if (typeof body.isActive === "boolean") {
