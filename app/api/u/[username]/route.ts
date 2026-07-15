@@ -31,6 +31,7 @@ import {
   resolveFeedProductDiscount,
 } from "@/lib/feed/queries";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
+import { feedAccessibilityPayload } from "@/lib/feed/accessibility";
 
 // Postingan customer biasa: video komunitas + foto carousel.
 const VISIBLE_KINDS: FeedPostKind[] = ["COMMUNITY", "PHOTO_CAROUSEL"];
@@ -142,13 +143,10 @@ export async function GET(
     content === "video"
       ? { videoUrl: { not: null } }
       : content === "shoppable"
-        ? {
-            OR: [
-              { productId: { not: null } },
-              { taggedProducts: { some: {} } },
-            ],
-          }
-        : {};
+      ? {
+          OR: [{ productId: { not: null } }, { taggedProducts: { some: {} } }],
+        }
+      : {};
   const listingWhere: Prisma.FeedPostWhereInput = {
     AND: [baseWhere, contentWhere],
   };
@@ -170,6 +168,10 @@ export async function GET(
         videoDurationSec: true,
         videoWidth: true,
         videoHeight: true,
+        videoAltText: true,
+        hasAudio: true,
+        subtitleUrl: true,
+        subtitleLanguage: true,
         createdAt: true,
         likeCount: true,
         commentCount: true,
@@ -192,6 +194,7 @@ export async function GET(
             mediaType: true,
             width: true,
             height: true,
+            altText: true,
           },
         },
         likes: {
@@ -253,7 +256,7 @@ export async function GET(
       : new Set<string>();
   const viewerSavedIds = await getViewerSavedPostIds(
     viewerUserId,
-    sliced.map((post) => post.id),
+    sliced.map((post) => post.id)
   );
 
   return NextResponse.json({
@@ -300,6 +303,7 @@ export async function GET(
         videoDurationSec: p.videoDurationSec,
         videoWidth: p.videoWidth,
         videoHeight: p.videoHeight,
+        ...feedAccessibilityPayload(p, signBunnyUrl),
         createdAt: p.createdAt.toISOString(),
         likeCount: p.likeCount,
         commentCount: p.commentCount,
@@ -312,11 +316,16 @@ export async function GET(
           name: brandDisplayName(like.user.role, like.user.name),
           username: like.user.username,
           role: like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
-          profilePhotoUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
+          profilePhotoUrl: brandPhotoUrl(
+            like.user.role,
+            like.user.profilePhotoUrl
+          ),
           avatarUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
         })),
         media: p.media.map((m) => {
-          const mediaPlaybackUrls = buildFeedVideoPlaybackUrls({ videoUrl: m.url });
+          const mediaPlaybackUrls = buildFeedVideoPlaybackUrls({
+            videoUrl: m.url,
+          });
           return {
             id: m.id,
             url: mediaPlaybackUrls.videoUrl ?? m.url,
@@ -327,6 +336,7 @@ export async function GET(
             mediaType: m.mediaType,
             width: m.width,
             height: m.height,
+            altText: m.altText,
           };
         }),
         products: [

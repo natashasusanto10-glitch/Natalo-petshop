@@ -23,6 +23,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { bunnyThumbnailUrl, signBunnyUrl } from "@/lib/feed/bunny";
 import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
+import { feedAccessibilityPayload } from "@/lib/feed/accessibility";
 import { reconcileFeedPost } from "@/lib/feed/reconcile";
 
 const PAGE_SIZE = 20;
@@ -110,7 +111,13 @@ export async function GET(request: NextRequest) {
       // jadi tanpa media tampil "No thumb" placeholder yang messy).
       // Take 1 saja (urutan pertama by sortOrder) untuk performance.
       media: {
-        select: { id: true, url: true, thumbnailUrl: true, sortOrder: true },
+        select: {
+          id: true,
+          url: true,
+          thumbnailUrl: true,
+          altText: true,
+          sortOrder: true,
+        },
         orderBy: { sortOrder: "asc" },
         take: 1,
       },
@@ -136,7 +143,7 @@ export async function GET(request: NextRequest) {
     const stuck = sliced.filter(
       (p) =>
         p.videoGuid &&
-        (p.encodingStatus === "uploading" || p.encodingStatus === "processing"),
+        (p.encodingStatus === "uploading" || p.encodingStatus === "processing")
     );
     if (stuck.length > 0) {
       after(async () => {
@@ -166,10 +173,15 @@ export async function GET(request: NextRequest) {
     videoUrl: string | null;
     videoDataSaverUrl: string | null;
     thumbnailUrl: string | null;
+    videoAltText: string | null;
+    hasAudio: boolean | null;
+    subtitleUrl: string | null;
+    subtitleLanguage: string | null;
     // First media URL untuk PHOTO_CAROUSEL — admin list pakai sebagai
     // thumbnail kalau thumbnailUrl null (video) tidak ada. Null untuk
     // post tanpa media (PRODUCT_ONLY, etc).
     firstMediaUrl: string | null;
+    firstMediaAltText: string | null;
     /** Total media count — display "Foto (N)" badge di list. */
     mediaCount: number;
     videoDurationSec: number | null;
@@ -208,14 +220,17 @@ export async function GET(request: NextRequest) {
       videoDataSaverUrl: playbackUrls.videoDataSaverUrl,
       thumbnailUrl:
         signBunnyUrl(
-          p.thumbnailUrl ?? (p.videoGuid ? bunnyThumbnailUrl(p.videoGuid) : null),
+          p.thumbnailUrl ??
+            (p.videoGuid ? bunnyThumbnailUrl(p.videoGuid) : null)
         ) ?? null,
+      ...feedAccessibilityPayload(p, signBunnyUrl),
       // First media item (PHOTO_CAROUSEL) — pakai thumbnailUrl kalau ada
       // (uploaded thumbnail), fallback ke url full image. Sign kalau dari
       // Bunny CDN (defensive — biasanya UploadThing direct URL untuk photo).
       firstMediaUrl: p.media[0]
         ? signBunnyUrl(p.media[0].thumbnailUrl ?? p.media[0].url) ?? null
         : null,
+      firstMediaAltText: p.media[0]?.altText ?? null,
       mediaCount: p._count.media,
       videoDurationSec: p.videoDurationSec,
       product: p.product

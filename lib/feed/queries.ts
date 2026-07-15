@@ -15,6 +15,7 @@ import { extractMentionHandles } from "./mentions";
 import { signBunnyUrl } from "./bunny";
 import { buildFeedVideoPlaybackUrls } from "./video-playback-urls";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
+import { feedAccessibilityPayload } from "./accessibility";
 import type {
   FeedCommentItem,
   FeedCommentsResponse,
@@ -40,7 +41,7 @@ export const PUBLIC_FEED_POST_WHERE = {
 /** Resolve saved state for a whole page in one query. */
 export async function getViewerSavedPostIds(
   viewerUserId: string | null | undefined,
-  postIds: readonly string[],
+  postIds: readonly string[]
 ): Promise<Set<string>> {
   if (!viewerUserId || postIds.length === 0) return new Set<string>();
 
@@ -56,7 +57,7 @@ export async function getViewerSavedPostIds(
 
 export function orderFeedItemsByPostIds(
   postIds: readonly string[],
-  items: readonly FeedPostListItem[],
+  items: readonly FeedPostListItem[]
 ): FeedPostListItem[] {
   const byId = new Map(items.map((item) => [item.id, item]));
   return postIds.flatMap((postId) => {
@@ -94,16 +95,22 @@ export function resolveFeedProductDiscount(
     }>;
   },
   now: Date,
-  tagPromoPrice?: number | null,
-): { discountPrice: number | null; discountSource: "FLASH_SALE" | "PROMO_TOKO" | null } {
+  tagPromoPrice?: number | null
+): {
+  discountPrice: number | null;
+  discountSource: "FLASH_SALE" | "PROMO_TOKO" | null;
+} {
   const promoItems = (product.discountItems ?? [])
     .filter((it) => it.variantId === null)
-    .map((it) => ({ discountedPrice: it.discountedPrice, endsAt: it.discount.endsAt }));
+    .map((it) => ({
+      discountedPrice: it.discountedPrice,
+      endsAt: it.discount.endsAt,
+    }));
   let best = resolveActiveDiscount(
     product.price,
     { discountPrice: product.discountPrice, endsAt: product.flashSaleEndsAt },
     promoItems,
-    now,
+    now
   );
   if (
     tagPromoPrice != null &&
@@ -116,7 +123,7 @@ export function resolveFeedProductDiscount(
       effectivePrice: tagPromoPrice,
       discountAmount: product.price - tagPromoPrice,
       discountPercent: Math.round(
-        ((product.price - tagPromoPrice) / product.price) * 100,
+        ((product.price - tagPromoPrice) / product.price) * 100
       ),
       endsAt: now,
     };
@@ -263,20 +270,20 @@ export async function listFeedPosts({
               discountPrice: true,
               flashSaleEndsAt: true,
               discountItems: {
-            where: {
-              isItemActive: true,
-              discount: {
-                isActive: true,
-                startsAt: { lte: now },
-                endsAt: { gt: now },
+                where: {
+                  isItemActive: true,
+                  discount: {
+                    isActive: true,
+                    startsAt: { lte: now },
+                    endsAt: { gt: now },
+                  },
+                },
+                select: {
+                  variantId: true,
+                  discountedPrice: true,
+                  discount: { select: { endsAt: true } },
+                },
               },
-            },
-            select: {
-              variantId: true,
-              discountedPrice: true,
-              discount: { select: { endsAt: true } },
-            },
-          },
               stock: true,
               weightGram: true,
               imageUrl: true,
@@ -299,6 +306,7 @@ export async function listFeedPosts({
           width: true,
           height: true,
           sortOrder: true,
+          altText: true,
         },
         orderBy: { sortOrder: "asc" },
       },
@@ -335,7 +343,7 @@ export async function listFeedPosts({
 
   const viewerSavedIds = await getViewerSavedPostIds(
     viewerUserId,
-    posts.map((post) => post.id),
+    posts.map((post) => post.id)
   );
 
   // Follow state viewer→author, batch 1 query (pola sama dgn viewerLikedIds,
@@ -407,131 +415,138 @@ export async function listFeedPosts({
       videoGuid: p.videoGuid,
     });
     return {
-    id: p.id,
-    kind: p.kind,
-    tab: p.tab,
-    status: p.status,
-    title: p.title,
-    description: p.description,
-    // Sign URL dengan Bunny CDN token kalau BUNNY_TOKEN_SECURITY_KEY di-set
-    // (defense untuk hotlink protection). Tanpa env, return as-is.
-    videoUrl: playbackUrls.videoUrl,
-    videoDataSaverUrl: playbackUrls.videoDataSaverUrl,
-    thumbnailUrl: signBunnyUrl(p.thumbnailUrl) ?? null,
-    thumbnailBlurhash: p.thumbnailBlurhash,
-    videoDurationSec: p.videoDurationSec,
-    videoWidth: p.videoWidth,
-    videoHeight: p.videoHeight,
-    product: p.product
-      ? (() => {
-          // discountPrice = harga AKTIF (effectivePrice) hasil
-          // resolveActiveDiscount, BUKAN raw Product.discountPrice. Plus
-          // discountSource supaya app label "Flash Sale" vs "Diskon" benar.
-          const d = resolveFeedProductDiscount(p.product!, now);
+      id: p.id,
+      kind: p.kind,
+      tab: p.tab,
+      status: p.status,
+      title: p.title,
+      description: p.description,
+      // Sign URL dengan Bunny CDN token kalau BUNNY_TOKEN_SECURITY_KEY di-set
+      // (defense untuk hotlink protection). Tanpa env, return as-is.
+      videoUrl: playbackUrls.videoUrl,
+      videoDataSaverUrl: playbackUrls.videoDataSaverUrl,
+      thumbnailUrl: signBunnyUrl(p.thumbnailUrl) ?? null,
+      thumbnailBlurhash: p.thumbnailBlurhash,
+      videoDurationSec: p.videoDurationSec,
+      videoWidth: p.videoWidth,
+      videoHeight: p.videoHeight,
+      ...feedAccessibilityPayload(p, signBunnyUrl),
+      product: p.product
+        ? (() => {
+            // discountPrice = harga AKTIF (effectivePrice) hasil
+            // resolveActiveDiscount, BUKAN raw Product.discountPrice. Plus
+            // discountSource supaya app label "Flash Sale" vs "Diskon" benar.
+            const d = resolveFeedProductDiscount(p.product!, now);
+            return {
+              id: p.product!.id,
+              slug: p.product!.slug,
+              name: p.product!.name,
+              price: p.product!.price,
+              discountPrice: d.discountPrice,
+              discountSource: d.discountSource,
+              stock: p.product!.stock,
+              weightGram: p.product!.weightGram,
+              isAvailable: p.product!.isActive,
+              imageUrl: p.product!.imageUrl,
+              hasVariants: p.product!.hasVariants,
+              avgRating: p.product!.avgRating ?? 0,
+              reviewCount: p.product!.reviewCount ?? 0,
+              soldCount: soldCountMap.get(p.product!.id) ?? 0,
+            };
+          })()
+        : null,
+      // Shop the Look: keep inactive tagged products visible for context, but
+      // mark them unavailable so UI can disable commerce safely.
+      taggedProducts: p.taggedProducts
+        .filter((tp) => tp.product)
+        .map((tp) => {
+          // Per-tag promoPrice ikut dipertimbangkan (lowest wins).
+          const d = resolveFeedProductDiscount(tp.product!, now, tp.promoPrice);
           return {
-            id: p.product!.id,
-            slug: p.product!.slug,
-            name: p.product!.name,
-            price: p.product!.price,
+            id: tp.product!.id,
+            slug: tp.product!.slug,
+            name: tp.product!.name,
+            price: tp.product!.price,
             discountPrice: d.discountPrice,
             discountSource: d.discountSource,
-            stock: p.product!.stock,
-            weightGram: p.product!.weightGram,
-            isAvailable: p.product!.isActive,
-            imageUrl: p.product!.imageUrl,
-            hasVariants: p.product!.hasVariants,
-            avgRating: p.product!.avgRating ?? 0,
-            reviewCount: p.product!.reviewCount ?? 0,
-            soldCount: soldCountMap.get(p.product!.id) ?? 0,
+            stock: tp.product!.stock,
+            weightGram: tp.product!.weightGram,
+            isAvailable: tp.product!.isActive,
+            imageUrl: tp.product!.imageUrl,
+            position: tp.position,
+            promoPrice: tp.promoPrice ?? null,
+            hasVariants: tp.product!.hasVariants,
+            avgRating: tp.product!.avgRating ?? 0,
+            reviewCount: tp.product!.reviewCount ?? 0,
+            soldCount: soldCountMap.get(tp.product!.id) ?? 0,
           };
-        })()
-      : null,
-    // Shop the Look: keep inactive tagged products visible for context, but
-    // mark them unavailable so UI can disable commerce safely.
-    taggedProducts: p.taggedProducts
-      .filter((tp) => tp.product)
-      .map((tp) => {
-        // Per-tag promoPrice ikut dipertimbangkan (lowest wins).
-        const d = resolveFeedProductDiscount(tp.product!, now, tp.promoPrice);
+        }),
+      promo:
+        p.kind === "PROMO" &&
+        p.promoOriginalPrice != null &&
+        p.promoDiscountPrice != null
+          ? {
+              originalPrice: p.promoOriginalPrice,
+              discountPrice: p.promoDiscountPrice,
+              startsAt: p.promoStartsAt?.toISOString() ?? null,
+              endsAt: p.promoEndsAt?.toISOString() ?? null,
+            }
+          : null,
+      // PHOTO_CAROUSEL media — 1-8 image entries ordered by sortOrder.
+      // Video posts return empty array (kind != PHOTO_CAROUSEL).
+      media: p.media.map((m) => {
+        const mediaPlaybackUrls = buildFeedVideoPlaybackUrls({
+          videoUrl: m.url,
+        });
         return {
-          id: tp.product!.id,
-          slug: tp.product!.slug,
-          name: tp.product!.name,
-          price: tp.product!.price,
-          discountPrice: d.discountPrice,
-          discountSource: d.discountSource,
-          stock: tp.product!.stock,
-          weightGram: tp.product!.weightGram,
-          isAvailable: tp.product!.isActive,
-          imageUrl: tp.product!.imageUrl,
-          position: tp.position,
-          promoPrice: tp.promoPrice ?? null,
-          hasVariants: tp.product!.hasVariants,
-          avgRating: tp.product!.avgRating ?? 0,
-          reviewCount: tp.product!.reviewCount ?? 0,
-          soldCount: soldCountMap.get(tp.product!.id) ?? 0,
+          id: m.id,
+          mediaType: m.mediaType,
+          url: mediaPlaybackUrls.videoUrl ?? m.url,
+          ...(m.mediaType === "video"
+            ? { videoDataSaverUrl: mediaPlaybackUrls.videoDataSaverUrl }
+            : {}),
+          thumbnailUrl: m.thumbnailUrl,
+          width: m.width,
+          height: m.height,
+          sortOrder: m.sortOrder,
+          altText: m.altText,
         };
       }),
-    promo:
-      p.kind === "PROMO" &&
-      p.promoOriginalPrice != null &&
-      p.promoDiscountPrice != null
-        ? {
-            originalPrice: p.promoOriginalPrice,
-            discountPrice: p.promoDiscountPrice,
-            startsAt: p.promoStartsAt?.toISOString() ?? null,
-            endsAt: p.promoEndsAt?.toISOString() ?? null,
-          }
-        : null,
-    // PHOTO_CAROUSEL media — 1-8 image entries ordered by sortOrder.
-    // Video posts return empty array (kind != PHOTO_CAROUSEL).
-    media: p.media.map((m) => {
-      const mediaPlaybackUrls = buildFeedVideoPlaybackUrls({ videoUrl: m.url });
-      return {
-        id: m.id,
-        mediaType: m.mediaType,
-        url: mediaPlaybackUrls.videoUrl ?? m.url,
-        ...(m.mediaType === "video"
-          ? { videoDataSaverUrl: mediaPlaybackUrls.videoDataSaverUrl }
-          : {}),
-        thumbnailUrl: m.thumbnailUrl,
-        width: m.width,
-        height: m.height,
-        sortOrder: m.sortOrder,
-      };
-    }),
-    likeCount: p.likeCount,
-    commentCount: p.commentCount,
-    viewCount: p.viewCount,
-    shareCount: p.shareCount,
-    author: {
-      id: p.author.id,
-      // Akun official (admin) → brand "Natalo Petshop" + foto null (klien
-      // render logo). Nama asli/foto pemilik tidak boleh bocor.
-      name: brandDisplayName(p.author.role, p.author.name),
-      username: p.author.username ?? null,
-      role: (p.authorRole === "ADMIN" ? "ADMIN" : "CUSTOMER") as
-        | "ADMIN"
-        | "CUSTOMER",
-      profilePhotoUrl: brandPhotoUrl(p.author.role, p.author.profilePhotoUrl),
-      // Chip "Ikuti/Mengikuti" di feed app — snapshot saat fetch; toggle
-      // selanjutnya di-track client-side (followOverrides).
-      isFollowing: viewerFollowedAuthorIds.has(p.author.id),
-    },
-    recentLikers: p.likes.map((like) => ({
-      id: like.user.id,
-      name: brandDisplayName(like.user.role, like.user.name),
-      username: like.user.username ?? null,
-      role: (like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as
-        | "ADMIN"
-        | "CUSTOMER",
-      profilePhotoUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
-      avatarUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
-    })),
-    publishedAt: p.publishedAt?.toISOString() ?? null,
-    createdAt: p.createdAt.toISOString(),
-    viewerLiked: viewerLikedIds.has(p.id),
-    viewerSaved: viewerSavedIds.has(p.id),
+      likeCount: p.likeCount,
+      commentCount: p.commentCount,
+      viewCount: p.viewCount,
+      shareCount: p.shareCount,
+      author: {
+        id: p.author.id,
+        // Akun official (admin) → brand "Natalo Petshop" + foto null (klien
+        // render logo). Nama asli/foto pemilik tidak boleh bocor.
+        name: brandDisplayName(p.author.role, p.author.name),
+        username: p.author.username ?? null,
+        role: (p.authorRole === "ADMIN" ? "ADMIN" : "CUSTOMER") as
+          | "ADMIN"
+          | "CUSTOMER",
+        profilePhotoUrl: brandPhotoUrl(p.author.role, p.author.profilePhotoUrl),
+        // Chip "Ikuti/Mengikuti" di feed app — snapshot saat fetch; toggle
+        // selanjutnya di-track client-side (followOverrides).
+        isFollowing: viewerFollowedAuthorIds.has(p.author.id),
+      },
+      recentLikers: p.likes.map((like) => ({
+        id: like.user.id,
+        name: brandDisplayName(like.user.role, like.user.name),
+        username: like.user.username ?? null,
+        role: (like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as
+          | "ADMIN"
+          | "CUSTOMER",
+        profilePhotoUrl: brandPhotoUrl(
+          like.user.role,
+          like.user.profilePhotoUrl
+        ),
+        avatarUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
+      })),
+      publishedAt: p.publishedAt?.toISOString() ?? null,
+      createdAt: p.createdAt.toISOString(),
+      viewerLiked: viewerLikedIds.has(p.id),
+      viewerSaved: viewerSavedIds.has(p.id),
     };
   });
 
@@ -630,7 +645,7 @@ function mapFeedComment(
   const officialMentions =
     officialHandles.size > 0
       ? [...extractMentionHandles(c.content)].filter((h) =>
-          officialHandles.has(h),
+          officialHandles.has(h)
         )
       : [];
   return {
@@ -656,7 +671,7 @@ function mapFeedComment(
     viewerLiked: viewerLikedIds.has(c.id),
     replies:
       c.replies?.map((reply) =>
-        mapFeedComment(reply, viewerLikedIds, officialHandles),
+        mapFeedComment(reply, viewerLikedIds, officialHandles)
       ) ?? [],
     replyCount: c.replies?.length ?? 0,
   };
@@ -670,7 +685,7 @@ function mapFeedComment(
  * 1 query saja (findMany username IN [...]) — efisien untuk 1 page komentar.
  */
 async function resolveOfficialMentionHandles(
-  contents: string[],
+  contents: string[]
 ): Promise<Set<string>> {
   const handles = new Set<string>();
   for (const content of contents) {
@@ -684,7 +699,7 @@ async function resolveOfficialMentionHandles(
   return new Set(
     admins
       .map((a) => a.username?.toLowerCase())
-      .filter((u): u is string => Boolean(u)),
+      .filter((u): u is string => Boolean(u))
   );
 }
 
@@ -762,7 +777,7 @@ export async function listFeedComments({
     sliced.flatMap((c) => [
       c.content,
       ...c.replies.map((reply) => reply.content),
-    ]),
+    ])
   );
 
   const items: FeedCommentItem[] = sliced.map((c) =>
