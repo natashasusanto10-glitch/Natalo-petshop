@@ -112,13 +112,16 @@ export async function PATCH(
   let variantPayload: { hasVariants: boolean; attributes: any[]; variants: any[] } | undefined;
   if (body.hasVariants !== undefined || body.attributes !== undefined || body.variants !== undefined) {
     const parsedVariants = putVariantsPayloadSchema.safeParse({
-      hasVariants: body.hasVariants,
+      hasVariants: body.hasVariants === undefined ? true : body.hasVariants,
       attributes: body.attributes ?? [],
       variants: body.variants ?? [],
     });
     if (!parsedVariants.success) return NextResponse.json({ error: "Payload varian tidak valid", issues: parsedVariants.error.issues }, { status: 422 });
     variantPayload = parsedVariants.data;
     data.hasVariants = variantPayload.hasVariants;
+    if (!variantPayload.hasVariants && (typeof body.price !== "number" || body.price <= 0 || typeof body.stock !== "number" || body.stock < 0 || typeof body.weightGram !== "number" || body.weightGram <= 0)) {
+      return NextResponse.json({ error: "Produk tanpa varian wajib memiliki harga, stok, dan berat yang valid" }, { status: 400 });
+    }
   }
   if (Object.keys(data).length > 0) data.lastEditedAt = new Date();
   if (typeof body.isActive === "boolean") {
@@ -165,7 +168,7 @@ export async function PATCH(
         await tx.product.update({ where: { id }, data: { price: cheapest.price, stock: active.reduce((sum, v) => sum + v.stock, 0), weightGram: cheapest.weightGram, discountPrice: null } });
       }
     }
-    return result;
+    return tx.product.findUnique({ where: { id }, select: { id: true, name: true, slug: true, price: true, stock: true, weightGram: true, isActive: true, imageUrl: true } });
   }).catch((err) => { if (err.code === "P2025") return null; throw err; });
 
   if (!updated) {
