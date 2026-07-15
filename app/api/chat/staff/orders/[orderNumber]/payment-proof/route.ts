@@ -6,10 +6,22 @@ import {
   normalizeAllowedPaymentProofType,
   parseAllowedPaymentProofUrl,
 } from "@/lib/chat/payment-proof-security";
+import { runWithStaffCors, staffCorsPreflight } from "@/lib/chat/staff-cors";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ orderNumber: string }> },
+) {
+  return runWithStaffCors(request, () => getPaymentProof(request, params));
+}
+
+export function OPTIONS(request: NextRequest) {
+  return staffCorsPreflight(request);
+}
+
+async function getPaymentProof(
+  request: NextRequest,
+  params: Promise<{ orderNumber: string }>,
 ) {
   const auth = await verifyStaffRequest(request);
   if (auth instanceof NextResponse) return auth;

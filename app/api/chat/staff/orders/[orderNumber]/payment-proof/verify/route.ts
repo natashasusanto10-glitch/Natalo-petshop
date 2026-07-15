@@ -5,12 +5,24 @@ import {
   confirmOrderPayment,
   PaymentConfirmationConflict,
 } from "@/lib/order-payment-confirmation";
+import { runWithStaffCors, staffCorsPreflight } from "@/lib/chat/staff-cors";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ orderNumber: string }> },
+) {
+  return runWithStaffCors(request, () => verifyPaymentProof(request, params));
+}
+
+export function OPTIONS(request: NextRequest) {
+  return staffCorsPreflight(request);
+}
+
+async function verifyPaymentProof(
+  request: NextRequest,
+  params: Promise<{ orderNumber: string }>,
 ) {
   const auth = await verifyPaymentStaffRequest(request);
   if (auth instanceof NextResponse) return auth;

@@ -1,12 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyStaffRequest } from "@/lib/chat/staff-auth";
 import { getStaffOrderDetail } from "@/lib/chat/staff-order";
+import { runWithStaffCors, staffCorsPreflight } from "@/lib/chat/staff-cors";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ orderNumber: string }> },
+) {
+  return runWithStaffCors(request, () => getOrder(request, params));
+}
+
+export function OPTIONS(request: NextRequest) {
+  return staffCorsPreflight(request);
+}
+
+async function getOrder(
+  request: NextRequest,
+  params: Promise<{ orderNumber: string }>,
 ) {
   const auth = await verifyStaffRequest(request);
   if (auth instanceof NextResponse) return auth;
