@@ -17,6 +17,7 @@ import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_scrubber
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/state/settings_store.dart';
 import 'package:natalo_petshop_flutter/utils/app_route_observer.dart';
+import 'package:natalo_petshop_flutter/widgets/feed_comment_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
@@ -508,6 +509,38 @@ void main() {
     return const StandardMethodCodec().encodeSuccessEnvelope(null);
   });
   _registerLegacyFrameOutputRecoveryTests();
+  testWidgets('comment action raises the embedded drawer', (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    VideoPlayerPlatform.instance = _FakeVideoPlayerPlatform();
+    await appSettingsStore.setFeedAutoplay(false);
+    addTearDown(() => appSettingsStore.setFeedAutoplay(true));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeedVideoPostView(
+          post: _fakeVideoPost(id: 'comment-drawer-regression', hls: true),
+          isActive: true,
+          preloadedController: null,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsLabel('Komentar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 320));
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byType(FeedCommentSheet)).dy,
+      lessThan(tester.view.physicalSize.height),
+    );
+  });
+
   testWidgets('delayed preload claim blocks concurrent local initialization',
       (tester) async {
     TestWidgetsFlutterBinding.ensureInitialized();

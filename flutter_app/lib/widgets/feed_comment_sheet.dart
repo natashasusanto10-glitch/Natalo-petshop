@@ -699,7 +699,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
 
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      child: Container(
+      child: Material(
         // Dark drawer Instagram Reels-style — bukan putih (user spec).
         // Background, header text, divider, input — semua flip ke variant
         // dark dengan white alpha variants untuk visual hierarchy.
@@ -710,9 +710,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         // mengganggu antara video terang di atas dan drawer gelap di
         // bawah. Removed — Instagram Reels TIDAK punya border line di
         // tepi atas drawer.
-        decoration: const BoxDecoration(
-          color: Color(0xFF101114),
-        ),
+        color: const Color(0xFF101114),
         child: Column(
           children: [
             // ── Drag handle ──
