@@ -3,6 +3,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { deleteProductVideo } from "@/lib/product/product-video";
+import { productIsVisibleWhere } from "@/lib/product/admin-product-form";
 import { formatRupiah } from "@/lib/format";
 import { InlineEditCell } from "@/components/admin/InlineEditCell";
 import { VariantInlineEditCell } from "@/components/admin/VariantInlineEditCell";
@@ -72,7 +73,7 @@ export default async function AdminProductsPage({
     ? { brandId: activeBrand.id }
     : {};
 
-  const baseWhere = { ...searchWhere, ...categoryWhere, ...brandWhere };
+  const baseWhere = { ...searchWhere, ...categoryWhere, ...brandWhere, ...productIsVisibleWhere() };
   const where = { ...stockWhere, ...baseWhere };
 
   // ── Fetch counts + produk ────────────────────────────────────

@@ -36,10 +36,17 @@ export async function finalizeCreatedProduct(id: string) {
   const hasStock = product.hasVariants
     ? product.variants.some((variant) => variant.isActive && variant.stock > 0)
     : product.stock > 0;
-  return prisma.product.update({
-    where: { id },
+  const finalized = await prisma.product.updateMany({
+    where: { id, creationState: "creating" },
     data: { creationState: "ready", isActive: hasStock },
   });
+  if (!finalized.count) return null;
+  const updated = await prisma.product.findUnique({ where: { id } });
+  if (updated) {
+    const { syncProduct } = await import("../search");
+    void syncProduct(id);
+  }
+  return updated;
 }
 
 /** Remove only an unfinished product and best-effort clean its Bunny asset. */

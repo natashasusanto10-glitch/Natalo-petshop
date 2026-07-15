@@ -5,6 +5,7 @@ import {
 } from "@/lib/product-vouchers";
 import { resolveActiveDiscount } from "@/lib/product-pricing";
 import { productVideoPayload } from "@/lib/product/product-video-serialize";
+import { productIsVisibleWhere } from "@/lib/product/admin-product-form";
 import { productSearchWhere } from "@/lib/search";
 import { sampleProducts } from "@/lib/sample-data";
 import type { OrderStatus, Prisma } from "@prisma/client";
@@ -951,6 +952,7 @@ function buildProductWhere({
   discountOnly?: boolean;
 }): Prisma.ProductWhereInput {
   const and: Prisma.ProductWhereInput[] = [];
+  and.push(productIsVisibleWhere());
 
   if (withImageOnly) {
     and.push({ imageUrl: { not: null } }, { imageUrl: { not: "" } });
@@ -1111,6 +1113,7 @@ export async function getProductBySlug(
         category: { select: { id: true, slug: true } },
       },
     });
+    if (p && p.creationState !== "ready") p = null;
     if (!p) {
       p = await prisma.product.findUnique({
         where: { id: slug },
