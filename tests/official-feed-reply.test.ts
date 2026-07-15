@@ -6,8 +6,9 @@ import {
   brandPhotoUrl,
 } from "@/lib/social/brand-user";
 
-test("admin comments render as Natalo Official without staff identity", () => {
-  assert.equal(brandDisplayName("ADMIN", "Private Staff"), OFFICIAL_BRAND_NAME);
+test("admin comments render as Natalo Petshop Official without staff identity", () => {
+  assert.equal(brandDisplayName("ADMIN", "Private Staff"), "Natalo Petshop Official");
+  assert.equal(OFFICIAL_BRAND_NAME, "Natalo Petshop Official");
   assert.equal(brandPhotoUrl("ADMIN", "https://cdn.example/private.jpg"), null);
 });
 

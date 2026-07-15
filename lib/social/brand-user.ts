@@ -1,5 +1,5 @@
 /**
- * Brand identity guard — akun ADMIN adalah brand tunggal "Natalo Petshop",
+ * Brand identity guard — akun ADMIN adalah brand tunggal "Natalo Petshop Official",
  * BUKAN akun sosial pemilik (Natasha). Nama asli + foto pribadi pemilik
  * TIDAK BOLEH bocor ke viewer lain di permukaan publik mana pun (feed
  * author, likers, komentar, daftar follow, notifikasi).
@@ -13,7 +13,7 @@
  * dengan /api/u/[username] yang sudah null-kan foto official.
  */
 
-export const OFFICIAL_BRAND_NAME = "Natalo Petshop";
+export const OFFICIAL_BRAND_NAME = "Natalo Petshop Official";
 
 /** Username kanonik brand — dipakai untuk deep-link /u/{handle}. */
 export const OFFICIAL_BRAND_USERNAME = "natalopetshop";
