@@ -47,6 +47,7 @@ typedef VideoSessionVolumeOperation = Future<void> Function(double volume);
 class VideoPlayerSession implements PlaybackSession {
   VideoPlayerSession({
     required String url,
+    bool hasAudio = true,
     String? userQualityPreference,
     Future<String?> Function()? urlRefresher,
     String? analyticsPostId,
@@ -64,6 +65,7 @@ class VideoPlayerSession implements PlaybackSession {
     @visibleForTesting VideoSessionVolumeOperation? debugSetVolume,
     @visibleForTesting VideoSessionOperation? debugDisposePlayer,
   })  : _currentUrl = url,
+        _hasAudio = hasAudio,
         _userQualityPreference =
             userQualityPreference ?? appSettingsStore.feedVideoQuality,
         _urlRefresher = urlRefresher,
@@ -107,6 +109,7 @@ class VideoPlayerSession implements PlaybackSession {
   static const int _maxRetries = 1;
 
   String _currentUrl;
+  final bool _hasAudio;
   final String _userQualityPreference;
   final Future<String?> Function()? _urlRefresher;
   final VideoInitAttempt? _debugInitAttempt;
@@ -455,7 +458,7 @@ class VideoPlayerSession implements PlaybackSession {
   @override
   Future<void> setVolume(double volume) async {
     if (_disposed) return;
-    _wantVolume = volume;
+    _wantVolume = _hasAudio ? volume : 0;
     final ctrl = _controller;
     if (_initialized && (ctrl != null || _debugInitAttempt != null)) {
       await _applyEffectiveVolume();

@@ -199,6 +199,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
         if (debugFactory != null) return debugFactory(sessionId);
         return VideoPlayerSession(
           url: url,
+          hasAudio: _postForSession(sessionId)?.hasAudio != false,
           analyticsPostId: sessionId,
           analyticsSurface: 'postingan',
           // D4: refresh signed URL expired best-effort — re-fetch post
@@ -240,6 +241,15 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     // Scrollable.ensureVisible via GlobalKey context — Flutter handle
     // layout precisely, gak ada drift estimasi.
     WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToInitial());
+  }
+
+  FeedPost? _postForSession(String sessionId) {
+    for (final post in _posts) {
+      if (sessionId == post.id || sessionId.startsWith('${post.id}-')) {
+        return post;
+      }
+    }
+    return null;
   }
 
   /// Sync local _likedCache + _posts[i] likeCount/commentCount dari store.

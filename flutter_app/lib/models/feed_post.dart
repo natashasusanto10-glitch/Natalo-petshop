@@ -229,6 +229,10 @@ class FeedPost {
   final double aspectRatio;
   final int videoWidth;
   final int videoHeight;
+  final String? videoAltText;
+  final bool? hasAudio;
+  final String? subtitleUrl;
+  final String? subtitleLanguage;
 
   /// Kind dari backend: USER_VIDEO / VIDEO_ONLY / VIDEO_PRODUCT / PROMO /
   /// COMMUNITY / PHOTO_CAROUSEL / PHOTO. Drives type detection via
@@ -278,6 +282,10 @@ class FeedPost {
     this.aspectRatio = 9 / 16,
     this.videoWidth = 0,
     this.videoHeight = 0,
+    this.videoAltText,
+    this.hasAudio,
+    this.subtitleUrl,
+    this.subtitleLanguage,
     this.kind = 'USER_VIDEO',
     required this.author,
     this.products = const [],
@@ -338,6 +346,24 @@ class FeedPost {
   bool get isVideo => contentType == FeedContentType.video;
   bool get isCarousel => contentType == FeedContentType.carousel;
   bool get isPhoto => contentType == FeedContentType.photo;
+
+  /// Spoken description for the primary media surface. Explicit alt text
+  /// wins; existing user-authored copy remains a useful legacy fallback.
+  String get mediaAccessibilityLabel {
+    final explicit = videoAltText?.trim();
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    if (!isVideo && mediaItems.isNotEmpty) {
+      final mediaAltText = mediaItems.first.altText?.trim();
+      if (mediaAltText != null && mediaAltText.isNotEmpty) {
+        return mediaAltText;
+      }
+    }
+    final postCaption = caption?.trim();
+    if (postCaption != null && postCaption.isNotEmpty) return postCaption;
+    final postDescription = description.trim();
+    if (postDescription.isNotEmpty) return postDescription;
+    return '${isVideo ? 'Video' : 'Foto'} dari ${author.displayHandle}';
+  }
 
   /// Thumbnail URL untuk grid tile dengan fallback chain:
   ///   thumbnailUrl → first mediaItem.thumbnailUrl → first mediaItem.mediaUrl
@@ -450,6 +476,10 @@ class FeedPost {
     double? aspectRatio,
     int? videoWidth,
     int? videoHeight,
+    String? videoAltText,
+    bool? hasAudio,
+    String? subtitleUrl,
+    String? subtitleLanguage,
     String? kind,
     FeedAuthor? author,
     List<FeedProductLink>? products,
@@ -487,6 +517,10 @@ class FeedPost {
       aspectRatio: aspectRatio ?? this.aspectRatio,
       videoWidth: videoWidth ?? this.videoWidth,
       videoHeight: videoHeight ?? this.videoHeight,
+      videoAltText: videoAltText ?? this.videoAltText,
+      hasAudio: hasAudio ?? this.hasAudio,
+      subtitleUrl: subtitleUrl ?? this.subtitleUrl,
+      subtitleLanguage: subtitleLanguage ?? this.subtitleLanguage,
       kind: kind ?? this.kind,
       author: author ?? this.author,
       products: products ?? this.products,
@@ -630,6 +664,10 @@ class FeedPost {
       videoHeight: (json['videoHeight'] as num?)?.toInt() ??
           (json['aspectHeight'] as num?)?.toInt() ??
           0,
+      videoAltText: _firstNonEmpty([json['videoAltText'] as String?]),
+      hasAudio: json['hasAudio'] as bool?,
+      subtitleUrl: _firstNonEmpty([json['subtitleUrl'] as String?]),
+      subtitleLanguage: _firstNonEmpty([json['subtitleLanguage'] as String?]),
       kind: kind,
       author: json['author'] is Map<String, dynamic>
           ? FeedAuthor.fromJson(json['author'] as Map<String, dynamic>)
@@ -672,6 +710,10 @@ class FeedPost {
       'aspectRatio': aspectRatio,
       'videoWidth': videoWidth,
       'videoHeight': videoHeight,
+      'videoAltText': videoAltText,
+      'hasAudio': hasAudio,
+      'subtitleUrl': subtitleUrl,
+      'subtitleLanguage': subtitleLanguage,
       'kind': kind,
       'author': {
         'id': author.id,
@@ -715,18 +757,7 @@ class FeedPost {
               })
           .toList(),
       'createdAt': createdAt.toIso8601String(),
-      'mediaItems': mediaItems
-          .map((m) => {
-                'id': m.id,
-                'mediaType': m.mediaType,
-                'mediaUrl': m.mediaUrl,
-                'thumbnailUrl': m.thumbnailUrl,
-                'width': m.width,
-                'height': m.height,
-                'sortOrder': m.sortOrder,
-                'durationSeconds': m.durationSeconds,
-              })
-          .toList(),
+      'mediaItems': mediaItems.map((m) => m.toJson()).toList(),
       'status': status,
       'rejectionReason': rejectionReason,
       'approvedAt': approvedAt?.toIso8601String(),
@@ -773,6 +804,7 @@ class FeedMedia {
   final int? height;
   final int sortOrder;
   final int? durationSeconds;
+  final String? altText;
 
   const FeedMedia({
     required this.id,
@@ -784,6 +816,7 @@ class FeedMedia {
     this.height,
     this.sortOrder = 0,
     this.durationSeconds,
+    this.altText,
   });
 
   /// Backward-compat alias — kode lama pakai `.url`.
@@ -832,7 +865,22 @@ class FeedMedia {
       durationSeconds: (json['durationSeconds'] as num?)?.toInt() ??
           (json['durationSec'] as num?)?.toInt() ??
           (json['videoDurationSec'] as num?)?.toInt(),
+      altText: _firstNonEmpty([json['altText'] as String?]),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'mediaType': mediaType,
+      'mediaUrl': mediaUrl,
+      'thumbnailUrl': thumbnailUrl,
+      'width': width,
+      'height': height,
+      'sortOrder': sortOrder,
+      'durationSeconds': durationSeconds,
+      'altText': altText,
+    };
   }
 }
 

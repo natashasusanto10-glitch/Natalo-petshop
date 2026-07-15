@@ -42,6 +42,7 @@ import '../../../widgets/app_toast.dart';
 import '../../../widgets/feed_comment_sheet.dart';
 import '../../../widgets/moderation_action_sheet.dart';
 import 'feed_action_rail.dart';
+import 'feed_accessibility_overlay.dart';
 import 'feed_creator_overlay.dart';
 import 'feed_post_scrim.dart';
 import 'feed_post_shared_widgets.dart';
@@ -600,7 +601,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     _logPlay(source);
     try {
       await ctrl.setVolume(
-        !appSettingsStore.feedMuted && claim.isCurrent ? 1 : 0,
+        !appSettingsStore.feedMuted && _postHasAudio && claim.isCurrent ? 1 : 0,
       );
       if (!_legacyPlaybackIsValid(
         ctrl,
@@ -609,7 +610,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         userInitiated: userInitiated,
       )) {
         if (_hasNewerLegacyPlayback(ctrl, claim)) {
-          await ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+          await ctrl.setVolume(
+            appSettingsStore.feedMuted || !_postHasAudio ? 0 : 1,
+          );
           return;
         }
         if (identical(_audioClaim, claim)) _releaseAudio();
@@ -624,7 +627,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         userInitiated: userInitiated,
       )) {
         if (_hasNewerLegacyPlayback(ctrl, claim)) {
-          await ctrl.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+          await ctrl.setVolume(
+            appSettingsStore.feedMuted || !_postHasAudio ? 0 : 1,
+          );
           return;
         }
         if (identical(_audioClaim, claim)) _releaseAudio();
@@ -749,7 +754,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     final ctrl = _videoController;
     if (ctrl != null && ctrl.value.isInitialized) {
       ctrl.setVolume(
-        !appSettingsStore.feedMuted && (_audioClaim?.isCurrent ?? false)
+        !appSettingsStore.feedMuted &&
+                _postHasAudio &&
+                (_audioClaim?.isCurrent ?? false)
             ? 1
             : 0,
       );
@@ -825,6 +832,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   /// laporan intent, bukan panggilan langsung ke controller.
   bool get _managed => widget.playbackManagedExternally;
 
+  bool get _postHasAudio => widget.post.hasAudio != false;
+
   /// T8 — di managed view, error/loading/ready dibedakan dari sesi coordinator
   /// terikat ([_managedSession], hanya di-set bila sesi benar-benar
   /// [VideoPlayerSession]). Sesi fake non-VideoPlayerSession → _managedSession
@@ -879,7 +888,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       return;
     }
     ctrl.setVolume(
-      !appSettingsStore.feedMuted && (_audioClaim?.isCurrent ?? false) ? 1 : 0,
+      !appSettingsStore.feedMuted &&
+              _postHasAudio &&
+              (_audioClaim?.isCurrent ?? false)
+          ? 1
+          : 0,
     );
   }
 
@@ -2097,7 +2110,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     final wasPlaying = ctrl.value.isPlaying;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => _FullScreenVideoPage(controller: ctrl),
+        builder: (_) => _FullScreenVideoPage(
+          controller: ctrl,
+          hasAudio: widget.post.hasAudio,
+        ),
         fullscreenDialog: true,
       ),
     );
@@ -2442,12 +2458,12 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
   Future<void> _toggleMuteWhilePaused() async {
     final ctrl = _videoController;
-    if (ctrl == null || !_isPaused) return;
+    if (ctrl == null || !_isPaused || widget.post.hasAudio == false) return;
     AppHaptics.tap();
     final nextMuted = !appSettingsStore.feedMuted;
     await appSettingsStore.setFeedMuted(nextMuted);
     await ctrl.setVolume(
-      !nextMuted && (_audioClaim?.isCurrent ?? false) ? 1 : 0,
+      !nextMuted && _postHasAudio && (_audioClaim?.isCurrent ?? false) ? 1 : 0,
     );
     if (mounted) setState(() {});
   }
@@ -2610,21 +2626,26 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                         right: 0,
                         top: 0,
                         bottom: 0,
-                        child: GestureDetector(
-                          onTap: () => unawaited(_onTapMedia()),
-                          onDoubleTapDown: _onMediaDoubleTapDown,
-                          onDoubleTap: _onDoubleTapLike,
-                          // Sprint 4 #1 — Long-press signature gesture.
-                          onLongPressStart: _onLongPressStart,
-                          onLongPressEnd: _onLongPressEnd,
-                          child: FeedPostSnapBackZoomMedia(
-                            minScale: 1,
-                            maxScale: 4,
-                            onZoomingChanged: _onMediaZoomChanged,
-                            child: _MediaBackground(
-                              post: post,
-                              videoController: _videoController,
-                              compactPreview: _commentDrawerMounted,
+                        child: Semantics(
+                          container: true,
+                          label: post.mediaAccessibilityLabel,
+                          hint: 'Ketuk untuk menjeda atau memutar video',
+                          child: GestureDetector(
+                            onTap: () => unawaited(_onTapMedia()),
+                            onDoubleTapDown: _onMediaDoubleTapDown,
+                            onDoubleTap: _onDoubleTapLike,
+                            // Sprint 4 #1 — Long-press signature gesture.
+                            onLongPressStart: _onLongPressStart,
+                            onLongPressEnd: _onLongPressEnd,
+                            child: FeedPostSnapBackZoomMedia(
+                              minScale: 1,
+                              maxScale: 4,
+                              onZoomingChanged: _onMediaZoomChanged,
+                              child: _MediaBackground(
+                                post: post,
+                                videoController: _videoController,
+                                compactPreview: _commentDrawerMounted,
+                              ),
                             ),
                           ),
                         ),
@@ -2713,6 +2734,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                           !_commentSheetOpen)
                         Center(
                           child: _PausedVideoControls(
+                            hasAudio: post.hasAudio,
                             muted: appSettingsStore.feedMuted,
                             onToggleMute: _toggleMuteWhilePaused,
                             onTogglePlayPause: _onTapMedia,
@@ -2771,6 +2793,20 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                             ),
                           ),
                         ),
+                        if (_videoController != null &&
+                            post.subtitleUrl?.trim().isNotEmpty == true)
+                          Positioned(
+                            left: 40,
+                            right: 84,
+                            bottom: constraints.maxHeight * 0.28,
+                            child: FeedWebVttSubtitleOverlay(
+                              controller: _videoController!,
+                              subtitleUrl: post.subtitleUrl,
+                              visible: widget.isActive &&
+                                  !_commentSheetOpen &&
+                                  !_hideOverlayForPinchZoom,
+                            ),
+                          ),
                         if (_videoController != null)
                           Positioned(
                             left: 0,
@@ -3117,8 +3153,9 @@ class _MediaBackground extends StatelessWidget {
 /// kembali ke feed dengan playback state continued.
 class _FullScreenVideoPage extends StatefulWidget {
   final VideoPlayerController controller;
+  final bool? hasAudio;
 
-  const _FullScreenVideoPage({required this.controller});
+  const _FullScreenVideoPage({required this.controller, this.hasAudio});
 
   @override
   State<_FullScreenVideoPage> createState() => _FullScreenVideoPageState();
@@ -3135,14 +3172,20 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _scheduleHideControls();
     appSettingsStore.addListener(_onAppSettingsChanged);
-    widget.controller.setVolume(appSettingsStore.feedMuted ? 0 : 1);
+    widget.controller.setVolume(
+      widget.hasAudio == false || appSettingsStore.feedMuted ? 0 : 1,
+    );
     if (!widget.controller.value.isPlaying) {
       widget.controller.play();
     }
   }
 
   void _onAppSettingsChanged() {
-    unawaited(widget.controller.setVolume(appSettingsStore.feedMuted ? 0 : 1));
+    unawaited(
+      widget.controller.setVolume(
+        widget.hasAudio == false || appSettingsStore.feedMuted ? 0 : 1,
+      ),
+    );
   }
 
   @override
@@ -3301,11 +3344,13 @@ class _VideoRetryButton extends StatelessWidget {
 }
 
 class _PausedVideoControls extends StatelessWidget {
+  final bool? hasAudio;
   final bool muted;
   final VoidCallback onToggleMute;
   final VoidCallback onTogglePlayPause;
 
   const _PausedVideoControls({
+    required this.hasAudio,
     required this.muted,
     required this.onToggleMute,
     required this.onTogglePlayPause,
@@ -3320,19 +3365,24 @@ class _PausedVideoControls extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _PausedControlButton(
-          semanticLabel: muted ? 'Aktifkan suara' : 'Matikan suara',
-          diameter: 32,
-          scrimAlpha: 0.42,
-          inkRadius: 22,
-          onTap: onToggleMute,
-          child: Icon(
-            muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-            color: Colors.white,
-            size: 17,
-            shadows: const [Shadow(color: Colors.black87, blurRadius: 8)],
+        if (hasAudio == false)
+          const FeedNoAudioIndicator()
+        else
+          _PausedControlButton(
+            semanticLabel: muted ? 'Aktifkan suara' : 'Matikan suara',
+            diameter: 32,
+            scrimAlpha: 0.42,
+            inkRadius: 22,
+            onTap: onToggleMute,
+            child: Icon(
+              muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+              color: Colors.white,
+              size: 17,
+              shadows: const [
+                Shadow(color: Colors.black87, blurRadius: 8),
+              ],
+            ),
           ),
-        ),
         const SizedBox(height: 14),
         // Play: lingkaran 52 — satu keluarga dengan mute (~1.6×), jauh
         // dari 80px lama yang berat. Glyph polos tanpa lingkaran ditolak

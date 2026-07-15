@@ -280,6 +280,7 @@ FeedPost _fakeVideoPost({
   double aspectRatio = 0.5625,
   bool hls = false,
   bool liked = false,
+  String? videoAltText,
 }) {
   return FeedPost.fromJson({
     'id': id,
@@ -294,6 +295,7 @@ FeedPost _fakeVideoPost({
     'thumbnailUrl': 'https://example.com/$id.jpg',
     'durationSec': 10,
     'aspectRatio': aspectRatio,
+    'videoAltText': videoAltText,
     'author': {'id': 'author-1', 'name': 'Tester'},
     'likeCount': 0,
     'commentCount': 0,
@@ -749,6 +751,34 @@ void main() {
     expect(find.byType(FeedVideoPostView), findsOneWidget);
   });
 
+  testWidgets('media surface exposes explicit alt text semantics',
+      (tester) async {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeedVideoPostView(
+          post: _fakeVideoPost(
+            videoAltText: 'Kucing putih sedang makan dari mangkuk biru',
+          ),
+          isActive: false,
+          preloadedController: null,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ),
+    );
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(
+      find.bySemanticsLabel('Kucing putih sedang makan dari mangkuk biru'),
+      findsOneWidget,
+    );
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
   // Aturan fit ala IG Reels: video ±9:16 → cover full-bleed (crop tipis);
   // video lebih pendek (4:5 / square / landscape) → contain letterbox,
   // supaya tidak terasa "zoom". Diverifikasi lewat thumbnail background
@@ -1020,7 +1050,11 @@ void main() {
       // Bongkar tree: ownsController=false → borrowed TIDAK di-dispose oleh
       // widget (dibuktikan borrowed masih usable + di-dispose oleh tearDown).
       await tester.pumpWidget(const SizedBox());
-      await tester.pump(const Duration(milliseconds: 50));
+      // Double-tap intentionally exercises the like path. In widget tests the
+      // API is unavailable, so its warning toast owns a delayed-dismiss timer;
+      // drain it explicitly before invariant verification.
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
       expect(borrowed.value.isInitialized, isTrue,
           reason: 'ownsController:false → controller tidak di-dispose widget');
     });
