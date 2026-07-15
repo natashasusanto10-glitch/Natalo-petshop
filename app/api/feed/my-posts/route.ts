@@ -25,6 +25,7 @@ import {
 import { bunnyThumbnailUrl, signBunnyUrl } from "@/lib/feed/bunny";
 import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
+import { getViewerSavedPostIds } from "@/lib/feed/queries";
 
 export async function GET(request: NextRequest) {
   const session = await getSession("CUSTOMER");
@@ -180,6 +181,11 @@ export async function GET(request: NextRequest) {
           ).map((l) => l.postId)
         );
 
+  const viewerSavedIds = await getViewerSavedPostIds(
+    session.sub,
+    slicedPosts.map((post) => post.id),
+  );
+
   return NextResponse.json({
     posts: slicedPosts.map((post) => {
       const signedMedia = post.media.map((item) => {
@@ -267,6 +273,7 @@ export async function GET(request: NextRequest) {
         shareCount: post.shareCount,
         viewCount: post.viewCount,
         viewerLiked: viewerLikedIds.has(post.id),
+        viewerSaved: viewerSavedIds.has(post.id),
         recentLikers: post.likes.map((like) => ({
           id: like.user.id,
           name: brandDisplayName(like.user.role, like.user.name),

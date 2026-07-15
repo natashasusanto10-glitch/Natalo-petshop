@@ -9,7 +9,7 @@
  * legacy/admin callers, but the storefront no longer exposes tab columns.
  */
 import { prisma } from "@/lib/prisma";
-import type { FeedPostTab } from "@prisma/client";
+import type { FeedPostTab, Prisma } from "@prisma/client";
 import { resolveActiveDiscount } from "@/lib/product-pricing";
 import { extractMentionHandles } from "./mentions";
 import { signBunnyUrl } from "./bunny";
@@ -24,6 +24,46 @@ import type {
 
 const FEED_PAGE_SIZE = 10;
 const COMMENT_PAGE_SIZE = 20;
+
+export const PUBLIC_FEED_POST_WHERE = {
+  status: "ACTIVE",
+  deletedAt: null,
+  encodingStatus: "ready",
+  OR: [
+    { videoUrl: { not: null }, thumbnailUrl: { not: null } },
+    { kind: "PRODUCT_ONLY" },
+    { kind: "PROMO", productId: { not: null } },
+    { kind: "PHOTO_CAROUSEL" },
+  ],
+} satisfies Prisma.FeedPostWhereInput;
+
+/** Resolve saved state for a whole page in one query. */
+export async function getViewerSavedPostIds(
+  viewerUserId: string | null | undefined,
+  postIds: readonly string[],
+): Promise<Set<string>> {
+  if (!viewerUserId || postIds.length === 0) return new Set<string>();
+
+  const saves = await prisma.feedSave.findMany({
+    where: {
+      userId: viewerUserId,
+      postId: { in: [...new Set(postIds)] },
+    },
+    select: { postId: true },
+  });
+  return new Set(saves.map((save) => save.postId));
+}
+
+export function orderFeedItemsByPostIds(
+  postIds: readonly string[],
+  items: readonly FeedPostListItem[],
+): FeedPostListItem[] {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  return postIds.flatMap((postId) => {
+    const item = byId.get(postId);
+    return item ? [item] : [];
+  });
+}
 
 /**
  * Resolve diskon AKTIF untuk produk di feed — pakai logika canonical yang
@@ -92,6 +132,8 @@ type FeedListOptions = {
   /** Filter to only posts that tag this product (Shop the Look + legacy
    *  productId). Used when entering /feed from a product page. */
   productSlug?: string | null;
+  /** Internal batch filter used by the saved-post listing. */
+  postIds?: readonly string[];
 };
 
 /**
@@ -104,6 +146,7 @@ export async function listFeedPosts({
   cursor,
   viewerUserId,
   productSlug,
+  postIds,
 }: FeedListOptions): Promise<FeedListResponse> {
   // Resolve product slug → id sekali, supaya WHERE clause bisa pakai
   // productId match (lebih efisien dari nested slug lookup di setiap row).
@@ -127,24 +170,8 @@ export async function listFeedPosts({
 
   const posts = await prisma.feedPost.findMany({
     where: {
-      status: "ACTIVE",
-      // Soft-deleted posts stay in DB for audit/restore but must never
-      // surface in the public feed.
-      deletedAt: null,
-      // Bunny videos in `uploading` / `processing` / `failed` are not
-      // playable — exclude them. Legacy UploadThing posts default to
-      // `ready` so they continue to surface.
-      encodingStatus: "ready",
-      // Defensive: skip posts whose video assets are missing.
-      OR: [
-        { videoUrl: { not: null }, thumbnailUrl: { not: null } },
-        { kind: "PRODUCT_ONLY" },
-        { kind: "PROMO", productId: { not: null } },
-        // PHOTO_CAROUSEL: pass WHERE filter — media check di-handle
-        // post-query (Prisma _count workaround). Photo post tidak punya
-        // videoUrl, jadi tanpa OR ini akan filtered out di atas.
-        { kind: "PHOTO_CAROUSEL" },
-      ],
+      ...PUBLIC_FEED_POST_WHERE,
+      ...(postIds ? { id: { in: [...postIds] } } : {}),
       ...(tab ? { tab } : {}),
       // Shop the Look filter: match BOTH legacy productId AND multi-tag.
       ...(productIdFilter
@@ -305,6 +332,11 @@ export async function listFeedPosts({
     });
     viewerLikedIds = new Set(likes.map((l) => l.postId));
   }
+
+  const viewerSavedIds = await getViewerSavedPostIds(
+    viewerUserId,
+    posts.map((post) => post.id),
+  );
 
   // Follow state viewer→author, batch 1 query (pola sama dgn viewerLikedIds,
   // no N+1) — dipakai chip "Ikuti/Mengikuti" di samping nama kreator di
@@ -499,12 +531,52 @@ export async function listFeedPosts({
     publishedAt: p.publishedAt?.toISOString() ?? null,
     createdAt: p.createdAt.toISOString(),
     viewerLiked: viewerLikedIds.has(p.id),
+    viewerSaved: viewerSavedIds.has(p.id),
     };
   });
 
   return {
     items,
     nextCursor: hasMore ? sliced[sliced.length - 1].id : null,
+  };
+}
+
+export async function listSavedFeedPosts({
+  userId,
+  cursor,
+}: {
+  userId: string;
+  cursor?: string | null;
+}): Promise<FeedListResponse> {
+  const saves = await prisma.feedSave.findMany({
+    where: {
+      userId,
+      post: { is: PUBLIC_FEED_POST_WHERE },
+    },
+    orderBy: [{ createdAt: "desc" }, { postId: "desc" }],
+    take: FEED_PAGE_SIZE + 1,
+    ...(cursor
+      ? {
+          cursor: { userId_postId: { userId, postId: cursor } },
+          skip: 1,
+        }
+      : {}),
+    select: { postId: true },
+  });
+
+  const hasMore = saves.length > FEED_PAGE_SIZE;
+  const page = hasMore ? saves.slice(0, FEED_PAGE_SIZE) : saves;
+  if (page.length === 0) return { items: [], nextCursor: null };
+
+  const postIds = page.map((save) => save.postId);
+  const serialized = await listFeedPosts({
+    viewerUserId: userId,
+    postIds,
+  });
+
+  return {
+    items: orderFeedItemsByPostIds(postIds, serialized.items),
+    nextCursor: hasMore ? page[page.length - 1].postId : null,
   };
 }
 

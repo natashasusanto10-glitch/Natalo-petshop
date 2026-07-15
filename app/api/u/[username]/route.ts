@@ -26,7 +26,10 @@ import { resolveUserByUsername } from "@/lib/username";
 import { getSession } from "@/lib/auth";
 import { signBunnyUrl } from "@/lib/feed/bunny";
 import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
-import { resolveFeedProductDiscount } from "@/lib/feed/queries";
+import {
+  getViewerSavedPostIds,
+  resolveFeedProductDiscount,
+} from "@/lib/feed/queries";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 
 // Postingan customer biasa: video komunitas + foto carousel.
@@ -248,6 +251,10 @@ export async function GET(
           ).map((like) => like.postId)
         )
       : new Set<string>();
+  const viewerSavedIds = await getViewerSavedPostIds(
+    viewerUserId,
+    sliced.map((post) => post.id),
+  );
 
   return NextResponse.json({
     user: {
@@ -299,6 +306,7 @@ export async function GET(
         viewCount: p.viewCount,
         shareCount: p.shareCount,
         viewerLiked: viewerLikedIds.has(p.id),
+        viewerSaved: viewerSavedIds.has(p.id),
         recentLikers: p.likes.map((like) => ({
           id: like.user.id,
           name: brandDisplayName(like.user.role, like.user.name),

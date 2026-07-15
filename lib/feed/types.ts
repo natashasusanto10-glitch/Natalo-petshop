@@ -4,6 +4,7 @@
  * Sumber kebenaran: prisma/schema.prisma (FeedPost, FeedComment, dll).
  * Tujuan file ini bukan duplikasi schema, tapi shape "trimmed" untuk
  * konsumsi UI: hanya field yang dipakai render, plus `viewerLiked` /
+ * `viewerSaved` /
  * `viewerCanModerate` hints yang di-compute server-side.
  */
 import type { FeedPostKind, FeedPostStatus, FeedPostTab } from "@prisma/client";
@@ -129,6 +130,7 @@ export type FeedPostListItem = {
   createdAt: string;
   // Per-viewer state — server compute kalau session ada, false kalau anon.
   viewerLiked: boolean;
+  viewerSaved: boolean;
 };
 
 export type FeedListResponse = {

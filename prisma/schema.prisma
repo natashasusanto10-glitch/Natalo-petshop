@@ -143,6 +143,7 @@ model User {
   feedComments        FeedComment[]        @relation("FeedCommentAuthor")
   hiddenComments      FeedComment[]        @relation("FeedCommentModerator")
   feedLikes           FeedLike[]
+  feedSaves           FeedSave[]
   feedCommentLikes    FeedCommentLike[]
   feedReportsFiled    FeedReport[]         @relation("FeedReporter")
   feedReportsResolved FeedReport[]         @relation("FeedReportResolver")
@@ -1297,6 +1298,7 @@ model FeedPost {
 
   comments       FeedComment[]
   likes          FeedLike[]
+  saves          FeedSave[]
   reports        FeedReport[]
   moderationLogs FeedModerationLog[]
   // Shop the Look: many-to-many ke Product (up to 3 tags per post).
@@ -1452,6 +1454,19 @@ model FeedLike {
   createdAt DateTime @default(now())
 
   @@id([userId, postId])
+  @@index([postId])
+}
+
+/// Composite PK keeps save/unsave idempotent per viewer and post.
+model FeedSave {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId    String
+  post      FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, postId])
+  @@index([userId, createdAt, postId])
   @@index([postId])
 }
 

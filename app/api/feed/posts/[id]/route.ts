@@ -7,7 +7,10 @@ import { MY_FEED_VISIBLE_STATUSES } from "@/lib/feed/my-posts";
 import { deleteFeedAssets } from "@/lib/feed/cleanup";
 import { signBunnyUrl } from "@/lib/feed/bunny";
 import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
-import { resolveFeedProductDiscount } from "@/lib/feed/queries";
+import {
+  getViewerSavedPostIds,
+  resolveFeedProductDiscount,
+} from "@/lib/feed/queries";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 
 const MAX_TITLE_LENGTH = 200;
@@ -145,14 +148,21 @@ export async function GET(
 
   const session = await getSession("CUSTOMER").catch(() => null);
   let viewerLiked = false;
+  let viewerSaved = false;
   if (session?.sub) {
-    const like = await prisma.feedLike
-      .findUnique({
-        where: { userId_postId: { userId: session.sub, postId: post.id } },
-        select: { userId: true },
-      })
-      .catch(() => null);
+    const [like, savedIds] = await Promise.all([
+      prisma.feedLike
+        .findUnique({
+          where: { userId_postId: { userId: session.sub, postId: post.id } },
+          select: { userId: true },
+        })
+        .catch(() => null),
+      getViewerSavedPostIds(session.sub, [post.id]).catch(
+        () => new Set<string>(),
+      ),
+    ]);
     viewerLiked = Boolean(like);
+    viewerSaved = savedIds.has(post.id);
   }
 
   const playbackUrls = buildFeedVideoPlaybackUrls({
@@ -212,6 +222,7 @@ export async function GET(
     commentCount: post.commentCount,
     viewCount: post.viewCount,
     viewerLiked,
+    viewerSaved,
     products,
     taggedProducts: products,
     author: {

@@ -15,13 +15,16 @@
  *   - Limit: ?limit=N (default 12, max 24)
  *   - Pagination: ?offset=N
  *
- * Cache 60s — UGC tidak diharapkan update tiap detik, satu menit window OK.
+ * Dynamic because `viewerSaved` is session-specific and must never be shared
+ * between viewers by a route cache.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import { getViewerSavedPostIds } from "@/lib/feed/queries";
 import { prisma } from "@/lib/prisma";
 import { signBunnyUrl } from "@/lib/feed/bunny";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 const DEFAULT_LIMIT = 12;
 const MAX_LIMIT = 24;
@@ -124,6 +127,11 @@ export async function GET(
       },
     },
   });
+  const session = await getSession("CUSTOMER");
+  const viewerSavedIds = await getViewerSavedPostIds(
+    session?.sub,
+    posts.map((post) => post.id),
+  );
 
   return NextResponse.json({
     productSlug: slug,
@@ -146,6 +154,7 @@ export async function GET(
         videoDurationSec: p.videoDurationSec,
         likeCount: p.likeCount,
         commentCount: p.commentCount,
+        viewerSaved: viewerSavedIds.has(p.id),
         createdAt: p.createdAt.toISOString(),
         author: {
           id: p.author.id,
