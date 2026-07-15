@@ -820,7 +820,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                     onMenuTap:
                         widget.isOwner ? () => _openPostMenu(index) : null,
                     onOpenScopedFeed: (sessionId, anchorKey) =>
-                        _openScopedVideoFeed(index, sessionId, anchorKey),
+                        _openScopedVideoFeed(index, sessionId),
                   );
                 },
               ),
@@ -849,22 +849,13 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     );
   }
 
-  /// Tap video di detail → buka viewer feed imersif (swipeable) berisi
-  /// HANYA video milik user ini. Reuse [ScopedVideoFeedScreen] +
-  /// [pushScaledVideoFeed] persis flow "Postingan Terkait", jadi visual &
-  /// controller/coordinator yang sama. Video yang di-tap jadi halaman awal;
-  /// swipe hanya
-  /// menampilkan video user ini (foto di-skip, ala IG Reels).
-  ///
-  /// Post yang ditampilkan adalah POST FEED ASLI (fetch by ID, sama
-  /// dengan flow Postingan Terkait) — bukan data mentah halaman profil
-  /// yang tidak membawa info author (tampil "User" generik + salah
-  /// munculkan tombol Ikuti). Postingan di profil = postingan feed;
-  /// yang diperbesar harus di-direct dari post feed-nya langsung.
+  /// Tap video di detail → buka viewer imersif seketika dengan video yang
+  /// sudah tersedia di halaman ini. Data lokal sengaja menjadi seed viewer:
+  /// selain menghapus round-trip jaringan dari jalur tap, data ini juga sudah
+  /// membawa konteks produk yang dipakai commerce chip.
   Future<void> _openScopedVideoFeed(
     int index,
     String sessionId,
-    GlobalKey anchorKey,
   ) async {
     final videoPosts = _posts.where((p) => p.isVideo).toList();
     if (videoPosts.isEmpty) return;
@@ -887,97 +878,47 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     if (mounted) setState(() => _handoffSessionId = sessionId);
 
     // Hardening (review): SELALU akhiri handoff lewat `finally` supaya flag
-    // `_handoffInProgress`/`_handoffSessionId` TAK PERNAH nyangkut walau ada
-    // throw di masa depan (pushScaledVideoFeed dll). Semantik resume:
+    // `_handoffInProgress`/`_handoffSessionId` TAK PERNAH nyangkut walau route
+    // gagal dibuka. Semantik resume:
     // normal/return = resume true; unmounted = resume false.
     var resume = true;
     try {
-      final rootNav = Navigator.of(context, rootNavigator: true);
-      showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        barrierColor: Colors.black.withValues(alpha: 0.25),
-        builder: (_) => const Center(
-          child: SizedBox(
-            width: 44,
-            height: 44,
-            child: CircularProgressIndicator(strokeWidth: 2.6),
-          ),
-        ),
-      );
-
-      // Fetch semua video user ini paralel (order-preserving) — pola sama
-      // dengan Postingan Terkait di product_detail_screen.
-      var anyFailed = false;
-      final fetchById = debugScopedFeedPostFetcher ?? feedService.fetchPostById;
-      final results = await Future.wait(
-        videoPosts.map((sibling) async {
-          try {
-            return await fetchById(sibling.id);
-          } catch (_) {
-            anyFailed = true;
-            return null;
-          }
-        }),
-      );
-      final fetched = <FeedPost>[];
-      for (var i = 0; i < results.length; i++) {
-        final fetchedPost = results[i];
-        if (fetchedPost == null) continue;
-        final sourcePost = videoPosts[i];
-        final fetchedHasProducts = fetchedPost.taggedProducts.isNotEmpty ||
-            fetchedPost.products.isNotEmpty;
-        final sourceHasProducts = sourcePost.taggedProducts.isNotEmpty ||
-            sourcePost.products.isNotEmpty;
-
-        // Compatibility guard: older deployments of GET /feed/posts/:id
-        // returned complete author/video data but omitted tagged products.
-        // Preserve the richer profile post until every backend instance uses
-        // the new contract, otherwise the fullscreen commerce chip vanishes.
-        fetched.add(
-          !fetchedHasProducts && sourceHasProducts
-              ? fetchedPost.copyWith(
-                  products: sourcePost.products,
-                  productsInVideo: sourcePost.productsInVideo,
-                  taggedProducts: sourcePost.taggedProducts.isNotEmpty
-                      ? sourcePost.taggedProducts
-                      : sourcePost.products,
-                )
-              : fetchedPost,
-        );
-      }
-
-      rootNav.pop(); // tutup loading dialog
-      if (!mounted) {
-        resume = false;
-        return;
-      }
-
-      if (fetched.isEmpty) {
-        AppToast.show(
-          context,
-          anyFailed
-              ? 'Postingan belum bisa dibuka. Coba lagi.'
-              : 'Postingan sudah tidak tersedia.',
-          kind: ToastKind.warning,
-        );
-        // Fullscreen tak jadi dibuka → batalkan dormant + resume inline.
-        return;
-      }
-
-      final tappedIndex = fetched.indexWhere((fp) => fp.id == tapped.id);
+      final tappedIndex = videoPosts.indexWhere((post) => post.id == tapped.id);
       final result = await Navigator.of(context).push<ScopedVideoFeedResult>(
-        MaterialPageRoute<ScopedVideoFeedResult>(
-          builder: (_) => ScopedVideoFeedScreen(
-            posts: fetched,
+        PageRouteBuilder<ScopedVideoFeedResult>(
+          opaque: true,
+          barrierColor: Colors.black,
+          transitionDuration: const Duration(milliseconds: 220),
+          reverseTransitionDuration: const Duration(milliseconds: 180),
+          pageBuilder: (_, animation, secondaryAnimation) =>
+              ScopedVideoFeedScreen(
+            posts: videoPosts,
             initialIndex: tappedIndex >= 0 ? tappedIndex : 0,
             // Handoff §2.6: item ASAL pinjam controller coordinator (instan).
             coordinator: _videoCoordinator,
             originPostId: sessionId,
             onNetworkTierChanged: _onPlaybackNetworkTierChanged,
           ),
+          transitionsBuilder: (_, animation, secondaryAnimation, child) {
+            final entrance = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+              reverseCurve: Curves.easeInCubic,
+            );
+            return FadeTransition(
+              opacity: entrance,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.985, end: 1).animate(entrance),
+                child: child,
+              ),
+            );
+          },
         ),
       );
+      if (!mounted) {
+        resume = false;
+        return;
+      }
       if (result != null && mounted) {
         await _focusReturnedVideo(result);
       }

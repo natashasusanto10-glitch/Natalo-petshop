@@ -46,6 +46,61 @@ class _ProfileContentState {
   bool loadingMore = false;
 }
 
+typedef ProfileWarmHandoffFactory = PostVideoWarmHandoff? Function(
+  FeedPost post,
+);
+
+/// Satu slot prewarm untuk grid Profile. Widget hanya memanggil prepare/take/
+/// cancel; kelas ini memastikan kandidat lama selalu dilepas sebelum kandidat
+/// baru hidup dan ownership hanya berpindah pada tap yang sah.
+@visibleForTesting
+class ProfileVideoPrewarmer {
+  ProfileVideoPrewarmer({required ProfileWarmHandoffFactory factory})
+      : _factory = factory;
+
+  final ProfileWarmHandoffFactory _factory;
+  String? _postId;
+  PostVideoWarmHandoff? _handoff;
+
+  void prepare(FeedPost post) {
+    if (!post.isVideo) {
+      cancel();
+      return;
+    }
+    if (_postId == post.id) return;
+    final stale = _handoff;
+    _handoff = _factory(post);
+    _postId = _handoff == null ? null : post.id;
+    unawaited(stale?.disposeIfUnclaimed());
+  }
+
+  PostVideoWarmHandoff? take(FeedPost post) {
+    if (_postId != post.id) {
+      cancel();
+      return null;
+    }
+    final handoff = _handoff;
+    _handoff = null;
+    _postId = null;
+    return handoff;
+  }
+
+  void cancel([String? postId]) {
+    if (postId != null && _postId != postId) return;
+    final handoff = _handoff;
+    _handoff = null;
+    _postId = null;
+    unawaited(handoff?.disposeIfUnclaimed());
+  }
+
+  Future<void> dispose() async {
+    final handoff = _handoff;
+    _handoff = null;
+    _postId = null;
+    await handoff?.disposeIfUnclaimed();
+  }
+}
+
 /// Public profile screen — `/u/{username}` deep link target +
 /// destination saat user tap @username di feed/komentar.
 ///
@@ -82,11 +137,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
 
   late final ScrollController _scrollController;
   late final TabController _tabController;
+  late final ProfileVideoPrewarmer _videoPrewarmer;
 
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
+    _videoPrewarmer = ProfileVideoPrewarmer(factory: _createWarmHandoff);
     _tabController =
         TabController(length: _profileContentTabs.length, vsync: this)
           ..addListener(_onTabControllerChanged);
@@ -96,6 +153,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
 
   @override
   void dispose() {
+    unawaited(_videoPrewarmer.dispose());
     followOverrides.removeListener(_onFollowOverridesChanged);
     _tabController
       ..removeListener(_onTabControllerChanged)
@@ -315,19 +373,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     int index,
   ) async {
     final posts = _contentStates[content]!.posts;
-    if (index < 0 || index >= posts.length || _openingPost) return;
+    if (index < 0 || index >= posts.length || _openingPost) {
+      _cancelPreparedVideo();
+      return;
+    }
     _openingPost = true;
     final profile = _profile;
     final post = posts[index];
-    final handoff = PostVideoWarmHandoff.createIfVideo(
-      isVideo: post.isVideo,
-      postId: post.id,
-      url: videoQualityService.resolvePlaybackUrl(
-        post.videoPlaybackUrl,
-        dataSaverUrl: post.videoDataSaverUrl,
-        userPreference: appSettingsStore.feedVideoQuality,
-      ),
-    );
+    final handoff = _videoPrewarmer.take(post) ?? _createWarmHandoff(post);
     AppHaptics.tap();
     try {
       await Navigator.push<void>(
@@ -357,6 +410,32 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
       await handoff?.disposeIfUnclaimed();
       _openingPost = false;
     }
+  }
+
+  PostVideoWarmHandoff? _createWarmHandoff(FeedPost post) {
+    return PostVideoWarmHandoff.createIfVideo(
+      isVideo: post.isVideo,
+      postId: post.id,
+      url: videoQualityService.resolvePlaybackUrl(
+        post.videoPlaybackUrl,
+        dataSaverUrl: post.videoDataSaverUrl,
+        userPreference: appSettingsStore.feedVideoQuality,
+      ),
+    );
+  }
+
+  /// Mulai menyiapkan hanya video yang sedang disentuh. Constructor session
+  /// langsung menjalankan init dalam keadaan paused+muted; ownership baru
+  /// berpindah ke halaman Postingan ketika tap benar-benar selesai.
+  void _prepareVideo(FeedPost post) {
+    if (_openingPost) return;
+    _videoPrewarmer.prepare(post);
+  }
+
+  /// Gesture dibatalkan (biasanya grid mulai scroll): lepaskan kandidat agar
+  /// tile yang tidak jadi dibuka tidak meninggalkan controller hidup.
+  void _cancelPreparedVideo([String? postId]) {
+    _videoPrewarmer.cancel(postId);
   }
 
   Future<void> _toggleFollow() async {
@@ -681,6 +760,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
                   try {
                     return _PostTile(
                       post: posts[index],
+                      onTapDown: () => _prepareVideo(posts[index]),
+                      onTapCancel: () => _cancelPreparedVideo(posts[index].id),
                       onTap: () => _openPost(content, index),
                       showCommerceBadge:
                           content == PublicProfileContentFilter.shoppable,
@@ -1408,11 +1489,15 @@ class _StatColumn extends StatelessWidget {
 class _PostTile extends StatelessWidget {
   final FeedPost post;
   final VoidCallback onTap;
+  final VoidCallback? onTapDown;
+  final VoidCallback? onTapCancel;
   final bool showCommerceBadge;
 
   const _PostTile({
     required this.post,
     required this.onTap,
+    this.onTapDown,
+    this.onTapCancel,
     this.showCommerceBadge = false,
   });
 
@@ -1471,6 +1556,8 @@ class _PostTile extends StatelessWidget {
               ? 'Postingan video'
               : 'Postingan foto',
       child: GestureDetector(
+        onTapDown: (_) => onTapDown?.call(),
+        onTapCancel: onTapCancel,
         onTap: onTap,
         child: Container(
           // Pakai decoration (bukan color shorthand) karena Container assert
