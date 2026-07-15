@@ -107,6 +107,7 @@ class FeedScreen extends StatefulWidget {
 
 class _FeedScreenState extends State<FeedScreen> {
   final PageController _pageController = PageController();
+  final GlobalKey _createPostOriginKey = GlobalKey();
   // Parallel maps: _preloadedControllers untuk reads (.value, VideoPlayer
   // widget, play/pause). _preloadedCachedPlayers untuk lifecycle (dispose
   // via wrapper supaya cache file di-track properly oleh
@@ -829,7 +830,7 @@ class _FeedScreenState extends State<FeedScreen> {
     // dulu) → flow lama yang inkonsisten dengan akun entry. Sekarang
     // SEMUA "+" icon (feed + akun + postingan saya) lead ke flow yang
     // sama untuk konsistensi UX.
-    await FeedMediaPickerScreen.open(context);
+    await FeedMediaPickerScreen.openFromOrigin(context, _createPostOriginKey);
     if (mounted) _setFeedInteractionLocked(false);
     if (!mounted) return;
     await _loadInitial();
@@ -963,10 +964,14 @@ class _FeedScreenState extends State<FeedScreen> {
                     Positioned(
                       top: MediaQuery.paddingOf(context).top + 8,
                       left: 4,
-                      child: _FeedTopIconButton(
-                        iconChild: const _FeedPlusGlyph(),
-                        onTap: _onUpload,
-                        tooltip: 'Upload video',
+                      child: RepaintBoundary(
+                        key: _createPostOriginKey,
+                        child: _FeedTopIconButton(
+                          key: const ValueKey('feed-create-post'),
+                          iconChild: const _FeedPlusGlyph(),
+                          onTap: _onUpload,
+                          tooltip: 'Upload video',
+                        ),
                       ),
                     ),
                     Positioned(
@@ -1132,6 +1137,7 @@ class _FeedTopIconButton extends StatelessWidget {
   final int? badgeCount;
 
   const _FeedTopIconButton({
+    super.key,
     this.icon,
     this.iconChild,
     required this.onTap,

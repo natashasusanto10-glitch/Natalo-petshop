@@ -127,6 +127,7 @@ class _ProfilePageState extends State<_ProfilePage>
   String? _preparedPostId;
   PostVideoWarmHandoff? _preparedHandoff;
   final _tileKeys = <String, GlobalKey>{};
+  final GlobalKey _createPostOriginKey = GlobalKey();
 
   @override
   void initState() {
@@ -235,7 +236,10 @@ class _ProfilePageState extends State<_ProfilePage>
 
   Future<void> _openCreatePost() async {
     AppHaptics.tap();
-    final uploaded = await FeedMediaPickerScreen.open(context);
+    final uploaded = await FeedMediaPickerScreen.openFromOrigin(
+      context,
+      _createPostOriginKey,
+    );
     if (uploaded == true && mounted) {
       await _loadAll();
     }
@@ -378,7 +382,10 @@ class _ProfilePageState extends State<_ProfilePage>
                   // Ikon header (+ / notifikasi / pengaturan) — dulu di
                   // Scaffold.appBar, kini in-body supaya gradasi mengalir
                   // mulus status bar → ikon → blok profil (satu hero).
-                  _ProfileTopBar(onCreatePost: _openCreatePost),
+                  _ProfileTopBar(
+                    onCreatePost: _openCreatePost,
+                    createPostOriginKey: _createPostOriginKey,
+                  ),
                   Expanded(
                     child: NataloPawRefreshIndicator(
                       onRefresh: _refresh,
@@ -516,8 +523,12 @@ class _ProfilePageState extends State<_ProfilePage>
 /// putih di atas hero). Ikon putih di atas gradasi biru.
 class _ProfileTopBar extends StatelessWidget {
   final VoidCallback onCreatePost;
+  final GlobalKey createPostOriginKey;
 
-  const _ProfileTopBar({required this.onCreatePost});
+  const _ProfileTopBar({
+    required this.onCreatePost,
+    required this.createPostOriginKey,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -532,14 +543,18 @@ class _ProfileTopBar extends StatelessWidget {
         children: [
           const SizedBox(width: 4),
           // Plus icon kiri — buka create-post flow existing.
-          IconButton(
-            onPressed: onCreatePost,
-            tooltip: 'Buat postingan',
-            style: IconButton.styleFrom(
-              minimumSize: const Size(52, 52),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          RepaintBoundary(
+            key: createPostOriginKey,
+            child: IconButton(
+              key: const ValueKey('profile-create-post'),
+              onPressed: onCreatePost,
+              tooltip: 'Buat postingan',
+              style: IconButton.styleFrom(
+                minimumSize: const Size(52, 52),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              icon: const Icon(Icons.add_rounded, size: 36, color: ink),
             ),
-            icon: const Icon(Icons.add_rounded, size: 36, color: ink),
           ),
           const Spacer(),
           IconButton(
