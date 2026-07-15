@@ -15,6 +15,34 @@ void main() {
     expect(m.text, 'halo');
   });
 
+  test('parse role dua arah dan order otomatis tanpa tertukar', () {
+    final customerOrder = ChatMessage.fromJson({
+      'id': 'order-auto-1',
+      'senderRole': 'customer',
+      'type': 'order_context',
+      'auto': true,
+      'order': {
+        'orderNumber': 'ORD-PAID-1',
+        'status': 'PENDING',
+        'total': 932000,
+      },
+      'createdAt': 10,
+    });
+    final staffReply = ChatMessage.fromJson({
+      'id': 'staff-reply-1',
+      'senderRole': 'staff',
+      'type': 'text',
+      'text': 'Sedang kami cek',
+      'createdAt': 11,
+    });
+
+    expect(customerOrder.sender, ChatSender.customer);
+    expect(customerOrder.type, ChatMsgType.orderContext);
+    expect(customerOrder.auto, isTrue);
+    expect(customerOrder.order?.orderNumber, 'ORD-PAID-1');
+    expect(staffReply.sender, ChatSender.staff);
+  });
+
   // Provenance: pesan dari server (fromJson) TIDAK PERNAH optimistic —
   // `isOptimistic` selalu false, apapun `status` yang dibawa proxy. Ini
   // yang dipakai `_afterCursor` untuk memilih cursor polling (BUKAN

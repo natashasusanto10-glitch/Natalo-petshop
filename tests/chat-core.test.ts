@@ -33,6 +33,39 @@ test("projeksi membuang staffOnly & internal", () => {
   assert.equal((ok as Record<string, unknown>).internalFlag, undefined);
 });
 
+test("kontrak dua arah mempertahankan role dan order otomatis", () => {
+  const customerOrder = projectMessageForCustomer({
+    id: "order-1",
+    senderRole: "customer",
+    type: "order_context",
+    auto: true,
+    createdAt: 10,
+    order: {
+      orderNumber: "ORD-PAID-1",
+      status: "PENDING",
+      total: 932000,
+      internalPaymentToken: "rahasia",
+    },
+  });
+  const staffReply = projectMessageForCustomer({
+    id: "staff-1",
+    senderRole: "staff",
+    type: "text",
+    text: "Bukti pembayaran kami cek ya",
+    createdAt: 11,
+  });
+
+  assert.equal(customerOrder?.senderRole, "customer");
+  assert.equal(customerOrder?.type, "order_context");
+  assert.equal(customerOrder?.auto, true);
+  assert.equal(customerOrder?.order?.orderNumber, "ORD-PAID-1");
+  assert.equal(
+    (customerOrder?.order as Record<string, unknown>)?.internalPaymentToken,
+    undefined,
+  );
+  assert.equal(staffReply?.senderRole, "staff");
+});
+
 test("projeksi product: hanya field allowlist yang ikut, cost/margin/supplier dibuang", () => {
   const ok = projectMessageForCustomer({
     type: "product",
