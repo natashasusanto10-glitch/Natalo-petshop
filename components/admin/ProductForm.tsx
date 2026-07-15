@@ -31,6 +31,7 @@ export function ProductForm({ mode, categories, brands, initialProduct }: {
   const [name, setName] = useState(initialProduct?.name ?? "");
   const [description, setDescription] = useState(initialProduct?.description ?? "");
   const [images, setImages] = useState<string[]>([...(initialProduct?.imageUrl ? [initialProduct.imageUrl] : []), ...(initialProduct?.gallery ?? [])]);
+  const originalImages = [...images];
   const [categoryId, setCategoryId] = useState(initialProduct?.categoryId ?? "");
   const [brandId, setBrandId] = useState(initialProduct?.brandId ?? "");
   const [price, setPrice] = useState(String(initialProduct?.price ?? ""));
@@ -49,6 +50,7 @@ export function ProductForm({ mode, categories, brands, initialProduct }: {
     if (!hasVariants && (Number(price) <= 0 || Number(weightGram) <= 0 || Number(stock) < 0)) { setError("Harga, stok, dan berat produk harus valid."); return; }
     setSaving(true);
     let createdId: string | undefined;
+    const rollbackPayload = mode === "edit" ? { name: initialProduct?.name, description: initialProduct?.description, imageUrls: originalImages, categoryId: initialProduct?.categoryId, brandId: initialProduct?.brandId, price: initialProduct?.price, stock: initialProduct?.stock, weightGram: initialProduct?.weightGram, sku: initialProduct?.sku, hasVariants: initialProduct?.hasVariants, attributes: initialAttrs, variants: initialVariants } : null;
     if (hasVariants && (!variants.attributes.length || !variants.variants.length || !variants.variants.some(v => v.isActive))) { setError("Lengkapi atribut dan minimal satu varian aktif sebelum menyimpan."); setSaving(false); return; }
     const effective = hasVariants;
     const payload = {
@@ -69,7 +71,7 @@ export function ProductForm({ mode, categories, brands, initialProduct }: {
       if (video && data.id) { await videoRef.current?.commitAfterProductSave(data.id); if (mode === "create") { const finalized = await fetch(`/api/admin/products/${data.id}/finalize`, { method: "POST" }); if (!finalized.ok) throw new Error("Produk belum dapat difinalisasi."); } }
       if (mode === "edit" && videoState?.removeRequested && initialProduct?.id) { const removed = await fetch(`/api/admin/products/${initialProduct.id}/video`, { method: "DELETE" }); if (!removed.ok) throw new Error("Video lama gagal dihapus."); }
       router.push("/admin/products"); router.refresh();
-    } catch (e) { if (mode === "create" && createdId) await fetch(`/api/admin/products/${createdId}/compensate`, { method: "POST" }).catch(() => undefined); setError(e instanceof Error ? e.message : "Gagal menyimpan produk."); setSaving(false); }
+    } catch (e) { if (mode === "create" && createdId) await fetch(`/api/admin/products/${createdId}/compensate`, { method: "POST" }).catch(() => undefined); if (mode === "edit" && initialProduct?.id && rollbackPayload) await fetch(`/api/admin/products/${initialProduct.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rollbackPayload) }).catch(() => undefined); setError(e instanceof Error ? e.message : "Gagal menyimpan produk."); setSaving(false); }
   }
 
   const initialAttrs = initialProduct?.variantAttrs ?? [];
