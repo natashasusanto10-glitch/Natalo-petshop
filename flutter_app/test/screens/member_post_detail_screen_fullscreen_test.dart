@@ -332,9 +332,10 @@ void main() {
 
       // Back chevron closes the viewer.
       await tester.tap(find.byIcon(Icons.chevron_left_rounded));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 240));
-      await tester.pump();
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
+      }
       expect(find.byType(ScopedVideoFeedScreen), findsNothing,
           reason: 'back should close the scoped feed');
 
@@ -475,11 +476,13 @@ void main() {
           reason: 'pending route pop must stay silent in background');
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      // Frame pertama mengaktifkan kembali ticker route; frame berikutnya
-      // memajukan reverse transition sampai selesai.
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 240));
-      await tester.pump();
+      // Resume supplies the frame PopScope needs to publish canPop=true.
+      // Continue until the reverse transition has actually completed rather
+      // than coupling the assertion to one exact animation duration.
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
+      }
       expect(find.byType(ScopedVideoFeedScreen), findsNothing);
       await disposeTree(tester);
     },

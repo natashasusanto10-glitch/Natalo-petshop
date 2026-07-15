@@ -148,6 +148,8 @@ export type FeedCommentItem = {
   postId: string;
   parentCommentId: string | null;
   content: string;
+  /** Parent self-deleted but retained as an anchor for visible replies. */
+  isDeleted: boolean;
   isAdminOfficial: boolean;
   isHidden: boolean;
   likeCount: number;
@@ -168,4 +170,13 @@ export type FeedCommentItem = {
 export type FeedCommentsResponse = {
   items: FeedCommentItem[];
   nextCursor: string | null;
+};
+
+export type FeedCommentsSyncResponse = FeedCommentsResponse & {
+  commentCount: number;
+  syncCursor: string;
+  syncTime: string;
+  changedItems: FeedCommentItem[];
+  removedCommentIds: string[];
+  syncResetRequired: boolean;
 };

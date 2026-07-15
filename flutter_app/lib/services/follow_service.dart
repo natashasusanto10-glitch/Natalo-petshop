@@ -36,6 +36,18 @@ class FollowState {
   }
 }
 
+/// The viewer changed while a follow mutation was in flight.
+///
+/// Callers must ignore this completion: its response belongs to a previous
+/// authenticated session and must never reconcile UI or global overrides for
+/// the current viewer.
+class FollowSessionChangedException implements Exception {
+  const FollowSessionChangedException();
+
+  @override
+  String toString() => 'Follow session changed while request was in flight';
+}
+
 class FollowUserSummary {
   final String id;
   final String name;
@@ -159,32 +171,163 @@ class FollowListResult {
   }
 }
 
-class FollowService {
-  FollowService._();
+typedef FollowMutationRequest = Future<dynamic> Function(
+  String userId,
+  bool following,
+);
+typedef FollowStateRequest = Future<dynamic> Function(String userId);
 
-  Future<FollowState> follow(String userId) async {
-    final data = await apiClient.postJson(
-      '/social/users/${Uri.encodeComponent(userId)}/follow',
+class FollowService {
+  FollowService._({
+    FollowMutationRequest? mutationRequest,
+    FollowStateRequest? stateRequest,
+  })  : _mutationRequest = mutationRequest,
+        _stateRequest = stateRequest;
+
+  FollowService.forTesting({
+    required FollowMutationRequest mutationRequest,
+    FollowStateRequest? stateRequest,
+  }) : this._(
+          mutationRequest: mutationRequest,
+          stateRequest: stateRequest,
+        );
+
+  final FollowMutationRequest? _mutationRequest;
+  final FollowStateRequest? _stateRequest;
+  final Map<String, bool> _desiredFollowing = <String, bool>{};
+  final Map<String, FollowState> _confirmedStates = <String, FollowState>{};
+  final Map<String, Future<FollowState>> _inFlight =
+      <String, Future<FollowState>>{};
+  int _sessionEpoch = 0;
+
+  Future<FollowState> follow(String userId) =>
+      _setFollowing(userId, following: true);
+
+  Future<FollowState> unfollow(String userId) =>
+      _setFollowing(userId, following: false);
+
+  Future<FollowState> _setFollowing(
+    String userId, {
+    required bool following,
+  }) {
+    _desiredFollowing[userId] = following;
+    beginFollowMutation(userId, following);
+    final active = _inFlight[userId];
+    if (active != null) return active;
+    final future = _drainFollowIntent(
+      userId,
+      firstTarget: following,
+      sessionEpoch: _sessionEpoch,
     );
-    final state = FollowState.fromJson(_asMap(data));
-    setFollowOverride(userId, state.isFollowing);
-    return state;
+    _inFlight[userId] = future;
+    return future;
   }
 
-  Future<FollowState> unfollow(String userId) async {
-    final data = await apiClient.deleteJson(
-      '/social/users/${Uri.encodeComponent(userId)}/follow',
-    );
-    final state = FollowState.fromJson(_asMap(data));
-    setFollowOverride(userId, state.isFollowing);
-    return state;
+  Future<FollowState> _drainFollowIntent(
+    String userId, {
+    required bool firstTarget,
+    required int sessionEpoch,
+  }) async {
+    // Yield once so _setFollowing can publish this Future in _inFlight before
+    // a no-op desired state reaches the synchronous return path.
+    await Future<void>.value();
+    if (sessionEpoch != _sessionEpoch) {
+      throw const FollowSessionChangedException();
+    }
+    var confirmed = _confirmedStates[userId] ??
+        FollowState(
+          isFollowing: !firstTarget,
+          followersCount: 0,
+          followingCount: 0,
+        );
+    try {
+      while (true) {
+        if (sessionEpoch != _sessionEpoch) {
+          throw const FollowSessionChangedException();
+        }
+        final target = _desiredFollowing[userId] ?? confirmed.isFollowing;
+        if (target != confirmed.isFollowing ||
+            !_confirmedStates.containsKey(userId)) {
+          final requestedTarget = target;
+          final request = _mutationRequest;
+          final data = request != null
+              ? await request(userId, target)
+              : target
+                  ? await apiClient.postJson(
+                      '/social/users/${Uri.encodeComponent(userId)}/follow',
+                    )
+                  : await apiClient.deleteJson(
+                      '/social/users/${Uri.encodeComponent(userId)}/follow',
+                    );
+          confirmed = FollowState.fromJson(_asMap(data));
+          if (sessionEpoch != _sessionEpoch) {
+            throw const FollowSessionChangedException();
+          }
+          _confirmedStates[userId] = confirmed;
+
+          // No newer tap arrived while this request was in flight. The
+          // server response is canonical even when it rejects the requested
+          // state (for example a policy or self-follow guard), so stop here
+          // instead of retrying the same request forever.
+          if ((_desiredFollowing[userId] ?? requestedTarget) ==
+              requestedTarget) {
+            confirmFollowMutation(userId, confirmed.isFollowing);
+            return confirmed;
+          }
+        }
+        if ((_desiredFollowing[userId] ?? confirmed.isFollowing) ==
+            confirmed.isFollowing) {
+          confirmFollowMutation(userId, confirmed.isFollowing);
+          return confirmed;
+        }
+      }
+    } catch (_) {
+      if (sessionEpoch != _sessionEpoch) rethrow;
+      abandonFollowMutation(userId);
+      // Every caller observes one shared rollback target. A later explicit
+      // revalidation can still correct an uncertain timeout across devices.
+      setFollowOverride(userId, confirmed.isFollowing);
+      rethrow;
+    } finally {
+      if (sessionEpoch == _sessionEpoch) {
+        _desiredFollowing.remove(userId);
+        _inFlight.remove(userId);
+      }
+    }
+  }
+
+  void clearSessionState() {
+    _sessionEpoch++;
+    _desiredFollowing.clear();
+    _confirmedStates.clear();
+    _inFlight.clear();
   }
 
   Future<FollowState> fetchState(String userId) async {
-    final data = await apiClient.getJson(
-      '/social/users/${Uri.encodeComponent(userId)}/follow-state',
+    final sessionEpoch = _sessionEpoch;
+    final observedRevision = followStateRevision(userId);
+    final request = _stateRequest;
+    final data = request != null
+        ? await request(userId)
+        : await apiClient.getJson(
+            '/social/users/${Uri.encodeComponent(userId)}/follow-state',
+          );
+    final state = FollowState.fromJson(_asMap(data));
+    if (sessionEpoch != _sessionEpoch) {
+      throw const FollowSessionChangedException();
+    }
+    final applied = reconcileFollowStateFromServer(
+      userId,
+      state.isFollowing,
+      observedRevision: observedRevision,
     );
-    return FollowState.fromJson(_asMap(data));
+    if (applied) {
+      // Keep the request queue's baseline aligned with a fresh cross-device
+      // snapshot. Otherwise the next tap can be mistaken for a no-op and the
+      // desired mutation never reaches the server.
+      _confirmedStates[userId] = state;
+    }
+    return state;
   }
 
   Future<List<FollowUserSummary>> searchUsers(

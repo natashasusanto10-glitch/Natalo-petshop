@@ -8,7 +8,11 @@ import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_post_vie
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/scoped_video_feed_screen.dart';
 import 'package:natalo_petshop_flutter/services/video_quality_service.dart';
+import 'package:natalo_petshop_flutter/state/feed_store.dart';
+import 'package:natalo_petshop_flutter/state/member_store.dart';
 import 'package:natalo_petshop_flutter/state/settings_store.dart';
+import 'package:natalo_petshop_flutter/utils/android_back_overlays.dart';
+import 'package:natalo_petshop_flutter/widgets/feed_comment_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
@@ -50,7 +54,11 @@ class _FakeSession implements PlaybackSession {
   Duration get position => _pos;
 }
 
-FeedPost _fakeVideoPost(String id, {String? videoDataSaverUrl}) {
+FeedPost _fakeVideoPost(
+  String id, {
+  String? videoDataSaverUrl,
+  int commentCount = 0,
+}) {
   return FeedPost.fromJson({
     'id': id,
     'slug': id,
@@ -62,7 +70,7 @@ FeedPost _fakeVideoPost(String id, {String? videoDataSaverUrl}) {
     'aspectRatio': 0.5625,
     'author': {'id': 'author-1', 'name': 'Tester'},
     'likeCount': 0,
-    'commentCount': 0,
+    'commentCount': commentCount,
     'shareCount': 0,
     'createdAt': DateTime.now().toIso8601String(),
   });
@@ -85,6 +93,63 @@ void main() {
     // leave a pending Timer past test teardown (it fires synchronously
     // instead when updateInterval is zero).
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    feedStore.clear();
+  });
+
+  testWidgets('background hydration preserves newer canonical comment state',
+      (tester) async {
+    final hydration = Completer<List<FeedPost>>();
+    const postId = 'hydration-race';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(
+          posts: [_fakeVideoPost(postId)],
+          initialIndex: 0,
+          hydration: ScopedVideoFeedHydration(
+            posts: hydration.future,
+            requestedAt: DateTime.now(),
+            viewerGeneration: memberStore.viewerGeneration,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    feedStore.setCommentCount(postId, 9);
+    hydration.complete([_fakeVideoPost(postId, commentCount: 1)]);
+    await tester.pump();
+
+    expect(feedStore.get(postId)?.commentCount, 9,
+        reason: 'an older hydration response must not undo a newer mutation');
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('hydration requested by another viewer is ignored',
+      (tester) async {
+    final hydration = Completer<List<FeedPost>>();
+    const postId = 'hydration-viewer-race';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(
+          posts: [_fakeVideoPost(postId)],
+          initialIndex: 0,
+          hydration: ScopedVideoFeedHydration(
+            posts: hydration.future,
+            requestedAt: DateTime.now(),
+            viewerGeneration: memberStore.viewerGeneration + 1,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    hydration.complete([_fakeVideoPost(postId, commentCount: 7)]);
+    await tester.pump();
+
+    expect(feedStore.get(postId)?.commentCount, 0);
+    await tester.pump(const Duration(milliseconds: 600));
   });
 
   testWidgets('ScopedVideoFeedScreen opens at initialIndex', (tester) async {
@@ -640,6 +705,96 @@ void main() {
     expect(result!.postId, 'a');
     expect(result!.index, 0);
     expect(result!.timestamp, Duration.zero);
+  });
+
+  testWidgets(
+      'comments lock scoped navigation and consume repeated back before route',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    resetAndroidBackOverlays();
+    addTearDown(resetAndroidBackOverlays);
+    final posts = [_fakeVideoPost('a'), _fakeVideoPost('b')];
+    final activePosts = <String>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => ScopedVideoFeedScreen(
+                  posts: posts,
+                  initialIndex: 0,
+                  onActivePostChanged: activePosts.add,
+                ),
+              ),
+            ),
+            child: const Text('open comments'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open comments'));
+    final commentAction = find.byKey(
+      const ValueKey('feed-comment-action'),
+    );
+    for (var i = 0; i < 10 && commentAction.evaluate().isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(commentAction, findsWidgets);
+    await tester.tap(
+      commentAction.hitTestable().first,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 320));
+
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+    expect(
+      tester.widget<PageView>(find.byType(PageView)).physics,
+      isA<NeverScrollableScrollPhysics>(),
+    );
+
+    await tester.dragFrom(
+      const Offset(200, 120),
+      const Offset(0, -650),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(activePosts, isEmpty,
+        reason: 'vertical paging stays locked while comments are active');
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+
+    await tester.dragFrom(
+      const Offset(5, 120),
+      const Offset(300, 0),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.binding.handlePopRoute();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(find.byType(FeedCommentSheet), findsNothing);
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget,
+        reason: 'both back presses are owned by the closing comments');
+    expect(
+      tester.widget<PageView>(find.byType(PageView)).physics,
+      isNot(isA<NeverScrollableScrollPhysics>()),
+    );
+
+    await tester.binding.handlePopRoute();
+    for (var i = 0;
+        i < 10 && find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty;
+        i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byType(ScopedVideoFeedScreen), findsNothing);
   });
 
   // ── T7 — full-managed: adaptive preload, max 5 live sessions

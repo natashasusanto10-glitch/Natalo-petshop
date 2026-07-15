@@ -261,10 +261,16 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
       if (_recentUsers.any((item) => item.id == user.id)) {
         unawaited(_persistRecentUsers());
       }
+    } on FollowSessionChangedException {
+      // The authenticated viewer changed. The new session owns all follow
+      // state; do not roll back or publish the previous viewer's response.
     } catch (_) {
       if (!mounted) return;
-      setState(() => _replaceUserEverywhere(user));
-      setFollowOverride(user.id, wasFollowing);
+      final stableFollowing = resolveFollowState(user.id, wasFollowing);
+      final rollback = stableFollowing == optimistic.isFollowing
+          ? optimistic
+          : user.copyWith(isFollowing: stableFollowing);
+      setState(() => _replaceUserEverywhere(rollback));
       if (_recentUsers.any((item) => item.id == user.id)) {
         unawaited(_persistRecentUsers());
       }

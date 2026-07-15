@@ -8,8 +8,10 @@ import '../features/feed/video/post_video_coordinator.dart';
 import '../features/feed/widgets/feed_video_post_view.dart';
 import '../models/feed_post.dart';
 import '../state/feed_store.dart';
+import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../services/video_quality_service.dart';
+import '../utils/android_back_overlays.dart';
 
 typedef ScopedPostPageLoader = Future<FeedPage> Function(String? cursor);
 
@@ -34,13 +36,26 @@ class ScopedVideoFeedCloseSignal {
   void cancel() => _cancelled = true;
 }
 
+@immutable
+class ScopedVideoFeedHydration {
+  const ScopedVideoFeedHydration({
+    required this.posts,
+    required this.requestedAt,
+    required this.viewerGeneration,
+  });
+
+  final Future<List<FeedPost>> posts;
+  final DateTime requestedAt;
+  final int viewerGeneration;
+}
+
 /// Immersive, vertically swipeable video viewer scoped to a caller-
 /// supplied list of videos (e.g. "videos tagged to this product", or
 /// "videos posted by this user"). Reuses [FeedVideoPostView] so visuals
 /// are identical to the main Feed tab. Swiping never leaves [posts].
 class ScopedVideoFeedScreen extends StatefulWidget {
   final List<FeedPost> posts;
-  final Future<List<FeedPost>>? hydratedPosts;
+  final ScopedVideoFeedHydration? hydration;
   final String? initialNextCursor;
   final ScopedPostPageLoader? loadMorePosts;
   final int initialIndex;
@@ -87,7 +102,7 @@ class ScopedVideoFeedScreen extends StatefulWidget {
     super.key,
     required this.posts,
     required this.initialIndex,
-    this.hydratedPosts,
+    this.hydration,
     this.initialNextCursor,
     this.loadMorePosts,
     this.coordinator,
@@ -115,7 +130,10 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
   late int _activeIndex;
   // Guard supaya overscroll-dismiss cuma pop SEKALI per gesture.
   bool _dismissing = false;
+  bool _routePopAuthorized = false;
   bool _interactionLocked = false;
+  bool _overlayActive = false;
+  bool _mediaZoomActive = false;
   double _horizontalDragOffset = 0;
   double _horizontalAnimationStartOffset = 0;
   double _horizontalAnimationEndOffset = 0;
@@ -169,8 +187,8 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
         });
       });
     feedStore.seed(_posts);
-    final hydratedPosts = widget.hydratedPosts;
-    if (hydratedPosts != null) unawaited(_applyHydratedPosts(hydratedPosts));
+    final hydration = widget.hydration;
+    if (hydration != null) unawaited(_applyHydratedPosts(hydration));
     // Full-managed: aktifkan halaman awal setelah frame pertama supaya view
     // managed sudah mounted (adopt sesi via notifier). Item ASAL biasanya sudah
     // punya sesi dari handoff → adopt instan; setActive mem-play + set volume.
@@ -190,14 +208,27 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
   /// eviction sesi (KUNCI 2 — attachment harus jujur).
   String? _attachedPostId;
 
-  Future<void> _applyHydratedPosts(Future<List<FeedPost>> future) async {
+  Future<void> _applyHydratedPosts(ScopedVideoFeedHydration hydration) async {
     try {
-      final fresh = await future;
-      if (!mounted || fresh.isEmpty) return;
-      final byId = {for (final post in fresh) post.id: post};
-      final merged = [for (final post in _posts) byId[post.id] ?? post];
-      feedStore.mergeFromServer(fresh, fetchedAt: DateTime.now());
-      if (!mounted) return;
+      final fresh = await hydration.posts;
+      if (!mounted ||
+          fresh.isEmpty ||
+          memberStore.viewerGeneration != hydration.viewerGeneration) {
+        return;
+      }
+      final hydratedIds = fresh.map((post) => post.id).toSet();
+      feedStore.mergeFromServer(fresh, fetchedAt: hydration.requestedAt);
+      final merged = [
+        for (final post in _posts)
+          if (hydratedIds.contains(post.id))
+            feedStore.get(post.id) ?? post
+          else
+            post,
+      ];
+      if (!mounted ||
+          memberStore.viewerGeneration != hydration.viewerGeneration) {
+        return;
+      }
       setState(() => _posts = merged);
     } catch (_) {
       // Data lokal sudah cukup untuk playback; refresh background best-effort.
@@ -320,7 +351,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
       unawaited(() async {
         await _prepareCloseSafely(result);
         await _animateHorizontalOffsetTo(width).orCancel.catchError((_) {});
-        if (mounted) Navigator.of(context).pop(result);
+        await _popAuthorized(result);
       }());
       return;
     }
@@ -441,9 +472,22 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
     _updatePreloadWindow(_activeIndex);
   }
 
-  void _setInteractionLocked(bool locked) {
+  void _setOverlayActive(bool active) {
+    if (!mounted || _overlayActive == active) return;
+    _overlayActive = active;
+    _syncInteractionLock();
+  }
+
+  void _setMediaZoomActive(bool active) {
+    if (!mounted || _mediaZoomActive == active) return;
+    _mediaZoomActive = active;
+    _syncInteractionLock();
+  }
+
+  void _syncInteractionLock() {
+    final locked = _overlayActive || _mediaZoomActive;
     if (_interactionLocked == locked) return;
-    _interactionLocked = locked;
+    setState(() => _interactionLocked = locked);
     if (locked) {
       if (_horizontalPointer != null && !_dismissing) {
         _springHorizontalDragBack(MediaQuery.sizeOf(context).width);
@@ -489,6 +533,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
           break;
         }
         inFlightCursor = requestedCursor;
+        final fetchedAt = DateTime.now();
         final page = await loader(requestedCursor);
         inFlightCursor = null;
         requestedPages++;
@@ -506,7 +551,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
             .where((post) => post.isVideo && existingIds.add(post.id))
             .toList(growable: false);
         if (page.items.isNotEmpty) {
-          feedStore.mergeFromServer(page.items, fetchedAt: DateTime.now());
+          feedStore.mergeFromServer(page.items, fetchedAt: fetchedAt);
         }
         if (videos.isNotEmpty) {
           setState(() => _posts = [..._posts, ...videos]);
@@ -570,8 +615,25 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
     }
   }
 
+  Future<void> _popAuthorized(ScopedVideoFeedResult result) async {
+    if (!mounted) return;
+    setState(() => _routePopAuthorized = true);
+    // PopScope updates its route registration during build. Wait for that
+    // frame before asking Navigator to pop, otherwise canPop:false also
+    // rejects this programmatic close and leaves fullscreen stuck.
+    await WidgetsBinding.instance.endOfFrame;
+    if (mounted) Navigator.of(context).pop(result);
+  }
+
   void _close() {
     if (_dismissing || !mounted) return;
+    if (_overlayActive) {
+      // Embedded comments live on this route, so PopScope cannot delegate to
+      // Navigator. Consume their registered closer before considering the
+      // fullscreen route itself closable.
+      consumeAndroidBackOverlay();
+      return;
+    }
     _dismissing = true;
     final result = _result;
     unawaited(() async {
@@ -582,7 +644,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
       if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
         await _prepareCloseSafely(result);
       }
-      if (mounted) Navigator.of(context).pop(result);
+      await _popAuthorized(result);
     }());
   }
 
@@ -591,7 +653,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
   /// supaya animasi bounce-back setelah lepas tidak ikut memicu) →
   /// tutup viewer. Mentok bawah dibiarkan stuck (sesuai spec).
   bool _onScrollNotification(ScrollNotification notification) {
-    if (_dismissing) return false;
+    if (_dismissing || _interactionLocked) return false;
     if (notification is ScrollUpdateNotification &&
         notification.dragDetails != null) {
       final metrics = notification.metrics;
@@ -615,8 +677,8 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
         isActive: index == _activeIndex,
         preloadedController: null,
         preloadedCachedPlayer: null,
-        onOverlayStateChanged: (_) {},
-        onMediaZoomChanged: _setInteractionLocked,
+        onOverlayStateChanged: _setOverlayActive,
+        onMediaZoomChanged: _setMediaZoomActive,
         onBufferAheadChanged: (ahead) =>
             _onActiveBufferAheadChanged(post.id, ahead),
       );
@@ -636,8 +698,8 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
       coordinator: coordinator,
       preloadedController: null,
       preloadedCachedPlayer: null,
-      onOverlayStateChanged: (_) {},
-      onMediaZoomChanged: _setInteractionLocked,
+      onOverlayStateChanged: _setOverlayActive,
+      onMediaZoomChanged: _setMediaZoomActive,
       onBufferAheadChanged: (ahead) =>
           _onActiveBufferAheadChanged(post.id, ahead),
       // Visibilitas → resume/pause sesi yang MEMANG aktif (mis. kembali dari
@@ -670,9 +732,9 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
     final horizontalProgress =
         width == 0 ? 0.0 : (_horizontalDragOffset / width).clamp(0.0, 1.0);
     return PopScope<ScopedVideoFeedResult>(
-      canPop: false,
+      canPop: _routePopAuthorized,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _close();
+        if (!didPop && !_routePopAuthorized) _close();
       },
       child: Scaffold(
         backgroundColor: Colors.black,
@@ -695,8 +757,11 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
                       key: const ValueKey('scoped-video-page-view'),
                       controller: _pageController,
                       scrollDirection: Axis.vertical,
-                      physics: const PageScrollPhysics(
-                          parent: BouncingScrollPhysics()),
+                      physics: _interactionLocked
+                          ? const NeverScrollableScrollPhysics()
+                          : const PageScrollPhysics(
+                              parent: BouncingScrollPhysics(),
+                            ),
                       itemCount: _posts.length,
                       onPageChanged: _onPageChanged,
                       itemBuilder: (context, index) => _buildItem(index),

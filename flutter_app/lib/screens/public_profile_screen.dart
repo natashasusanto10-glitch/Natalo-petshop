@@ -19,6 +19,7 @@ import '../services/report_service.dart';
 import '../services/video_quality_service.dart';
 import '../state/feed_store.dart';
 import '../state/follow_override_store.dart';
+import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -36,6 +37,28 @@ const _profileContentTabs = <PublicProfileContentFilter>[
   PublicProfileContentFilter.video,
   PublicProfileContentFilter.shoppable,
 ];
+
+@visibleForTesting
+PublicProfile rebasePublicProfileForViewer(
+  PublicProfile profile, {
+  required String? viewerId,
+}) {
+  return profile.copyWith(
+    isFollowing: false,
+    isOwner: viewerId != null && viewerId == profile.id,
+  );
+}
+
+@visibleForTesting
+List<FeedPost> canonicalizePublicProfilePosts(
+  Iterable<FeedPost> posts, {
+  required FeedStore store,
+}) {
+  return posts
+      .where((post) => !store.wasRemoved(post.id))
+      .map((post) => store.get(post.id) ?? post)
+      .toList(growable: false);
+}
 
 class _ProfileContentState {
   List<FeedPost> posts = const [];
@@ -121,7 +144,7 @@ class PublicProfileScreen extends StatefulWidget {
 }
 
 class _PublicProfileScreenState extends State<PublicProfileScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   PublicProfile? _profile;
   final Map<PublicProfileContentFilter, _ProfileContentState> _contentStates = {
     PublicProfileContentFilter.all: _ProfileContentState(),
@@ -134,6 +157,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   bool _followBusy = false;
   String? _errorText;
   bool _notFound = false;
+  late int _viewerGeneration;
 
   late final ScrollController _scrollController;
   late final TabController _tabController;
@@ -142,24 +166,40 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollController = ScrollController();
     _videoPrewarmer = ProfileVideoPrewarmer(factory: _createWarmHandoff);
     _tabController =
         TabController(length: _profileContentTabs.length, vsync: this)
           ..addListener(_onTabControllerChanged);
+    _viewerGeneration = memberStore.viewerGeneration;
+    memberStore.addListener(_onViewerChanged);
     followOverrides.addListener(_onFollowOverridesChanged);
+    feedStore.addListener(_onFeedStoreChanged);
     _load();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     unawaited(_videoPrewarmer.dispose());
+    memberStore.removeListener(_onViewerChanged);
     followOverrides.removeListener(_onFollowOverridesChanged);
+    feedStore.removeListener(_onFeedStoreChanged);
     _tabController
       ..removeListener(_onTabControllerChanged)
       ..dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    final profile = _profile;
+    if (profile != null && !profile.isOwner) {
+      unawaited(_refreshFollowState(profile.id));
+    }
   }
 
   void _onFollowOverridesChanged() {
@@ -175,7 +215,56 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
         ));
   }
 
+  void _onViewerChanged() {
+    final generation = memberStore.viewerGeneration;
+    if (generation == _viewerGeneration) return;
+    _viewerGeneration = generation;
+    _followBusy = false;
+    final profile = _profile;
+    if (profile != null && mounted) {
+      setState(() {
+        for (final contentState in _contentStates.values) {
+          contentState
+            ..loaded = false
+            ..loading = false
+            ..loadingMore = false;
+        }
+        _profile = rebasePublicProfileForViewer(
+          profile,
+          viewerId: memberStore.profile?.id,
+        );
+      });
+    }
+    unawaited(_load(showInitialLoading: false));
+  }
+
+  List<FeedPost> _canonicalPosts(Iterable<FeedPost> posts) =>
+      canonicalizePublicProfilePosts(posts, store: feedStore);
+
+  void _onFeedStoreChanged() {
+    if (!mounted) return;
+    var changed = false;
+    for (final contentState in _contentStates.values) {
+      if (contentState.posts.isEmpty) continue;
+      final canonical = _canonicalPosts(contentState.posts);
+      if (canonical.length != contentState.posts.length) {
+        contentState.posts = canonical;
+        changed = true;
+        continue;
+      }
+      for (var index = 0; index < canonical.length; index++) {
+        if (!identical(canonical[index], contentState.posts[index])) {
+          contentState.posts = canonical;
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (changed) setState(() {});
+  }
+
   Future<void> _load({bool showInitialLoading = true}) async {
+    final requestViewerGeneration = memberStore.viewerGeneration;
     final content = _selectedContent;
     final contentState = _contentStates[content]!;
     setState(() {
@@ -196,7 +285,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
         username: widget.username,
         content: content,
       );
-      if (!mounted) return;
+      if (!mounted || memberStore.viewerGeneration != requestViewerGeneration) {
+        return;
+      }
       // Seed FeedStore — supaya kalau user tap tile masuk Detail dan like
       // dari sana, post di store ke-update + grid bisa observe (kalau
       // suatu saat grid tile tampilkan likeCount visible).
@@ -204,6 +295,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
         result.posts,
         fetchedAt: fetchedAt,
       );
+      final canonicalPosts = _canonicalPosts(result.posts);
       setState(() {
         _profile = result.profile.copyWith(
           isFollowing: resolveFollowState(
@@ -212,14 +304,20 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
           ),
         );
         contentState
-          ..posts = result.posts
+          ..posts = canonicalPosts
           ..nextCursor = result.nextCursor
           ..loaded = true
           ..loading = false;
         _loading = false;
       });
+      final profile = _profile;
+      if (profile != null && !profile.isOwner) {
+        unawaited(_refreshFollowState(profile.id));
+      }
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || memberStore.viewerGeneration != requestViewerGeneration) {
+        return;
+      }
       setState(() {
         _loading = false;
         contentState
@@ -233,7 +331,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
             : 'Gagal memuat profil. Tarik untuk coba lagi.';
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || memberStore.viewerGeneration != requestViewerGeneration) {
+        return;
+      }
       setState(() {
         _loading = false;
         contentState
@@ -244,7 +344,41 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     }
   }
 
+  Future<void> _refreshFollowState(String userId) async {
+    final requestViewerGeneration = memberStore.viewerGeneration;
+    final observedRevision = followStateRevision(userId);
+    try {
+      final state = await followService.fetchState(userId);
+      if (!mounted ||
+          _profile?.id != userId ||
+          memberStore.viewerGeneration != requestViewerGeneration) {
+        return;
+      }
+      // fetchState already reconciles the global override with the revision it
+      // captured. A newer local mutation always wins through resolve().
+      final following = resolveFollowState(userId, state.isFollowing);
+      if (isFollowMutationPending(userId) ||
+          followStateRevision(userId) != observedRevision &&
+              following != state.isFollowing) {
+        return;
+      }
+      final profile = _profile!;
+      if (profile.isFollowing == following &&
+          profile.followersCount == state.followersCount) {
+        return;
+      }
+      setState(() => _profile = profile.copyWith(
+            isFollowing: following,
+            followersCount: state.followersCount,
+          ));
+    } catch (_) {
+      // Visibility-scoped revalidation is best-effort. Existing profile and
+      // optimistic follow state remain usable offline.
+    }
+  }
+
   Future<void> _loadMore(PublicProfileContentFilter content) async {
+    final requestViewerGeneration = memberStore.viewerGeneration;
     final contentState = _contentStates[content]!;
     final cursor = contentState.nextCursor;
     if (cursor == null || contentState.loadingMore) return;
@@ -256,23 +390,29 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
         cursor: cursor,
         content: content,
       );
-      if (!mounted) return;
+      if (!mounted || memberStore.viewerGeneration != requestViewerGeneration) {
+        return;
+      }
       feedStore.mergeFromServer(
         result.posts,
         fetchedAt: fetchedAt,
       );
+      final existingPosts = _canonicalPosts(contentState.posts);
+      final incomingPosts = _canonicalPosts(result.posts);
       setState(() {
-        final existingIds = contentState.posts.map((post) => post.id).toSet();
+        final existingIds = existingPosts.map((post) => post.id).toSet();
         contentState
           ..posts = [
-            ...contentState.posts,
-            ...result.posts.where((post) => existingIds.add(post.id)),
+            ...existingPosts,
+            ...incomingPosts.where((post) => existingIds.add(post.id)),
           ]
           ..nextCursor = result.nextCursor
           ..loadingMore = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || memberStore.viewerGeneration != requestViewerGeneration) {
+        return;
+      }
       setState(() => contentState.loadingMore = false);
     }
   }
@@ -321,6 +461,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   Future<void> _loadSelectedContent(
     PublicProfileContentFilter content,
   ) async {
+    final requestViewerGeneration = memberStore.viewerGeneration;
     final contentState = _contentStates[content]!;
     setState(() {
       contentState
@@ -333,17 +474,22 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
         username: widget.username,
         content: content,
       );
-      if (!mounted) return;
+      if (!mounted || memberStore.viewerGeneration != requestViewerGeneration) {
+        return;
+      }
       feedStore.mergeFromServer(result.posts, fetchedAt: fetchedAt);
+      final canonicalPosts = _canonicalPosts(result.posts);
       setState(() {
         contentState
-          ..posts = result.posts
+          ..posts = canonicalPosts
           ..nextCursor = result.nextCursor
           ..loaded = true
           ..loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || memberStore.viewerGeneration != requestViewerGeneration) {
+        return;
+      }
       setState(() {
         contentState
           ..loading = false
@@ -452,6 +598,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   }
 
   Future<void> _toggleFollow() async {
+    final requestViewerGeneration = memberStore.viewerGeneration;
     final current = _profile;
     if (current == null || current.isOwner || _followBusy) return;
     AppHaptics.tap();
@@ -472,7 +619,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
       final state = wasFollowing
           ? await followService.unfollow(current.id)
           : await followService.follow(current.id);
-      if (!mounted) return;
+      if (!mounted || memberStore.viewerGeneration != requestViewerGeneration) {
+        return;
+      }
       setState(() {
         _followBusy = false;
         _profile = (_profile ?? current).copyWith(
@@ -482,25 +631,49 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
         );
       });
       setFollowOverride(current.id, state.isFollowing);
+    } on FollowSessionChangedException {
+      if (mounted) setState(() => _followBusy = false);
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || memberStore.viewerGeneration != requestViewerGeneration) {
+        return;
+      }
+      final stableFollowing = resolveFollowState(current.id, wasFollowing);
+      final stableFollowers = current.followersCount +
+          (stableFollowing == wasFollowing
+              ? 0
+              : stableFollowing
+                  ? 1
+                  : -1);
       setState(() {
         _followBusy = false;
-        _profile = current;
+        _profile = current.copyWith(
+          isFollowing: stableFollowing,
+          followersCount: stableFollowers < 0 ? 0 : stableFollowers,
+        );
       });
-      setFollowOverride(current.id, wasFollowing);
       if (e.isUnauthorized) {
         Navigator.pushNamed(context, '/member/login');
       } else {
         _showSnack(e.message);
       }
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || memberStore.viewerGeneration != requestViewerGeneration) {
+        return;
+      }
+      final stableFollowing = resolveFollowState(current.id, wasFollowing);
+      final stableFollowers = current.followersCount +
+          (stableFollowing == wasFollowing
+              ? 0
+              : stableFollowing
+                  ? 1
+                  : -1);
       setState(() {
         _followBusy = false;
-        _profile = current;
+        _profile = current.copyWith(
+          isFollowing: stableFollowing,
+          followersCount: stableFollowers < 0 ? 0 : stableFollowers,
+        );
       });
-      setFollowOverride(current.id, wasFollowing);
       _showSnack('Gagal memproses follow. Coba lagi.');
     }
   }

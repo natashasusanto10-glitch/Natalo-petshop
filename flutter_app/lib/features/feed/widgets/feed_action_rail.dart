@@ -67,6 +67,7 @@ class FeedActionRail extends StatelessWidget {
         ),
         const SizedBox(height: _feedActionItemSpacing),
         _ReelsAction(
+          key: const ValueKey('feed-comment-action'),
           iconChild: const _ReelsCommentGlyph(),
           count: commentCount,
           onTap: onComment ?? () {},

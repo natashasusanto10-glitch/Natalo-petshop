@@ -534,6 +534,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     try {
       final result = await feedStore.toggleLike(post.id);
       await feedLocalStore.setLiked(post.id, result.liked);
+    } on FeedViewerChangedException {
+      // Ignore stale completion from the previous authenticated viewer.
     } catch (_) {
       if (!mounted) return;
       AppToast.show(context, 'Gagal update suka, coba lagi');
@@ -683,6 +685,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   /// status review, dan caption fresh dari server. Post yang gagal fetch
   /// (network / sudah dihapus) tetap pakai data lama.
   Future<void> _refreshPosts() async {
+    // Capture before starting HTTP. A like/comment completed while these
+    // requests are in flight must remain newer than the returned snapshots.
+    final fetchedAt = DateTime.now();
     final results = await Future.wait(
       _posts.map(
         (p) => feedService.fetchPostById(p.id).catchError((_) {
@@ -691,16 +696,20 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       ),
     );
     if (!mounted) return;
+    final freshPosts = results.whereType<FeedPost>().toList(growable: false);
+    if (freshPosts.isEmpty) return;
+    feedStore.mergeFromServer(freshPosts, fetchedAt: fetchedAt);
+
     var anyChanged = false;
     for (var i = 0; i < _posts.length; i++) {
       final fresh = results[i];
       if (fresh == null) continue;
-      _posts[i] = fresh;
-      _likedCache[fresh.id] = fresh.viewerLiked || fresh.isLiked;
+      final canonical = feedStore.get(fresh.id) ?? fresh;
+      _posts[i] = canonical;
+      _likedCache[canonical.id] = canonical.viewerLiked || canonical.isLiked;
       anyChanged = true;
     }
     if (anyChanged) {
-      feedStore.seed(_posts);
       setState(() {});
     }
   }
@@ -860,7 +869,14 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     final videoPosts = _posts.where((p) => p.isVideo).toList();
     if (videoPosts.isEmpty) return;
     final tapped = _posts[index];
+    final hydrationRequestedAt = DateTime.now();
+    final hydrationViewerGeneration = memberStore.viewerGeneration;
     final hydratedPosts = _hydrateScopedVideoPosts(videoPosts);
+    final hydration = ScopedVideoFeedHydration(
+      posts: hydratedPosts,
+      requestedAt: hydrationRequestedAt,
+      viewerGeneration: hydrationViewerGeneration,
+    );
 
     // ── Handoff mulai (§2.6 + D5) ──
     // 1. Pin video asal di coordinator (origin) — tak akan dieviction selama
@@ -897,7 +913,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
         reverseTarget: reverseTarget,
         destinationBuilder: (_) => ScopedVideoFeedScreen(
           posts: videoPosts,
-          hydratedPosts: hydratedPosts,
+          hydration: hydration,
           initialNextCursor: widget.initialNextCursor,
           loadMorePosts:
               widget.loadMoreScopedPosts == null ? null : _loadMoreScopedPosts,

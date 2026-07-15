@@ -16,6 +16,7 @@ import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_post_vie
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_scrubber.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/state/settings_store.dart';
+import 'package:natalo_petshop_flutter/utils/android_back_overlays.dart';
 import 'package:natalo_petshop_flutter/utils/app_route_observer.dart';
 import 'package:natalo_petshop_flutter/widgets/feed_comment_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -531,6 +532,7 @@ void main() {
 
     await tester.tap(find.bySemanticsLabel('Komentar'));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
     await tester.pump(const Duration(milliseconds: 320));
 
     expect(tester.takeException(), isNull);
@@ -539,6 +541,133 @@ void main() {
       tester.getTopLeft(find.byType(FeedCommentSheet)).dy,
       lessThan(tester.view.physicalSize.height),
     );
+  });
+
+  testWidgets('comment drawer consumes double back while closing and reopens',
+      (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    VideoPlayerPlatform.instance = _FakeVideoPlayerPlatform();
+    resetAndroidBackOverlays();
+    addTearDown(resetAndroidBackOverlays);
+    await appSettingsStore.setFeedAutoplay(false);
+    addTearDown(() => appSettingsStore.setFeedAutoplay(true));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeedVideoPostView(
+          post: _fakeVideoPost(id: 'comment-double-back', hls: true),
+          isActive: true,
+          preloadedController: null,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsLabel('Komentar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 320));
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+
+    expect(consumeAndroidBackOverlay(), isTrue);
+    expect(consumeAndroidBackOverlay(), isTrue,
+        reason: 'closing retains Android back ownership');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pump();
+
+    expect(find.byType(FeedCommentSheet), findsNothing);
+    expect(consumeAndroidBackOverlay(), isFalse);
+
+    await tester.tap(find.bySemanticsLabel('Komentar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 320));
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+
+    expect(consumeAndroidBackOverlay(), isTrue);
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pump();
+    expect(find.byType(FeedCommentSheet), findsNothing);
+  });
+
+  testWidgets('deactivation and dispose force-clean comment drawer lifecycle',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    VideoPlayerPlatform.instance = _FakeVideoPlayerPlatform();
+    resetAndroidBackOverlays();
+    addTearDown(resetAndroidBackOverlays);
+    await appSettingsStore.setFeedAutoplay(false);
+    addTearDown(() => appSettingsStore.setFeedAutoplay(true));
+    final overlayStates = <bool>[];
+    final pauseReasons = <CoverPauseReason>[];
+    var playRequests = 0;
+    final active = ValueNotifier<bool>(true);
+    addTearDown(active.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ValueListenableBuilder<bool>(
+          valueListenable: active,
+          builder: (context, isActive, _) => FeedVideoPostView(
+            key: const ValueKey('lifecycle-comment-view'),
+            post: _fakeVideoPost(id: 'comment-lifecycle', hls: true),
+            isActive: isActive,
+            preloadedController: null,
+            ownsController: false,
+            playbackManagedExternally: true,
+            onOverlayStateChanged: overlayStates.add,
+            onMediaZoomChanged: (_) {},
+            onRequestPause: pauseReasons.add,
+            onRequestPlay: () => playRequests++,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.bySemanticsLabel('Komentar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 320));
+    expect(overlayStates, [true]);
+
+    active.value = false;
+    await tester.pump();
+    expect(find.byType(FeedCommentSheet), findsNothing);
+    expect(overlayStates, [true, false]);
+    expect(consumeAndroidBackOverlay(), isFalse);
+    expect(pauseReasons, isEmpty);
+    expect(playRequests, 0,
+        reason: 'an initial-height drawer did not own a playback pause');
+
+    active.value = true;
+    await tester.pump();
+    await tester.tap(find.bySemanticsLabel('Komentar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 320));
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(const ValueKey('feed-comment-drag-handle')),
+      const Offset(0, -380),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(pauseReasons, [CoverPauseReason.commentSheetFull]);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(overlayStates, [true, false, true, false]);
+    expect(playRequests, 1,
+        reason: 'forced cleanup releases only the pause the drawer acquired');
+    expect(consumeAndroidBackOverlay(), isFalse);
   });
 
   testWidgets('delayed preload claim blocks concurrent local initialization',

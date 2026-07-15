@@ -16,6 +16,7 @@ import { signBunnyUrl } from "./bunny";
 import { buildFeedVideoPlaybackUrls } from "./video-playback-urls";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 import { feedAccessibilityPayload } from "./accessibility";
+import { visibleFeedCommentRootWhere } from "./comment-sync";
 import type {
   FeedCommentItem,
   FeedCommentsResponse,
@@ -601,7 +602,39 @@ type CommentListOptions = {
   postId: string;
   cursor?: string | null;
   viewerUserId?: string | null;
+  additionalRootIds?: readonly string[];
+  db?: Pick<
+    Prisma.TransactionClient,
+    "feedComment" | "feedCommentLike" | "user"
+  >;
 };
+
+const FEED_COMMENT_THREAD_INCLUDE = {
+  author: {
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      role: true,
+      profilePhotoUrl: true,
+    },
+  },
+  replies: {
+    where: { isHidden: false, deletedAt: null },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    include: {
+      author: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          role: true,
+          profilePhotoUrl: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.FeedCommentInclude;
 
 function mapFeedComment(
   c: {
@@ -609,6 +642,7 @@ function mapFeedComment(
     postId: string;
     parentCommentId: string | null;
     content: string;
+    deletedAt: Date | null;
     isAdminOfficial: boolean;
     isHidden: boolean;
     likeCount: number;
@@ -625,6 +659,7 @@ function mapFeedComment(
       postId: string;
       parentCommentId: string | null;
       content: string;
+      deletedAt: Date | null;
       isAdminOfficial: boolean;
       isHidden: boolean;
       likeCount: number;
@@ -641,11 +676,12 @@ function mapFeedComment(
   viewerLikedIds: Set<string>,
   officialHandles: Set<string> = new Set()
 ): FeedCommentItem {
+  const isDeleted = c.deletedAt !== null;
   // Mention handle di content yang merupakan akun official → kirim ke
   // client untuk brand-override render. Skip kalau tidak ada official
   // handle yang ke-mention (mayoritas komentar).
   const officialMentions =
-    officialHandles.size > 0
+    !isDeleted && officialHandles.size > 0
       ? [...extractMentionHandles(c.content)].filter((h) =>
           officialHandles.has(h)
         )
@@ -654,11 +690,12 @@ function mapFeedComment(
     id: c.id,
     postId: c.postId,
     parentCommentId: c.parentCommentId,
-    content: c.content,
+    content: isDeleted ? "Komentar dihapus" : c.content,
+    isDeleted,
     isAdminOfficial: c.isAdminOfficial,
     officialMentions,
     isHidden: c.isHidden,
-    likeCount: c.likeCount,
+    likeCount: isDeleted ? 0 : c.likeCount,
     createdAt: c.createdAt.toISOString(),
     author: {
       id: c.author.id,
@@ -670,7 +707,7 @@ function mapFeedComment(
         | "CUSTOMER",
       profilePhotoUrl: brandPhotoUrl(c.author.role, c.author.profilePhotoUrl),
     },
-    viewerLiked: viewerLikedIds.has(c.id),
+    viewerLiked: !isDeleted && viewerLikedIds.has(c.id),
     replies:
       c.replies?.map((reply) =>
         mapFeedComment(reply, viewerLikedIds, officialHandles)
@@ -687,14 +724,15 @@ function mapFeedComment(
  * 1 query saja (findMany username IN [...]) — efisien untuk 1 page komentar.
  */
 async function resolveOfficialMentionHandles(
-  contents: string[]
+  contents: string[],
+  db: Pick<Prisma.TransactionClient, "user"> = prisma
 ): Promise<Set<string>> {
   const handles = new Set<string>();
   for (const content of contents) {
     for (const h of extractMentionHandles(content)) handles.add(h);
   }
   if (handles.size === 0) return new Set();
-  const admins = await prisma.user.findMany({
+  const admins = await db.user.findMany({
     where: { username: { in: [...handles] }, role: "ADMIN" },
     select: { username: true },
   });
@@ -713,54 +751,55 @@ export async function listFeedComments({
   postId,
   cursor,
   viewerUserId,
+  additionalRootIds = [],
+  db = prisma,
 }: CommentListOptions): Promise<FeedCommentsResponse> {
-  const comments = await prisma.feedComment.findMany({
-    where: {
-      postId,
-      parentCommentId: null,
-      isHidden: false,
-      // Hide komentar yang user hapus sendiri. isHidden=admin moderation;
-      // deletedAt=user self-delete. Semantik beda, dua-duanya filter out.
-      deletedAt: null,
-    },
+  const comments = await db.feedComment.findMany({
+    where: visibleFeedCommentRootWhere(postId),
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: COMMENT_PAGE_SIZE + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    include: {
-      author: {
-        select: {
-          id: true,
-          name: true,
-          username: true,
-          role: true,
-          profilePhotoUrl: true,
-        },
-      },
-      replies: {
-        where: { isHidden: false, deletedAt: null },
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        include: {
-          author: {
-            select: {
-              id: true,
-              name: true,
-              username: true,
-              role: true,
-              profilePhotoUrl: true,
-            },
-          },
-        },
-      },
-    },
+    include: FEED_COMMENT_THREAD_INCLUDE,
   });
 
+  const hasMore = comments.length > COMMENT_PAGE_SIZE;
+  const page = hasMore ? comments.slice(0, COMMENT_PAGE_SIZE) : comments;
+  const pageIds = new Set(page.map((comment) => comment.id));
+  const extraRootIds = [...new Set(additionalRootIds)].filter(
+    (commentId) => !pageIds.has(commentId)
+  );
+  const extraComments =
+    extraRootIds.length === 0
+      ? []
+      : await db.feedComment.findMany({
+          where: {
+            AND: [
+              visibleFeedCommentRootWhere(postId),
+              {
+                id: { in: extraRootIds },
+              },
+            ],
+          },
+          include: FEED_COMMENT_THREAD_INCLUDE,
+        });
+  const extraById = new Map(
+    extraComments.map((comment) => [comment.id, comment])
+  );
+  const combined = [
+    ...page,
+    ...extraRootIds.flatMap((commentId) => {
+      const comment = extraById.get(commentId);
+      return comment ? [comment] : [];
+    }),
+  ];
+
   let viewerLikedIds = new Set<string>();
-  if (viewerUserId && comments.length > 0) {
-    const commentIds = comments.flatMap((c) => [
+  if (viewerUserId && combined.length > 0) {
+    const commentIds = combined.flatMap((c) => [
       c.id,
       ...c.replies.map((reply) => reply.id),
     ]);
-    const likes = await prisma.feedCommentLike.findMany({
+    const likes = await db.feedCommentLike.findMany({
       where: {
         userId: viewerUserId,
         commentId: { in: commentIds },
@@ -770,24 +809,22 @@ export async function listFeedComments({
     viewerLikedIds = new Set(likes.map((l) => l.commentId));
   }
 
-  const hasMore = comments.length > COMMENT_PAGE_SIZE;
-  const sliced = hasMore ? comments.slice(0, COMMENT_PAGE_SIZE) : comments;
-
   // Resolve handle official yang ke-mention di seluruh page (parent +
   // reply) → 1 query. Dipakai untuk brand-override render di client.
   const officialHandles = await resolveOfficialMentionHandles(
-    sliced.flatMap((c) => [
+    combined.flatMap((c) => [
       c.content,
       ...c.replies.map((reply) => reply.content),
-    ])
+    ]),
+    db
   );
 
-  const items: FeedCommentItem[] = sliced.map((c) =>
+  const items: FeedCommentItem[] = combined.map((c) =>
     mapFeedComment(c, viewerLikedIds, officialHandles)
   );
 
   return {
     items,
-    nextCursor: hasMore ? sliced[sliced.length - 1].id : null,
+    nextCursor: hasMore ? page[page.length - 1].id : null,
   };
 }

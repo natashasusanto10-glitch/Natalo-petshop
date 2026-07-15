@@ -1676,6 +1676,8 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     try {
       final result = await feedStore.toggleLike(widget.post.id);
       feedLocalStore.setLiked(widget.post.id, result.liked);
+    } on FeedViewerChangedException {
+      // Ignore stale completion from the previous authenticated viewer.
     } catch (error) {
       if (!mounted) return;
       if (error is ApiException && error.statusCode == 401) {

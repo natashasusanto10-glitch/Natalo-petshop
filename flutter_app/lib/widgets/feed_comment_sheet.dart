@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -10,6 +11,7 @@ import '../services/block_service.dart';
 import '../services/feed_service.dart';
 import '../services/report_service.dart';
 import '../state/feed_comment_session_store.dart';
+import '../state/feed_comment_sync_coordinator.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
@@ -22,6 +24,83 @@ import 'moderation_action_sheet.dart';
 import 'natalo_paw_refresh_indicator.dart';
 import 'profile_avatar.dart';
 
+/// Shared detents and gesture policy for both comment drawer presentation
+/// adapters: the modal drawer and the embedded video-linked drawer.
+const double feedCommentInitialExtent = 0.60;
+const double feedCommentDismissExtent = 0.30;
+const double feedCommentFlingVelocity = 520;
+const Duration feedCommentSnapDuration = Duration(milliseconds: 220);
+
+enum CommentSnapTarget { close, initial, max }
+
+@immutable
+class FeedCommentViewerIdentity {
+  const FeedCommentViewerIdentity({
+    required this.viewerId,
+    required this.generation,
+  });
+
+  final String viewerId;
+  final int generation;
+}
+
+String _replyMentionPrefix(FeedComment comment) {
+  final mention = comment.author.isOfficialAccount
+      ? comment.author.displayName
+      : comment.author.username ?? comment.author.displayName;
+  return '@$mention ';
+}
+
+/// Changes reply targets without discarding text the viewer already typed.
+/// An automatically inserted previous mention is replaced, while the body of
+/// the draft remains intact.
+@visibleForTesting
+String preserveFeedReplyDraft({
+  required String draft,
+  FeedComment? previousTarget,
+  FeedComment? nextTarget,
+}) {
+  var body = draft;
+  if (previousTarget != null) {
+    final previousPrefix = _replyMentionPrefix(previousTarget);
+    if (body.startsWith(previousPrefix)) {
+      body = body.substring(previousPrefix.length);
+    }
+  }
+  if (nextTarget == null) return body;
+  final nextPrefix = _replyMentionPrefix(nextTarget);
+  if (body.startsWith(nextPrefix)) return body;
+  return '$nextPrefix$body';
+}
+
+/// Chooses the same drag-end destination regardless of which presentation
+/// adapter owns the drawer.
+CommentSnapTarget commentSnapTargetFor({
+  required double size,
+  required double velocity,
+  required double maxExtent,
+}) {
+  if (velocity > feedCommentFlingVelocity || size <= feedCommentDismissExtent) {
+    return CommentSnapTarget.close;
+  }
+  if (velocity < -feedCommentFlingVelocity) {
+    return CommentSnapTarget.max;
+  }
+  final expandThreshold = (feedCommentInitialExtent + maxExtent) / 2;
+  return size >= expandThreshold
+      ? CommentSnapTarget.max
+      : CommentSnapTarget.initial;
+}
+
+bool shouldPauseForCommentExtent({
+  required double extent,
+  required double maxExtent,
+}) {
+  return extent >= maxExtent - 0.02;
+}
+
+Future<void>? _activeFeedCommentDrawerFlight;
+
 /// Opens the same comment experience used by the fullscreen Feed from
 /// non-fullscreen surfaces such as Postingan. The modal route owns only the
 /// presentation; [FeedCommentSheet] remains the single source of comment
@@ -29,15 +108,57 @@ import 'profile_avatar.dart';
 Future<void> showFeedCommentDrawer(
   BuildContext context, {
   required FeedPost post,
+  FeedCommentSessionStore? sessionStore,
+  ValueListenable<FeedCommentViewerIdentity>? viewerIdentityListenable,
+}) {
+  final activeFlight = _activeFeedCommentDrawerFlight;
+  if (activeFlight != null) return activeFlight;
+
+  final completer = Completer<void>();
+  final flight = completer.future;
+  _activeFeedCommentDrawerFlight = flight;
+  unawaited(() async {
+    try {
+      await _presentFeedCommentDrawer(
+        context,
+        post: post,
+        sessionStore: sessionStore,
+        viewerIdentityListenable: viewerIdentityListenable,
+      );
+      completer.complete();
+    } catch (error, stackTrace) {
+      completer.completeError(error, stackTrace);
+    } finally {
+      if (identical(_activeFeedCommentDrawerFlight, flight)) {
+        _activeFeedCommentDrawerFlight = null;
+      }
+    }
+  }());
+  return flight;
+}
+
+Future<void> _presentFeedCommentDrawer(
+  BuildContext context, {
+  required FeedPost post,
+  FeedCommentSessionStore? sessionStore,
+  ValueListenable<FeedCommentViewerIdentity>? viewerIdentityListenable,
 }) {
   final sheetController = DraggableScrollableController();
-  final commentSession = feedCommentSessionStore.sessionFor(
-    viewerId: memberStore.profile?.id ?? 'guest',
+  final viewerIdentity = viewerIdentityListenable?.value ??
+      FeedCommentViewerIdentity(
+        viewerId: memberStore.profile?.id ?? 'guest',
+        generation: memberStore.viewerGeneration,
+      );
+  final commentSession = (sessionStore ?? feedCommentSessionStore).sessionFor(
+    viewerId: viewerIdentity.viewerId,
     postId: post.id,
   );
+  final routeClosed = Completer<void>();
   var reachedVisibleExtent = false;
   var dismissScheduled = false;
   var popIssued = false;
+  NavigatorState? commentNavigator;
+  ModalRoute<void>? commentRoute;
   final route = showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -50,21 +171,33 @@ Future<void> showFeedCommentDrawer(
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.62),
     builder: (sheetContext) {
+      commentNavigator ??= Navigator.of(sheetContext);
+      commentRoute ??= ModalRoute.of<void>(sheetContext);
       final topInset = MediaQuery.paddingOf(sheetContext).top;
       final screenHeight = MediaQuery.sizeOf(sheetContext).height;
       final maxExtent = (1 - (topInset / screenHeight)).clamp(0.60, 0.96);
       final initialExtent =
-          (commentSession.sheetExtent ?? FeedCommentSheet.reelsHeightFactor)
-              .clamp(FeedCommentSheet.reelsHeightFactor, maxExtent)
+          (commentSession.sheetExtent ?? feedCommentInitialExtent)
+              .clamp(feedCommentInitialExtent, maxExtent)
               .toDouble();
 
       void dismissDrawer({bool afterFrame = false}) {
         void popOnce() {
-          if (popIssued || !sheetContext.mounted) return;
-          final modalRoute = ModalRoute.of(sheetContext);
-          if (modalRoute == null || !modalRoute.isCurrent) return;
+          if (popIssued) return;
+          final navigator = commentNavigator;
+          final modalRoute = commentRoute;
+          if (navigator == null || !navigator.mounted || modalRoute == null) {
+            return;
+          }
           popIssued = true;
-          Navigator.of(sheetContext).maybePop();
+          if (modalRoute.isCurrent) {
+            navigator.pop();
+          } else {
+            // Account changes can arrive while a mention/moderation dialog is
+            // above this route. Remove this exact drawer instead of waiting
+            // for it to become current and holding the global admission lock.
+            navigator.removeRoute(modalRoute);
+          }
         }
 
         if (afterFrame) {
@@ -78,6 +211,14 @@ Future<void> showFeedCommentDrawer(
           dismissScheduled = false;
           popOnce();
         }
+      }
+
+      Future<void> dismissDrawerAndWait() async {
+        dismissDrawer();
+        await routeClosed.future;
+        // Let showFeedCommentDrawer's outer finally release its global
+        // admission lock before the destination route becomes interactive.
+        await Future<void>.delayed(Duration.zero);
       }
 
       void handleDragUpdate(DragUpdateDetails details) {
@@ -94,31 +235,47 @@ Future<void> showFeedCommentDrawer(
         if (!sheetController.isAttached) return;
         final velocity = details.primaryVelocity ?? 0;
         final size = sheetController.size;
-        if (velocity > 800 || size <= 0.34) {
-          dismissDrawer();
-          return;
+        final snapTarget = commentSnapTargetFor(
+          size: size,
+          velocity: velocity,
+          maxExtent: maxExtent,
+        );
+        switch (snapTarget) {
+          case CommentSnapTarget.close:
+            dismissDrawer();
+          case CommentSnapTarget.max:
+            commentSession.sheetExtent = maxExtent;
+            unawaited(() async {
+              try {
+                await sheetController.animateTo(
+                  maxExtent,
+                  duration: feedCommentSnapDuration,
+                  curve: Curves.easeOutCubic,
+                );
+              } catch (_) {
+                // The modal may be dismissed by back/barrier during snap.
+              }
+            }());
+          case CommentSnapTarget.initial:
+            commentSession.sheetExtent = feedCommentInitialExtent;
+            unawaited(() async {
+              try {
+                await sheetController.animateTo(
+                  feedCommentInitialExtent,
+                  duration: feedCommentSnapDuration,
+                  curve: Curves.easeOutCubic,
+                );
+              } catch (_) {
+                // The modal may be dismissed by back/barrier during snap.
+              }
+            }());
         }
-        final target = velocity < -500 || size > 0.78
-            ? maxExtent
-            : FeedCommentSheet.reelsHeightFactor;
-        commentSession.sheetExtent = target;
-        unawaited(() async {
-          try {
-            await sheetController.animateTo(
-              target,
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-            );
-          } catch (_) {
-            // The modal may be dismissed by back/barrier during snap-back.
-          }
-        }());
       }
 
       return NotificationListener<DraggableScrollableNotification>(
         onNotification: (notification) {
           if (notification.extent > 0.24) reachedVisibleExtent = true;
-          if (!popIssued && notification.extent >= 0.34) {
+          if (!popIssued && notification.extent >= feedCommentDismissExtent) {
             commentSession.sheetExtent = notification.extent;
           }
           if (reachedVisibleExtent && notification.extent <= 0.205) {
@@ -134,22 +291,31 @@ Future<void> showFeedCommentDrawer(
           minChildSize: 0.20,
           maxChildSize: maxExtent,
           snap: true,
-          snapSizes: [FeedCommentSheet.reelsHeightFactor, maxExtent],
+          snapSizes: [feedCommentInitialExtent, maxExtent],
           // Closure is handled explicitly by the notification listener. The
           // framework callback is inconsistent when nested in a modal route.
           shouldCloseOnMinExtent: false,
-          builder: (context, scrollController) => FeedCommentSheet(
-            post: post,
-            sheetScrollController: scrollController,
-            onClose: dismissDrawer,
-            onDragUpdate: handleDragUpdate,
-            onDragEnd: handleDragEnd,
+          builder: (context, scrollController) => PrimaryScrollController(
+            controller: scrollController,
+            child: FeedCommentSheet(
+              post: post,
+              sheetScrollController: scrollController,
+              onClose: dismissDrawer,
+              onCloseAndWait: dismissDrawerAndWait,
+              onDragUpdate: handleDragUpdate,
+              onDragEnd: handleDragEnd,
+              sessionStore: sessionStore,
+              viewerIdentityListenable: viewerIdentityListenable,
+            ),
           ),
         ),
       );
     },
   );
-  return route.whenComplete(sheetController.dispose);
+  return route.whenComplete(() {
+    if (!routeClosed.isCompleted) routeClosed.complete();
+    sheetController.dispose();
+  });
 }
 
 /// Comment sheet style Instagram Reels — 1:1 visual:
@@ -173,18 +339,20 @@ Future<void> showFeedCommentDrawer(
 class FeedCommentSheet extends StatefulWidget {
   /// Height factor default saat sheet pertama buka — match Shorts/Reels:
   /// cukup tinggi untuk composer + list, tapi video tetap terlihat jelas.
-  static const double reelsHeightFactor = 0.60;
+  static const double reelsHeightFactor = feedCommentInitialExtent;
 
   final FeedPost post;
   final bool applyKeyboardInset;
   final ScrollController? sheetScrollController;
   final VoidCallback? onClose;
+  final Future<void> Function()? onCloseAndWait;
 
   /// Drag handle area gesture — diteruskan ke feed_screen untuk
   /// dismiss saat user drag handle ke bawah.
   final ValueChanged<DragUpdateDetails>? onDragUpdate;
   final ValueChanged<DragEndDetails>? onDragEnd;
   final FeedCommentSessionStore? sessionStore;
+  final ValueListenable<FeedCommentViewerIdentity>? viewerIdentityListenable;
 
   const FeedCommentSheet({
     super.key,
@@ -192,9 +360,11 @@ class FeedCommentSheet extends StatefulWidget {
     this.applyKeyboardInset = true,
     this.sheetScrollController,
     this.onClose,
+    this.onCloseAndWait,
     this.onDragUpdate,
     this.onDragEnd,
     this.sessionStore,
+    this.viewerIdentityListenable,
   });
 
   @override
@@ -224,10 +394,80 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   /// berarti thread collapsed, seperti Reels.
   final Map<String, int> _visibleReplyCounts = {};
   late final FeedCommentSession _session;
+  final Object _sessionWriter = Object();
+  FeedCommentSyncLease? _syncLease;
+  int _observedSessionRevision = 0;
   int _commentMutationRevision = 0;
   bool _hasLoadedComments = false;
+  bool _refreshing = false;
   bool _restoreScrollPending = false;
   int _scrollRestoreAttempts = 0;
+  final Map<String, bool> _commentLikeDesired = <String, bool>{};
+  final Map<String, _CommentLikeSnapshot> _commentLikeConfirmed =
+      <String, _CommentLikeSnapshot>{};
+  final Set<String> _commentLikeInFlight = <String>{};
+  late final FeedCommentViewerIdentity _boundViewerIdentity;
+  late final Listenable _viewerIdentitySource;
+  bool _sessionListenerAttached = false;
+  bool _discardSessionState = false;
+  bool _closingForViewerChange = false;
+  bool _navigationPending = false;
+
+  FeedCommentViewerIdentity get _currentViewerIdentity =>
+      widget.viewerIdentityListenable?.value ??
+      FeedCommentViewerIdentity(
+        viewerId: memberStore.profile?.id ?? 'guest',
+        generation: memberStore.viewerGeneration,
+      );
+
+  bool get _isBoundViewerCurrent {
+    final current = _currentViewerIdentity;
+    return !_discardSessionState &&
+        current.viewerId == _boundViewerIdentity.viewerId &&
+        current.generation == _boundViewerIdentity.generation;
+  }
+
+  Future<void> _requestCloseAndWait() async {
+    final closeAndWait = widget.onCloseAndWait;
+    if (closeAndWait != null) {
+      await closeAndWait();
+      return;
+    }
+    widget.onClose?.call();
+    await WidgetsBinding.instance.endOfFrame;
+  }
+
+  Future<void> _navigateAfterClose(
+    String routeName, {
+    Object? arguments,
+  }) async {
+    if (_navigationPending) return;
+    _navigationPending = true;
+    final navigator = Navigator.of(context);
+    await _requestCloseAndWait();
+    if (!navigator.mounted) return;
+    await navigator.pushNamed(routeName, arguments: arguments);
+  }
+
+  void _openAuthorProfile(FeedAuthor author) {
+    if (!author.hasUsername) return;
+    AppHaptics.tap();
+    unawaited(_navigateAfterClose(
+      '/u',
+      arguments: author.username!.toLowerCase(),
+    ));
+  }
+
+  void _openMentionProfile(String handle) {
+    final normalized = handle.trim().replaceFirst('@', '').toLowerCase();
+    if (normalized.isEmpty) return;
+    AppHaptics.tap();
+    unawaited(_navigateAfterClose('/u', arguments: normalized));
+  }
+
+  void _openLogin() {
+    unawaited(_navigateAfterClose('/member/login'));
+  }
 
   void _showMoreReplies(String parentId, int totalReplies) {
     AppHaptics.tap();
@@ -248,9 +488,21 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   @override
   void initState() {
     super.initState();
+    _boundViewerIdentity = _currentViewerIdentity;
+    _viewerIdentitySource = widget.viewerIdentityListenable ?? memberStore;
+    _viewerIdentitySource.addListener(_onViewerIdentityChanged);
+    final viewerId = _boundViewerIdentity.viewerId;
     _session = (widget.sessionStore ?? feedCommentSessionStore).sessionFor(
-      viewerId: memberStore.profile?.id ?? 'guest',
+      viewerId: viewerId,
       postId: widget.post.id,
+    );
+    _observedSessionRevision = _session.revision;
+    _session.addListener(_onSessionContentChanged);
+    _sessionListenerAttached = true;
+    _syncLease = feedCommentSyncCoordinator.register(
+      viewerId: viewerId,
+      postId: widget.post.id,
+      refresh: () => _loadInitial(showLoading: false),
     );
     _inputCtrl = TextEditingController(text: _session.draftText)
       ..addListener(_persistDraft);
@@ -273,7 +525,12 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
 
   @override
   void dispose() {
-    _persistSession();
+    _viewerIdentitySource.removeListener(_onViewerIdentityChanged);
+    if (!_discardSessionState) _persistSession();
+    _syncLease?.dispose();
+    if (_sessionListenerAttached) {
+      _session.removeListener(_onSessionContentChanged);
+    }
     widget.sheetScrollController?.removeListener(_handleScroll);
     blockService.removeListener(_onBlocklistChanged);
     _mentionCtrl.dispose();
@@ -289,21 +546,87 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   }
 
   void _persistDraft() {
+    if (_discardSessionState) return;
     _session.draftText = _inputCtrl.text;
   }
 
-  void _persistSession() {
+  void _persistSession({
+    bool publishComments = false,
+    DateTime? syncedAt,
+    Iterable<String> removedIds = const <String>[],
+  }) {
+    if (_discardSessionState) return;
     _session
       ..draftText = _inputCtrl.text
       ..replyTarget = _replyTarget
       ..replaceVisibleReplyCounts(_visibleReplyCounts);
-    if (_hasLoadedComments) {
-      _session.replaceComments(_comments, _nextCursor);
+    if (publishComments && _hasLoadedComments) {
+      _session.replaceComments(
+        _comments,
+        _nextCursor,
+        source: _sessionWriter,
+        syncedAt: syncedAt,
+        removedIds: removedIds,
+      );
+      _observedSessionRevision = _session.revision;
+      _comments = List<FeedComment>.from(_session.comments);
     }
     final ctrl = widget.sheetScrollController;
     if (!_restoreScrollPending && ctrl != null && ctrl.hasClients) {
       _session.scrollOffset = ctrl.position.pixels;
     }
+  }
+
+  void _onSessionContentChanged() {
+    final revision = _session.revision;
+    if (revision == _observedSessionRevision) return;
+    _observedSessionRevision = revision;
+    if (identical(_session.lastWriter, _sessionWriter) || !mounted) return;
+
+    // Any external session publication is newer than requests this drawer
+    // already started. Invalidate those snapshots before adopting it.
+    _commentMutationRevision++;
+
+    final nextComments = mergeFeedCommentRefresh(
+      current: _comments,
+      incoming: _session.comments,
+      preserveLocalLikeIds: _commentLikeInFlight,
+      reset: true,
+    );
+    setState(() {
+      _comments = nextComments;
+      _nextCursor = _session.nextCursor;
+      _hasLoadedComments = _session.hasLoaded;
+      _loading = false;
+    });
+    _clearReplyTargetIfMissing();
+  }
+
+  void _onViewerIdentityChanged() {
+    final current = _currentViewerIdentity;
+    if (current.viewerId == _boundViewerIdentity.viewerId &&
+        current.generation == _boundViewerIdentity.generation) {
+      return;
+    }
+
+    _discardSessionState = true;
+    _syncLease?.dispose();
+    _syncLease = null;
+    if (_sessionListenerAttached) {
+      _session.removeListener(_onSessionContentChanged);
+      _sessionListenerAttached = false;
+    }
+    _inputCtrl
+      ..removeListener(_persistDraft)
+      ..clear();
+    _session.reset();
+    _replyTarget = null;
+    _comments = const [];
+    _visibleReplyCounts.clear();
+
+    if (_closingForViewerChange) return;
+    _closingForViewerChange = true;
+    unawaited(_requestCloseAndWait());
   }
 
   void _scheduleScrollRestore() {
@@ -338,6 +661,9 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   }
 
   Future<void> _loadInitial({bool showLoading = true}) async {
+    if (_refreshing) return;
+    _refreshing = true;
+    final fetchedAt = DateTime.now();
     final mutationRevision = _commentMutationRevision;
     final hadCachedPage = _hasLoadedComments && _comments.isNotEmpty;
     final cachedNextCursor = _nextCursor;
@@ -350,30 +676,55 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       _error = null;
     }
     try {
-      final page = await feedService.fetchComments(widget.post.id);
-      if (!mounted) return;
+      final page = await feedService.fetchComments(
+        widget.post.id,
+        syncCursor: _hasLoadedComments ? _session.syncCursor : null,
+      );
+      if (!mounted || !_isBoundViewerCurrent) return;
+      final canApplySnapshot = mutationRevision == _commentMutationRevision;
+      final nextComments = canApplySnapshot
+          ? mergeFeedCommentRefresh(
+              current: _comments,
+              incoming: page.items,
+              removedIds: page.removedIds,
+              preserveLocalLikeIds: _commentLikeInFlight,
+              reset: page.syncResetRequired,
+            )
+          : mergeFeedCommentRefresh(
+              current: _comments,
+              incoming: const <FeedComment>[],
+              removedIds: page.removedIds,
+              preserveLocalLikeIds: _commentLikeInFlight,
+            );
       setState(() {
         // Do not overwrite a comment/like/delete completed while a cached
         // session was being revalidated in the background.
-        if (mutationRevision == _commentMutationRevision) {
-          if (!showLoading && hadCachedPage) {
-            final refreshedIds = page.items.map((item) => item.id).toSet();
-            _comments = [
-              ...page.items,
-              ..._comments.where((item) => !refreshedIds.contains(item.id)),
-            ];
-            // The cached cursor already points after every page currently
-            // displayed. Reusing it avoids fetching page two twice.
-            _nextCursor = cachedNextCursor;
-          } else {
-            _comments = page.items;
-            _nextCursor = page.nextCursor;
-          }
+        _comments = nextComments;
+        if (canApplySnapshot) {
+          // A cached cursor already points past every page currently shown.
+          // A reset deliberately starts pagination again from the fresh head.
+          _nextCursor = hadCachedPage && !page.syncResetRequired
+              ? cachedNextCursor
+              : page.nextCursor;
         }
         _loading = false;
       });
+      _clearReplyTargetIfMissing();
       _hasLoadedComments = true;
-      _persistSession();
+      final syncedAt =
+          canApplySnapshot ? page.syncCursor ?? page.syncTime : null;
+      _persistSession(
+        publishComments: true,
+        syncedAt: syncedAt,
+        removedIds: page.removedIds,
+      );
+      if (canApplySnapshot && page.commentCount != null) {
+        final currentPost = feedStore.get(widget.post.id) ?? widget.post;
+        feedStore.mergeFromServer(
+          [currentPost.copyWith(commentCount: page.commentCount)],
+          fetchedAt: fetchedAt,
+        );
+      }
       _scheduleScrollRestore();
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -393,28 +744,63 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
             ? null
             : 'Gagal memuat komentar. Tarik untuk coba lagi.';
       });
+    } finally {
+      _refreshing = false;
     }
   }
 
   Future<void> _loadMore() async {
     if (_loadingMore || _nextCursor == null) return;
+    final fetchedAt = DateTime.now();
+    final mutationRevision = _commentMutationRevision;
     setState(() => _loadingMore = true);
     try {
       final page = await feedService.fetchComments(
         widget.post.id,
         cursor: _nextCursor,
       );
-      if (!mounted) return;
+      if (!mounted || !_isBoundViewerCurrent) return;
+      if (mutationRevision != _commentMutationRevision) {
+        // A comment/like/delete completed after this older page request
+        // started. Do not resurrect its stale rows or advance pagination;
+        // the next scroll attempt will request the same cursor again.
+        setState(() => _loadingMore = false);
+        return;
+      }
+      final currentWithoutTombstones = mergeFeedCommentRefresh(
+        current: _comments,
+        incoming: const <FeedComment>[],
+        removedIds: page.removedIds,
+        preserveLocalLikeIds: _commentLikeInFlight,
+      );
+      final fetchedPage = mergeFeedCommentRefresh(
+        current: const <FeedComment>[],
+        incoming: page.items,
+        removedIds: page.removedIds,
+        preserveLocalLikeIds: _commentLikeInFlight,
+      );
       setState(() {
-        final existingIds = _comments.map((item) => item.id).toSet();
+        final existingIds =
+            currentWithoutTombstones.map((item) => item.id).toSet();
         _comments = [
-          ..._comments,
-          ...page.items.where((item) => !existingIds.contains(item.id)),
+          ...currentWithoutTombstones,
+          ...fetchedPage.where((item) => !existingIds.contains(item.id)),
         ];
         _nextCursor = page.nextCursor;
         _loadingMore = false;
       });
-      _persistSession();
+      _clearReplyTargetIfMissing();
+      _persistSession(
+        publishComments: true,
+        removedIds: page.removedIds,
+      );
+      if (page.commentCount != null) {
+        final currentPost = feedStore.get(widget.post.id) ?? widget.post;
+        feedStore.mergeFromServer(
+          [currentPost.copyWith(commentCount: page.commentCount)],
+          fetchedAt: fetchedAt,
+        );
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _loadingMore = false);
@@ -427,22 +813,45 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   }
 
   void _setReplyTarget(FeedComment? target) {
+    final nextDraft = preserveFeedReplyDraft(
+      draft: _inputCtrl.text,
+      previousTarget: _replyTarget,
+      nextTarget: target,
+    );
     setState(() => _replyTarget = target);
     if (target != null) {
-      // Kasih hint @username di input supaya feel native instagram.
-      final mention = target.author.isOfficialAccount
-          ? target.author.displayName
-          : target.author.username ?? target.author.displayName;
-      if (!_inputCtrl.text.startsWith('@$mention')) {
-        _inputCtrl.text = '@$mention ';
+      // Keep the existing draft and only replace the auto-inserted mention.
+      if (_inputCtrl.text != nextDraft) {
+        _inputCtrl.text = nextDraft;
         _inputCtrl.selection = TextSelection.fromPosition(
           TextPosition(offset: _inputCtrl.text.length),
         );
       }
       _inputFocus.requestFocus();
       AppHaptics.tap();
-    } else {
-      _inputCtrl.clear();
+    } else if (_inputCtrl.text != nextDraft) {
+      _inputCtrl.text = nextDraft;
+      _inputCtrl.selection = TextSelection.fromPosition(
+        TextPosition(offset: _inputCtrl.text.length),
+      );
+    }
+    _persistSession();
+  }
+
+  void _clearReplyTargetIfMissing() {
+    final target = _replyTarget;
+    if (target == null || _findCommentById(target.id) != null) return;
+    final nextDraft = preserveFeedReplyDraft(
+      draft: _inputCtrl.text,
+      previousTarget: target,
+      nextTarget: null,
+    );
+    setState(() => _replyTarget = null);
+    if (_inputCtrl.text != nextDraft) {
+      _inputCtrl.text = nextDraft;
+      _inputCtrl.selection = TextSelection.fromPosition(
+        TextPosition(offset: nextDraft.length),
+      );
     }
     _persistSession();
   }
@@ -451,7 +860,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     final raw = _inputCtrl.text.trim();
     if (raw.isEmpty || _posting) return;
     if (!memberStore.isLoggedIn) {
-      Navigator.pushNamed(context, '/member/login');
+      _openLogin();
       return;
     }
 
@@ -466,7 +875,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         content: content,
         parentCommentId: parentId,
       );
-      if (!mounted) return;
+      if (!mounted || !_isBoundViewerCurrent) return;
       final created = result.comment;
       final effectiveParentId = created.parentCommentId ?? parentId;
       setState(() {
@@ -488,7 +897,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         _inputCtrl.clear();
       });
       _commentMutationRevision++;
-      _persistSession();
+      _persistSession(publishComments: true);
       final current = feedStore.get(widget.post.id)?.commentCount ??
           widget.post.commentCount;
       feedStore.setCommentCount(
@@ -501,7 +910,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       if (!mounted) return;
       setState(() => _posting = false);
       if (e.statusCode == 401) {
-        Navigator.pushNamed(context, '/member/login');
+        _openLogin();
       } else {
         AppToast.show(
           context,
@@ -522,32 +931,69 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
 
   Future<void> _toggleLike(FeedComment comment) async {
     if (!memberStore.isLoggedIn) {
-      Navigator.pushNamed(context, '/member/login');
+      _openLogin();
       return;
     }
     AppHaptics.tap();
-    final wasLiked = comment.viewerLiked;
-    final prevCount = comment.likeCount;
-    // Optimistic update.
-    _updateComment(comment.copyWith(
-      viewerLiked: !wasLiked,
-      likeCount: wasLiked ? (prevCount > 0 ? prevCount - 1 : 0) : prevCount + 1,
-    ));
+    final current = _findCommentById(comment.id) ?? comment;
+    final desiredLiked = !current.viewerLiked;
+    _commentLikeConfirmed.putIfAbsent(
+      comment.id,
+      () => _CommentLikeSnapshot(
+        liked: current.viewerLiked,
+        count: current.likeCount,
+      ),
+    );
+    _commentLikeDesired[comment.id] = desiredLiked;
+    _applyCommentLikeState(
+      comment.id,
+      liked: desiredLiked,
+      count: desiredLiked
+          ? current.likeCount + 1
+          : (current.likeCount - 1).clamp(0, 1 << 30),
+    );
+    if (_commentLikeInFlight.add(comment.id)) {
+      unawaited(_drainCommentLikeIntent(comment.id));
+    }
+  }
+
+  Future<void> _drainCommentLikeIntent(String commentId) async {
+    final initialConfirmed = _commentLikeConfirmed[commentId];
+    if (initialConfirmed == null) {
+      _commentLikeInFlight.remove(commentId);
+      return;
+    }
+    var confirmed = initialConfirmed;
     try {
-      final newCount = await feedService.toggleCommentLike(
-        comment.id,
-        currentlyLiked: wasLiked,
+      while (true) {
+        final desired = _commentLikeDesired[commentId] ?? confirmed.liked;
+        if (desired != confirmed.liked) {
+          final count = await feedService.setCommentLiked(
+            commentId,
+            liked: desired,
+          );
+          confirmed = _CommentLikeSnapshot(liked: desired, count: count);
+          _commentLikeConfirmed[commentId] = confirmed;
+        }
+        if ((_commentLikeDesired[commentId] ?? confirmed.liked) ==
+            confirmed.liked) {
+          _applyCommentLikeState(
+            commentId,
+            liked: confirmed.liked,
+            count: confirmed.count,
+          );
+          return;
+        }
+      }
+    } on ApiException catch (error) {
+      _applyCommentLikeState(
+        commentId,
+        liked: confirmed.liked,
+        count: confirmed.count,
       );
-      _updateComment(comment.copyWith(
-        viewerLiked: !wasLiked,
-        likeCount: newCount,
-      ));
-    } on ApiException catch (e) {
-      // Rollback.
-      _updateComment(comment);
       if (!mounted) return;
-      if (e.statusCode == 401) {
-        Navigator.pushNamed(context, '/member/login');
+      if (error.statusCode == 401) {
+        _openLogin();
       } else {
         AppToast.show(
           context,
@@ -556,8 +1002,39 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         );
       }
     } catch (_) {
-      _updateComment(comment);
+      _applyCommentLikeState(
+        commentId,
+        liked: confirmed.liked,
+        count: confirmed.count,
+      );
+    } finally {
+      _commentLikeDesired.remove(commentId);
+      _commentLikeConfirmed.remove(commentId);
+      _commentLikeInFlight.remove(commentId);
     }
+  }
+
+  void _applyCommentLikeState(
+    String commentId, {
+    required bool liked,
+    required int count,
+  }) {
+    final current = _findCommentById(commentId);
+    if (current == null) return;
+    _updateComment(current.copyWith(
+      viewerLiked: liked,
+      likeCount: count,
+    ));
+  }
+
+  FeedComment? _findCommentById(String commentId) {
+    for (final comment in _comments) {
+      if (comment.id == commentId) return comment;
+      for (final reply in comment.replies) {
+        if (reply.id == commentId) return reply;
+      }
+    }
+    return null;
   }
 
   void _updateComment(FeedComment updated) {
@@ -576,7 +1053,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       }).toList();
     });
     _commentMutationRevision++;
-    _persistSession();
+    _persistSession(publishComments: true);
   }
 
   /// Delete komentar user sendiri. Optimistic remove dari local list,
@@ -599,18 +1076,31 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     final visibleReplyCountsSnapshot =
         Map<String, int>.from(_visibleReplyCounts);
     final removal = removeFeedCommentFromThreads(_comments, comment);
+    final removedReplyTarget =
+        _replyTarget != null && removal.removedIds.contains(_replyTarget!.id);
+    final retainedDraft = removedReplyTarget
+        ? preserveFeedReplyDraft(
+            draft: _inputCtrl.text,
+            previousTarget: _replyTarget,
+            nextTarget: null,
+          )
+        : null;
     setState(() {
       _comments = removal.comments;
       _visibleReplyCounts
           .removeWhere((parentId, _) => removal.removedIds.contains(parentId));
-      if (_replyTarget != null &&
-          removal.removedIds.contains(_replyTarget!.id)) {
+      if (removedReplyTarget) {
         _replyTarget = null;
-        _inputCtrl.clear();
       }
     });
+    if (retainedDraft != null && _inputCtrl.text != retainedDraft) {
+      _inputCtrl.text = retainedDraft;
+      _inputCtrl.selection = TextSelection.collapsed(
+        offset: retainedDraft.length,
+      );
+    }
     _commentMutationRevision++;
-    _persistSession();
+    _persistSession(publishComments: true);
     try {
       final result = await feedService.deleteComment(comment.id);
       // Sukses — comment beneran hilang. Sync comment count ke FeedStore
@@ -626,7 +1116,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       return true;
     } catch (e) {
       // Rollback optimistic state.
-      if (mounted) {
+      if (mounted && _isBoundViewerCurrent) {
         setState(() {
           _comments = snapshot;
           _replyTarget = replyTargetSnapshot;
@@ -636,7 +1126,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
           _inputCtrl.value = inputSnapshot;
         });
         _commentMutationRevision++;
-        _persistSession();
+        _persistSession(publishComments: true);
       }
       return false;
     }
@@ -807,7 +1297,12 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         padding: EdgeInsets.zero,
         children: [
           if (emptyCaptionText.isNotEmpty)
-            _CaptionTile(post: widget.post, captionText: emptyCaptionText),
+            _CaptionTile(
+              post: widget.post,
+              captionText: emptyCaptionText,
+              onAuthorTap: _openAuthorProfile,
+              onMentionTap: _openMentionProfile,
+            ),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 50, horizontal: 32),
             child: Center(
@@ -869,6 +1364,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
             return _CaptionTile(
               post: widget.post,
               captionText: captionText,
+              onAuthorTap: _openAuthorProfile,
+              onMentionTap: _openMentionProfile,
             );
           }
           final adjustedIndex = index - captionOffset;
@@ -913,6 +1410,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
             isReply: item.isReply,
             onLike: () => _toggleLike(comment),
             onReply: () => _setReplyTarget(comment),
+            onAuthorTap: _openAuthorProfile,
+            onMentionTap: _openMentionProfile,
             canDelete: isOwn,
             onDelete: isOwn ? () => _deleteComment(comment) : null,
           );
@@ -1095,7 +1594,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
               onChanged: (_) => setState(() {}),
               onTap: () {
                 if (!isLoggedIn) {
-                  Navigator.pushNamed(context, '/member/login');
+                  _openLogin();
                 }
               },
             ),
@@ -1235,8 +1734,15 @@ class _RepliesControl extends StatelessWidget {
 class _CaptionTile extends StatelessWidget {
   final FeedPost post;
   final String captionText;
+  final ValueChanged<FeedAuthor> onAuthorTap;
+  final ValueChanged<String> onMentionTap;
 
-  const _CaptionTile({required this.post, required this.captionText});
+  const _CaptionTile({
+    required this.post,
+    required this.captionText,
+    required this.onAuthorTap,
+    required this.onMentionTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1269,6 +1775,7 @@ class _CaptionTile extends StatelessWidget {
           children: [
             _AuthorTapTarget(
               author: author,
+              onTap: onAuthorTap,
               child: ProfileAvatar(
                 size: 36,
                 fontSize: 14,
@@ -1285,6 +1792,7 @@ class _CaptionTile extends StatelessWidget {
                 children: [
                   _AuthorTapTarget(
                     author: author,
+                    onTap: onAuthorTap,
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -1326,12 +1834,7 @@ class _CaptionTile extends StatelessWidget {
                       height: 1.35,
                       fontWeight: FontWeight.w800,
                     ),
-                    onMentionTap: (handle) {
-                      Navigator.of(context).pushNamed(
-                        '/u',
-                        arguments: handle,
-                      );
-                    },
+                    onMentionTap: onMentionTap,
                   ),
                   const SizedBox(height: 5),
                   Text(
@@ -1358,6 +1861,8 @@ class _CommentTile extends StatelessWidget {
   final bool isReply;
   final VoidCallback onLike;
   final VoidCallback onReply;
+  final ValueChanged<FeedAuthor> onAuthorTap;
+  final ValueChanged<String> onMentionTap;
 
   /// Callback delete dari parent — return Future<bool> ok/fail.
   /// Parent yang panggil feedService.deleteComment + optimistic remove
@@ -1374,6 +1879,8 @@ class _CommentTile extends StatelessWidget {
     required this.isReply,
     required this.onLike,
     required this.onReply,
+    required this.onAuthorTap,
+    required this.onMentionTap,
     this.onDelete,
     this.canDelete = false,
   });
@@ -1429,6 +1936,7 @@ class _CommentTile extends StatelessWidget {
           children: [
             _AuthorTapTarget(
               author: author,
+              onTap: onAuthorTap,
               child: ProfileAvatar(
                 size: avatarSize,
                 fontSize: isReply ? 12 : 14,
@@ -1450,6 +1958,7 @@ class _CommentTile extends StatelessWidget {
                       Flexible(
                         child: _AuthorTapTarget(
                           author: author,
+                          onTap: onAuthorTap,
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -1509,12 +2018,7 @@ class _CommentTile extends StatelessWidget {
                       height: 1.35,
                       fontWeight: FontWeight.w800,
                     ),
-                    onMentionTap: (handle) {
-                      Navigator.of(context).pushNamed(
-                        '/u',
-                        arguments: handle,
-                      );
-                    },
+                    onMentionTap: onMentionTap,
                   ),
                   const SizedBox(height: 4),
                   Row(
@@ -1563,10 +2067,12 @@ class _CommentTile extends StatelessWidget {
 class _AuthorTapTarget extends StatelessWidget {
   final FeedAuthor author;
   final Widget child;
+  final ValueChanged<FeedAuthor> onTap;
 
   const _AuthorTapTarget({
     required this.author,
     required this.child,
+    required this.onTap,
   });
 
   @override
@@ -1574,7 +2080,7 @@ class _AuthorTapTarget extends StatelessWidget {
     if (!author.hasUsername) return child;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => _openAuthorProfile(context, author),
+      onTap: () => onTap(author),
       child: Semantics(
         button: true,
         label: 'Buka profil ${author.displayHandle}',
@@ -1809,11 +2315,9 @@ String _formatCount(int n) {
   return '$n';
 }
 
-void _openAuthorProfile(BuildContext context, FeedAuthor author) {
-  if (!author.hasUsername) return;
-  AppHaptics.tap();
-  Navigator.of(context).pushNamed(
-    '/u',
-    arguments: author.username!.toLowerCase(),
-  );
+class _CommentLikeSnapshot {
+  const _CommentLikeSnapshot({required this.liked, required this.count});
+
+  final bool liked;
+  final int count;
 }
