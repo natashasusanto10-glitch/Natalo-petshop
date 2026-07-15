@@ -5,6 +5,7 @@ import {
   generateProductDescription,
   GenerateDescriptionError,
 } from "@/lib/ai/generate-product-description";
+import { mergePersistedDescriptionContext } from "@/lib/ai/product-description-context";
 
 /**
  * POST /api/admin/products/[id]/generate-description
@@ -50,15 +51,18 @@ export async function POST(
     attr.options.map((opt) => opt.value),
   );
 
-  const overrideName = typeof body.name === "string" ? body.name.trim() : "";
-  const name = overrideName || product.name;
+  const draftContext = mergePersistedDescriptionContext(
+    body,
+    { name: product.name, categoryName: product.category?.name ?? null, brandName: product.brand?.name ?? null, variantOptions: persistedVariantOptions },
+  );
+  const name = typeof draftContext.name === "string" ? draftContext.name.trim() : product.name;
 
   try {
     const description = await generateProductDescription({
       name,
-      categoryName: body.categoryName ?? product.category?.name ?? null,
-      brandName: body.brandName ?? product.brand?.name ?? null,
-      variantOptions: Array.isArray(body.variantOptions) ? body.variantOptions : persistedVariantOptions,
+      categoryName: draftContext.categoryName,
+      brandName: draftContext.brandName,
+      variantOptions: draftContext.variantOptions,
     });
     return NextResponse.json({ description });
   } catch (err) {

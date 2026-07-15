@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { productIsVisibleWhere, shouldDeleteCreatingProduct, normalizeProductFormPayload } from "../lib/product/admin-product-form";
 import { buildDescriptionContext } from "../lib/ai/product-description-context";
 import { buildGenerationPayload } from "../lib/ai/product-description-context";
+import { mergePersistedDescriptionContext } from "../lib/ai/product-description-context";
 import { variantPersistenceMode } from "../lib/product/variant-editor";
 
 describe("admin product creation lifecycle", () => {
@@ -15,6 +16,10 @@ describe("admin product creation lifecycle", () => {
     expect(buildGenerationPayload({ name: "Lama", categoryName: "Lama", brandName: "Lama", variants: [{ optionValues: ["Lama"] }] }, "Baru")).toEqual({
       name: "Baru", categoryName: "Lama", brandName: "Lama", variantOptions: ["Lama"],
     });
+  });
+
+  it("keeps explicitly cleared AI context instead of restoring persisted values", () => {
+    expect(mergePersistedDescriptionContext({ name: "Baru", categoryName: null, brandName: null, variantOptions: [] }, { name: "Lama", categoryName: "Kucing", brandName: "Acme", variantOptions: ["Tuna"] })).toEqual({ name: "Baru", categoryName: null, brandName: null, variantOptions: [] });
   });
 
   it("persists controlled variants through the parent save", () => {

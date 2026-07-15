@@ -20,3 +20,15 @@ export function buildDescriptionContext(input: DescriptionContextInput) {
 export function buildGenerationPayload(context: DescriptionContextInput, name: string) {
   return buildDescriptionContext({ ...context, name: name || context.name });
 }
+
+export function mergePersistedDescriptionContext(
+  draft: { name?: string; categoryName?: string | null; brandName?: string | null; variantOptions?: string[] },
+  persisted: { name: string; categoryName: string | null; brandName: string | null; variantOptions: string[] },
+) {
+  return {
+    name: draft.name ?? persisted.name,
+    categoryName: "categoryName" in draft ? draft.categoryName : persisted.categoryName,
+    brandName: "brandName" in draft ? draft.brandName : persisted.brandName,
+    variantOptions: "variantOptions" in draft ? (draft.variantOptions ?? []) : persisted.variantOptions,
+  };
+}
