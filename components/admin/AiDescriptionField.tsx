@@ -11,19 +11,35 @@
  * server-action (`<form action={updateProduct}>`) tetap membacanya via
  * FormData seperti biasa.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FormField } from "@/components/admin/ui";
+import { buildDescriptionContext, type DescriptionContextInput } from "@/lib/ai/product-description-context";
+export { buildDescriptionContext } from "@/lib/ai/product-description-context";
+
+export type AiDescriptionFieldProps = {
+  value?: string;
+  onChange?: (value: string) => void;
+  context?: DescriptionContextInput;
+  existingProductId?: string;
+  /** Legacy edit props retained for existing callers. */
+  productId?: string;
+  defaultValue?: string;
+};
 
 export function AiDescriptionField({
+  value,
+  onChange,
+  context,
+  existingProductId,
   productId,
   defaultValue,
-}: {
-  productId: string;
-  defaultValue: string;
-}) {
-  const [description, setDescription] = useState(defaultValue);
+}: AiDescriptionFieldProps) {
+  const [description, setDescription] = useState(value ?? defaultValue ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (value !== undefined) setDescription(value);
+  }, [value]);
 
   const handleGenerate = async (e: React.MouseEvent<HTMLButtonElement>) => {
     const form = e.currentTarget.form;
@@ -37,19 +53,30 @@ export function AiDescriptionField({
     setLoading(true);
     setError(null);
     try {
+      const productContext = buildDescriptionContext({
+        ...(context ?? {}),
+        name: currentName || context?.name || "",
+      });
+      const endpoint = existingProductId ?? productId
+        ? `/api/admin/products/${existingProductId ?? productId}/generate-description`
+        : "/api/admin/products/generate-description";
       const res = await fetch(
-        `/api/admin/products/${productId}/generate-description`,
+        endpoint,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: currentName || undefined }),
+          body: JSON.stringify(existingProductId ?? productId
+            ? { name: currentName || undefined }
+            : productContext),
         },
       );
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         setError(data?.error ?? "Gagal generate deskripsi. Coba lagi.");
       } else {
-        setDescription(data?.description ?? "");
+        const nextDescription = data?.description ?? "";
+        setDescription(nextDescription);
+        onChange?.(nextDescription);
       }
     } catch (err) {
       setError(
@@ -93,7 +120,10 @@ export function AiDescriptionField({
         name="description"
         required
         value={description}
-        onChange={(e) => setDescription(e.target.value)}
+        onChange={(e) => {
+          setDescription(e.target.value);
+          onChange?.(e.target.value);
+        }}
         rows={4}
         className="block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-natalo-600"
       />
