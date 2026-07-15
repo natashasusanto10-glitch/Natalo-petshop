@@ -1949,12 +1949,23 @@ class _PostCaptionState extends State<_PostCaption>
   late final TapGestureRecognizer _expandRecognizer = TapGestureRecognizer()
     ..onTap = _expand;
 
+  @override
+  void initState() {
+    super.initState();
+    postCaptionSessionStore.addListener(_onSessionChanged);
+  }
+
+  void _onSessionChanged() {
+    if (mounted) setState(() {});
+  }
+
   void _expand() {
     postCaptionSessionStore.markExpanded(widget.postId);
   }
 
   @override
   void dispose() {
+    postCaptionSessionStore.removeListener(_onSessionChanged);
     _expandRecognizer.dispose();
     super.dispose();
   }
@@ -1969,6 +1980,7 @@ class _PostCaptionState extends State<_PostCaption>
   String? _truncatedCaption(
       BuildContext context, double width, TextStyle style) {
     final full = widget.caption.trim();
+    final codePoints = full.runes.toList();
     const suffix = '... selengkapnya';
     TextSpan span(String text) => TextSpan(children: [
           TextSpan(
@@ -1982,25 +1994,28 @@ class _PostCaptionState extends State<_PostCaption>
         ]);
     bool fits(String text) {
       final p = TextPainter(
-          text: span(text),
+          text: TextSpan(style: style, children: span(text).children),
+          textAlign: TextAlign.start,
           textDirection: TextDirection.ltr,
           maxLines: 2,
-          textScaler: MediaQuery.textScalerOf(context));
+          textScaler: MediaQuery.textScalerOf(context),
+          strutStyle: StrutStyle.fromTextStyle(style));
       p.layout(maxWidth: width);
       return !p.didExceedMaxLines;
     }
 
     if (fits(full)) return null;
-    var lo = 0, hi = full.length;
+    String prefix(int count) => String.fromCharCodes(codePoints.take(count));
+    var lo = 0, hi = codePoints.length;
     while (lo < hi) {
       final mid = (lo + hi + 1) ~/ 2;
-      if (fits('${full.substring(0, mid).trimRight()}$suffix')) {
+      if (fits('${prefix(mid).trimRight()}$suffix')) {
         lo = mid;
       } else {
         hi = mid - 1;
       }
     }
-    return '${full.substring(0, lo).trimRight()}$suffix';
+    return '${prefix(lo).trimRight()}$suffix';
   }
 
   @override

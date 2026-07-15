@@ -20,3 +20,13 @@
 
 ## Concerns
 - Full-screen integration tests are not included because the detail screen owns video/network lifecycle; focused store regression covers persistence wiring.
+
+## Reviewer follow-up fixes
+- `_PostCaptionState` now subscribes to `postCaptionSessionStore` and rebuilds immediately when the suffix marks a post expanded; the listener is removed on dispose.
+- TextPainter measurement now applies the exact caption root style (13.5px, w600, 1.35 height), text scaling, and matching strut metrics.
+- Truncation binary search uses Unicode code-point boundaries (rather than UTF-16 code units), preventing surrogate-pair splits such as emoji.
+
+## Follow-up verification
+- `flutter test test/screens/member_post_detail_screen_caption_test.dart` — PASS (1 test).
+- `flutter analyze lib/screens/member_post_detail_screen.dart` — PASS (no issues).
+- `dart format lib/screens/member_post_detail_screen.dart` — PASS.
