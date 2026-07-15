@@ -642,7 +642,22 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
         }
       }),
     );
-    final fetched = results.whereType<FeedPost>().toList();
+    final sourceById = <String, FeedPost>{
+      for (final sourcePost in videoPosts) sourcePost.id: sourcePost,
+    };
+    final fetched = results.whereType<FeedPost>().map((remotePost) {
+      // The profile/detail endpoint may omit tagged products even though the
+      // profile payload already has them. Keep that commerce context when
+      // opening fullscreen so the product chip does not disappear at the
+      // Profile -> Postingan -> fullscreen boundary.
+      final sourcePost = sourceById[remotePost.id];
+      if (remotePost.taggedProducts.isNotEmpty ||
+          sourcePost == null ||
+          sourcePost.taggedProducts.isEmpty) {
+        return remotePost;
+      }
+      return remotePost.copyWith(taggedProducts: sourcePost.taggedProducts);
+    }).toList();
 
     rootNav.pop(); // tutup loading dialog
     if (!mounted) return;

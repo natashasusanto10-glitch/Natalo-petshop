@@ -30,11 +30,13 @@ void main() {
   });
 
   testWidgets('ScopedVideoFeedScreen opens at initialIndex', (tester) async {
-    final posts = [_fakeVideoPost('a'), _fakeVideoPost('b'), _fakeVideoPost('c')];
+    final posts = [
+      _fakeVideoPost('a'),
+      _fakeVideoPost('b'),
+      _fakeVideoPost('c'),
+    ];
     await tester.pumpWidget(
-      MaterialApp(
-        home: ScopedVideoFeedScreen(posts: posts, initialIndex: 1),
-      ),
+      MaterialApp(home: ScopedVideoFeedScreen(posts: posts, initialIndex: 1)),
     );
     await tester.pump();
     final pageView = tester.widget<PageView>(find.byType(PageView));
@@ -46,8 +48,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
   });
 
-  testWidgets('drag past top boundary on first video dismisses the viewer',
-      (tester) async {
+  testWidgets('drag past top boundary on first video dismisses the viewer', (
+    tester,
+  ) async {
     final posts = [_fakeVideoPost('a'), _fakeVideoPost('b')];
     await tester.pumpWidget(
       MaterialApp(
@@ -83,9 +86,47 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
     }
-    expect(find.byType(ScopedVideoFeedScreen), findsNothing,
-        reason: 'overscroll drag at the first video should close the viewer');
+    expect(
+      find.byType(ScopedVideoFeedScreen),
+      findsNothing,
+      reason: 'overscroll drag at the first video should close the viewer',
+    );
 
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('swipe right dismisses fullscreen viewer', (tester) async {
+    final posts = [_fakeVideoPost('a'), _fakeVideoPost('b')];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        ScopedVideoFeedScreen(posts: posts, initialIndex: 0),
+                  ),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+
+    await tester.dragFrom(const Offset(100, 400), const Offset(220, 0));
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
+    }
+    expect(find.byType(ScopedVideoFeedScreen), findsNothing);
     await tester.pump(const Duration(milliseconds: 600));
   });
 }
