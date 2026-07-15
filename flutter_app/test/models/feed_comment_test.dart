@@ -112,17 +112,45 @@ void main() {
     final comment = FeedComment.fromApiJson({
       'id': 'comment-1',
       'postId': 'post-1',
+      'parentCommentId': 'parent-1',
       'content': 'Official',
       'createdAt': '2026-07-14T01:00:00.000Z',
+      'isAdminOfficial': true,
       'author': {
-        'id': 'admin-1',
-        'name': 'Natalo Petshop',
+        'id': 'natalo-official',
+        'name': 'Natalo Petshop Official',
         'role': 'ADMIN',
         'profilePhotoUrl': null,
       },
     });
 
+    expect(comment.isAdminOfficial, isTrue);
+    expect(comment.parentCommentId, 'parent-1');
+    expect(comment.author.id, 'natalo-official');
+    expect(comment.author.name, 'Natalo Petshop Official');
     expect(comment.author.isOfficialAccount, isTrue);
+  });
+
+  test('keeps ordinary customer replies non-official', () {
+    final comment = FeedComment.fromApiJson({
+      'id': 'reply-1',
+      'postId': 'post-1',
+      'parentCommentId': 'parent-1',
+      'content': 'Customer reply',
+      'createdAt': '2026-07-14T01:01:00.000Z',
+      'isAdminOfficial': false,
+      'author': {
+        'id': 'user-2',
+        'name': 'User Two',
+        'role': 'CUSTOMER',
+      },
+    });
+
+    expect(comment.isAdminOfficial, isFalse);
+    expect(comment.parentCommentId, 'parent-1');
+    expect(comment.author.id, 'user-2');
+    expect(comment.author.name, 'User Two');
+    expect(comment.author.isOfficialAccount, isFalse);
   });
 
   test('flattens nested and legacy flat replies without duplicates', () {
