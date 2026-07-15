@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -316,6 +317,269 @@ Future<void> _presentFeedCommentDrawer(
     if (!routeClosed.isCompleted) routeClosed.complete();
     sheetController.dispose();
   });
+}
+
+/// Embedded Reels presentation used by photo/carousel posts. The comment data
+/// stays in [FeedCommentSheet], while this adapter owns only extent, media
+/// transform, and the drawer lifecycle.
+class FeedReelsCommentSurface extends StatefulWidget {
+  final FeedPost post;
+  final Widget child;
+  final bool open;
+  final VoidCallback onClosed;
+  final ValueChanged<double>? onExtentChanged;
+  final ValueChanged<bool>? onMaximumExtentChanged;
+  final FeedCommentSessionStore? sessionStore;
+  final ValueListenable<FeedCommentViewerIdentity>? viewerIdentityListenable;
+
+  const FeedReelsCommentSurface({
+    super.key,
+    required this.post,
+    required this.child,
+    required this.open,
+    required this.onClosed,
+    this.onExtentChanged,
+    this.onMaximumExtentChanged,
+    this.sessionStore,
+    this.viewerIdentityListenable,
+  });
+
+  @override
+  State<FeedReelsCommentSurface> createState() =>
+      _FeedReelsCommentSurfaceState();
+}
+
+class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
+  static const double _minExtent = 0.0;
+  static const double _initialExtent = feedCommentInitialExtent;
+  static const double _dismissExtent = feedCommentDismissExtent;
+  static const double _maxThreshold = 0.02;
+
+  late final DraggableScrollableController _controller;
+  Timer? _openWatchdog;
+  Completer<void>? _closeCompleter;
+  int _transition = 0;
+  bool _mountedDrawer = false;
+  bool _closing = false;
+  bool _maximumNotified = false;
+  double _extent = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = DraggableScrollableController()..addListener(_syncExtent);
+    if (widget.open) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openDrawer());
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant FeedReelsCommentSurface oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.open == widget.open) return;
+    if (widget.open) {
+      _openDrawer();
+    } else {
+      _closeDrawer();
+    }
+  }
+
+  @override
+  void dispose() {
+    _openWatchdog?.cancel();
+    final completer = _closeCompleter;
+    _closeCompleter = null;
+    if (completer != null && !completer.isCompleted) completer.complete();
+    _controller.removeListener(_syncExtent);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  double _maxExtent(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final topInset = MediaQuery.paddingOf(context).top;
+    final hostHeight =
+        math.max(1.0, size.height - MediaQuery.viewInsetsOf(context).bottom);
+    return (1 - (topInset / hostHeight)).clamp(0.60, 0.96).toDouble();
+  }
+
+  void _syncExtent() {
+    if (!_mountedDrawer || !_controller.isAttached || !mounted) return;
+    final maxExtent = _maxExtent(context);
+    final next = _controller.size.clamp(_minExtent, maxExtent).toDouble();
+    if ((_extent - next).abs() > 0.002) {
+      setState(() => _extent = next);
+      widget.onExtentChanged?.call(next);
+    }
+    final atMaximum = next >= maxExtent - _maxThreshold;
+    if (atMaximum != _maximumNotified) {
+      _maximumNotified = atMaximum;
+      widget.onMaximumExtentChanged?.call(atMaximum);
+    }
+  }
+
+  void _openDrawer() {
+    if (!mounted || _mountedDrawer) return;
+    final transition = ++_transition;
+    _closing = false;
+    _maximumNotified = false;
+    setState(() {
+      _mountedDrawer = true;
+      _extent = 0;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || transition != _transition || !_mountedDrawer) return;
+      if (!_controller.isAttached) {
+        _failOpen();
+        return;
+      }
+      unawaited(() async {
+        try {
+          await _controller.animateTo(
+            _initialExtent,
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+          );
+        } catch (_) {
+          if (mounted && transition == _transition) _failOpen();
+        }
+      }());
+      _openWatchdog?.cancel();
+      _openWatchdog = Timer(const Duration(milliseconds: 700), () {
+        if (!mounted || transition != _transition || !_mountedDrawer) return;
+        if (!_controller.isAttached || _extent < _dismissExtent) {
+          _failOpen();
+        }
+      });
+    });
+  }
+
+  void _failOpen() {
+    _openWatchdog?.cancel();
+    _transition++;
+    _closing = false;
+    _maximumNotified = false;
+    if (mounted) {
+      setState(() {
+        _mountedDrawer = false;
+        _extent = 0;
+      });
+    }
+    widget.onExtentChanged?.call(0);
+    widget.onMaximumExtentChanged?.call(false);
+    final completer = _closeCompleter;
+    _closeCompleter = null;
+    if (completer != null && !completer.isCompleted) completer.complete();
+    widget.onClosed();
+  }
+
+  void _requestClose() {
+    if (!_mountedDrawer || _closing) return;
+    _closeDrawer();
+  }
+
+  Future<void> _requestCloseAndWait() {
+    if (!_mountedDrawer) return Future<void>.value();
+    _closeCompleter ??= Completer<void>();
+    _requestClose();
+    return _closeCompleter!.future;
+  }
+
+  void _closeDrawer() {
+    if (!_mountedDrawer || _closing) return;
+    final transition = ++_transition;
+    _closing = true;
+    _openWatchdog?.cancel();
+    if (!_controller.isAttached) {
+      _finishClose();
+      return;
+    }
+    unawaited(() async {
+      try {
+        await _controller.animateTo(
+          _minExtent,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+        );
+      } catch (_) {
+        // The route/widget may detach during the closing transition.
+      }
+      if (mounted && transition == _transition) _finishClose();
+    }());
+  }
+
+  void _finishClose() {
+    _transition++;
+    _closing = false;
+    _maximumNotified = false;
+    if (mounted) {
+      setState(() {
+        _mountedDrawer = false;
+        _extent = 0;
+      });
+    }
+    widget.onExtentChanged?.call(0);
+    widget.onMaximumExtentChanged?.call(false);
+    final completer = _closeCompleter;
+    _closeCompleter = null;
+    if (completer != null && !completer.isCompleted) completer.complete();
+    widget.onClosed();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxExtent = _maxExtent(context);
+    final progress =
+        maxExtent <= 0 ? 0.0 : (_extent / maxExtent).clamp(0.0, 1.0);
+    final scale = 1.0 - (0.18 * progress);
+    final translateY = -MediaQuery.sizeOf(context).height * 0.10 * progress;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Transform.translate(
+          offset: Offset(0, translateY),
+          child: Transform.scale(
+            alignment: Alignment.topCenter,
+            scale: scale,
+            child: widget.child,
+          ),
+        ),
+        if (_mountedDrawer)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _requestClose,
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: 0.72 * progress),
+              ),
+            ),
+          ),
+        if (_mountedDrawer)
+          DraggableScrollableSheet(
+            controller: _controller,
+            expand: false,
+            initialChildSize: _minExtent,
+            minChildSize: _minExtent,
+            maxChildSize: maxExtent,
+            snap: true,
+            snapSizes: const [_initialExtent],
+            shouldCloseOnMinExtent: false,
+            builder: (context, scrollController) => PrimaryScrollController(
+              controller: scrollController,
+              child: FeedCommentSheet(
+                post: widget.post,
+                sheetScrollController: scrollController,
+                onClose: _requestClose,
+                onCloseAndWait: _requestCloseAndWait,
+                sessionStore: widget.sessionStore,
+                viewerIdentityListenable: widget.viewerIdentityListenable,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 /// Comment sheet style Instagram Reels — 1:1 visual:
