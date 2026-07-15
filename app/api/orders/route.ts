@@ -15,6 +15,7 @@ import {
   createTrackingToken,
   manualPaymentDeadlineIso,
 } from "@/lib/order-detail";
+import { recordOrderStatusEvent } from "@/lib/order-transitions";
 import { debitWallet, getOrCreateWallet } from "@/lib/refund-wallet";
 import { withSerializationRetry, isSerializationFailure } from "@/lib/db-retry";
 import { SELF_PICKUP_METHOD, SELF_PICKUP_STORE } from "@/lib/self-pickup";
@@ -697,6 +698,11 @@ export async function POST(request: Request) {
             })),
           },
         },
+      });
+      await recordOrderStatusEvent(tx, createdOrder.id, "PENDING", {
+        actorType: effectiveUserId ? "CUSTOMER" : "SYSTEM",
+        actorId: effectiveUserId,
+        idempotencyKey: `order-created:${createdOrder.id}`,
       });
 
       if (earnedPoints > 0) {

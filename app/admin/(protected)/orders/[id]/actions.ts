@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { createBiteshipShipment } from "@/lib/biteship";
 import { sendOrderStatusEmail } from "@/lib/email-order";
-import { assertCanTransitionOrderStatus, transitionOrderStatus } from "@/lib/order-transitions";
+import { assertCanTransitionOrderStatus, recordOrderStatusEvent, transitionOrderStatus } from "@/lib/order-transitions";
 import { sendOrderStatusPush } from "@/lib/push";
 import {
   sendCancellationRejectedPush,
@@ -86,7 +86,8 @@ export async function markAsPaid(orderId: string) {
     throw new Error("Pembayaran sudah di-refund, tidak bisa di-mark PAID.");
   }
 
-  const result = await prisma.order.updateMany({
+  const result = await prisma.$transaction(async (tx) => {
+    const updated = await tx.order.updateMany({
     where: {
       id: orderId,
       status: { notIn: ["CANCELLED", "REFUNDED"] },
@@ -100,6 +101,22 @@ export async function markAsPaid(orderId: string) {
         : current.orderType === SELF_PICKUP_METHOD
         ? { paymentStatus: "PAID", pickupStatus: "PREPARING" }
         : { paymentStatus: "PAID" },
+    });
+    if (updated.count > 0) {
+      await recordOrderStatusEvent(tx, orderId, "PAID", {
+        actorType: "ADMIN",
+        actorId: session.sub,
+        idempotencyKey: `admin-payment:${orderId}`,
+      });
+      if (current.status === "PENDING" && current.orderType === SELF_PICKUP_METHOD) {
+        await recordOrderStatusEvent(tx, orderId, "PROCESSING", {
+          actorType: "ADMIN",
+          actorId: session.sub,
+          idempotencyKey: `admin-processing-after-payment:${orderId}`,
+        });
+      }
+    }
+    return updated;
   });
   if (result.count === 0) {
     throw new Error("Order sudah berubah, refresh halaman dulu.");
@@ -143,7 +160,7 @@ export async function createShipment(orderId: string) {
 }
 
 export async function markAsProcessing(orderId: string) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const current = await prisma.order.findUnique({
     where: { id: orderId },
     select: { status: true, paymentStatus: true },
@@ -153,7 +170,7 @@ export async function markAsProcessing(orderId: string) {
     throw new Error("Order belum lunas, belum bisa mulai packing.");
   }
 
-  await transitionOrderStatus(orderId, "PROCESSING");
+  await transitionOrderStatus(orderId, "PROCESSING", {}, { actorType: "ADMIN", actorId: admin.sub });
   const ctx = await getEmailContext(orderId);
   if (ctx) {
     await sendOrderStatusPush(orderId, ctx.orderNumber, "PROCESSING").catch(() => {});
@@ -162,7 +179,7 @@ export async function markAsProcessing(orderId: string) {
 }
 
 export async function markAsShipped(orderId: string, formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const courierType = String(formData.get("courierType") || "REGULAR")
     .trim()
     .toUpperCase();
@@ -214,11 +231,12 @@ export async function markAsShipped(orderId: string, formData: FormData) {
         };
 
   if (current.status !== "SHIPPED") {
+    const shippedAt = new Date();
     await transitionOrderStatus(orderId, "SHIPPED", {
       ...shippingData,
       // Mark waktu shipped untuk cron auto-confirm-delivered.
-      shippedAt: new Date(),
-    });
+      shippedAt,
+    }, { actorType: "ADMIN", actorId: admin.sub, occurredAt: shippedAt });
     didTransition = true;
   } else {
     // Re-shipped (update tracking info aja) — JANGAN reset shippedAt
@@ -241,8 +259,8 @@ export async function markAsShipped(orderId: string, formData: FormData) {
 }
 
 export async function markAsDelivered(orderId: string) {
-  await requireAdmin();
-  await transitionOrderStatus(orderId, "DELIVERED");
+  const admin = await requireAdmin();
+  await transitionOrderStatus(orderId, "DELIVERED", {}, { actorType: "ADMIN", actorId: admin.sub });
   const ctx = await getEmailContext(orderId);
   if (ctx) {
     await sendOrderStatusEmail("DELIVERED", ctx).catch(() => {});
@@ -252,7 +270,7 @@ export async function markAsDelivered(orderId: string) {
 }
 
 export async function markAsReadyForPickup(orderId: string) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const current = await prisma.order.findUnique({
     where: { id: orderId },
     select: {
@@ -287,11 +305,12 @@ export async function markAsReadyForPickup(orderId: string) {
   }
   if (!pickupCode) throw new Error("Gagal membuat kode pickup.");
 
+  const readyForPickupAt = new Date();
   await transitionOrderStatus(orderId, "READY_FOR_PICKUP", {
     pickupCode,
     pickupStatus: "READY",
-    readyForPickupAt: new Date(),
-  });
+    readyForPickupAt,
+  }, { actorType: "ADMIN", actorId: admin.sub, occurredAt: readyForPickupAt });
 
   await sendOrderStatusPush(orderId, current.orderNumber, "READY_FOR_PICKUP").catch(() => {});
   revalidateOrderAdmin(orderId);
@@ -314,11 +333,12 @@ export async function markAsPickedUp(orderId: string) {
     throw new Error("Order sudah pernah diserahkan.");
   }
 
+  const pickedUpAt = new Date();
   await transitionOrderStatus(orderId, "DELIVERED", {
     pickupStatus: "PICKED_UP",
-    pickedUpAt: new Date(),
+    pickedUpAt,
     pickedUpByAdminId: admin.sub,
-  });
+  }, { actorType: "ADMIN", actorId: admin.sub, occurredAt: pickedUpAt, metadata: { fulfillment: "SELF_PICKUP" } });
   revalidateOrderAdmin(orderId);
 }
 
@@ -523,6 +543,10 @@ export async function markAsCancelled(orderId: string) {
     if (result.count === 0) {
       throw new Error("Order sudah berubah, refresh dulu.");
     }
+    await recordOrderStatusEvent(tx, orderId, "CANCELLED", {
+      actorType: "ADMIN",
+      actorId: session.sub,
+    });
     didCancel = true;
   });
 

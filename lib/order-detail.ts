@@ -44,6 +44,10 @@ export const orderDetailInclude = {
     },
     orderBy: { usedAt: "asc" },
   },
+  timelineEvents: {
+    select: { id: true, status: true, occurredAt: true, actorType: true },
+    orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }],
+  },
 } satisfies Prisma.OrderInclude;
 
 export type OrderDetailRecord = Prisma.OrderGetPayload<{
@@ -233,6 +237,12 @@ export function serializeOrderDetail(order: OrderDetailRecord) {
     pickupStatus: order.pickupStatus,
     readyForPickupAt: order.readyForPickupAt?.toISOString() ?? null,
     pickedUpAt: order.pickedUpAt?.toISOString() ?? null,
+    timelineEvents: order.timelineEvents.map((event) => ({
+      id: event.id,
+      status: event.status,
+      occurredAt: event.occurredAt.toISOString(),
+      actorType: event.actorType,
+    })),
     pickupMapsUrl: buildSelfPickupMapsUrl(),
     notes: order.notes,
     // Cancellation request fields — null untuk order yang belum pernah

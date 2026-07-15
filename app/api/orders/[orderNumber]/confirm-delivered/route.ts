@@ -138,7 +138,11 @@ export async function POST(
   }
 
   try {
-    await transitionOrderStatus(order.id, "DELIVERED");
+    await transitionOrderStatus(order.id, "DELIVERED", {}, {
+      actorType: "CUSTOMER",
+      actorId: session.sub,
+      idempotencyKey: `customer-confirm-delivered:${order.id}`,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Gagal update status.";
     return NextResponse.json({ error: message }, { status: 409 });

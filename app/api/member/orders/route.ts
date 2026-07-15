@@ -36,6 +36,10 @@ export async function GET() {
           },
         },
       },
+      timelineEvents: {
+        select: { status: true, occurredAt: true },
+        orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }],
+      },
     },
   });
 
@@ -59,6 +63,11 @@ export async function GET() {
       biteshipTrackingUrl: order.biteshipTrackingUrl,
       orderType: order.orderType,
       pickupMapsUrl: buildSelfPickupMapsUrl(),
+      timelineEvents: order.timelineEvents.map((event) => ({
+        status: event.status,
+        occurredAt: event.occurredAt.toISOString(),
+      })),
+      latestStatusAt: order.timelineEvents.at(-1)?.occurredAt.toISOString() ?? null,
       itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
       items: order.items.map((item) => ({
         id: item.id,

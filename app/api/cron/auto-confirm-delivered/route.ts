@@ -108,7 +108,11 @@ export async function GET(request: NextRequest) {
 
   for (const order of candidates) {
     try {
-      await transitionOrderStatus(order.id, "DELIVERED");
+      await transitionOrderStatus(order.id, "DELIVERED", {}, {
+        actorType: "CRON",
+        actorId: "auto-confirm-delivered",
+        idempotencyKey: `auto-confirm-delivered:${order.id}`,
+      });
 
       // Email + push notif — kasih tahu user kalau order otomatis
       // ditandai selesai. Push dipakai untuk user yang offline lama

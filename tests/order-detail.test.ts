@@ -59,6 +59,7 @@ test("order detail serialization exposes product metadata and review state", () 
     // voucher, ditambahkan setelah test ini ditulis) — fixture wajib punya
     // array ini walau kosong supaya `.map()` tidak crash.
     voucherUsages: [],
+    timelineEvents: [],
   } as any);
 
   assert.equal(order.items[0].productSlug, "produk");

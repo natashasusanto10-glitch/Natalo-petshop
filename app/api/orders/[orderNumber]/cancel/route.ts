@@ -36,6 +36,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { recordOrderStatusEvent } from "@/lib/order-transitions";
 import { assertSameOrigin } from "@/lib/csrf";
 import { creditWallet } from "@/lib/refund-wallet";
 import { sendRefundIssuedPush } from "@/lib/push-refund";
@@ -336,6 +337,12 @@ export async function POST(
       await tx.order.update({
         where: { id: order.id },
         data: { status: "CANCELLED" },
+      });
+      await recordOrderStatusEvent(tx, order.id, "CANCELLED", {
+        actorType: "CUSTOMER",
+        actorId: session.sub,
+        idempotencyKey: `customer-cancel:${order.id}`,
+        metadata: reason.length > 0 ? { reason } : undefined,
       });
       if (reason.length > 0) {
         console.log(

@@ -33,6 +33,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { recordOrderStatusEvent } from "@/lib/order-transitions";
 import { creditWallet } from "@/lib/refund-wallet";
 import { sendOrderStatusPush } from "@/lib/push";
 
@@ -176,6 +177,11 @@ export async function GET(request: NextRequest) {
         await tx.order.update({
           where: { id: order.id },
           data: { status: "CANCELLED" },
+        });
+        await recordOrderStatusEvent(tx, order.id, "CANCELLED", {
+          actorType: "CRON",
+          actorId: "auto-cancel-unpaid-manual",
+          idempotencyKey: `auto-cancel-unpaid-manual:${order.id}`,
         });
       });
 
