@@ -39,8 +39,10 @@ class FavoriteButton extends StatefulWidget {
     this.initialFavorite = false,
     this.size = 24,
     this.elevated = false,
-  }) : assert(productId != null || product != null,
-            'FavoriteButton butuh productId atau product');
+  }) : assert(
+         productId != null || product != null,
+         'FavoriteButton butuh productId atau product',
+       );
 
   String get effectiveProductId => productId ?? product!.id;
 
@@ -63,13 +65,17 @@ class _FavoriteButtonState extends State<FavoriteButton>
     );
     _scale = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 1.35)
-            .chain(CurveTween(curve: Curves.easeOutCubic)),
+        tween: Tween(
+          begin: 1.0,
+          end: 1.35,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
         weight: 45,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 1.35, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeInOutCubic)),
+        tween: Tween(
+          begin: 1.35,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeInOutCubic)),
         weight: 55,
       ),
     ]).animate(_bounceCtrl);
@@ -147,8 +153,9 @@ class _FavoriteButtonState extends State<FavoriteButton>
       animation: favoriteStore,
       builder: (context, _) {
         final favorite = _isFavorite();
-        final iconColor =
-            favorite ? NataloColors.danger : NataloColors.textSecondary;
+        final iconColor = favorite
+            ? NataloColors.danger
+            : NataloColors.textSecondary;
         final icon = AnimatedSwitcher(
           duration: const Duration(milliseconds: 180),
           switchInCurve: Curves.easeOut,
@@ -177,6 +184,7 @@ class _FavoriteButtonState extends State<FavoriteButton>
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: _toggle,
+            excludeFromSemantics: true,
             customBorder: const CircleBorder(),
             splashColor: iconColor.withValues(alpha: 0.10),
             highlightColor: iconColor.withValues(alpha: 0.06),
@@ -187,7 +195,11 @@ class _FavoriteButtonState extends State<FavoriteButton>
             ),
           ),
         );
-        return button;
+        return Semantics(
+          button: true,
+          label: favorite ? 'Hapus dari wishlist' : 'Tambahkan ke wishlist',
+          child: button,
+        );
       },
     );
   }
