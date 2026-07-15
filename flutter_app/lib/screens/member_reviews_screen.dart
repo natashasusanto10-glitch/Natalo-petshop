@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/app_radius.dart';
+import '../theme/app_spacing.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_compress/video_compress.dart';
@@ -34,6 +36,8 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
   late Future<List<ReviewableItem>> _itemsFuture;
   _ReviewTab _activeTab = _ReviewTab.pending;
   final List<_ReviewedProductReview> _localReviews = [];
+  bool? _deepLinkedSelfPickup;
+  String? _deepLinkedOrderNumber;
 
   @override
   void initState() {
@@ -47,6 +51,12 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
       if (!mounted) return;
       final args = ModalRoute.of(context)?.settings.arguments;
       final targetItemId = args is Map ? args['orderItemId']?.toString() : null;
+      _deepLinkedSelfPickup = args is Map && args['isSelfPickup'] is bool
+          ? args['isSelfPickup'] as bool
+          : null;
+      _deepLinkedOrderNumber = args is Map
+          ? args['orderNumber']?.toString().trim()
+          : null;
       if (targetItemId == null || targetItemId.isEmpty) return;
       try {
         final items = await _itemsFuture;
@@ -57,7 +67,7 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
               items.isNotEmpty ? items.first : throw StateError('no items'),
         );
         if (target.orderItemId == targetItemId && !target.hasReviewed) {
-          _openReviewForm(target);
+          _openReviewForm(target, isSelfPickup: _deepLinkedSelfPickup);
         }
       } catch (_) {
         // Item not reviewable atau list empty — biarin user lihat list.
@@ -75,13 +85,19 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
     await _itemsFuture;
   }
 
-  Future<void> _openReviewForm(ReviewableItem item) async {
+  Future<void> _openReviewForm(
+    ReviewableItem item, {
+    bool? isSelfPickup,
+  }) async {
     final submitted = await showModalBottomSheet<_SubmittedReview>(
       context: context,
       isScrollControlled: true,
       enableDrag: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _ReviewSubmitSheet(item: item),
+      builder: (context) => _ReviewSubmitSheet(
+        item: item,
+        isSelfPickup: isSelfPickup,
+      ),
     );
     if (submitted == null || !mounted) return;
     setState(() {
@@ -122,12 +138,22 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
         _localReviews.map((review) => review.item.orderItemId).toSet();
     return items
         .where(
-            (item) => !item.hasReviewed && !localIds.contains(item.orderItemId))
+          (item) => !item.hasReviewed &&
+              !localIds.contains(item.orderItemId) &&
+              (_deepLinkedOrderNumber == null ||
+                  _deepLinkedOrderNumber!.isEmpty ||
+                  item.orderNumber == _deepLinkedOrderNumber),
+        )
         .toList();
   }
 
   List<_ReviewedProductReview> _reviewedItems(List<ReviewableItem> items) {
-    final remote = items.where((item) => item.hasReviewed).map((item) {
+    final remote = items.where((item) {
+      return item.hasReviewed &&
+          (_deepLinkedOrderNumber == null ||
+              _deepLinkedOrderNumber!.isEmpty ||
+              item.orderNumber == _deepLinkedOrderNumber);
+    }).map((item) {
       return _ReviewedProductReview(
         item: item,
         rating: item.reviewRating ?? 5,
@@ -762,8 +788,9 @@ class _ReviewEmptyState extends StatelessWidget {
 
 class _ReviewSubmitSheet extends StatefulWidget {
   final ReviewableItem item;
+  final bool? isSelfPickup;
 
-  const _ReviewSubmitSheet({required this.item});
+  const _ReviewSubmitSheet({required this.item, this.isSelfPickup});
 
   @override
   State<_ReviewSubmitSheet> createState() => _ReviewSubmitSheetState();
@@ -1070,14 +1097,16 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
     return AnimatedPadding(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
-      padding: EdgeInsets.fromLTRB(12, 0, 12, bottom + 12),
+      padding: EdgeInsets.only(bottom: bottom),
       child: Container(
         constraints: BoxConstraints(
           maxHeight: MediaQuery.sizeOf(context).height * 0.90,
         ),
         decoration: BoxDecoration(
           color: cs.surface,
-          borderRadius: BorderRadius.circular(30),
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppRadius.xxl),
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.18),
@@ -1091,18 +1120,48 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.sm),
               Container(
                 height: 5,
                 width: 50,
                 decoration: BoxDecoration(
                   color: cs.outlineVariant,
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: AppRadius.pill,
                 ),
               ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                  AppSpacing.sm,
+                  AppSpacing.sm,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Beri Ulasan',
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _submitting
+                          ? null
+                          : () => Navigator.pop(context),
+                      icon: const Icon(Icons.close_rounded),
+                      tooltip: 'Tutup',
+                    ),
+                  ],
+                ),
+              ),
+              Divider(height: 1, color: cs.outlineVariant),
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1173,6 +1232,7 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
                       _SuggestionChips(
                         selected: _selectedSuggestions,
                         onSelected: _applySuggestion,
+                        isSelfPickup: widget.isSelfPickup,
                       ),
                       const SizedBox(height: 16),
                       _ReviewMediaPicker(
@@ -1188,7 +1248,12 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(18, 10, 18, 14),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.md,
+                  AppSpacing.lg,
+                  AppSpacing.lg,
+                ),
                 child: SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -1196,7 +1261,7 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size.fromHeight(54),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: AppRadius.large,
                       ),
                     ),
                     child: Text(_submitting ? 'Mengirim...' : 'Kirim Review'),
@@ -1324,22 +1389,27 @@ class _ReviewSheetProductPreview extends StatelessWidget {
 class _SuggestionChips extends StatelessWidget {
   final Set<String> selected;
   final ValueChanged<String> onSelected;
+  final bool? isSelfPickup;
 
   const _SuggestionChips({
     required this.selected,
     required this.onSelected,
+    this.isSelfPickup,
   });
 
   @override
   Widget build(BuildContext context) {
-    const suggestions = [
+    final suggestions = [
       (Icons.thumb_up_alt_outlined, 'Produk bagus'),
-      (Icons.local_shipping_outlined, 'Pengiriman cepat'),
+      if (isSelfPickup == true)
+        (Icons.storefront_outlined, 'Pengambilan mudah')
+      else
+        (Icons.local_shipping_outlined, 'Pengiriman cepat'),
       (Icons.inventory_2_outlined, 'Packing rapi'),
     ];
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
       children: [
         for (final suggestion in suggestions)
           ChoiceChip(
@@ -1365,9 +1435,7 @@ class _SuggestionChips extends StatelessWidget {
                   ? _brandBlue
                   : const Color(0xFFBFDBFE),
             ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(999),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: AppRadius.pill),
           ),
       ],
     );

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/app_radius.dart';
+import '../theme/app_spacing.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -113,7 +115,11 @@ class _MemberOrdersScreenState extends State<MemberOrdersScreen> {
               status == 'UNPAID' ||
               payment == 'UNPAID' ||
               payment == 'PENDING'),
-      _OrderFilter.processing => status == 'PROCESSING' || status == 'PAID',
+      _OrderFilter.processing => status == 'PROCESSING' ||
+          status == 'PAID' ||
+          status == 'READY_FOR_PICKUP' ||
+          status == 'READY_TO_PICKUP' ||
+          status == 'READY_PICKUP',
       _OrderFilter.shipped => status == 'SHIPPED',
       // BUGFIX(audit): COMPLETED diperlakukan setara DELIVERED di seluruh file
       // (_statusLabel 'Selesai', _isReorderable, _showOrderOptions) tapi tab
@@ -580,6 +586,32 @@ class _OrderCardState extends State<_OrderCard> {
     return _isCancelled || status == 'DELIVERED' || status == 'COMPLETED';
   }
 
+  int get _pendingReviewCount => order.items
+      .where((item) => !item.reviewed && item.id.trim().isNotEmpty)
+      .length;
+
+  bool get _hasPendingReviews {
+    final status = order.status.toUpperCase();
+    final completed = status == 'DELIVERED' || status == 'COMPLETED';
+    return completed && _pendingReviewCount > 0;
+  }
+
+  Future<void> _openReviews(BuildContext context) async {
+    final pending = order.items
+        .where((item) => !item.reviewed && item.id.trim().isNotEmpty)
+        .toList(growable: false);
+    await Navigator.pushNamed(
+      context,
+      '/member/reviews',
+      arguments: {
+        if (pending.length == 1) 'orderItemId': pending.first.id,
+        'orderNumber': order.orderNumber,
+        'isSelfPickup': order.isSelfPickup,
+      },
+    );
+    if (mounted) await widget.onRefresh();
+  }
+
   bool get _canCancelOrder {
     final status = order.status.toUpperCase();
     if (status != 'PENDING' && status != 'PAID' && status != 'PROCESSING') {
@@ -633,6 +665,7 @@ class _OrderCardState extends State<_OrderCard> {
     if (_isAwaitingVerification) return null;
     if (_isUnpaid) return 'Bayar Sekarang';
     if (_needsDeliveryConfirmation) return 'Sudah Diterima';
+    if (_hasPendingReviews) return 'Beri Ulasan';
     if (_isReorderable) return 'Beli Lagi';
     return null;
   }
@@ -651,6 +684,10 @@ class _OrderCardState extends State<_OrderCard> {
     }
     if (_needsDeliveryConfirmation) {
       _confirmDelivered(context);
+      return;
+    }
+    if (_hasPendingReviews) {
+      _openReviews(context);
       return;
     }
     if (_isReorderable) {
@@ -786,12 +823,13 @@ class _OrderCardState extends State<_OrderCard> {
         ),
       );
     }
-    if (status == 'DELIVERED' || status == 'COMPLETED') {
+    if ((status == 'DELIVERED' || status == 'COMPLETED') &&
+        _pendingReviewCount > 0) {
       actions.add(
         _OrderQuickAction(
           icon: Icons.rate_review_outlined,
           title: 'Beri ulasan',
-          onTap: () => Navigator.pushNamed(context, '/member/reviews'),
+          onTap: () => _openReviews(context),
         ),
       );
     }
@@ -932,6 +970,20 @@ class _OrderCardState extends State<_OrderCard> {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
+                    const SizedBox(height: AppSpacing.sm),
+                    _OrderFulfillmentMeta(order: order),
+                    if (_pendingReviewCount > 0 && _isReorderable) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        '$_pendingReviewCount produk belum diulas',
+                        key: const ValueKey('pending-review-count'),
+                        style: const TextStyle(
+                          color: Color(0xFFB45309),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     _OrderProductPreview(order: order),
                     const SizedBox(height: 12),
@@ -1022,7 +1074,7 @@ class _OrderCardState extends State<_OrderCard> {
                               elevation: 0,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: AppRadius.medium,
                               ),
                             ),
                             child: _confirming
@@ -1091,6 +1143,74 @@ class _OrderCardState extends State<_OrderCard> {
       ),
     );
   }
+}
+
+class _OrderFulfillmentMeta extends StatelessWidget {
+  final OrderSummary order;
+
+  const _OrderFulfillmentMeta({required this.order});
+
+  @override
+  Widget build(BuildContext context) {
+    final statusTime = order.completedAt ??
+        order.deliveredAt ??
+        order.shippedAt ??
+        order.statusUpdatedAt ??
+        order.updatedAt;
+    return Wrap(
+      spacing: AppSpacing.md,
+      runSpacing: AppSpacing.xs,
+      children: [
+        _OrderMetaLabel(
+          icon: order.isSelfPickup
+              ? Icons.storefront_outlined
+              : Icons.local_shipping_outlined,
+          label: order.isSelfPickup ? 'Ambil sendiri' : 'Pengiriman',
+        ),
+        if (statusTime != null)
+          _OrderMetaLabel(
+            icon: Icons.schedule_rounded,
+            label:
+                '${_statusLabel(order.status)} ${_formatOrderDateTime(statusTime)}',
+          ),
+      ],
+    );
+  }
+}
+
+class _OrderMetaLabel extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _OrderMetaLabel({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15, color: cs.onSurfaceVariant),
+        const SizedBox(width: AppSpacing.xs),
+        Text(
+          label,
+          style: TextStyle(
+            color: cs.onSurfaceVariant,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+String _formatOrderDateTime(DateTime value) {
+  final local = value.toLocal();
+  final date = _formatDate(local);
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '$date, $hour.$minute';
 }
 
 class _OrderQuickAction {

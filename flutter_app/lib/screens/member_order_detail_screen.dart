@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/app_radius.dart';
+import '../theme/app_spacing.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -404,6 +406,29 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
     }
   }
 
+  List<OrderItemSummary> _pendingReviewItems(OrderSummary order) => order.items
+      .where((item) => !item.reviewed && item.id.trim().isNotEmpty)
+      .toList(growable: false);
+
+  bool _isCompleted(OrderSummary order) {
+    final status = order.status.toUpperCase();
+    return status == 'DELIVERED' || status == 'COMPLETED';
+  }
+
+  Future<void> _openReviews(OrderSummary order) async {
+    final pending = _pendingReviewItems(order);
+    await Navigator.pushNamed(
+      context,
+      '/member/reviews',
+      arguments: {
+        if (pending.length == 1) 'orderItemId': pending.first.id,
+        'orderNumber': order.orderNumber,
+        'isSelfPickup': order.isSelfPickup,
+      },
+    );
+    if (mounted) await _refreshOrder();
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<OrderSummary>(
@@ -525,45 +550,82 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
               ],
             ),
           ),
-          bottomNavigationBar: AppGlassBottomBar(
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: order.items.isEmpty
-                        ? null
-                        : _reordering
-                            ? null
-                            : () => _buyAgain(context, order),
-                    icon: _reordering
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.replay_rounded),
-                    label: Text(_reordering ? 'Memproses' : 'Beli Lagi'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(52),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => Navigator.pushNamed(context, '/products'),
-                    icon: const Icon(Icons.shopping_bag_outlined),
-                    label: const Text('Belanja'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(52),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          bottomNavigationBar: _OrderBottomActions(
+            order: order,
+            reordering: _reordering,
+            pendingReviewCount: _pendingReviewItems(order).length,
+            completed: _isCompleted(order),
+            onReview: () => _openReviews(order),
+            onBuyAgain: () => _buyAgain(context, order),
           ),
         );
       },
+    );
+  }
+}
+
+class _OrderBottomActions extends StatelessWidget {
+  final OrderSummary order;
+  final bool reordering;
+  final int pendingReviewCount;
+  final bool completed;
+  final VoidCallback onReview;
+  final VoidCallback onBuyAgain;
+
+  const _OrderBottomActions({
+    required this.order,
+    required this.reordering,
+    required this.pendingReviewCount,
+    required this.completed,
+    required this.onReview,
+    required this.onBuyAgain,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final canReorder = order.items.isNotEmpty && !reordering;
+    return AppGlassBottomBar(
+      child: Row(
+        children: [
+          if (completed && pendingReviewCount > 0) ...[
+            Expanded(
+              child: OutlinedButton.icon(
+                key: const ValueKey('order-review-cta'),
+                onPressed: onReview,
+                icon: const Icon(Icons.rate_review_outlined),
+                label: Text(
+                  pendingReviewCount == 1
+                      ? 'Beri Ulasan'
+                      : 'Ulas $pendingReviewCount Produk',
+                ),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  shape: RoundedRectangleBorder(borderRadius: AppRadius.large),
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+          ],
+          Expanded(
+            child: ElevatedButton.icon(
+              key: const ValueKey('order-reorder-cta'),
+              onPressed: canReorder ? onBuyAgain : null,
+              icon: reordering
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.replay_rounded),
+              label: Text(reordering ? 'Memproses' : 'Beli Lagi'),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+                shape: RoundedRectangleBorder(borderRadius: AppRadius.large),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
