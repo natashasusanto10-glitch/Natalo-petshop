@@ -22,6 +22,7 @@ import '../services/video_quality_service.dart';
 import '../state/feed_local_store.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
+import '../state/post_caption_session_store.dart';
 import '../state/settings_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/app_route_observer.dart';
@@ -1448,6 +1449,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
             child: _PostCaption(
+              postId: post.id,
               memberName: memberName,
               caption: post.caption!,
               isOfficial: widget.memberIsOfficial,
@@ -1923,7 +1925,8 @@ class _MiniAvatar extends StatelessWidget {
   }
 }
 
-class _PostCaption extends StatelessWidget {
+class _PostCaption extends StatefulWidget {
+  final String postId;
   final String memberName;
   final String caption;
 
@@ -1931,33 +1934,107 @@ class _PostCaption extends StatelessWidget {
   final bool isOfficial;
 
   const _PostCaption({
+    required this.postId,
     required this.memberName,
     required this.caption,
     this.isOfficial = false,
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(
-            text: '$memberName ',
-            style: TextStyle(
-              fontWeight: FontWeight.w900,
-              color: isOfficial ? NataloColors.officialGoldOnLight : null,
-            ),
-          ),
-          TextSpan(text: caption.trim()),
-        ],
-      ),
-      style: TextStyle(
+  State<_PostCaption> createState() => _PostCaptionState();
+}
+
+class _PostCaptionState extends State<_PostCaption>
+    with SingleTickerProviderStateMixin {
+  late final TapGestureRecognizer _expandRecognizer = TapGestureRecognizer()
+    ..onTap = _expand;
+
+  void _expand() {
+    postCaptionSessionStore.markExpanded(widget.postId);
+  }
+
+  @override
+  void dispose() {
+    _expandRecognizer.dispose();
+    super.dispose();
+  }
+
+  TextStyle _style(BuildContext context) => TextStyle(
         color: Theme.of(context).colorScheme.onSurface,
         fontSize: 13.5,
         fontWeight: FontWeight.w600,
         height: 1.35,
-      ),
-    );
+      );
+
+  String? _truncatedCaption(
+      BuildContext context, double width, TextStyle style) {
+    final full = widget.caption.trim();
+    const suffix = '... selengkapnya';
+    TextSpan span(String text) => TextSpan(children: [
+          TextSpan(
+              text: '${widget.memberName} ',
+              style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  color: widget.isOfficial
+                      ? NataloColors.officialGoldOnLight
+                      : null)),
+          TextSpan(text: text),
+        ]);
+    bool fits(String text) {
+      final p = TextPainter(
+          text: span(text),
+          textDirection: TextDirection.ltr,
+          maxLines: 2,
+          textScaler: MediaQuery.textScalerOf(context));
+      p.layout(maxWidth: width);
+      return !p.didExceedMaxLines;
+    }
+
+    if (fits(full)) return null;
+    var lo = 0, hi = full.length;
+    while (lo < hi) {
+      final mid = (lo + hi + 1) ~/ 2;
+      if (fits('${full.substring(0, mid).trimRight()}$suffix')) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return '${full.substring(0, lo).trimRight()}$suffix';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final expanded = postCaptionSessionStore.isExpanded(widget.postId);
+    final style = _style(context);
+    return LayoutBuilder(builder: (context, constraints) {
+      final truncated = expanded
+          ? null
+          : _truncatedCaption(context, constraints.maxWidth, style);
+      final text = truncated ?? widget.caption.trim();
+      final suffixIndex = text.lastIndexOf('... selengkapnya');
+      final span = TextSpan(children: [
+        TextSpan(
+            text: '${widget.memberName} ',
+            style: TextStyle(
+                fontWeight: FontWeight.w900,
+                color: widget.isOfficial
+                    ? NataloColors.officialGoldOnLight
+                    : null)),
+        if (suffixIndex >= 0 && !expanded) ...[
+          TextSpan(text: text.substring(0, suffixIndex)),
+          TextSpan(
+              text: 'selengkapnya',
+              recognizer: _expandRecognizer,
+              style: const TextStyle(fontWeight: FontWeight.w800)),
+        ] else
+          TextSpan(text: text),
+      ]);
+      return AnimatedSize(
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+          child: Text.rich(span, style: style));
+    });
   }
 }
 
