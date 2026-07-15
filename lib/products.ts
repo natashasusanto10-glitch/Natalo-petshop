@@ -5,6 +5,7 @@ import {
 } from "@/lib/product-vouchers";
 import { resolveActiveDiscount } from "@/lib/product-pricing";
 import { productVideoPayload } from "@/lib/product/product-video-serialize";
+import { productIsVisibleWhere } from "@/lib/product/admin-product-form";
 import { productSearchWhere } from "@/lib/search";
 import { sampleProducts } from "@/lib/sample-data";
 import type { OrderStatus, Prisma } from "@prisma/client";
@@ -792,6 +793,7 @@ export async function getProducts(opts?: {
         SELECT "id"
         FROM "Product"
         WHERE "isActive" = true
+          AND "creationState" = 'ready'
         ORDER BY md5("id" || ${randomSeed}) ASC
         LIMIT ${take ?? 24}
         OFFSET ${skip ?? 0}
@@ -801,7 +803,7 @@ export async function getProducts(opts?: {
 
       const order = new Map(ids.map((id, index) => [id, index]));
       const products = await prisma.product.findMany({
-        where: { id: { in: ids } },
+        where: { id: { in: ids }, creationState: "ready" },
         include: getProductListInclude(),
       });
 
@@ -951,6 +953,7 @@ function buildProductWhere({
   discountOnly?: boolean;
 }): Prisma.ProductWhereInput {
   const and: Prisma.ProductWhereInput[] = [];
+  and.push(productIsVisibleWhere());
 
   if (withImageOnly) {
     and.push({ imageUrl: { not: null } }, { imageUrl: { not: "" } });
@@ -1111,9 +1114,10 @@ export async function getProductBySlug(
         category: { select: { id: true, slug: true } },
       },
     });
+    if (p && p.creationState !== "ready") p = null;
     if (!p) {
       p = await prisma.product.findUnique({
-        where: { id: slug },
+        where: { id: slug, creationState: "ready" },
         include: {
           ...variantInclude,
           ...discountItemsInclude,

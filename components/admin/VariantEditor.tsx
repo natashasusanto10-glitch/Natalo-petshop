@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatRupiah } from "@/lib/format";
+import { variantPersistenceMode, type VariantPersistenceMode } from "@/lib/product/variant-editor";
+export { variantPersistenceMode } from "@/lib/product/variant-editor";
 
 // ── Types ──────────────────────────────────────────────────────
 type OptionDraft = {
@@ -103,6 +105,7 @@ export type VariantEditorDraftPayload = {
 };
 
 interface Props {
+  mode?: "controlled" | "standalone";
   /** Required di standalone mode (call API sendiri). Optional di draft
    *  mode (parent yang submit). */
   productId?: string;
@@ -133,13 +136,14 @@ interface Props {
 }
 
 export function VariantEditor({
+  mode,
   productId,
   initialHasVariants,
   initialAttributes,
   initialVariants,
   onChange,
 }: Props) {
-  const isDraftMode = typeof onChange === "function";
+  const isDraftMode = mode === "controlled" || typeof onChange === "function";
   const [hasVariants, setHasVariants] = useState(initialHasVariants);
   const [attrs, setAttrs] = useState<AttrDraft[]>(() =>
     initialAttributes
@@ -487,7 +491,8 @@ export function VariantEditor({
         })),
       };
 
-      const res = await fetch(`/api/admin/products/${productId}/variants`, {
+    if (variantPersistenceMode(mode ?? (isDraftMode ? "controlled" : "standalone")) === "parent-save") return;
+    const res = await fetch(`/api/admin/products/${productId}/variants`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
+import { normalizeProductFormPayload } from "@/lib/product/admin-product-form";
+import { putVariantsPayloadSchema } from "@/lib/validators/variant-schema";
 
 /**
  * GET /api/admin/products/[id]
@@ -87,6 +89,54 @@ export async function PATCH(
   if (typeof body.imageUrl === "string") {
     data.imageUrl = body.imageUrl.trim() || null;
   }
+  const existingProduct = await prisma.product.findUnique({ where: { id }, select: { price: true, stock: true, weightGram: true } });
+  if (!existingProduct) return NextResponse.json({ error: "Produk tidak ditemukan" }, { status: 404 });
+  if (Array.isArray(body.imageUrls) || Array.isArray(body.gallery)) {
+    const imageUrls = Array.isArray(body.imageUrls)
+      ? body.imageUrls.filter((value): value is string => typeof value === "string")
+      : [typeof body.imageUrl === "string" ? body.imageUrl : "", ...(body.gallery as unknown[]).filter((value): value is string => typeof value === "string")];
+    try {
+      const normalized = normalizeProductFormPayload({
+        name: typeof body.name === "string" ? body.name : "existing",
+        imageUrls,
+      });
+      data.imageUrl = normalized.imageUrl;
+      data.gallery = normalized.gallery;
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Payload foto tidak valid" }, { status: 400 });
+    }
+  }
+  if (typeof body.categoryId === "string") data.category = body.categoryId.trim() ? { connect: { id: body.categoryId.trim() } } : { disconnect: true };
+  if (body.categoryId === null) data.category = { disconnect: true };
+  if (typeof body.brandId === "string") data.brand = body.brandId.trim() ? { connect: { id: body.brandId.trim() } } : { disconnect: true };
+  if (body.brandId === null) data.brand = { disconnect: true };
+  if (typeof body.sku === "string") data.sku = body.sku.trim() || null;
+  if (body.video && typeof body.video === "object") {
+    const video = body.video as Record<string, unknown>;
+    if (typeof video.guid === "string" || video.guid === null) data.videoGuid = video.guid as string | null;
+    if (typeof video.status === "string" || video.status === null) data.videoStatus = video.status as string | null;
+    if (typeof video.thumbnailUrl === "string" || video.thumbnailUrl === null) data.videoThumbnailUrl = video.thumbnailUrl as string | null;
+    if (typeof video.durationSec === "number" || video.durationSec === null) data.videoDurationSec = video.durationSec as number | null;
+  }
+  let variantPayload: { hasVariants: boolean; attributes: any[]; variants: any[] } | undefined;
+  if (body.hasVariants !== undefined || body.attributes !== undefined || body.variants !== undefined) {
+    const parsedVariants = putVariantsPayloadSchema.safeParse({
+      hasVariants: body.hasVariants === undefined ? true : body.hasVariants,
+      attributes: body.attributes ?? [],
+      variants: body.variants ?? [],
+    });
+    if (!parsedVariants.success) return NextResponse.json({ error: "Payload varian tidak valid", issues: parsedVariants.error.issues }, { status: 422 });
+    variantPayload = parsedVariants.data;
+    data.hasVariants = variantPayload.hasVariants;
+    const effectivePrice = typeof body.price === "number" ? body.price : existingProduct.price;
+    const effectiveStock = typeof body.stock === "number" ? body.stock : existingProduct.stock;
+    const effectiveWeight = typeof body.weightGram === "number" ? body.weightGram : existingProduct.weightGram;
+    if (!variantPayload.hasVariants && (effectivePrice <= 0 || effectiveStock < 0 || effectiveWeight <= 0)) {
+      return NextResponse.json({ error: "Produk tanpa varian wajib memiliki harga, stok, dan berat yang valid" }, { status: 400 });
+    }
+    if (!variantPayload.hasVariants) { data.price = Math.round(effectivePrice); data.stock = Math.round(effectiveStock); data.weightGram = Math.round(effectiveWeight); }
+  }
+  if (Object.keys(data).length > 0) data.lastEditedAt = new Date();
   if (typeof body.isActive === "boolean") {
     data.isActive = body.isActive;
   }
@@ -98,8 +148,8 @@ export async function PATCH(
     );
   }
 
-  const updated = await prisma.product
-    .update({
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.product.update({
       where: { id },
       data,
       select: {
@@ -111,11 +161,28 @@ export async function PATCH(
         isActive: true,
         imageUrl: true,
       },
-    })
-    .catch((err) => {
-      if (err.code === "P2025") return null;
-      throw err;
     });
+    if (variantPayload) {
+      await tx.productVariant.updateMany({ where: { productId: id, deletedAt: null }, data: { deletedAt: new Date(), isActive: false } });
+      await tx.variantAttribute.deleteMany({ where: { productId: id } });
+      const optionMap = new Map<string, string>();
+      for (const attr of variantPayload.attributes) {
+        const created = await tx.variantAttribute.create({ data: { productId: id, name: attr.name, position: attr.position, options: { create: attr.options.map((o: any) => ({ value: o.value, position: o.position })) } }, include: { options: true } });
+        created.options.forEach((o) => optionMap.set(`${attr.position}:${o.value}`, o.id));
+      }
+      for (const v of variantPayload.variants) {
+        const optionIds = v.optionRefs.map((r: string) => optionMap.get(r)).filter(Boolean) as string[];
+        if (optionIds.length !== v.optionRefs.length) continue;
+        await tx.productVariant.create({ data: { productId: id, sku: v.sku || null, price: v.price, stock: v.stock, weightGram: v.weightGram, imageUrl: v.imageUrl || null, isActive: v.isActive, options: { create: optionIds.map((optionId) => ({ optionId })) } } });
+      }
+      const active = await tx.productVariant.findMany({ where: { productId: id, deletedAt: null, isActive: true }, select: { price: true, stock: true, weightGram: true } });
+      if (active.length) {
+        const cheapest = active.reduce((a, b) => (b.price < a.price ? b : a));
+        await tx.product.update({ where: { id }, data: { price: cheapest.price, stock: active.reduce((sum, v) => sum + v.stock, 0), weightGram: cheapest.weightGram, discountPrice: null } });
+      }
+    }
+    return tx.product.findUnique({ where: { id }, select: { id: true, name: true, slug: true, price: true, stock: true, weightGram: true, isActive: true, imageUrl: true } });
+  }).catch((err) => { if (err.code === "P2025") return null; throw err; });
 
   if (!updated) {
     return NextResponse.json({ error: "Produk tidak ditemukan" }, { status: 404 });

@@ -25,6 +25,20 @@ const MAX_DIMENSION = 1600;
 /** Quality JPEG compression — 0.85 = sweet spot quality vs size. */
 const JPEG_QUALITY = 0.85;
 
+export async function uploadProductImageFiles(files: File[], remaining: number): Promise<{ uploaded: string[]; failed: string[] }> {
+  const incoming = files.slice(0, Math.max(0, remaining));
+  const valid = incoming.filter((file) => file.size <= MAX_SIZE_MB * 1024 * 1024);
+  const results = await Promise.allSettled(valid.map(async (file) => {
+    const fd = new FormData(); fd.append("file", file);
+    const response = await fetch("/api/admin/upload", { method: "POST", body: fd });
+    if (!response.ok) throw new Error(file.name);
+    return String((await response.json()).url);
+  }));
+  const uploaded: string[] = []; const failed = incoming.filter((file) => !valid.includes(file)).map((file) => file.name);
+  results.forEach((result, index) => result.status === "fulfilled" ? uploaded.push(result.value) : failed.push(valid[index].name));
+  return { uploaded, failed };
+}
+
 /**
  * Upload 1–{max} gambar ke UploadThing via /api/admin/upload.
  * - Gambar pertama jadi thumbnail utama (akan disimpan ke product.imageUrl).

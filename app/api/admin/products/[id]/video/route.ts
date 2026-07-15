@@ -58,11 +58,8 @@ export async function POST(
     return NextResponse.json({ error: "Produk tidak ditemukan" }, { status: 404 });
   }
 
-  // Ganti video: create-before-delete. Provision video BARU dulu, baru
-  // repoint DB, baru bersihkan video LAMA (best-effort). Kalau create atau
-  // TUS gagal (transient), video lama yang masih berfungsi tidak ikut hilang —
-  // DB tidak disentuh sampai video baru benar-benar siap dipakai.
-  const oldGuid = product.videoGuid;
+  // Provision video baru without deleting the existing Bunny asset. Cleanup is
+  // deferred until the parent product save has succeeded (draft contract).
 
   const created = await createProductVideo({ title: `product-${product.id}` });
   if (!created || "error" in created) {
@@ -81,24 +78,9 @@ export async function POST(
     );
   }
 
-  await prisma.product.update({
-    where: { id: product.id },
-    data: {
-      videoGuid: created.guid,
-      videoStatus: "uploading",
-      videoDurationSec: duration,
-      videoUrl: null,
-      videoThumbnailUrl: null,
-    },
-  });
-
-  // DB sudah repoint ke video baru — video lama kini tidak lagi direferensikan,
-  // aman dihapus (best-effort; cron GC jadi backstop kalau ini gagal).
-  if (oldGuid && oldGuid !== created.guid) {
-    await deleteProductVideo(oldGuid);
-  }
-
-  return NextResponse.json({ videoGuid: created.guid, tus });
+  // Do not mutate product DB during draft provisioning. The parent form
+  // attaches this guid only after its product save succeeds via PATCH.
+  return NextResponse.json({ videoGuid: created.guid, tus, videoDurationSec: duration });
 }
 
 export async function PATCH(
@@ -114,11 +96,12 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json().catch(() => null);
   const duration = parseDuration(body);
+  const requestedGuid = body && typeof body === "object" ? (body as Record<string, unknown>).videoGuid : null;
   const product = await prisma.product.findUnique({
     where: { id },
     select: { id: true, videoGuid: true, videoStatus: true },
   });
-  if (!product?.videoGuid) {
+  if (!product || (requestedGuid && typeof requestedGuid !== "string")) {
     return NextResponse.json(
       { error: "Belum ada video untuk produk ini." },
       { status: 404 },
@@ -127,16 +110,21 @@ export async function PATCH(
   // Settled-guard: kalau webhook Bunny (FINISHED/failed) sudah lebih dulu
   // mendarat sebelum PATCH ini, jangan downgrade videoStatus balik ke
   // "processing" — produk bisa stuck tersembunyi walau videonya sudah siap.
-  if (product.videoStatus === "ready" || product.videoStatus === "failed") {
+  if (!requestedGuid) {
+    return NextResponse.json({ error: "videoGuid wajib diisi setelah upload." }, { status: 400 });
+  }
+  if ((product.videoStatus === "ready" || product.videoStatus === "failed") && product.videoGuid === requestedGuid) {
     return NextResponse.json({ ok: true, skipped: "already-settled" });
   }
   await prisma.product.update({
     where: { id: product.id },
     data: {
+      videoGuid: requestedGuid,
       videoStatus: "processing",
       ...(duration ? { videoDurationSec: duration } : {}),
     },
   });
+  if (product.videoGuid && product.videoGuid !== requestedGuid) await deleteProductVideo(product.videoGuid);
   return NextResponse.json({ ok: true });
 }
 
@@ -151,6 +139,8 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { id } = await params;
+  const body = await request.json().catch(() => null);
+  const requestedGuid = body && typeof body === "object" ? (body as Record<string, unknown>).videoGuid : null;
   const product = await prisma.product.findUnique({
     where: { id },
     select: { id: true, videoGuid: true },
@@ -158,8 +148,12 @@ export async function DELETE(
   if (!product) {
     return NextResponse.json({ error: "Produk tidak ditemukan" }, { status: 404 });
   }
-  if (product.videoGuid) {
-    await deleteProductVideo(product.videoGuid);
+  const guidToDelete = typeof requestedGuid === "string" ? requestedGuid : product.videoGuid;
+  if (guidToDelete) {
+    await deleteProductVideo(guidToDelete);
+  }
+  if (requestedGuid && requestedGuid !== product.videoGuid) {
+    return NextResponse.json({ ok: true, compensated: true });
   }
   await prisma.product.update({
     where: { id: product.id },

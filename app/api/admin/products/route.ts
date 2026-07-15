@@ -5,6 +5,7 @@ import { syncProduct, productSearchWhere } from "@/lib/search";
 import { putVariantsPayloadSchema } from "@/lib/validators/variant-schema";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
+import { normalizeProductFormPayload } from "@/lib/product/admin-product-form";
 
 // Schema: Create product (extended dari POST sederhana original — sekarang
 // support gallery + opsional variants. Backwards compatible: caller lama
@@ -16,6 +17,7 @@ const createProductSchema = z.object({
   stock: z.number().int().min(0).max(999_999).optional().default(0),
   weightGram: z.number().int().min(1).max(999_999).optional().default(500),
   imageUrl: z.string().trim().optional(),
+  imageUrls: z.array(z.string().trim()).max(9).optional(),
   // Maksimal 9 foto total: 1 cover (imageUrl) + 8 gallery.
   gallery: z.array(z.string().trim()).max(8).optional().default([]),
   categoryId: z.string().trim().optional(),
@@ -36,6 +38,7 @@ const createProductSchema = z.object({
   hasVariants: z.boolean().optional().default(false),
   attributes: z.array(z.any()).optional().default([]),
   variants: z.array(z.any()).optional().default([]),
+  video: z.object({ guid: z.string().optional(), url: z.string().optional(), status: z.string().optional() }).nullable().optional(),
 });
 
 const MAX_LIMIT = 100;
@@ -139,6 +142,15 @@ export async function POST(request: NextRequest) {
     );
   }
   const body = parsed.data;
+  let normalized;
+  try {
+    normalized = normalizeProductFormPayload({
+      ...body,
+      imageUrls: body.imageUrls ?? [body.imageUrl ?? "", ...body.gallery],
+    });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Payload tidak valid" }, { status: 400 });
+  }
 
   // Kalau hasVariants=true, validate attributes + variants pakai schema
   // yang sama dengan PUT variants endpoint. Kalau false, skip.
@@ -188,6 +200,7 @@ export async function POST(request: NextRequest) {
 
   // Atomic create — product + variants dalam satu transaction supaya
   // kalau varian gagal di-create, product juga di-rollback (no orphan).
+  const hasVideo = Boolean(normalized.video?.guid || normalized.video?.url || normalized.video?.status);
   const created = await prisma.$transaction(async (tx) => {
     // Validasi SKU Induk unik kalau ada (Product.sku @unique). NULL kalau
     // varian aktif atau kosong — admin tidak isi SKU Induk untuk produk
@@ -205,18 +218,22 @@ export async function POST(request: NextRequest) {
 
     const product = await tx.product.create({
       data: {
-        name: body.name.trim(),
+        name: normalized.name,
         slug,
         sku: productSku,
-        description: body.description.trim(),
+        description: normalized.description,
         price: Math.round(body.price),
         stock: Math.round(body.stock),
         weightGram: Math.round(body.weightGram),
-        imageUrl: body.imageUrl?.trim() || null,
-        gallery: body.gallery.map((g) => g.trim()).filter(Boolean),
-        categoryId: body.categoryId?.trim() || null,
-        brandId: body.brandId?.trim() || null,
-        isActive: body.isActive,
+        imageUrl: normalized.imageUrl,
+        gallery: normalized.gallery,
+        categoryId: normalized.categoryId,
+        brandId: normalized.brandId,
+        isActive: hasVideo ? false : body.isActive,
+        creationState: hasVideo ? "creating" : "ready",
+        videoGuid: normalized.video?.guid ?? null,
+        videoUrl: normalized.video?.url ?? null,
+        videoStatus: normalized.video?.status ?? null,
         hasVariants: body.hasVariants,
         // Produk baru dianggap "baru disentuh admin" → tampil di atas admin list.
         lastEditedAt: new Date(),
@@ -350,5 +367,6 @@ export async function POST(request: NextRequest) {
     }),
   );
 
-  return NextResponse.json(created, { status: 201 });
+  if (!hasVideo) return NextResponse.json({ ...created, creationState: "ready", requiresVideoFinalize: false }, { status: 201 });
+  return NextResponse.json({ ...created, creationState: "creating", requiresVideoFinalize: true }, { status: 201 });
 }

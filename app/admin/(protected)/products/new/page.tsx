@@ -16,7 +16,7 @@
  *  - Varian ON: Harga Satuan/Stok/Berat disabled (data dari per-varian)
  */
 import { prisma } from "@/lib/prisma";
-import { NewProductForm } from "@/components/admin/NewProductForm";
+import { ProductForm } from "@/components/admin/ProductForm";
 
 export default async function AdminProductNewPage() {
   const [categories, brands] = await Promise.all([
@@ -30,5 +30,5 @@ export default async function AdminProductNewPage() {
     }),
   ]);
 
-  return <NewProductForm categories={categories} brands={brands} />;
+  return <ProductForm mode="create" categories={categories} brands={brands} />;
 }
