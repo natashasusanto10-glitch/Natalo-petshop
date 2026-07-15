@@ -4,6 +4,44 @@ import { deleteProductVideo } from "./product-video";
 
 export type ProductCreationState = "creating" | "ready";
 
+export type ProductFormPayload = {
+  name: string;
+  description?: string;
+  imageUrls: string[];
+  categoryId?: string | null;
+  brandId?: string | null;
+  price?: number;
+  stock?: number;
+  weightGram?: number;
+  sku?: string | null;
+  hasVariants?: boolean;
+  attributes?: unknown[];
+  variants?: unknown[];
+  video?: { guid?: string | null; url?: string | null; status?: string | null } | null;
+};
+
+export function normalizeProductFormPayload(input: ProductFormPayload) {
+  const images = (input.imageUrls ?? []).map((url) => url.trim()).filter(Boolean);
+  if (images.length === 0) throw new Error("Minimal satu foto wajib diisi");
+  if (images.length > 9) throw new Error("Maksimal 9 foto dapat diisi");
+  return {
+    name: input.name.trim(),
+    description: input.description?.trim() ?? "",
+    imageUrl: images[0],
+    gallery: images.slice(1),
+    categoryId: input.categoryId?.trim() || null,
+    brandId: input.brandId?.trim() || null,
+    price: input.price === undefined ? undefined : Math.round(input.price),
+    stock: input.stock === undefined ? undefined : Math.round(input.stock),
+    weightGram: input.weightGram === undefined ? undefined : Math.round(input.weightGram),
+    sku: input.sku?.trim() || null,
+    hasVariants: input.hasVariants ?? false,
+    attributes: input.attributes ?? [],
+    variants: input.variants ?? [],
+    video: input.video ?? null,
+  };
+}
+
 export function productIsVisibleWhere(): { creationState: "ready" } {
   return { creationState: "ready" };
 }
