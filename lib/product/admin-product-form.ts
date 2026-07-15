@@ -20,7 +20,24 @@ export type ProductFormPayload = {
   video?: { guid?: string | null; url?: string | null; status?: string | null } | null;
 };
 
-export function normalizeProductFormPayload(input: ProductFormPayload) {
+export type NormalizedProductFormPayload = {
+  name: string;
+  description: string;
+  imageUrl: string;
+  gallery: string[];
+  categoryId: string | null;
+  brandId: string | null;
+  price?: number;
+  stock?: number;
+  weightGram?: number;
+  sku: string | null;
+  hasVariants: boolean;
+  attributes: unknown[];
+  variants: unknown[];
+  video: ProductFormPayload["video"];
+};
+
+export function normalizeProductFormPayload(input: ProductFormPayload): NormalizedProductFormPayload {
   const images = (input.imageUrls ?? []).map((url) => url.trim()).filter(Boolean);
   if (images.length === 0) throw new Error("Minimal satu foto wajib diisi");
   if (images.length > 9) throw new Error("Maksimal 9 foto dapat diisi");

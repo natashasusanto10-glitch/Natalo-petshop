@@ -12,3 +12,9 @@ Tests:
 Implemented the shared payload normalizer, nine-photo validation, video-aware hidden create response, and lifecycle fields for create. Existing nested variant validation remains in place.
 
 Concerns: edit route transaction unification and full video finalize orchestration still need integration in the next task; the requested API response currently marks a selected video as requiring finalization and keeps the product hidden.
+
+Follow-up commit: `23acbb5b`
+
+Follow-up test: `npx vitest run tests/admin-product-form.test.ts` — 5 passed.
+
+Follow-up changes: PATCH now normalizes gallery/category/brand/SKU and updates `lastEditedAt`; POST legacy `imageUrl` plus `gallery` is preserved; normalized payload has an explicit return type.

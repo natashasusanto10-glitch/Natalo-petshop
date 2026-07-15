@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
+import { normalizeProductFormPayload } from "@/lib/product/admin-product-form";
 
 /**
  * GET /api/admin/products/[id]
@@ -87,6 +88,27 @@ export async function PATCH(
   if (typeof body.imageUrl === "string") {
     data.imageUrl = body.imageUrl.trim() || null;
   }
+  if (Array.isArray(body.imageUrls) || Array.isArray(body.gallery)) {
+    const imageUrls = Array.isArray(body.imageUrls)
+      ? body.imageUrls.filter((value): value is string => typeof value === "string")
+      : [typeof body.imageUrl === "string" ? body.imageUrl : "", ...(body.gallery as unknown[]).filter((value): value is string => typeof value === "string")];
+    try {
+      const normalized = normalizeProductFormPayload({
+        name: typeof body.name === "string" ? body.name : "existing",
+        imageUrls,
+      });
+      data.imageUrl = normalized.imageUrl;
+      data.gallery = normalized.gallery;
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Payload foto tidak valid" }, { status: 400 });
+    }
+  }
+  if (typeof body.categoryId === "string") data.category = { connect: { id: body.categoryId.trim() } };
+  if (body.categoryId === null) data.category = { disconnect: true };
+  if (typeof body.brandId === "string") data.brand = { connect: { id: body.brandId.trim() } };
+  if (body.brandId === null) data.brand = { disconnect: true };
+  if (typeof body.sku === "string") data.sku = body.sku.trim() || null;
+  if (Object.keys(data).length > 0) data.lastEditedAt = new Date();
   if (typeof body.isActive === "boolean") {
     data.isActive = body.isActive;
   }

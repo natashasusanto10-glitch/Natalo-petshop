@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
   try {
     normalized = normalizeProductFormPayload({
       ...body,
-      imageUrls: body.imageUrls ?? [body.imageUrl ?? ""],
+      imageUrls: body.imageUrls ?? [body.imageUrl ?? "", ...body.gallery],
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Payload tidak valid" }, { status: 400 });

@@ -27,4 +27,13 @@ describe("admin product creation lifecycle", () => {
       "Minimal satu foto wajib diisi",
     );
   });
+
+  it("preserves legacy cover plus gallery payload", () => {
+    const result = normalizeProductFormPayload({
+      name: "Legacy",
+      imageUrls: ["cover.jpg", "gallery-1.jpg", "gallery-2.jpg"],
+    });
+    expect(result.imageUrl).toBe("cover.jpg");
+    expect(result.gallery).toEqual(["gallery-1.jpg", "gallery-2.jpg"]);
+  });
 });
