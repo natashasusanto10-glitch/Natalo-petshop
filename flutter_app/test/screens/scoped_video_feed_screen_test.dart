@@ -515,7 +515,7 @@ void main() {
     );
   });
 
-  testWidgets('fullscreen controls use 48px back target and top scrim',
+  testWidgets('fullscreen back is 32px on a transparent 48px target',
       (tester) async {
     final posts = [_fakeVideoPost('a')];
     await tester.pumpWidget(
@@ -528,6 +528,28 @@ void main() {
     expect(
       tester.getSize(find.byKey(const ValueKey('scoped-video-back-target'))),
       const Size(48, 48),
+    );
+    final backIcon = tester.widget<Icon>(
+      find.descendant(
+        of: find.byKey(const ValueKey('scoped-video-back-target')),
+        matching: find.byIcon(Icons.chevron_left_rounded),
+      ),
+    );
+    expect(backIcon.size, 32);
+
+    final circularMaterials = tester
+        .widgetList<Material>(
+          find.ancestor(
+            of: find.byKey(const ValueKey('scoped-video-back-target')),
+            matching: find.byType(Material),
+          ),
+        )
+        .where((material) => material.shape is CircleBorder);
+    expect(
+      circularMaterials.every(
+        (material) => material.color == null || material.color!.a == 0,
+      ),
+      isTrue,
     );
     expect(
       find.byKey(const ValueKey('scoped-video-top-scrim')),

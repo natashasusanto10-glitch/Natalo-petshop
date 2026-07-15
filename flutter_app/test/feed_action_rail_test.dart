@@ -25,14 +25,20 @@ void main() {
   testWidgets('count 0 disembunyikan (label baru muncul saat >0)',
       (tester) async {
     await tester.pumpWidget(_wrap(const FeedActionRail(
-      likeCount: 0, liked: false, commentCount: 0, shareCount: 0,
+      likeCount: 0,
+      liked: false,
+      commentCount: 0,
+      shareCount: 0,
     )));
     expect(find.text('0'), findsNothing);
   });
 
   testWidgets('format angka ribuan pakai K', (tester) async {
     await tester.pumpWidget(_wrap(const FeedActionRail(
-      likeCount: 1500, liked: false, commentCount: 0, shareCount: 0,
+      likeCount: 1500,
+      liked: false,
+      commentCount: 0,
+      shareCount: 0,
     )));
     expect(find.text('1.5K'), findsOneWidget);
   });
@@ -40,7 +46,10 @@ void main() {
   testWidgets('callback null tidak crash saat tap (mode pratinjau)',
       (tester) async {
     await tester.pumpWidget(_wrap(const FeedActionRail(
-      likeCount: 1, liked: true, commentCount: 1, shareCount: 1,
+      likeCount: 1,
+      liked: true,
+      commentCount: 1,
+      shareCount: 1,
     )));
     await tester.tap(find.text('1').first);
     await tester.pump();
@@ -76,17 +85,21 @@ void main() {
     expect(find.bySemanticsLabel('Hapus dari tersimpan'), findsOneWidget);
   });
 
-  testWidgets('five actions fit the compact rail height', (tester) async {
-    await tester.pumpWidget(_wrap(const SizedBox(
-      height: 340,
-      child: FeedActionRail(
-        likeCount: 1,
-        liked: false,
-        commentCount: 1,
-        shareCount: 1,
-      ),
+  testWidgets('five actions use 10dp gaps and fit a 290dp compact rail',
+      (tester) async {
+    await tester.pumpWidget(_wrap(const FeedActionRail(
+      likeCount: 1,
+      liked: false,
+      commentCount: 1,
+      shareCount: 1,
     )));
 
-    expect(tester.takeException(), isNull);
+    expect(tester.getSize(find.byType(FeedActionRail)).height, 290);
+
+    final likeRect = tester.getRect(find.byTooltip('Sukai'));
+    final commentRect = tester.getRect(find.byTooltip('Komentar'));
+    final shareRect = tester.getRect(find.byTooltip('Bagikan'));
+    expect(commentRect.top - likeRect.bottom, 10);
+    expect(shareRect.top - commentRect.bottom, 10);
   });
 }

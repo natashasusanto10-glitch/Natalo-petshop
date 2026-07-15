@@ -273,6 +273,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   int _commentSheetTransitionEpoch = 0;
   int _featuredProductIndex = 0;
   Timer? _productRotationTimer;
+  Timer? _commentDrawerOpenWatchdog;
   double _commentDragOffset = 0;
 
   bool get _commentDrawerMounted =>
@@ -457,6 +458,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     if (_managed && widget.coordinator != null) {
       widget.coordinator!.registryListenable.addListener(
         _onCoordinatorRegistryChanged,
+      );
+      widget.coordinator!.playbackListenable.addListener(
+        _onCoordinatorPlaybackChanged,
       );
       _syncManagedSession();
     } else {
@@ -1069,6 +1073,16 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     if (mounted) setState(() {});
   }
 
+  /// Managed fullscreen receives user-pause state from the coordinator rather
+  /// than guessing it from controller callbacks. This keeps the play/mute
+  /// controls visible immediately after a tap in Profile -> Postingan.
+  void _onCoordinatorPlaybackChanged() {
+    if (!mounted || widget.coordinator == null) return;
+    final paused = widget.coordinator!.isUserPaused(widget.post.id);
+    if (_isPaused == paused) return;
+    setState(() => _isPaused = paused);
+  }
+
   /// Init controller sesi terikat selesai/gagal/retry → re-render. Revision
   /// bump menandai transisi loading→ready→error (KUNCI T8): controller BARU
   /// hasil retry (identitas sesi SAMA, controllernya berganti) dipungut di
@@ -1678,6 +1692,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   void _forceDeactivateCommentDrawer({
     bool deferOverlayNotification = false,
   }) {
+    _commentDrawerOpenWatchdog?.cancel();
+    _commentDrawerOpenWatchdog = null;
     _commentSheetTransitionEpoch++;
     _stopCommentSheetAnimation();
     _commentDrawerPhase = _CommentDrawerPhase.closed;
@@ -1719,11 +1735,15 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       widget.coordinator!.registryListenable.removeListener(
         _onCoordinatorRegistryChanged,
       );
+      widget.coordinator!.playbackListenable.removeListener(
+        _onCoordinatorPlaybackChanged,
+      );
     }
     _managedSession?.revision.removeListener(_onManagedSessionRevision);
     _managedSession = null;
     feedStore.removeListener(_onFeedStoreChanged);
     _loadingSpinnerDelay?.cancel();
+    _commentDrawerOpenWatchdog?.cancel();
     _stopProductRotation();
     _commentSheetController.removeListener(_syncCommentSheetProgress);
     _commentSheetController.dispose();
@@ -1997,6 +2017,22 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     final transitionEpoch = ++_commentSheetTransitionEpoch;
     _commentSheetExtent.value = _commentSheetMinExtent;
     _scheduleCommentDrawerOpen(transitionEpoch);
+    _commentDrawerOpenWatchdog?.cancel();
+    _commentDrawerOpenWatchdog = Timer(
+      const Duration(milliseconds: 700),
+      () {
+        if (!mounted ||
+            transitionEpoch != _commentSheetTransitionEpoch ||
+            !_commentDrawerMounted) {
+          return;
+        }
+        final visible = _commentSheetExtent.value >= _commentSheetDismissExtent;
+        if (!visible) {
+          _forceDeactivateCommentDrawer();
+          if (mounted) setState(() {});
+        }
+      },
+    );
   }
 
   void _scheduleCommentDrawerOpen(int transitionEpoch, {int attempt = 0}) {
@@ -2049,6 +2085,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
           transitionEpoch == _commentSheetTransitionEpoch &&
           _commentDrawerPhase == _CommentDrawerPhase.opening,
       onComplete: () {
+        _commentDrawerOpenWatchdog?.cancel();
+        _commentDrawerOpenWatchdog = null;
         if (mounted) {
           setState(() => _commentDrawerPhase = _CommentDrawerPhase.open);
         }
@@ -2739,14 +2777,14 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
           // Scrubber box 28px (hit-area), visual line 2px di DASAR box →
           // line duduk tepat di atas floating nav.
           //
-          // Caption + rail pakai anchor BERSAMA feedPostOverlayBottomGap —
-          // SAMA dengan foto carousel (jangan bedakan foto vs video).
+          // Rail sengaja 12dp lebih rendah dari caption supaya action terbawah
+          // sejajar metadata bawah, sama seperti foto carousel.
           // Dulu video +32 (di atas seluruh box scrubber) → melayang jauh
           // di atas garis progress, beda 28px dari foto. Sekarang overlap
           // 12px ke atas hit-area scrub (zona transparan) — sisa 16px +
           // area garis tetap bisa di-scrub, persis kompromi IG.
           final feedInfoInset = navClearance + feedPostOverlayBottomGap;
-          final actionRailInset = navClearance + feedPostOverlayBottomGap;
+          final actionRailInset = navClearance + feedPostActionRailBottomGap;
           final minimized = _commentSheetOpen;
 
           return ColoredBox(

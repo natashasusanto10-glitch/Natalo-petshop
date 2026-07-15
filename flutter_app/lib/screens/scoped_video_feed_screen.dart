@@ -792,17 +792,26 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
                       child: Align(
                         alignment: Alignment.topLeft,
                         child: Material(
-                          color: Colors.black.withValues(alpha: 0.35),
-                          shape: const CircleBorder(),
-                          child: InkWell(
-                            customBorder: const CircleBorder(),
+                          color: Colors.transparent,
+                          child: InkResponse(
+                            radius: 24,
                             onTap: _close,
                             child: const SizedBox(
                               key: ValueKey('scoped-video-back-target'),
                               width: 48,
                               height: 48,
-                              child: Icon(Icons.chevron_left_rounded,
-                                  color: Colors.white, size: 26),
+                              child: Icon(
+                                Icons.chevron_left_rounded,
+                                color: Colors.white,
+                                size: 32,
+                                shadows: [
+                                  Shadow(
+                                    color: Color(0x99000000),
+                                    blurRadius: 4,
+                                    offset: Offset(0, 1),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),

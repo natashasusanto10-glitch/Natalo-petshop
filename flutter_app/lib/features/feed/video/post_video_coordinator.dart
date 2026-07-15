@@ -65,6 +65,10 @@ class PostVideoCoordinator {
 
   final Map<String, _SessionEntry> _entries = <String, _SessionEntry>{};
 
+  /// Naik saat intent playback aktif berubah. Managed views memakai notifier
+  /// ini untuk merender feedback pause tanpa mengambil alih ownership sesi.
+  final ValueNotifier<int> _playbackRevision = ValueNotifier<int>(0);
+
   /// Revisi registry sesi (KUNCI 1 / T7). Naik SETIAP keberadaan/identitas
   /// sesi per-post berubah: sesi dibuat ([attach]/[setActive]/[preloadNext]/
   /// [setOrigin]), atau dihapus (eviction LRU / [dispose]). TIDAK naik untuk
@@ -110,6 +114,11 @@ class PostVideoCoordinator {
   /// saat keberadaan/identitas sesi per-post berubah, bukan tiap play/pause/
   /// volume.
   ValueListenable<int> get registryListenable => _registryRevision;
+
+  ValueListenable<int> get playbackListenable => _playbackRevision;
+
+  bool isUserPaused(String postId) =>
+      postId == _activePostId && _userPausedActive;
 
   /// Post yang saat ini punya sesi hidup (untuk debug/test).
   @visibleForTesting
@@ -213,6 +222,7 @@ class PostVideoCoordinator {
       _activePostId = postId;
       _userPausedActive = false;
       _suspended = false;
+      _playbackRevision.value++;
       _preloadPostIds.remove(postId);
       final entry = _ensureEntry(postId);
       entry.lastUsed = ++_clock;
@@ -309,10 +319,12 @@ class PostVideoCoordinator {
     if (_userPausedActive) {
       _userPausedActive = false;
       _suspended = false;
+      _playbackRevision.value++;
       final generation = ++_playbackGeneration;
       _enqueuePlayback(() => _claimAndPlay(entry, generation));
     } else {
       _userPausedActive = true;
+      _playbackRevision.value++;
       _playbackGeneration++;
       _releaseAudioClaim();
       unawaited(entry.session.pause());
@@ -372,6 +384,7 @@ class PostVideoCoordinator {
     // karena notifyListeners menolak setelah dispose.
     if (hadEntries) _registryRevision.value++;
     _registryRevision.dispose();
+    _playbackRevision.dispose();
     for (final entry in entries) {
       unawaited(entry.session.dispose());
     }

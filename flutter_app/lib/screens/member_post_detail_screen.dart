@@ -572,7 +572,18 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   Future<void> _openComments(int index) async {
     AppHaptics.tap();
     final post = _posts[index];
-    await showFeedCommentDrawer(context, post: post);
+    // Postingan uses the modal-style Instagram drawer: pause the active
+    // player while the sheet is visible, then restore only if it was playing
+    // before the tap. A user-paused video must remain paused after dismissal.
+    final activePostId = _videoCoordinator.activePostId;
+    final wasPlaying = activePostId != null &&
+        !_videoCoordinator.isUserPaused(activePostId);
+    _videoCoordinator.pauseAll();
+    try {
+      await showFeedCommentDrawer(context, post: post);
+    } finally {
+      if (wasPlaying && mounted) _videoCoordinator.resumeAll();
+    }
   }
 
   Future<void> _openPostMenu(int index) async {
