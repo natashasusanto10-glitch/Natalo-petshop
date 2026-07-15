@@ -44,6 +44,9 @@ import '../widgets/favorite_button.dart';
 import '../widgets/flash_sale_countdown.dart';
 import '../widgets/moderation_action_sheet.dart';
 import '../widgets/product_detail_video_slide.dart';
+import '../widgets/product_detail/product_quick_info_row.dart';
+import '../widgets/product_detail/product_shipping_section.dart';
+import '../widgets/product_detail/shopping_assurance_sheet.dart';
 import 'image_viewer_screen.dart';
 
 const _brandBlue = NataloColors.primary;
@@ -102,6 +105,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   bool _loadingCustomerPosts = true;
   bool _descriptionExpanded = false;
   int _activeTab = 0;
+  bool _isProgrammaticSectionScroll = false;
+  int _sectionScrollRequest = 0;
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _overviewKey = GlobalKey();
   final GlobalKey _reviewsKey = GlobalKey();
@@ -255,6 +260,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   void _syncActiveTabFromScroll() {
+    // Saat tab ditekan, posisi section berubah sedikit demi sedikit selama
+    // animasi. Jangan biarkan pembacaan posisi sementara mengembalikan
+    // underline ke tab sebelumnya sebelum tujuan scroll tercapai.
+    if (_isProgrammaticSectionScroll) return;
     final reviewContext = _reviewsKey.currentContext;
     if (reviewContext == null) return;
     final renderObject = reviewContext.findRenderObject();
@@ -289,6 +298,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             }
           }
         }
+        _variantMediaRevision++;
       }
     });
   }
@@ -519,17 +529,34 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
-  void _scrollToSection(GlobalKey key, int tabIndex) {
+  Future<void> _scrollToSection(GlobalKey key, int tabIndex) async {
     AppHaptics.tap();
-    setState(() => _activeTab = tabIndex);
+    final request = ++_sectionScrollRequest;
+    setState(() {
+      _activeTab = tabIndex;
+      _isProgrammaticSectionScroll = true;
+    });
     final targetContext = key.currentContext;
-    if (targetContext == null) return;
-    Scrollable.ensureVisible(
+    if (targetContext == null) {
+      if (request == _sectionScrollRequest && mounted) {
+        setState(() => _isProgrammaticSectionScroll = false);
+      }
+      return;
+    }
+    await Scrollable.ensureVisible(
       targetContext,
       duration: const Duration(milliseconds: 340),
       curve: Curves.easeOutCubic,
       alignment: 0.08,
     );
+    if (!mounted || request != _sectionScrollRequest) return;
+
+    // Pastikan hasil akhir tetap mengikuti tab yang diminta. Setelah ini,
+    // listener kembali aktif sehingga scroll manual tetap menyinkronkan tab.
+    setState(() {
+      _activeTab = tabIndex;
+      _isProgrammaticSectionScroll = false;
+    });
   }
 
   Future<void> _shareProduct(BuildContext context) async {
@@ -631,6 +658,41 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               child: _ProductInfo(
                 product: product,
                 vouchers: _vouchers,
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: [
+                  ProductShippingSection(
+                    product: product,
+                    variant: _selectedVariant,
+                    variantLabel: _variantLabelFor(_selectedVariant),
+                    onVariantRequested: _openVariantSheet,
+                    onLoginRequested: () async {
+                      await Navigator.pushNamed(context, '/member/login');
+                    },
+                    onAddressRequested: () async {
+                      await Navigator.pushNamed(context, '/member/addresses');
+                    },
+                  ),
+                  Divider(
+                    height: 1,
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                  ProductQuickInfoRow(
+                    icon: Icons.verified_user_outlined,
+                    title: 'Belanja aman',
+                    detail: 'Sesuai kebijakan Natalo',
+                    semanticLabel: 'Buka informasi perlindungan belanja Natalo',
+                    onTap: () {
+                      AppHaptics.tap();
+                      showShoppingAssuranceSheet(context);
+                    },
+                  ),
+                ],
               ),
             ),
           ),
@@ -1077,67 +1139,82 @@ class _ProductInfo extends StatelessWidget {
           const SizedBox(height: 16),
         ] else
           const SizedBox(height: 18),
-        // Judul full-width; favorit pindah ke baris meta di bawah supaya
-        // judul panjang tidak berebut ruang dengan tombol hati.
-        _ExpandableProductTitle(title: product.title),
-        const SizedBox(height: 8),
-        // Baris meta padat: rating • ulasan • terjual di kiri, favorit
-        // sejajar di kanan. Baris SELALU render (favorit butuh rumah)
-        // walau meta kosong.
+        // Wishlist mengikuti baris judul. Tombol tetap punya area sentuh
+        // 44x44 transparan, sementara judul memakai sisa lebar secara
+        // fleksibel supaya tidak overflow pada layar kecil/font besar.
         Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: (hasRating || hasReviews || hasSold)
-                  ? Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        if (hasRating) ...[
-                          const Icon(Icons.star_rounded,
-                              size: 18, color: _starAmber),
-                          const SizedBox(width: 4),
-                          Text(
-                            product.rating.toStringAsFixed(1),
-                            style: TextStyle(
-                              color: cs.onSurfaceVariant,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                        if (hasReviews) ...[
-                          if (hasRating) const _InfoDot(),
-                          Text(
-                            '${product.reviewCount} ulasan',
-                            style: TextStyle(
-                              color: cs.onSurfaceVariant,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                        if (hasSold) ...[
-                          if (hasRating || hasReviews) const _InfoDot(),
-                          Text(
-                            '${_formatCompactCount(product.soldCount)} terjual',
-                            style: TextStyle(
-                              color: cs.onSurfaceVariant,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ],
-                    )
-                  : const SizedBox.shrink(),
+              child: _ExpandableProductTitle(title: product.title),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             FavoriteButton(
               product: product,
               size: 44,
             ),
           ],
         ),
+        // Jangan sisakan placeholder atau margin ketika belum ada social
+        // proof. Konten berikutnya otomatis naik mengikuti tinggi aktual.
+        if (hasRating || hasReviews || hasSold) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (hasRating)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.star_rounded,
+                      size: 18,
+                      color: _starAmber,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      product.rating.toStringAsFixed(1),
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              if (hasReviews)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (hasRating) const _InfoDot(),
+                    Text(
+                      '${product.reviewCount} ulasan',
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              if (hasSold)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (hasRating || hasReviews) const _InfoDot(),
+                    Text(
+                      '${_formatCompactCount(product.soldCount)} terjual',
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ],
       ],
     );
   }

@@ -114,8 +114,7 @@ class _FavoriteButtonState extends State<FavoriteButton>
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: 'Masuk',
-            onPressed: () =>
-                Navigator.pushNamed(context, '/member/login'),
+            onPressed: () => Navigator.pushNamed(context, '/member/login'),
           ),
         ),
       );
@@ -171,20 +170,26 @@ class _FavoriteButtonState extends State<FavoriteButton>
 
         final animatedIcon = ScaleTransition(scale: _scale, child: icon);
 
-        final button = InkResponse(
-          onTap: _toggle,
-          radius: widget.size,
-          child: SizedBox(
-            width: widget.size,
-            height: widget.size,
-            child: Center(child: animatedIcon),
+        final button = Material(
+          color: widget.elevated ? Colors.white : Colors.transparent,
+          elevation: widget.elevated ? 2 : 0,
+          shape: const CircleBorder(),
+          clipBehavior: widget.elevated ? Clip.antiAlias : Clip.none,
+          child: InkWell(
+            onTap: _toggle,
+            customBorder: const CircleBorder(),
+            splashColor: iconColor.withValues(alpha: 0.10),
+            highlightColor: iconColor.withValues(alpha: 0.06),
+            child: SizedBox(
+              width: widget.size,
+              height: widget.size,
+              child: Center(child: animatedIcon),
+            ),
           ),
         );
-        if (!widget.elevated) return button;
-        return Material(
-          color: Colors.white,
-          elevation: 2,
-          shape: const CircleBorder(),
+        return Semantics(
+          button: true,
+          label: favorite ? 'Hapus dari wishlist' : 'Tambahkan ke wishlist',
           child: button,
         );
       },

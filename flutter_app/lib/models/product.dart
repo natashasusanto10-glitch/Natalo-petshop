@@ -153,7 +153,11 @@ class ProductVariant {
       price: _asInt(json['price']),
       stock: _asInt(json['stock']),
       weightGram: _asInt(json['weightGram'] ?? 500),
-      imageUrl: json['imageUrl'] as String?,
+      imageUrl: _stringOrNull(json['imageUrl'] ?? json['image_url']) == null
+          ? null
+          : _absoluteUrl(
+              _string(json['imageUrl'] ?? json['image_url']),
+            ),
       optionIds: ids,
       isActive: json['isActive'] as bool? ?? true,
     );
@@ -528,7 +532,9 @@ class Product {
             json['free_shipping_voucher_preview'],
       ),
       gallery: galleryRaw is List
-          ? galleryRaw.map((item) => item.toString()).toList()
+          ? galleryRaw
+              .map((item) => _absoluteUrl(item.toString()))
+              .toList(growable: false)
           : const [],
       description: _string(json['description']),
       variantAttrs: _parseVariantAttrs(json['variantAttrs']),
