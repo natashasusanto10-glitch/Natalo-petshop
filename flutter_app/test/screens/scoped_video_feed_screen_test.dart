@@ -140,6 +140,52 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
   });
 
+  testWidgets('swipe right dismisses and returns last-active payload',
+      (tester) async {
+    final posts = [_fakeVideoPost('a'), _fakeVideoPost('b')];
+    ScopedVideoFeedResult? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () async {
+              result = await Navigator.of(context).push<ScopedVideoFeedResult>(
+                MaterialPageRoute<ScopedVideoFeedResult>(
+                  builder: (_) => ScopedVideoFeedScreen(
+                    posts: posts,
+                    initialIndex: 1,
+                  ),
+                ),
+              );
+            },
+            child: const Text('open swipe'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open swipe'));
+    await tester.pump();
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
+    }
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+
+    await tester.dragFrom(const Offset(100, 400), const Offset(220, 0));
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
+    }
+
+    expect(find.byType(ScopedVideoFeedScreen), findsNothing);
+    expect(result, isNotNull);
+    expect(result!.postId, 'b');
+    expect(result!.index, 1);
+    expect(result!.timestamp, Duration.zero);
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
   testWidgets('toolbar back returns typed last-active post payload',
       (tester) async {
     final posts = [_fakeVideoPost('a'), _fakeVideoPost('b')];

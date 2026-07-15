@@ -70,12 +70,19 @@ class ScopedVideoFeedScreen extends StatefulWidget {
   State<ScopedVideoFeedScreen> createState() => _ScopedVideoFeedScreenState();
 }
 
-class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
+class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
+    with SingleTickerProviderStateMixin {
   late final PageController _pageController;
+  late final AnimationController _horizontalDismissController;
   late int _activeIndex;
   // Guard supaya overscroll-dismiss cuma pop SEKALI per gesture.
   bool _dismissing = false;
   bool _interactionLocked = false;
+  double _horizontalDragOffset = 0;
+  Offset? _pointerDownPosition;
+  Offset? _lastPointerPosition;
+  bool _horizontalGestureActive = false;
+  bool _horizontalGestureRejected = false;
   VideoSwipeDirection _swipeDirection = VideoSwipeDirection.forward;
   Duration _activeBufferAhead = Duration.zero;
   late NetworkTier _networkTier;
@@ -85,6 +92,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
   /// pertama) sebelum viewer menutup — ala IG Reels dari profil: tarik
   /// turun di reel pertama = kembali ke halaman sebelumnya.
   static const double _dismissOverscroll = 72;
+  static const double _horizontalDismissFraction = 0.24;
 
   @override
   void initState() {
@@ -95,6 +103,16 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
         (widget.debugTierChanges ?? videoQualityService.tierChanges)
             .listen(_onNetworkTierChanged);
     _pageController = PageController(initialPage: _activeIndex);
+    _horizontalDismissController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    )..addListener(() {
+        if (!mounted) return;
+        setState(() {
+          _horizontalDragOffset = _horizontalDismissController.value *
+              MediaQuery.sizeOf(context).width;
+        });
+      });
     feedStore.seed(widget.posts);
     // Full-managed: aktifkan halaman awal setelah frame pertama supaya view
     // managed sudah mounted (adopt sesi via notifier). Item ASAL biasanya sudah
@@ -124,7 +142,88 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
       coord.detach(_viewIdFor(attached), attached);
     }
     _pageController.dispose();
+    _horizontalDismissController.dispose();
     super.dispose();
+  }
+
+  void _onPointerDown(PointerDownEvent event) {
+    if (_dismissing || _interactionLocked) return;
+    _pointerDownPosition = event.position;
+    _lastPointerPosition = event.position;
+    _horizontalGestureActive = false;
+    _horizontalGestureRejected = false;
+    _horizontalDismissController.stop();
+  }
+
+  void _onPointerMove(PointerMoveEvent event) {
+    final start = _pointerDownPosition;
+    final last = _lastPointerPosition;
+    if (start == null || last == null || _dismissing || _interactionLocked) {
+      return;
+    }
+    final total = event.position - start;
+    final delta = event.position - last;
+    _lastPointerPosition = event.position;
+    if (!_horizontalGestureActive && !_horizontalGestureRejected) {
+      if (total.distance < 8) return;
+      // Keep vertical paging, pinch zoom, and diagonal gestures authoritative.
+      // Once rejected, this pointer sequence is never reinterpreted as back.
+      if (total.dx <= 0 || total.dx.abs() < total.dy.abs()) {
+        _horizontalGestureRejected = true;
+        return;
+      }
+      _horizontalGestureActive = true;
+    }
+    if (!_horizontalGestureActive || delta.dx <= 0) return;
+    final next = (_horizontalDragOffset + delta.dx).clamp(
+      0.0,
+      MediaQuery.sizeOf(context).width,
+    );
+    if (next != _horizontalDragOffset) {
+      setState(() => _horizontalDragOffset = next);
+    }
+  }
+
+  void _onPointerUp(PointerUpEvent _) {
+    if (!_horizontalGestureActive || _dismissing) {
+      _resetPointerGesture();
+      return;
+    }
+    _resetPointerGesture();
+    final width = MediaQuery.sizeOf(context).width;
+    final shouldDismiss =
+        _horizontalDragOffset >= width * _horizontalDismissFraction;
+    _horizontalDismissController.value =
+        (_horizontalDragOffset / width).clamp(0.0, 1.0);
+    if (shouldDismiss) {
+      _dismissing = true;
+      _horizontalDismissController.animateTo(1).then((_) {
+        if (mounted) Navigator.of(context).pop(_result);
+      });
+      return;
+    }
+    _horizontalDismissController.animateTo(0).then((_) {
+      if (mounted) setState(() => _horizontalDragOffset = 0);
+    });
+  }
+
+  void _onPointerCancel(PointerCancelEvent _) {
+    if (_horizontalGestureActive && !_dismissing) {
+      final width = MediaQuery.sizeOf(context).width;
+      _horizontalDismissController.value =
+          (_horizontalDragOffset / width).clamp(0.0, 1.0);
+      _horizontalDismissController.animateTo(0).then((_) {
+        if (mounted) setState(() => _horizontalDragOffset = 0);
+      });
+    }
+    _resetPointerGesture();
+  }
+
+  void _resetPointerGesture() {
+    _pointerDownPosition = null;
+    _lastPointerPosition = null;
+    _horizontalGestureActive = false;
+    _horizontalGestureRejected = false;
   }
 
   String _viewIdFor(String postId) => 'scoped-fs-$postId';
@@ -324,6 +423,10 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final horizontalProgress = width == 0
+        ? 0.0
+        : (_horizontalDragOffset / width).clamp(0.0, 1.0);
     return PopScope<ScopedVideoFeedResult>(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -331,9 +434,18 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
       },
       child: Scaffold(
         backgroundColor: Colors.black,
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
+        body: Listener(
+          onPointerDown: _onPointerDown,
+          onPointerMove: _onPointerMove,
+          onPointerUp: _onPointerUp,
+          onPointerCancel: _onPointerCancel,
+          child: Transform.translate(
+            offset: Offset(_horizontalDragOffset, 0),
+            child: Opacity(
+              opacity: 1 - (horizontalProgress * 0.28),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
             NotificationListener<ScrollNotification>(
               onNotification: _onScrollNotification,
               child: PageView.builder(
@@ -368,7 +480,10 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen> {
                 ),
               ),
             ),
-          ],
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
