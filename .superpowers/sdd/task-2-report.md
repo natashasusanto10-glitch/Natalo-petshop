@@ -38,3 +38,9 @@
 - Literal `... selengkapnya` in a naturally short caption is verified as plain text;
   suffix parsing is gated on generated truncation.
 - `flutter test test/screens/member_post_detail_screen_caption_test.dart --no-pub` — PASS (3 tests).
+
+## Interaction test quality follow-up
+- Removed the manual `postCaptionSessionStore.markExpanded` mutation from the long-caption widget test.
+- The test now resolves the nested `selengkapnya` glyph bounds from `RenderParagraph` and taps that rendered coordinate, then asserts the session store changed and expanded UI rendered.
+- `dart format test/screens/member_post_detail_screen_caption_test.dart` — PASS.
+- `flutter test test/screens/member_post_detail_screen_caption_test.dart` — PASS (3 tests).

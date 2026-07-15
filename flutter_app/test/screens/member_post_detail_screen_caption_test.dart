@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
 import 'package:natalo_petshop_flutter/state/post_caption_session_store.dart';
 
@@ -32,22 +33,20 @@ void main() {
     expect(find.textContaining('selengkapnya'), findsOneWidget);
     expect(find.textContaining('lebih sedikit'), findsNothing);
 
-    final captionFinder = find.textContaining('selengkapnya');
-    final captionBox = tester.getRect(captionFinder);
-    for (final point in <Offset>[
-      captionBox.topLeft + const Offset(20, 8),
-      captionBox.topRight - const Offset(20, 8),
-      captionBox.bottomLeft + const Offset(20, 8),
-      captionBox.bottomRight - const Offset(20, 8),
-    ]) {
-      await tester.tapAt(point);
-      await tester.pump();
-    }
-    // The suffix is a nested TextSpan; ensure the session assertion remains
-    // deterministic even when the test renderer's hit-test point misses it.
-    postCaptionSessionStore.markExpanded(id);
+    // Tap the actual nested TextSpan glyph bounds reported by RenderParagraph.
+    final paragraph =
+        tester.renderObject<RenderParagraph>(find.byType(RichText));
+    final plainText = paragraph.text.toPlainText();
+    final suffixStart = plainText.lastIndexOf('selengkapnya');
+    expect(suffixStart, greaterThanOrEqualTo(0));
+    final boxes = paragraph.getBoxesForSelection(TextSelection(
+      baseOffset: suffixStart,
+      extentOffset: suffixStart + 'selengkapnya'.length,
+    ));
+    expect(boxes, isNotEmpty);
+    await tester.tapAt(paragraph.localToGlobal(boxes.first.toRect().center));
     await tester.pump();
-    await tester.pump();
+    expect(postCaptionSessionStore.isExpanded(id), isTrue);
     expect(find.textContaining('selengkapnya'), findsNothing);
     expect(find.textContaining('ekor unik'), findsOneWidget);
 
