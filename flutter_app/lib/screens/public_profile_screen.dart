@@ -28,8 +28,8 @@ import '../widgets/app_ui.dart';
 import '../widgets/moderation_action_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/profile_avatar.dart';
-import '../widgets/profile_content_tab_bar.dart';
 import '../widgets/profile_grid_geometry.dart';
+import '../widgets/public_profile_collapsing_header.dart';
 import 'member_post_detail_screen.dart';
 import 'public_profile_follow_list_screen.dart';
 
@@ -745,7 +745,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     // heroGradientV (heroTop→heroMid) → menyambung mulus dgn AppBar tanpa
     // hitung inset. Sesuai pola hero-blue halaman lain (Akun/Transaksi).
     final isOfficial = _profile?.isOfficial ?? false;
-    final onAppBar = isOfficial ? Colors.white : cs.onSurface;
+    final profile = _profile;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: isOfficial
           ? SystemUiOverlayStyle.light
@@ -754,70 +754,21 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
               : SystemUiOverlayStyle.dark),
       child: Scaffold(
         backgroundColor: cs.surface,
-        appBar: AppBar(
-          backgroundColor: isOfficial ? NataloColors.heroTop : cs.surface,
-          surfaceTintColor: isOfficial ? NataloColors.heroTop : cs.surface,
-          elevation: 0,
-          scrolledUnderElevation: isOfficial ? 0 : 0.5,
-          // Official: matikan SEMUA sumber garis pemisah di bawah AppBar —
-          // shadow/tint saat scroll bisa muncul sebagai hairline halus yang
-          // memutus AppBar heroTop dari hero gradient di bawahnya.
-          shadowColor: isOfficial ? Colors.transparent : null,
-          bottom: isOfficial
-              // Strip 1px warna heroTop menutup celah subpixel antara
-              // AppBar dan sliver header (anti garis halus di device
-              // dengan pixel ratio non-integer).
-              ? PreferredSize(
-                  preferredSize: const Size.fromHeight(1),
-                  child: Container(height: 1, color: NataloColors.heroTop),
-                )
-              : null,
-          centerTitle: false,
-          titleSpacing: 0,
-          leading: IconButton(
-            onPressed: () => Navigator.maybePop(context),
-            icon: Icon(
-              Icons.arrow_back_rounded,
-              color: onAppBar,
-              size: 26,
-            ),
-            tooltip: 'Kembali',
-          ),
-          title: Text(
-            // Akun official (Natalo Petshop): AppBar tampil nama brand, BUKAN
-            // username "natasha" (identitas pemilik). displayHandle untuk akun
-            // official = username karena username ter-set → bocor nama asli.
-            // Konsisten dgn branding Opsi B (body profil sudah override).
-            isOfficial
-                ? kOfficialBrandName
-                : (_profile?.displayHandle ?? widget.username),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: onAppBar,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              height: 1.1,
-            ),
-          ),
-          actions: [
-            // Menu moderasi (Laporkan / Blokir) — wajib Google Play UGC.
-            // Hanya tampil untuk profil orang lain (bukan diri sendiri) dan
-            // bukan akun official (brand tak bisa dilaporkan/diblokir).
-            if (_profile != null &&
-                !(_profile!.isOwner) &&
-                !(_profile!.isOfficial))
-              IconButton(
-                onPressed: _openModeration,
-                icon: Icon(
-                  Icons.more_vert_rounded,
-                  color: onAppBar,
-                  size: 24,
+        // Loading/error routes retain a conventional back affordance. Once
+        // profile data exists, navigation is owned by the collapsing sliver.
+        appBar: profile == null
+            ? AppBar(
+                backgroundColor: cs.surface,
+                surfaceTintColor: cs.surface,
+                elevation: 0,
+                leading: IconButton(
+                  onPressed: () => Navigator.maybePop(context),
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  tooltip: 'Kembali',
                 ),
-                tooltip: 'Opsi lainnya',
-              ),
-          ],
-        ),
+                title: Text(widget.username),
+              )
+            : null,
         body: _buildBody(),
       ),
     );
@@ -848,27 +799,35 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
       child: NestedScrollView(
         controller: _scrollController,
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          SliverToBoxAdapter(
-            child: _Header(
-              profile: profile,
-              followBusy: _followBusy,
-              onFollowToggle: profile.isOwner ? null : _toggleFollow,
-              onFollowersTap: () => _openFollowList(FollowListKind.followers),
-              onFollowingTap: () => _openFollowList(FollowListKind.following),
-              onEditProfile: profile.isOwner
-                  ? () => Navigator.pushNamed(context, '/member/profile')
-                  : null,
-              onShareProfile: _shareProfile,
-              onOpenCatalog: profile.isOfficial
-                  ? () => Navigator.pushNamed(context, '/products')
-                  : null,
-            ),
-          ),
           SliverPersistentHeader(
             pinned: true,
-            delegate: ProfileContentTabHeaderDelegate(
+            delegate: PublicProfileCollapsingHeaderDelegate(
               controller: _tabController,
-              onTap: _onTabTapped,
+              title: profile.isOfficial
+                  ? kOfficialBrandName
+                  : profile.displayHandle,
+              topPadding: MediaQuery.paddingOf(context).top,
+              expandedHeight: profile.isOfficial ? 390 : 250,
+              isOfficial: profile.isOfficial,
+              onBack: () => Navigator.maybePop(context),
+              onOverflow: !profile.isOwner && !profile.isOfficial
+                  ? _openModeration
+                  : null,
+              onTabTap: _onTabTapped,
+              expandedHeader: _Header(
+                profile: profile,
+                followBusy: _followBusy,
+                onFollowToggle: profile.isOwner ? null : _toggleFollow,
+                onFollowersTap: () => _openFollowList(FollowListKind.followers),
+                onFollowingTap: () => _openFollowList(FollowListKind.following),
+                onEditProfile: profile.isOwner
+                    ? () => Navigator.pushNamed(context, '/member/profile')
+                    : null,
+                onShareProfile: _shareProfile,
+                onOpenCatalog: profile.isOfficial
+                    ? () => Navigator.pushNamed(context, '/products')
+                    : null,
+              ),
             ),
           ),
         ],
