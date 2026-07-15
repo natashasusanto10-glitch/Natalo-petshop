@@ -351,18 +351,31 @@ class FeedPost {
   /// wins; existing user-authored copy remains a useful legacy fallback.
   String get mediaAccessibilityLabel {
     final explicit = videoAltText?.trim();
-    if (explicit != null && explicit.isNotEmpty) return explicit;
+    if (explicit != null && explicit.isNotEmpty) {
+      return _withAudioAccessibilityStatus(explicit);
+    }
     if (!isVideo && mediaItems.isNotEmpty) {
       final mediaAltText = mediaItems.first.altText?.trim();
       if (mediaAltText != null && mediaAltText.isNotEmpty) {
-        return mediaAltText;
+        return _withAudioAccessibilityStatus(mediaAltText);
       }
     }
     final postCaption = caption?.trim();
-    if (postCaption != null && postCaption.isNotEmpty) return postCaption;
+    if (postCaption != null && postCaption.isNotEmpty) {
+      return _withAudioAccessibilityStatus(postCaption);
+    }
     final postDescription = description.trim();
-    if (postDescription.isNotEmpty) return postDescription;
-    return '${isVideo ? 'Video' : 'Foto'} dari ${author.displayHandle}';
+    if (postDescription.isNotEmpty) {
+      return _withAudioAccessibilityStatus(postDescription);
+    }
+    return _withAudioAccessibilityStatus(
+      '${isVideo ? 'Video' : 'Foto'} dari ${author.displayHandle}',
+    );
+  }
+
+  String _withAudioAccessibilityStatus(String label) {
+    if (isVideo && hasAudio == false) return '$label. Video tanpa suara.';
+    return label;
   }
 
   /// Thumbnail URL untuk grid tile dengan fallback chain:

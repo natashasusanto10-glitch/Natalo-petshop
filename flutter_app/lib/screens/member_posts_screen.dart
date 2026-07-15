@@ -94,6 +94,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
         dataSaverUrl: post.videoDataSaverUrl,
         userPreference: appSettingsStore.feedVideoQuality,
       ),
+      hasAudio: post.hasAudio != false,
     );
   }
 

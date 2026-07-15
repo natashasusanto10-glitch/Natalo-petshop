@@ -25,6 +25,7 @@ void main() {
         isVideo: false,
         postId: 'photo-1',
         url: 'https://example.com/photo.jpg',
+        hasAudio: true,
       ),
       isNull,
     );
@@ -36,9 +37,35 @@ void main() {
         isVideo: true,
         postId: 'post-1',
         url: '   ',
+        hasAudio: true,
       ),
       isNull,
     );
+  });
+
+  test('profile-grid factory preserves silent-video audio metadata', () async {
+    bool? receivedHasAudio;
+    final testSession = _CountingSession();
+    final handoff = PostVideoWarmHandoff.createIfVideo(
+      isVideo: true,
+      postId: 'silent-post',
+      url: 'https://example.com/silent.mp4',
+      hasAudio: false,
+      sessionFactory: ({required postId, required url, required hasAudio}) {
+        receivedHasAudio = hasAudio;
+        return testSession;
+      },
+    );
+
+    final session = handoff!.claim(
+      postId: 'silent-post',
+      url: 'https://example.com/silent.mp4',
+      hasAudio: false,
+    );
+    final claimedSession = session!;
+    expect(receivedHasAudio, isFalse);
+    expect(claimedSession, same(testSession));
+    await claimedSession.dispose();
   });
 
   test('claim validates post and canonical URL and is one-shot', () async {
@@ -46,19 +73,40 @@ void main() {
     final handoff = PostVideoWarmHandoff(
       postId: 'post-1',
       url: 'HTTPS://EXAMPLE.COM/a/../video.mp4',
+      hasAudio: true,
       session: session,
     );
 
     expect(
-      handoff.claim(postId: 'wrong', url: 'https://example.com/video.mp4'),
+      handoff.claim(
+        postId: 'wrong',
+        url: 'https://example.com/video.mp4',
+        hasAudio: true,
+      ),
       isNull,
     );
     expect(
-      handoff.claim(postId: 'post-1', url: 'https://example.com/video.mp4'),
+      handoff.claim(
+        postId: 'post-1',
+        url: 'https://example.com/video.mp4',
+        hasAudio: false,
+      ),
+      isNull,
+    );
+    expect(
+      handoff.claim(
+        postId: 'post-1',
+        url: 'https://example.com/video.mp4',
+        hasAudio: true,
+      ),
       same(session),
     );
     expect(
-      handoff.claim(postId: 'post-1', url: 'https://example.com/video.mp4'),
+      handoff.claim(
+        postId: 'post-1',
+        url: 'https://example.com/video.mp4',
+        hasAudio: true,
+      ),
       isNull,
     );
     await handoff.disposeIfUnclaimed();
@@ -72,6 +120,7 @@ void main() {
     final handoff = PostVideoWarmHandoff(
       postId: 'post-1',
       url: 'https://example.com/video.mp4',
+      hasAudio: true,
       session: session,
     );
 

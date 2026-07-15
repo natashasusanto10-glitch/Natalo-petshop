@@ -2793,7 +2793,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                             ),
                           ),
                         ),
-                        if (_videoController != null &&
+                        if (widget.isActive &&
+                            _videoController != null &&
                             post.subtitleUrl?.trim().isNotEmpty == true)
                           Positioned(
                             left: 40,
@@ -2802,8 +2803,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                             child: FeedWebVttSubtitleOverlay(
                               controller: _videoController!,
                               subtitleUrl: post.subtitleUrl,
-                              visible: widget.isActive &&
-                                  !_commentSheetOpen &&
+                              trustedMediaUrl: post.videoPlaybackUrl,
+                              visible: !_commentSheetOpen &&
                                   !_hideOverlayForPinchZoom,
                             ),
                           ),

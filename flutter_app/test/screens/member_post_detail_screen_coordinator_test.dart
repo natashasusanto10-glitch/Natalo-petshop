@@ -219,6 +219,7 @@ void main() {
             warmVideoHandoff: PostVideoWarmHandoff(
               postId: post.id,
               url: qualityUrl,
+              hasAudio: post.hasAudio != false,
               session: warm,
             ),
           ),

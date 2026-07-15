@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -27,7 +29,11 @@ Future<void> showFeedCommentDrawer(
   BuildContext context, {
   required FeedPost post,
 }) {
-  return showModalBottomSheet<void>(
+  final sheetController = DraggableScrollableController();
+  var reachedVisibleExtent = false;
+  var dismissScheduled = false;
+  var popIssued = false;
+  final route = showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: false,
@@ -42,25 +48,95 @@ Future<void> showFeedCommentDrawer(
       final topInset = MediaQuery.paddingOf(sheetContext).top;
       final screenHeight = MediaQuery.sizeOf(sheetContext).height;
       final maxExtent = (1 - (topInset / screenHeight)).clamp(0.60, 0.96);
-      return DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: FeedCommentSheet.reelsHeightFactor,
-        // Keep enough collapse range for the route to recognize a decisive
-        // downward dismissal. A 0.42 minimum made the drawer feel stuck:
-        // the inner sheet stopped moving before the modal could close.
-        minChildSize: 0.20,
-        maxChildSize: maxExtent,
-        snap: true,
-        snapSizes: [FeedCommentSheet.reelsHeightFactor, maxExtent],
-        shouldCloseOnMinExtent: true,
-        builder: (context, scrollController) => FeedCommentSheet(
-          post: post,
-          sheetScrollController: scrollController,
-          onClose: () => Navigator.of(context).maybePop(),
+
+      void dismissDrawer({bool afterFrame = false}) {
+        void popOnce() {
+          if (popIssued || !sheetContext.mounted) return;
+          final modalRoute = ModalRoute.of(sheetContext);
+          if (modalRoute == null || !modalRoute.isCurrent) return;
+          popIssued = true;
+          Navigator.of(sheetContext).maybePop();
+        }
+
+        if (afterFrame) {
+          if (dismissScheduled || popIssued) return;
+          dismissScheduled = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            dismissScheduled = false;
+            popOnce();
+          });
+        } else {
+          dismissScheduled = false;
+          popOnce();
+        }
+      }
+
+      void handleDragUpdate(DragUpdateDetails details) {
+        if (!sheetController.isAttached) return;
+        final delta = details.primaryDelta ?? 0;
+        if (delta == 0) return;
+        final next = (sheetController.size - (delta / screenHeight))
+            .clamp(0.20, maxExtent)
+            .toDouble();
+        sheetController.jumpTo(next);
+      }
+
+      void handleDragEnd(DragEndDetails details) {
+        if (!sheetController.isAttached) return;
+        final velocity = details.primaryVelocity ?? 0;
+        final size = sheetController.size;
+        if (velocity > 800 || size <= 0.34) {
+          dismissDrawer();
+          return;
+        }
+        final target = velocity < -500 || size > 0.78
+            ? maxExtent
+            : FeedCommentSheet.reelsHeightFactor;
+        unawaited(() async {
+          try {
+            await sheetController.animateTo(
+              target,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+            );
+          } catch (_) {
+            // The modal may be dismissed by back/barrier during snap-back.
+          }
+        }());
+      }
+
+      return NotificationListener<DraggableScrollableNotification>(
+        onNotification: (notification) {
+          if (notification.extent > 0.24) reachedVisibleExtent = true;
+          if (reachedVisibleExtent && notification.extent <= 0.205) {
+            dismissDrawer(afterFrame: true);
+          }
+          return false;
+        },
+        child: DraggableScrollableSheet(
+          controller: sheetController,
+          expand: false,
+          initialChildSize: FeedCommentSheet.reelsHeightFactor,
+          // Keep enough collapse range for a decisive downward dismissal.
+          minChildSize: 0.20,
+          maxChildSize: maxExtent,
+          snap: true,
+          snapSizes: [FeedCommentSheet.reelsHeightFactor, maxExtent],
+          // Closure is handled explicitly by the notification listener. The
+          // framework callback is inconsistent when nested in a modal route.
+          shouldCloseOnMinExtent: false,
+          builder: (context, scrollController) => FeedCommentSheet(
+            post: post,
+            sheetScrollController: scrollController,
+            onClose: dismissDrawer,
+            onDragUpdate: handleDragUpdate,
+            onDragEnd: handleDragEnd,
+          ),
         ),
       );
     },
   );
+  return route.whenComplete(sheetController.dispose);
 }
 
 /// Comment sheet style Instagram Reels — 1:1 visual:
@@ -519,6 +595,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
           children: [
             // ── Drag handle ──
             GestureDetector(
+              key: const ValueKey('feed-comment-drag-handle'),
               behavior: HitTestBehavior.opaque,
               onVerticalDragUpdate: widget.onDragUpdate,
               onVerticalDragEnd: widget.onDragEnd,

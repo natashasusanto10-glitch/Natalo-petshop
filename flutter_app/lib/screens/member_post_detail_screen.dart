@@ -212,6 +212,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     final warmSession = warmHandoff?.claim(
       postId: widget.post.id,
       url: _resolvePostVideoUrl(widget.post),
+      hasAudio: widget.post.hasAudio != false,
     );
     if (warmSession != null) {
       _videoCoordinator.adoptSession(widget.post.id, warmSession);
@@ -884,7 +885,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     var resume = true;
     final reverseMorphEnabled = ValueNotifier<bool>(true);
     final reverseTarget = ValueNotifier<ScaledVideoFeedReverseTarget?>(null);
-    var returnPrepared = false;
+    var returnPreparationStarted = false;
     try {
       final tappedIndex = videoPosts.indexWhere((post) => post.id == tapped.id);
       final result = await pushScaledVideoFeed<ScopedVideoFeedResult>(
@@ -908,9 +909,14 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
           onActivePostChanged: (postId) {
             reverseMorphEnabled.value = postId == tapped.id;
           },
-          onPrepareClose: (result) async {
-            await _focusReturnedVideo(result);
-            returnPrepared = true;
+          onPrepareClose: (result, signal) async {
+            // The viewer may time this preparation out so navigation never
+            // blocks. Record that reconciliation already started before the
+            // first await; the route result must not launch a second seek or
+            // scroll while this cooperative callback is winding down.
+            returnPreparationStarted = true;
+            await _focusReturnedVideo(result, closeSignal: signal);
+            if (signal.isCancelled) return;
             if (!mounted) return;
             final targetKey = _videoAnchorKeys[result.postId];
             final box =
@@ -932,7 +938,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
         resume = false;
         return;
       }
-      if (result != null && mounted && !returnPrepared) {
+      if (result != null && mounted && !returnPreparationStarted) {
         await _focusReturnedVideo(result);
       }
     } finally {
@@ -996,7 +1002,11 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     );
   }
 
-  Future<void> _focusReturnedVideo(ScopedVideoFeedResult result) async {
+  Future<void> _focusReturnedVideo(
+    ScopedVideoFeedResult result, {
+    ScopedVideoFeedCloseSignal? closeSignal,
+  }) async {
+    if (closeSignal?.isCancelled == true) return;
     final index = _posts.indexWhere((post) => post.id == result.postId);
     if (index < 0) return;
 
@@ -1007,7 +1017,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     );
     if (mounted) setState(() => _handoffSessionId = result.postId);
     await WidgetsBinding.instance.endOfFrame;
-    if (!mounted) return;
+    if (!mounted || closeSignal?.isCancelled == true) return;
     final targetContext = _postKeys[index].currentContext;
     if (targetContext != null) {
       await Scrollable.ensureVisible(
@@ -1018,10 +1028,11 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
         alignment: 0.5,
       );
     }
-    final session = _videoCoordinator.sessionFor(result.postId);
-    if (session != null && session.position != result.timestamp) {
-      await session.seekTo(result.timestamp);
-    }
+    if (!mounted || closeSignal?.isCancelled == true) return;
+    // The result timestamp is read from this same coordinator session. Do not
+    // issue a second platform seek while preparing the reverse transition:
+    // Future.timeout cannot cancel an in-flight seek, so it could otherwise
+    // complete after the inline player has resumed and jump it backwards.
   }
 
   /// Akhiri transisi handoff fullscreen: clear flag, re-aktifkan video asal

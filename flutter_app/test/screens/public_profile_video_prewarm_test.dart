@@ -30,6 +30,7 @@ PostVideoWarmHandoff _handoff(
   return PostVideoWarmHandoff(
     postId: post.id,
     url: post.videoPlaybackUrl,
+    hasAudio: post.hasAudio != false,
     session: VideoPlayerSession(
       url: post.videoPlaybackUrl,
       analyticsPostId: post.id,
@@ -102,6 +103,7 @@ void main() {
     final claimed = handoff!.claim(
       postId: post.id,
       url: post.videoPlaybackUrl,
+      hasAudio: post.hasAudio != false,
     );
     expect(claimed, isNotNull);
     await prewarmer.dispose();

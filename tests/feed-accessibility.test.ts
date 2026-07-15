@@ -7,6 +7,8 @@ import {
   parseFeedAltText,
 } from "../lib/feed/accessibility";
 
+process.env.BUNNY_CDN_HOSTNAME = "cdn.example.com";
+
 test("create metadata defaults omitted fields to null", () => {
   assert.deepEqual(parseFeedAccessibilityMetadata({}), {
     ok: true,
@@ -65,6 +67,14 @@ test("subtitle URL must be absolute HTTPS without embedded credentials", () => {
     );
     assert.equal(result.ok, false, subtitleUrl);
   }
+});
+
+test("subtitle URL rejects HTTPS hosts outside the configured media allowlist", () => {
+  const result = parseFeedAccessibilityMetadata(
+    { subtitleUrl: "https://tracker.example.net/post.vtt" },
+    { partial: true },
+  );
+  assert.equal(result.ok, false);
 });
 
 test("subtitle language accepts short BCP47-like tags", () => {

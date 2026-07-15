@@ -433,6 +433,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
         dataSaverUrl: post.videoDataSaverUrl,
         userPreference: appSettingsStore.feedVideoQuality,
       ),
+      hasAudio: post.hasAudio != false,
     );
   }
 

@@ -86,22 +86,22 @@ void main() {
           description: 'Deskripsi',
         ),
       ).mediaAccessibilityLabel,
-      'Alt eksplisit',
+      'Alt eksplisit. Video tanpa suara.',
     );
     expect(
       FeedPost.fromJson(
         _postJson(caption: 'Caption', description: 'Deskripsi'),
       ).mediaAccessibilityLabel,
-      'Caption',
+      'Caption. Video tanpa suara.',
     );
     expect(
       FeedPost.fromJson(_postJson(description: 'Deskripsi'))
           .mediaAccessibilityLabel,
-      'Deskripsi',
+      'Deskripsi. Video tanpa suara.',
     );
     expect(
       FeedPost.fromJson(_postJson()).mediaAccessibilityLabel,
-      'Video dari Natalo Petshop',
+      'Video dari Natalo Petshop. Video tanpa suara.',
     );
   });
 }

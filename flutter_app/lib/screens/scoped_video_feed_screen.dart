@@ -26,6 +26,14 @@ class ScopedVideoFeedResult {
   });
 }
 
+class ScopedVideoFeedCloseSignal {
+  bool _cancelled = false;
+
+  bool get isCancelled => _cancelled;
+
+  void cancel() => _cancelled = true;
+}
+
 /// Immersive, vertically swipeable video viewer scoped to a caller-
 /// supplied list of videos (e.g. "videos tagged to this product", or
 /// "videos posted by this user"). Reuses [FeedVideoPostView] so visuals
@@ -61,7 +69,10 @@ class ScopedVideoFeedScreen extends StatefulWidget {
   final Stream<NetworkTier>? debugTierChanges;
   final ValueChanged<NetworkTier>? onNetworkTierChanged;
   final ValueChanged<String>? onActivePostChanged;
-  final Future<void> Function(ScopedVideoFeedResult result)? onPrepareClose;
+  final Future<void> Function(
+    ScopedVideoFeedResult result,
+    ScopedVideoFeedCloseSignal signal,
+  )? onPrepareClose;
 
   @visibleForTesting
   static bool shouldDismissEdgeSwipe({
@@ -94,6 +105,10 @@ class ScopedVideoFeedScreen extends StatefulWidget {
 
 class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
     with SingleTickerProviderStateMixin {
+  static const Duration _prepareCloseTimeout = Duration(milliseconds: 250);
+  static const int _maxPaginationPagesPerBatch = 6;
+  static const int _maxPaginationPagesPerViewer = 100;
+
   late final PageController _pageController;
   late List<FeedPost> _posts;
   late final AnimationController _horizontalDismissController;
@@ -119,6 +134,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
   StreamSubscription<NetworkTier>? _networkTierSubscription;
   String? _nextCursor;
   bool _loadingMore = false;
+  final Set<String> _visitedPaginationCursors = <String>{};
 
   /// Seberapa jauh (px) user harus menarik melewati batas atas (video
   /// pertama) sebelum viewer menutup — ala IG Reels dari profil: tarik
@@ -258,6 +274,13 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
       _horizontalGestureActive = true;
     }
     if (!_horizontalGestureActive) return;
+    // A gesture can start horizontally and then turn into a vertical page
+    // swipe. Yield once the vertical intent is decisive so the fullscreen
+    // transform never fights the PageView on a diagonal/curved drag.
+    if (total.dy.abs() > 16 && total.dy.abs() > total.dx.abs() * 1.2) {
+      _cancelHorizontalGestureForConflict();
+      return;
+    }
     final next = (_horizontalDragOffset + delta.dx).clamp(
       0.0,
       MediaQuery.sizeOf(context).width,
@@ -295,7 +318,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
       _dismissing = true;
       final result = _result;
       unawaited(() async {
-        await widget.onPrepareClose?.call(result);
+        await _prepareCloseSafely(result);
         await _animateHorizontalOffsetTo(width).orCancel.catchError((_) {});
         if (mounted) Navigator.of(context).pop(result);
       }());
@@ -449,14 +472,35 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
     if (index < _posts.length - 3) return;
 
     _loadingMore = true;
+    var shouldContinueInNextFrame = false;
+    String? inFlightCursor;
     try {
       // A profile page can contain photos between videos. Keep advancing the
       // opaque source cursor until at least one video is appended or the
       // source is exhausted, without ever creating a controller here.
-      while (mounted && _nextCursor != null) {
-        final page = await loader(_nextCursor);
+      var requestedPages = 0;
+      while (mounted &&
+          _nextCursor != null &&
+          requestedPages < _maxPaginationPagesPerBatch &&
+          _visitedPaginationCursors.length < _maxPaginationPagesPerViewer) {
+        final requestedCursor = _nextCursor;
+        if (!_visitedPaginationCursors.add(requestedCursor!)) {
+          _nextCursor = null;
+          break;
+        }
+        inFlightCursor = requestedCursor;
+        final page = await loader(requestedCursor);
+        inFlightCursor = null;
+        requestedPages++;
         if (!mounted) return;
-        _nextCursor = page.nextCursor;
+        final nextCursor = page.nextCursor;
+        if (nextCursor == requestedCursor) {
+          // A non-advancing cursor is a malformed pagination response. Stop
+          // this source permanently instead of spinning requests forever.
+          _nextCursor = null;
+          break;
+        }
+        _nextCursor = nextCursor;
         final existingIds = _posts.map((post) => post.id).toSet();
         final videos = page.items
             .where((post) => post.isVideo && existingIds.add(post.id))
@@ -470,11 +514,26 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
           break;
         }
       }
+      shouldContinueInNextFrame = mounted &&
+          _nextCursor != null &&
+          requestedPages >= _maxPaginationPagesPerBatch &&
+          _visitedPaginationCursors.length < _maxPaginationPagesPerViewer;
+      if (_visitedPaginationCursors.length >= _maxPaginationPagesPerViewer) {
+        _nextCursor = null;
+      }
     } catch (_) {
+      if (inFlightCursor != null) {
+        _visitedPaginationCursors.remove(inFlightCursor);
+      }
       // Keep the cursor unchanged in the source callback contract where
       // possible; a later page change/return near the end retries quietly.
     } finally {
       _loadingMore = false;
+      if (shouldContinueInNextFrame && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) unawaited(_maybeLoadMore(_activeIndex));
+        });
+      }
     }
   }
 
@@ -497,6 +556,20 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
     );
   }
 
+  Future<void> _prepareCloseSafely(ScopedVideoFeedResult result) async {
+    final prepare = widget.onPrepareClose;
+    if (prepare == null) return;
+    final signal = ScopedVideoFeedCloseSignal();
+    try {
+      await prepare(result, signal).timeout(_prepareCloseTimeout);
+    } catch (_) {
+      signal.cancel();
+      // Reverse-target preparation is best-effort. Navigation must still be
+      // closable when scrolling, layout measurement, or seek reconciliation
+      // fails or never completes.
+    }
+  }
+
   void _close() {
     if (_dismissing || !mounted) return;
     _dismissing = true;
@@ -506,9 +579,8 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
       // inline reverse target. Waiting here would leave the route stuck
       // until a second interaction after resume. Close immediately; the
       // caller still reconciles post + timestamp from the typed result.
-      if (WidgetsBinding.instance.lifecycleState ==
-          AppLifecycleState.resumed) {
-        await widget.onPrepareClose?.call(result);
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        await _prepareCloseSafely(result);
       }
       if (mounted) Navigator.of(context).pop(result);
     }());
@@ -620,6 +692,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
                   NotificationListener<ScrollNotification>(
                     onNotification: _onScrollNotification,
                     child: PageView.builder(
+                      key: const ValueKey('scoped-video-page-view'),
                       controller: _pageController,
                       scrollDirection: Axis.vertical,
                       physics: const PageScrollPhysics(

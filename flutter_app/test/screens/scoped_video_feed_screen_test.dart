@@ -143,6 +143,95 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
   });
 
+  testWidgets('stops pagination when the server cursor does not advance',
+      (tester) async {
+    var requestCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(
+          posts: [_fakeVideoPost('a')],
+          initialIndex: 0,
+          initialNextCursor: 'stuck-cursor',
+          loadMorePosts: (cursor) async {
+            requestCount++;
+            return FeedPage(
+              items: [_fakePhotoPost('photo-$requestCount')],
+              nextCursor: cursor,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(requestCount, 1);
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('stops pagination when cursors form a cycle', (tester) async {
+    final requestedCursors = <String?>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(
+          posts: [_fakeVideoPost('a')],
+          initialIndex: 0,
+          initialNextCursor: 'cursor-a',
+          loadMorePosts: (cursor) async {
+            requestedCursors.add(cursor);
+            return FeedPage(
+              items: [_fakePhotoPost('photo-${requestedCursors.length}')],
+              nextCursor: cursor == 'cursor-a' ? 'cursor-b' : 'cursor-a',
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(requestedCursors, ['cursor-a', 'cursor-b']);
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('continues pagination after a long run of photo-only pages',
+      (tester) async {
+    var requestCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(
+          posts: [_fakeVideoPost('a')],
+          initialIndex: 0,
+          initialNextCursor: 'page-1',
+          loadMorePosts: (cursor) async {
+            requestCount++;
+            if (requestCount <= 8) {
+              return FeedPage(
+                items: [_fakePhotoPost('photo-$requestCount')],
+                nextCursor: 'page-${requestCount + 1}',
+              );
+            }
+            return FeedPage(
+              items: [_fakeVideoPost('b')],
+              nextCursor: null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (requestCount == 9) break;
+    }
+
+    final pageView = tester.widget<PageView>(find.byType(PageView));
+    final delegate = pageView.childrenDelegate as SliverChildBuilderDelegate;
+    expect(requestCount, 9);
+    expect(delegate.childCount, 2);
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
   testWidgets('drag past top boundary on first video dismisses the viewer',
       (tester) async {
     final posts = [_fakeVideoPost('a'), _fakeVideoPost('b')];
@@ -268,7 +357,11 @@ void main() {
 
     expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
     expect(
-      tester.getTopLeft(find.byType(PageView)).dx,
+      tester
+          .getTopLeft(
+            find.byKey(const ValueKey('scoped-video-page-view')),
+          )
+          .dx,
       moreOrLessEquals(0),
     );
   });
@@ -291,12 +384,51 @@ void main() {
 
     expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
     expect(
-      tester.getTopLeft(find.byType(PageView)).dx,
+      tester
+          .getTopLeft(
+            find.byKey(const ValueKey('scoped-video-page-view')),
+          )
+          .dx,
       moreOrLessEquals(0),
     );
 
     await firstPointer.up();
     await secondPointer.up();
+  });
+
+  testWidgets('edge drag that turns vertical yields to the PageView',
+      (tester) async {
+    final posts = [_fakeVideoPost('a'), _fakeVideoPost('b')];
+    String? activePostId;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(
+          posts: posts,
+          initialIndex: 0,
+          onActivePostChanged: (postId) => activePostId = postId,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+
+    final gesture = await tester.startGesture(const Offset(16, 400));
+    await gesture.moveBy(const Offset(18, 2));
+    await tester.pump();
+    await gesture.moveBy(const Offset(4, -500));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    expect(activePostId, 'b');
+    expect(
+      tester
+          .getTopLeft(
+            find.byKey(const ValueKey('scoped-video-page-view')),
+          )
+          .dx,
+      moreOrLessEquals(0),
+    );
   });
 
   test('high rightward velocity dismisses before the distance threshold', () {
@@ -368,6 +500,8 @@ void main() {
       if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
     }
     expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
     await tester.tap(find.byIcon(Icons.chevron_left_rounded));
     await tester.pump(const Duration(milliseconds: 400));
 
@@ -375,6 +509,98 @@ void main() {
     expect(result!.postId, 'b');
     expect(result!.index, 1);
     expect(result!.timestamp, Duration.zero);
+  });
+
+  testWidgets('prepare-close failure cannot lock the fullscreen route',
+      (tester) async {
+    ScopedVideoFeedResult? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () async {
+              result = await Navigator.of(context).push<ScopedVideoFeedResult>(
+                MaterialPageRoute<ScopedVideoFeedResult>(
+                  builder: (_) => ScopedVideoFeedScreen(
+                    posts: [_fakeVideoPost('a')],
+                    initialIndex: 0,
+                    onPrepareClose: (_, __) async => throw StateError('failed'),
+                  ),
+                ),
+              );
+            },
+            child: const Text('open failing close'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open failing close'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
+    }
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.chevron_left_rounded));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
+    }
+
+    expect(find.byType(ScopedVideoFeedScreen), findsNothing);
+    expect(result?.postId, 'a');
+  });
+
+  testWidgets('prepare-close timeout cannot lock the fullscreen route',
+      (tester) async {
+    ScopedVideoFeedResult? result;
+    final neverCompletes = Completer<void>();
+    ScopedVideoFeedCloseSignal? closeSignal;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () async {
+              result = await Navigator.of(context).push<ScopedVideoFeedResult>(
+                MaterialPageRoute<ScopedVideoFeedResult>(
+                  builder: (_) => ScopedVideoFeedScreen(
+                    posts: [_fakeVideoPost('a')],
+                    initialIndex: 0,
+                    onPrepareClose: (_, signal) {
+                      closeSignal = signal;
+                      return neverCompletes.future;
+                    },
+                  ),
+                ),
+              );
+            },
+            child: const Text('open hanging close'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open hanging close'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
+    }
+    expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.chevron_left_rounded));
+    for (var i = 0; i < 16; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
+    }
+
+    expect(find.byType(ScopedVideoFeedScreen), findsNothing);
+    expect(result?.postId, 'a');
+    expect(closeSignal?.isCancelled, isTrue);
+    neverCompletes.complete();
+    await tester.pump();
   });
 
   testWidgets('system back returns typed last-active post payload',

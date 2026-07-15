@@ -38,14 +38,26 @@ function parseNullableBoundedString(
   return { ok: true, data: normalized };
 }
 
+function configuredSubtitleHosts(): Set<string> {
+  const hosts = new Set<string>();
+  const configured = [process.env.BUNNY_CDN_HOSTNAME];
+  for (const value of configured) {
+    const normalized = value?.trim().toLowerCase();
+    if (normalized) hosts.add(normalized);
+  }
+  return hosts;
+}
+
 function isTrustedHttpsUrl(value: string): boolean {
   try {
     const url = new URL(value);
+    const trustedHosts = configuredSubtitleHosts();
     return (
       url.protocol === "https:" &&
       Boolean(url.hostname) &&
       !url.username &&
-      !url.password
+      !url.password &&
+      trustedHosts.has(url.hostname.toLowerCase())
     );
   } catch {
     return false;
@@ -103,7 +115,7 @@ export function parseFeedAccessibilityMetadata(
     if (result.data !== null && !isTrustedHttpsUrl(result.data)) {
       return {
         ok: false,
-        error: "Subtitle URL harus berupa URL HTTPS yang valid.",
+        error: "Subtitle URL harus memakai host media Natalo yang diizinkan.",
       };
     }
     data.subtitleUrl = result.data;

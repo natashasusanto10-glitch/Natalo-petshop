@@ -58,12 +58,17 @@ class FeedWebVttSubtitleOverlay extends StatefulWidget {
     super.key,
     required this.controller,
     required this.subtitleUrl,
+    required this.trustedMediaUrl,
     this.visible = true,
+    this.debugClientFactory,
   });
 
   final VideoPlayerController controller;
   final String? subtitleUrl;
+  final String trustedMediaUrl;
   final bool visible;
+  @visibleForTesting
+  final http.Client Function()? debugClientFactory;
 
   @override
   State<FeedWebVttSubtitleOverlay> createState() =>
@@ -75,6 +80,7 @@ class _FeedWebVttSubtitleOverlayState extends State<FeedWebVttSubtitleOverlay> {
 
   List<Caption> _captions = const [];
   int _loadRevision = 0;
+  http.Client? _client;
 
   @override
   void initState() {
@@ -85,13 +91,26 @@ class _FeedWebVttSubtitleOverlayState extends State<FeedWebVttSubtitleOverlay> {
   @override
   void didUpdateWidget(covariant FeedWebVttSubtitleOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.subtitleUrl != widget.subtitleUrl) {
+    if (oldWidget.subtitleUrl != widget.subtitleUrl ||
+        oldWidget.trustedMediaUrl != widget.trustedMediaUrl ||
+        oldWidget.visible != widget.visible) {
       unawaited(_loadCaptions());
     }
   }
 
+  @override
+  void dispose() {
+    _loadRevision++;
+    _client?.close();
+    _client = null;
+    super.dispose();
+  }
+
   Future<void> _loadCaptions() async {
     final revision = ++_loadRevision;
+    _client?.close();
+    _client = null;
+    if (!widget.visible) return;
     final rawUrl = widget.subtitleUrl?.trim();
     if (rawUrl == null || rawUrl.isEmpty) {
       if (mounted) setState(() => _captions = const []);
@@ -99,7 +118,8 @@ class _FeedWebVttSubtitleOverlayState extends State<FeedWebVttSubtitleOverlay> {
     }
 
     final uri = Uri.tryParse(rawUrl);
-    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+    if (uri == null ||
+        !feedSubtitleUrlMatchesMedia(rawUrl, widget.trustedMediaUrl)) {
       if (mounted) setState(() => _captions = const []);
       return;
     }
@@ -108,17 +128,23 @@ class _FeedWebVttSubtitleOverlayState extends State<FeedWebVttSubtitleOverlay> {
       setState(() => _captions = const []);
     }
 
-    final client = http.Client();
+    final client = widget.debugClientFactory?.call() ?? http.Client();
+    _client = client;
     try {
-      final response = await client
-          .send(http.Request('GET', uri))
-          .timeout(const Duration(seconds: 8));
+      final request = http.Request('GET', uri)..followRedirects = false;
+      final response = await client.send(request).timeout(
+            const Duration(seconds: 8),
+          );
+      // A redirect can escape the trusted CDN even when the stored URL is
+      // valid. Subtitle delivery is optional, so fail closed instead.
+      if (response.isRedirect) return;
       if (response.statusCode < 200 || response.statusCode >= 300) return;
       final declaredLength = response.contentLength;
       if (declaredLength != null && declaredLength > _maxSubtitleBytes) return;
 
       final bytes = <int>[];
-      await for (final chunk in response.stream) {
+      await for (final chunk
+          in response.stream.timeout(const Duration(seconds: 8))) {
         if (bytes.length + chunk.length > _maxSubtitleBytes) return;
         bytes.addAll(chunk);
       }
@@ -128,6 +154,7 @@ class _FeedWebVttSubtitleOverlayState extends State<FeedWebVttSubtitleOverlay> {
     } catch (_) {
       // Subtitle metadata is optional. Never interrupt or replace playback.
     } finally {
+      if (identical(_client, client)) _client = null;
       client.close();
     }
   }
@@ -176,6 +203,24 @@ class _FeedWebVttSubtitleOverlayState extends State<FeedWebVttSubtitleOverlay> {
       },
     );
   }
+}
+
+@visibleForTesting
+bool feedSubtitleUrlMatchesMedia(String subtitleUrl, String mediaUrl) {
+  final subtitleUri = Uri.tryParse(subtitleUrl.trim());
+  final mediaUri = Uri.tryParse(mediaUrl.trim());
+  final subtitleHost = subtitleUri?.host.toLowerCase() ?? '';
+  final mediaHost = mediaUri?.host.toLowerCase() ?? '';
+  final isBunnyStreamHost = subtitleHost.endsWith('.b-cdn.net') &&
+      subtitleHost.length > '.b-cdn.net'.length;
+  return subtitleUri != null &&
+      mediaUri != null &&
+      subtitleUri.scheme == 'https' &&
+      mediaUri.scheme == 'https' &&
+      isBunnyStreamHost &&
+      subtitleUri.userInfo.isEmpty &&
+      mediaUri.userInfo.isEmpty &&
+      subtitleHost == mediaHost;
 }
 
 @visibleForTesting

@@ -149,6 +149,7 @@ class _ProfilePageState extends State<_ProfilePage>
         dataSaverUrl: post.videoDataSaverUrl,
         userPreference: appSettingsStore.feedVideoQuality,
       ),
+      hasAudio: post.hasAudio != false,
     );
   }
 
