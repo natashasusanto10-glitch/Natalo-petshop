@@ -47,6 +47,7 @@ import 'screens/onboarding_screen.dart';
 import 'screens/order_success_screen.dart';
 import 'screens/product_detail_screen.dart';
 import 'screens/register_screen.dart';
+import 'screens/saved_posts_screen.dart';
 import 'screens/static_info_screen.dart';
 import 'state/bottom_nav_scroll.dart';
 import 'state/cart_store.dart';
@@ -350,8 +351,7 @@ class NataloPetshopApp extends StatelessWidget {
                 ),
               '/chat' when settings.arguments is Map<String, dynamic> =>
                 ChatRoomScreen(
-                  productContext:
-                      settings.arguments as Map<String, dynamic>,
+                  productContext: settings.arguments as Map<String, dynamic>,
                 ),
               '/chat' => const ChatRoomScreen(),
               '/notifications' => const NotificationsScreen(),
@@ -408,8 +408,8 @@ class NataloPetshopApp extends StatelessWidget {
               // Alias EN — beberapa caller pakai /member/posts (profile
               // quick actions). Keep both untuk konsistensi.
               '/member/posts' => const MemberPostsScreen(),
-              '/member/postingan-detail'
-                  when settings.arguments is FeedPost =>
+              '/member/saved' => SavedPostsScreen(),
+              '/member/postingan-detail' when settings.arguments is FeedPost =>
                 MemberPostDetailScreen(
                   post: settings.arguments as FeedPost,
                   authorIsOfficial:

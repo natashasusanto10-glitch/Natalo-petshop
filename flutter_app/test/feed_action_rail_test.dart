@@ -45,4 +45,48 @@ void main() {
     await tester.tap(find.text('1').first);
     await tester.pump();
   });
+
+  testWidgets('bookmark is visible, accessible, and invokes save',
+      (tester) async {
+    var saveTaps = 0;
+    await tester.pumpWidget(_wrap(FeedActionRail(
+      likeCount: 1,
+      liked: false,
+      commentCount: 1,
+      shareCount: 1,
+      onSave: () => saveTaps++,
+    )));
+
+    expect(find.byTooltip('Simpan postingan'), findsOneWidget);
+    expect(find.bySemanticsLabel('Simpan postingan'), findsOneWidget);
+    await tester.tap(find.byTooltip('Simpan postingan'));
+    expect(saveTaps, 1);
+  });
+
+  testWidgets('saved bookmark exposes remove action', (tester) async {
+    await tester.pumpWidget(_wrap(const FeedActionRail(
+      likeCount: 0,
+      liked: false,
+      commentCount: 0,
+      shareCount: 0,
+      saved: true,
+    )));
+
+    expect(find.byTooltip('Hapus dari tersimpan'), findsOneWidget);
+    expect(find.bySemanticsLabel('Hapus dari tersimpan'), findsOneWidget);
+  });
+
+  testWidgets('five actions fit the compact rail height', (tester) async {
+    await tester.pumpWidget(_wrap(const SizedBox(
+      height: 340,
+      child: FeedActionRail(
+        likeCount: 1,
+        liked: false,
+        commentCount: 1,
+        shareCount: 1,
+      ),
+    )));
+
+    expect(tester.takeException(), isNull);
+  });
 }

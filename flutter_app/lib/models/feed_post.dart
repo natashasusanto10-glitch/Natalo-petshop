@@ -244,6 +244,7 @@ class FeedPost {
   final int shareCount;
   final bool isLiked;
   final bool viewerLiked;
+  final bool viewerSaved;
   final List<FeedAuthor> recentLikers;
   final DateTime createdAt;
 
@@ -288,6 +289,7 @@ class FeedPost {
     this.shareCount = 0,
     this.isLiked = false,
     this.viewerLiked = false,
+    this.viewerSaved = false,
     this.recentLikers = const [],
     required this.createdAt,
     this.mediaItems = const [],
@@ -404,6 +406,13 @@ class FeedPost {
   List<String> get productIds =>
       products.map((p) => p.id).toList(growable: false);
 
+  /// Whether this post links to at least one product in any supported API
+  /// shape. Saved Posts uses this for the "Belanja" tab.
+  bool get hasLinkedProducts =>
+      products.isNotEmpty ||
+      productsInVideo.isNotEmpty ||
+      taggedProducts.isNotEmpty;
+
   /// Duration label mm:ss — dipakai badge video di grid.
   String get durationLabel {
     final total = durationSec.clamp(0, 999999);
@@ -452,6 +461,7 @@ class FeedPost {
     int? shareCount,
     bool? isLiked,
     bool? viewerLiked,
+    bool? viewerSaved,
     List<FeedAuthor>? recentLikers,
     DateTime? createdAt,
     List<FeedMedia>? mediaItems,
@@ -488,6 +498,7 @@ class FeedPost {
       shareCount: shareCount ?? this.shareCount,
       isLiked: liked ?? this.isLiked,
       viewerLiked: liked ?? this.viewerLiked,
+      viewerSaved: viewerSaved ?? this.viewerSaved,
       recentLikers: recentLikers ?? this.recentLikers,
       createdAt: createdAt ?? this.createdAt,
       mediaItems: mediaItems ?? this.mediaItems,
@@ -632,6 +643,7 @@ class FeedPost {
       shareCount: (json['shareCount'] as num?)?.toInt() ?? 0,
       isLiked: liked,
       viewerLiked: liked,
+      viewerSaved: json['viewerSaved'] == true,
       recentLikers: recentLikers,
       createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),
@@ -689,6 +701,7 @@ class FeedPost {
       'viewerLiked': viewerLiked || isLiked,
       'isLiked': viewerLiked || isLiked,
       'isLikedByMe': viewerLiked || isLiked,
+      'viewerSaved': viewerSaved,
       'recentLikers': recentLikers
           .map((liker) => {
                 'id': liker.id,

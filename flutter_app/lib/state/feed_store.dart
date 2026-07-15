@@ -6,6 +6,11 @@ import '../models/feed_post.dart';
 import '../services/feed_service.dart';
 import 'member_store.dart';
 
+typedef FeedSavedSetter = Future<bool> Function(
+  String postId, {
+  required bool saved,
+});
+
 /// Shared, postId-keyed store untuk semua feed post di app.
 ///
 /// **Single source of truth** untuk interaksi (like/comment count) supaya
@@ -30,7 +35,14 @@ import 'member_store.dart';
 /// post yang punya local action AFTER `fetchedAt`. Non-interaction fields
 /// (caption, thumbnailUrl, dll) tetap di-apply — itu tidak race-prone.
 class FeedStore extends ChangeNotifier {
-  FeedStore._();
+  FeedStore._({FeedSavedSetter? savedSetter})
+      : _setSaved = savedSetter ?? feedService.setSaved;
+
+  @visibleForTesting
+  FeedStore.forTesting({required FeedSavedSetter savedSetter})
+      : _setSaved = savedSetter;
+
+  final FeedSavedSetter _setSaved;
 
   final Map<String, FeedPost> _byId = {};
   final Map<String, DateTime> _lastLocalActionAt = {};
@@ -41,6 +53,11 @@ class FeedStore extends ChangeNotifier {
 
   /// Intent liked terakhir per post (lihat [toggleLike]).
   final Map<String, bool> _likeDesired = {};
+
+  /// Save uses idempotent desired-state endpoints, but keeps the same
+  /// latest-intent-wins behavior as likes for rapid repeated taps.
+  final Set<String> _saveInFlight = {};
+  final Map<String, bool> _saveDesired = {};
 
   /// Cegah parallel ensureLoaded untuk post sama (deep link spam).
   final Map<String, Future<FeedPost?>> _ensureInFlight = {};
@@ -155,6 +172,8 @@ class FeedStore extends ChangeNotifier {
   void removePost(String postId) {
     if (_byId.remove(postId) != null) {
       _lastLocalActionAt.remove(postId);
+      _saveDesired.remove(postId);
+      _saveInFlight.remove(postId);
       notifyListeners();
     }
   }
@@ -210,6 +229,15 @@ class FeedStore extends ChangeNotifier {
       likeCount: likeCount < 0 ? 0 : likeCount,
       recentLikers: _reconcileCurrentUserLiker(p.recentLikers, liked),
     );
+    _lastLocalActionAt[postId] = DateTime.now();
+    notifyListeners();
+  }
+
+  /// Apply a known saved state and protect it from older list responses.
+  void setSavedState(String postId, {required bool saved}) {
+    final post = _byId[postId];
+    if (post == null || post.viewerSaved == saved) return;
+    _byId[postId] = post.copyWith(viewerSaved: saved);
     _lastLocalActionAt[postId] = DateTime.now();
     notifyListeners();
   }
@@ -337,6 +365,57 @@ class FeedStore extends ChangeNotifier {
     }
   }
 
+  /// Toggle saved state optimistically and converge the server to the latest
+  /// desired state. Additional taps during a request update intent instead of
+  /// starting parallel requests or being dropped.
+  Future<bool> toggleSaved(String postId) async {
+    final oldPost = _byId[postId];
+    if (oldPost == null) {
+      return _setSaved(postId, saved: true);
+    }
+
+    final wasSaved = oldPost.viewerSaved;
+    final desiredSaved = !wasSaved;
+    _byId[postId] = oldPost.copyWith(viewerSaved: desiredSaved);
+    _lastLocalActionAt[postId] = DateTime.now();
+    _saveDesired[postId] = desiredSaved;
+    notifyListeners();
+
+    if (_saveInFlight.contains(postId)) return desiredSaved;
+    _saveInFlight.add(postId);
+
+    var serverSaved = wasSaved;
+    try {
+      while (true) {
+        final desired = _saveDesired[postId];
+        if (desired == null || desired == serverSaved) break;
+        serverSaved = await _setSaved(postId, saved: desired);
+        // A successful response may still reject the requested state. Treat
+        // that response as authoritative instead of retrying forever.
+        if (serverSaved != desired) break;
+      }
+
+      _saveDesired.remove(postId);
+      final current = _byId[postId];
+      if (current != null && current.viewerSaved != serverSaved) {
+        _byId[postId] = current.copyWith(viewerSaved: serverSaved);
+        _lastLocalActionAt[postId] = DateTime.now();
+        notifyListeners();
+      }
+      return serverSaved;
+    } catch (_) {
+      _saveDesired.remove(postId);
+      final current = _byId[postId];
+      if (current != null) {
+        _byId[postId] = current.copyWith(viewerSaved: serverSaved);
+        notifyListeners();
+      }
+      rethrow;
+    } finally {
+      _saveInFlight.remove(postId);
+    }
+  }
+
   /// Pastikan post terload — useful saat user buka detail via deep link
   /// dan store belum punya post tersebut. Idempotent: parallel call
   /// untuk post yang sama akan share satu in-flight Future.
@@ -368,6 +447,9 @@ class FeedStore extends ChangeNotifier {
     _byId.clear();
     _lastLocalActionAt.clear();
     _likeInFlight.clear();
+    _likeDesired.clear();
+    _saveInFlight.clear();
+    _saveDesired.clear();
     _ensureInFlight.clear();
     notifyListeners();
   }

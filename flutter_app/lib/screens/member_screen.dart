@@ -518,6 +518,19 @@ class _ProfileTopBar extends StatelessWidget {
             icon: const Icon(Icons.add_rounded, size: 36, color: ink),
           ),
           const Spacer(),
+          IconButton(
+            onPressed: () => Navigator.pushNamed(context, '/member/saved'),
+            tooltip: 'Postingan tersimpan',
+            style: IconButton.styleFrom(
+              minimumSize: const Size(48, 48),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            icon: const Icon(
+              Icons.bookmark_border_rounded,
+              color: ink,
+              size: 28,
+            ),
+          ),
           const IconTheme(
             data: IconThemeData(color: ink, size: 28),
             child: AppNotificationButton(iconColor: ink),

@@ -11,11 +11,11 @@ const _feedActionTextShadowColor = Color(0xB3000000);
 const _feedActionIconSize = 30.0;
 const _feedActionStrokeWidth = 2.2;
 const _feedActionCountFontSize = 12.0;
-const _feedActionItemSpacing = 22.0;
+const _feedActionItemSpacing = 18.0;
 
-/// Rail aksi kanan feed video/foto — like, comment, share, more.
+/// Rail aksi kanan feed video/foto — like, comment, share, save, more.
 /// Ekstraksi 1:1 dari feed_screen (ikon CustomPaint 30px stroke 2.2,
-/// angka 12 w600 putih ber-shadow, spacing antar item 22). Cart item
+/// angka 12 w600 putih ber-shadow). Cart item
 /// DIHAPUS dari rail — duplikat dengan cart kanan-atas (satu-satunya
 /// pintu keranjang di feed, spec PR #78/#80 upstream).
 class FeedActionRail extends StatelessWidget {
@@ -23,9 +23,11 @@ class FeedActionRail extends StatelessWidget {
   final bool liked;
   final int commentCount;
   final int shareCount;
+  final bool saved;
   final VoidCallback? onLike;
   final VoidCallback? onComment;
   final VoidCallback? onShare;
+  final VoidCallback? onSave;
   final VoidCallback? onMore;
 
   /// Key pada tombol like — dipakai overlay burst double-tap untuk tahu
@@ -38,9 +40,11 @@ class FeedActionRail extends StatelessWidget {
     required this.liked,
     required this.commentCount,
     required this.shareCount,
+    this.saved = false,
     this.onLike,
     this.onComment,
     this.onShare,
+    this.onSave,
     this.onMore,
     this.likeKey,
   });
@@ -55,6 +59,8 @@ class FeedActionRail extends StatelessWidget {
           iconChild: _ReelsHeartGlyph(liked: liked),
           count: likeCount,
           onTap: onLike ?? () {},
+          semanticLabel: liked ? 'Batal menyukai' : 'Sukai',
+          selected: liked,
           // Pop membal hanya saat LIKE — unlike cukup fill merah memudar
           // (ala IG). `liked` di sini nilai saat build = state sebelum tap.
           shouldPulse: () => !liked,
@@ -64,18 +70,35 @@ class FeedActionRail extends StatelessWidget {
           iconChild: const _ReelsCommentGlyph(),
           count: commentCount,
           onTap: onComment ?? () {},
+          semanticLabel: 'Komentar',
         ),
         const SizedBox(height: _feedActionItemSpacing),
         _ReelsAction(
           iconChild: const _ReelsShareGlyph(),
           count: shareCount,
           onTap: onShare ?? () {},
+          semanticLabel: 'Bagikan',
+        ),
+        const SizedBox(height: _feedActionItemSpacing),
+        _ReelsAction(
+          iconChild: Icon(
+            saved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+            color: _feedActionForegroundColor,
+            size: _feedActionIconSize,
+            shadows: const [
+              Shadow(color: _feedActionShadowColor, blurRadius: 3),
+            ],
+          ),
+          onTap: onSave ?? () {},
+          semanticLabel: saved ? 'Hapus dari tersimpan' : 'Simpan postingan',
+          selected: saved,
         ),
         const SizedBox(height: _feedActionItemSpacing),
         // More actions (Report/Block) — Google Play UGC policy.
         _ReelsAction(
           iconChild: const _ReelsMoreGlyph(),
           onTap: onMore ?? () {},
+          semanticLabel: 'Opsi lainnya',
         ),
       ],
     );
@@ -86,6 +109,8 @@ class _ReelsAction extends StatefulWidget {
   final Widget iconChild;
   final int? count;
   final VoidCallback onTap;
+  final String semanticLabel;
+  final bool? selected;
 
   /// Dievaluasi tepat sebelum onTap — return false untuk melewatkan pulse
   /// membal (mis. unlike: cukup fade, tanpa pop). Default: selalu pulse.
@@ -96,6 +121,8 @@ class _ReelsAction extends StatefulWidget {
     required this.iconChild,
     this.count,
     required this.onTap,
+    required this.semanticLabel,
+    this.selected,
     this.shouldPulse,
   });
 
@@ -154,54 +181,64 @@ class _ReelsActionState extends State<_ReelsAction>
     // tepat saat like pertama ("ikon loncat dulu baru merah"). Sekarang
     // ikon diam, angka fade-in ke ruang kosong di bawahnya (ala IG).
     final showCount = widget.count != null && widget.count! > 0;
-    return SizedBox(
-      width: 54,
-      child: Material(
-        color: Colors.transparent,
-        child: InkResponse(
-          onTap: _handleTap,
-          radius: 28,
-          child: ScaleTransition(
-            scale: _tapPulseScale,
-            child: SizedBox(
-              height: widget.count == null ? 44 : 60,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  widget.iconChild,
-                  if (widget.count != null) ...[
-                    const SizedBox(height: 2),
-                    AnimatedOpacity(
-                      opacity: showCount ? 1 : 0,
-                      duration: const Duration(milliseconds: 150),
-                      child: RepaintBoundary(
-                        child: Text(
-                          // Saat 0 (invisible) tampilkan nilai terakhir yang
-                          // masuk akal (1) supaya fade-out unlike 1→0 tidak
-                          // sempat flash "0".
-                          _formatCount(
-                            widget.count! > 0 ? widget.count! : 1,
-                          ),
-                          style: const TextStyle(
-                            color: _feedActionForegroundColor,
-                            fontSize: _feedActionCountFontSize,
-                            // Ikut halus ala IG: w600 (dari w900). Shadow
-                            // tetap menjaga keterbacaan di atas video.
-                            fontWeight: FontWeight.w600,
-                            height: 1,
-                            shadows: [
-                              Shadow(
-                                color: _feedActionTextShadowColor,
-                                blurRadius: 2.4,
-                                offset: Offset(0, 0.8),
+    return Semantics(
+      button: true,
+      selected: widget.selected,
+      label: widget.semanticLabel,
+      excludeSemantics: true,
+      child: Tooltip(
+        message: widget.semanticLabel,
+        excludeFromSemantics: true,
+        child: SizedBox(
+          width: 54,
+          child: Material(
+            color: Colors.transparent,
+            child: InkResponse(
+              onTap: _handleTap,
+              radius: 28,
+              child: ScaleTransition(
+                scale: _tapPulseScale,
+                child: SizedBox(
+                  height: widget.count == null ? 44 : 60,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      widget.iconChild,
+                      if (widget.count != null) ...[
+                        const SizedBox(height: 2),
+                        AnimatedOpacity(
+                          opacity: showCount ? 1 : 0,
+                          duration: const Duration(milliseconds: 150),
+                          child: RepaintBoundary(
+                            child: Text(
+                              // Saat 0 (invisible) tampilkan nilai terakhir yang
+                              // masuk akal (1) supaya fade-out unlike 1→0 tidak
+                              // sempat flash "0".
+                              _formatCount(
+                                widget.count! > 0 ? widget.count! : 1,
                               ),
-                            ],
+                              style: const TextStyle(
+                                color: _feedActionForegroundColor,
+                                fontSize: _feedActionCountFontSize,
+                                // Ikut halus ala IG: w600 (dari w900). Shadow
+                                // tetap menjaga keterbacaan di atas video.
+                                fontWeight: FontWeight.w600,
+                                height: 1,
+                                shadows: [
+                                  Shadow(
+                                    color: _feedActionTextShadowColor,
+                                    blurRadius: 2.4,
+                                    offset: Offset(0, 0.8),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                  ],
-                ],
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
           ),

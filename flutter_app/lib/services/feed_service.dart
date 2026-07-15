@@ -130,6 +130,47 @@ class FeedService {
     return FeedPage(items: items, nextCursor: nextCursor);
   }
 
+  /// Fetch the authenticated viewer's saved posts, newest save first.
+  Future<FeedPage> fetchSavedPosts({
+    String? cursor,
+    int limit = 20,
+  }) async {
+    final data = await apiClient.getJson(
+      '/api/feed/saved',
+      query: {
+        if (cursor != null) 'cursor': cursor,
+        'limit': '$limit',
+      },
+      timeout: const Duration(seconds: 15),
+    );
+    final raw =
+        data is Map ? (data['items'] ?? data['posts'] ?? data['data']) : data;
+    final items = raw is List
+        ? raw
+            .whereType<Map<String, dynamic>>()
+            .map(FeedPost.fromJson)
+            // The collection itself is authoritative even if an older API
+            // payload omits the per-viewer field.
+            .map((post) => post.copyWith(viewerSaved: true))
+            .toList()
+        : const <FeedPost>[];
+    final nextCursor = data is Map ? data['nextCursor'] as String? : null;
+    return FeedPage(items: items, nextCursor: nextCursor);
+  }
+
+  /// Set the saved state explicitly. PUT/DELETE are idempotent, allowing the
+  /// store to converge to the latest tap even while a request is in flight.
+  Future<bool> setSaved(String postId, {required bool saved}) async {
+    final path = '/api/feed/posts/${Uri.encodeComponent(postId)}/save';
+    final data = saved
+        ? await apiClient.putJson(path)
+        : await apiClient.deleteJson(path);
+    if (data is Map<String, dynamic>) {
+      return data['saved'] as bool? ?? saved;
+    }
+    return saved;
+  }
+
   /// Track view event — fire-and-forget. Backend increment viewCount
   /// + record analytics event. Client debounce sendiri (avoid
   /// double-count) via FeedLocalStore.hasViewedThisSession.

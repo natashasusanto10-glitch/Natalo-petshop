@@ -292,6 +292,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     _commentSheetInitialExtent,
   );
   bool _liked = false;
+  bool _saved = false;
   int _likeCount = 0;
   int _commentCount = 0;
   int _shareCount = 0;
@@ -391,13 +392,12 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // Kalau FeedStore sudah punya post, store/backend adalah source of
     // truth. Local cache hanya fallback awal agar launch offline tetap
     // terasa instant, dan tidak boleh membuat unlike terbaru tetap merah.
-    _liked = widget.post.viewerLiked ||
-        widget.post.isLiked ||
-        (feedStore.get(widget.post.id) == null &&
-            feedLocalStore.isLiked(widget.post.id));
-    _likeCount = widget.post.likeCount;
-    _commentCount = widget.post.commentCount;
-    _shareCount = widget.post.shareCount;
+    final fresh = feedStore.get(widget.post.id) ?? widget.post;
+    _liked = fresh.viewerLiked || fresh.isLiked;
+    _saved = fresh.viewerSaved;
+    _likeCount = fresh.likeCount;
+    _commentCount = fresh.commentCount;
+    _shareCount = fresh.shareCount;
 
     _heartBurstController = AnimationController(
       vsync: this,
@@ -1756,6 +1756,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     if (fresh == null) return;
     final newLiked = fresh.viewerLiked || fresh.isLiked;
     if (newLiked == _liked &&
+        fresh.viewerSaved == _saved &&
         fresh.likeCount == _likeCount &&
         fresh.commentCount == _commentCount &&
         fresh.shareCount == _shareCount) {
@@ -1763,6 +1764,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     }
     setState(() {
       _liked = newLiked;
+      _saved = fresh.viewerSaved;
       _likeCount = fresh.likeCount;
       _commentCount = fresh.commentCount;
       _shareCount = fresh.shareCount;
@@ -1803,6 +1805,28 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
           kind: ToastKind.warning,
         );
       }
+    }
+  }
+
+  Future<void> _onSavePressed() async {
+    AppHaptics.tap();
+    try {
+      await feedStore.toggleSaved(widget.post.id);
+    } catch (error) {
+      if (!mounted) return;
+      if (error is ApiException && error.statusCode == 401) {
+        if (memberStore.isLoggedIn) await memberStore.logout();
+        if (!mounted) return;
+        Navigator.pushNamed(context, '/member/login');
+        return;
+      }
+      AppToast.show(
+        context,
+        error is ApiException && error.statusCode == 404
+            ? 'Postingan tidak tersedia.'
+            : 'Postingan belum bisa disimpan. Coba lagi.',
+        kind: ToastKind.warning,
+      );
     }
   }
 
@@ -2772,9 +2796,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                                 liked: _liked,
                                 commentCount: _commentCount,
                                 shareCount: _shareCount,
+                                saved: _saved,
                                 onLike: _onLikePressed,
                                 onComment: _onComment,
                                 onShare: _onShare,
+                                onSave: _onSavePressed,
                                 onMore: _onMoreActions,
                               ),
                             ),
