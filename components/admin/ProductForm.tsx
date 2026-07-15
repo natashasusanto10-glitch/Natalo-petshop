@@ -11,6 +11,12 @@ import { productFormCopy } from "@/lib/product/product-form-copy";
 export { productFormCopy } from "@/lib/product/product-form-copy";
 
 export type ProductFormMode = "create" | "edit";
+function persistedVariantDraft(product?: ProductLike) {
+  const attrs = (product?.variantAttrs ?? []).map(a => ({ name: a.name, position: a.position, options: a.options.map(o => ({ value: o.value, position: o.position })) }));
+  const optionRefs = new Map((product?.variantAttrs ?? []).flatMap(a => a.options.map(o => [o.id, `${a.position}:${o.value}`] as const)));
+  const variants = (product?.variants ?? []).map(v => ({ optionRefs: v.options.map(o => optionRefs.get(o.optionId)).filter((x): x is string => Boolean(x)), price: v.price, stock: v.stock, weightGram: v.weightGram, sku: v.sku ?? undefined, imageUrl: v.imageUrl ?? undefined, isActive: v.isActive }));
+  return { attributes: attrs, variants };
+}
 
 type ProductLike = {
   id?: string; name?: string; description?: string; imageUrl?: string | null; gallery?: string[];
@@ -50,7 +56,8 @@ export function ProductForm({ mode, categories, brands, initialProduct }: {
     if (!hasVariants && (Number(price) <= 0 || Number(weightGram) <= 0 || Number(stock) < 0)) { setError("Harga, stok, dan berat produk harus valid."); return; }
     setSaving(true);
     let createdId: string | undefined;
-    const rollbackPayload = mode === "edit" ? { name: initialProduct?.name, description: initialProduct?.description, imageUrls: initialSnapshot.current.images, categoryId: initialProduct?.categoryId, brandId: initialProduct?.brandId, price: initialProduct?.price, stock: initialProduct?.stock, weightGram: initialProduct?.weightGram, sku: initialProduct?.sku, hasVariants: initialProduct?.hasVariants, attributes: initialAttrs, variants: initialVariants, video: { guid: initialSnapshot.current.videoGuid, status: initialSnapshot.current.videoStatus, thumbnailUrl: initialSnapshot.current.videoThumbnailUrl, durationSec: initialSnapshot.current.videoDurationSec } } : null;
+    const rollbackDraft = persistedVariantDraft(initialProduct);
+    const rollbackPayload = mode === "edit" ? { name: initialProduct?.name, description: initialProduct?.description, imageUrls: initialSnapshot.current.images, categoryId: initialProduct?.categoryId, brandId: initialProduct?.brandId, price: initialProduct?.price, stock: initialProduct?.stock, weightGram: initialProduct?.weightGram, sku: initialProduct?.sku, hasVariants: initialProduct?.hasVariants, ...rollbackDraft, video: { guid: initialSnapshot.current.videoGuid, status: initialSnapshot.current.videoStatus, thumbnailUrl: initialSnapshot.current.videoThumbnailUrl, durationSec: initialSnapshot.current.videoDurationSec } } : null;
     if (hasVariants && (!variants.attributes.length || !variants.variants.length || !variants.variants.some(v => v.isActive))) { setError("Lengkapi atribut dan minimal satu varian aktif sebelum menyimpan."); setSaving(false); return; }
     const effective = hasVariants;
     const payload = {
