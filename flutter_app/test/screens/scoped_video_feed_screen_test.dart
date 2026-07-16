@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/adaptive_video_preload_policy.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/post_video_coordinator.dart';
+import 'package:natalo_petshop_flutter/features/feed/video/social_video_session_observer.dart';
+import 'package:natalo_petshop_flutter/features/feed/video/video_player_session.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_post_view.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/scoped_video_feed_screen.dart';
@@ -910,6 +912,47 @@ void main() {
             reason: 'preload lahir paused + muted');
       },
     );
+
+    testWidgets('fullscreen reuse records an attachment without a new session',
+        (tester) async {
+      final observer = SocialVideoSessionObserver(enabled: true);
+      final initGate = Completer<void>();
+      final posts = [_fakeVideoPost('a')];
+
+      coordinator.dispose();
+      coordinator = PostVideoCoordinator(
+        sessionFactory: (id) => VideoPlayerSession(
+          url: 'https://example.com/$id.mp4',
+          observationObserver: observer,
+          observationContext: SocialVideoObservationContext(
+            postId: id,
+            surface: SocialVideoSurface.postDetail,
+            ownerId: 'coordinator-$id',
+          ),
+          debugInitAttempt: (_) => initGate.future,
+        ),
+      );
+
+      await pumpScoped(tester, posts: posts);
+      initGate.complete();
+      await tester.pump();
+
+      expect(
+        observer.snapshot.events.map((event) => event.type),
+        equals(<SocialVideoLifecycleType>[
+          SocialVideoLifecycleType.created,
+          SocialVideoLifecycleType.initialized,
+          SocialVideoLifecycleType.attached,
+        ]),
+      );
+      expect(
+          observer.snapshot.events.last.surface, SocialVideoSurface.fullscreen);
+      expect(
+        observer.snapshot.events
+            .where((event) => event.type == SocialVideoLifecycleType.created),
+        hasLength(1),
+      );
+    });
 
     testWidgets('wifi window follows direction with two ahead and one behind',
         (tester) async {

@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/post_video_warm_handoff.dart';
+import 'package:natalo_petshop_flutter/features/feed/video/social_video_session_observer.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/video_player_session.dart';
 
 class _CountingSession extends VideoPlayerSession {
@@ -66,6 +69,76 @@ void main() {
     expect(receivedHasAudio, isFalse);
     expect(claimedSession, same(testSession));
     await claimedSession.dispose();
+  });
+
+  test('profile-grid factory accepts the legacy custom factory signature',
+      () async {
+    final session = _CountingSession();
+    VideoPlayerSession legacyFactory({
+      required String postId,
+      required String url,
+      required bool hasAudio,
+    }) =>
+        session;
+
+    final handoff = PostVideoWarmHandoff.create(
+      postId: 'post-a',
+      url: 'https://example.com/video.mp4',
+      hasAudio: true,
+      sessionFactory: legacyFactory,
+    );
+
+    expect(
+      handoff.claim(
+        postId: 'post-a',
+        url: 'https://example.com/video.mp4',
+        hasAudio: true,
+      ),
+      same(session),
+    );
+
+    await session.dispose();
+  });
+
+  test('pending claim records attached after session initialization', () async {
+    final observer = SocialVideoSessionObserver(enabled: true);
+    final initGate = Completer<void>();
+    final handoff = PostVideoWarmHandoff.create(
+      postId: 'post-a',
+      url: 'https://example.com/video.mp4',
+      hasAudio: true,
+      observationObserver: observer,
+      sessionFactory: ({required postId, required url, required hasAudio}) =>
+          VideoPlayerSession(
+        url: url,
+        observationObserver: observer,
+        observationContext: const SocialVideoObservationContext(
+          postId: 'post-a',
+          surface: SocialVideoSurface.profileGrid,
+          ownerId: 'coordinator-post-a',
+        ),
+        debugInitAttempt: (_) => initGate.future,
+      ),
+    );
+
+    final claimed = handoff.claim(
+      postId: 'post-a',
+      url: 'https://example.com/video.mp4',
+      hasAudio: true,
+    );
+    initGate.complete();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      observer.snapshot.events.map((event) => event.type),
+      equals(<SocialVideoLifecycleType>[
+        SocialVideoLifecycleType.created,
+        SocialVideoLifecycleType.initialized,
+        SocialVideoLifecycleType.attached,
+      ]),
+    );
+
+    await claimed!.dispose();
   });
 
   test('claim validates post and canonical URL and is one-shot', () async {

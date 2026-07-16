@@ -1,5 +1,6 @@
-import 'video_player_session.dart';
 import 'video_media_cache.dart';
+import 'social_video_session_observer.dart';
+import 'video_player_session.dart';
 
 typedef WarmVideoSessionFactory = VideoPlayerSession Function({
   required String postId,
@@ -23,7 +24,13 @@ class PostVideoWarmHandoff {
       {required String postId,
       required String url,
       required bool hasAudio,
+      SocialVideoSessionObserver? observationObserver,
       WarmVideoSessionFactory? sessionFactory}) {
+    final observationContext = SocialVideoObservationContext(
+      postId: postId,
+      surface: SocialVideoSurface.profileGrid,
+      ownerId: 'coordinator-$postId',
+    );
     return PostVideoWarmHandoff(
       postId: postId,
       url: url,
@@ -38,6 +45,8 @@ class PostVideoWarmHandoff {
             hasAudio: hasAudio,
             analyticsPostId: postId,
             analyticsSurface: 'profile_grid',
+            observationObserver: observationObserver,
+            observationContext: observationContext,
           ),
     );
   }
@@ -47,6 +56,7 @@ class PostVideoWarmHandoff {
     required String postId,
     required String url,
     required bool hasAudio,
+    SocialVideoSessionObserver? observationObserver,
     WarmVideoSessionFactory? sessionFactory,
   }) {
     if (!isVideo || postId.trim().isEmpty || url.trim().isEmpty) return null;
@@ -54,6 +64,7 @@ class PostVideoWarmHandoff {
       postId: postId,
       url: url,
       hasAudio: hasAudio,
+      observationObserver: observationObserver,
       sessionFactory: sessionFactory,
     );
   }
@@ -75,8 +86,15 @@ class PostVideoWarmHandoff {
         hasAudio != _hasAudio) {
       return null;
     }
-    final claimed = _session;
+    final claimed = _session!;
     _session = null;
+    claimed.recordObservationAttachment(
+      SocialVideoObservationContext(
+        postId: postId,
+        surface: SocialVideoSurface.postDetail,
+        ownerId: 'coordinator-$postId',
+      ),
+    );
     return claimed;
   }
 
