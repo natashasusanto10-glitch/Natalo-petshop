@@ -16,6 +16,7 @@ import '../models/feed_create_post_draft.dart';
 import '../services/app_analytics.dart';
 import '../utils/fade_route.dart';
 import '../utils/haptics.dart';
+import '../widgets/origin_expansion_route.dart';
 import 'feed_new_post_screen.dart';
 import 'feed_post/feed_video_edit_screen.dart';
 
@@ -266,6 +267,17 @@ class FeedMediaPickerScreen extends StatefulWidget {
     );
   }
 
+  static Future<bool?> openFromOrigin(
+    BuildContext context,
+    GlobalKey originKey,
+  ) {
+    return pushOriginExpansion<bool>(
+      context,
+      originKey: originKey,
+      destinationBuilder: (_) => const FeedMediaPickerScreen(),
+    );
+  }
+
   @override
   State<FeedMediaPickerScreen> createState() => _FeedMediaPickerScreenState();
 }
@@ -284,6 +296,7 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   List<SelectedMediaItem> _selectedPhotos = const [];
   SelectedMediaItem? _selectedVideo;
   bool _busyProcessing = false;
+  bool _isDisposing = false;
   String? _toastMessage;
   Timer? _toastTimer;
 
@@ -378,6 +391,7 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
 
   @override
   void dispose() {
+    _isDisposing = true;
     _toastTimer?.cancel();
     _disposeVideoController();
     super.dispose();
@@ -555,7 +569,7 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     // mounted == false). setState() saat unmount → assertion 'setState()
     // called after dispose()'. Guard mounted: kalau lagi dispose, cukup
     // set field tanpa setState (UI sudah mau dibuang).
-    if (mounted) {
+    if (mounted && !_isDisposing) {
       setState(() => _videoControllerReady = false);
     } else {
       _videoControllerReady = false;

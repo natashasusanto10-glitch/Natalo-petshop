@@ -19,6 +19,7 @@ import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import 'feed_media_picker_screen.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
+import '../widgets/origin_expansion_route.dart';
 import '../widgets/profile_avatar.dart';
 import 'feed_new_post_screen.dart';
 import 'member_post_detail_screen.dart';
@@ -48,6 +49,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
   bool _initialLoadDone = false;
   String? _preparedPostId;
   PostVideoWarmHandoff? _preparedHandoff;
+  final _tileKeys = <String, GlobalKey>{};
 
   static const _filters = [
     _PostsFilter(
@@ -344,27 +346,33 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     setState(() => _filterIndex = index);
   }
 
-  Future<void> _openPostDetail(List<FeedPost> posts, int initialIndex) async {
+  GlobalKey _tileKeyFor(String postId) =>
+      _tileKeys.putIfAbsent(postId, GlobalKey.new);
+
+  Future<void> _openPostDetail(
+    List<FeedPost> posts,
+    int initialIndex,
+    GlobalKey originKey,
+  ) async {
     if (_openingPost) return;
     _openingPost = true;
     AppHaptics.tap();
     final post = posts[initialIndex];
     final handoff = _takePreparedPost(post) ?? _createWarmHandoff(post);
     try {
-      await Navigator.push<void>(
+      await pushOriginExpansion<void>(
         context,
-        MaterialPageRoute(
-          builder: (_) => MemberPostDetailScreen(
-            post: post,
-            posts: posts,
-            initialIndex: initialIndex,
-            authorIsOfficial: memberStore.profile?.isAdmin ?? false,
-            warmVideoHandoff: handoff,
-            initialNextCursor: _nextCursor,
-            loadMoreScopedPosts: (cursor) => feedService.fetchMyPosts(
-              filter: 'all',
-              cursor: cursor,
-            ),
+        originKey: originKey,
+        destinationBuilder: (_) => MemberPostDetailScreen(
+          post: post,
+          posts: posts,
+          initialIndex: initialIndex,
+          authorIsOfficial: memberStore.profile?.isAdmin ?? false,
+          warmVideoHandoff: handoff,
+          initialNextCursor: _nextCursor,
+          loadMoreScopedPosts: (cursor) => feedService.fetchMyPosts(
+            filter: 'all',
+            cursor: cursor,
           ),
         ),
       );
@@ -491,7 +499,12 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
                     final post = visiblePosts[index];
                     return _GalleryPostTile(
                       post: post,
-                      onTap: () => _openPostDetail(visiblePosts, index),
+                      originKey: _tileKeyFor(post.id),
+                      onTap: () => _openPostDetail(
+                        visiblePosts,
+                        index,
+                        _tileKeyFor(post.id),
+                      ),
                       onTapDown: () => _preparePostVideo(post),
                       onTapCancel: () => _cancelPreparedPost(post.id),
                     );
@@ -848,12 +861,14 @@ class _FeedGalleryTabs extends StatelessWidget {
 
 class _GalleryPostTile extends StatelessWidget {
   final FeedPost post;
+  final GlobalKey originKey;
   final VoidCallback onTap;
   final VoidCallback? onTapDown;
   final VoidCallback? onTapCancel;
 
   const _GalleryPostTile({
     required this.post,
+    required this.originKey,
     required this.onTap,
     this.onTapDown,
     this.onTapCancel,
@@ -861,37 +876,40 @@ class _GalleryPostTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        onTapDown: (_) => onTapDown?.call(),
-        onTapCancel: onTapCancel,
-        borderRadius: BorderRadius.circular(8),
-        child: ClipRRect(
+    return RepaintBoundary(
+      key: originKey,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          onTapDown: (_) => onTapDown?.call(),
+          onTapCancel: onTapCancel,
           borderRadius: BorderRadius.circular(8),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _PostThumbnail(post: post),
-              if (post.isVideo)
-                const Positioned(
-                  right: 7,
-                  top: 7,
-                  child: _PostMediaTypeIcon(icon: Icons.play_arrow_rounded),
-                )
-              else if (post.isCarousel || post.mediaItems.length > 1)
-                const Positioned(
-                  right: 7,
-                  top: 7,
-                  child: _PostMediaTypeIcon(icon: Icons.collections_rounded),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _PostThumbnail(post: post),
+                if (post.isVideo)
+                  const Positioned(
+                    right: 7,
+                    top: 7,
+                    child: _PostMediaTypeIcon(icon: Icons.play_arrow_rounded),
+                  )
+                else if (post.isCarousel || post.mediaItems.length > 1)
+                  const Positioned(
+                    right: 7,
+                    top: 7,
+                    child: _PostMediaTypeIcon(icon: Icons.collections_rounded),
+                  ),
+                Positioned(
+                  left: 7,
+                  bottom: 7,
+                  child: _StatusBadge(status: post.statusInfo),
                 ),
-              Positioned(
-                left: 7,
-                bottom: 7,
-                child: _StatusBadge(status: post.statusInfo),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

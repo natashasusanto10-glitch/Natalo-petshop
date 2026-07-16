@@ -27,6 +27,7 @@ import '../utils/haptics.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/moderation_action_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
+import '../widgets/origin_expansion_route.dart';
 import '../widgets/profile_avatar.dart';
 import '../widgets/profile_content_tab_bar.dart';
 import 'member_post_detail_screen.dart';
@@ -38,6 +39,16 @@ const _profileContentTabs = <PublicProfileContentFilter>[
   PublicProfileContentFilter.video,
   PublicProfileContentFilter.shoppable,
 ];
+
+@visibleForTesting
+class ProfilePostOriginKeyCache {
+  final _keys = <String, GlobalKey>{};
+
+  GlobalKey forPost(PublicProfileContentFilter content, String postId) {
+    final cacheKey = '${content.name}:$postId';
+    return _keys.putIfAbsent(cacheKey, GlobalKey.new);
+  }
+}
 
 @visibleForTesting
 PublicProfile rebasePublicProfileForViewer(
@@ -137,8 +148,17 @@ class PublicProfileScreen extends StatefulWidget {
   /// Handle target (raw — server lowercase + validate). Bisa di-set
   /// dari deep link, navigator argument, atau tap @mention nanti.
   final String username;
+  @visibleForTesting
+  final PublicProfileResult? initialResult;
+  @visibleForTesting
+  final ProfileWarmHandoffFactory? warmHandoffFactory;
 
-  const PublicProfileScreen({super.key, required this.username});
+  const PublicProfileScreen({
+    super.key,
+    required this.username,
+    this.initialResult,
+    this.warmHandoffFactory,
+  });
 
   @override
   State<PublicProfileScreen> createState() => _PublicProfileScreenState();
@@ -159,6 +179,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   String? _errorText;
   bool _notFound = false;
   late int _viewerGeneration;
+  final _tileKeys = ProfilePostOriginKeyCache();
 
   late final ScrollController _scrollController;
   late final TabController _tabController;
@@ -169,7 +190,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _scrollController = ScrollController();
-    _videoPrewarmer = ProfileVideoPrewarmer(factory: _createWarmHandoff);
+    _videoPrewarmer = ProfileVideoPrewarmer(
+      factory: widget.warmHandoffFactory ?? _createWarmHandoff,
+    );
     _tabController =
         TabController(length: _profileContentTabs.length, vsync: this)
           ..addListener(_onTabControllerChanged);
@@ -177,7 +200,28 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     memberStore.addListener(_onViewerChanged);
     followOverrides.addListener(_onFollowOverridesChanged);
     feedStore.addListener(_onFeedStoreChanged);
-    _load();
+    final initialResult = widget.initialResult;
+    if (initialResult != null) {
+      _seedInitialResult(initialResult);
+    } else {
+      _load();
+    }
+  }
+
+  void _seedInitialResult(PublicProfileResult result) {
+    final contentState = _contentStates[PublicProfileContentFilter.all]!;
+    _profile = result.profile.copyWith(
+      isFollowing: resolveFollowState(
+        result.profile.id,
+        result.profile.isFollowing,
+      ),
+    );
+    contentState
+      ..posts = _canonicalPosts(result.posts)
+      ..nextCursor = result.nextCursor
+      ..loaded = true
+      ..loading = false;
+    _loading = false;
   }
 
   @override
@@ -530,39 +574,38 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     final handoff = _videoPrewarmer.take(post) ?? _createWarmHandoff(post);
     AppHaptics.tap();
     try {
-      await Navigator.push<void>(
+      await pushOriginExpansion<void>(
         context,
-        MaterialPageRoute(
-          // IG-style: bukan single-post screen, tapi vertical-scroll feed
-          // dari SEMUA posts user — initial scrolled ke tile yang di-tap.
-          // Author header pakai data dari PublicProfile (bukan memberStore,
-          // karena viewer != author). isOwner: false → sembunyikan menu
-          // edit/delete (cuma owner di "Postingan Saya" yang lihat itu).
-          builder: (_) => MemberPostDetailScreen(
-            post: post,
-            posts: posts,
-            initialIndex: index,
-            authorName: profile?.name,
-            authorPhotoUrl: profile?.profilePhotoUrl,
-            authorInitial: profile?.initial,
-            // Official → detail render identitas brand (logo + emas +
-            // rosette) di author row, caption, dan subtitle AppBar.
-            authorIsOfficial: profile?.isOfficial ?? false,
-            isOwner: profile?.isOwner ?? false,
-            warmVideoHandoff: handoff,
-            initialNextCursor: _contentStates[content]!.nextCursor,
-            loadMoreScopedPosts: (cursor) async {
-              final result = await profileService.fetchPublicProfile(
-                username: widget.username,
-                cursor: cursor,
-                content: content,
-              );
-              return FeedPage(
-                items: result.posts,
-                nextCursor: result.nextCursor,
-              );
-            },
-          ),
+        originKey: _tileKeys.forPost(content, post.id),
+        // IG-style: bukan single-post screen, tapi vertical-scroll feed
+        // dari SEMUA posts user — initial scrolled ke tile yang di-tap.
+        // Author header pakai data dari PublicProfile (bukan memberStore,
+        // karena viewer != author). isOwner: false → sembunyikan menu
+        // edit/delete (cuma owner di "Postingan Saya" yang lihat itu).
+        destinationBuilder: (_) => MemberPostDetailScreen(
+          post: post,
+          posts: posts,
+          initialIndex: index,
+          authorName: profile?.name,
+          authorPhotoUrl: profile?.profilePhotoUrl,
+          authorInitial: profile?.initial,
+          // Official → detail render identitas brand (logo + emas +
+          // rosette) di author row, caption, dan subtitle AppBar.
+          authorIsOfficial: profile?.isOfficial ?? false,
+          isOwner: profile?.isOwner ?? false,
+          warmVideoHandoff: handoff,
+          initialNextCursor: _contentStates[content]!.nextCursor,
+          loadMoreScopedPosts: (cursor) async {
+            final result = await profileService.fetchPublicProfile(
+              username: widget.username,
+              cursor: cursor,
+              content: content,
+            );
+            return FeedPage(
+              items: result.posts,
+              nextCursor: result.nextCursor,
+            );
+          },
         ),
       );
     } finally {
@@ -947,6 +990,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
                   try {
                     return _PostTile(
                       post: posts[index],
+                      originKey: _tileKeys.forPost(content, posts[index].id),
                       onTapDown: () => _prepareVideo(posts[index]),
                       onTapCancel: () => _cancelPreparedVideo(posts[index].id),
                       onTap: () => _openPost(content, index),
@@ -1675,6 +1719,7 @@ class _StatColumn extends StatelessWidget {
 
 class _PostTile extends StatelessWidget {
   final FeedPost post;
+  final GlobalKey originKey;
   final VoidCallback onTap;
   final VoidCallback? onTapDown;
   final VoidCallback? onTapCancel;
@@ -1682,6 +1727,7 @@ class _PostTile extends StatelessWidget {
 
   const _PostTile({
     required this.post,
+    required this.originKey,
     required this.onTap,
     this.onTapDown,
     this.onTapCancel,
@@ -1735,112 +1781,116 @@ class _PostTile extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final productCount = post.products.length;
     final primaryPrice = _lowestProductPrice(post.products);
-    return Semantics(
-      button: true,
-      label: showCommerceBadge && productCount > 0
-          ? 'Postingan belanja dengan $productCount produk'
-          : post.isVideo
-              ? 'Postingan video'
-              : 'Postingan foto',
-      child: GestureDetector(
-        onTapDown: (_) => onTapDown?.call(),
-        onTapCancel: onTapCancel,
-        onTap: onTap,
-        child: Container(
-          // Pakai decoration (bukan color shorthand) karena Container assert
-          // `clipBehavior == Clip.none || decoration != null`. Pakai color:
-          // shorthand TIDAK set decoration, jadi pair-up dengan
-          // clipBehavior: Clip.hardEdge throw assertion saat build child —
-          // dan throw itu terjadi DI LUAR try-catch _buildSafeTile (sudah
-          // return), bocor ke ErrorWidget.builder global = AppErrorWidget
-          // di seluruh cell. Decoration eksplisit fix root cause.
-          decoration: BoxDecoration(color: cs.surfaceContainerHighest),
-          clipBehavior: Clip.hardEdge,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (isValidImageUrl)
-                _SafeNetworkImage(url: thumb)
-              else
-                ColoredBox(color: cs.surfaceContainerHighest),
-              if (post.isVideo)
-                Positioned(
-                  top: 6,
-                  left: showCommerceBadge ? 6 : null,
-                  right: showCommerceBadge ? null : 6,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Icon(
-                      Icons.play_arrow_rounded,
-                      color: Colors.white,
-                      size: 14,
-                    ),
-                  ),
-                ),
-              if (showCommerceBadge && productCount > 0)
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.68),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.shopping_bag_outlined,
-                          color: Colors.white,
-                          size: 13,
-                        ),
-                        const SizedBox(width: 3),
-                        Text(
-                          '$productCount produk',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w600,
-                            height: 1,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              if (showCommerceBadge && primaryPrice != null)
-                Positioned(
-                  left: 6,
-                  bottom: 6,
-                  child: Container(
-                    constraints: const BoxConstraints(maxWidth: 112),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.68),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      'Mulai ${formatRupiahCompact(primaryPrice)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+    return RepaintBoundary(
+      key: originKey,
+      child: Semantics(
+        button: true,
+        label: showCommerceBadge && productCount > 0
+            ? 'Postingan belanja dengan $productCount produk'
+            : post.isVideo
+                ? 'Postingan video'
+                : 'Postingan foto',
+        child: GestureDetector(
+          key: ValueKey('profile-post-${post.id}'),
+          onTapDown: (_) => onTapDown?.call(),
+          onTapCancel: onTapCancel,
+          onTap: onTap,
+          child: Container(
+            // Pakai decoration (bukan color shorthand) karena Container assert
+            // `clipBehavior == Clip.none || decoration != null`. Pakai color:
+            // shorthand TIDAK set decoration, jadi pair-up dengan
+            // clipBehavior: Clip.hardEdge throw assertion saat build child —
+            // dan throw itu terjadi DI LUAR try-catch _buildSafeTile (sudah
+            // return), bocor ke ErrorWidget.builder global = AppErrorWidget
+            // di seluruh cell. Decoration eksplisit fix root cause.
+            decoration: BoxDecoration(color: cs.surfaceContainerHighest),
+            clipBehavior: Clip.hardEdge,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (isValidImageUrl)
+                  _SafeNetworkImage(url: thumb)
+                else
+                  ColoredBox(color: cs.surfaceContainerHighest),
+                if (post.isVideo)
+                  Positioned(
+                    top: 6,
+                    left: showCommerceBadge ? 6 : null,
+                    right: showCommerceBadge ? null : 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow_rounded,
                         color: Colors.white,
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
-                        height: 1,
+                        size: 14,
                       ),
                     ),
                   ),
-                ),
-            ],
+                if (showCommerceBadge && productCount > 0)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.68),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.shopping_bag_outlined,
+                            color: Colors.white,
+                            size: 13,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            '$productCount produk',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                              height: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (showCommerceBadge && primaryPrice != null)
+                  Positioned(
+                    left: 6,
+                    bottom: 6,
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 112),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.68),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'Mulai ${formatRupiahCompact(primaryPrice)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
