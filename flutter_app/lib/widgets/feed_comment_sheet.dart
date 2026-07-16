@@ -408,6 +408,7 @@ class FeedCommentMediaFrame extends StatelessWidget {
 class FeedReelsCommentSurface extends StatefulWidget {
   final FeedPost post;
   final Widget child;
+  final Widget? overlay;
   final bool open;
   final VoidCallback onClosed;
   final ValueChanged<double>? onExtentChanged;
@@ -419,6 +420,7 @@ class FeedReelsCommentSurface extends StatefulWidget {
     super.key,
     required this.post,
     required this.child,
+    this.overlay,
     required this.open,
     required this.onClosed,
     this.onExtentChanged,
@@ -715,6 +717,25 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
           screenSize: size,
           child: widget.child,
         ),
+        if (widget.overlay != null)
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: _mountedDrawer,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 160),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                child: _mountedDrawer
+                    ? const SizedBox.expand(
+                        key: ValueKey('feed-comment-overlay-hidden'),
+                      )
+                    : KeyedSubtree(
+                        key: const ValueKey('feed-comment-overlay-visible'),
+                        child: widget.overlay!,
+                      ),
+              ),
+            ),
+          ),
       ],
     );
   }
