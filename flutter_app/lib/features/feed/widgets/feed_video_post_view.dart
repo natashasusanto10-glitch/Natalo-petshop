@@ -3098,9 +3098,16 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                         Positioned.fill(
                           child: Center(
                             child: _VideoRetryButton(
+                              // userInitiated:true WAJIB — tanpa ini, user
+                              // dgn Mode Hemat Data ON tap "Coba lagi" jadi
+                              // no-op diam (guard data-saver di
+                              // _maybeInitVideo menolak init non-user-
+                              // initiated), padahal tombol ini SELALU aksi
+                              // eksplisit user.
                               onRetry: _managedHasError
                                   ? _retryManagedSession
-                                  : _maybeInitVideo,
+                                  : () => unawaited(
+                                      _maybeInitVideo(userInitiated: true)),
                             ),
                           ),
                         ),
