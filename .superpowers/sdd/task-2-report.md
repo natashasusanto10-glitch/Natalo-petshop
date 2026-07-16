@@ -1,45 +1,23 @@
-# Task 2 report — behavior-equivalence matrix
+# Task 2 report — stable thumbnail/player framing
 
-Status: complete. Created `docs/superpowers/audits/2026-07-16-feed-profile-race-equivalence.md` with 10 required scenarios, exact current source/test line references, the direct `.play()` audit, and spec coverage review.
+Status: PASS
 
-Commands run:
+Commit: pending (created after this report)
 
-```powershell
-Get-Content -Raw .superpowers\sdd\task-2-brief.md
-Get-Content -Raw .superpowers\sdd\task-1-report.md
-rg -n "_routeCovered|_appBackgrounded|_canAutoplayNow|VideoAudioClaim|_playLegacy|didPushNext|didPopNext|AppLifecycleState|volume|resume" flutter_app/lib/features/feed/widgets/feed_video_post_view.dart flutter_app/test/features/feed/widgets/feed_video_post_view_test.dart
-rg -n "testWidgets\(|group\(" flutter_app/test/features/feed/widgets/feed_video_post_view_test.dart
-rg -n "\\.play\\(\\)" flutter_app/lib/features/feed/widgets/feed_video_post_view.dart
-git diff --stat main...ee1c48ca
-git diff --name-status main...ee1c48ca
-```
+## Changes
 
-Findings:
+- Added a shared `_normalizedAspect` decision in `_MediaBackground`.
+- Thumbnail metadata and initialized player dimensions now use the same valid-ratio rules.
+- Invalid, zero, negative, or non-finite dimensions fall back to 9:16, preserving the Reels `contain` decision.
+- Playback lifecycle, overlays, and controller ownership were not changed.
 
-- Current `main` contains the old race behavior, but integrated with the newer claim/coordinator architecture.
-- The only Feed-state direct play is line 602 inside `_playLegacy`, after gate/claim validation.
-- Lines 3432 and 3528 are intentional fullscreen cinema init/control paths, not stale Feed autoplay paths.
-- No production source was modified.
+## Verification
 
-Concerns:
+- `flutter test test/features/feed/widgets/feed_video_post_view_test.dart --plain-name "thumbnail and initialized player share 9:16 fallback framing"` — PASS
+- `flutter test test/features/feed/widgets/feed_video_post_view_test.dart` — PASS (42 tests)
 
-1. Line references are against the current audit worktree snapshot; they must be refreshed if source changes before merge review.
-2. The audit does not claim a full Flutter test run; it maps existing tests and source evidence only.
-3. The old branch remains unsafe to merge wholesale because its direct-play architecture predates current `VideoAudioClaim`/coordinator ownership.
+## Self-review
 
-## Review correction
+The change is limited to `_MediaBackground` framing inputs and a focused regression test. Existing compact-preview behavior and all non-portrait fit rules remain unchanged.
 
-Finding: four rows previously labeled `setara langsung` were covered by the current state-machine/coordinator implementation, so the labels understated the architectural migration. Updated `Nested route`, `Mute restoration`, `Controller-null uncover`, and `Lifecycle/listener cleanup` to `setara melalui arsitektur baru`; source/test evidence and gap actions were preserved.
-
-Files changed:
-
-- `docs/superpowers/audits/2026-07-16-feed-profile-race-equivalence.md`
-- `.superpowers/sdd/task-2-report.md`
-
-Consistency check:
-
-```powershell
-rg -n "setara langsung|setara melalui arsitektur baru|Nested route|Mute restoration|Controller-null uncover|Lifecycle/listener cleanup" docs/superpowers/audits/2026-07-16-feed-profile-race-equivalence.md
-```
-
-Output: 10 scenario rows remain; all four state-machine/coordinator rows now use `setara melalui arsitektur baru`, with no remaining `setara langsung` labels in the matrix.
+Concern: the widget test uses the fake video platform's initialized 720x1280 dimensions to represent the valid 9:16 player path; invalid metadata fallback is covered through the thumbnail path and shared normalizer.

@@ -999,6 +999,43 @@ void main() {
     expect(fit, BoxFit.contain);
   });
 
+  testWidgets('thumbnail and initialized player share 9:16 fallback framing',
+      (tester) async {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    final platform = _FakeVideoPlayerPlatform();
+    VideoPlayerPlatform.instance = platform;
+
+    // Invalid post metadata must use the same 9:16 fallback as an
+    // initialized controller whose native dimensions are unavailable.
+    final thumbnailFit = await pumpAndReadThumbFit(tester, 0,
+        viewport: const Size(393, 852));
+    expect(thumbnailFit, BoxFit.contain);
+
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse('https://example.com/fallback.m3u8'),
+    );
+    await controller.initialize();
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(size: Size(393, 852)),
+        child: MaterialApp(
+          home: FeedVideoPostView(
+            post: _fakeVideoPost(aspectRatio: 0, hls: true),
+            isActive: true,
+            preloadedController: controller,
+            ownsController: true,
+            onOverlayStateChanged: (_) {},
+            onMediaZoomChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.widget<FittedBox>(find.byType(FittedBox)).fit,
+        BoxFit.contain);
+  });
+
   // Fix A5 — handoff preload terkonfirmasi: klaim dari map pemilik hanya
   // terjadi saat state mengadopsi (initState), BUKAN tiap build parent.
   // Regresi lama: remove() di build() → rebuild parent dengan state

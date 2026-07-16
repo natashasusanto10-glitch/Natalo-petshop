@@ -3341,6 +3341,16 @@ class _MediaBackground extends StatelessWidget {
   static const double _reelsAspect = 9 / 16;
   static const double _reelsAspectTolerance = 0.04;
 
+  static double _normalizedAspect({double? postAspect, Size? videoSize}) {
+    final measured = videoSize == null || videoSize.height <= 0
+        ? null
+        : videoSize.width / videoSize.height;
+    final candidate = measured ?? postAspect;
+    return candidate != null && candidate.isFinite && candidate > 0
+        ? candidate
+        : _reelsAspect;
+  }
+
   static BoxFit _fitForAspect(double aspect, Size viewport) {
     final isReelsPortrait =
         (aspect - _reelsAspect).abs() <= _reelsAspectTolerance;
@@ -3360,7 +3370,7 @@ class _MediaBackground extends StatelessWidget {
     if (ctrl != null && ctrl.value.isInitialized) {
       final size = ctrl.value.size;
       // Rasio dari dimensi AKTUAL player (metadata server bisa salah).
-      final aspect = size.height > 0 ? size.width / size.height : 9 / 16;
+      final aspect = _normalizedAspect(videoSize: size);
       final fit = compactPreview
           ? BoxFit.contain
           : _fitForAspect(aspect, MediaQuery.sizeOf(context));
@@ -3390,7 +3400,10 @@ class _MediaBackground extends StatelessWidget {
       final fit =
           compactPreview
               ? BoxFit.contain
-              : _fitForAspect(post.aspectRatio, MediaQuery.sizeOf(context));
+              : _fitForAspect(
+                  _normalizedAspect(postAspect: post.aspectRatio),
+                  MediaQuery.sizeOf(context),
+                );
       return Stack(
         fit: StackFit.expand,
         children: [
