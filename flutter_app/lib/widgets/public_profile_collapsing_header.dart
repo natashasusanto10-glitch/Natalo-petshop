@@ -65,8 +65,9 @@ class PublicProfileCollapsingHeaderDelegate
     final collapse = expandedHeight <= 0 ? 1.0 : shrinkOffset / expandedHeight;
     final progress = collapse.clamp(0.0, 1.0).toDouble();
     final motion = PublicProfileHeaderMotion.resolve(
-      shrinkOffset,
-      expandedHeight,
+      scrollOffset: shrinkOffset,
+      collapseDistance: expandedHeight,
+      reducedMotion: MediaQuery.disableAnimationsOf(context),
     );
     final surface = isOfficial ? NataloColors.heroTop : colors.surface;
     final foreground = isOfficial ? Colors.white : colors.onSurface;
