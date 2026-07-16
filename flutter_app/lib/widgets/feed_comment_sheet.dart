@@ -530,20 +530,43 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
   @override
   Widget build(BuildContext context) {
     final maxExtent = _maxExtent(context);
-    final progress =
-        maxExtent <= 0 ? 0.0 : (_extent / maxExtent).clamp(0.0, 1.0);
-    final scale = 1.0 - (0.18 * progress);
-    final translateY = -MediaQuery.sizeOf(context).height * 0.10 * progress;
+    final size = MediaQuery.sizeOf(context);
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom
+        .clamp(0.0, size.height - 1)
+        .toDouble();
+    final hostHeight = math.max(1.0, size.height - keyboardInset);
+    final extent = _extent.clamp(_minExtent, maxExtent).toDouble();
+    final drawerTopY = hostHeight * (1 - extent);
+    // Match the video frame: open/close animation is phase-driven, while the
+    // drawer extent controls only the media's bottom edge during the drag.
+    final openProgress = _mountedDrawer ? 1.0 : 0.0;
+    final fullRect = Rect.fromLTWH(0, 0, size.width, size.height);
+    final aboveDrawerRect = Rect.fromLTWH(
+      0,
+      0,
+      size.width,
+      drawerTopY.clamp(0.0, size.height),
+    );
+    final mediaRect = Rect.lerp(fullRect, aboveDrawerRect, openProgress)!;
+    final bottomRadius = 22.0 * openProgress;
 
     return Stack(
       fit: StackFit.expand,
       children: [
-        Transform.translate(
-          offset: Offset(0, translateY),
-          child: Transform.scale(
-            alignment: Alignment.topCenter,
-            scale: scale,
-            child: widget.child,
+        Positioned.fromRect(
+          rect: mediaRect,
+          child: DecoratedBox(
+            decoration: const BoxDecoration(color: Colors.black),
+            child: ClipRRect(
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(bottomRadius),
+                bottomRight: Radius.circular(bottomRadius),
+              ),
+              child: DecoratedBox(
+                decoration: const BoxDecoration(color: Colors.black),
+                child: widget.child,
+              ),
+            ),
           ),
         ),
         if (_mountedDrawer)
@@ -552,29 +575,38 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
               behavior: HitTestBehavior.opaque,
               onTap: _requestClose,
               child: ColoredBox(
-                color: Colors.black.withValues(alpha: 0.72 * progress),
+                color: Colors.black.withValues(alpha: 0.72 * openProgress),
               ),
             ),
           ),
         if (_mountedDrawer)
-          DraggableScrollableSheet(
-            controller: _controller,
-            expand: false,
-            initialChildSize: _minExtent,
-            minChildSize: _minExtent,
-            maxChildSize: maxExtent,
-            snap: true,
-            snapSizes: const [_initialExtent],
-            shouldCloseOnMinExtent: false,
-            builder: (context, scrollController) => PrimaryScrollController(
-              controller: scrollController,
-              child: FeedCommentSheet(
-                post: widget.post,
-                sheetScrollController: scrollController,
-                onClose: _requestClose,
-                onCloseAndWait: _requestCloseAndWait,
-                sessionStore: widget.sessionStore,
-                viewerIdentityListenable: widget.viewerIdentityListenable,
+          AnimatedPadding(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            padding: EdgeInsets.only(bottom: keyboardInset),
+            child: DraggableScrollableSheet(
+              controller: _controller,
+              expand: false,
+              initialChildSize: _minExtent,
+              minChildSize: _minExtent,
+              maxChildSize: maxExtent,
+              snap: true,
+              snapSizes: maxExtent > _initialExtent
+                  ? [_initialExtent, maxExtent]
+                  : const [_initialExtent],
+              shouldCloseOnMinExtent: false,
+              builder: (context, scrollController) =>
+                  PrimaryScrollController(
+                controller: scrollController,
+                child: FeedCommentSheet(
+                  post: widget.post,
+                  applyKeyboardInset: false,
+                  sheetScrollController: scrollController,
+                  onClose: _requestClose,
+                  onCloseAndWait: _requestCloseAndWait,
+                  sessionStore: widget.sessionStore,
+                  viewerIdentityListenable: widget.viewerIdentityListenable,
+                ),
               ),
             ),
           ),
