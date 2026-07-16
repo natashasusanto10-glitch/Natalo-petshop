@@ -568,14 +568,13 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
   Widget build(BuildContext context) {
     final maxExtent = _maxExtent(context);
     final size = MediaQuery.sizeOf(context);
-    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom
+    final keyboardInset = MediaQuery.viewInsetsOf(context)
+        .bottom
         .clamp(0.0, size.height - 1)
         .toDouble();
     final hostHeight = math.max(1.0, size.height - keyboardInset);
     final extent = _extent.clamp(_minExtent, maxExtent).toDouble();
     final drawerTopY = hostHeight * (1 - extent);
-    // Match the video frame: open/close animation is phase-driven, while the
-    // drawer extent controls only the media's bottom edge during the drag.
     final openProgress = _mountedDrawer ? 1.0 : 0.0;
     final fullRect = Rect.fromLTWH(0, 0, size.width, size.height);
     final aboveDrawerRect = Rect.fromLTWH(
@@ -590,22 +589,6 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        Positioned.fromRect(
-          rect: mediaRect,
-          child: DecoratedBox(
-            decoration: const BoxDecoration(color: Colors.black),
-            child: ClipRRect(
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(bottomRadius),
-                bottomRight: Radius.circular(bottomRadius),
-              ),
-              child: DecoratedBox(
-                decoration: const BoxDecoration(color: Colors.black),
-                child: widget.child,
-              ),
-            ),
-          ),
-        ),
         if (_mountedDrawer)
           Positioned.fill(
             child: GestureDetector(
@@ -632,8 +615,7 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
                   ? [_initialExtent, maxExtent]
                   : const [_initialExtent],
               shouldCloseOnMinExtent: false,
-              builder: (context, scrollController) =>
-                  PrimaryScrollController(
+              builder: (context, scrollController) => PrimaryScrollController(
                 controller: scrollController,
                 child: FeedCommentSheet(
                   post: widget.post,
@@ -649,6 +631,22 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
               ),
             ),
           ),
+        Positioned.fromRect(
+          rect: mediaRect,
+          child: DecoratedBox(
+            decoration: const BoxDecoration(color: Colors.black),
+            child: ClipRRect(
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(bottomRadius),
+                bottomRight: Radius.circular(bottomRadius),
+              ),
+              child: DecoratedBox(
+                decoration: const BoxDecoration(color: Colors.black),
+                child: widget.child,
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }

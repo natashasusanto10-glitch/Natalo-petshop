@@ -84,4 +84,53 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pump(const Duration(milliseconds: 350));
   });
+
+  testWidgets(
+      'photo media stays above the drawer scrim and ends at the drawer edge',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    var mediaTaps = 0;
+    var closed = false;
+    final mediaKey = GlobalKey();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FeedReelsCommentSurface(
+            post: _photoPost(),
+            open: true,
+            onClosed: () => closed = true,
+            child: GestureDetector(
+              key: mediaKey,
+              behavior: HitTestBehavior.opaque,
+              onTap: () => mediaTaps++,
+              child: const ColoredBox(color: Colors.orange),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    final sheetTop = tester.getTopLeft(find.byType(FeedCommentSheet)).dy;
+    final mediaRect = tester.getRect(find.byKey(mediaKey));
+    expect(
+      mediaRect.bottom,
+      closeTo(sheetTop, 1),
+      reason: 'photo media must be laid out only in the space above drawer',
+    );
+
+    await tester.tapAt(const Offset(200, 100));
+    await tester.pump();
+
+    expect(mediaTaps, 1,
+        reason: 'the fullscreen scrim must not cover visible photo media');
+    expect(closed, isFalse);
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+  });
 }
