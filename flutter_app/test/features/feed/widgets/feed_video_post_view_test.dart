@@ -948,16 +948,20 @@ void main() {
   // (jalur pra-video), yang WAJIB mengikuti aturan yang sama dengan
   // player supaya tidak ada lompatan cover→contain saat video siap.
   Future<BoxFit?> pumpAndReadThumbFit(
-      WidgetTester tester, double aspectRatio) async {
+      WidgetTester tester, double aspectRatio,
+      {Size viewport = const Size(393, 852)}) async {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
     await tester.pumpWidget(
-      MaterialApp(
-        home: FeedVideoPostView(
-          post: _fakeVideoPost(aspectRatio: aspectRatio),
-          isActive: false,
-          preloadedController: null,
-          onOverlayStateChanged: (_) {},
-          onMediaZoomChanged: (_) {},
+      MediaQuery(
+        data: MediaQueryData(size: viewport),
+        child: MaterialApp(
+          home: FeedVideoPostView(
+            post: _fakeVideoPost(aspectRatio: aspectRatio),
+            isActive: false,
+            preloadedController: null,
+            onOverlayStateChanged: (_) {},
+            onMediaZoomChanged: (_) {},
+          ),
         ),
       ),
     );
@@ -972,7 +976,8 @@ void main() {
 
   testWidgets('video 9:16 → background contain (canvas Reels tanpa crop)',
       (tester) async {
-    final fit = await pumpAndReadThumbFit(tester, 0.5625);
+    final fit = await pumpAndReadThumbFit(tester, 9 / 16,
+        viewport: const Size(393, 852));
     expect(fit, BoxFit.contain);
   });
 

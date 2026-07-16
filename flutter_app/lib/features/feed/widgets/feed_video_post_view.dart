@@ -3341,10 +3341,15 @@ class _MediaBackground extends StatelessWidget {
   static const double _reelsAspect = 9 / 16;
   static const double _reelsAspectTolerance = 0.04;
 
-  static BoxFit _fitForAspect(double aspect) {
+  static BoxFit _fitForAspect(double aspect, Size viewport) {
     final isReelsPortrait =
         (aspect - _reelsAspect).abs() <= _reelsAspectTolerance;
-    if (isReelsPortrait) return BoxFit.contain;
+    // A tall phone viewport must preserve the 9:16 canvas. `contain` keeps
+    // the source width intact instead of allowing a full-screen `cover` to
+    // crop faces and products horizontally.
+    if (isReelsPortrait && viewport.width > 0 && viewport.height > 0) {
+      return BoxFit.contain;
+    }
     return aspect <= _coverMaxAspect ? BoxFit.cover : BoxFit.contain;
   }
 
@@ -3356,7 +3361,9 @@ class _MediaBackground extends StatelessWidget {
       final size = ctrl.value.size;
       // Rasio dari dimensi AKTUAL player (metadata server bisa salah).
       final aspect = size.height > 0 ? size.width / size.height : 9 / 16;
-      final fit = compactPreview ? BoxFit.contain : _fitForAspect(aspect);
+      final fit = compactPreview
+          ? BoxFit.contain
+          : _fitForAspect(aspect, MediaQuery.sizeOf(context));
       return Stack(
         fit: StackFit.expand,
         children: [
@@ -3381,7 +3388,9 @@ class _MediaBackground extends StatelessWidget {
       // sama dengan videonya — tidak ada lompatan cover→contain saat
       // player siap.
       final fit =
-          compactPreview ? BoxFit.contain : _fitForAspect(post.aspectRatio);
+          compactPreview
+              ? BoxFit.contain
+              : _fitForAspect(post.aspectRatio, MediaQuery.sizeOf(context));
       return Stack(
         fit: StackFit.expand,
         children: [
