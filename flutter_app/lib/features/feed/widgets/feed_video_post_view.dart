@@ -3521,42 +3521,27 @@ class _MediaBackground extends StatelessWidget {
     this.compactPreview = false,
   });
 
-  /// Sigma blur untuk backdrop pengisi ala IG/Reels.
-  static const double _backdropBlurSigma = 26;
-
-  /// Fit lapisan DEPAN (video tajam): selalu penuhi LEBAR layar. Ini menjaga
-  /// video pada skala naturalnya tanpa terasa "zoom" — beda dengan `cover`
-  /// yang memaksa tinggi & memotong sisi pada media yang lebih lebar dari
-  /// 9:16. Sisa ruang atas/bawah (untuk media non-9:16) tidak dibiarkan hitam
-  /// polos melainkan diisi oleh backdrop blur di baliknya, persis IG.
+  /// Fit lapisan media: selalu penuhi LEBAR layar. Ini menjaga video pada
+  /// skala naturalnya tanpa terasa "zoom" — beda dengan `cover` yang memaksa
+  /// tinggi & memotong sisi pada media yang lebih lebar dari 9:16.
   static const BoxFit _foregroundFit = BoxFit.fitWidth;
 
-  /// Susun lapisan imersif: latar hitam → salinan media di-`cover` + blur
-  /// (pengisi anti-letterbox) → peredup tipis → media tajam fit-lebar.
-  static Widget _immersiveStack({
-    required Widget backdrop,
-    required Widget foreground,
-  }) {
+  /// Rata ATAS: video mulai penuh dari tepi atas layar persis IG. Untuk media
+  /// yang lebih pendek dari layar (non-9:16) sisa ruang jatuh SELURUHNYA di
+  /// bawah — di belakang chrome (kartu produk, caption) — bukan terbagi rata
+  /// atas-bawah yang menurunkan komposisi. Latar dasar tetap hitam polos;
+  /// tidak ada blurred backdrop di Feed/fullscreen normal.
+  static const Alignment _foregroundAlign = Alignment.topCenter;
+
+  /// Susun media di atas latar hitam. `media` sudah fit-lebar + rata atas
+  /// sendiri; StackFit.expand memberi constraint fullscreen sehingga sisa
+  /// ruang bawah = area hitam (ala IG), bukan letterbox terbagi.
+  static Widget _mediaStack(Widget media) {
     return Stack(
       fit: StackFit.expand,
       children: [
         const ColoredBox(color: Colors.black),
-        Positioned.fill(
-          child: ImageFiltered(
-            imageFilter: ui.ImageFilter.blur(
-              sigmaX: _backdropBlurSigma,
-              sigmaY: _backdropBlurSigma,
-              tileMode: TileMode.decal,
-            ),
-            child: backdrop,
-          ),
-        ),
-        // Peredup tipis supaya media tajam di depan tetap kontras terhadap
-        // backdrop yang di-blur.
-        const Positioned.fill(
-          child: ColoredBox(color: Color(0x40000000)),
-        ),
-        foreground,
+        media,
       ],
     );
   }
@@ -3568,7 +3553,7 @@ class _MediaBackground extends StatelessWidget {
     if (ctrl != null && ctrl.value.isInitialized) {
       final size = ctrl.value.size;
       // Preview kompak (drawer komentar minimized): pertahankan contain
-      // sederhana tanpa backdrop.
+      // sederhana & terpusat, terpisah dari kebijakan Feed/fullscreen.
       if (compactPreview) {
         return Stack(
           fit: StackFit.expand,
@@ -3586,20 +3571,17 @@ class _MediaBackground extends StatelessWidget {
           ],
         );
       }
-      Widget videoLayer(BoxFit fit) => FittedBox(
-            fit: fit,
-            clipBehavior: Clip.hardEdge,
-            child: SizedBox(
-              width: size.width,
-              height: size.height,
-              child: VideoPlayer(ctrl),
-            ),
-          );
-      return _immersiveStack(
-        // Backdrop = video yang sama, di-cover (isi penuh, tepi terpotong) lalu
-        // di-blur → mengisi sisa ruang tanpa hitam polos.
-        backdrop: videoLayer(BoxFit.cover),
-        foreground: videoLayer(_foregroundFit),
+      return _mediaStack(
+        FittedBox(
+          fit: _foregroundFit,
+          alignment: _foregroundAlign,
+          clipBehavior: Clip.hardEdge,
+          child: SizedBox(
+            width: size.width,
+            height: size.height,
+            child: VideoPlayer(ctrl),
+          ),
+        ),
       );
     }
     final thumb = post.thumbnailUrl;
@@ -3618,18 +3600,13 @@ class _MediaBackground extends StatelessWidget {
           ],
         );
       }
-      // Thumbnail mengikuti framing yang sama dengan video → tidak ada lompatan
-      // saat player siap.
-      return _immersiveStack(
-        backdrop: CachedNetworkImage(
-          imageUrl: thumb,
-          fit: BoxFit.cover,
-          placeholder: (_, __) => const SizedBox.shrink(),
-          errorWidget: (_, __, ___) => const SizedBox.shrink(),
-        ),
-        foreground: CachedNetworkImage(
+      // Thumbnail mengikuti framing yang sama dengan video (fit-lebar + rata
+      // atas) → tidak ada lompatan saat player siap.
+      return _mediaStack(
+        CachedNetworkImage(
           imageUrl: thumb,
           fit: _foregroundFit,
+          alignment: _foregroundAlign,
           placeholder: (_, __) => const SizedBox.shrink(),
           errorWidget: (_, __, ___) => const SizedBox.shrink(),
         ),

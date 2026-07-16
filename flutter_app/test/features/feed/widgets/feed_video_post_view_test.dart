@@ -1394,13 +1394,14 @@ void main() {
     await tester.pump();
   });
 
-  // Framing imersif ala IG/Reels: lapisan DEPAN (video/thumbnail tajam)
-  // selalu penuhi LEBAR layar (`fitWidth`) supaya tidak terasa "zoom" pada
-  // media yang lebih lebar dari 9:16. Sisa ruang atas/bawah diisi backdrop
-  // blur (`cover`) — bukan hitam polos. Diverifikasi lewat thumbnail
-  // background (jalur pra-video) yang WAJIB memakai framing yang sama dengan
-  // player supaya tidak ada lompatan saat video siap. `pumpAndReadThumbFit`
-  // membaca lapisan DEPAN (thumbnail terakhir di tree).
+  // Framing imersif ala IG/Reels: media (video/thumbnail) selalu penuhi
+  // LEBAR layar (`fitWidth`) supaya tidak terasa "zoom" pada media yang
+  // lebih lebar dari 9:16, dan rata ATAS (`Alignment.topCenter`) supaya
+  // video mulai penuh dari tepi atas seperti IG — sisa ruang jatuh di
+  // bawah sebagai area hitam (latar dasar), TANPA blurred backdrop.
+  // Diverifikasi lewat thumbnail background (jalur pra-video) yang WAJIB
+  // memakai framing yang sama dengan player supaya tidak ada lompatan saat
+  // video siap.
   Future<BoxFit?> pumpAndReadThumbFit(WidgetTester tester, double aspectRatio,
       {Size viewport = const Size(393, 852)}) async {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
@@ -1424,11 +1425,10 @@ void main() {
     final images = tester
         .widgetList<CachedNetworkImage>(find.byType(CachedNetworkImage))
         .where((w) => w.imageUrl.endsWith('.jpg'));
-    // Lapisan depan (tajam) = thumbnail terakhir; backdrop blur = yang pertama.
     return images.isEmpty ? null : images.last.fit;
   }
 
-  Future<BoxFit?> pumpAndReadBackdropFit(
+  Future<Alignment?> pumpAndReadThumbAlign(
       WidgetTester tester, double aspectRatio,
       {Size viewport = const Size(393, 852)}) async {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
@@ -1452,7 +1452,7 @@ void main() {
     final images = tester
         .widgetList<CachedNetworkImage>(find.byType(CachedNetworkImage))
         .where((w) => w.imageUrl.endsWith('.jpg'));
-    return images.isEmpty ? null : images.first.fit;
+    return images.isEmpty ? null : images.last.alignment as Alignment?;
   }
 
   testWidgets('video 9:16 → foreground fitWidth (isi penuh tanpa zoom)',
@@ -1484,10 +1484,10 @@ void main() {
     expect(fit, BoxFit.fitWidth);
   });
 
-  testWidgets('backdrop pengisi memakai cover (anti-letterbox hitam)',
+  testWidgets('media rata atas (topCenter) — mulai penuh dari atas ala IG',
       (tester) async {
-    final fit = await pumpAndReadBackdropFit(tester, 0.8);
-    expect(fit, BoxFit.cover);
+    final align = await pumpAndReadThumbAlign(tester, 0.8);
+    expect(align, Alignment.topCenter);
   });
 
   testWidgets('thumbnail and initialized player share fitWidth framing',
@@ -1523,10 +1523,11 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
-    // Dua FittedBox: backdrop (cover) lalu foreground (fitWidth). Lapisan
-    // depan = yang terakhir.
-    expect(tester.widgetList<FittedBox>(find.byType(FittedBox)).last.fit,
-        BoxFit.fitWidth);
+    // Satu FittedBox media (tanpa backdrop): fitWidth + rata atas.
+    final fittedBox =
+        tester.widgetList<FittedBox>(find.byType(FittedBox)).last;
+    expect(fittedBox.fit, BoxFit.fitWidth);
+    expect(fittedBox.alignment, Alignment.topCenter);
   });
 
   // Fix A5 — handoff preload terkonfirmasi: klaim dari map pemilik hanya
