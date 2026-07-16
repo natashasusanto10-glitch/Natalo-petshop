@@ -18,32 +18,24 @@
 
 ---
 
-### Task 1: Lock the Instagram-parity behavior with failing tests
+### Task 1: Lock uncropped photo rendering with a failing test
 
 **Files:**
 - Modify: `flutter_app/test/screens/feed_photo_comment_drawer_test.dart`
 
 **Interfaces:**
 - Consumes: `FeedReelsCommentSurface`, `FeedScreen`, `FeedCommentSheet`.
-- Produces: regression coverage for overlay visibility, linked drag geometry, image fit, and carousel state.
+- Produces: regression coverage for uncropped image fit on both carousel slides.
 
-- [ ] **Step 1: Add a media/overlay separation test**
-
-Build `FeedReelsCommentSurface` with independently keyed media and overlay children, open it, settle the opening animation, and assert the media remains while overlay content is absent. Close through back, settle, and assert overlay content returns.
-
-- [ ] **Step 2: Add a linked drag geometry test**
-
-Open the surface at 400×900, record media bottom and drawer top, drag `ValueKey('feed-comment-drag-handle')` upward, then assert both edges moved upward and still match within one logical pixel.
-
-- [ ] **Step 3: Add a Feed photo renderer test**
+- [ ] **Step 1: Add a Feed photo renderer test**
 
 Seed a two-slide cached photo post, render `FeedScreen`, and assert each photo `CachedNetworkImage` uses `BoxFit.contain`. Swipe to page 2, open and close comments, and assert the photo `PageController.page` remains 1.
 
-- [ ] **Step 4: Run the focused test and confirm RED**
+- [ ] **Step 2: Run the focused test and confirm RED**
 
 Run: `flutter test test/screens/feed_photo_comment_drawer_test.dart`
 
-Expected: failures because `FeedReelsCommentSurface` has no separate overlay interface, the photo renderer still uses `BoxFit.cover`, and the compact-frame safe-area/shared behavior is not implemented.
+Expected: failure because both photo slides still use `BoxFit.cover` instead of `BoxFit.contain`.
 
 ### Task 2: Extract and adopt the shared linked-media frame
 
@@ -51,25 +43,30 @@ Expected: failures because `FeedReelsCommentSurface` has no separate overlay int
 - Modify: `flutter_app/lib/widgets/feed_comment_sheet.dart`
 - Modify: `flutter_app/lib/features/feed/widgets/feed_video_post_view.dart`
 - Test: `flutter_app/test/screens/feed_photo_comment_drawer_test.dart`
+- Create: `flutter_app/test/widgets/feed_comment_media_frame_test.dart`
 - Test: `flutter_app/test/features/feed/widgets/feed_video_post_view_test.dart`
 
 **Interfaces:**
 - Produces: `FeedCommentMediaFrame(open, extentListenable, dragOffsetPx, keyboardInsetPx, compactTopInsetPx, screenSize, child)`.
 - Consumes: a drawer-extent `ValueListenable<double>` and immutable media child.
 
-- [ ] **Step 1: Move `_CommentVideoFrame` into the shared comment widget module**
+- [ ] **Step 1: Add a failing shared-frame geometry test**
+
+Build the wished-for `FeedCommentMediaFrame` with a keyed media child and a `ValueNotifier<double>` extent. Assert compact top respects the supplied safe-area inset, media bottom equals the drawer top, and increasing extent moves media bottom upward one-to-one. Run the new test and confirm RED because the shared widget does not exist yet.
+
+- [ ] **Step 2: Move `_CommentVideoFrame` into the shared comment widget module**
 
 Rename it to `FeedCommentMediaFrame`, add an optional `compactTopInsetPx = 0`, and calculate the compact rectangle from `compactTopInsetPx` to the live drawer top.
 
-- [ ] **Step 2: Replace the private video frame call**
+- [ ] **Step 3: Replace the private video frame call**
 
 Use `FeedCommentMediaFrame` in `FeedVideoPostView` with the existing extent notifier, drag offset, keyboard inset, and screen size. Preserve the video default top inset of zero.
 
-- [ ] **Step 3: Drive the photo surface through the shared frame**
+- [ ] **Step 4: Drive the photo surface through the shared frame**
 
 Replace the photo surface's local `Rect.lerp` with `FeedCommentMediaFrame`, backed by a `ValueNotifier<double>` updated from its existing `DraggableScrollableController`. Pass the photo compact top safe-area inset.
 
-- [ ] **Step 4: Run focused frame tests**
+- [ ] **Step 5: Run focused frame tests**
 
 Run: `flutter test test/screens/feed_photo_comment_drawer_test.dart test/features/feed/widgets/feed_video_post_view_test.dart --plain-name "comment"`
 
@@ -86,19 +83,23 @@ Expected: shared geometry tests pass and video comment behavior remains unchange
 - Extends: `FeedReelsCommentSurface` with optional `overlay`.
 - Preserves: `open`, `onClosed`, session store, viewer identity, and extent callbacks.
 
-- [ ] **Step 1: Add an overlay slot to `FeedReelsCommentSurface`**
+- [ ] **Step 1: Add failing overlay and carousel-state tests**
+
+Build the wished-for `overlay` slot with independently keyed media/overlay children and assert the overlay is removed while open and restored after close. In a real Feed photo harness, select carousel page 2, toggle the comment state open then closed, and assert the same controller remains on page 2. Confirm RED before production edits.
+
+- [ ] **Step 2: Add an overlay slot to `FeedReelsCommentSurface`**
 
 Render media through `FeedCommentMediaFrame`. Render the overlay through a keyed fade switcher only while the drawer is fully closed, and remove its hit testing immediately when opening starts.
 
-- [ ] **Step 2: Split `_PhotoCarouselPostView` composition**
+- [ ] **Step 3: Split `_PhotoCarouselPostView` composition**
 
 Pass only the black `PageView` photo canvas as `child`. Move heart, caption scrim, carousel dots, action rail, product UI, creator, caption, and social proof into `overlay`.
 
-- [ ] **Step 3: Hide Feed-level chrome while overlay-locked**
+- [ ] **Step 4: Hide Feed-level chrome while overlay-locked**
 
 Make the existing top chrome opacity depend on `_interactionLocked` as well as `_mediaZooming`; retain its existing `IgnorePointer` rule.
 
-- [ ] **Step 4: Run the overlay regression tests**
+- [ ] **Step 5: Run the overlay regression tests**
 
 Run: `flutter test test/screens/feed_photo_comment_drawer_test.dart`
 
@@ -161,4 +162,3 @@ Expected: comment-specific video tests pass. Keep the separately observed baseli
 - [ ] **Step 5: Review the final diff**
 
 Confirm no API, backend, dependency, unrelated formatting, debug logging, or user-owned main-checkout files changed.
-
