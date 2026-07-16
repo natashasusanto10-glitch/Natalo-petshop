@@ -34,7 +34,9 @@ import '../../../utils/formatters.dart';
 import '../../../utils/haptics.dart';
 import '../video/post_video_coordinator.dart';
 import '../video/frame_output_heartbeat_service.dart';
+import '../video/feed_video_observation.dart';
 import '../video/single_dispose_guard.dart';
+import '../video/social_video_session_observer.dart';
 import '../video/video_audio_arbiter.dart';
 import '../video/video_media_cache.dart';
 import '../video/video_player_session.dart';
@@ -179,6 +181,7 @@ class FeedVideoPostView extends StatefulWidget {
   /// Test seams for the native frame-output route and watchdog scheduling.
   final FrameOutputHeartbeatService? frameOutputHeartbeatService;
   final FeedVideoHealthMonitorFactory? healthMonitorFactory;
+  final SocialVideoSessionObserver? observationObserver;
 
   const FeedVideoPostView({
     super.key,
@@ -201,6 +204,7 @@ class FeedVideoPostView extends StatefulWidget {
     this.onRequestUserTogglePlay,
     this.frameOutputHeartbeatService,
     this.healthMonitorFactory,
+    this.observationObserver,
   });
 
   @override
@@ -228,20 +232,64 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   final SingleDisposeGuard<VideoPlayerController> _localControllerDisposeGuard =
       SingleDisposeGuard<VideoPlayerController>();
 
+  SocialVideoSessionObserver get _observationObserver =>
+      widget.observationObserver ?? socialVideoSessionObserver;
+
   Future<void> _disposeLocalInitResource({
     CachedVideoPlayerPlus? wrapper,
     VideoPlayerController? controller,
   }) async {
     if (wrapper != null && identical(wrapper, _localInitCachedPlayer)) {
+      final controllerIdentity = wrapper.controller;
       await _localWrapperDisposeGuard.dispose(wrapper, () async {
-        await wrapper.dispose();
+        try {
+          await wrapper.dispose();
+        } finally {
+          observeFeedControllerDisposed(
+            _observationObserver,
+            postId: widget.post.id,
+            controller: controllerIdentity,
+            ownerId: feedLocalOwnerId(widget.post.id),
+          );
+        }
       });
       return;
     }
     if (controller != null && identical(controller, _localInitController)) {
       await _localControllerDisposeGuard.dispose(controller, () async {
-        await controller.dispose();
+        try {
+          await controller.dispose();
+        } finally {
+          observeFeedControllerDisposed(
+            _observationObserver,
+            postId: widget.post.id,
+            controller: controller,
+            ownerId: feedLocalOwnerId(widget.post.id),
+          );
+        }
       });
+    }
+  }
+
+  Future<void> _disposeUnadoptedPreload({
+    CachedVideoPlayerPlus? wrapper,
+    VideoPlayerController? controller,
+  }) async {
+    final controllerIdentity = controller ?? wrapper?.controller;
+    if (controllerIdentity == null) return;
+    try {
+      if (wrapper != null) {
+        await wrapper.dispose();
+      } else {
+        await controller!.dispose();
+      }
+    } finally {
+      observeFeedControllerDisposed(
+        _observationObserver,
+        postId: widget.post.id,
+        controller: controllerIdentity,
+        ownerId: feedPreloadOwnerId(widget.post.id),
+      );
     }
   }
 
@@ -948,10 +996,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       if (!mounted) {
         final cachedPlayer = claimed?.cachedPlayer;
         final controller = claimed?.controller;
-        if (cachedPlayer != null) {
-          unawaited(cachedPlayer.dispose());
-        } else if (controller != null) {
-          unawaited(controller.dispose());
+        if (cachedPlayer != null || controller != null) {
+          unawaited(_disposeUnadoptedPreload(
+            wrapper: cachedPlayer,
+            controller: controller,
+          ));
         }
         return _PreloadClaimState.none;
       }
@@ -963,10 +1012,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       cachedPlayer = widget.preloadedCachedPlayer;
     }
     if (_videoController != null || _initInFlight) {
-      if (cachedPlayer != null) {
-        unawaited(cachedPlayer.dispose());
-      } else if (controller != null) {
-        unawaited(controller.dispose());
+      if (cachedPlayer != null || controller != null) {
+        unawaited(_disposeUnadoptedPreload(
+          wrapper: cachedPlayer,
+          controller: controller,
+        ));
       }
       return _PreloadClaimState.none;
     }
@@ -979,11 +1029,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       // settle; _maybeInitVideo lanjut bikin controller fresh.
       final orphan = cachedPlayer;
       if (orphan != null) {
-        Future(() async {
-          try {
-            await orphan.dispose();
-          } catch (_) {}
-        });
+        unawaited(_disposeUnadoptedPreload(wrapper: orphan));
       }
       return _PreloadClaimState.none;
     }
@@ -992,6 +1038,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     final ctrl = controller;
     _resetBufferAheadReporting();
     _replaceController(ctrl);
+    observeFeedPreloadAdopted(
+      _observationObserver,
+      postId: widget.post.id,
+      controller: ctrl,
+    );
     _commitLocalOwnership();
     // Adopt wrapper juga supaya child bisa dispose properly. Wrapper
     // might be null (legacy or unwrapped). Either way, controller-level
@@ -1420,6 +1471,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       }
       _localInitCachedPlayer = wrapper;
       _localInitController = controller;
+      observeFeedLocalControllerCreated(
+        _observationObserver,
+        postId: widget.post.id,
+        controller: controller,
+      );
       _cachedPlayer = wrapper;
       _resetLoadingSpinnerTimer();
       if (mounted) setState(() {});
@@ -1428,6 +1484,12 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       } else {
         await controller.initialize();
       }
+      observeFeedControllerInitialized(
+        _observationObserver,
+        postId: widget.post.id,
+        controller: controller,
+        ownerId: feedLocalOwnerId(widget.post.id),
+      );
       if (!mounted) {
         await _disposeLocalInitResource(
           wrapper: wrapper,
@@ -1470,6 +1532,14 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       return true;
     } catch (_) {
       _cancelLoadingSpinnerDelay();
+      if (controller != null) {
+        observeFeedControllerFailed(
+          _observationObserver,
+          postId: widget.post.id,
+          controller: controller,
+          ownerId: feedLocalOwnerId(widget.post.id),
+        );
+      }
       try {
         await _disposeLocalInitResource(
           wrapper: wrapper,
@@ -1570,10 +1640,19 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     _localInitCachedPlayer = null;
     _localInitController = null;
     _releaseAudio();
-    if (wrapper != null) {
-      await wrapper.dispose();
-    } else {
-      await controller.dispose();
+    try {
+      if (wrapper != null) {
+        await wrapper.dispose();
+      } else {
+        await controller.dispose();
+      }
+    } finally {
+      observeFeedControllerDisposed(
+        _observationObserver,
+        postId: widget.post.id,
+        controller: controller,
+        ownerId: feedLocalOwnerId(widget.post.id),
+      );
     }
     if (!mounted ||
         _videoController != null ||
@@ -1762,14 +1841,39 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         if (identical(cachedPlayer, _localInitCachedPlayer)) {
           unawaited(_disposeLocalInitResource(wrapper: cachedPlayer));
         } else {
-          cachedPlayer.dispose();
+          final controller = _videoController ?? cachedPlayer.controller;
+          unawaited(() async {
+            try {
+              await cachedPlayer.dispose();
+            } finally {
+              observeFeedControllerDisposed(
+                _observationObserver,
+                postId: widget.post.id,
+                controller: controller,
+                ownerId: feedLocalOwnerId(widget.post.id),
+              );
+            }
+          }());
         }
       } else {
         final controller = _videoController ?? _localInitController;
         if (identical(controller, _localInitController)) {
           unawaited(_disposeLocalInitResource(controller: controller));
         } else {
-          controller?.dispose();
+          if (controller != null) {
+            unawaited(() async {
+              try {
+                await controller.dispose();
+              } finally {
+                observeFeedControllerDisposed(
+                  _observationObserver,
+                  postId: widget.post.id,
+                  controller: controller,
+                  ownerId: feedLocalOwnerId(widget.post.id),
+                );
+              }
+            }());
+          }
         }
       }
     }
@@ -3392,13 +3496,12 @@ class _MediaBackground extends StatelessWidget {
       // Pakai aspectRatio post supaya thumbnail mengikuti aturan yang
       // sama dengan videonya — tidak ada lompatan cover→contain saat
       // player siap.
-      final fit =
-          compactPreview
-              ? BoxFit.contain
-              : _fitForAspect(
-                  _normalizedAspect(postAspect: post.aspectRatio),
-                  MediaQuery.sizeOf(context),
-                );
+      final fit = compactPreview
+          ? BoxFit.contain
+          : _fitForAspect(
+              _normalizedAspect(postAspect: post.aspectRatio),
+              MediaQuery.sizeOf(context),
+            );
       return Stack(
         fit: StackFit.expand,
         children: [
