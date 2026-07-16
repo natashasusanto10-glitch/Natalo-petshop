@@ -22,37 +22,46 @@ class SocialVideoCollisionMetricSink {
             ((name, parameters) => AppAnalytics.logEvent(name, parameters));
 
   static const _eventName = 'social_video_controller_collision';
-  static const _allowedSurfaceNames = <String>{
-    'main_feed',
-    'profile_grid',
-    'post_detail',
-    'fullscreen',
-  };
+  static final _safeMediaKey = RegExp(r'^[0-9a-f]{1,64}$');
 
   final SocialVideoEventWriter _writeEvent;
   String? _lastSampledSummary;
 
   Future<void> record(
     SocialVideoCollision collision, {
-    Iterable<String> surfaceNames = const <String>[],
+    Set<SocialVideoSurface> surfaces = const <SocialVideoSurface>{},
   }) async {
-    final sanitizedSurfaceNames = surfaceNames
-        .where(_allowedSurfaceNames.contains)
-        .toSet()
-        .toList()
-      ..sort();
+    if (!_safeMediaKey.hasMatch(collision.mediaKey)) return;
+    final sanitizedSurfaceNames = surfaces.map(_surfaceName).toList()..sort();
     final summaryKey = [
       collision.mediaKey,
       collision.controllerCount,
       ...sanitizedSurfaceNames,
     ].join('|');
     if (_lastSampledSummary == summaryKey) return;
-    _lastSampledSummary = summaryKey;
 
-    await _writeEvent(_eventName, {
-      'media_key': collision.mediaKey,
-      'controller_count': collision.controllerCount,
-      'surface_names': sanitizedSurfaceNames,
-    });
+    try {
+      await _writeEvent(_eventName, {
+        'media_key': collision.mediaKey,
+        'controller_count': collision.controllerCount,
+        'surface_names': sanitizedSurfaceNames.join('|'),
+      });
+      _lastSampledSummary = summaryKey;
+    } catch (_) {
+      // Diagnostics must never interrupt lifecycle observation or block retry.
+    }
+  }
+
+  String _surfaceName(SocialVideoSurface surface) {
+    switch (surface) {
+      case SocialVideoSurface.mainFeed:
+        return 'main_feed';
+      case SocialVideoSurface.profileGrid:
+        return 'profile_grid';
+      case SocialVideoSurface.postDetail:
+        return 'post_detail';
+      case SocialVideoSurface.fullscreen:
+        return 'fullscreen';
+    }
   }
 }

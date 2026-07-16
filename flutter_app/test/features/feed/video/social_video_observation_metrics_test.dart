@@ -39,7 +39,7 @@ void main() {
     expect(events.single.keys, isNot(contains('post_id')));
   });
 
-  test('collision metric includes controller count and sanitized surface names',
+  test('collision metric includes controller count and serialized surfaces',
       () async {
     final events = <Map<String, Object>>[];
     final sink = SocialVideoCollisionMetricSink(
@@ -48,11 +48,18 @@ void main() {
 
     await sink.record(
       collisionFixture(controllerCount: 3),
-      surfaceNames: const ['main_feed', 'post_detail'],
+      surfaces: const {
+        SocialVideoSurface.postDetail,
+        SocialVideoSurface.mainFeed,
+      },
     );
 
     expect(events.single['controller_count'], 3);
-    expect(events.single['surface_names'], ['main_feed', 'post_detail']);
+    expect(events.single['surface_names'], 'main_feed|post_detail');
+    expect(
+      events.single.values.every((value) => value is String || value is num),
+      isTrue,
+    );
   });
 
   test('repeated identical collision summaries are coalesced', () async {
@@ -62,14 +69,54 @@ void main() {
     );
     final collision = collisionFixture();
 
-    await sink.record(collision, surfaceNames: const ['main_feed']);
-    await sink.record(collision, surfaceNames: const ['main_feed']);
+    await sink.record(collision, surfaces: const {SocialVideoSurface.mainFeed});
+    await sink.record(collision, surfaces: const {SocialVideoSurface.mainFeed});
     await sink.record(collisionFixture(controllerCount: 3),
-        surfaceNames: const ['main_feed']);
-    await sink.record(collision, surfaceNames: const ['main_feed']);
+        surfaces: const {SocialVideoSurface.mainFeed});
+    await sink.record(collision, surfaces: const {SocialVideoSurface.mainFeed});
 
     expect(events, hasLength(3));
     expect(events[1]['controller_count'], 3);
     expect(events[2]['controller_count'], 2);
+  });
+
+  test('writer failure does not sample collision and allows retry', () async {
+    var attempts = 0;
+    final events = <Map<String, Object>>[];
+    final sink = SocialVideoCollisionMetricSink(
+      writeEvent: (name, params) async {
+        attempts++;
+        if (attempts == 1) throw StateError('writer unavailable');
+        events.add({'name': name, ...params});
+      },
+    );
+
+    await sink.record(collisionFixture());
+    await sink.record(collisionFixture());
+
+    expect(attempts, 2);
+    expect(events, hasLength(1));
+  });
+
+  test('unsafe media keys are rejected without telemetry', () async {
+    final events = <Map<String, Object>>[];
+    final sink = SocialVideoCollisionMetricSink(
+      writeEvent: (name, params) async => events.add({'name': name, ...params}),
+    );
+
+    await sink.record(const SocialVideoCollision(
+      mediaKey: 'https://example.com/video?token=secret',
+      controllerCount: 2,
+    ));
+    await sink.record(const SocialVideoCollision(
+      mediaKey: '',
+      controllerCount: 2,
+    ));
+    await sink.record(const SocialVideoCollision(
+      mediaKey: 'ABCDEF12',
+      controllerCount: 2,
+    ));
+
+    expect(events, isEmpty);
   });
 }
