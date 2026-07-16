@@ -571,19 +571,41 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
 
   Future<void> _openComments(int index) async {
     AppHaptics.tap();
-    final post = _posts[index];
+    final post = _postWithResolvedAuthor(_posts[index]);
     // Postingan uses the modal-style Instagram drawer: pause the active
     // player while the sheet is visible, then restore only if it was playing
     // before the tap. A user-paused video must remain paused after dismissal.
     final activePostId = _videoCoordinator.activePostId;
-    final wasPlaying = activePostId != null &&
-        !_videoCoordinator.isUserPaused(activePostId);
+    final wasPlaying =
+        activePostId != null && !_videoCoordinator.isUserPaused(activePostId);
     _videoCoordinator.pauseAll();
     try {
       await showFeedCommentDrawer(context, post: post);
     } finally {
       if (wasPlaying && mounted) _videoCoordinator.resumeAll();
     }
+  }
+
+  FeedPost _postWithResolvedAuthor(FeedPost post) {
+    final source = post.author;
+    final ownerProfile = widget.isOwner ? memberStore.profile : null;
+    final resolvedPhoto = _memberPhotoUrl;
+    final resolvedName = _memberName.trim();
+    return post.copyWith(
+      author: FeedAuthor(
+        id: ownerProfile?.id ?? source.id,
+        name: resolvedName.isEmpty ? source.name : resolvedName,
+        username: ownerProfile?.username ?? source.username,
+        avatarUrl: resolvedPhoto ?? source.avatarUrl,
+        profilePhotoUrl: resolvedPhoto ?? source.profilePhotoUrl,
+        role: ownerProfile?.role ?? source.role,
+        isAdmin: widget.authorIsOfficial ||
+            ownerProfile?.isAdmin == true ||
+            source.isAdmin,
+        isOfficial: widget.authorIsOfficial || source.isOfficial,
+        isFollowing: source.isFollowing,
+      ),
+    );
   }
 
   Future<void> _openPostMenu(int index) async {
