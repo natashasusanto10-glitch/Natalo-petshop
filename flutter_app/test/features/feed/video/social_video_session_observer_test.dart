@@ -1,7 +1,73 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/features/feed/video/social_video_observation_metrics.dart';
+import 'package:natalo_petshop_flutter/features/feed/video/social_video_registry_config.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/social_video_session_observer.dart';
 
 void main() {
+  test('application singleton follows startup observation flag', () {
+    socialVideoSessionObserver.clear();
+    socialVideoSessionObserver.observeController(
+      type: SocialVideoLifecycleType.created,
+      postId: 'startup-post',
+      surface: SocialVideoSurface.mainFeed,
+      ownerId: 'feed',
+      controllerIdentity: Object(),
+    );
+
+    expect(
+      socialVideoSessionObserver.snapshot.liveControllerCount,
+      socialVideoRegistryObservationEnabled ? 1 : 0,
+    );
+    socialVideoSessionObserver.clear();
+  });
+
+  test('startup observer disabled mode retains no lifecycle state', () {
+    final observer = createSocialVideoSessionObserver(enabled: false);
+
+    observer.observeController(
+      type: SocialVideoLifecycleType.created,
+      postId: 'private-post',
+      surface: SocialVideoSurface.mainFeed,
+      ownerId: 'feed',
+      controllerIdentity: Object(),
+    );
+
+    expect(observer.snapshot.liveControllerCount, 0);
+    expect(observer.snapshot.events, isEmpty);
+  });
+
+  test('startup observer enabled mode observes and reports anonymous collision',
+      () async {
+    final telemetry = <Map<String, Object>>[];
+    final sink = SocialVideoCollisionMetricSink(
+      writeEvent: (name, parameters) async {
+        telemetry.add(<String, Object>{'name': name, ...parameters});
+      },
+    );
+    final observer = createSocialVideoSessionObserver(
+      enabled: true,
+      collisionSink: sink,
+    );
+
+    for (final identity in <Object>[Object(), Object()]) {
+      observer.observeController(
+        type: SocialVideoLifecycleType.created,
+        postId: 'private-post',
+        surface: SocialVideoSurface.mainFeed,
+        ownerId: 'feed',
+        controllerIdentity: identity,
+      );
+    }
+    await Future<void>.delayed(Duration.zero);
+
+    expect(observer.snapshot.liveControllerCount, 2);
+    expect(observer.snapshot.collisions, hasLength(1));
+    expect(telemetry, hasLength(1));
+    expect(telemetry.single['media_key'], isNot('private-post'));
+    expect(telemetry.single.keys, isNot(contains('post_id')));
+    expect(telemetry.single.keys, isNot(contains('url')));
+  });
+
   test('tracks one live controller without reporting a collision', () {
     final observer = SocialVideoSessionObserver(enabled: true);
 

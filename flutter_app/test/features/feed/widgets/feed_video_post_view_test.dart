@@ -165,9 +165,13 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
 /// membawa [VideoPlayerSession] ke keadaan error (init awal + 1 auto-retry
 /// gagal) lalu membuktikan `retry()` melahirkan controller BARU yang sukses.
 class _FailThenSucceedPlatform extends VideoPlayerPlatform {
-  _FailThenSucceedPlatform({required this.failUntil});
+  _FailThenSucceedPlatform({
+    required this.failUntil,
+    this.failWithInitializeEvent = false,
+  });
 
   final int failUntil;
+  final bool failWithInitializeEvent;
   final Map<int, StreamController<VideoEvent>> _streams = {};
   int _nextId = 0;
   int createCount = 0;
@@ -184,17 +188,25 @@ class _FailThenSucceedPlatform extends VideoPlayerPlatform {
 
   Future<int?> _create() async {
     createCount++;
-    if (createCount <= failUntil) {
+    final shouldFail = createCount <= failUntil;
+    if (shouldFail && !failWithInitializeEvent) {
       throw Exception('network down (create #$createCount)');
     }
     final id = _nextId++;
     final stream = StreamController<VideoEvent>();
     _streams[id] = stream;
-    stream.add(VideoEvent(
-      eventType: VideoEventType.initialized,
-      size: const Size(720, 1280),
-      duration: const Duration(seconds: 10),
-    ));
+    if (shouldFail) {
+      stream.addError(PlatformException(
+        code: 'video_init_failed',
+        message: 'network down during initialization',
+      ));
+    } else {
+      stream.add(VideoEvent(
+        eventType: VideoEventType.initialized,
+        size: const Size(720, 1280),
+        duration: const Duration(seconds: 10),
+      ));
+    }
     return id;
   }
 
@@ -482,6 +494,132 @@ void _registerLegacyFrameOutputRecoveryTests() {
       await tester.runAsync(() => Future<void>.delayed(Duration.zero));
       expect(observer.snapshot.events.last.type,
           SocialVideoLifecycleType.disposed);
+      expect(observer.snapshot.liveControllerCount, 0);
+      await appSettingsStore.setFeedAutoplay(true);
+    });
+
+    testWidgets('MP4 cache failure retries without a pre-init controller read',
+        (tester) async {
+      await appSettingsStore.setFeedAutoplay(false);
+      final observer = SocialVideoSessionObserver(enabled: true);
+      final retryPlatform = _FailThenSucceedPlatform(failUntil: 1);
+      VideoPlayerPlatform.instance = retryPlatform;
+      CachedVideoPlayerPlus.cacheManager = _NoopCacheManager();
+      CachedVideoPlayerPlus.metadataStorage = _NoopMetadataStorage();
+
+      await tester.pumpWidget(MaterialApp(
+        home: FeedVideoPostView(
+          post: _fakeVideoPost(hls: false),
+          isActive: true,
+          preloadedController: null,
+          observationObserver: observer,
+          healthMonitorFactory: monitorFactory(),
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+
+      expect(retryPlatform.createCount, 2);
+      expect(
+        observer.snapshot.events.map((event) => event.type),
+        containsAllInOrder(<SocialVideoLifecycleType>[
+          SocialVideoLifecycleType.created,
+          SocialVideoLifecycleType.initialized,
+        ]),
+      );
+      expect(observer.snapshot.liveControllerCount, 1);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      expect(observer.snapshot.liveControllerCount, 0);
+      await appSettingsStore.setFeedAutoplay(true);
+    });
+
+    testWidgets('failed HLS attempt leaves no live observed identity',
+        (tester) async {
+      await appSettingsStore.setFeedAutoplay(false);
+      final observer = SocialVideoSessionObserver(enabled: true);
+      final retryPlatform = _FailThenSucceedPlatform(
+        failUntil: 2,
+        failWithInitializeEvent: true,
+      );
+      VideoPlayerPlatform.instance = retryPlatform;
+
+      await tester.pumpWidget(MaterialApp(
+        home: FeedVideoPostView(
+          post: _fakeVideoPost(hls: true),
+          isActive: true,
+          preloadedController: null,
+          observationObserver: observer,
+          healthMonitorFactory: monitorFactory(),
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+      for (var i = 0;
+          i < 20 &&
+              observer.snapshot.events
+                  .where(
+                      (event) => event.type == SocialVideoLifecycleType.failed)
+                  .isEmpty;
+          i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+
+      expect(
+        observer.snapshot.events
+            .where((event) => event.type == SocialVideoLifecycleType.failed),
+        hasLength(1),
+      );
+      expect(observer.snapshot.liveControllerCount, 0);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      await appSettingsStore.setFeedAutoplay(true);
+    });
+
+    testWidgets('disposed local init never emits initialized after completion',
+        (tester) async {
+      await appSettingsStore.setFeedAutoplay(false);
+      final observer = SocialVideoSessionObserver(enabled: true);
+      final initializedGate = Completer<void>();
+      VideoPlayerPlatform.instance = _FakeVideoPlayerPlatform();
+
+      await tester.pumpWidget(MaterialApp(
+        home: FeedVideoPostView(
+          post: _fakeVideoPost(hls: true),
+          isActive: true,
+          preloadedController: null,
+          observationObserver: observer,
+          beforeObserveInitialized: () => initializedGate.future,
+          healthMonitorFactory: monitorFactory(),
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ));
+      await tester.pump();
+      expect(
+        observer.snapshot.events
+            .where((event) => event.type == SocialVideoLifecycleType.created),
+        hasLength(1),
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      initializedGate.complete();
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+
+      expect(
+        observer.snapshot.events.where(
+            (event) => event.type == SocialVideoLifecycleType.initialized),
+        isEmpty,
+      );
       expect(observer.snapshot.liveControllerCount, 0);
       await appSettingsStore.setFeedAutoplay(true);
     });
