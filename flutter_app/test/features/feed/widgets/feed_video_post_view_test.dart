@@ -1,6 +1,7 @@
 // ignore_for_file: depend_on_referenced_packages
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cached_video_player_plus/cached_video_player_plus.dart';
@@ -256,6 +257,90 @@ class _FailThenSucceedPlatform extends VideoPlayerPlatform {
   Widget buildView(int playerId) => const SizedBox.shrink();
 }
 
+/// D4 legacy — fake platform yang gagal/sukses BERDASARKAN URL sumber
+/// (bukan hitungan create): URI yang mengandung [failFragment] selalu lempar
+/// (simulasi CDN 403 token basi), URI lain sukses. [uris] merekam tiap
+/// create supaya test bisa membuktikan attempt-3 memakai URL SEGAR.
+class _UrlAwareFailPlatform extends VideoPlayerPlatform {
+  _UrlAwareFailPlatform({required this.failFragment});
+
+  final String failFragment;
+  final List<String> uris = [];
+  final Map<int, StreamController<VideoEvent>> _streams = {};
+  int _nextId = 0;
+  int createCount = 0;
+
+  @override
+  Future<void> init() async {}
+
+  @override
+  Future<int?> create(DataSource dataSource) => _create(dataSource.uri);
+
+  @override
+  Future<int?> createWithOptions(VideoCreationOptions options) =>
+      _create(options.dataSource.uri);
+
+  Future<int?> _create(String? uri) async {
+    createCount++;
+    uris.add(uri ?? '');
+    final id = _nextId++;
+    final stream = StreamController<VideoEvent>();
+    _streams[id] = stream;
+    if (uri != null && uri.contains(failFragment)) {
+      // Gagal via error event (BUKAN throw di create): untuk controller HLS
+      // plain, throw di create membuat dispose menggantung menunggu
+      // _creatingCompleter — pola sama dgn failWithInitializeEvent di
+      // _FailThenSucceedPlatform.
+      stream.addError(PlatformException(
+        code: 'video_init_failed',
+        message: '403 stale signed token ($uri)',
+      ));
+    } else {
+      stream.add(VideoEvent(
+        eventType: VideoEventType.initialized,
+        size: const Size(720, 1280),
+        duration: const Duration(seconds: 10),
+      ));
+    }
+    return id;
+  }
+
+  @override
+  Future<void> dispose(int playerId) async {
+    await _streams.remove(playerId)?.close();
+  }
+
+  @override
+  Stream<VideoEvent> videoEventsFor(int playerId) => _streams[playerId]!.stream;
+
+  @override
+  Future<void> play(int playerId) async {}
+
+  @override
+  Future<void> pause(int playerId) async {}
+
+  @override
+  Future<void> setLooping(int playerId, bool looping) async {}
+
+  @override
+  Future<void> setVolume(int playerId, double volume) async {}
+
+  @override
+  Future<void> setPlaybackSpeed(int playerId, double speed) async {}
+
+  @override
+  Future<void> setMixWithOthers(bool mixWithOthers) async {}
+
+  @override
+  Future<void> seekTo(int playerId, Duration position) async {}
+
+  @override
+  Future<Duration> getPosition(int playerId) async => Duration.zero;
+
+  @override
+  Widget buildView(int playerId) => const SizedBox.shrink();
+}
+
 /// Pretends nothing is cached so `cached_video_player_plus` falls straight
 /// through to `VideoPlayerController.networkUrl` (our fake platform).
 class _NoopCacheManager implements CacheManager {
@@ -306,6 +391,8 @@ FeedPost _fakeVideoPost({
   bool hls = false,
   bool liked = false,
   String? videoAltText,
+  String? videoUrl,
+  String? thumbnailUrl,
 }) {
   return FeedPost.fromJson({
     'id': id,
@@ -315,9 +402,9 @@ FeedPost _fakeVideoPost({
     // → plain VideoPlayerController.networkUrl → langsung ke fake platform.
     // MP4 lewat CachedVideoPlayerPlus yang download-gated (tak cocok untuk
     // menguji jalur init controller di widget test).
-    'videoUrl':
-        hls ? 'https://example.com/$id.m3u8' : 'https://example.com/$id.mp4',
-    'thumbnailUrl': 'https://example.com/$id.jpg',
+    'videoUrl': videoUrl ??
+        (hls ? 'https://example.com/$id.m3u8' : 'https://example.com/$id.mp4'),
+    'thumbnailUrl': thumbnailUrl ?? 'https://example.com/$id.jpg',
     'durationSec': 10,
     'aspectRatio': aspectRatio,
     'videoAltText': videoAltText,
@@ -2911,6 +2998,172 @@ void main() {
 
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(milliseconds: 50));
+    });
+  });
+
+  // D4 legacy — init gagal + URL bertanda-tangan (Bunny signed, expiry 6 jam)
+  // → fetch post segar (server sign ulang tiap request) → SATU retry dengan
+  // URL baru. Port dari jalur managed (VideoPlayerSession._maybeRefreshSignedUrl).
+  group('D4 legacy — refresh signed URL (non-managed)', () {
+    const staleUrl =
+        'https://cdn.example/post-d4/playlist.m3u8?token=stale&expires=1';
+    const freshUrl =
+        'https://cdn.example/post-d4/playlist.m3u8?token=fresh&expires=999';
+
+    setUp(() {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      VisibilityDetectorController.instance.updateInterval = Duration.zero;
+      // pumpBounded memakai runAsync (flush real-async init error) — itu juga
+      // membangunkan flutter_cache_manager (image cache) yang menyentuh
+      // path_provider; stub channel-nya supaya tidak MissingPluginException.
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        (call) async => Directory.systemTemp
+            .createTempSync('d4_signed_url_refresh')
+            .path,
+      );
+    });
+
+    tearDown(() {
+      debugLegacyFeedPostFetcher = null;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        null,
+      );
+    });
+
+    Widget host(FeedPost post) => MaterialApp(
+          home: FeedVideoPostView(
+            post: post,
+            isActive: true,
+            preloadedController: null,
+            onOverlayStateChanged: (_) {},
+            onMediaZoomChanged: (_) {},
+          ),
+        );
+
+    Future<void> pumpBounded(WidgetTester tester, {int rounds = 12}) async {
+      for (var i = 0; i < rounds; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        // Flush real-async hop (error event stream → initialize future) yang
+        // tidak terdorong fake-clock pump saja — pola runAsync suite ini.
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      }
+    }
+
+    testWidgets('URL signed basi → fetch segar → init sukses dgn URL BARU',
+        (tester) async {
+      await appSettingsStore.setFeedAutoplay(false);
+      addTearDown(() => appSettingsStore.setFeedAutoplay(true));
+      final platform = _UrlAwareFailPlatform(failFragment: 'token=stale');
+      VideoPlayerPlatform.instance = platform;
+
+      var fetchCalls = 0;
+      debugLegacyFeedPostFetcher = (id) async {
+        fetchCalls++;
+        expect(id, 'post-d4');
+        return _fakeVideoPost(id: 'post-d4', videoUrl: freshUrl);
+      };
+
+      await tester
+          .pumpWidget(host(_fakeVideoPost(id: 'post-d4', videoUrl: staleUrl, thumbnailUrl: '')));
+      await pumpBounded(tester);
+
+      expect(fetchCalls, 1, reason: 'refresh dipanggil tepat sekali');
+      expect(platform.uris, hasLength(3),
+          reason: 'attempt1+2 URL lama, attempt3 URL segar');
+      expect(platform.uris.last, contains('token=fresh'),
+          reason: 'attempt3 memakai URL SEGAR hasil refresh');
+      expect(find.text('Coba lagi'), findsNothing,
+          reason: 'init akhirnya sukses → tidak ada error surface');
+      expect(find.byType(VideoPlayer), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      // Habiskan sisa timer (image cache / rotasi produk) supaya invariant
+      // !timersPending bersih.
+      await tester.pump(const Duration(minutes: 2));
+    });
+
+    testWidgets('URL non-signed → refresh TIDAK dipanggil → "Coba lagi"',
+        (tester) async {
+      await appSettingsStore.setFeedAutoplay(false);
+      addTearDown(() => appSettingsStore.setFeedAutoplay(true));
+      const plainUrl = 'https://cdn.example/post-d4b/playlist.m3u8';
+      final platform = _UrlAwareFailPlatform(failFragment: 'post-d4b');
+      VideoPlayerPlatform.instance = platform;
+
+      var fetchCalls = 0;
+      debugLegacyFeedPostFetcher = (id) async {
+        fetchCalls++;
+        return _fakeVideoPost(id: 'post-d4b', videoUrl: freshUrl);
+      };
+
+      await tester
+          .pumpWidget(host(_fakeVideoPost(id: 'post-d4b', videoUrl: plainUrl, thumbnailUrl: '')));
+      await pumpBounded(tester);
+
+      expect(fetchCalls, 0,
+          reason: 'URL tanpa token=&expires= → refresh di-skip');
+      expect(platform.uris, hasLength(2), reason: 'hanya attempt1+2');
+      expect(find.text('Coba lagi'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('refresh return URL SAMA → tetap gagal, tanpa attempt3/loop',
+        (tester) async {
+      await appSettingsStore.setFeedAutoplay(false);
+      addTearDown(() => appSettingsStore.setFeedAutoplay(true));
+      final platform = _UrlAwareFailPlatform(failFragment: 'token=stale');
+      VideoPlayerPlatform.instance = platform;
+
+      var fetchCalls = 0;
+      debugLegacyFeedPostFetcher = (id) async {
+        fetchCalls++;
+        // Server balikin URL persis sama (belum re-sign) → no-op.
+        return _fakeVideoPost(id: 'post-d4c', videoUrl: staleUrl);
+      };
+
+      await tester
+          .pumpWidget(host(_fakeVideoPost(id: 'post-d4c', videoUrl: staleUrl, thumbnailUrl: '')));
+      await pumpBounded(tester);
+
+      expect(fetchCalls, 1);
+      expect(platform.uris, hasLength(2),
+          reason: 'URL sama → TIDAK ada attempt3 (tak berguna, cegah loop)');
+      expect(find.text('Coba lagi'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('refresh return null → tetap gagal → "Coba lagi"',
+        (tester) async {
+      await appSettingsStore.setFeedAutoplay(false);
+      addTearDown(() => appSettingsStore.setFeedAutoplay(true));
+      final platform = _UrlAwareFailPlatform(failFragment: 'token=stale');
+      VideoPlayerPlatform.instance = platform;
+
+      var fetchCalls = 0;
+      debugLegacyFeedPostFetcher = (id) async {
+        fetchCalls++;
+        return null; // post dihapus / 404
+      };
+
+      await tester
+          .pumpWidget(host(_fakeVideoPost(id: 'post-d4d', videoUrl: staleUrl, thumbnailUrl: '')));
+      await pumpBounded(tester);
+
+      expect(fetchCalls, 1);
+      expect(platform.uris, hasLength(2));
+      expect(find.text('Coba lagi'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
     });
   });
 }
