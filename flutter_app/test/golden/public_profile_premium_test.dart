@@ -14,11 +14,16 @@ const _logicalSize = Size(393, 852);
 void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
-    final fontLoader = FontLoader('PlusJakartaSans')
+    final textFontLoader = FontLoader('PlusJakartaSans')
       ..addFont(
         rootBundle.load('assets/fonts/PlusJakartaSans[wght].ttf'),
       );
-    await fontLoader.load();
+    final iconFontLoader = FontLoader('MaterialIcons')
+      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+    await Future.wait([
+      textFontLoader.load(),
+      iconFontLoader.load(),
+    ]);
   });
 
   setUp(() {
@@ -32,7 +37,7 @@ void main() {
 
   testWidgets('official expanded iPhone 15 Pro', (tester) async {
     await _pumpGolden(tester, isOfficial: true, collapsed: false);
-    expect(
+    await expectLater(
       find.byKey(const Key('official_expanded_golden')),
       matchesGoldenFile('public_profile_official_expanded.png'),
     );
@@ -40,7 +45,7 @@ void main() {
 
   testWidgets('official collapsed iPhone 15 Pro', (tester) async {
     await _pumpGolden(tester, isOfficial: true, collapsed: true);
-    expect(
+    await expectLater(
       find.byKey(const Key('official_collapsed_golden')),
       matchesGoldenFile('public_profile_official_collapsed.png'),
     );
@@ -48,7 +53,7 @@ void main() {
 
   testWidgets('regular expanded iPhone 15 Pro', (tester) async {
     await _pumpGolden(tester, isOfficial: false, collapsed: false);
-    expect(
+    await expectLater(
       find.byKey(const Key('regular_expanded_golden')),
       matchesGoldenFile('public_profile_regular_expanded.png'),
     );
@@ -56,7 +61,7 @@ void main() {
 
   testWidgets('regular collapsed iPhone 15 Pro', (tester) async {
     await _pumpGolden(tester, isOfficial: false, collapsed: true);
-    expect(
+    await expectLater(
       find.byKey(const Key('regular_collapsed_golden')),
       matchesGoldenFile('public_profile_regular_collapsed.png'),
     );
@@ -105,6 +110,26 @@ const _officialProfile = PublicProfile(
   followersCount: 24800,
   followingCount: 86,
   isOfficial: true,
+  mutualFollowers: PublicProfileMutualSummary(
+    items: [
+      PublicProfileMutualFollower(
+        id: 'mutual-rani',
+        name: 'Rani Anabul Medan',
+        username: 'rani.anabul',
+      ),
+      PublicProfileMutualFollower(
+        id: 'mutual-bima',
+        name: 'Bima & Mochi',
+        username: 'bima.mochi',
+      ),
+      PublicProfileMutualFollower(
+        id: 'mutual-citra',
+        name: 'Citra Paw Family',
+        username: 'citra.paw',
+      ),
+    ],
+    totalCount: 24,
+  ),
 );
 
 const _regularProfile = PublicProfile(
