@@ -29,30 +29,41 @@ Canary: --dart-define=SOCIAL_VIDEO_REGISTRY_OBSERVE=true
 defaults to `false`. It is fixed for the life of the process; changing it
 requires a new build or launch. It is not a runtime or remote-config switch.
 
-## Privacy-safe collision metric
+## Data-minimized collision metric
 
 The observer sends no lifecycle event stream to Analytics. It emits only the
 sampled event `social_video_controller_collision` after detecting two or more
 distinct live controller identities for the same post.
 
-The event contains only:
+The custom event payload contains only:
 
-- `media_key`: a deterministic eight-character hexadecimal anonymous key
-  derived from the post ID. It is not the raw post ID.
+- `media_key`: a deterministic eight-character hexadecimal pseudonymous key
+  derived from the post ID. It is not the raw post ID, but it is stable and
+  therefore linkable across repeated events. It must not be described as
+  anonymous or used to recover a post ID.
 - `controller_count`: the number of distinct live controller identities for
-  that anonymous media key.
+  that pseudonymous media key.
 - `surface_names`: pipe-separated allowlisted names when a surface set is
   supplied (`main_feed`, `profile_grid`, `post_detail`, or `fullscreen`). The
   value is empty when surface context is unavailable. The current application
   singleton collision callback does not supply a surface set, so production
   consumers must currently accept an empty value.
 
-The event never includes media URLs, raw post IDs, controller identities,
-owner IDs, captions, usernames, tokens, or user-entered content. Consecutive
-identical collision summaries are coalesced. A changed controller set, or a
-collision that disappears and later returns, can be sampled again. Analytics
-write failures do not interrupt playback or observation and remain eligible
-for retry.
+The custom payload never includes media URLs, raw post IDs, controller
+identities, owner IDs, captions, usernames, tokens, or user-entered content.
+This does not make the Firebase event anonymous: the existing application
+Analytics configuration can associate events with its configured Analytics
+user ID and app-instance metadata. Privacy approval for that existing identity
+context is required before enabling a production canary.
+
+Consecutive summaries with the same `media_key`, controller count, and surface
+set are coalesced. The sink does not receive collision-clear notifications, so
+a collision that disappears and later returns with the same summary can remain
+suppressed. A changed controller identity set with the same count can also be
+suppressed. If an Analytics write fails, playback and observation continue,
+but that collision is not automatically retried unless a later lifecycle
+change produces a newly reportable collision. Treat the metric as sampled,
+potentially undercounted diagnostics rather than a complete event ledger.
 
 ## Expected identity lifecycle
 
@@ -77,10 +88,13 @@ collision until one identity is released or disposed.
 1. Build the Android and iOS baseline with observation disabled.
 2. Build a limited internal Android release and iOS TestFlight canary with
    observation enabled.
-3. Record the build numbers and canary audience so metrics can be compared with
+3. Obtain privacy approval for the Firebase Analytics identity context and the
+   stable pseudonymous media key. Do not distribute an enabled production
+   canary without that approval.
+4. Record the build numbers and canary audience so metrics can be compared with
    the disabled baseline.
-4. Complete every row in the device matrix before expanding the canary.
-5. Monitor playback behavior and collision event volume before considering an
+5. Complete every row in the device matrix before expanding the canary.
+6. Monitor playback behavior and collision event volume before considering an
    active ownership package.
 
 Observation-enabled and disabled builds must have identical visible playback
@@ -120,10 +134,11 @@ During the canary:
 2. Track `social_video_controller_collision` volume and the distribution of
    `controller_count`. A nonzero value is evidence to investigate, not proof
    that this package changed ownership.
-3. Confirm sampled payloads contain only `media_key`, `controller_count`, and
-   `surface_names`.
+3. Confirm sampled custom payloads contain only `media_key`,
+   `controller_count`, and `surface_names`; separately confirm the approved
+   Firebase Analytics identity context used by the build.
 4. Correlate device-matrix notes with build number and platform. Do not use the
-   anonymous media key to identify a customer or reconstruct a post ID.
+   pseudonymous media key to identify a customer or reconstruct a post ID.
 5. Escalate unexpected playback changes immediately because observation is
    intended to be behavior-neutral.
 
@@ -168,7 +183,8 @@ the package that reduces controller count or changes playback ownership until:
 
 - all four device-matrix rows pass;
 - enabled and disabled builds have equivalent playback behavior;
-- the metric payload has been verified as privacy-safe;
+- the custom metric payload has been verified as data-minimized and the
+  Firebase Analytics identity context has explicit privacy approval;
 - collision volume and controller-count patterns have been reviewed;
 - rollback has been rehearsed successfully; and
 - the release owner accepts the device evidence.

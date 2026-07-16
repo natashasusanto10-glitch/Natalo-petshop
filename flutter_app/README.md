@@ -21,8 +21,8 @@ because the setting is read from `bool.fromEnvironment` at process startup.
 
 See the
 [social video registry observation runbook](../docs/operations/social-video-registry-observation.md)
-for canary enablement, privacy-safe metrics, device validation, monitoring, and
-rollback.
+for canary enablement, data-minimized metrics, privacy approval, device
+validation, monitoring, and rollback.
 
 ## Getting started
 
