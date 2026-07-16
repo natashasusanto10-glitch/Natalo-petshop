@@ -1142,11 +1142,11 @@ class _FeedScreenState extends State<FeedScreen> {
             // Top overlay — `+` upload (kiri) + search/cart stack (kanan).
             // Plain icons (no glass/blur pill) per mockup TikTok-style. Safe
             // area aware via MediaQuery.padding.top supaya tidak overlap
-            // dengan notch / status bar di iOS+Android. Saat modal Reels
-            // terbuka, ikon tetap di tempat dan ikut diredupkan barrier;
-            // jangan dilepas dari tree/fade sendiri.
+            // dengan notch / status bar di iOS+Android. Saat overlay aktif,
+            // chrome menghilang bersama bottom nav agar compact media bersih.
             AnimatedOpacity(
-              opacity: _mediaZooming ? 0 : 1,
+              key: const ValueKey('feed-top-chrome'),
+              opacity: (_mediaZooming || _interactionLocked) ? 0 : 1,
               duration: const Duration(milliseconds: 160),
               child: IgnorePointer(
                 ignoring: _mediaZooming || _interactionLocked,
@@ -2176,257 +2176,244 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
         post: post,
         open: _commentDrawerOpen,
         onClosed: _onEmbeddedCommentClosed,
-        child: ColoredBox(
-          color: Colors.black,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Backdrop: pure BLACK solid (Instagram-style), bukan blur.
-              // Foto tetap utuh (BoxFit.contain centered) — letterbox top+bottom
-              // hitam supaya action rail putih konsisten kontras dengan video
-              // feed dan content focus jelas. Blur backdrop dipakai sebelumnya
-              // bikin icon putih low-contrast saat foto bg putih (mis. foto
-              // product di studio).
-              // Foto carousel — PageView horizontal swipe.
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onDoubleTapDown: _rememberHeartBurstPosition,
-                onDoubleTap: _onDoubleTapLike,
-                onLongPressStart: _onLongPressStart,
-                onLongPressEnd: _onLongPressEnd,
-                child: PageView.builder(
-                  controller: _photoPageController,
-                  itemCount: photos.length,
-                  onPageChanged: (idx) => setState(() => _photoIndex = idx),
-                  itemBuilder: (context, index) {
-                    final photo = photos[index];
-                    // Pinch-zoom sementara: begitu gesture selesai, foto
-                    // snap back ke ukuran asli supaya feed tidak nyangkut
-                    // dalam state zoom.
-                    return Center(
-                      child: FeedPostSnapBackZoomMedia(
-                        clipBehavior: Clip.none,
-                        minScale: 1,
-                        maxScale: 4,
-                        onZoomingChanged: _onMediaZoomChanged,
-                        child: AspectRatio(
-                          aspectRatio: feedPostInstagramImageAspectRatio(
-                            photo.width,
-                            photo.height,
-                          ),
-                          child: CachedNetworkImage(
-                            imageUrl: photo.url,
-                            fit: BoxFit.cover,
-                            placeholder: (_, __) => const SizedBox.shrink(),
-                            errorWidget: (_, __, ___) => const Center(
-                              child: Icon(
-                                Icons.broken_image_outlined,
-                                color: Colors.white54,
-                                size: 48,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
+        overlay: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Heart burst double-tap — muncul di titik jari, MERAH, lalu
+            // terbang mengecil ke tombol like rail (target di-capture saat
+            // gesture; null → fade di tempat).
+            IgnorePointer(
+              child: AnimatedBuilder(
+                animation: _heartBurstController,
+                builder: (context, _) => feedPostBuildFlyingBurstHeart(
+                  tap: _heartBurstPosition,
+                  target: _heartBurstTarget,
+                  scale: _heartScale.value,
+                  opacity: _heartOpacity.value,
+                  travel: _heartTravel.value,
+                  screenSize: MediaQuery.sizeOf(context),
                 ),
               ),
-              // Heart burst double-tap — muncul di titik jari, MERAH, lalu
-              // terbang mengecil ke tombol like rail (target di-capture saat
-              // gesture; null → fade di tempat).
-              IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: _heartBurstController,
-                  builder: (context, _) => feedPostBuildFlyingBurstHeart(
-                    tap: _heartBurstPosition,
-                    target: _heartBurstTarget,
-                    scale: _heartScale.value,
-                    opacity: _heartOpacity.value,
-                    travel: _heartTravel.value,
-                    screenSize: MediaQuery.sizeOf(context),
-                  ),
-                ),
-              ),
-              // ── Scrim panel caption (mode baca ala IG) — paritas dengan
-              // FeedVideoPostView: gradien gelap naik saat caption expand,
-              // tap area mana pun menutup panel; tembus saat tertutup. ──
-              Positioned.fill(
-                child: IgnorePointer(
-                  ignoring: !_captionExpanded,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => _setCaptionExpanded(false),
-                    // Klaim drag vertikal supaya PageView feed tidak pindah
-                    // post saat user menarik di area scrim (mode baca modal).
-                    onVerticalDragStart: (_) {},
-                    onVerticalDragUpdate: (_) {},
-                    child: AnimatedOpacity(
-                      opacity: _captionExpanded ? 1 : 0,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOutCubic,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.30),
-                              Colors.black.withValues(alpha: 0.66),
-                              Colors.black.withValues(alpha: 0.72),
-                            ],
-                            stops: const [0.18, 0.40, 0.72, 1.0],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              // Dots indicator (kalau >1 foto) — tengah atas, Instagram-style
-              // pill background semi-transparent. Active dot widen ke 16px.
-              if (photos.length > 1 &&
-                  !_hideOverlayForLongPress &&
-                  !_hideOverlayForPinchZoom)
-                Positioned(
-                  top: MediaQuery.paddingOf(context).top + 12,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
+            ),
+            // ── Scrim panel caption (mode baca ala IG) — paritas dengan
+            // FeedVideoPostView: gradien gelap naik saat caption expand,
+            // tap area mana pun menutup panel; tembus saat tertutup. ──
+            Positioned.fill(
+              child: IgnorePointer(
+                ignoring: !_captionExpanded,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _setCaptionExpanded(false),
+                  // Klaim drag vertikal supaya PageView feed tidak pindah
+                  // post saat user menarik di area scrim (mode baca modal).
+                  onVerticalDragStart: (_) {},
+                  onVerticalDragUpdate: (_) {},
+                  child: AnimatedOpacity(
+                    opacity: _captionExpanded ? 1 : 0,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutCubic,
+                    child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.4),
-                        borderRadius: BorderRadius.circular(99),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.30),
+                            Colors.black.withValues(alpha: 0.66),
+                            Colors.black.withValues(alpha: 0.72),
+                          ],
+                          stops: const [0.18, 0.40, 0.72, 1.0],
+                        ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: List.generate(photos.length, (i) {
-                          final active = i == _photoIndex;
-                          return AnimatedContainer(
-                            duration: const Duration(milliseconds: 220),
-                            margin: const EdgeInsets.symmetric(horizontal: 2),
-                            width: active ? 16 : 4,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: active
-                                  ? Colors.white
-                                  : Colors.white.withValues(alpha: 0.4),
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          );
-                        }),
-                      ),
-                    ),
-                  ),
-                ),
-              // Right action rail — sama pattern dengan FeedVideoPostView:
-              // Like / Comment / Share / More (Report/Block).
-              Positioned(
-                right: feedPostActionRailRightInset,
-                bottom: actionRailInset,
-                child: AnimatedOpacity(
-                  opacity:
-                      (_hideOverlayForLongPress || _hideOverlayForPinchZoom)
-                          ? 0
-                          : 1,
-                  duration: const Duration(milliseconds: 200),
-                  child: IgnorePointer(
-                    ignoring:
-                        _hideOverlayForLongPress || _hideOverlayForPinchZoom,
-                    // Cart di rail DIHAPUS — duplikat dengan cart kanan-atas
-                    // (satu-satunya pintu keranjang di feed).
-                    child: FeedActionRail(
-                      likeKey: _likeButtonKey,
-                      likeCount: _likeCount,
-                      liked: _liked,
-                      commentCount: _commentCount,
-                      shareCount: _shareCount,
-                      onLike: _onLikePressed,
-                      onComment: _onComment,
-                      onShare: _onShare,
-                      onMore: () => _showMoreActionsSheet(),
                     ),
                   ),
                 ),
               ),
-              // Bottom info: product tag + creator + caption.
+            ),
+            // Dots indicator (kalau >1 foto) — tengah atas, Instagram-style
+            // pill background semi-transparent. Active dot widen ke 16px.
+            if (photos.length > 1 &&
+                !_hideOverlayForLongPress &&
+                !_hideOverlayForPinchZoom)
               Positioned(
-                left: 16,
-                right: 78,
-                bottom: feedInfoInset,
-                child: AnimatedOpacity(
-                  opacity:
-                      (_hideOverlayForLongPress || _hideOverlayForPinchZoom)
-                          ? 0
-                          : 1,
-                  duration: const Duration(milliseconds: 150),
-                  child: IgnorePointer(
-                    ignoring:
-                        _hideOverlayForLongPress || _hideOverlayForPinchZoom,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Product chip — only when post has tagged products.
-                        // Reuse widget yang sama dengan FeedVideoPostView untuk
-                        // consistency visual antar video post & photo carousel.
-                        // Saat caption expand: chip "tenggelam" (fade + turun +
-                        // tinggi mengempis) — paritas video post.
-                        if (products.isNotEmpty)
-                          ClipRect(
-                            child: AnimatedAlign(
-                              alignment: Alignment.bottomLeft,
-                              heightFactor: _captionExpanded ? 0 : 1,
+                top: MediaQuery.paddingOf(context).top + 12,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: List.generate(photos.length, (i) {
+                        final active = i == _photoIndex;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          margin: const EdgeInsets.symmetric(horizontal: 2),
+                          width: active ? 16 : 4,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: active
+                                ? Colors.white
+                                : Colors.white.withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                ),
+              ),
+            // Right action rail — sama pattern dengan FeedVideoPostView:
+            // Like / Comment / Share / More (Report/Block).
+            Positioned(
+              right: feedPostActionRailRightInset,
+              bottom: actionRailInset,
+              child: AnimatedOpacity(
+                opacity: (_hideOverlayForLongPress || _hideOverlayForPinchZoom)
+                    ? 0
+                    : 1,
+                duration: const Duration(milliseconds: 200),
+                child: IgnorePointer(
+                  ignoring:
+                      _hideOverlayForLongPress || _hideOverlayForPinchZoom,
+                  // Cart di rail DIHAPUS — duplikat dengan cart kanan-atas
+                  // (satu-satunya pintu keranjang di feed).
+                  child: FeedActionRail(
+                    likeKey: _likeButtonKey,
+                    likeCount: _likeCount,
+                    liked: _liked,
+                    commentCount: _commentCount,
+                    shareCount: _shareCount,
+                    onLike: _onLikePressed,
+                    onComment: _onComment,
+                    onShare: _onShare,
+                    onMore: () => _showMoreActionsSheet(),
+                  ),
+                ),
+              ),
+            ),
+            // Bottom info: product tag + creator + caption.
+            Positioned(
+              left: 16,
+              right: 78,
+              bottom: feedInfoInset,
+              child: AnimatedOpacity(
+                opacity: (_hideOverlayForLongPress || _hideOverlayForPinchZoom)
+                    ? 0
+                    : 1,
+                duration: const Duration(milliseconds: 150),
+                child: IgnorePointer(
+                  ignoring:
+                      _hideOverlayForLongPress || _hideOverlayForPinchZoom,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Product chip — only when post has tagged products.
+                      // Reuse widget yang sama dengan FeedVideoPostView untuk
+                      // consistency visual antar video post & photo carousel.
+                      // Saat caption expand: chip "tenggelam" (fade + turun +
+                      // tinggi mengempis) — paritas video post.
+                      if (products.isNotEmpty)
+                        ClipRect(
+                          child: AnimatedAlign(
+                            alignment: Alignment.bottomLeft,
+                            heightFactor: _captionExpanded ? 0 : 1,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOutCubic,
+                            child: AnimatedSlide(
+                              offset: _captionExpanded
+                                  ? const Offset(0, 0.12)
+                                  : Offset.zero,
                               duration: const Duration(milliseconds: 300),
                               curve: Curves.easeOutCubic,
-                              child: AnimatedSlide(
-                                offset: _captionExpanded
-                                    ? const Offset(0, 0.12)
-                                    : Offset.zero,
-                                duration: const Duration(milliseconds: 300),
-                                curve: Curves.easeOutCubic,
-                                child: AnimatedOpacity(
-                                  opacity: _captionExpanded ? 0 : 1,
-                                  duration: const Duration(milliseconds: 220),
-                                  curve: Curves.easeOut,
-                                  child: IgnorePointer(
-                                    ignoring: _captionExpanded,
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(bottom: 9),
-                                      child: feedPostProductAnchorCardFor(
-                                        featuredProduct!,
-                                        onTap: () => _onProductsTap(products),
-                                        onAddToCart: () =>
-                                            _quickAddProduct(featuredProduct),
-                                      ),
+                              child: AnimatedOpacity(
+                                opacity: _captionExpanded ? 0 : 1,
+                                duration: const Duration(milliseconds: 220),
+                                curve: Curves.easeOut,
+                                child: IgnorePointer(
+                                  ignoring: _captionExpanded,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(bottom: 9),
+                                    child: feedPostProductAnchorCardFor(
+                                      featuredProduct!,
+                                      onTap: () => _onProductsTap(products),
+                                      onAddToCart: () =>
+                                          _quickAddProduct(featuredProduct),
                                     ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                        FeedPostCreatorIdentity(
-                          author: post.author,
-                          displayName: post.author.displayHandle,
                         ),
-                        const SizedBox(height: 7),
-                        FeedExpandableCaption(
-                          text: post.caption ?? '',
-                          createdAt: post.createdAt,
-                          expanded: _captionExpanded,
-                          onExpandedChanged: _setCaptionExpanded,
-                          onMentionTap: (handle) => Navigator.of(context)
-                              .pushNamed('/u', arguments: handle),
-                        ),
-                        FeedPostSocialProof(post: post),
-                      ],
-                    ),
+                      FeedPostCreatorIdentity(
+                        author: post.author,
+                        displayName: post.author.displayHandle,
+                      ),
+                      const SizedBox(height: 7),
+                      FeedExpandableCaption(
+                        text: post.caption ?? '',
+                        createdAt: post.createdAt,
+                        expanded: _captionExpanded,
+                        onExpandedChanged: _setCaptionExpanded,
+                        onMentionTap: (handle) => Navigator.of(context)
+                            .pushNamed('/u', arguments: handle),
+                      ),
+                      FeedPostSocialProof(post: post),
+                    ],
                   ),
                 ),
               ),
-            ],
+            ),
+          ],
+        ),
+        child: ColoredBox(
+          color: Colors.black,
+          // Media-only child. Feed chrome lives in [overlay] so the drawer
+          // can compact the photo without squeezing captions/actions into it.
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onDoubleTapDown: _rememberHeartBurstPosition,
+            onDoubleTap: _onDoubleTapLike,
+            onLongPressStart: _onLongPressStart,
+            onLongPressEnd: _onLongPressEnd,
+            child: PageView.builder(
+              controller: _photoPageController,
+              itemCount: photos.length,
+              onPageChanged: (idx) => setState(() => _photoIndex = idx),
+              itemBuilder: (context, index) {
+                final photo = photos[index];
+                // Pinch-zoom sementara: begitu gesture selesai, foto
+                // snap back ke ukuran asli supaya feed tidak nyangkut
+                // dalam state zoom.
+                return SizedBox.expand(
+                  child: FeedPostSnapBackZoomMedia(
+                    clipBehavior: Clip.none,
+                    minScale: 1,
+                    maxScale: 4,
+                    onZoomingChanged: _onMediaZoomChanged,
+                    child: CachedNetworkImage(
+                      imageUrl: photo.url,
+                      fit: BoxFit.contain,
+                      placeholder: (_, __) => const SizedBox.shrink(),
+                      errorWidget: (_, __, ___) => const Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.white54,
+                          size: 48,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
         ),
       ),

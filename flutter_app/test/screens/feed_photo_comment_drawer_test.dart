@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_action_rail.dart';
@@ -18,11 +19,18 @@ FeedPost _photoPost() => FeedPost.fromJson({
         {
           'id': 'photo-media-1',
           'mediaType': 'image',
-          'mediaUrl': 'https://example.com/photo.jpg',
+          'mediaUrl': 'https://example.com/photo-1.jpg',
           'sortOrder': 0,
+        },
+        {
+          'id': 'photo-media-2',
+          'mediaType': 'image',
+          'mediaUrl': 'https://example.com/photo-2.jpg',
+          'sortOrder': 1,
         },
       ],
       'author': {'id': 'author-1', 'name': 'Tester'},
+      'caption': 'Caption uji drawer',
       'createdAt': '2026-07-15T00:00:00.000Z',
     });
 
@@ -30,8 +38,7 @@ void main() {
   setUp(feedCommentSessionStore.clear);
   tearDown(feedCommentSessionStore.clear);
 
-  testWidgets('photo action opens and reopens the shared comment drawer',
-      (tester) async {
+  testWidgets('photo action opens the shared comment drawer', (tester) async {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
     tester.view.physicalSize = const Size(400, 900);
     tester.view.devicePixelRatio = 1;
@@ -65,24 +72,6 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(FeedCommentSheet), findsOneWidget);
     expect(find.byType(DraggableScrollableSheet), findsOneWidget);
-
-    await tester.binding.handlePopRoute();
-    for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 50));
-      if (find.byType(FeedCommentSheet).evaluate().isEmpty) break;
-    }
-
-    expect(find.byType(FeedCommentSheet), findsNothing);
-    await tester.tap(find.bySemanticsLabel('Komentar'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 350));
-
-    expect(tester.takeException(), isNull);
-    expect(find.byType(FeedCommentSheet), findsOneWidget);
-    expect(find.byType(DraggableScrollableSheet), findsOneWidget);
-
-    await tester.binding.handlePopRoute();
-    await tester.pump(const Duration(milliseconds: 350));
   });
 
   testWidgets(
@@ -132,5 +121,306 @@ void main() {
         reason: 'the fullscreen scrim must not cover visible photo media');
     expect(closed, isFalse);
     expect(find.byType(FeedCommentSheet), findsOneWidget);
+  });
+
+  testWidgets('photo comment handle drags drawer and media upward together',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final mediaKey = GlobalKey();
+    final open = ValueNotifier<bool>(false);
+    var extent = 0.0;
+    addTearDown(open.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder<bool>(
+            valueListenable: open,
+            builder: (context, isOpen, _) => FeedReelsCommentSurface(
+              post: _photoPost(),
+              open: isOpen,
+              onClosed: () => open.value = false,
+              onExtentChanged: (value) => extent = value,
+              child: ColoredBox(key: mediaKey, color: Colors.orange),
+            ),
+          ),
+        ),
+      ),
+    );
+    open.value = true;
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+
+    final handle = find.byKey(const ValueKey('feed-comment-drag-handle'));
+    final drawer = find.byType(FeedCommentSheet);
+    expect(extent, closeTo(feedCommentInitialExtent, 0.02));
+    final extentBefore = extent;
+    final mediaBottomBefore = tester.getRect(find.byKey(mediaKey)).bottom;
+
+    final gesture = await tester.startGesture(tester.getCenter(handle));
+    await gesture.moveBy(const Offset(0, -90));
+    await tester.pump();
+
+    expect(extent, greaterThan(extentBefore));
+    final extentAfterUp = extent;
+    final mediaBottomAfterUp = tester.getRect(find.byKey(mediaKey)).bottom;
+    expect(mediaBottomAfterUp, lessThan(mediaBottomBefore));
+    expect(
+      mediaBottomAfterUp,
+      closeTo(tester.getTopLeft(drawer).dy, 1),
+    );
+
+    await gesture.moveBy(const Offset(0, 45));
+    await tester.pump();
+
+    expect(extent, lessThan(extentAfterUp));
+    expect(
+      tester.getRect(find.byKey(mediaKey)).bottom,
+      greaterThan(mediaBottomAfterUp),
+    );
+    expect(
+      tester.getRect(find.byKey(mediaKey)).bottom,
+      closeTo(tester.getTopLeft(drawer).dy, 1),
+    );
+
+    await gesture.up();
+    await tester.pump();
+  });
+
+  testWidgets('photo comment surface closes and reopens from a clean extent',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final open = ValueNotifier<bool>(false);
+    var extent = 0.0;
+    addTearDown(open.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder<bool>(
+            valueListenable: open,
+            builder: (context, isOpen, _) => FeedReelsCommentSurface(
+              post: _photoPost(),
+              open: isOpen,
+              onClosed: () => open.value = false,
+              onExtentChanged: (value) => extent = value,
+              child: const ColoredBox(color: Colors.orange),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    open.value = true;
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+    expect(extent, closeTo(feedCommentInitialExtent, 0.02));
+
+    open.value = false;
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.byType(FeedCommentSheet), findsNothing);
+    expect(extent, 0);
+
+    open.value = true;
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+    expect(extent, closeTo(feedCommentInitialExtent, 0.02));
+  });
+
+  testWidgets('short viewport still exposes the comment composer',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 150);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final open = ValueNotifier<bool>(false);
+    addTearDown(open.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder<bool>(
+            valueListenable: open,
+            builder: (context, isOpen, _) => FeedReelsCommentSurface(
+              post: _photoPost(),
+              open: isOpen,
+              onClosed: () => open.value = false,
+              child: const ColoredBox(color: Colors.orange),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    open.value = true;
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+
+    expect(
+        find.byKey(const ValueKey('feed-comment-drag-handle')), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+  });
+
+  testWidgets('photo carousel uses contain fit without cropping',
+      (tester) async {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({
+      'feed_offline_cache_v2': jsonEncode([_photoPost().toJson()]),
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        routes: {
+          '/member/login': (_) => const Scaffold(body: Text('Login')),
+        },
+        home: const FeedScreen(),
+      ),
+    );
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.byType(FeedActionRail).evaluate().isNotEmpty) break;
+    }
+
+    final photoPageView = find.descendant(
+      of: find.byType(FeedReelsCommentSurface),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is PageView && widget.scrollDirection == Axis.horizontal,
+      ),
+    );
+    expect(photoPageView, findsOneWidget);
+    final photoController = tester.widget<PageView>(photoPageView).controller!;
+
+    CachedNetworkImage photoByUrl(String url) =>
+        tester.widget<CachedNetworkImage>(
+          find.byWidgetPredicate(
+            (widget) => widget is CachedNetworkImage && widget.imageUrl == url,
+          ),
+        );
+
+    final firstFit = photoByUrl('https://example.com/photo-1.jpg').fit;
+    photoController.jumpToPage(1);
+    await tester.pump();
+    final secondFit = photoByUrl('https://example.com/photo-2.jpg').fit;
+    expect(photoController.page, closeTo(1, 0.01));
+    expect([firstFit, secondFit], everyElement(BoxFit.contain));
+  });
+
+  testWidgets('comment mode removes post overlay without resetting carousel',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final open = ValueNotifier<bool>(false);
+    final pageController = PageController(initialPage: 1);
+    final overlayKey = GlobalKey();
+    addTearDown(open.dispose);
+    addTearDown(pageController.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder<bool>(
+            valueListenable: open,
+            builder: (context, isOpen, _) => FeedReelsCommentSurface(
+              key: const ValueKey('photo-comment-surface'),
+              post: _photoPost(),
+              open: isOpen,
+              onClosed: () => open.value = false,
+              overlay: ColoredBox(key: overlayKey, color: Colors.blue),
+              child: PageView(
+                controller: pageController,
+                children: const [
+                  ColoredBox(color: Colors.orange),
+                  ColoredBox(color: Colors.green),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(overlayKey), findsOneWidget);
+    expect(pageController.page, closeTo(1, 0.01));
+
+    open.value = true;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.byKey(overlayKey), findsNothing);
+    expect(pageController.page, closeTo(1, 0.01));
+
+    open.value = false;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 220));
+
+    expect(find.byKey(overlayKey), findsOneWidget);
+    expect(pageController.page, closeTo(1, 0.01));
+  });
+
+  testWidgets('photo comments show caption once and hide Feed top chrome',
+      (tester) async {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({
+      'feed_offline_cache_v2': jsonEncode([_photoPost().toJson()]),
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        routes: {
+          '/member/login': (_) => const Scaffold(body: Text('Login')),
+        },
+        home: const FeedScreen(),
+      ),
+    );
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.byType(FeedActionRail).evaluate().isNotEmpty) break;
+    }
+
+    tester
+        .widget<FeedActionRail>(find.byType(FeedActionRail))
+        .onComment!
+        .call();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Caption uji drawer'), findsOneWidget);
+    final topChrome = tester.widget<AnimatedOpacity>(
+      find.byKey(const ValueKey('feed-top-chrome')),
+    );
+    expect(topChrome.opacity, 0);
   });
 }
