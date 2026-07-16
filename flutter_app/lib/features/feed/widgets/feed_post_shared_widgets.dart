@@ -1458,6 +1458,14 @@ class FeedPostProductPricing {
   });
 }
 
+/// Diskon tertinggi (0..99) di antara produk tag yang promo. 0 = tak ada promo.
+/// Pakai getter FeedProductLink.discountPercent (round+clamp) supaya konsisten
+/// dengan badge kartu; produk non-promo return 0 sehingga otomatis terabaikan.
+int feedMaxDiscountPercent(List<FeedProductLink> products) => products.fold<int>(
+      0,
+      (max, p) => p.discountPercent > max ? p.discountPercent : max,
+    );
+
 FeedPostProductPricing feedPostProductPricing(FeedProductLink product) {
   final original = product.price;
   var display = product.price;
