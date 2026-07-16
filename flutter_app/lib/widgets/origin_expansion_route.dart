@@ -434,25 +434,48 @@ class _OriginExpansionTransitionState extends State<OriginExpansionTransition> {
                     ? const Interval(0.55, 1, curve: Curves.easeOut)
                     : const Interval(0.55, 1, curve: Curves.easeIn))
                 .transform(animationValue);
+        final sourceOrigin = widget.origin;
+        final snapshot = widget.snapshot;
         final destination = Opacity(
           key: const ValueKey('origin-expansion-fade'),
-          opacity: destinationOpacity,
+          // With an origin snapshot, the destination is revealed by the
+          // expanding clip itself. Keeping it opaque prevents a second
+          // fade from making the picker appear to pop out of nowhere.
+          opacity: snapshot == null || reverse ? destinationOpacity : 1,
           child: ColoredBox(
             color: widget.snapshotFallbackColor,
             child: widget.child,
           ),
         );
-        final sourceOrigin = widget.origin;
-        final snapshot = widget.snapshot;
         if (sourceOrigin == null || snapshot == null) return destination;
 
         return LayoutBuilder(
           builder: (context, constraints) {
             final destinationSize = constraints.biggest;
+            final destinationRect = Rect.fromLTWH(
+              _lerp(sourceOrigin.left, 0, progress),
+              _lerp(sourceOrigin.top, 0, progress),
+              _lerp(sourceOrigin.width, destinationSize.width, progress),
+              _lerp(sourceOrigin.height, destinationSize.height, progress),
+            );
             return Stack(
               fit: StackFit.expand,
               children: [
-                destination,
+                // Reveal the destination page from the pressed control. The
+                // source icon stays in place; it is not the morphing object.
+                Positioned.fromRect(
+                  rect: destinationRect,
+                  child: ClipRect(
+                    child: OverflowBox(
+                      alignment: Alignment.topLeft,
+                      minWidth: destinationSize.width,
+                      maxWidth: destinationSize.width,
+                      minHeight: destinationSize.height,
+                      maxHeight: destinationSize.height,
+                      child: destination,
+                    ),
+                  ),
+                ),
                 Positioned(
                   left: _lerp(sourceOrigin.left, 0, progress),
                   top: _lerp(sourceOrigin.top, 0, progress),
@@ -468,7 +491,7 @@ class _OriginExpansionTransitionState extends State<OriginExpansionTransition> {
                   ),
                   child: IgnorePointer(
                     child: Opacity(
-                      opacity: 1 - destinationOpacity,
+                      opacity: (1 - progress).clamp(0.0, 1.0),
                       child: ClipRRect(
                         borderRadius:
                             BorderRadius.circular(12 * (1 - progress)),
