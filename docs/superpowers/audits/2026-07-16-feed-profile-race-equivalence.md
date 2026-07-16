@@ -1,6 +1,6 @@
 # Feed–Profile Race Recovery: Behavior-Equivalence Audit
 
-Baseline dibandingkan: old branch commit `ee1c48cae55ad2c111288c2ea9d153d2be07ac7d` terhadap current `main` source/test tree.
+Baseline dibandingkan: old branch commit `ee1c48cae55ad2c111288c2ea9d153d2be07ac7d` terhadap source/test tree pada fetched `origin/main` baseline `82a78e7fc59ee066bbbb311e4529324f6436f110` (fetched 2026-07-16 09:50:01 +07:00). “Setara” berarti perilaku yang diamati dan kontrak regresinya dipertahankan melalui arsitektur state-machine/coordinator/audio-claim yang lebih baru di `main`; ini bukan klaim bahwa implementasi lama dan baru identik secara tekstual.
 
 | Scenario | Old branch evidence | Main implementation | Main test evidence | Status | Gap action |
 |---|---|---|---|---|---|
@@ -34,3 +34,7 @@ No actionable stale direct-play path remains in the Feed post state. The main im
 ## Spec coverage review
 
 All required rows from `docs/superpowers/specs/2026-07-16-feed-profile-race-equivalence-audit-design.md` are present. Evidence is tied to current source/test line references; no row is inferred from commit history alone.
+
+## Baseline freshness
+
+The audit baseline was refreshed with `git fetch origin --prune` before this report was finalized. The recorded `origin/main` SHA is `82a78e7fc59ee066bbbb311e4529324f6436f110`; rerun the fetch and refresh line references if `origin/main` advances before merge review.
