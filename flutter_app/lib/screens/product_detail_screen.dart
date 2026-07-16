@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 
 import '../config/api_config.dart';
 import '../config/natalo_store_config.dart';
+import '../constants/official_brand.dart';
 import '../models/cart_item.dart';
 import '../models/feed_post.dart';
 import '../models/product.dart';
