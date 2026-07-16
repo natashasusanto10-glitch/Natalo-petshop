@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/models/feed_comment.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
+import 'package:natalo_petshop_flutter/state/feed_comment_interaction_store.dart';
 import 'package:natalo_petshop_flutter/state/feed_comment_session_store.dart';
 import 'package:natalo_petshop_flutter/widgets/feed_comment_sheet.dart';
 
@@ -18,6 +20,21 @@ FeedPost _post() => FeedPost.fromJson({
         'username': 'tester',
       },
       'createdAt': '2026-07-15T00:00:00.000Z',
+    });
+
+FeedComment _comment({required int likeCount, required bool viewerLiked}) =>
+    FeedComment.fromApiJson({
+      'id': 'comment-1',
+      'postId': _post().id,
+      'content': 'Komentar pengujian',
+      'likeCount': likeCount,
+      'viewerLiked': viewerLiked,
+      'createdAt': '2026-07-15T00:00:00.000Z',
+      'author': {
+        'id': 'commenter-1',
+        'name': 'Pemberi komentar',
+        'username': 'commenter',
+      },
     });
 
 class _CountingNavigatorObserver extends NavigatorObserver {
@@ -38,8 +55,40 @@ class _CountingNavigatorObserver extends NavigatorObserver {
 }
 
 void main() {
-  setUp(feedCommentSessionStore.clear);
-  tearDown(feedCommentSessionStore.clear);
+  setUp(() {
+    feedCommentSessionStore.clear();
+    feedCommentInteractionStore.clearForViewer();
+  });
+  tearDown(() {
+    feedCommentSessionStore.clear();
+    feedCommentInteractionStore.clearForViewer();
+  });
+
+  testWidgets('sheet renders the global comment like state over stale cache',
+      (tester) async {
+    final sessions = FeedCommentSessionStore();
+    sessions
+        .sessionFor(viewerId: 'guest', postId: _post().id)
+        .replaceComments([_comment(likeCount: 3, viewerLiked: false)], null);
+    feedCommentInteractionStore.seed(
+      postId: _post().id,
+      commentId: 'comment-1',
+      liked: true,
+      count: 4,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FeedCommentSheet(post: _post(), sessionStore: sessions),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('4 suka'), findsOneWidget);
+    expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
+  });
 
   testWidgets('photo post uses one shared draggable comment drawer',
       (tester) async {
