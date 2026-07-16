@@ -177,6 +177,29 @@ class FeedProductLink {
       soldCount: (json['soldCount'] as num?)?.toInt() ?? 0,
     );
   }
+
+  /// Serialisasi lengkap (semua field) supaya round-trip via [fromJson] tidak
+  /// kehilangan harga diskon/promo, rating, terjual, atau flag varian — dipakai
+  /// oleh `FeedPost.toJson` untuk persistence/offline cache. Tanpa ini, post
+  /// yang dihidrasi dari cache menampilkan pill/kartu tanpa badge diskon/rating
+  /// dan memperlakukan produk varian sebagai non-varian.
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'slug': slug,
+        'name': name,
+        'imageUrl': imageUrl,
+        'price': price,
+        'discountPrice': discountPrice,
+        'promoPrice': promoPrice,
+        'discountSource': discountSource,
+        'stock': stock,
+        'weightGram': weightGram,
+        'hasVariants': hasVariants,
+        'isActive': isActive,
+        'avgRating': avgRating,
+        'reviewCount': reviewCount,
+        'soldCount': soldCount,
+      };
 }
 
 /// Moderation status — owner-only concern (badge di Postingan Saya/Detail
@@ -740,17 +763,14 @@ class FeedPost {
         'isAdmin': author.isAdmin,
         'isOfficial': author.isOfficial,
       },
-      'products': products
-          .map((p) => {
-                'id': p.id,
-                'name': p.name,
-                'slug': p.slug,
-                'price': p.price,
-                'imageUrl': p.imageUrl,
-                'stock': p.stock,
-                'isActive': p.isActive
-              })
-          .toList(),
+      // Lossless: pakai FeedProductLink.toJson (semua field) + serialisasi
+      // taggedProducts/productsInVideo. Sebelumnya `products` di-inline dan
+      // membuang discountPrice/promoPrice/rating/soldCount/hasVariants, dan
+      // taggedProducts tidak diserialisasi sama sekali → fromJson jatuh ke
+      // `products` yang lebih miskin (badge diskon/rating hilang, varian salah).
+      'products': products.map((p) => p.toJson()).toList(),
+      'productsInVideo': productsInVideo.map((p) => p.toJson()).toList(),
+      'taggedProducts': taggedProducts.map((p) => p.toJson()).toList(),
       'likeCount': likeCount,
       'commentCount': commentCount,
       'viewCount': viewCount,
