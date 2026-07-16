@@ -11,6 +11,7 @@ import '../services/api_client.dart';
 import '../services/block_service.dart';
 import '../services/feed_service.dart';
 import '../services/report_service.dart';
+import '../state/feed_comment_interaction_store.dart';
 import '../state/feed_comment_session_store.dart';
 import '../state/feed_comment_sync_coordinator.dart';
 import '../state/feed_store.dart';
@@ -666,10 +667,6 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   bool _refreshing = false;
   bool _restoreScrollPending = false;
   int _scrollRestoreAttempts = 0;
-  final Map<String, bool> _commentLikeDesired = <String, bool>{};
-  final Map<String, _CommentLikeSnapshot> _commentLikeConfirmed =
-      <String, _CommentLikeSnapshot>{};
-  final Set<String> _commentLikeInFlight = <String>{};
   late final FeedCommentViewerIdentity _boundViewerIdentity;
   late final Listenable _viewerIdentitySource;
   bool _sessionListenerAttached = false;
@@ -771,6 +768,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     _inputCtrl = TextEditingController(text: _session.draftText)
       ..addListener(_persistDraft);
     _comments = List<FeedComment>.from(_session.comments);
+    _seedCommentInteractions(_comments);
+    feedCommentInteractionStore.addListener(_onCommentLikeStateChanged);
     _nextCursor = _session.nextCursor;
     _replyTarget = _session.replyTarget;
     _visibleReplyCounts.addAll(_session.visibleReplyCounts);
@@ -789,6 +788,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
 
   @override
   void dispose() {
+    feedCommentInteractionStore.removeListener(_onCommentLikeStateChanged);
     _viewerIdentitySource.removeListener(_onViewerIdentityChanged);
     if (!_discardSessionState) _persistSession();
     _syncLease?.dispose();
@@ -807,6 +807,29 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
 
   void _onBlocklistChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _onCommentLikeStateChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _seedCommentInteractions(Iterable<FeedComment> comments) {
+    for (final comment in comments) {
+      feedCommentInteractionStore.seed(
+        postId: widget.post.id,
+        commentId: comment.id,
+        liked: comment.viewerLiked,
+        count: comment.likeCount,
+      );
+      _seedCommentInteractions(comment.replies);
+    }
+  }
+
+  FeedComment _withGlobalCommentLikeState(FeedComment comment) {
+    final state =
+        feedCommentInteractionStore.likeState(widget.post.id, comment.id);
+    if (state == null) return comment;
+    return comment.copyWith(viewerLiked: state.liked, likeCount: state.count);
   }
 
   void _persistDraft() {
@@ -854,9 +877,11 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     final nextComments = mergeFeedCommentRefresh(
       current: _comments,
       incoming: _session.comments,
-      preserveLocalLikeIds: _commentLikeInFlight,
+      preserveLocalLikeIds:
+          feedCommentInteractionStore.pendingCommentIdsForPost(widget.post.id),
       reset: true,
     );
+    _seedCommentInteractions(nextComments);
     setState(() {
       _comments = nextComments;
       _nextCursor = _session.nextCursor;
@@ -951,15 +976,18 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
               current: _comments,
               incoming: page.items,
               removedIds: page.removedIds,
-              preserveLocalLikeIds: _commentLikeInFlight,
+              preserveLocalLikeIds: feedCommentInteractionStore
+                  .pendingCommentIdsForPost(widget.post.id),
               reset: page.syncResetRequired,
             )
           : mergeFeedCommentRefresh(
               current: _comments,
               incoming: const <FeedComment>[],
               removedIds: page.removedIds,
-              preserveLocalLikeIds: _commentLikeInFlight,
+              preserveLocalLikeIds: feedCommentInteractionStore
+                  .pendingCommentIdsForPost(widget.post.id),
             );
+      _seedCommentInteractions(nextComments);
       setState(() {
         // Do not overwrite a comment/like/delete completed while a cached
         // session was being revalidated in the background.
@@ -1035,14 +1063,18 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         current: _comments,
         incoming: const <FeedComment>[],
         removedIds: page.removedIds,
-        preserveLocalLikeIds: _commentLikeInFlight,
+        preserveLocalLikeIds: feedCommentInteractionStore
+            .pendingCommentIdsForPost(widget.post.id),
       );
       final fetchedPage = mergeFeedCommentRefresh(
         current: const <FeedComment>[],
         incoming: page.items,
         removedIds: page.removedIds,
-        preserveLocalLikeIds: _commentLikeInFlight,
+        preserveLocalLikeIds: feedCommentInteractionStore
+            .pendingCommentIdsForPost(widget.post.id),
       );
+      _seedCommentInteractions(currentWithoutTombstones);
+      _seedCommentInteractions(fetchedPage);
       setState(() {
         final existingIds =
             currentWithoutTombstones.map((item) => item.id).toSet();
@@ -1199,62 +1231,16 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       return;
     }
     AppHaptics.tap();
-    final current = _findCommentById(comment.id) ?? comment;
-    final desiredLiked = !current.viewerLiked;
-    _commentLikeConfirmed.putIfAbsent(
-      comment.id,
-      () => _CommentLikeSnapshot(
-        liked: current.viewerLiked,
-        count: current.likeCount,
-      ),
-    );
-    _commentLikeDesired[comment.id] = desiredLiked;
-    _applyCommentLikeState(
-      comment.id,
-      liked: desiredLiked,
-      count: desiredLiked
-          ? current.likeCount + 1
-          : (current.likeCount - 1).clamp(0, 1 << 30),
-    );
-    if (_commentLikeInFlight.add(comment.id)) {
-      unawaited(_drainCommentLikeIntent(comment.id));
-    }
-  }
-
-  Future<void> _drainCommentLikeIntent(String commentId) async {
-    final initialConfirmed = _commentLikeConfirmed[commentId];
-    if (initialConfirmed == null) {
-      _commentLikeInFlight.remove(commentId);
-      return;
-    }
-    var confirmed = initialConfirmed;
+    final cached = _findCommentById(comment.id) ?? comment;
+    final current = _withGlobalCommentLikeState(cached);
     try {
-      while (true) {
-        final desired = _commentLikeDesired[commentId] ?? confirmed.liked;
-        if (desired != confirmed.liked) {
-          final count = await feedService.setCommentLiked(
-            commentId,
-            liked: desired,
-          );
-          confirmed = _CommentLikeSnapshot(liked: desired, count: count);
-          _commentLikeConfirmed[commentId] = confirmed;
-        }
-        if ((_commentLikeDesired[commentId] ?? confirmed.liked) ==
-            confirmed.liked) {
-          _applyCommentLikeState(
-            commentId,
-            liked: confirmed.liked,
-            count: confirmed.count,
-          );
-          return;
-        }
-      }
-    } on ApiException catch (error) {
-      _applyCommentLikeState(
-        commentId,
-        liked: confirmed.liked,
-        count: confirmed.count,
+      await feedCommentInteractionStore.toggle(
+        postId: widget.post.id,
+        commentId: current.id,
+        currentlyLiked: current.viewerLiked,
+        currentCount: current.likeCount,
       );
+    } on ApiException catch (error) {
       if (!mounted) return;
       if (error.statusCode == 401) {
         _openLogin();
@@ -1266,29 +1252,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         );
       }
     } catch (_) {
-      _applyCommentLikeState(
-        commentId,
-        liked: confirmed.liked,
-        count: confirmed.count,
-      );
-    } finally {
-      _commentLikeDesired.remove(commentId);
-      _commentLikeConfirmed.remove(commentId);
-      _commentLikeInFlight.remove(commentId);
+      // Non-API errors keep the drawer's existing silent rollback behavior.
     }
-  }
-
-  void _applyCommentLikeState(
-    String commentId, {
-    required bool liked,
-    required int count,
-  }) {
-    final current = _findCommentById(commentId);
-    if (current == null) return;
-    _updateComment(current.copyWith(
-      viewerLiked: liked,
-      likeCount: count,
-    ));
   }
 
   FeedComment? _findCommentById(String commentId) {
@@ -1299,25 +1264,6 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       }
     }
     return null;
-  }
-
-  void _updateComment(FeedComment updated) {
-    if (!mounted) return;
-    setState(() {
-      _comments = _comments.map((comment) {
-        if (comment.id == updated.id) return updated;
-        if (comment.replies.any((reply) => reply.id == updated.id)) {
-          return comment.copyWith(
-            replies: comment.replies
-                .map((reply) => reply.id == updated.id ? updated : reply)
-                .toList(),
-          );
-        }
-        return comment;
-      }).toList();
-    });
-    _commentMutationRevision++;
-    _persistSession(publishComments: true);
   }
 
   /// Delete komentar user sendiri. Optimistic remove dari local list,
@@ -1662,7 +1608,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
                   : null,
             );
           }
-          final comment = item.comment!;
+          final comment = _withGlobalCommentLikeState(item.comment!);
           // canDelete = current user adalah author komentar. Drives
           // tampilan "Hapus" di moderation sheet (vs Laporkan/Blokir
           // untuk komentar orang lain).
@@ -2577,11 +2523,4 @@ String _formatCount(int n) {
   if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}jt';
   if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}rb';
   return '$n';
-}
-
-class _CommentLikeSnapshot {
-  const _CommentLikeSnapshot({required this.liked, required this.count});
-
-  final bool liked;
-  final int count;
 }
