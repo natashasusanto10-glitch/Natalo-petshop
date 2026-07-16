@@ -7,6 +7,15 @@ import 'package:natalo_petshop_flutter/services/shipping_service.dart';
 import 'package:natalo_petshop_flutter/widgets/product_detail/product_shipping_section.dart';
 
 void main() {
+  test('formatShippingDuration menerjemahkan satuan waktu API ke Indonesia',
+      () {
+    expect(formatShippingDuration('1–3 Hours'), '1–3 jam');
+    expect(formatShippingDuration('2 days'), '2 hari');
+    expect(formatShippingDuration('30 minutes'), '30 menit');
+    expect(formatShippingDuration('Hari ini'), 'Hari ini');
+    expect(formatShippingDuration('-'), '-');
+  });
+
   test('pickPrimaryAddress memilih alamat utama', () {
     const first = MemberAddress(
       id: 'first',

@@ -281,9 +281,25 @@ class ProductShippingSectionState extends State<ProductShippingSection> {
     if (_address == null) return 'Atur alamat untuk cek ongkir';
     if (cheapest == null) return 'Tersedia ambil sendiri di toko';
     final duration = cheapest.duration.trim();
-    return 'Ongkir mulai ${formatRupiah(cheapest.price)}'
-        '${duration.isEmpty || duration == '-' ? '' : ' · Est. $duration'}';
+    return 'Ongkos kirim mulai dari ${formatRupiah(cheapest.price)}'
+        '${duration.isEmpty || duration == '-' ? '' : ' · Estimasi ${formatShippingDuration(duration)}'}';
   }
+}
+
+/// Normalizes API-provided delivery durations into the Indonesian UI copy.
+/// The API may return English units (for example, `1–3 Hours`) while some
+/// providers already return localized values such as `Hari ini`.
+String formatShippingDuration(String value) {
+  var normalized = value.trim();
+  if (normalized.isEmpty || normalized == '-') return normalized;
+
+  normalized = normalized
+      .replaceAll(RegExp(r'\bhours?\b', caseSensitive: false), 'jam')
+      .replaceAll(RegExp(r'\bdays?\b', caseSensitive: false), 'hari')
+      .replaceAll(RegExp(r'\bminutes?\b', caseSensitive: false), 'menit')
+      .replaceAll(RegExp(r'\bmins?\b', caseSensitive: false), 'menit');
+
+  return normalized;
 }
 
 MemberAddress? pickPrimaryAddress(List<MemberAddress> addresses) {
@@ -556,7 +572,7 @@ class _ShippingRateTile extends StatelessWidget {
                 Text(
                   rate.isSelfPickup
                       ? rate.duration
-                      : 'Estimasi ${rate.duration}',
+                      : 'Estimasi ${formatShippingDuration(rate.duration)}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
