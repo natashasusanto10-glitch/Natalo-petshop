@@ -27,3 +27,19 @@ Concerns:
 2. The audit does not claim a full Flutter test run; it maps existing tests and source evidence only.
 3. The old branch remains unsafe to merge wholesale because its direct-play architecture predates current `VideoAudioClaim`/coordinator ownership.
 
+## Review correction
+
+Finding: four rows previously labeled `setara langsung` were covered by the current state-machine/coordinator implementation, so the labels understated the architectural migration. Updated `Nested route`, `Mute restoration`, `Controller-null uncover`, and `Lifecycle/listener cleanup` to `setara melalui arsitektur baru`; source/test evidence and gap actions were preserved.
+
+Files changed:
+
+- `docs/superpowers/audits/2026-07-16-feed-profile-race-equivalence.md`
+- `.superpowers/sdd/task-2-report.md`
+
+Consistency check:
+
+```powershell
+rg -n "setara langsung|setara melalui arsitektur baru|Nested route|Mute restoration|Controller-null uncover|Lifecycle/listener cleanup" docs/superpowers/audits/2026-07-16-feed-profile-race-equivalence.md
+```
+
+Output: 10 scenario rows remain; all four state-machine/coordinator rows now use `setara melalui arsitektur baru`, with no remaining `setara langsung` labels in the matrix.
