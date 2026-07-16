@@ -5,6 +5,8 @@ import '../../../theme/natalo_colors.dart';
 import '../../../utils/action_throttle.dart';
 import '../../../utils/formatters.dart';
 import '../../../widgets/app_product_image.dart';
+import '../../../widgets/compact_commerce_product_card.dart' show commerceGridSurfaceTint;
+import '../../../widgets/sheet_drag_handle.dart';
 import 'feed_post_shared_widgets.dart';
 
 // Token kartu Katalog (Opsi 2). Literal lokal — di file asal (compact_commerce
@@ -120,6 +122,115 @@ class FeedProductGridCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Sheet Links ala TikTok — grid 2 kolom produk tag. Draggable (naik/ikut jari,
+/// snap), latar abu muda supaya kartu putih menonjol. Pemanggil (host feed)
+/// bertanggung jawab menjeda video via [onOpened]/[onClosed].
+Future<void> showFeedProductLinksSheet(
+  BuildContext context, {
+  required List<FeedProductLink> products,
+  required void Function(FeedProductLink) onOpenProduct,
+  required void Function(FeedProductLink) onAddToCart,
+  VoidCallback? onOpened,
+  VoidCallback? onClosed,
+}) {
+  onOpened?.call();
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.40),
+    enableDrag: false, // DraggableScrollableSheet yang pegang gesture
+    builder: (sheetContext) => _FeedProductLinksSheet(
+      products: products,
+      onOpenProduct: (link) {
+        Navigator.of(sheetContext).pop();
+        onOpenProduct(link);
+      },
+      onAddToCart: onAddToCart,
+    ),
+  ).whenComplete(() => onClosed?.call());
+}
+
+class _FeedProductLinksSheet extends StatelessWidget {
+  final List<FeedProductLink> products;
+  final void Function(FeedProductLink) onOpenProduct;
+  final void Function(FeedProductLink) onAddToCart;
+
+  const _FeedProductLinksSheet({
+    required this.products,
+    required this.onOpenProduct,
+    required this.onAddToCart,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.66,
+      minChildSize: 0.45,
+      maxChildSize: 0.92,
+      expand: false,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: commerceGridSurfaceTint(context),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                const SheetDragHandle(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Produk (${products.length})',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => Navigator.of(context).maybePop(),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: GridView.builder(
+                    controller: scrollController,
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 10,
+                      crossAxisSpacing: 10,
+                      childAspectRatio: 0.62,
+                    ),
+                    itemCount: products.length,
+                    itemBuilder: (context, i) {
+                      final product = products[i];
+                      return FeedProductGridCard(
+                        product: product,
+                        onTap: () => onOpenProduct(product),
+                        onAddToCart: () => onAddToCart(product),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
