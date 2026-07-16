@@ -13,6 +13,23 @@ enum SocialVideoLifecycleType {
   failed,
 }
 
+class SocialVideoObservationContext {
+  const SocialVideoObservationContext({
+    required this.postId,
+    required this.surface,
+    required this.ownerId,
+  });
+
+  final String postId;
+  final SocialVideoSurface surface;
+  final String ownerId;
+}
+
+/// Application-wide diagnostic registry. It is disabled by default; tests and
+/// integration points can inject an enabled observer explicitly.
+final SocialVideoSessionObserver socialVideoSessionObserver =
+    SocialVideoSessionObserver(enabled: false);
+
 class SocialVideoObservation {
   const SocialVideoObservation({
     required this.type,

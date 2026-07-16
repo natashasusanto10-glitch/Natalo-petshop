@@ -8,6 +8,7 @@ import '../../../services/video_quality_service.dart';
 import '../../../state/settings_store.dart';
 import 'post_video_coordinator.dart';
 import 'frame_output_heartbeat_service.dart';
+import 'social_video_session_observer.dart';
 import 'video_media_cache.dart';
 import 'video_playback_health_monitor.dart';
 
@@ -65,6 +66,8 @@ class VideoPlayerSession implements PlaybackSession {
     @visibleForTesting VideoSessionSeekOperation? debugSeek,
     @visibleForTesting VideoSessionVolumeOperation? debugSetVolume,
     @visibleForTesting VideoSessionOperation? debugDisposePlayer,
+    SocialVideoSessionObserver? observationObserver,
+    SocialVideoObservationContext? observationContext,
   })  : _currentUrl = url,
         _hasAudio = hasAudio,
         _userQualityPreference =
@@ -82,7 +85,11 @@ class VideoPlayerSession implements PlaybackSession {
         _debugSetVolume = debugSetVolume,
         _debugDisposePlayer = debugDisposePlayer,
         _analyticsPostId = analyticsPostId,
-        _analyticsSurface = analyticsSurface {
+        _analyticsSurface = analyticsSurface,
+        _observationObserver =
+            observationObserver ?? socialVideoSessionObserver,
+        _observationContext = observationContext ??
+            _legacyObservationContext(analyticsPostId, analyticsSurface) {
     _healthMonitor = VideoPlaybackHealthMonitor(
       readSnapshot: _healthSnapshot,
       onRecover: _recoverFromStall,
@@ -125,6 +132,10 @@ class VideoPlayerSession implements PlaybackSession {
   final VideoSessionOperation? _debugDisposePlayer;
   final String? _analyticsPostId;
   final String _analyticsSurface;
+  final SocialVideoSessionObserver _observationObserver;
+  final SocialVideoObservationContext? _observationContext;
+  final Object _debugObservationIdentity = Object();
+  Object? _lastObservationIdentity;
   late final VideoPlaybackHealthMonitor _healthMonitor;
   final Stopwatch _startupStopwatch = Stopwatch()..start();
   bool _playStartedRecorded = false;
@@ -199,7 +210,9 @@ class VideoPlayerSession implements PlaybackSession {
             await _cleanupResources();
             return;
           }
+          _observe(SocialVideoLifecycleType.created);
           _initialized = true;
+          _observe(SocialVideoLifecycleType.initialized);
           _registerHeartbeat();
           _visualOutputFailed = false;
           _error = null;
@@ -224,6 +237,7 @@ class VideoPlayerSession implements PlaybackSession {
               'duration_ms': _startupStopwatch.elapsedMilliseconds,
               'error_type': error.runtimeType.toString(),
             });
+            _observe(SocialVideoLifecycleType.failed);
             revision.value++;
             return;
           }
@@ -830,6 +844,49 @@ class VideoPlayerSession implements PlaybackSession {
   static String _anonymousMediaKey(String postId) =>
       postId.hashCode.toUnsigned(32).toRadixString(16);
 
+  static SocialVideoObservationContext? _legacyObservationContext(
+    String? postId,
+    String surface,
+  ) {
+    if (postId == null || postId.trim().isEmpty) return null;
+    return SocialVideoObservationContext(
+      postId: postId,
+      surface: surface == 'profile_grid'
+          ? SocialVideoSurface.profileGrid
+          : SocialVideoSurface.postDetail,
+      ownerId: 'coordinator-$postId',
+    );
+  }
+
+  void recordObservationAttachment(SocialVideoObservationContext context) {
+    _observe(SocialVideoLifecycleType.attached, context: context);
+  }
+
+  void _observe(
+    SocialVideoLifecycleType type, {
+    SocialVideoObservationContext? context,
+  }) {
+    final observationContext = context ?? _observationContext;
+    if (observationContext == null) return;
+    final identity = _controller ??
+        (_debugInitAttempt != null
+            ? _debugObservationIdentity
+            : _lastObservationIdentity);
+    if (identity == null) return;
+    _lastObservationIdentity = identity;
+    try {
+      _observationObserver.observeController(
+        type: type,
+        postId: observationContext.postId,
+        surface: observationContext.surface,
+        ownerId: observationContext.ownerId,
+        controllerIdentity: identity,
+      );
+    } catch (_) {
+      // Observation must remain unable to affect session ownership or playback.
+    }
+  }
+
   @override
   Future<void> dispose() {
     final existing = _disposeFuture;
@@ -854,5 +911,6 @@ class VideoPlayerSession implements PlaybackSession {
       await completion.future;
     }
     await _cleanupResources();
+    _observe(SocialVideoLifecycleType.disposed);
   }
 }
