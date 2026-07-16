@@ -41,26 +41,33 @@ class PublicProfileExpandedHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return profile.isOfficial
-        ? _OfficialExpandedHeader(
-            profile: profile,
-            followBusy: followBusy,
-            onFollowToggle: profile.isOwner ? null : onFollowToggle,
-            onFollowersTap: onFollowersTap,
-            onFollowingTap: onFollowingTap,
-            onEditProfile: profile.isOwner ? onEditProfile : null,
-            onShareProfile: onShareProfile,
-            onMessage: _showOfficialMessage ? onMessage : null,
-          )
-        : _RegularExpandedHeader(
-            profile: profile,
-            followBusy: followBusy,
-            onFollowToggle: profile.isOwner ? null : onFollowToggle,
-            onFollowersTap: onFollowersTap,
-            onFollowingTap: onFollowingTap,
-            onEditProfile: profile.isOwner ? onEditProfile : null,
-            onShareProfile: onShareProfile,
-          );
+    // The identity has a finite scroll-space contract. Cap only its visual
+    // typography so platform nonlinear and extreme accessibility scaling
+    // cannot push mandatory actions outside that contract. Explicit Semantics
+    // labels below keep the complete accessible names and values.
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 2,
+      child: profile.isOfficial
+          ? _OfficialExpandedHeader(
+              profile: profile,
+              followBusy: followBusy,
+              onFollowToggle: profile.isOwner ? null : onFollowToggle,
+              onFollowersTap: onFollowersTap,
+              onFollowingTap: onFollowingTap,
+              onEditProfile: profile.isOwner ? onEditProfile : null,
+              onShareProfile: onShareProfile,
+              onMessage: _showOfficialMessage ? onMessage : null,
+            )
+          : _RegularExpandedHeader(
+              profile: profile,
+              followBusy: followBusy,
+              onFollowToggle: profile.isOwner ? null : onFollowToggle,
+              onFollowersTap: onFollowersTap,
+              onFollowingTap: onFollowingTap,
+              onEditProfile: profile.isOwner ? onEditProfile : null,
+              onShareProfile: onShareProfile,
+            ),
+    );
   }
 }
 

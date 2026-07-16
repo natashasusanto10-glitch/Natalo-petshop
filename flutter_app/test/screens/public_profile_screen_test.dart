@@ -224,6 +224,83 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byKey(const ValueKey('profile-post-post-1')), findsOneWidget);
   });
+
+  testWidgets('real grid enters glass chrome before full collapse',
+      (tester) async {
+    final posts = List.generate(18, (index) {
+      return FeedPost.fromJson({
+        'id': 'geometry-$index',
+        'slug': 'geometry-$index',
+        'kind': 'USER_VIDEO',
+        'videoUrl': 'https://example.com/geometry-$index.mp4',
+        'thumbnailUrl': 'not-a-network-url',
+        'author': {'id': 'creator-1', 'name': 'Creator'},
+        'createdAt': DateTime(2026).toIso8601String(),
+      });
+    });
+    final result = PublicProfileResult(
+      profile: const PublicProfile(
+        id: 'creator-1',
+        name: 'Creator',
+        username: 'creator',
+        bio: 'Profil kreator',
+        isOwner: true,
+      ),
+      posts: posts,
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: PublicProfileScreen(
+        username: 'creator',
+        initialResult: result,
+        fetchChatConfig: _noOpFetch,
+      ),
+    ));
+    await tester.pump();
+
+    final overlayFinder = find.byType(PublicProfileChromeOverlay);
+    PublicProfileChromeOverlay overlay() =>
+        tester.widget<PublicProfileChromeOverlay>(overlayFinder);
+    final nestedScrollables = find.descendant(
+      of: find.byType(NestedScrollView),
+      matching: find.byType(Scrollable),
+    );
+    final outerPosition =
+        tester.state<ScrollableState>(nestedScrollables.first).position;
+    final metrics = overlay().metrics;
+
+    // One logical pixel beyond identity collapse is the first moment the real
+    // grid enters beneath the collapsed chrome. The glass must still be in an
+    // intermediate phase here, not already snapped to its endpoint.
+    final intermediateOffset = metrics.identityHeight + 1;
+    outerPosition.jumpTo(intermediateOffset);
+    await tester.pump();
+    final intermediateTile = tester.getRect(
+      find.byKey(const ValueKey('profile-post-geometry-0')),
+    );
+    expect(overlay().scrollOffset, closeTo(intermediateOffset, 0.5));
+    expect(intermediateTile.top, lessThan(metrics.collapsedChromeHeight));
+    expect(intermediateTile.bottom, greaterThan(0));
+    final intermediateTint = tester.widget<ColoredBox>(
+      find.byKey(const Key('public_profile_glass_tint')),
+    );
+    expect(intermediateTint.color.a, greaterThan(0));
+    expect(intermediateTint.color.a, lessThan(0.72));
+
+    outerPosition.jumpTo(metrics.scrollSpaceHeight);
+    await tester.pump();
+    final collapsedTile = tester.getRect(
+      find.byKey(const ValueKey('profile-post-geometry-0')),
+    );
+    expect(overlay().scrollOffset, closeTo(metrics.scrollSpaceHeight, 0.5));
+    expect(collapsedTile.top, lessThanOrEqualTo(0.5));
+    expect(collapsedTile.bottom, greaterThan(0));
+    expect(find.byType(BackdropFilter), findsOneWidget);
+    final collapsedTint = tester.widget<ColoredBox>(
+      find.byKey(const Key('public_profile_glass_tint')),
+    );
+    expect(collapsedTint.color.a, closeTo(0.72, 0.01));
+  });
 }
 
 Future<void> _noOpFetch() async {}

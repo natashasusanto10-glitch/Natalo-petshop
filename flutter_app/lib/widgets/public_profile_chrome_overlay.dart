@@ -29,8 +29,15 @@ class PublicProfileHeaderMetrics {
     BuildContext context,
     PublicProfile profile,
   ) {
-    final scale =
-        MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 2.0).toDouble();
+    final scaler = MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 2);
+    // Nonlinear accessibility scaling is font-size dependent. Sampling only
+    // `scale(1)` can substantially under-allocate the fixed identity sliver,
+    // so resolve the largest effective factor used by this header's text.
+    var scale = 1.0;
+    for (final fontSize in const <double>[10.5, 11.5, 13, 14, 15, 16, 19]) {
+      final effectiveScale = scaler.scale(fontSize) / fontSize;
+      if (effectiveScale > scale) scale = effectiveScale;
+    }
     final hasBio = profile.bio?.trim().isNotEmpty == true;
     final hasMutuals = profile.isOfficial &&
         !profile.isOwner &&
@@ -107,7 +114,11 @@ class PublicProfileChromeOverlay extends StatelessWidget {
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
     final motion = PublicProfileHeaderMotion.resolve(
       scrollOffset: scrollOffset,
-      collapseDistance: metrics.identityHeight,
+      // The outer sliver consumes the complete spacer before the inner grid
+      // owns the scroll. Keeping choreography on that same distance means the
+      // glass transition is still in flight while the first row moves beneath
+      // the collapsed chrome, instead of completing before any underlap.
+      collapseDistance: metrics.scrollSpaceHeight,
       reducedMotion: reducedMotion,
     );
     final expandedTop =
@@ -132,22 +143,27 @@ class PublicProfileChromeOverlay extends StatelessWidget {
               child: reducedMotion
                   ? ColoredBox(
                       key: const Key('public_profile_reduced_motion_tint'),
-                      color: _glassTint(context, opacity: 0.82),
+                      color: _glassTint(
+                        context,
+                        opacity: 0.82 * motion.glassOpacity,
+                      ),
                     )
-                  : BackdropFilter(
-                      key: const Key('public_profile_glass_layer'),
-                      filter: ImageFilter.blur(
-                        sigmaX: motion.blurSigma,
-                        sigmaY: motion.blurSigma,
-                      ),
-                      child: ColoredBox(
-                        key: const Key('public_profile_glass_tint'),
-                        color: _glassTint(
-                          context,
-                          opacity: 0.72 * motion.glassOpacity,
+                  : motion.glassOpacity <= 0
+                      ? const SizedBox.shrink()
+                      : BackdropFilter(
+                          key: const Key('public_profile_glass_layer'),
+                          filter: ImageFilter.blur(
+                            sigmaX: motion.blurSigma,
+                            sigmaY: motion.blurSigma,
+                          ),
+                          child: ColoredBox(
+                            key: const Key('public_profile_glass_tint'),
+                            color: _glassTint(
+                              context,
+                              opacity: 0.72 * motion.glassOpacity,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
             ),
           ),
         ),

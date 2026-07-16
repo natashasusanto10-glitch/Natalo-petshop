@@ -5,6 +5,30 @@ import 'package:natalo_petshop_flutter/widgets/public_profile_chrome_overlay.dar
 import 'package:natalo_petshop_flutter/widgets/public_profile_expanded_header.dart';
 
 void main() {
+  testWidgets('expanded chrome does not install an inactive blur layer',
+      (tester) async {
+    await tester.pumpWidget(overlayHarness(
+      width: 393,
+      scrollOffset: 0,
+      isOfficial: true,
+    ));
+
+    expect(find.byType(BackdropFilter), findsNothing);
+    expect(find.byKey(const Key('public_profile_glass_layer')), findsNothing);
+  });
+
+  testWidgets('glass phase installs exactly one active blur layer',
+      (tester) async {
+    await tester.pumpWidget(overlayHarness(
+      width: 393,
+      scrollOffset: 300,
+      isOfficial: true,
+    ));
+
+    expect(find.byType(BackdropFilter), findsOneWidget);
+    expect(find.byKey(const Key('public_profile_glass_layer')), findsOneWidget);
+  });
+
   testWidgets('collapsed chrome uses one blur layer above underlapping grid',
       (tester) async {
     await tester.pumpWidget(overlayHarness(
@@ -188,18 +212,47 @@ void main() {
     expect(find.text('Pesan'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  for (final scaler in <TextScaler>[
+    const TextScaler.linear(3.2),
+    const _NonlinearAccessibilityScaler(),
+  ]) {
+    testWidgets('identity caps extreme visual scaling without hiding actions',
+        (tester) async {
+      await tester.pumpWidget(identityMetricsHarness(
+        width: 320,
+        textScaler: scaler,
+        profile: const PublicProfile(
+          id: 'official-1',
+          name: 'Natalo Petshop Official Dengan Nama Sangat Panjang',
+          username: 'natalopetshop',
+          bio: 'Bio akun resmi tetap terbaca dan tidak mendorong aksi keluar.',
+          isOfficial: true,
+        ),
+      ));
+
+      expect(find.text('Ikuti'), findsOneWidget);
+      expect(find.text('Pesan'), findsOneWidget);
+      expect(find.byTooltip('Bagikan Profil'), findsOneWidget);
+      expect(find.bySemanticsLabel('Ikuti'), findsOneWidget);
+      expect(find.bySemanticsLabel('Pesan'), findsOneWidget);
+      expect(find.bySemanticsLabel('Bagikan Profil'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }
 
 Widget identityMetricsHarness({
   required double width,
-  required double textScale,
+  double? textScale,
+  TextScaler? textScaler,
   required PublicProfile profile,
 }) {
   return MaterialApp(
     home: MediaQuery(
       data: MediaQueryData(
         size: Size(width, 852),
-        textScaler: TextScaler.linear(textScale),
+        textScaler: textScaler ?? TextScaler.linear(textScale!),
       ),
       child: Builder(builder: (context) {
         final metrics = PublicProfileHeaderMetrics.resolve(context, profile);
@@ -223,6 +276,19 @@ Widget identityMetricsHarness({
       }),
     ),
   );
+}
+
+class _NonlinearAccessibilityScaler extends TextScaler {
+  const _NonlinearAccessibilityScaler();
+
+  @override
+  double scale(double fontSize) {
+    if (fontSize < 10) return fontSize * 1.1;
+    return fontSize < 14 ? fontSize * 3.4 : fontSize * 2.6;
+  }
+
+  @override
+  double get textScaleFactor => 3;
 }
 
 Widget overlayHarness({
