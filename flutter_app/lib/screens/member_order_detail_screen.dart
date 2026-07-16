@@ -16,6 +16,7 @@ import '../services/product_service.dart';
 import '../state/cart_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../utils/order_chat_context.dart';
 import '../widgets/app_chat_button.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
@@ -444,7 +445,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
             // SizedBox 12: jarak tepi kanan (ikon shrinkWrap mepet tepi).
             actions: [
               AppChatButton(
-                routeArguments: _orderChatContext(order),
+                routeArguments: buildOrderChatContext(order),
                 tooltip: 'Chat tentang pesanan ini',
               ),
               const SizedBox(width: 12),
@@ -1246,7 +1247,7 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
   }
 
   void _openChat() {
-    final contextData = _orderChatContext(widget.order);
+    final contextData = buildOrderChatContext(widget.order);
     final orderData = contextData['order'] as Map<String, dynamic>;
     if (_proofUrl?.isNotEmpty ?? false) {
       orderData['hasPaymentProof'] = true;
@@ -3766,23 +3767,3 @@ void _showSnack(BuildContext context, String message) {
     SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
   );
 }
-
-Map<String, dynamic> _orderChatContext(OrderSummary order) => {
-      'type': 'order',
-      'orderNumber': order.orderNumber,
-      'schemaVersion': 1,
-      'order': {
-        'orderNumber': order.orderNumber,
-        'status': order.status,
-        'paymentStatus': order.paymentStatus,
-        'paymentProofStatus': order.paymentProofStatus ??
-            ((order.paymentProofUrl ?? '').trim().isNotEmpty
-                ? 'PENDING_REVIEW'
-                : null),
-        'total': order.total.round(),
-        'itemCount': order.itemCount,
-        'hasPaymentProof': (order.paymentProofUrl ?? '').trim().isNotEmpty,
-        'proofVersion': order.paymentProofVersion,
-        'createdAt': order.createdAt.millisecondsSinceEpoch,
-      },
-    };
