@@ -327,7 +327,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
 
   double _estimatedPostExtent(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
-    const mediaAspectRatio = 9 / 14;
+    // Ikuti _safeAspectRatio: media di-clamp max 4:5 (tak ada lagi video
+    // 9:14 yang lebih tinggi) → estimasi extent pakai 4:5.
+    const mediaAspectRatio = 4 / 5;
     const authorRowHeight = 52.0;
     const actionCaptionDateHeight = 118.0;
     final mediaHeight = width / mediaAspectRatio;
@@ -827,7 +829,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                 // Bottom padding extra space supaya post terakhir bisa di-
                 // scroll lega ke atas viewport (gak mepet ke home indicator).
                 padding: const EdgeInsets.only(top: 0, bottom: 48),
-                physics: const AlwaysScrollableScrollPhysics(),
+                // Fling diredam ala IG — lihat _CalmFeedScrollPhysics.
+                physics: const _CalmFeedScrollPhysics(),
                 itemCount: _posts.length,
                 // Whitespace pemisah antar post tetap ada, tapi lebih compact
                 // supaya detail terasa seperti feed/post Instagram.
@@ -3192,20 +3195,58 @@ class _EditCaptionSheetState extends State<_EditCaptionSheet> {
   }
 }
 
-/// Aspect ratio per media type — Postingan Saya memakai Instagram posts style:
-///   - Video: 9:14 — lebih tinggi dari foto, mendekati Instagram video
-///     post portrait, tapi tidak sepanjang Reels 9:16.
-///     Instagram feed video post tanpa jadi Reels/fullscreen.
-///   - Photo/carousel: pakai rasio image asli dengan batas Instagram:
-///     portrait maksimum 4:5, landscape maksimum 1.91:1.
+/// Physics scroll "kalem" ala halaman Posts Instagram.
 ///
-/// Default fallback 4:5 kalau type tidak diketahui.
-double _safeAspectRatio(int width, int height, {FeedContentType? type}) {
-  // Video: fixed 9:14 — halaman ini list posts, bukan Reels, tetapi
-  // Instagram video post portrait terasa lebih tinggi dari foto 4:5.
-  if (type == FeedContentType.video) {
-    return 9 / 14;
+/// Default Flutter (Android ClampingScrollPhysics / iOS Bouncing) meluncur
+/// sangat jauh per fling — di list post yang tiap itemnya hampir setinggi
+/// layar, satu flick bisa melewati 3-4 post sekaligus. IG meredam ini:
+/// satu flick ≈ satu-dua post, dan flick beruntun tidak saling menumpuk
+/// jadi "roket". Dua tuas yang dipakai:
+///  1. Kecepatan fling di-skala turun sebelum masuk simulasi balistik
+///     → jarak luncur lebih pendek, decay terasa lebih cepat.
+///  2. carriedMomentum dimatikan → flick kedua tidak mewarisi sisa
+///     kecepatan flick pertama (penyebab utama scroll "terbang").
+///
+/// Drag langsung (jari nempel) TIDAK berubah — 1:1 mengikuti jari.
+class _CalmFeedScrollPhysics extends AlwaysScrollableScrollPhysics {
+  const _CalmFeedScrollPhysics({super.parent});
+
+  /// Skala kecepatan fling (1.0 = default Flutter). 0.55 dipilih supaya
+  /// satu flick kencang mendarat ±1-2 post, mendekati rasa IG.
+  static const double _flingVelocityScale = 0.55;
+
+  @override
+  _CalmFeedScrollPhysics applyTo(ScrollPhysics? ancestor) =>
+      _CalmFeedScrollPhysics(parent: buildParent(ancestor));
+
+  @override
+  double get maxFlingVelocity => super.maxFlingVelocity * _flingVelocityScale;
+
+  @override
+  Simulation? createBallisticSimulation(
+      ScrollMetrics position, double velocity) {
+    return super.createBallisticSimulation(
+      position,
+      velocity * _flingVelocityScale,
+    );
   }
+
+  @override
+  double carriedMomentum(double existingVelocity) => 0;
+}
+
+/// Aspect ratio per media type — Postingan Saya memakai Instagram posts style:
+///   - SEMUA tipe (video/photo/carousel): rasio media asli dengan batas
+///     Instagram: portrait maksimum 4:5, landscape maksimum 1.91:1.
+///     Video dulu fixed 9:14 ("lebih tinggi dari foto") tapi itu TIDAK
+///     match IG asli — di halaman Posts IG, video di-crop max 4:5 sama
+///     seperti foto. 9:14 bikin frame ±25% lebih tinggi → crop vertikal
+///     lebih agresif (logo di atas video kepotong) dan post terasa
+///     "lebih besar ke bawah" dibanding IG.
+///
+/// Default fallback 4:5 kalau metadata tidak diketahui. Param [type]
+/// dipertahankan di signature untuk call-site stability.
+double _safeAspectRatio(int width, int height, {FeedContentType? type}) {
   if (width <= 0 || height <= 0) return 4 / 5;
   final ratio = width / height;
   if (ratio.isNaN || ratio.isInfinite || ratio <= 0) return 4 / 5;

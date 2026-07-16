@@ -1394,13 +1394,42 @@ void main() {
     await tester.pump();
   });
 
-  // Aturan framing ala IG Reels: video ±9:16 dipertahankan penuh pada
-  // canvas portrait tanpa crop horizontal; video lebih pendek (4:5 /
-  // square / landscape) memakai contain letterbox supaya tidak terasa
-  // "zoom". Diverifikasi lewat thumbnail background
-  // (jalur pra-video), yang WAJIB mengikuti aturan yang sama dengan
-  // player supaya tidak ada lompatan cover→contain saat video siap.
+  // Framing imersif ala IG/Reels: lapisan DEPAN (video/thumbnail tajam)
+  // selalu penuhi LEBAR layar (`fitWidth`) supaya tidak terasa "zoom" pada
+  // media yang lebih lebar dari 9:16. Sisa ruang atas/bawah diisi backdrop
+  // blur (`cover`) — bukan hitam polos. Diverifikasi lewat thumbnail
+  // background (jalur pra-video) yang WAJIB memakai framing yang sama dengan
+  // player supaya tidak ada lompatan saat video siap. `pumpAndReadThumbFit`
+  // membaca lapisan DEPAN (thumbnail terakhir di tree).
   Future<BoxFit?> pumpAndReadThumbFit(WidgetTester tester, double aspectRatio,
+      {Size viewport = const Size(393, 852)}) async {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    await tester.pumpWidget(
+      MediaQuery(
+        data: MediaQueryData(size: viewport),
+        child: MaterialApp(
+          home: FeedVideoPostView(
+            post: _fakeVideoPost(aspectRatio: aspectRatio),
+            isActive: false,
+            preloadedController: null,
+            onOverlayStateChanged: (_) {},
+            onMediaZoomChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    final images = tester
+        .widgetList<CachedNetworkImage>(find.byType(CachedNetworkImage))
+        .where((w) => w.imageUrl.endsWith('.jpg'));
+    // Lapisan depan (tajam) = thumbnail terakhir; backdrop blur = yang pertama.
+    return images.isEmpty ? null : images.last.fit;
+  }
+
+  Future<BoxFit?> pumpAndReadBackdropFit(
+      WidgetTester tester, double aspectRatio,
       {Size viewport = const Size(393, 852)}) async {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
     await tester.pumpWidget(
@@ -1426,48 +1455,52 @@ void main() {
     return images.isEmpty ? null : images.first.fit;
   }
 
-  testWidgets('video 9:16 → background contain (canvas Reels tanpa crop)',
+  testWidgets('video 9:16 → foreground fitWidth (isi penuh tanpa zoom)',
       (tester) async {
     final fit = await pumpAndReadThumbFit(tester, 9 / 16,
         viewport: const Size(393, 852));
-    expect(fit, BoxFit.contain);
+    expect(fit, BoxFit.fitWidth);
   });
 
-  testWidgets('video square → background contain (letterbox, bukan zoom)',
+  testWidgets('video square → foreground fitWidth (bukan zoom)',
       (tester) async {
     final fit = await pumpAndReadThumbFit(tester, 1.0);
-    expect(fit, BoxFit.contain);
+    expect(fit, BoxFit.fitWidth);
   });
 
-  testWidgets('video 4:5 → background contain (letterbox, bukan zoom)',
-      (tester) async {
+  testWidgets('video 4:5 → foreground fitWidth (bukan zoom)', (tester) async {
     final fit = await pumpAndReadThumbFit(tester, 0.8);
-    expect(fit, BoxFit.contain);
+    expect(fit, BoxFit.fitWidth);
   });
 
-  testWidgets('video portrait sangat tinggi → background contain (tanpa crop)',
+  testWidgets('video portrait sangat tinggi → foreground fitWidth',
       (tester) async {
     final fit = await pumpAndReadThumbFit(tester, 0.4);
-    expect(fit, BoxFit.contain);
+    expect(fit, BoxFit.fitWidth);
   });
 
-  testWidgets('video landscape 16:9 → background contain (letterbox)',
-      (tester) async {
+  testWidgets('video landscape 16:9 → foreground fitWidth', (tester) async {
     final fit = await pumpAndReadThumbFit(tester, 16 / 9);
-    expect(fit, BoxFit.contain);
+    expect(fit, BoxFit.fitWidth);
   });
 
-  testWidgets('thumbnail and initialized player share 9:16 fallback framing',
+  testWidgets('backdrop pengisi memakai cover (anti-letterbox hitam)',
+      (tester) async {
+    final fit = await pumpAndReadBackdropFit(tester, 0.8);
+    expect(fit, BoxFit.cover);
+  });
+
+  testWidgets('thumbnail and initialized player share fitWidth framing',
       (tester) async {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
     final platform = _FakeVideoPlayerPlatform();
     VideoPlayerPlatform.instance = platform;
 
-    // Invalid post metadata must use the same 9:16 fallback as an
-    // initialized controller whose native dimensions are unavailable.
+    // Metadata invalid tetap memakai framing fitWidth yang sama dengan
+    // controller ter-inisialisasi.
     final thumbnailFit =
         await pumpAndReadThumbFit(tester, 0, viewport: const Size(393, 852));
-    expect(thumbnailFit, BoxFit.contain);
+    expect(thumbnailFit, BoxFit.fitWidth);
 
     final controller = VideoPlayerController.networkUrl(
       Uri.parse('https://example.com/fallback.m3u8'),
@@ -1490,8 +1523,10 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
-    expect(
-        tester.widget<FittedBox>(find.byType(FittedBox)).fit, BoxFit.contain);
+    // Dua FittedBox: backdrop (cover) lalu foreground (fitWidth). Lapisan
+    // depan = yang terakhir.
+    expect(tester.widgetList<FittedBox>(find.byType(FittedBox)).last.fit,
+        BoxFit.fitWidth);
   });
 
   // Fix A5 — handoff preload terkonfirmasi: klaim dari map pemilik hanya
