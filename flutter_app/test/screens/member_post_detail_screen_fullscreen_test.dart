@@ -287,7 +287,7 @@ void main() {
       expect(find.byType(ScopedVideoFeedScreen), findsNothing,
           reason: 'mute tap must not open the scoped feed');
 
-      await tester.tapAt(const Offset(200, 600));
+      await tester.tapAt(tester.getCenter(find.byType(VideoPlayer).first));
       for (var i = 0; i < 30; i++) {
         await tester.pump(const Duration(milliseconds: 50));
         if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
@@ -311,7 +311,7 @@ void main() {
 
       // The first post is scrolled into view. initialIndex resolution is exercised by the
       // widget's own indexWhere; here we assert the viewer has all 3 videos.
-      await tester.tapAt(const Offset(200, 600));
+      await tester.tapAt(tester.getCenter(find.byType(VideoPlayer).first));
       for (var i = 0; i < 30; i++) {
         await tester.pump(const Duration(milliseconds: 50));
         if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
@@ -346,7 +346,7 @@ void main() {
   // ── T3b — handoff origin INSTAN via coordinator ──────────────────────
 
   Future<void> openScopedFeed(WidgetTester tester) async {
-    await tester.tapAt(const Offset(200, 600));
+    await tester.tapAt(tester.getCenter(find.byType(VideoPlayer).first));
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 50));
       if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
@@ -392,7 +392,7 @@ void main() {
       };
 
       await pumpAndInitialize(tester);
-      await tester.tapAt(const Offset(200, 600));
+      await tester.tapAt(tester.getCenter(find.byType(VideoPlayer).first));
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 20));
         if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
