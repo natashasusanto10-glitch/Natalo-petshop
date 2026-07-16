@@ -1475,6 +1475,7 @@ Widget feedProductPillFor(
   int featuredIndex, {
   required VoidCallback onTap,
 }) {
+  if (products.isEmpty) return const SizedBox.shrink();
   final featured = products[featuredIndex % products.length];
   return FeedProductPill(
     title: featured.name,

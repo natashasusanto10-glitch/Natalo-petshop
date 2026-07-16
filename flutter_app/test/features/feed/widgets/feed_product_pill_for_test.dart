@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_post_shared_widgets.dart';
+import 'package:natalo_petshop_flutter/features/feed/widgets/feed_product_pill.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 
 FeedProductLink _link(String name, {required int price, int? discountPrice}) =>
@@ -35,5 +36,13 @@ void main() {
     ));
     await tester.pump();
     expect(find.text('B'), findsOneWidget); // 3 % 2 == 1 -> 'B'
+  });
+
+  testWidgets('empty products -> renders nothing (no crash)', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: feedProductPillFor(const [], 0, onTap: () {})),
+    ));
+    await tester.pump();
+    expect(find.byType(FeedProductPill), findsNothing);
   });
 }
