@@ -1,5 +1,94 @@
 import '../constants/official_brand.dart';
 
+class PublicProfileMutualFollower {
+  final String id;
+  final String name;
+  final String? username;
+  final String? profilePhotoUrl;
+  final bool isOfficial;
+
+  const PublicProfileMutualFollower({
+    required this.id,
+    required this.name,
+    this.username,
+    this.profilePhotoUrl,
+    this.isOfficial = false,
+  });
+
+  factory PublicProfileMutualFollower.fromJson(Map<String, dynamic> json) {
+    return PublicProfileMutualFollower(
+      id: (json['id'] ?? '').toString(),
+      name: (json['name'] ?? '').toString(),
+      username: _nullableString(json['username']),
+      profilePhotoUrl: _nullableString(json['profilePhotoUrl']),
+      isOfficial: json['isOfficial'] == true,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PublicProfileMutualFollower &&
+          other.id == id &&
+          other.name == name &&
+          other.username == username &&
+          other.profilePhotoUrl == profilePhotoUrl &&
+          other.isOfficial == isOfficial;
+
+  @override
+  int get hashCode =>
+      Object.hash(id, name, username, profilePhotoUrl, isOfficial);
+}
+
+class PublicProfileMutualSummary {
+  final List<PublicProfileMutualFollower> items;
+  final int totalCount;
+
+  const PublicProfileMutualSummary({
+    this.items = const [],
+    this.totalCount = 0,
+  });
+
+  static const empty = PublicProfileMutualSummary();
+
+  factory PublicProfileMutualSummary.fromJson(dynamic raw) {
+    if (raw is! Map<String, dynamic> || raw['items'] is! List) return empty;
+    final items = <PublicProfileMutualFollower>[];
+    for (final item in raw['items'] as List) {
+      if (item is Map<String, dynamic>) {
+        final parsed = PublicProfileMutualFollower.fromJson(item);
+        if (parsed.id.isNotEmpty && parsed.name.isNotEmpty) items.add(parsed);
+      }
+    }
+    final parsedCount = (raw['totalCount'] as num?)?.toInt() ?? 0;
+    return PublicProfileMutualSummary(
+      items: List.unmodifiable(items),
+      totalCount: parsedCount < items.length ? items.length : parsedCount,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PublicProfileMutualSummary &&
+          other.totalCount == totalCount &&
+          _sameMutualItems(other.items, items);
+
+  @override
+  int get hashCode => Object.hash(totalCount, Object.hashAll(items));
+}
+
+bool _sameMutualItems(
+  List<PublicProfileMutualFollower> left,
+  List<PublicProfileMutualFollower> right,
+) {
+  if (left.length != right.length) return false;
+  for (var index = 0; index < left.length; index++) {
+    if (left[index] != right[index]) return false;
+  }
+  return true;
+}
+
 /// Public profile model — shape /api/u/{username} response. Subset
 /// User row yang aman tampil ke siapapun + stats publik.
 class PublicProfile {
@@ -15,6 +104,7 @@ class PublicProfile {
   final int followingCount;
   final bool isFollowing;
   final bool isOwner;
+  final PublicProfileMutualSummary mutualFollowers;
 
   /// Akun official Natalo (admin). Profil tampil brand "Natalo Petshop"
   /// + badge centang + logo, BUKAN nama/foto pribadi pemilik.
@@ -33,6 +123,7 @@ class PublicProfile {
     this.followingCount = 0,
     this.isFollowing = false,
     this.isOwner = false,
+    this.mutualFollowers = PublicProfileMutualSummary.empty,
     this.isOfficial = false,
   });
 
@@ -65,6 +156,9 @@ class PublicProfile {
       followingCount: 0,
       isFollowing: json['isFollowing'] == true,
       isOwner: isOwner,
+      mutualFollowers: PublicProfileMutualSummary.fromJson(
+        json['mutualFollowers'],
+      ),
       isOfficial: json['isOfficial'] == true,
     );
   }
@@ -76,6 +170,7 @@ class PublicProfile {
     int? followingCount,
     bool? isFollowing,
     bool? isOwner,
+    PublicProfileMutualSummary? mutualFollowers,
     bool? isOfficial,
   }) {
     return PublicProfile(
@@ -91,6 +186,7 @@ class PublicProfile {
       followingCount: followingCount ?? this.followingCount,
       isFollowing: isFollowing ?? this.isFollowing,
       isOwner: isOwner ?? this.isOwner,
+      mutualFollowers: mutualFollowers ?? this.mutualFollowers,
       isOfficial: isOfficial ?? this.isOfficial,
     );
   }

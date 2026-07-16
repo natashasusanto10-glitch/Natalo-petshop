@@ -59,6 +59,7 @@ PublicProfile rebasePublicProfileForViewer(
   return profile.copyWith(
     isFollowing: false,
     isOwner: viewerId != null && viewerId == profile.id,
+    mutualFollowers: PublicProfileMutualSummary.empty,
   );
 }
 

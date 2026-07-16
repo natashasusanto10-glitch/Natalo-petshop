@@ -36,6 +36,25 @@ void main() {
     expect(ownerViewer.isOwner, isTrue);
   });
 
+  test('viewer rebase clears viewer-specific mutual followers', () {
+    const profile = PublicProfile(
+      id: 'official-1',
+      name: 'Natalo Petshop Official',
+      isOfficial: true,
+      mutualFollowers: PublicProfileMutualSummary(
+        items: [
+          PublicProfileMutualFollower(id: 'user-1', name: 'Mona'),
+        ],
+        totalCount: 1,
+      ),
+    );
+    final rebased = rebasePublicProfileForViewer(
+      profile,
+      viewerId: 'viewer-2',
+    );
+    expect(rebased.mutualFollowers, PublicProfileMutualSummary.empty);
+  });
+
   test('explicitly removed post cannot fall back from stale profile list', () {
     final store = FeedStore.forTesting(
       savedSetter: (postId, {required saved}) => Future.value(saved),
