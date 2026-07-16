@@ -3520,30 +3520,44 @@ class _MediaBackground extends StatelessWidget {
     this.compactPreview = false,
   });
 
-  /// Aturan fit ala IG Reels: video portrait 9:16 dipertahankan sebagai
-  /// canvas terpusat tanpa crop horizontal. Video yang lebih "pendek"
-  /// (4:5, square, landscape) memakai letterbox agar tidak terasa zoom.
-  /// The fallback ratio is used when metadata is unavailable so thumbnail
-  /// and player framing remain stable while the video initializes.
-  static const double _reelsAspect = 9 / 16;
+  /// Sigma blur untuk backdrop pengisi ala IG/Reels.
+  static const double _backdropBlurSigma = 26;
 
-  static double _normalizedAspect({double? postAspect, Size? videoSize}) {
-    final measured = videoSize == null || videoSize.height <= 0
-        ? null
-        : videoSize.width / videoSize.height;
-    final candidate = measured ?? postAspect;
-    return candidate != null && candidate.isFinite && candidate > 0
-        ? candidate
-        : _reelsAspect;
-  }
+  /// Fit lapisan DEPAN (video tajam): selalu penuhi LEBAR layar. Ini menjaga
+  /// video pada skala naturalnya tanpa terasa "zoom" — beda dengan `cover`
+  /// yang memaksa tinggi & memotong sisi pada media yang lebih lebar dari
+  /// 9:16. Sisa ruang atas/bawah (untuk media non-9:16) tidak dibiarkan hitam
+  /// polos melainkan diisi oleh backdrop blur di baliknya, persis IG.
+  static const BoxFit _foregroundFit = BoxFit.fitWidth;
 
-  static BoxFit _fitForAspect(double aspect, Size viewport) {
-    // Keep every feed video inside its source canvas. This is especially
-    // important for portrait media that is taller than 9:16: using `cover`
-    // there crops the sides on a tall phone viewport and makes the subject
-    // appear zoomed. The viewport argument remains part of the helper API so
-    // thumbnail/player framing stays centralized and consistent.
-    return BoxFit.contain;
+  /// Susun lapisan imersif: latar hitam → salinan media di-`cover` + blur
+  /// (pengisi anti-letterbox) → peredup tipis → media tajam fit-lebar.
+  static Widget _immersiveStack({
+    required Widget backdrop,
+    required Widget foreground,
+  }) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const ColoredBox(color: Colors.black),
+        Positioned.fill(
+          child: ImageFiltered(
+            imageFilter: ui.ImageFilter.blur(
+              sigmaX: _backdropBlurSigma,
+              sigmaY: _backdropBlurSigma,
+              tileMode: TileMode.decal,
+            ),
+            child: backdrop,
+          ),
+        ),
+        // Peredup tipis supaya media tajam di depan tetap kontras terhadap
+        // backdrop yang di-blur.
+        const Positioned.fill(
+          child: ColoredBox(color: Color(0x40000000)),
+        ),
+        foreground,
+      ],
+    );
   }
 
   @override
@@ -3552,18 +3566,26 @@ class _MediaBackground extends StatelessWidget {
 
     if (ctrl != null && ctrl.value.isInitialized) {
       final size = ctrl.value.size;
-      // Rasio dari dimensi AKTUAL player (metadata server bisa salah).
-      final aspect = _normalizedAspect(videoSize: size);
-      final fit = compactPreview
-          ? BoxFit.contain
-          : _fitForAspect(aspect, MediaQuery.sizeOf(context));
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          const ColoredBox(color: Colors.black),
-          // StackFit.expand → constraint tight fullscreen; FittedBox
-          // memusatkan sendiri (contain = letterbox, cover = crop).
-          FittedBox(
+      // Preview kompak (drawer komentar minimized): pertahankan contain
+      // sederhana tanpa backdrop.
+      if (compactPreview) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            const ColoredBox(color: Colors.black),
+            FittedBox(
+              fit: BoxFit.contain,
+              clipBehavior: Clip.hardEdge,
+              child: SizedBox(
+                width: size.width,
+                height: size.height,
+                child: VideoPlayer(ctrl),
+              ),
+            ),
+          ],
+        );
+      }
+      Widget videoLayer(BoxFit fit) => FittedBox(
             fit: fit,
             clipBehavior: Clip.hardEdge,
             child: SizedBox(
@@ -3571,32 +3593,45 @@ class _MediaBackground extends StatelessWidget {
               height: size.height,
               child: VideoPlayer(ctrl),
             ),
-          ),
-        ],
+          );
+      return _immersiveStack(
+        // Backdrop = video yang sama, di-cover (isi penuh, tepi terpotong) lalu
+        // di-blur → mengisi sisa ruang tanpa hitam polos.
+        backdrop: videoLayer(BoxFit.cover),
+        foreground: videoLayer(_foregroundFit),
       );
     }
     final thumb = post.thumbnailUrl;
     if (thumb != null) {
-      // Pakai aspectRatio post supaya thumbnail mengikuti aturan yang
-      // sama dengan videonya — tidak ada lompatan cover→contain saat
-      // player siap.
-      final fit = compactPreview
-          ? BoxFit.contain
-          : _fitForAspect(
-              _normalizedAspect(postAspect: post.aspectRatio),
-              MediaQuery.sizeOf(context),
-            );
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          const ColoredBox(color: Colors.black),
-          CachedNetworkImage(
-            imageUrl: thumb,
-            fit: fit,
-            placeholder: (_, __) => const SizedBox.shrink(),
-            errorWidget: (_, __, ___) => const SizedBox.shrink(),
-          ),
-        ],
+      if (compactPreview) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            const ColoredBox(color: Colors.black),
+            CachedNetworkImage(
+              imageUrl: thumb,
+              fit: BoxFit.contain,
+              placeholder: (_, __) => const SizedBox.shrink(),
+              errorWidget: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          ],
+        );
+      }
+      // Thumbnail mengikuti framing yang sama dengan video → tidak ada lompatan
+      // saat player siap.
+      return _immersiveStack(
+        backdrop: CachedNetworkImage(
+          imageUrl: thumb,
+          fit: BoxFit.cover,
+          placeholder: (_, __) => const SizedBox.shrink(),
+          errorWidget: (_, __, ___) => const SizedBox.shrink(),
+        ),
+        foreground: CachedNetworkImage(
+          imageUrl: thumb,
+          fit: _foregroundFit,
+          placeholder: (_, __) => const SizedBox.shrink(),
+          errorWidget: (_, __, ___) => const SizedBox.shrink(),
+        ),
       );
     }
     return const ColoredBox(color: Colors.black);
