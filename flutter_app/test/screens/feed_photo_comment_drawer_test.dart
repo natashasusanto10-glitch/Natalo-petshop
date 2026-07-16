@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_action_rail.dart';
@@ -18,8 +19,14 @@ FeedPost _photoPost() => FeedPost.fromJson({
         {
           'id': 'photo-media-1',
           'mediaType': 'image',
-          'mediaUrl': 'https://example.com/photo.jpg',
+          'mediaUrl': 'https://example.com/photo-1.jpg',
           'sortOrder': 0,
+        },
+        {
+          'id': 'photo-media-2',
+          'mediaType': 'image',
+          'mediaUrl': 'https://example.com/photo-2.jpg',
+          'sortOrder': 1,
         },
       ],
       'author': {'id': 'author-1', 'name': 'Tester'},
@@ -132,5 +139,55 @@ void main() {
         reason: 'the fullscreen scrim must not cover visible photo media');
     expect(closed, isFalse);
     expect(find.byType(FeedCommentSheet), findsOneWidget);
+  });
+
+  testWidgets('photo carousel uses contain fit without cropping',
+      (tester) async {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({
+      'feed_offline_cache_v2': jsonEncode([_photoPost().toJson()]),
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        routes: {
+          '/member/login': (_) => const Scaffold(body: Text('Login')),
+        },
+        home: const FeedScreen(),
+      ),
+    );
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.byType(FeedActionRail).evaluate().isNotEmpty) break;
+    }
+
+    final photoPageView = find.descendant(
+      of: find.byType(FeedReelsCommentSurface),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is PageView && widget.scrollDirection == Axis.horizontal,
+      ),
+    );
+    expect(photoPageView, findsOneWidget);
+    final photoController = tester.widget<PageView>(photoPageView).controller!;
+
+    CachedNetworkImage photoByUrl(String url) =>
+        tester.widget<CachedNetworkImage>(
+          find.byWidgetPredicate(
+            (widget) => widget is CachedNetworkImage && widget.imageUrl == url,
+          ),
+        );
+
+    final firstFit = photoByUrl('https://example.com/photo-1.jpg').fit;
+    photoController.jumpToPage(1);
+    await tester.pump();
+    final secondFit = photoByUrl('https://example.com/photo-2.jpg').fit;
+    expect(photoController.page, closeTo(1, 0.01));
+    expect([firstFit, secondFit], everyElement(BoxFit.contain));
   });
 }
