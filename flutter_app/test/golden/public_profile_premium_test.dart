@@ -171,6 +171,21 @@ const _regularProfile = PublicProfile(
   postCount: 42,
   followersCount: 1830,
   followingCount: 317,
+  mutualFollowers: PublicProfileMutualSummary(
+    items: [
+      PublicProfileMutualFollower(
+        id: 'mutual-henrico',
+        name: 'Henrico Julio',
+        username: 'henricojulio',
+      ),
+      PublicProfileMutualFollower(
+        id: 'mutual-natsu',
+        name: 'Im Natsu',
+        username: 'im_natsu',
+      ),
+    ],
+    totalCount: 7,
+  ),
 );
 
 class _GoldenProfile extends StatefulWidget {
