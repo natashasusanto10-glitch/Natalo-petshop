@@ -182,6 +182,12 @@ class PublicProfileCollapsingHeaderDelegate
                           cornerRadius: motion.radius,
                           labelOpacity: motion.labelOpacity,
                           tabGap: motion.gap,
+                          surfaceOpacity: motion.surfaceOpacity,
+                          underlineOpacity: motion.underlineOpacity,
+                          foregroundColor: foreground,
+                          mergedSurfaceColor: isOfficial
+                              ? NataloColors.heroTop
+                              : Colors.black,
                         ),
                       ),
                     ],

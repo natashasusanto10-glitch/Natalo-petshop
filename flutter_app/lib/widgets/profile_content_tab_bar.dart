@@ -16,6 +16,10 @@ class ProfileContentTabBar extends StatelessWidget {
   final double cornerRadius;
   final double labelOpacity;
   final double tabGap;
+  final double surfaceOpacity;
+  final double underlineOpacity;
+  final Color? foregroundColor;
+  final Color? mergedSurfaceColor;
 
   const ProfileContentTabBar({
     super.key,
@@ -24,27 +28,33 @@ class ProfileContentTabBar extends StatelessWidget {
     this.cornerRadius = 0,
     this.labelOpacity = 0,
     this.tabGap = 0,
+    this.surfaceOpacity = 0,
+    this.underlineOpacity = 1,
+    this.foregroundColor,
+    this.mergedSurfaceColor,
   });
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final expandedForeground = foregroundColor ?? colors.onSurfaceVariant;
+    final surface = Color.lerp(
+      Colors.transparent,
+      (mergedSurfaceColor ?? Colors.black).withValues(alpha: 0.72),
+      surfaceOpacity,
+    );
     return ClipRRect(
       borderRadius: BorderRadius.circular(cornerRadius),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: colors.surface,
-          border: Border(
-            top: BorderSide(color: colors.outlineVariant, width: 0.5),
-            bottom: BorderSide(color: colors.outlineVariant, width: 0.5),
-          ),
+          color: surface,
         ),
         child: TabBar(
           controller: controller,
           onTap: onTap,
           indicator: UnderlineTabIndicator(
-            borderSide: const BorderSide(
-              color: NataloColors.primary,
+            borderSide: BorderSide(
+              color: NataloColors.primary.withValues(alpha: underlineOpacity),
               width: 2.4,
             ),
             borderRadius: BorderRadius.circular(3),
@@ -65,6 +75,8 @@ class ProfileContentTabBar extends StatelessWidget {
               icon: Icons.grid_on_rounded,
               label: 'Postingan',
               labelOpacity: labelOpacity,
+              surfaceOpacity: surfaceOpacity,
+              foregroundColor: expandedForeground,
             ),
             _AnimatedProfileTab(
               key: const Key('profile_tab_video'),
@@ -73,6 +85,8 @@ class ProfileContentTabBar extends StatelessWidget {
               icon: Icons.smart_display_outlined,
               label: 'Video',
               labelOpacity: labelOpacity,
+              surfaceOpacity: surfaceOpacity,
+              foregroundColor: expandedForeground,
             ),
             _AnimatedProfileTab(
               key: const Key('profile_tab_shop'),
@@ -81,6 +95,8 @@ class ProfileContentTabBar extends StatelessWidget {
               icon: Icons.shopping_bag_outlined,
               label: 'Belanja',
               labelOpacity: labelOpacity,
+              surfaceOpacity: surfaceOpacity,
+              foregroundColor: expandedForeground,
             ),
           ],
         ),
@@ -95,6 +111,8 @@ class _AnimatedProfileTab extends StatelessWidget {
   final IconData icon;
   final String label;
   final double labelOpacity;
+  final double surfaceOpacity;
+  final Color foregroundColor;
 
   const _AnimatedProfileTab({
     super.key,
@@ -103,11 +121,12 @@ class _AnimatedProfileTab extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.labelOpacity,
+    required this.surfaceOpacity,
+    required this.foregroundColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     return Tab(
       height: ProfileContentTabBar.height,
       iconMargin: EdgeInsets.zero,
@@ -117,11 +136,12 @@ class _AnimatedProfileTab extends StatelessWidget {
           final position = controller.animation?.value ?? controller.index;
           final emphasis =
               (1 - (position - index).abs()).clamp(0.0, 1.0).toDouble();
-          final color = Color.lerp(
-            colors.onSurfaceVariant,
-            NataloColors.primary,
-            emphasis,
+          final inactiveColor = Color.lerp(
+            foregroundColor,
+            Colors.white,
+            surfaceOpacity,
           );
+          final color = Color.lerp(inactiveColor, NataloColors.primary, emphasis);
           final size = lerpDouble(27, 28.5, emphasis)!;
 
           return Semantics(

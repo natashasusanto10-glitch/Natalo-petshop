@@ -38,10 +38,47 @@ void main() {
     expect(tabBar.indicatorSize, TabBarIndicatorSize.tab);
     expect(tabBar.indicator, isA<UnderlineTabIndicator>());
   });
+
+  testWidgets('expanded tabs are icon-only and merged tabs reveal labels', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: _ProfileTabsHarness(labelOpacity: 0),
+        ),
+      ),
+    );
+    expect(find.text('Postingan'), findsNothing);
+    expect(find.text('Video'), findsNothing);
+    expect(find.text('Belanja'), findsNothing);
+
+    // Rebuild at the merged state; labels belong inside the dark capsule.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: _ProfileTabsHarness(
+            labelOpacity: 1,
+            surfaceOpacity: 1,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Postingan'), findsOneWidget);
+    expect(find.text('Video'), findsOneWidget);
+    expect(find.text('Belanja'), findsOneWidget);
+    final tabBar = tester.widget<TabBar>(find.byType(TabBar));
+    final indicator = tabBar.indicator as UnderlineTabIndicator;
+    expect(indicator.borderSide.color.a, 0);
+  });
 }
 
 class _ProfileTabsHarness extends StatefulWidget {
-  const _ProfileTabsHarness();
+  final double labelOpacity;
+  final double surfaceOpacity;
+
+  const _ProfileTabsHarness({this.labelOpacity = 0, this.surfaceOpacity = 0});
 
   @override
   State<_ProfileTabsHarness> createState() => _ProfileTabsHarnessState();
@@ -68,7 +105,13 @@ class _ProfileTabsHarnessState extends State<_ProfileTabsHarness>
     return Scaffold(
       body: Column(
         children: [
-          ProfileContentTabBar(controller: _controller),
+          ProfileContentTabBar(
+            controller: _controller,
+            labelOpacity: widget.labelOpacity,
+            surfaceOpacity: widget.surfaceOpacity,
+            underlineOpacity: widget.surfaceOpacity == 1 ? 0 : 1,
+            mergedSurfaceColor: Colors.black,
+          ),
           Expanded(
             child: TabBarView(
               controller: _controller,
