@@ -18,6 +18,7 @@ import '../../../widgets/post_likers_sheet.dart';
 import 'feed_action_rail.dart';
 import 'feed_creator_overlay.dart';
 import 'feed_product_anchor_card.dart';
+import 'feed_product_pill.dart';
 
 /// Public/shared widgets used by BOTH `_PhotoCarouselPostView` (in
 /// `feed_screen.dart`) and `FeedVideoPostView`
@@ -1465,6 +1466,23 @@ int feedMaxDiscountPercent(List<FeedProductLink> products) => products.fold<int>
       0,
       (max, p) => p.discountPercent > max ? p.discountPercent : max,
     );
+
+/// Bangun `FeedProductPill` (widget bersama) dari daftar produk tag + index
+/// yang sedang tampil. Count = jumlah produk; badge diskon = persen tertinggi.
+/// Rotasi index dikendalikan pemanggil (host feed). `onTap` membuka sheet Links.
+Widget feedProductPillFor(
+  List<FeedProductLink> products,
+  int featuredIndex, {
+  required VoidCallback onTap,
+}) {
+  final featured = products[featuredIndex % products.length];
+  return FeedProductPill(
+    title: featured.name,
+    count: products.length,
+    maxDiscountPercent: feedMaxDiscountPercent(products),
+    onTap: onTap,
+  );
+}
 
 FeedPostProductPricing feedPostProductPricing(FeedProductLink product) {
   final original = product.price;
