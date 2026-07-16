@@ -20,6 +20,7 @@ import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
+import '../utils/order_chat_context.dart';
 import '../widgets/app_login_gate.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
@@ -205,6 +206,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     }
   }
 
+  /// Order support always starts with a persisted context card. This makes
+  /// the exact selected order visible to admin even before the customer types
+  /// a message; product contexts intentionally keep their existing behavior.
+  void _autoForwardEntryOrderContextIfNeeded() {
+    if (!shouldAutoForwardOrderContext(
+      context: _entryContext,
+      contextAlreadySent: _contextSent,
+    )) {
+      return;
+    }
+    if (!_guardChatEnabled()) return;
+    unawaited(_onSendText(''));
+  }
+
   /// Status room ('open'/'resolved' dst). **Belum ada sumber data**: respons
   /// `GET /api/chat/{chatId}` yang di-ship (Plan 2) hanya balas
   /// `{chatId, messages, nextCursor}` — TIDAK ada field `status` room sama
@@ -320,6 +335,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       // akhir").
       _settleInitialScroll();
       _startPolling();
+      _autoForwardEntryOrderContextIfNeeded();
     } catch (e) {
       if (kDebugMode) debugPrint('[ChatRoomScreen] fetchMessages gagal: $e');
       if (!mounted) return;
@@ -801,8 +817,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     // mulai (paritas WA). Optimistic membawa kutipan lokal supaya bubble tampil
     // langsung; server tetap men-derive-ulang kutipan by id (anti-palsu).
     final replyingMsg = _replyingTo;
-    final replyToId =
-        (replyingMsg != null && !replyingMsg.isOptimistic) ? replyingMsg.id : null;
+    final replyToId = (replyingMsg != null && !replyingMsg.isOptimistic)
+        ? replyingMsg.id
+        : null;
     final optimistic = ChatMessage(
       id: clientMsgId,
       sender: ChatSender.customer,

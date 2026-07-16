@@ -5,7 +5,6 @@ import '../theme/app_spacing.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../config/natalo_store_config.dart';
 import '../models/member_profile.dart';
 import '../services/home_widget_service.dart';
 import '../services/member_service.dart';
@@ -14,6 +13,7 @@ import '../state/cart_store.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../utils/order_chat_context.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/app_chat_button.dart';
 import '../widgets/app_login_gate.dart';
@@ -24,6 +24,17 @@ import '../widgets/app_ui.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 
 const _brandBlue = NataloColors.primary;
+
+/// Opens NLCATTER's existing customer-support room with the exact order the
+/// customer selected. The chat backend validates ownership before it accepts
+/// the context, so this also works for an older completed order.
+Future<void> openOrderChat(BuildContext context, OrderSummary order) async {
+  await Navigator.pushNamed(
+    context,
+    '/chat',
+    arguments: buildOrderChatContext(order),
+  );
+}
 
 enum _OrderFilter {
   all('Semua'),
@@ -437,19 +448,7 @@ class _OrderCardState extends State<_OrderCard> {
 
   Future<void> _openOrderHelp(BuildContext context) async {
     AppHaptics.tap();
-    final uri = NataloStoreConfig.whatsappUri(
-      message:
-          'Halo Natalo, saya butuh bantuan untuk pesanan ${order.orderNumber}.',
-    );
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!context.mounted) return;
-    if (!opened) {
-      AppToast.show(
-        context,
-        'Tidak bisa buka WhatsApp. Pastikan WhatsApp terpasang.',
-        kind: ToastKind.error,
-      );
-    }
+    await openOrderChat(context, order);
   }
 
   Future<void> _openTracking(BuildContext context) async {
@@ -854,15 +853,14 @@ class _OrderCardState extends State<_OrderCard> {
         ),
       );
     }
-    if (!_isFinalized) {
-      actions.add(
-        _OrderQuickAction(
-          icon: Icons.chat_bubble_outline_rounded,
-          title: 'Hubungi admin',
-          onTap: () => _openOrderHelp(context),
-        ),
-      );
-    }
+    actions.add(
+      _OrderQuickAction(
+        icon: Icons.chat_bubble_outline_rounded,
+        iconBuilder: (color) => ChatDotsBubbleIcon(size: 20, color: color),
+        title: 'Hubungi admin',
+        onTap: () => _openOrderHelp(context),
+      ),
+    );
     actions
       ..add(
         _OrderQuickAction(
@@ -1215,6 +1213,7 @@ String _formatOrderDateTime(DateTime value) {
 
 class _OrderQuickAction {
   final IconData icon;
+  final Widget Function(Color color)? iconBuilder;
   final String title;
 
   /// Null = neutral action → resolve ke cs.onSurface di tile (adaptif
@@ -1227,6 +1226,7 @@ class _OrderQuickAction {
     required this.title,
     required this.onTap,
     this.color,
+    this.iconBuilder,
   });
 }
 
@@ -1333,7 +1333,8 @@ class _OrderQuickActionTile extends StatelessWidget {
           color: color.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(action.icon, color: color, size: 20),
+        child: action.iconBuilder?.call(color) ??
+            Icon(action.icon, color: color, size: 20),
       ),
       title: Text(
         action.title,
