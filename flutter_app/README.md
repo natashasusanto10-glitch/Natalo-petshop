@@ -1,17 +1,30 @@
-# natalo_petshop_flutter
+# Natalo Petshop Flutter
 
-A new Flutter project.
+Flutter client for Natalo Petshop.
 
-## Getting Started
+## Social video registry observation
 
-This project is a starting point for a Flutter application.
+The social video registry observation package is passive diagnostics only. It
+detects distinct live controller identities for the same social post; it does
+not reduce controller count, transfer playback ownership, or issue player
+commands.
 
-A few resources to get you started if this is your first Flutter project:
+Use these exact compile-time build modes:
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```text
+Default/rollback: --dart-define=SOCIAL_VIDEO_REGISTRY_OBSERVE=false
+Canary: --dart-define=SOCIAL_VIDEO_REGISTRY_OBSERVE=true
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+The default is disabled. Changing the value requires a new build or launch
+because the setting is read from `bool.fromEnvironment` at process startup.
+
+See the
+[social video registry observation runbook](../docs/operations/social-video-registry-observation.md)
+for canary enablement, privacy-safe metrics, device validation, monitoring, and
+rollback.
+
+## Getting started
+
+Flutter setup and development guidance is available in the
+[Flutter documentation](https://docs.flutter.dev/).
