@@ -856,7 +856,10 @@ class _OrderCardState extends State<_OrderCard> {
     actions.add(
       _OrderQuickAction(
         icon: Icons.chat_bubble_outline_rounded,
-        iconBuilder: (color) => ChatDotsBubbleIcon(size: 20, color: color),
+        // ChatDotsBubbleIcon mengisi kanvas custom lebih penuh daripada glyph
+        // Material lain, jadi gunakan ukuran sedikit lebih kecil agar bobot
+        // visualnya sejajar dengan ikon menu di sheet.
+        iconBuilder: (color) => ChatDotsBubbleIcon(size: 18, color: color),
         title: 'Hubungi admin',
         onTap: () => _openOrderHelp(context),
       ),
