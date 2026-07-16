@@ -1529,6 +1529,114 @@ void main() {
         BoxFit.fitWidth);
   });
 
+  testWidgets(
+      'main Feed uses one top-aligned cover thumbnail without blurred backdrop',
+      (tester) async {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(size: Size(393, 852)),
+        child: MaterialApp(
+          home: FeedVideoPostView(
+            post: _fakeVideoPost(aspectRatio: 9 / 16),
+            isActive: false,
+            preloadedController: null,
+            framing: FeedVideoFraming.mainFeed,
+            onOverlayStateChanged: (_) {},
+            onMediaZoomChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final thumbnails = tester
+        .widgetList<CachedNetworkImage>(find.byType(CachedNetworkImage))
+        .where((image) => image.imageUrl.endsWith('.jpg'))
+        .toList();
+    expect(thumbnails, hasLength(1));
+    expect(thumbnails.single.fit, BoxFit.cover);
+    expect(thumbnails.single.alignment, Alignment.topCenter);
+    expect(find.byType(ImageFiltered), findsNothing);
+  });
+
+  testWidgets('main Feed initialized player shares cover topCenter framing',
+      (tester) async {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    final platform = _FakeVideoPlayerPlatform();
+    VideoPlayerPlatform.instance = platform;
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse('https://example.com/main-feed.m3u8'),
+    );
+    await controller.initialize();
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(size: Size(393, 852)),
+        child: MaterialApp(
+          home: FeedVideoPostView(
+            post: _fakeVideoPost(aspectRatio: 9 / 16, hls: true),
+            isActive: true,
+            preloadedController: controller,
+            framing: FeedVideoFraming.mainFeed,
+            onOverlayStateChanged: (_) {},
+            onMediaZoomChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final mediaFittedBoxes = tester.widgetList<FittedBox>(
+      find.descendant(
+        of: find.byKey(const ValueKey('feed-video-media-viewport')),
+        matching: find.byType(FittedBox),
+      ),
+    );
+    expect(mediaFittedBoxes, isNotEmpty);
+    expect(mediaFittedBoxes.last.fit, BoxFit.cover);
+    expect(mediaFittedBoxes.last.alignment, Alignment.topCenter);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('feed-video-media-viewport')),
+        matching: find.byType(ImageFiltered),
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('main Feed media stops at the bottom navigation inset',
+      (tester) async {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(
+          size: Size(393, 852),
+          padding: EdgeInsets.only(bottom: 100),
+        ),
+        child: MaterialApp(
+          home: FeedVideoPostView(
+            post: _fakeVideoPost(aspectRatio: 9 / 16),
+            isActive: false,
+            preloadedController: null,
+            framing: FeedVideoFraming.mainFeed,
+            onOverlayStateChanged: (_) {},
+            onMediaZoomChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final mediaViewport = tester.widget<Positioned>(
+      find.byKey(const ValueKey('feed-video-media-viewport')),
+    );
+    expect(mediaViewport.top, 0);
+    expect(mediaViewport.bottom, 100);
+  });
+
   // Fix A5 — handoff preload terkonfirmasi: klaim dari map pemilik hanya
   // terjadi saat state mengadopsi (initState), BUKAN tiap build parent.
   // Regresi lama: remove() di build() → rebuild parent dengan state

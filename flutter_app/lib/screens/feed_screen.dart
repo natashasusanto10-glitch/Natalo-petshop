@@ -1115,6 +1115,7 @@ class _FeedScreenState extends State<FeedScreen> {
                         key: ValueKey('feed-video-${post.id}'),
                         post: post,
                         isActive: index == _activeIndex,
+                        framing: FeedVideoFraming.mainFeed,
                         // Fix A5: JANGAN remove() dari map di build().
                         // Kalau parent rebuild tapi state ber-key sama masih
                         // hidup (initState tidak jalan lagi), controller yang

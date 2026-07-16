@@ -64,6 +64,11 @@ typedef FeedVideoHealthMonitorFactory = VideoPlaybackHealthMonitor Function({
   required Map<String, Object> metricContext,
 });
 
+enum FeedVideoFraming {
+  immersive,
+  mainFeed,
+}
+
 /// Alasan sebuah cover-pause dilaporkan lewat [FeedVideoPostView.onRequestPause]
 /// (gap D5). Satu sinyal pause dulu opaque untuk 3 sumber berbeda; T3 tidak
 /// bisa membedakan "aku sedang push fullscreen handoff" (controller SAMA
@@ -190,6 +195,11 @@ class FeedVideoPostView extends StatefulWidget {
   final SocialVideoSessionObserver? observationObserver;
   final Future<void> Function()? beforeObserveInitialized;
 
+  /// Main Feed owns a fixed media viewport that ends above its bottom
+  /// navigation. Other surfaces retain the existing immersive fit-width
+  /// framing so this visual change cannot leak into scoped fullscreen.
+  final FeedVideoFraming framing;
+
   const FeedVideoPostView({
     super.key,
     required this.post,
@@ -213,6 +223,7 @@ class FeedVideoPostView extends StatefulWidget {
     this.healthMonitorFactory,
     this.observationObserver,
     this.beforeObserveInitialized,
+    this.framing = FeedVideoFraming.immersive,
   });
 
   @override
@@ -3052,6 +3063,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
           final feedInfoInset = navClearance + feedPostOverlayBottomGap;
           final actionRailInset = navClearance + feedPostActionRailBottomGap;
           final minimized = _commentSheetOpen;
+          final mainFeedFraming =
+              widget.framing == FeedVideoFraming.mainFeed && !minimized;
+          final mediaBottomInset =
+              mainFeedFraming ? MediaQuery.paddingOf(context).bottom : 0.0;
 
           return ColoredBox(
             color: Colors.black,
@@ -3139,10 +3154,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                     children: [
                       // ── Background: video atau thumbnail ──
                       Positioned(
+                        key: const ValueKey('feed-video-media-viewport'),
                         left: 0,
                         right: 0,
                         top: 0,
-                        bottom: 0,
+                        bottom: mediaBottomInset,
                         child: Semantics(
                           container: true,
                           label: post.mediaAccessibilityLabel,
@@ -3162,6 +3178,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                                 post: post,
                                 videoController: _videoController,
                                 compactPreview: _commentDrawerMounted,
+                                framing: widget.framing,
                               ),
                             ),
                           ),
@@ -3514,11 +3531,13 @@ class _MediaBackground extends StatelessWidget {
   final FeedPost post;
   final VideoPlayerController? videoController;
   final bool compactPreview;
+  final FeedVideoFraming framing;
 
   const _MediaBackground({
     required this.post,
     required this.videoController,
     this.compactPreview = false,
+    this.framing = FeedVideoFraming.immersive,
   });
 
   /// Sigma blur untuk backdrop pengisi ala IG/Reels.
@@ -3586,8 +3605,13 @@ class _MediaBackground extends StatelessWidget {
           ],
         );
       }
-      Widget videoLayer(BoxFit fit) => FittedBox(
+      Widget videoLayer(
+        BoxFit fit, {
+        Alignment alignment = Alignment.center,
+      }) =>
+          FittedBox(
             fit: fit,
+            alignment: alignment,
             clipBehavior: Clip.hardEdge,
             child: SizedBox(
               width: size.width,
@@ -3595,6 +3619,15 @@ class _MediaBackground extends StatelessWidget {
               child: VideoPlayer(ctrl),
             ),
           );
+      if (framing == FeedVideoFraming.mainFeed) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            const ColoredBox(color: Colors.black),
+            videoLayer(BoxFit.cover, alignment: Alignment.topCenter),
+          ],
+        );
+      }
       return _immersiveStack(
         // Backdrop = video yang sama, di-cover (isi penuh, tepi terpotong) lalu
         // di-blur → mengisi sisa ruang tanpa hitam polos.
@@ -3612,6 +3645,21 @@ class _MediaBackground extends StatelessWidget {
             CachedNetworkImage(
               imageUrl: thumb,
               fit: BoxFit.contain,
+              placeholder: (_, __) => const SizedBox.shrink(),
+              errorWidget: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          ],
+        );
+      }
+      if (framing == FeedVideoFraming.mainFeed) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            const ColoredBox(color: Colors.black),
+            CachedNetworkImage(
+              imageUrl: thumb,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
               placeholder: (_, __) => const SizedBox.shrink(),
               errorWidget: (_, __, ___) => const SizedBox.shrink(),
             ),
