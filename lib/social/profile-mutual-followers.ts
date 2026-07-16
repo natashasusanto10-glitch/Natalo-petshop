@@ -56,7 +56,7 @@ const publicMutualFollowerName = (
   const name = follower.name?.trim();
   if (name) return name;
 
-  const username = follower.username?.trim().replace(/^@+/, "");
+  const username = follower.username?.trim().replace(/^@+/, "").trim();
   if (username) return `@${username}`;
 
   return "Pengguna Natalo";

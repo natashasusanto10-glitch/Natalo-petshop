@@ -156,6 +156,36 @@ test("legacy mutual previews always expose a stable non-empty public label", asy
   assert.equal(result.items[3]?.isOfficial, true);
 });
 
+test("legacy username fallback removes repeated sigils and surrounding space", async () => {
+  const dependencies: MutualFollowerDependencies = {
+    findMany: async () => [
+      {
+        follower: {
+          id: "legacy-username-user",
+          name: null,
+          username: "  @@  legacy.user  ",
+          profilePhotoUrl: null,
+          role: "CUSTOMER",
+        },
+      },
+    ],
+    count: async () => 1,
+  };
+
+  const result = await loadOfficialMutualFollowers(
+    {
+      viewerUserId: "viewer-1",
+      targetUserId: "official-1",
+      isOfficial: true,
+      isOwner: false,
+    },
+    dependencies,
+  );
+
+  assert.equal(result.totalCount, 1);
+  assert.equal(result.items[0]?.name, "@legacy.user");
+});
+
 test("optional mutual failure returns empty summary", async () => {
   const dependencies: MutualFollowerDependencies = {
     findMany: async () => {
