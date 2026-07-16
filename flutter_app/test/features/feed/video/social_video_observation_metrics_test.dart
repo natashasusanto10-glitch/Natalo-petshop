@@ -119,4 +119,23 @@ void main() {
 
     expect(events, isEmpty);
   });
+
+  test('rejects hex-like raw ids longer than eight characters', () async {
+    final events = <Map<String, Object>>[];
+    final sink = SocialVideoCollisionMetricSink(
+      writeEvent: (name, params) async => events.add({'name': name, ...params}),
+    );
+
+    await sink.record(const SocialVideoCollision(
+      mediaKey: 'deadbeefcafebabe',
+      controllerCount: 2,
+    ));
+    await sink.record(const SocialVideoCollision(
+      mediaKey: 'deadbeef',
+      controllerCount: 2,
+    ));
+
+    expect(events, hasLength(1));
+    expect(events.single['media_key'], 'deadbeef');
+  });
 }

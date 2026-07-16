@@ -25,6 +25,12 @@ Commit: `88f0d74c` (`feat(feed): add social video observation flag`)
 - `flutter analyze lib/features/feed/video/social_video_registry_config.dart lib/features/feed/video/social_video_observation_metrics.dart test/features/feed/video/social_video_observation_metrics_test.dart`: no issues found.
 - `dart format ...`: passed.
 - `git diff --check`: clean.
+
+## Remaining Reviewer Finding Fix
+
+- Tightened the media key guard to exactly eight lowercase hexadecimal characters, matching `anonymousSocialPostKey`.
+- Added regression coverage proving `deadbeefcafebabe` is rejected while `deadbeef` is emitted.
+- TDD evidence: the new regression first failed because both values were emitted; it passed after the guard was narrowed.
 - Forbidden-field scan of the new metric/config source: no matches.
 
 ## Concerns

@@ -22,7 +22,7 @@ class SocialVideoCollisionMetricSink {
             ((name, parameters) => AppAnalytics.logEvent(name, parameters));
 
   static const _eventName = 'social_video_controller_collision';
-  static final _safeMediaKey = RegExp(r'^[0-9a-f]{1,64}$');
+  static final _safeMediaKey = RegExp(r'^[0-9a-f]{8}$');
 
   final SocialVideoEventWriter _writeEvent;
   String? _lastSampledSummary;
