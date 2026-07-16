@@ -60,7 +60,9 @@ class PublicProfileMutualSummary {
         if (parsed.id.isNotEmpty && parsed.name.isNotEmpty) items.add(parsed);
       }
     }
-    final parsedCount = (raw['totalCount'] as num?)?.toInt() ?? 0;
+    final rawCount = raw['totalCount'];
+    final parsedCount =
+        rawCount is num && rawCount.isFinite ? rawCount.toInt() : 0;
     return PublicProfileMutualSummary(
       items: List.unmodifiable(items),
       totalCount: parsedCount < items.length ? items.length : parsedCount,

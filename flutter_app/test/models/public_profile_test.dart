@@ -41,4 +41,30 @@ void main() {
     });
     expect(summary.totalCount, 2);
   });
+
+  test('non-numeric count preserves parsed items with a safe count', () {
+    final summary = PublicProfileMutualSummary.fromJson({
+      'items': [
+        {'id': 'user-1', 'name': 'Mona'},
+      ],
+      'totalCount': 'not-a-number',
+    });
+
+    expect(summary.items.single.id, 'user-1');
+    expect(summary.totalCount, 1);
+  });
+
+  test('non-finite count preserves parsed items with a safe count', () {
+    for (final totalCount in [double.nan, double.infinity]) {
+      final summary = PublicProfileMutualSummary.fromJson({
+        'items': [
+          {'id': 'user-1', 'name': 'Mona'},
+        ],
+        'totalCount': totalCount,
+      });
+
+      expect(summary.items.single.id, 'user-1');
+      expect(summary.totalCount, 1);
+    }
+  });
 }
