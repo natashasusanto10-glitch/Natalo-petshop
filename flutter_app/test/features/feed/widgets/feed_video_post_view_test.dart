@@ -18,6 +18,7 @@ import 'package:natalo_petshop_flutter/features/feed/video/video_player_session.
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_post_view.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_scrubber.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
+import 'package:natalo_petshop_flutter/state/feed_comment_session_store.dart';
 import 'package:natalo_petshop_flutter/state/settings_store.dart';
 import 'package:natalo_petshop_flutter/utils/android_back_overlays.dart';
 import 'package:natalo_petshop_flutter/utils/app_route_observer.dart';
@@ -1044,6 +1045,79 @@ void main() {
     await tester.pump(const Duration(milliseconds: 350));
     await tester.pump();
     expect(find.byType(FeedCommentSheet), findsNothing);
+  });
+
+  // Terminal-state design: pointer cancel di handle = release velocity nol,
+  // dan sesi drawer hanya menyimpan detent valid (initial/expanded) — bukan
+  // partial extent live-tracking di band terlarang [dismiss, initial).
+  testWidgets(
+      'video drawer: drag-cancel settle ke initial + sesi hanya menyimpan '
+      'detent valid', (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    VideoPlayerPlatform.instance = _FakeVideoPlayerPlatform();
+    feedCommentSessionStore.clear();
+    addTearDown(feedCommentSessionStore.clear);
+    await appSettingsStore.setFeedAutoplay(false);
+    addTearDown(() => appSettingsStore.setFeedAutoplay(true));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeedVideoPostView(
+          post: _fakeVideoPost(id: 'comment-cancel-session', hls: true),
+          isActive: true,
+          preloadedController: null,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsLabel('Komentar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 320));
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+    final initialTop = tester.getTopLeft(find.byType(FeedCommentSheet)).dy;
+
+    // Tarik handle turun ~15% layar (extent ~0.45 — band terlarang), TAHAN.
+    final handle = find.byKey(const ValueKey('feed-comment-drag-handle'));
+    final screenHeight = tester.view.physicalSize.height /
+        tester.view.devicePixelRatio;
+    final gesture = await tester.startGesture(tester.getCenter(handle));
+    for (var i = 0; i < 6; i++) {
+      await gesture.moveBy(Offset(0, screenHeight * 0.025));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+
+    // Mid-drag di band terlarang: sesi TIDAK boleh menyimpan partial extent.
+    final session = feedCommentSessionStore.sessionFor(
+      viewerId: 'guest',
+      postId: 'comment-cancel-session',
+    );
+    final storedMidDrag = session.sheetExtent;
+    expect(
+      storedMidDrag == null ||
+          (storedMidDrag - feedCommentInitialExtent).abs() <= 0.02 ||
+          storedMidDrag >= 0.9,
+      isTrue,
+      reason: 'sesi wajib berisi detent valid, bukan partial '
+          '(tersimpan: $storedMidDrag)',
+    );
+
+    // Cancel (bukan release): wajib settle balik TEPAT ke initial.
+    await gesture.cancel();
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.byType(FeedCommentSheet), findsOneWidget,
+        reason: 'cancel di atas dismiss → resting state = initial');
+    expect(
+      tester.getTopLeft(find.byType(FeedCommentSheet)).dy,
+      closeTo(initialTop, 2),
+      reason: 'extent wajib kembali ke detent initial setelah cancel',
+    );
   });
 
   testWidgets('deactivation and dispose force-clean comment drawer lifecycle',
