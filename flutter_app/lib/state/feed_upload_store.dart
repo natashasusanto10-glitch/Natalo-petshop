@@ -123,16 +123,6 @@ class FeedUploadStore extends ChangeNotifier {
   @visibleForTesting
   VideoCompressGate gate = videoCompressGate;
 
-  /// Injectable media probe untuk unit test. Dipakai supaya sumber yang sudah
-  /// Full HD (<=1920x1080 atau <=1080x1920) tidak lewat preset kompresi yang
-  /// di Android bersifat at-most 1080/1920, tapi di iOS preset bisa menjaga
-  /// kualitas dengan perilaku yang kurang eksplisit. Untuk video tanpa trim,
-  /// original Full HD dipakai apa adanya agar tidak ada upscale/downscale
-  /// diam-diam.
-  @visibleForTesting
-  Future<MediaInfo?> Function(String path) mediaInfoReader =
-      (path) => VideoCompress.getMediaInfo(path);
-
   /// Injectable clock untuk unit test — dipakai timestamp `savedAtMs` saat
   /// persist task inflight (bukan lagi untuk cek window `authExpire`; video
   /// resume sekarang selalu re-provision, lihat komentar `_runVideoUpload`).
@@ -559,10 +549,14 @@ class FeedUploadStore extends ChangeNotifier {
 
     final range = compressRangeOf(draft);
     final hasTrim = range.startTimeSec != null || range.durationSec != null;
-    if (!hasTrim && await _sourceIsAtMostFullHd(originalPath)) {
-      return originalPath;
-    }
 
+    // Opsi A (kompres 4G): SELALU re-encode via preset Res1920x1080Quality —
+    // termasuk sumber yang sudah <=1080p — supaya bitrate rekaman HP yang
+    // tinggi (17-25 Mbps) dipangkas ke bitrate preset tanpa menurunkan
+    // resolusi. Payload jauh lebih kecil = upload 4G jauh lebih andal.
+    // Sebelumnya sumber <=1080p di-skip → di-upload mentah (50-150MB) → sering
+    // timeout di seluler. Guard `_compressedIsLarger` di bawah tetap pakai
+    // original kalau re-encode ternyata TIDAK mengecilkan (sumber sudah hemat).
     final job = VideoCompressJob();
     _activeCompressJob = job;
     try {
@@ -602,24 +596,6 @@ class FeedUploadStore extends ChangeNotifier {
     return originalPath;
   }
 
-  Future<bool> _sourceIsAtMostFullHd(String path) async {
-    try {
-      final info = await mediaInfoReader(path);
-      final width = info?.width;
-      final height = info?.height;
-      if (width == null || height == null || width <= 0 || height <= 0) {
-        return false;
-      }
-      return _isAtMostFullHd(width, height);
-    } catch (_) {
-      return false;
-    }
-  }
-
-  bool _isAtMostFullHd(int width, int height) {
-    return (width <= 1920 && height <= 1080) ||
-        (width <= 1080 && height <= 1920);
-  }
 
   Future<bool> _compressedIsLarger(File compressed, String originalPath) async {
     try {

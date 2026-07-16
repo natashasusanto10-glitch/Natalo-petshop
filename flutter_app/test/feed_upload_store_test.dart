@@ -82,20 +82,23 @@ void main() {
   });
 
   group('prepareVideoPathForUpload', () {
-    test('tanpa trim + sumber Full HD memakai original tanpa kompres',
+    test('tanpa trim + sumber <=Full HD tetap di-re-encode (Opsi A kompres 4G)',
         () async {
-      final tmp = await File(
+      // Opsi A: sumber <=1080p TIDAK lagi di-skip — di-re-encode supaya bitrate
+      // rekaman HP dipangkas. Hasil kompres lebih kecil (5 < 20 byte) → dipakai.
+      final original = await File(
         '${Directory.systemTemp.path}/store-fullhd-${DateTime.now().microsecondsSinceEpoch}.mp4',
-      ).writeAsBytes(List<int>.filled(10, 1));
-      addTearDown(() => tmp.delete());
+      ).writeAsBytes(List<int>.filled(20, 1));
+      final compressed = await File(
+        '${Directory.systemTemp.path}/store-fullhd-c-${DateTime.now().microsecondsSinceEpoch}.mp4',
+      ).writeAsBytes(List<int>.filled(5, 2));
+      addTearDown(() async {
+        if (await original.exists()) await original.delete();
+        if (await compressed.exists()) await compressed.delete();
+      });
       final store = FeedUploadStore.instance;
       store.clear();
       var compressCalls = 0;
-      store.mediaInfoReader = (path) async => MediaInfo(
-            path: path,
-            width: 1080,
-            height: 1920,
-          );
       store.gate = VideoCompressGate(
         compressRunner: (path,
             {quality = VideoQuality.Res1280x720Quality,
@@ -103,7 +106,7 @@ void main() {
             startTime,
             duration}) async {
           compressCalls += 1;
-          return null;
+          return MediaInfo(path: compressed.path, file: compressed);
         },
         cancelRunner: () async {},
         isPluginBusy: () => false,
@@ -112,15 +115,16 @@ void main() {
 
       final selected = await store.prepareVideoPathForUpload(
         FeedCreatePostDraft(
-          localVideoPath: tmp.path,
+          localVideoPath: original.path,
           originalDuration: const Duration(seconds: 30),
         ),
-        tmp.path,
+        original.path,
       );
 
-      expect(selected, tmp.path);
-      expect(compressCalls, 0);
-      store.mediaInfoReader = (path) => VideoCompress.getMediaInfo(path);
+      expect(compressCalls, 1,
+          reason: 'sumber <=1080p kini tetap di-re-encode (bukan di-skip)');
+      expect(selected, compressed.path,
+          reason: 'hasil kompres lebih kecil → dipakai');
       store.clear();
     });
 
@@ -139,11 +143,6 @@ void main() {
       });
       final store = FeedUploadStore.instance;
       store.clear();
-      store.mediaInfoReader = (path) async => MediaInfo(
-            path: path,
-            width: 2160,
-            height: 3840,
-          );
       store.gate = VideoCompressGate(
         compressRunner: (path,
             {quality = VideoQuality.Res1280x720Quality,
@@ -167,7 +166,6 @@ void main() {
 
       expect(selected, original.path);
       expect(await compressed.exists(), isFalse);
-      store.mediaInfoReader = (path) => VideoCompress.getMediaInfo(path);
       store.clear();
     });
 
@@ -184,11 +182,6 @@ void main() {
       });
       final store = FeedUploadStore.instance;
       store.clear();
-      store.mediaInfoReader = (path) async => MediaInfo(
-            path: path,
-            width: 1080,
-            height: 1920,
-          );
       store.gate = VideoCompressGate(
         compressRunner: (path,
             {quality = VideoQuality.Res1280x720Quality,
@@ -214,7 +207,6 @@ void main() {
 
       expect(selected, compressed.path);
       expect(await compressed.exists(), isTrue);
-      store.mediaInfoReader = (path) => VideoCompress.getMediaInfo(path);
       store.clear();
     });
   });
