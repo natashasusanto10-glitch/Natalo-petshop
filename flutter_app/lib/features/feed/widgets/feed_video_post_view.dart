@@ -3335,11 +3335,9 @@ class _MediaBackground extends StatelessWidget {
   /// Aturan fit ala IG Reels: video portrait 9:16 dipertahankan sebagai
   /// canvas terpusat tanpa crop horizontal. Video yang lebih "pendek"
   /// (4:5, square, landscape) memakai letterbox agar tidak terasa zoom.
-  /// Rasio yang sedikit meleset dari 9:16 tetap diperlakukan sebagai
-  /// portrait Reels supaya thumbnail tidak berganti framing saat player siap.
-  static const double _coverMaxAspect = 0.68;
+  /// The fallback ratio is used when metadata is unavailable so thumbnail
+  /// and player framing remain stable while the video initializes.
   static const double _reelsAspect = 9 / 16;
-  static const double _reelsAspectTolerance = 0.04;
 
   static double _normalizedAspect({double? postAspect, Size? videoSize}) {
     final measured = videoSize == null || videoSize.height <= 0
@@ -3352,15 +3350,12 @@ class _MediaBackground extends StatelessWidget {
   }
 
   static BoxFit _fitForAspect(double aspect, Size viewport) {
-    final isReelsPortrait =
-        (aspect - _reelsAspect).abs() <= _reelsAspectTolerance;
-    // A tall phone viewport must preserve the 9:16 canvas. `contain` keeps
-    // the source width intact instead of allowing a full-screen `cover` to
-    // crop faces and products horizontally.
-    if (isReelsPortrait && viewport.width > 0 && viewport.height > 0) {
-      return BoxFit.contain;
-    }
-    return aspect <= _coverMaxAspect ? BoxFit.cover : BoxFit.contain;
+    // Keep every feed video inside its source canvas. This is especially
+    // important for portrait media that is taller than 9:16: using `cover`
+    // there crops the sides on a tall phone viewport and makes the subject
+    // appear zoomed. The viewport argument remains part of the helper API so
+    // thumbnail/player framing stays centralized and consistent.
+    return BoxFit.contain;
   }
 
   @override

@@ -1,18 +1,19 @@
-# Final fix report: official public identity
+# Final framing policy fix
 
-## Change
+Date: 2026-07-16
 
-Centralized the public official account label as `Natalo Petshop Official` in
-`flutter_app/lib/constants/official_brand.dart`. Feed authors, mention picker,
-inline mentions, product-feed fallback authors, public profiles, and likers now
-use this constant. Existing `isOfficial`/`isAdminOfficial` checks and
-`OfficialVerifiedBadge` rendering were preserved.
+`_fitForAspect` now returns `BoxFit.contain` for all non-compact feed media.
+This removes the old `cover` fallback for very tall portrait assets (for
+example aspect ratio `0.4`), preventing horizontal crop/zoom on tall phone
+viewports while keeping thumbnail and initialized player framing consistent.
 
-## Verification
+Added a focused widget regression test for the `0.4` portrait case.
 
-- `dart format` on all changed Dart files
-- `flutter test test/models/feed_comment_test.dart test/models/official_brand_test.dart`
-- Result: 16 tests passed
+Verification from `flutter_app`:
 
-General store/app marketing copy such as app title and chat welcome was not
-renamed because it is not an official account identity surface.
+```powershell
+flutter test test/features/feed/widgets/feed_video_post_view_test.dart
+flutter analyze lib/features/feed/widgets/feed_video_post_view.dart test/features/feed/widgets/feed_video_post_view_test.dart
+```
+
+Both commands passed; the analyzer reported no issues.

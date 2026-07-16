@@ -993,6 +993,12 @@ void main() {
     expect(fit, BoxFit.contain);
   });
 
+  testWidgets('video portrait sangat tinggi → background contain (tanpa crop)',
+      (tester) async {
+    final fit = await pumpAndReadThumbFit(tester, 0.4);
+    expect(fit, BoxFit.contain);
+  });
+
   testWidgets('video landscape 16:9 → background contain (letterbox)',
       (tester) async {
     final fit = await pumpAndReadThumbFit(tester, 16 / 9);
