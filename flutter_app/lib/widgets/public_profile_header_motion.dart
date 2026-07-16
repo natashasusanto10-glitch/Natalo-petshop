@@ -12,6 +12,8 @@ class PublicProfileHeaderMotion {
     required this.radius,
     required this.gap,
     required this.labelOpacity,
+    required this.surfaceOpacity,
+    required this.underlineOpacity,
   });
 
   static const double expandedWidthFactor = 1;
@@ -22,8 +24,12 @@ class PublicProfileHeaderMotion {
   static const double collapsedRadius = 24;
   static const double expandedGap = 24;
   static const double collapsedGap = 6;
-  static const double expandedLabelOpacity = 1;
-  static const double collapsedLabelOpacity = 0;
+  static const double expandedLabelOpacity = 0;
+  static const double collapsedLabelOpacity = 1;
+  static const double expandedSurfaceOpacity = 0;
+  static const double collapsedSurfaceOpacity = 1;
+  static const double expandedUnderlineOpacity = 1;
+  static const double collapsedUnderlineOpacity = 0;
 
   /// Smoothstep progress in the inclusive range 0..1.
   final double progress;
@@ -40,8 +46,14 @@ class PublicProfileHeaderMotion {
   /// Horizontal gap between tabs.
   final double gap;
 
-  /// Opacity for labels that disappear as tabs become compact.
+  /// Opacity for labels that appear as tabs become merged.
   final double labelOpacity;
+
+  /// Opacity for the dark merged tab surface.
+  final double surfaceOpacity;
+
+  /// Opacity for the expanded-state tab underline.
+  final double underlineOpacity;
 
   static PublicProfileHeaderMotion resolve(
     double shrinkOffset,
@@ -71,6 +83,16 @@ class PublicProfileHeaderMotion {
         collapsedLabelOpacity,
         smoothProgress,
       ),
+      surfaceOpacity: _lerp(
+        expandedSurfaceOpacity,
+        collapsedSurfaceOpacity,
+        smoothProgress,
+      ),
+      underlineOpacity: _lerp(
+        expandedUnderlineOpacity,
+        collapsedUnderlineOpacity,
+        smoothProgress,
+      ),
     );
   }
 
@@ -86,7 +108,9 @@ class PublicProfileHeaderMotion {
           horizontalAlignment == other.horizontalAlignment &&
           radius == other.radius &&
           gap == other.gap &&
-          labelOpacity == other.labelOpacity;
+          labelOpacity == other.labelOpacity &&
+          surfaceOpacity == other.surfaceOpacity &&
+          underlineOpacity == other.underlineOpacity;
 
   @override
   int get hashCode => Object.hash(
@@ -96,5 +120,7 @@ class PublicProfileHeaderMotion {
         radius,
         gap,
         labelOpacity,
+        surfaceOpacity,
+        underlineOpacity,
       );
 }

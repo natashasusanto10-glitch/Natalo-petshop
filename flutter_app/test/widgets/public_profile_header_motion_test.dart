@@ -12,14 +12,18 @@ void main() {
       expect(expanded.horizontalAlignment, 1);
       expect(expanded.radius, 0);
       expect(expanded.gap, 24);
-      expect(expanded.labelOpacity, 1);
+      expect(expanded.labelOpacity, 0);
+      expect(expanded.surfaceOpacity, 0);
+      expect(expanded.underlineOpacity, 1);
 
       expect(collapsed.progress, 1);
       expect(collapsed.widthFactor, 0.62);
       expect(collapsed.horizontalAlignment, 0);
       expect(collapsed.radius, 24);
       expect(collapsed.gap, 6);
-      expect(collapsed.labelOpacity, 0);
+      expect(collapsed.labelOpacity, 1);
+      expect(collapsed.surfaceOpacity, 1);
+      expect(collapsed.underlineOpacity, 0);
     });
 
     test('uses deterministic smoothstep at 30 and 60 percent', () {
@@ -31,14 +35,18 @@ void main() {
       expect(thirty.horizontalAlignment, closeTo(0.784, 0.000001));
       expect(thirty.radius, closeTo(5.184, 0.000001));
       expect(thirty.gap, closeTo(20.112, 0.000001));
-      expect(thirty.labelOpacity, closeTo(0.784, 0.000001));
+      expect(thirty.labelOpacity, closeTo(0.216, 0.000001));
+      expect(thirty.surfaceOpacity, closeTo(0.216, 0.000001));
+      expect(thirty.underlineOpacity, closeTo(0.784, 0.000001));
 
       expect(sixty.progress, closeTo(0.648, 0.000001));
       expect(sixty.widthFactor, closeTo(0.75376, 0.000001));
       expect(sixty.horizontalAlignment, closeTo(0.352, 0.000001));
       expect(sixty.radius, closeTo(15.552, 0.000001));
       expect(sixty.gap, closeTo(12.336, 0.000001));
-      expect(sixty.labelOpacity, closeTo(0.352, 0.000001));
+      expect(sixty.labelOpacity, closeTo(0.648, 0.000001));
+      expect(sixty.surfaceOpacity, closeTo(0.648, 0.000001));
+      expect(sixty.underlineOpacity, closeTo(0.352, 0.000001));
     });
 
     test('clamps offsets outside the collapse range', () {
@@ -67,7 +75,11 @@ void main() {
         expect(values[index].radius, greaterThan(values[index - 1].radius));
         expect(values[index].gap, lessThan(values[index - 1].gap));
         expect(values[index].labelOpacity,
-            lessThan(values[index - 1].labelOpacity));
+            greaterThan(values[index - 1].labelOpacity));
+        expect(values[index].surfaceOpacity,
+            greaterThan(values[index - 1].surfaceOpacity));
+        expect(values[index].underlineOpacity,
+            lessThan(values[index - 1].underlineOpacity));
       }
     });
 
