@@ -67,6 +67,7 @@ class VideoPlayerSession implements PlaybackSession {
     @visibleForTesting VideoSessionVolumeOperation? debugSetVolume,
     @visibleForTesting VideoSessionOperation? debugDisposePlayer,
     @visibleForTesting Object? debugNativeControllerIdentity,
+    @visibleForTesting Object Function()? debugNativeControllerIdentityFactory,
     SocialVideoSessionObserver? observationObserver,
     SocialVideoObservationContext? observationContext,
   })  : _currentUrl = url,
@@ -86,6 +87,8 @@ class VideoPlayerSession implements PlaybackSession {
         _debugSetVolume = debugSetVolume,
         _debugDisposePlayer = debugDisposePlayer,
         _debugNativeControllerIdentity = debugNativeControllerIdentity,
+        _debugNativeControllerIdentityFactory =
+            debugNativeControllerIdentityFactory,
         _analyticsPostId = analyticsPostId,
         _analyticsSurface = analyticsSurface,
         _observationObserver =
@@ -133,12 +136,14 @@ class VideoPlayerSession implements PlaybackSession {
   final VideoSessionVolumeOperation? _debugSetVolume;
   final VideoSessionOperation? _debugDisposePlayer;
   final Object? _debugNativeControllerIdentity;
+  final Object Function()? _debugNativeControllerIdentityFactory;
   final String? _analyticsPostId;
   final String _analyticsSurface;
   final SocialVideoSessionObserver _observationObserver;
   final SocialVideoObservationContext? _observationContext;
   final Object _debugObservationIdentity = Object();
   Object? _lastObservationIdentity;
+  Object? _activeObservationIdentity;
   Object? _createdObservationIdentity;
   final List<SocialVideoObservationContext> _pendingObservationAttachments =
       <SocialVideoObservationContext>[];
@@ -230,7 +235,7 @@ class VideoPlayerSession implements PlaybackSession {
           revision.value++;
           return;
         } catch (error) {
-          await _cleanupResources();
+          final releasedIdentity = await _cleanupResources();
           if (_disposed) return;
           final permanent = _isPermanentError(error);
           if (retriesLeft <= 0 || permanent) {
@@ -243,10 +248,25 @@ class VideoPlayerSession implements PlaybackSession {
               'duration_ms': _startupStopwatch.elapsedMilliseconds,
               'error_type': error.runtimeType.toString(),
             });
-            _observe(SocialVideoLifecycleType.failed);
+            _observe(
+              SocialVideoLifecycleType.failed,
+              controllerIdentity: releasedIdentity,
+            );
+            if (releasedIdentity != null) {
+              _observe(
+                SocialVideoLifecycleType.released,
+                controllerIdentity: releasedIdentity,
+              );
+            }
             _pendingObservationAttachments.clear();
             revision.value++;
             return;
+          }
+          if (releasedIdentity != null) {
+            _observe(
+              SocialVideoLifecycleType.released,
+              controllerIdentity: releasedIdentity,
+            );
           }
           retriesLeft--;
           // D4: URL Bunny bertanda-tangan tak bisa di-rewrite; kalau mungkin
@@ -276,7 +296,8 @@ class VideoPlayerSession implements PlaybackSession {
   Future<void> _attemptInit(String url) async {
     final attempt = _debugInitAttempt;
     if (attempt != null) {
-      final nativeIdentity = _debugNativeControllerIdentity;
+      final nativeIdentity = _debugNativeControllerIdentityFactory?.call() ??
+          _debugNativeControllerIdentity;
       if (nativeIdentity != null) _recordObservationCreated(nativeIdentity);
       await attempt(url);
       _debugPlayerReady = true;
@@ -340,13 +361,15 @@ class VideoPlayerSession implements PlaybackSession {
   /// Buang controller/wrapper parsial (dipakai saat cleanup gagal-init ATAU
   /// saat dispose menyalip init sukses). Setelah ini `_controller`/`_wrapper`
   /// null → retry mulai bersih.
-  Future<void> _cleanupResources() async {
+  Future<Object?> _cleanupResources() async {
     final wrapper = _wrapper;
     final controller = _controller;
     final disposeDebugPlayer = _debugPlayerReady;
+    final releasedIdentity = _activeObservationIdentity;
     _wrapper = null;
     _controller = null;
     _debugPlayerReady = false;
+    _activeObservationIdentity = null;
     _visualIntentGeneration++;
     _hasVisualOutput = false;
     _awaitingVisualOutput = false;
@@ -365,6 +388,7 @@ class VideoPlayerSession implements PlaybackSession {
         }
       }
     } catch (_) {}
+    return releasedIdentity;
   }
 
   /// D4 best-effort: kalau URL saat ini bertanda-tangan (Bunny signed) dan ada
@@ -892,6 +916,7 @@ class VideoPlayerSession implements PlaybackSession {
 
   void _recordObservationCreated(Object identity) {
     _lastObservationIdentity = identity;
+    _activeObservationIdentity = identity;
     if (identical(_createdObservationIdentity, identity)) return;
     _createdObservationIdentity = identity;
     _observe(SocialVideoLifecycleType.created);
@@ -910,10 +935,12 @@ class VideoPlayerSession implements PlaybackSession {
   void _observe(
     SocialVideoLifecycleType type, {
     SocialVideoObservationContext? context,
+    Object? controllerIdentity,
   }) {
     final observationContext = context ?? _observationContext;
     if (observationContext == null) return;
-    final identity = _controller ??
+    final identity = controllerIdentity ??
+        _controller ??
         (_debugInitAttempt != null
             ? _debugObservationIdentity
             : _lastObservationIdentity);

@@ -1,13 +1,11 @@
-import 'video_player_session.dart';
 import 'video_media_cache.dart';
 import 'social_video_session_observer.dart';
+import 'video_player_session.dart';
 
 typedef WarmVideoSessionFactory = VideoPlayerSession Function({
   required String postId,
   required String url,
   required bool hasAudio,
-  SocialVideoSessionObserver? observationObserver,
-  SocialVideoObservationContext? observationContext,
 });
 
 /// One-shot ownership transfer for a profile-grid video session.
@@ -41,8 +39,6 @@ class PostVideoWarmHandoff {
             postId: postId,
             url: url,
             hasAudio: hasAudio,
-            observationObserver: observationObserver,
-            observationContext: observationContext,
           ) ??
           VideoPlayerSession(
             url: url,

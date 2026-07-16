@@ -71,8 +71,40 @@ void main() {
       equals(<SocialVideoLifecycleType>[
         SocialVideoLifecycleType.created,
         SocialVideoLifecycleType.failed,
+        SocialVideoLifecycleType.released,
       ]),
     );
+
+    await session.dispose();
+  });
+
+  test('transient native retry releases the discarded controller identity',
+      () async {
+    final observer = SocialVideoSessionObserver(enabled: true);
+    var attempts = 0;
+    final session = VideoPlayerSession(
+      url: 'https://example.com/video.mp4',
+      observationObserver: observer,
+      observationContext: _context,
+      debugNativeControllerIdentityFactory: Object.new,
+      debugDelay: (_) async {},
+      debugInitAttempt: (_) async {
+        if (attempts++ == 0) throw StateError('temporary network failure');
+      },
+    );
+
+    await _settle();
+
+    expect(
+      observer.snapshot.events.map((event) => event.type),
+      equals(<SocialVideoLifecycleType>[
+        SocialVideoLifecycleType.created,
+        SocialVideoLifecycleType.released,
+        SocialVideoLifecycleType.created,
+        SocialVideoLifecycleType.initialized,
+      ]),
+    );
+    expect(observer.snapshot.liveControllerCount, 1);
 
     await session.dispose();
   });

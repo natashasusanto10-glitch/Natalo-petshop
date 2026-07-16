@@ -54,13 +54,7 @@ void main() {
       postId: 'silent-post',
       url: 'https://example.com/silent.mp4',
       hasAudio: false,
-      sessionFactory: ({
-        required postId,
-        required url,
-        required hasAudio,
-        observationObserver,
-        observationContext,
-      }) {
+      sessionFactory: ({required postId, required url, required hasAudio}) {
         receivedHasAudio = hasAudio;
         return testSession;
       },
@@ -77,58 +71,33 @@ void main() {
     await claimedSession.dispose();
   });
 
-  test('profile-grid factory supplies the prewarm observation context',
+  test('profile-grid factory accepts the legacy custom factory signature',
       () async {
-    final observer = SocialVideoSessionObserver(enabled: true);
-    SocialVideoObservationContext? receivedContext;
+    final session = _CountingSession();
+    VideoPlayerSession legacyFactory({
+      required String postId,
+      required String url,
+      required bool hasAudio,
+    }) =>
+        session;
+
     final handoff = PostVideoWarmHandoff.create(
       postId: 'post-a',
       url: 'https://example.com/video.mp4',
       hasAudio: true,
-      observationObserver: observer,
-      sessionFactory: ({
-        required postId,
-        required url,
-        required hasAudio,
-        observationObserver,
-        observationContext,
-      }) {
-        receivedContext = observationContext;
-        return VideoPlayerSession(
-          url: url,
-          observationObserver: observationObserver,
-          observationContext: observationContext,
-          debugInitAttempt: (_) async {},
-        );
-      },
+      sessionFactory: legacyFactory,
     );
 
-    expect(receivedContext!.postId, 'post-a');
-    expect(receivedContext!.surface, SocialVideoSurface.profileGrid);
-    expect(receivedContext!.ownerId, 'coordinator-post-a');
-
-    await Future<void>.delayed(Duration.zero);
-    final claimed = handoff.claim(
-      postId: 'post-a',
-      url: 'https://example.com/video.mp4',
-      hasAudio: true,
-    );
-
-    expect(claimed, isNotNull);
     expect(
-      observer.snapshot.events.map((event) => event.type),
-      equals(<SocialVideoLifecycleType>[
-        SocialVideoLifecycleType.created,
-        SocialVideoLifecycleType.initialized,
-        SocialVideoLifecycleType.attached,
-      ]),
-    );
-    expect(
-      observer.snapshot.events.last.surface,
-      SocialVideoSurface.postDetail,
+      handoff.claim(
+        postId: 'post-a',
+        url: 'https://example.com/video.mp4',
+        hasAudio: true,
+      ),
+      same(session),
     );
 
-    await claimed!.dispose();
+    await session.dispose();
   });
 
   test('pending claim records attached after session initialization', () async {
@@ -139,17 +108,15 @@ void main() {
       url: 'https://example.com/video.mp4',
       hasAudio: true,
       observationObserver: observer,
-      sessionFactory: ({
-        required postId,
-        required url,
-        required hasAudio,
-        observationObserver,
-        observationContext,
-      }) =>
+      sessionFactory: ({required postId, required url, required hasAudio}) =>
           VideoPlayerSession(
         url: url,
-        observationObserver: observationObserver,
-        observationContext: observationContext,
+        observationObserver: observer,
+        observationContext: const SocialVideoObservationContext(
+          postId: 'post-a',
+          surface: SocialVideoSurface.profileGrid,
+          ownerId: 'coordinator-post-a',
+        ),
         debugInitAttempt: (_) => initGate.future,
       ),
     );
