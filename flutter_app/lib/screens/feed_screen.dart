@@ -14,8 +14,10 @@ import 'package:visibility_detector/visibility_detector.dart';
 import '../config/api_config.dart';
 import '../features/feed/widgets/feed_action_rail.dart';
 import '../features/feed/video/adaptive_video_preload_policy.dart';
+import '../features/feed/video/feed_video_observation.dart';
 import '../features/feed/video/preload_generation.dart';
 import '../features/feed/video/single_dispose_guard.dart';
+import '../features/feed/video/social_video_session_observer.dart';
 import '../features/feed/video/video_media_cache.dart';
 import '../features/feed/video/video_preload_metrics.dart';
 import '../features/feed/widgets/feed_creator_overlay.dart';
@@ -63,6 +65,96 @@ bool feedPreloadCompletionIsCurrent({
 }) {
   return identical(registeredSlot, candidate) &&
       (registeredGeneration ?? -1) >= startedGeneration;
+}
+
+@visibleForTesting
+bool registerFeedPreloadControllerIfCurrent<TSlot extends Object,
+    TController extends Object>({
+  required String id,
+  required Map<String, TSlot> registeredSlots,
+  required TSlot candidate,
+  required Map<String, int> registeredGenerations,
+  required int startedGeneration,
+  required Map<String, TController> controllers,
+  required TController controller,
+}) {
+  if (!feedPreloadCompletionIsCurrent(
+    registeredSlot: registeredSlots[id],
+    candidate: candidate,
+    registeredGeneration: registeredGenerations[id],
+    startedGeneration: startedGeneration,
+  )) {
+    return false;
+  }
+  controllers[id] = controller;
+  return true;
+}
+
+@visibleForTesting
+Future<VideoPlayerController?> initializeFeedCachedPreloadForObservation({
+  required CachedVideoPlayerPlus player,
+  required SocialVideoSessionObserver observer,
+  required String postId,
+  required bool Function() isCurrent,
+  Future<void>? initialization,
+}) async {
+  await (initialization ?? player.initialize());
+  final controller = player.controller;
+  if (!isCurrent()) return null;
+  observeFeedPreloadCreated(
+    observer,
+    postId: postId,
+    controller: controller,
+  );
+  observeFeedControllerInitialized(
+    observer,
+    postId: postId,
+    controller: controller,
+    ownerId: feedPreloadOwnerId(postId),
+  );
+  return controller;
+}
+
+@visibleForTesting
+Future<void> disposeFeedCachedPreloadForObservation({
+  required CachedVideoPlayerPlus player,
+  required VideoPlayerController? controller,
+  required SocialVideoSessionObserver observer,
+  required String postId,
+  Future<void>? initialization,
+}) async {
+  if (!player.isInitialized && initialization != null) {
+    await player.dispose();
+    unawaited(() async {
+      try {
+        await initialization;
+        if (!player.isInitialized) return;
+        final controllerIdentity = player.controller;
+        await player.dispose();
+        observeFeedControllerDisposed(
+          observer,
+          postId: postId,
+          controller: controllerIdentity,
+          ownerId: feedPreloadOwnerId(postId),
+        );
+      } catch (_) {}
+    }());
+    return;
+  }
+  final controllerIdentity =
+      controller ?? (player.isInitialized ? player.controller : null);
+  try {
+    await player.dispose();
+  } finally {
+    if (controllerIdentity != null) {
+      observeFeedControllerDisposed(
+        observer,
+        postId: postId,
+        controller: controllerIdentity,
+        ownerId: feedPreloadOwnerId(postId),
+      );
+    }
+  }
 }
 
 @visibleForTesting
@@ -117,6 +209,8 @@ class _FeedScreenState extends State<FeedScreen> {
   // perlu di-refactor.
   final Map<String, VideoPlayerController> _preloadedControllers = {};
   final Map<String, CachedVideoPlayerPlus> _preloadedCachedPlayers = {};
+  final Map<CachedVideoPlayerPlus, Future<void>> _cachedPreloadInitializations =
+      {};
   final Map<String, String> _preloadedUrls = {};
   final Map<String, int> _preloadSlotGenerations = {};
   final Set<String> _localControllerOwners = <String>{};
@@ -188,13 +282,19 @@ class _FeedScreenState extends State<FeedScreen> {
     // Prefer dispose via wrapper — handles both underlying controller +
     // cache file reference. Sisa controllers tanpa wrapper (shouldn't
     // happen di prod tapi defensive) di-dispose langsung.
-    for (final player in _preloadedCachedPlayers.values) {
-      player.dispose();
+    for (final entry in _preloadedCachedPlayers.entries) {
+      unawaited(_disposeCachedPreloadOnce(
+        entry.key,
+        entry.value,
+        _preloadedControllers[entry.key],
+      ));
     }
     for (final id in _preloadedControllers.keys.toList()) {
       if (!_preloadedCachedPlayers.containsKey(id)) {
         final controller = _preloadedControllers[id];
-        if (controller != null) unawaited(_disposePlainPreloadOnce(controller));
+        if (controller != null) {
+          unawaited(_disposePlainPreloadOnce(id, controller));
+        }
       }
     }
     _preloadedCachedPlayers.clear();
@@ -261,9 +361,37 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   Future<void> _disposePlainPreloadOnce(
+    String postId,
     VideoPlayerController controller,
   ) async {
-    await _plainPreloadDisposer.dispose(controller, controller.dispose);
+    await _plainPreloadDisposer.dispose(controller, () async {
+      try {
+        await controller.dispose();
+      } finally {
+        observeFeedControllerDisposed(
+          socialVideoSessionObserver,
+          postId: postId,
+          controller: controller,
+          ownerId: feedPreloadOwnerId(postId),
+        );
+      }
+    });
+  }
+
+  Future<void> _disposeCachedPreloadOnce(
+    String postId,
+    CachedVideoPlayerPlus player,
+    VideoPlayerController? controller,
+  ) async {
+    await _cachedPreloadDisposer.dispose(player, () async {
+      await disposeFeedCachedPreloadForObservation(
+        player: player,
+        controller: controller,
+        observer: socialVideoSessionObserver,
+        postId: postId,
+        initialization: _cachedPreloadInitializations[player],
+      );
+    });
   }
 
   Future<void> _evictPreload(String id) async {
@@ -272,9 +400,13 @@ class _FeedScreenState extends State<FeedScreen> {
     _preloadedUrls.remove(id);
     _preloadSlotGenerations.remove(id);
     if (cachedPlayer != null) {
-      await _cachedPreloadDisposer.dispose(cachedPlayer, cachedPlayer.dispose);
+      await _disposeCachedPreloadOnce(
+        id,
+        cachedPlayer,
+        controller,
+      );
     } else if (controller != null) {
-      await _disposePlainPreloadOnce(controller);
+      await _disposePlainPreloadOnce(id, controller);
     }
     if (!_disposing) _preloadRevision.value++;
   }
@@ -628,6 +760,11 @@ class _FeedScreenState extends State<FeedScreen> {
         final controller = VideoPlayerController.networkUrl(
           Uri.parse(resolvedUrl),
         );
+        observeFeedPreloadCreated(
+          socialVideoSessionObserver,
+          postId: id,
+          controller: controller,
+        );
         _preloadedControllers[id] = controller;
         _preloadedUrls[id] = resolvedUrl;
         _preloadSlotGenerations[id] = generation;
@@ -644,6 +781,12 @@ class _FeedScreenState extends State<FeedScreen> {
               }
               return;
             }
+            observeFeedControllerInitialized(
+              socialVideoSessionObserver,
+              postId: id,
+              controller: controller,
+              ownerId: feedPreloadOwnerId(id),
+            );
             await controller.setLooping(true);
             if (!feedPreloadCompletionIsCurrent(
               registeredSlot: _preloadedControllers[id],
@@ -671,12 +814,18 @@ class _FeedScreenState extends State<FeedScreen> {
               windowSize: keepIds.length,
             );
           }).catchError((Object _) async {
+            observeFeedControllerFailed(
+              socialVideoSessionObserver,
+              postId: id,
+              controller: controller,
+              ownerId: feedPreloadOwnerId(id),
+            );
             if (identical(_preloadedControllers[id], controller)) {
               _preloadedControllers.remove(id);
               _preloadedUrls.remove(id);
               _preloadSlotGenerations.remove(id);
             }
-            await _disposePlainPreloadOnce(controller);
+            await _disposePlainPreloadOnce(id, controller);
             recordVideoPreloadMetric(
               'failed',
               surface: 'main_feed',
@@ -702,25 +851,43 @@ class _FeedScreenState extends State<FeedScreen> {
       _preloadedCachedPlayers[id] = cachedPlayer;
       _preloadedUrls[id] = resolvedUrl;
       _preloadSlotGenerations[id] = generation;
+      final initialization = cachedPlayer.initialize();
+      _cachedPreloadInitializations[cachedPlayer] = initialization;
       initFutures.add(
-        cachedPlayer.initialize().then((_) async {
-          // Entry mungkin sudah DIKONSUMSI itemBuilder (post keburu aktif —
-          // child dispose wrapper in-flight sendiri) atau di-evict window.
-          // Tanpa guard ini, controller di-re-add ke map sebagai zombie
-          // yang tidak pernah di-dispose (leak native player).
-          if (!feedPreloadCompletionIsCurrent(
+        initializeFeedCachedPreloadForObservation(
+          player: cachedPlayer,
+          observer: socialVideoSessionObserver,
+          postId: id,
+          initialization: initialization,
+          isCurrent: () => feedPreloadCompletionIsCurrent(
             registeredSlot: _preloadedCachedPlayers[id],
             candidate: cachedPlayer,
             registeredGeneration: _preloadSlotGenerations[id],
             startedGeneration: generation,
-          )) {
+          ),
+        ).then((controller) async {
+          // Entry mungkin sudah DIKONSUMSI itemBuilder (post keburu aktif —
+          // child dispose wrapper in-flight sendiri) atau di-evict window.
+          // Tanpa guard ini, controller di-re-add ke map sebagai zombie
+          // yang tidak pernah di-dispose (leak native player).
+          if (controller == null) {
             if (_preloadedCachedPlayers[id] == cachedPlayer) {
               await _evictPreload(id);
             }
             return;
           }
-          final controller = cachedPlayer.controller;
-          _preloadedControllers[id] = controller;
+          if (!registerFeedPreloadControllerIfCurrent(
+            id: id,
+            registeredSlots: _preloadedCachedPlayers,
+            candidate: cachedPlayer,
+            registeredGenerations: _preloadSlotGenerations,
+            startedGeneration: generation,
+            controllers: _preloadedControllers,
+            controller: controller,
+          )) {
+            await _disposeCachedPreloadOnce(id, cachedPlayer, controller);
+            return;
+          }
           // Prepared state: paused, frame 0 ready, muted, looping prepped.
           // Saat widget attach via preloadedController prop, tinggal play()
           // — instant, no init lag.
@@ -757,20 +924,32 @@ class _FeedScreenState extends State<FeedScreen> {
           // user scroll ke post ini dan _maybeInitVideo run) bisa fresh-
           // fetch dari network. Tanpa ini, cache wrapper tetap baca file
           // corrupt setiap retry.
-          final ownController = cachedPlayer.controller;
-          final ownsFailedGeneration = removeFailedPreloadGeneration(
-            id: id,
-            failedWrapper: cachedPlayer,
-            failedController: ownController,
-            controllers: _preloadedControllers,
-            wrappers: _preloadedCachedPlayers,
-          );
+          final ownController =
+              cachedPlayer.isInitialized ? cachedPlayer.controller : null;
+          final ownsFailedGeneration = ownController == null
+              ? identical(_preloadedCachedPlayers.remove(id), cachedPlayer)
+              : removeFailedPreloadGeneration(
+                  id: id,
+                  failedWrapper: cachedPlayer,
+                  failedController: ownController,
+                  controllers: _preloadedControllers,
+                  wrappers: _preloadedCachedPlayers,
+                );
           if (!ownsFailedGeneration) return;
+          if (ownController != null) {
+            observeFeedControllerFailed(
+              socialVideoSessionObserver,
+              postId: id,
+              controller: ownController,
+              ownerId: feedPreloadOwnerId(id),
+            );
+          }
           _preloadedUrls.remove(id);
           _preloadSlotGenerations.remove(id);
-          await _cachedPreloadDisposer.dispose(
+          await _disposeCachedPreloadOnce(
+            id,
             cachedPlayer,
-            cachedPlayer.dispose,
+            ownController,
           );
           if (!_disposing) _preloadRevision.value++;
           try {
@@ -782,7 +961,9 @@ class _FeedScreenState extends State<FeedScreen> {
             tier: networkTier,
             windowSize: keepIds.length,
           );
-        }),
+        }).whenComplete(
+          () => _cachedPreloadInitializations.remove(cachedPlayer),
+        ),
       );
     }
     await Future.wait(initFutures);

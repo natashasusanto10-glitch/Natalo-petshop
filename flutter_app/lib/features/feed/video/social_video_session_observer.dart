@@ -1,4 +1,8 @@
+import 'dart:async';
 import 'dart:collection';
+
+import 'social_video_observation_metrics.dart';
+import 'social_video_registry_config.dart';
 
 enum SocialVideoSurface { mainFeed, profileGrid, postDetail, fullscreen }
 
@@ -25,10 +29,22 @@ class SocialVideoObservationContext {
   final String ownerId;
 }
 
-/// Application-wide diagnostic registry. It is disabled by default; tests and
-/// integration points can inject an enabled observer explicitly.
+SocialVideoSessionObserver createSocialVideoSessionObserver({
+  required bool enabled,
+  SocialVideoCollisionMetricSink? collisionSink,
+}) {
+  final sink = collisionSink ?? SocialVideoCollisionMetricSink();
+  return SocialVideoSessionObserver(
+    enabled: enabled,
+    onCollision: (collision) => unawaited(sink.record(collision)),
+  );
+}
+
+/// Application-wide diagnostic registry, fixed for the process at startup.
 final SocialVideoSessionObserver socialVideoSessionObserver =
-    SocialVideoSessionObserver(enabled: false);
+    createSocialVideoSessionObserver(
+  enabled: socialVideoRegistryObservationEnabled,
+);
 
 class SocialVideoObservation {
   const SocialVideoObservation({
