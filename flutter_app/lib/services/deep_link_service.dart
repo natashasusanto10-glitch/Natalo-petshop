@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../models/feed_post.dart';
 import '../screens/member_post_detail_screen.dart';
 import '../screens/scoped_video_feed_screen.dart';
+import '../state/member_store.dart';
 import '../widgets/scaled_video_feed_route.dart';
 import 'feed_service.dart';
 import 'order_service.dart';
@@ -142,10 +143,22 @@ class DeepLinkService {
           // /akun/pesanan/<orderNumber> → open order detail
           // /akun/pesanan → orders list
           if (segments.length > 2 && segments[2].isNotEmpty) {
-            await _openOrderByNumber(nav, segments[2], uri.queryParameters['token']);
+            await _openOrderByNumber(
+                nav, segments[2], uri.queryParameters['token']);
           } else {
             nav.pushNamed('/member/orders');
           }
+        } else if (segments.length > 2 &&
+            segments[1] == 'postingan-saya' &&
+            segments[2].isNotEmpty) {
+          // /akun/postingan-saya/<postId> — URL dari SEMUA notif aktivitas
+          // feed (komentar/balas/mention/like/share; feedPostOwnerUrl di
+          // lib/feed/notification-center.ts). SEBELUMNYA jatuh ke `else` →
+          // /member (halaman Akun), jadi tap notif komentar tak pernah buka
+          // postingannya = "notif masuk tapi komentar tidak muncul". Kini
+          // buka postingannya langsung (komentar sejangkauan satu tap),
+          // sama perilaku dengan tap notif dari bell dalam app.
+          await _openPostById(nav, segments[2]);
         } else {
           nav.pushNamed('/member');
         }
@@ -156,7 +169,8 @@ class DeepLinkService {
         // Sebelumnya jatuh ke default case (push '/') → user dump ke home,
         // tidak tahu pesanan mana yang ada update.
         if (segments.length > 1 && segments[1].isNotEmpty) {
-          await _openOrderByNumber(nav, segments[1], uri.queryParameters['token']);
+          await _openOrderByNumber(
+              nav, segments[1], uri.queryParameters['token']);
         } else {
           nav.pushNamed('/member/orders');
         }
@@ -174,7 +188,8 @@ class DeepLinkService {
         } else if (segments.length > 1 && segments[1] == 'order-detail') {
           final orderNumber = uri.queryParameters['orderNumber']?.trim() ?? '';
           if (orderNumber.isNotEmpty) {
-            await _openOrderByNumber(nav, orderNumber, uri.queryParameters['token']);
+            await _openOrderByNumber(
+                nav, orderNumber, uri.queryParameters['token']);
           } else {
             nav.pushNamed('/member/orders');
           }
@@ -207,10 +222,11 @@ class DeepLinkService {
   }
 
   /// Fetch postingan by ID lalu buka tujuan yang tepat — video langsung ke
-  /// player fullscreen, non-video ke MemberPostDetailScreen (isOwner: false
-  /// → sembunyikan menu edit/hapus, pakai author info dari post bukan
-  /// memberStore). Fallback ke /feed kalau post tidak ada (dihapus / belum
-  /// tayang) atau fetch gagal.
+  /// player fullscreen, non-video ke MemberPostDetailScreen. `isOwner`
+  /// di-resolve dari memberStore (viewer == author) supaya owner yang buka
+  /// notif aktivitas di postingannya sendiri tetap dapat menu edit/hapus —
+  /// paritas dgn jalur bell (_openFeedPostInApp). Fallback ke /feed kalau
+  /// post tidak ada (dihapus / belum tayang) atau fetch gagal.
   Future<void> _openPostById(NavigatorState nav, String postId) async {
     try {
       final post = await feedService.fetchPostById(postId);
@@ -222,7 +238,9 @@ class DeepLinkService {
       // lagi setelah await (fetchPostById), cegah lint use_build_context_
       // synchronously (route/navigator bisa saja sudah di-dispose selama fetch).
       if (!nav.mounted) return;
-      await openFeedPostSmart(nav.context, post);
+      final myId = memberStore.profile?.id;
+      final isOwner = myId != null && myId == post.author.id;
+      await openFeedPostSmart(nav.context, post, isOwner: isOwner);
     } catch (e) {
       if (kDebugMode) debugPrint('[DeepLink] fetchPostById failed: $e');
       nav.pushNamed('/feed');
@@ -275,9 +293,8 @@ class DeepLinkService {
   /// Handle URI dari source eksternal (push notification deep link, dll).
   /// Boleh kasih String atau Uri. Idempotent — bisa dipanggil ulang.
   void handleExternalUri(dynamic input) {
-    final uri = input is Uri
-        ? input
-        : (input is String ? Uri.tryParse(input) : null);
+    final uri =
+        input is Uri ? input : (input is String ? Uri.tryParse(input) : null);
     if (uri != null) _handle(uri);
   }
 
