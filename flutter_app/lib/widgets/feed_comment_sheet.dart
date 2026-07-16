@@ -320,6 +320,88 @@ Future<void> _presentFeedCommentDrawer(
   });
 }
 
+/// Shared linked-motion frame for Feed media while the comment drawer moves.
+///
+/// The drawer extent is the single source of truth for the compact media's
+/// bottom edge. Photo/carousel callers can reserve [compactTopInsetPx] for the
+/// status-bar safe area; video keeps the default zero to preserve its current
+/// full-bleed framing.
+class FeedCommentMediaFrame extends StatelessWidget {
+  final bool open;
+  final ValueListenable<double> extentListenable;
+  final double dragOffsetPx;
+  final double keyboardInsetPx;
+  final double compactTopInsetPx;
+  final Size screenSize;
+  final Widget child;
+
+  const FeedCommentMediaFrame({
+    super.key,
+    required this.open,
+    required this.extentListenable,
+    required this.dragOffsetPx,
+    required this.keyboardInsetPx,
+    this.compactTopInsetPx = 0,
+    required this.screenSize,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final width = math.max(1.0, screenSize.width);
+    final height = math.max(1.0, screenSize.height);
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: open ? 1 : 0),
+      duration: Duration(milliseconds: open ? 260 : 220),
+      curve: open ? Curves.easeOutCubic : Curves.easeInOutCubic,
+      child: RepaintBoundary(child: child),
+      builder: (context, openProgress, child) {
+        return ValueListenableBuilder<double>(
+          valueListenable: extentListenable,
+          child: child,
+          builder: (context, sheetExtent, child) {
+            final drawerExtent = sheetExtent.clamp(0.0, 1.0).toDouble();
+            final keyboardInset =
+                keyboardInsetPx.clamp(0.0, height - 1).toDouble();
+            final sheetHostHeight = math.max(1.0, height - keyboardInset);
+            final drawerTopY =
+                sheetHostHeight * (1 - drawerExtent) + dragOffsetPx;
+            final compactTop = compactTopInsetPx
+                .clamp(0.0, drawerTopY.clamp(0.0, height))
+                .toDouble();
+            final compactBottom = drawerTopY.clamp(compactTop, height);
+            final fullRect = Rect.fromLTWH(0, 0, width, height);
+            final aboveDrawerRect = Rect.fromLTRB(
+              0,
+              compactTop,
+              width,
+              compactBottom,
+            );
+            final rect = Rect.lerp(fullRect, aboveDrawerRect, openProgress)!;
+            final bottomRadius = 22.0 * openProgress;
+            return Positioned.fromRect(
+              rect: rect,
+              child: DecoratedBox(
+                decoration: const BoxDecoration(color: Colors.black),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(bottomRadius),
+                    bottomRight: Radius.circular(bottomRadius),
+                  ),
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(color: Colors.black),
+                    child: child,
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
 /// Embedded Reels presentation used by photo/carousel posts. The comment data
 /// stays in [FeedCommentSheet], while this adapter owns only extent, media
 /// transform, and the drawer lifecycle.
@@ -364,6 +446,7 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
   bool _closing = false;
   bool _maximumNotified = false;
   double _extent = 0;
+  final ValueNotifier<double> _extentListenable = ValueNotifier<double>(0);
 
   @override
   void initState() {
@@ -393,6 +476,7 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
     if (completer != null && !completer.isCompleted) completer.complete();
     _controller.removeListener(_syncExtent);
     _controller.dispose();
+    _extentListenable.dispose();
     super.dispose();
   }
 
@@ -409,7 +493,8 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
     final maxExtent = _maxExtent(context);
     final next = _controller.size.clamp(_minExtent, maxExtent).toDouble();
     if ((_extent - next).abs() > 0.002) {
-      setState(() => _extent = next);
+      _extent = next;
+      _extentListenable.value = next;
       widget.onExtentChanged?.call(next);
     }
     final atMaximum = next >= maxExtent - _maxThreshold;
@@ -427,6 +512,7 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
     setState(() {
       _mountedDrawer = true;
       _extent = 0;
+      _extentListenable.value = 0;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || transition != _transition || !_mountedDrawer) return;
@@ -464,6 +550,7 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
       setState(() {
         _mountedDrawer = false;
         _extent = 0;
+        _extentListenable.value = 0;
       });
     }
     widget.onExtentChanged?.call(0);
@@ -554,6 +641,7 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
       setState(() {
         _mountedDrawer = false;
         _extent = 0;
+        _extentListenable.value = 0;
       });
     }
     widget.onExtentChanged?.call(0);
@@ -572,19 +660,6 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
         .bottom
         .clamp(0.0, size.height - 1)
         .toDouble();
-    final hostHeight = math.max(1.0, size.height - keyboardInset);
-    final extent = _extent.clamp(_minExtent, maxExtent).toDouble();
-    final drawerTopY = hostHeight * (1 - extent);
-    final openProgress = _mountedDrawer ? 1.0 : 0.0;
-    final fullRect = Rect.fromLTWH(0, 0, size.width, size.height);
-    final aboveDrawerRect = Rect.fromLTWH(
-      0,
-      0,
-      size.width,
-      drawerTopY.clamp(0.0, size.height),
-    );
-    final mediaRect = Rect.lerp(fullRect, aboveDrawerRect, openProgress)!;
-    final bottomRadius = 22.0 * openProgress;
 
     return Stack(
       fit: StackFit.expand,
@@ -595,7 +670,7 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
               behavior: HitTestBehavior.opaque,
               onTap: _requestClose,
               child: ColoredBox(
-                color: Colors.black.withValues(alpha: 0.72 * openProgress),
+                color: Colors.black.withValues(alpha: 0.72),
               ),
             ),
           ),
@@ -631,21 +706,14 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
               ),
             ),
           ),
-        Positioned.fromRect(
-          rect: mediaRect,
-          child: DecoratedBox(
-            decoration: const BoxDecoration(color: Colors.black),
-            child: ClipRRect(
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(bottomRadius),
-                bottomRight: Radius.circular(bottomRadius),
-              ),
-              child: DecoratedBox(
-                decoration: const BoxDecoration(color: Colors.black),
-                child: widget.child,
-              ),
-            ),
-          ),
+        FeedCommentMediaFrame(
+          open: _mountedDrawer,
+          extentListenable: _extentListenable,
+          dragOffsetPx: 0,
+          keyboardInsetPx: keyboardInset,
+          compactTopInsetPx: MediaQuery.paddingOf(context).top,
+          screenSize: size,
+          child: widget.child,
         ),
       ],
     );

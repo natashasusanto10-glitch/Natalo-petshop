@@ -3050,7 +3050,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                       ),
                     ),
                   ),
-                _CommentVideoFrame(
+                FeedCommentMediaFrame(
                   open: minimized,
                   extentListenable: _commentSheetExtent,
                   dragOffsetPx: _commentDragOffset,
@@ -3415,90 +3415,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
           );
         },
       ),
-    );
-  }
-}
-
-class _CommentVideoFrame extends StatelessWidget {
-  final bool open;
-  final ValueListenable<double> extentListenable;
-  final double dragOffsetPx;
-  final double keyboardInsetPx;
-  final Size screenSize;
-  final Widget child;
-
-  const _CommentVideoFrame({
-    required this.open,
-    required this.extentListenable,
-    required this.dragOffsetPx,
-    required this.keyboardInsetPx,
-    required this.screenSize,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final width = math.max(1.0, screenSize.width);
-    final height = math.max(1.0, screenSize.height);
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(end: open ? 1 : 0),
-      duration: Duration(milliseconds: open ? 260 : 220),
-      curve: open ? Curves.easeOutCubic : Curves.easeInOutCubic,
-      child: RepaintBoundary(child: child),
-      builder: (context, openProgress, child) {
-        return ValueListenableBuilder<double>(
-          valueListenable: extentListenable,
-          child: child,
-          builder: (context, sheetExtent, child) {
-            // Pattern linked motion: video FILLS area di atas drawer,
-            // bukan floating rounded preview card. Saat drawer grow ke
-            // atas, video shrink vertically dari bawah. Saat drawer drag
-            // ke bawah, video expand lagi. Width selalu full screen.
-            //
-            // Drawer extent berasal langsung dari DraggableScrollableSheet.
-            // Ini membuat video dan drawer bergerak 1:1 saat user drag,
-            // termasuk saat sheet berada di bawah initial extent.
-            final drawerExtent = sheetExtent.clamp(0.0, 1.0).toDouble();
-            // Saat keyboard terbuka, comment drawer di-layout dalam area yang
-            // sudah dikurangi bottom inset oleh AnimatedPadding. Video frame
-            // harus memakai tinggi efektif yang sama, kalau tidak sheet naik
-            // tetapi video tetap menimpa bagian atas drawer.
-            final keyboardInset =
-                keyboardInsetPx.clamp(0.0, height - 1).toDouble();
-            final sheetHostHeight = math.max(1.0, height - keyboardInset);
-            final drawerTopY =
-                sheetHostHeight * (1 - drawerExtent) + dragOffsetPx;
-            final fullRect = Rect.fromLTWH(0, 0, width, height);
-            // Video frame saat drawer open: full width, dari y=0 sampai
-            // drawer's top edge. Animasi rect interpolate dari fullscreen
-            // ke aboveDrawer rect.
-            final aboveDrawerRect = Rect.fromLTWH(
-              0,
-              0,
-              width,
-              drawerTopY.clamp(0.0, height),
-            );
-            final rect = Rect.lerp(fullRect, aboveDrawerRect, openProgress)!;
-            final bottomRadius = 22.0 * openProgress;
-            return Positioned.fromRect(
-              rect: rect,
-              child: DecoratedBox(
-                decoration: const BoxDecoration(color: Colors.black),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(bottomRadius),
-                    bottomRight: Radius.circular(bottomRadius),
-                  ),
-                  child: DecoratedBox(
-                    decoration: const BoxDecoration(color: Colors.black),
-                    child: child,
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
     );
   }
 }
