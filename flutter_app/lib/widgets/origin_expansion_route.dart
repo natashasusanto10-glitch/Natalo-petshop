@@ -477,18 +477,10 @@ class _OriginExpansionTransitionState extends State<OriginExpansionTransition> {
                   ),
                 ),
                 Positioned(
-                  left: _lerp(sourceOrigin.left, 0, progress),
-                  top: _lerp(sourceOrigin.top, 0, progress),
-                  width: _lerp(
-                    sourceOrigin.width,
-                    destinationSize.width,
-                    progress,
-                  ),
-                  height: _lerp(
-                    sourceOrigin.height,
-                    destinationSize.height,
-                    progress,
-                  ),
+                  left: sourceOrigin.left,
+                  top: sourceOrigin.top,
+                  width: sourceOrigin.width,
+                  height: sourceOrigin.height,
                   child: IgnorePointer(
                     child: Opacity(
                       opacity: (1 - progress).clamp(0.0, 1.0),

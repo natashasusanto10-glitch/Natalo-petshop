@@ -821,7 +821,6 @@ class _FeedScreenState extends State<FeedScreen> {
   Future<void> _onUpload() async {
     if (_openingCreateRoute) return;
     _openingCreateRoute = true;
-    AppHaptics.tap();
     _setFeedInteractionLocked(true);
     // Unified "Postingan baru" flow — push FeedMediaPickerScreen via
     // FeedMediaPickerScreen.open() yang juga dipakai oleh member_screen

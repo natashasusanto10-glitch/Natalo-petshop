@@ -239,7 +239,6 @@ class _ProfilePageState extends State<_ProfilePage>
   Future<void> _openCreatePost() async {
     if (_openingCreatePost) return;
     setState(() => _openingCreatePost = true);
-    AppHaptics.tap();
     try {
       final uploaded = await FeedMediaPickerScreen.openFromOrigin(
         context,
