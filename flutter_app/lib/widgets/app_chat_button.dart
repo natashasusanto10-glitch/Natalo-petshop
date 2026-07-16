@@ -196,10 +196,15 @@ class ChatDotsBubbleIcon extends StatelessWidget {
     // mode juga. Di dalam IconButton, iconTheme.color sudah = onSurface.
     final c =
         color ?? iconTheme.color ?? Theme.of(context).colorScheme.onSurface;
-    return SizedBox(
-      width: s,
-      height: s,
-      child: CustomPaint(painter: _ChatDotsBubblePainter(c)),
+    // A tight parent (for example the 36x36 order-action tile) must not
+    // override the requested glyph size. Center loosens the constraints for
+    // the inner canvas while the outer widget can still fill its tap frame.
+    return Center(
+      child: SizedBox(
+        width: s,
+        height: s,
+        child: CustomPaint(painter: _ChatDotsBubblePainter(c)),
+      ),
     );
   }
 }
