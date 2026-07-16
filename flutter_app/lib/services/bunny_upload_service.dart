@@ -8,6 +8,7 @@ import 'package:tus_client_dart/tus_client_dart.dart';
 
 import 'api_client.dart';
 import 'feed_service.dart';
+import 'video_quality_service.dart';
 
 /// Hasil provision dari server — credential + endpoint untuk upload
 /// direct ke Bunny CDN tanpa lewat Vercel serverless.
@@ -145,16 +146,36 @@ class BunnyUploadService {
   ///   - Background-tolerant (kalau lifecycle aware)
   ///   - Progress reliable per-chunk
   ///
-  /// Chunk size default 5 MB — balance antara granularity resume vs
-  /// overhead per request. Naikkan kalau koneksi stabil (WiFi).
+  /// Chunk size: default network-aware bila [chunkSize] null.
+  ///   - Seluler (4G/3G) → 2 MB: PATCH lebih kecil = lebih murah di-retry
+  ///     saat link goyah + progress lebih granular. Upload video 4G sering
+  ///     gagal karena satu PATCH 5 MB kelamaan lalu diputus jaringan.
+  ///   - WiFi/ethernet/unknown → 5 MB: overhead per-request minimal.
+  /// Kelipatan 256 KB (syarat aman TUS/CDN): 2 MB = 8×256KB, 5 MB = 20×256KB.
+  static const int _chunkSizeCellular = 2 * 1024 * 1024;
+  static const int _chunkSizeWifi = 5 * 1024 * 1024;
+
+  int _defaultChunkSizeForNetwork() {
+    switch (videoQualityService.currentTier) {
+      case NetworkTier.cellularFast:
+      case NetworkTier.cellularSlow:
+        return _chunkSizeCellular;
+      case NetworkTier.wifi:
+      case NetworkTier.offline:
+      case NetworkTier.unknown:
+        return _chunkSizeWifi;
+    }
+  }
+
   Future<void> uploadViaTus({
     required File videoFile,
     required BunnyTusCredentials credentials,
     String? filetype,
     String? title,
-    int chunkSize = 5 * 1024 * 1024,
+    int? chunkSize,
     void Function(int percent, int loaded, int total)? onProgress,
   }) async {
+    final effectiveChunkSize = chunkSize ?? _defaultChunkSizeForNetwork();
     // Gap #8 fix: pakai TusFileStore (persist progress ke disk) supaya
     // upload resumable after app restart. Sebelumnya TusMemoryStore →
     // hilang saat app killed mid-upload, user harus restart dari 0%.
@@ -168,16 +189,18 @@ class BunnyUploadService {
       uploadsDir.createSync(recursive: true);
     }
 
-    // Auto-retry per-chunk: gangguan jaringan sesaat tidak lagi
-    // menggagalkan seluruh upload. Backoff exponential: jeda 2s → 4s →
-    // 8s. Kombinasi dengan TusFileStore di atas = resume dari byte
-    // terakhir, bukan dari 0%. Gagal permanen hanya setelah 3 percobaan
-    // berturut-turut gagal.
+    // Auto-retry per-chunk: gangguan jaringan sesaat tidak menggagalkan
+    // seluruh upload. Backoff exponential 2s→4s→8s→16s→32s→64s. Kombinasi
+    // dengan TusFileStore = resume dari byte terakhir (server offset),
+    // BUKAN dari 0% — jadi retry murah. `_actualRetry` di-reset tiap ada
+    // byte mengalir, jadi 6 percobaan = toleransi 6 kegagalan BERUNTUN
+    // (bukan 6 total). 4G Indonesia yang sering putus-sambung butuh window
+    // ini; retries=3 (14s) terlalu cepat menyerah vs klien web (7 retry).
     final client = TusClient(
       XFile(videoFile.path),
       store: TusFileStore(uploadsDir),
-      maxChunkSize: chunkSize,
-      retries: 3,
+      maxChunkSize: effectiveChunkSize,
+      retries: 6,
       retryScale: RetryScale.exponential,
       retryInterval: 2,
     );
