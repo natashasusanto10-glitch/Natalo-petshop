@@ -49,6 +49,7 @@ import 'feed_accessibility_overlay.dart';
 import 'feed_creator_overlay.dart';
 import 'feed_post_scrim.dart';
 import 'feed_post_shared_widgets.dart';
+import 'feed_product_links_sheet.dart';
 import 'feed_video_scrubber.dart';
 
 /// D4 legacy — seam test: override fetch post segar untuk refresh signed-URL
@@ -76,7 +77,8 @@ typedef FeedVideoHealthMonitorFactory = VideoPlaybackHealthMonitor Function({
 ///    sesuai kebutuhan supaya video Postingan berhenti di balik route.
 ///  - [appBackground] → `pauseAll` (app ke background/lock → nol audio hantu).
 ///  - [commentSheetFull] → `pauseAll` (comment sheet full menutup video).
-enum CoverPauseReason { routePush, appBackground, commentSheetFull }
+///  - [productSheet] → `pauseAll` (sheet Links produk terbuka menutup video).
+enum CoverPauseReason { routePush, appBackground, commentSheetFull, productSheet }
 
 /// Hasil klaim preload dari pemilik map (FeedScreen). Controller +
 /// wrapper cache 1:1 — wrapper bisa null (HLS bypass wrapper), controller
@@ -382,6 +384,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   FeedCommentSession? _activeCommentSession;
   Completer<void>? _commentDrawerClosedCompleter;
   bool _pausedByCommentSheet = false;
+  bool _pausedByProductSheet = false;
   int _commentSheetTransitionEpoch = 0;
   int _featuredProductIndex = 0;
   Timer? _productRotationTimer;
@@ -2686,6 +2689,71 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     ).whenComplete(() => widget.onOverlayStateChanged(false));
   }
 
+  Future<void> _openProductLinksSheet(List<FeedProductLink> products) async {
+    if (products.isEmpty) return;
+    AppHaptics.tap();
+    await showFeedProductLinksSheet(
+      context,
+      products: products,
+      onOpenProduct: (link) => _openProductLinkDetail(link),
+      onAddToCart: (link) => _addFeedLinkToCart(link),
+      onOpened: () {
+        widget.onOverlayStateChanged(true);
+        _pauseForProductSheet();
+      },
+      onClosed: () {
+        widget.onOverlayStateChanged(false);
+        _resumeAfterProductSheet();
+      },
+    );
+  }
+
+  void _pauseForProductSheet() {
+    if (_managed) {
+      if (!_pausedByProductSheet) {
+        _pausedByProductSheet = true;
+        widget.onRequestPause?.call(CoverPauseReason.productSheet);
+      }
+      return;
+    }
+    final ctrl = _videoController;
+    if (!_pausedByProductSheet &&
+        ctrl != null &&
+        ctrl.value.isInitialized &&
+        ctrl.value.isPlaying) {
+      _pausedByProductSheet = true;
+      ctrl.pause();
+    }
+  }
+
+  void _resumeAfterProductSheet() {
+    if (!_pausedByProductSheet) return;
+    _pausedByProductSheet = false;
+    if (_managed) {
+      widget.onRequestPlay?.call();
+      return;
+    }
+    final ctrl = _videoController;
+    if (_canAutoplayNow() && ctrl != null && ctrl.value.isInitialized) {
+      unawaited(_playLegacy(ctrl, 'product-sheet-close'));
+    }
+  }
+
+  Future<void> _openProductLinkDetail(FeedProductLink link) async {
+    final product = await productService.fetchProductBySlug(link.slug);
+    if (!mounted) return;
+    if (product == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Produk tidak ditemukan.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    _openProductDetail(product);
+  }
+
   Future<void> _quickAddProduct(FeedProductLink link) async {
     _addFeedLinkToCart(link);
   }
@@ -2697,7 +2765,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     }
 
     if (link.hasVariants) {
-      _onProductTap(link);
+      _openProductLinkDetail(link);
       return;
     }
 
@@ -3445,25 +3513,13 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                                                 padding: const EdgeInsets.only(
                                                   bottom: 12,
                                                 ),
-                                                child:
-                                                    _ProductCommerceOverlayGroup(
-                                                  featuredProduct:
-                                                      featuredProduct!,
-                                                  showProductCard:
-                                                      _endOfVideoCtaVisible &&
-                                                          !_commentSheetOpen,
-                                                  onTap: () => _onProductsTap(
+                                                child: feedProductPillFor(
+                                                  products,
+                                                  _featuredProductIndex,
+                                                  onTap: () =>
+                                                      _openProductLinksSheet(
                                                     products,
                                                   ),
-                                                  onBuy: () => _quickAddProduct(
-                                                    featuredProduct,
-                                                  ),
-                                                  onQuickAdd: () =>
-                                                      _quickAddProduct(
-                                                    featuredProduct,
-                                                  ),
-                                                  onDismiss:
-                                                      _dismissEndOfVideoCta,
                                                 ),
                                               ),
                                             ),
