@@ -35,6 +35,7 @@ import {
   brandDisplayName,
   brandPhotoUrl,
 } from "@/lib/social/brand-user";
+import { loadOfficialMutualFollowers } from "@/lib/social/profile-mutual-followers";
 import { feedAccessibilityPayload } from "@/lib/feed/accessibility";
 
 // Postingan customer biasa: video komunitas + foto carousel.
@@ -154,7 +155,8 @@ export async function GET(
     AND: [baseWhere, contentWhere],
   };
 
-  const [rawPosts, totalCount, likedCount, viewerFollow] = await Promise.all([
+  const [rawPosts, totalCount, likedCount, viewerFollow, mutualFollowers] =
+    await Promise.all([
     prisma.feedPost.findMany({
       where: listingWhere,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -239,6 +241,12 @@ export async function GET(
           select: { id: true },
         })
       : null,
+    loadOfficialMutualFollowers({
+      viewerUserId,
+      targetUserId: target.id,
+      isOfficial,
+      isOwner,
+    }),
   ]);
 
   const hasMore = rawPosts.length > limit;
@@ -283,6 +291,7 @@ export async function GET(
     isOwner,
     isOfficial,
     isFollowing: Boolean(viewerFollow),
+    mutualFollowers,
     // Sign Bunny URLs supaya hotlink protection tidak return 401. Tanpa
     // signing thumbnailUrl video → CachedNetworkImage di grid public
     // profile dapat 401 → fallback ColoredBox abu-abu (terlihat tile

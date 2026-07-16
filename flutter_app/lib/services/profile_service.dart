@@ -49,12 +49,15 @@ class ProfileService {
     final stats = statsRaw is Map<String, dynamic> ? statsRaw : const {};
     final isOwner = data['isOwner'] == true;
     final isFollowing = data['isFollowing'] == true;
+    final mutualFollowers =
+        PublicProfileMutualSummary.fromJson(data['mutualFollowers']);
     final profile = PublicProfile.fromJson(userRaw, isOwner: isOwner).copyWith(
       postCount: (stats['postCount'] as num?)?.toInt() ?? 0,
       likedCount: (stats['likedCount'] as num?)?.toInt() ?? 0,
       followersCount: (stats['followersCount'] as num?)?.toInt() ?? 0,
       followingCount: (stats['followingCount'] as num?)?.toInt() ?? 0,
       isFollowing: isFollowing,
+      mutualFollowers: mutualFollowers,
     );
     final itemsRaw = data['items'];
     final items = <FeedPost>[];
