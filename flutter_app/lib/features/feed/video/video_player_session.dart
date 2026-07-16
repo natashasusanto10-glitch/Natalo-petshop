@@ -141,10 +141,7 @@ class VideoPlayerSession implements PlaybackSession {
   final String _analyticsSurface;
   final SocialVideoSessionObserver _observationObserver;
   final SocialVideoObservationContext? _observationContext;
-  final Object _debugObservationIdentity = Object();
-  Object? _lastObservationIdentity;
   Object? _activeObservationIdentity;
-  Object? _createdObservationIdentity;
   final List<SocialVideoObservationContext> _pendingObservationAttachments =
       <SocialVideoObservationContext>[];
   late final VideoPlaybackHealthMonitor _healthMonitor;
@@ -218,7 +215,11 @@ class VideoPlayerSession implements PlaybackSession {
           // Hasil kedaluwarsa: sesi keburu di-dispose selama init async →
           // buang resource (mencegah controller yatim + audio hantu).
           if (_disposed) {
-            await _cleanupResources();
+            final disposedIdentity = await _cleanupResources();
+            _observe(
+              SocialVideoLifecycleType.disposed,
+              controllerIdentity: disposedIdentity,
+            );
             return;
           }
           _initialized = true;
@@ -236,7 +237,13 @@ class VideoPlayerSession implements PlaybackSession {
           return;
         } catch (error) {
           final releasedIdentity = await _cleanupResources();
-          if (_disposed) return;
+          if (_disposed) {
+            _observe(
+              SocialVideoLifecycleType.disposed,
+              controllerIdentity: releasedIdentity,
+            );
+            return;
+          }
           final permanent = _isPermanentError(error);
           if (retriesLeft <= 0 || permanent) {
             _error = error;
@@ -297,13 +304,11 @@ class VideoPlayerSession implements PlaybackSession {
     final attempt = _debugInitAttempt;
     if (attempt != null) {
       final nativeIdentity = _debugNativeControllerIdentityFactory?.call() ??
-          _debugNativeControllerIdentity;
-      if (nativeIdentity != null) _recordObservationCreated(nativeIdentity);
+          _debugNativeControllerIdentity ??
+          Object();
+      _recordObservationCreated(nativeIdentity);
       await attempt(url);
       _debugPlayerReady = true;
-      _recordObservationCreated(
-        nativeIdentity ?? _debugObservationIdentity,
-      );
       return;
     }
     if (url.trim().isEmpty) {
@@ -915,11 +920,11 @@ class VideoPlayerSession implements PlaybackSession {
   }
 
   void _recordObservationCreated(Object identity) {
-    _lastObservationIdentity = identity;
     _activeObservationIdentity = identity;
-    if (identical(_createdObservationIdentity, identity)) return;
-    _createdObservationIdentity = identity;
-    _observe(SocialVideoLifecycleType.created);
+    _observe(
+      SocialVideoLifecycleType.created,
+      controllerIdentity: identity,
+    );
   }
 
   void _flushPendingObservationAttachments() {
@@ -939,13 +944,8 @@ class VideoPlayerSession implements PlaybackSession {
   }) {
     final observationContext = context ?? _observationContext;
     if (observationContext == null) return;
-    final identity = controllerIdentity ??
-        _controller ??
-        (_debugInitAttempt != null
-            ? _debugObservationIdentity
-            : _lastObservationIdentity);
+    final identity = controllerIdentity ?? _activeObservationIdentity;
     if (identity == null) return;
-    _lastObservationIdentity = identity;
     try {
       _observationObserver.observeController(
         type: type,
@@ -982,7 +982,10 @@ class VideoPlayerSession implements PlaybackSession {
       if (completion == null) break;
       await completion.future;
     }
-    await _cleanupResources();
-    _observe(SocialVideoLifecycleType.disposed);
+    final disposedIdentity = await _cleanupResources();
+    _observe(
+      SocialVideoLifecycleType.disposed,
+      controllerIdentity: disposedIdentity,
+    );
   }
 }
