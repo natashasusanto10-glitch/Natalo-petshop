@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/public_profile.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_chrome_overlay.dart';
+import 'package:natalo_petshop_flutter/widgets/public_profile_expanded_header.dart';
 
 void main() {
   testWidgets('collapsed chrome uses one blur layer above underlapping grid',
@@ -125,6 +126,103 @@ void main() {
     await tester.tapAt(const Offset(196, 300));
     expect(gridTaps, 1);
   });
+
+  for (final width in <double>[360, 393]) {
+    for (final scale in <double>[1.3, 2]) {
+      testWidgets(
+          'official identity metrics fit mandatory actions at $width and $scale',
+          (tester) async {
+        await tester.pumpWidget(identityMetricsHarness(
+          width: width,
+          textScale: scale,
+          profile: const PublicProfile(
+            id: 'official-1',
+            name: 'Natalo Petshop Official',
+            username: 'natalopetshop',
+            isOfficial: true,
+          ),
+        ));
+
+        expect(find.text('Ikuti'), findsOneWidget);
+        expect(find.text('Pesan'), findsOneWidget);
+        expect(find.byTooltip('Bagikan Profil'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets(
+          'regular long bio metrics fit three lines at $width and $scale',
+          (tester) async {
+        await tester.pumpWidget(identityMetricsHarness(
+          width: width,
+          textScale: scale,
+          profile: const PublicProfile(
+            id: 'profile-1',
+            name: 'Nama Pengguna Dengan Teks Panjang',
+            username: 'pengguna.panjang',
+            bio:
+                'Baris pertama bio panjang. Baris kedua menjelaskan profil. Baris ketiga tetap terlihat tanpa terpotong.',
+          ),
+        ));
+
+        expect(find.text('Ikuti'), findsOneWidget);
+        expect(find.byTooltip('Bagikan Profil'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  testWidgets('official base metrics fit mandatory identity at normal scale',
+      (tester) async {
+    await tester.pumpWidget(identityMetricsHarness(
+      width: 393,
+      textScale: 1,
+      profile: const PublicProfile(
+        id: 'official-1',
+        name: 'Natalo Petshop Official',
+        username: 'natalopetshop',
+        isOfficial: true,
+      ),
+    ));
+
+    expect(find.text('Ikuti'), findsOneWidget);
+    expect(find.text('Pesan'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+}
+
+Widget identityMetricsHarness({
+  required double width,
+  required double textScale,
+  required PublicProfile profile,
+}) {
+  return MaterialApp(
+    home: MediaQuery(
+      data: MediaQueryData(
+        size: Size(width, 852),
+        textScaler: TextScaler.linear(textScale),
+      ),
+      child: Builder(builder: (context) {
+        final metrics = PublicProfileHeaderMetrics.resolve(context, profile);
+        return Scaffold(
+          body: Align(
+            alignment: Alignment.topCenter,
+            child: SizedBox(
+              width: width,
+              height: metrics.identityHeight,
+              child: PublicProfileExpandedHeader(
+                profile: profile,
+                followBusy: false,
+                chatEnabled: true,
+                onFollowToggle: () {},
+                onShareProfile: () {},
+                onMessage: () {},
+              ),
+            ),
+          ),
+        );
+      }),
+    ),
+  );
 }
 
 Widget overlayHarness({

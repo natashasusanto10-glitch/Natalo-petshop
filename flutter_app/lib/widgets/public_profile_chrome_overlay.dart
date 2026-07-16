@@ -35,16 +35,48 @@ class PublicProfileHeaderMetrics {
     final hasMutuals = profile.isOfficial &&
         !profile.isOwner &&
         profile.mutualFollowers.items.isNotEmpty;
-    final base = profile.isOfficial ? 210.0 : 220.0;
-    final bio = hasBio ? (profile.isOfficial ? 28.0 : 48.0) : 0.0;
-    final mutual = hasMutuals ? 40.0 : 0.0;
-    final scaleAllowance = (scale - 1) * (profile.isOfficial ? 72 : 64);
+    final identityHeight = profile.isOfficial
+        ? _officialIdentityHeight(
+            scale: scale,
+            hasBio: hasBio,
+            hasMutuals: hasMutuals,
+          )
+        : _regularIdentityHeight(scale: scale, hasBio: hasBio);
     return PublicProfileHeaderMetrics(
       topPadding: MediaQuery.paddingOf(context).top,
       toolbarHeight: 56,
-      identityHeight: base + bio + mutual + scaleAllowance,
+      identityHeight: identityHeight,
       tabHeight: PublicProfileContentTabBar.height,
     );
+  }
+
+  /// Mirrors the official header's fixed vertical contract: padding, 84px
+  /// avatar row, statistics, action row, and their gaps total 220px.
+  static double _officialIdentityHeight({
+    required double scale,
+    required bool hasBio,
+    required bool hasMutuals,
+  }) {
+    const base = 220.0;
+    final bio = hasBio ? 8 + (scale > 1.3 ? 2 : 1) * 13 * 1.35 * scale : 0.0;
+    final mutuals = hasMutuals ? 12 + 30 : 0.0;
+    const scalableStatsAndActions = 31.0;
+    final textAllowance = (scale - 1) * scalableStatsAndActions;
+    return base + bio + mutuals + textAllowance;
+  }
+
+  /// Mirrors the regular header's fixed rows and measures the optional
+  /// three-line bio and scalable name/handle rather than using a generic
+  /// allowance. The small base safety absorbs fractional line rounding.
+  static double _regularIdentityHeight({
+    required double scale,
+    required bool hasBio,
+  }) {
+    const base = 212.0;
+    const scalableNameAndHandle = (15 * 1.15) + (13 * 1.2);
+    final textAllowance = (scale - 1) * scalableNameAndHandle;
+    final bio = hasBio ? 8 + (3 * 14 * 1.4 * scale) : 0.0;
+    return base + textAllowance + bio;
   }
 }
 

@@ -139,8 +139,9 @@ void main() {
     final post = FeedPost.fromJson({
       'id': 'post-1',
       'slug': 'post-1',
-      'kind': 'USER_POST',
-      'mediaUrl': 'not-a-network-url',
+      'kind': 'USER_VIDEO',
+      'videoUrl': 'https://example.com/post-1.mp4',
+      'thumbnailUrl': 'not-a-network-url',
       'author': {'id': 'creator-1', 'name': 'Creator'},
       'createdAt': DateTime(2026).toIso8601String(),
     });
@@ -171,6 +172,19 @@ void main() {
     expect(find.byType(PublicProfileChromeOverlay), findsOneWidget);
     expect(find.byKey(const ValueKey('profile-post-post-1')), findsOneWidget);
 
+    await tester.drag(find.byType(TabBarView), const Offset(-420, 0));
+    await tester.pumpAndSettle();
+
+    final videoSelected = tester.widget<Semantics>(
+      find
+          .ancestor(
+            of: find.byTooltip('Video'),
+            matching: find.byType(Semantics),
+          )
+          .first,
+    );
+    expect(videoSelected.properties.selected, isTrue);
+
     final scrollView = find.byType(NestedScrollView);
     final dragPoint = tester.getBottomLeft(scrollView) + const Offset(200, -80);
     await tester.dragFrom(dragPoint, const Offset(0, -360));
@@ -186,7 +200,7 @@ void main() {
     final selected = tester.widget<Semantics>(
       find
           .ancestor(
-            of: find.byTooltip('Postingan'),
+            of: find.byTooltip('Video'),
             matching: find.byType(Semantics),
           )
           .first,
@@ -195,17 +209,20 @@ void main() {
 
     await tester.dragFrom(dragPoint, const Offset(0, 360));
     await tester.pump();
-    expect(find.byKey(const ValueKey('profile-post-post-1')), findsOneWidget);
     final reversedSelected = tester.widget<Semantics>(
       find
           .ancestor(
-            of: find.byTooltip('Postingan'),
+            of: find.byTooltip('Video'),
             matching: find.byType(Semantics),
           )
           .first,
     );
     expect(reversedSelected.properties.selected, isTrue);
+
+    await tester.tap(find.byTooltip('Postingan'));
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('profile-post-post-1')), findsOneWidget);
   });
 }
 
