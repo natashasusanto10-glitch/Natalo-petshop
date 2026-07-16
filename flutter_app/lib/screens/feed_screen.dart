@@ -123,10 +123,23 @@ Future<void> disposeFeedCachedPreloadForObservation({
   required String postId,
   Future<void>? initialization,
 }) async {
-  if (initialization != null) {
-    try {
-      await initialization;
-    } catch (_) {}
+  if (!player.isInitialized && initialization != null) {
+    await player.dispose();
+    unawaited(() async {
+      try {
+        await initialization;
+        if (!player.isInitialized) return;
+        final controllerIdentity = player.controller;
+        await player.dispose();
+        observeFeedControllerDisposed(
+          observer,
+          postId: postId,
+          controller: controllerIdentity,
+          ownerId: feedPreloadOwnerId(postId),
+        );
+      } catch (_) {}
+    }());
+    return;
   }
   final controllerIdentity =
       controller ?? (player.isInitialized ? player.controller : null);

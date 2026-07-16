@@ -437,6 +437,12 @@ void _registerLegacyFrameOutputRecoveryTests() {
         postId: post.id,
         controller: controller,
       );
+      observeFeedControllerInitialized(
+        observer,
+        postId: post.id,
+        controller: controller,
+        ownerId: feedPreloadOwnerId(post.id),
+      );
 
       await tester.pumpWidget(MaterialApp(
         home: FeedVideoPostView(
@@ -459,6 +465,70 @@ void _registerLegacyFrameOutputRecoveryTests() {
       expect(
         observer.snapshot.events
             .where((event) => event.type == SocialVideoLifecycleType.attached),
+        hasLength(1),
+      );
+      expect(
+        observer.snapshot.events.where(
+            (event) => event.type == SocialVideoLifecycleType.initialized),
+        hasLength(1),
+        reason: 'ready preload was already initialized by its parent',
+      );
+      expect(observer.snapshot.liveControllerCount, 1);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      expect(observer.snapshot.liveControllerCount, 0);
+      await appSettingsStore.setFeedAutoplay(true);
+    });
+
+    testWidgets(
+        'HLS adopted while initializing records initialized after handoff',
+        (tester) async {
+      await appSettingsStore.setFeedAutoplay(false);
+      final observer = SocialVideoSessionObserver(enabled: true);
+      final delayedPlatform = _FakeVideoPlayerPlatform(manualInit: true);
+      final volumeGate = Completer<void>();
+      delayedPlatform.setVolumeGate = volumeGate;
+      VideoPlayerPlatform.instance = delayedPlatform;
+      final post = _fakeVideoPost(hls: true);
+      final controller = VideoPlayerController.networkUrl(
+        Uri.parse('https://example.com/pending-adopt.m3u8'),
+      );
+      unawaited(controller.initialize());
+      observeFeedPreloadCreated(
+        observer,
+        postId: post.id,
+        controller: controller,
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: FeedVideoPostView(
+          post: post,
+          isActive: true,
+          preloadedController: controller,
+          observationObserver: observer,
+          healthMonitorFactory: monitorFactory(),
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ));
+      await tester.pump();
+
+      expect(
+        observer.snapshot.events.where(
+            (event) => event.type == SocialVideoLifecycleType.initialized),
+        isEmpty,
+      );
+
+      delayedPlatform.emitInitialized();
+      await tester.pump();
+      volumeGate.complete();
+      await tester.pump();
+
+      expect(
+        observer.snapshot.events.where(
+            (event) => event.type == SocialVideoLifecycleType.initialized),
         hasLength(1),
       );
       expect(observer.snapshot.liveControllerCount, 1);

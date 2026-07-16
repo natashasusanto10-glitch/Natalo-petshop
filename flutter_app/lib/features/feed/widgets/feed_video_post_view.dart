@@ -257,11 +257,26 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   }) async {
     if (wrapper != null && identical(wrapper, _localInitCachedPlayer)) {
       final initialization = _localCachedInitialization;
+      final observer = _observationObserver;
+      final postId = widget.post.id;
       await _localWrapperDisposeGuard.dispose(wrapper, () async {
-        if (initialization != null) {
-          try {
-            await initialization;
-          } catch (_) {}
+        if (!wrapper.isInitialized && initialization != null) {
+          await wrapper.dispose();
+          unawaited(() async {
+            try {
+              await initialization;
+              if (!wrapper.isInitialized) return;
+              final controllerIdentity = wrapper.controller;
+              await wrapper.dispose();
+              observeFeedControllerDisposed(
+                observer,
+                postId: postId,
+                controller: controllerIdentity,
+                ownerId: feedLocalOwnerId(postId),
+              );
+            } catch (_) {}
+          }());
+          return;
         }
         final controllerIdentity = controller ??
             _localInitController ??
@@ -1075,6 +1090,18 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       postId: widget.post.id,
       controller: ctrl,
     );
+    var initializationObservedAfterAdoption = false;
+    void observeInitializedAfterAdoption() {
+      if (initializationObservedAfterAdoption) return;
+      initializationObservedAfterAdoption = true;
+      observeFeedControllerInitialized(
+        _observationObserver,
+        postId: widget.post.id,
+        controller: ctrl,
+        ownerId: feedLocalOwnerId(widget.post.id),
+      );
+    }
+
     _commitLocalOwnership();
     // Adopt wrapper juga supaya child bisa dispose properly. Wrapper
     // might be null (legacy or unwrapped). Either way, controller-level
@@ -1085,6 +1112,30 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // cuma untuk kasus defensif (controller mungkin dispose dari luar). Kalau
     // sudah initialized, helper-nya early-return tanpa schedule spinner.
     _resetLoadingSpinnerTimer();
+    // Pasang listener SEBELUM command playback pertama. HLS dapat selesai
+    // initialize ketika play/setVolume masih menunggu platform; bila listener
+    // dipasang sesudah await tersebut, lifecycle initialized bisa terlewat.
+    if (!ctrl.value.isInitialized) {
+      void onInit() {
+        if (!ctrl.value.isInitialized) return;
+        ctrl.removeListener(onInit);
+        if (!mounted || _videoController != ctrl) return;
+        observeInitializedAfterAdoption();
+        _cancelLoadingSpinnerDelay();
+        if (!_managed) {
+          _registerFrameOutput(ctrl);
+          // Controller yang selesai init setelah route/app tertutup harus
+          // tetap senyap. Playback hanya dilanjutkan lewat gate existing.
+          ctrl.setVolume(0);
+          if (_canAutoplayNow()) {
+            unawaited(_playLegacy(ctrl, 'adopt-oninit'));
+          }
+        }
+        if (mounted) setState(() {});
+      }
+
+      ctrl.addListener(onInit);
+    }
     // Managed (§2.1): coordinator yang set volume + play (via setActive).
     // Widget cuma merender VideoPlayer + overlay. Jangan sentuh controller.
     if (!_managed) {
@@ -1094,47 +1145,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       } else {
         await ctrl.setVolume(0);
       }
-      // HLS bisa ter-adopt SEBELUM initialize selesai (controller masuk map
-      // sinkron, init jalan async). play()/setVolume di atas jadi no-op diam
-      // → tanpa hook ini video stuck di poster sampai user interaksi.
-      // Listener one-shot: begitu initialized, apply volume + play.
-      if (!ctrl.value.isInitialized) {
-        void onInit() {
-          if (!ctrl.value.isInitialized) return;
-          ctrl.removeListener(onInit);
-          if (!mounted || _videoController != ctrl) return;
-          _registerFrameOutput(ctrl);
-          // Race fix: controller BENAR-BENAR siap sekarang — kalau Feed
-          // sudah tertutup (route/app) di titik ini, paksa senyap eksplisit
-          // + jangan play. _canAutoplayNow di bawah sudah blokir play(), tapi
-          // setVolume(0) eksplisit di sini jadi pertahanan tambahan kalau ada
-          // race lain.
-          if (_routeCovered || _appBackgrounded) {
-            ctrl.setVolume(0);
-          } else {
-            ctrl.setVolume(0);
-          }
-          if (_canAutoplayNow()) {
-            unawaited(_playLegacy(ctrl, 'adopt-oninit'));
-          }
-          _cancelLoadingSpinnerDelay();
-          if (mounted) setState(() {});
-        }
-
-        ctrl.addListener(onInit);
-      }
-    } else if (!ctrl.value.isInitialized) {
-      // Managed: tetap butuh rebuild + cancel spinner saat init selesai
-      // supaya VideoPlayer merender frame pertama (tanpa menyentuh playback).
-      void onInit() {
-        if (!ctrl.value.isInitialized) return;
-        ctrl.removeListener(onInit);
-        if (!mounted || _videoController != ctrl) return;
-        _cancelLoadingSpinnerDelay();
-        if (mounted) setState(() {});
-      }
-
-      ctrl.addListener(onInit);
     }
     if (mounted) setState(() {});
     return _PreloadClaimState.adopted;

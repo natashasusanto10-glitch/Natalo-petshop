@@ -12,9 +12,14 @@ import 'package:natalo_petshop_flutter/screens/feed_screen.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
 class _PreloadVideoPlatform extends VideoPlayerPlatform {
-  _PreloadVideoPlatform({this.failCreate = false, this.initializeGate});
+  _PreloadVideoPlatform({
+    this.failCreate = false,
+    this.failDispose = false,
+    this.initializeGate,
+  });
 
   final bool failCreate;
+  final bool failDispose;
   final Completer<void>? initializeGate;
   final Map<int, StreamController<VideoEvent>> _streams = {};
   var _nextId = 0;
@@ -53,6 +58,7 @@ class _PreloadVideoPlatform extends VideoPlayerPlatform {
   Future<void> dispose(int playerId) async {
     disposedCount++;
     await _streams.remove(playerId)?.close();
+    if (failDispose) throw StateError('dispose failed');
   }
 
   @override
@@ -242,7 +248,8 @@ void main() {
     expect(observer.snapshot.liveControllerCount, 0);
   });
 
-  test('pending MP4 disposal waits for init and releases eventual controller',
+  test(
+      'pending MP4 disposal returns immediately and releases eventual controller',
       () async {
     final observer = SocialVideoSessionObserver(enabled: true);
     final initializeGate = Completer<void>();
@@ -258,12 +265,71 @@ void main() {
       postId: 'post-pending-success',
       initialization: initialization,
     );
+    var disposalCompleted = false;
+    disposal.then((_) => disposalCompleted = true);
     await Future<void>.delayed(Duration.zero);
+    expect(disposalCompleted, isTrue,
+        reason: 'eviction/teardown must not wait for network initialization');
     expect(platform.disposedCount, 0);
 
     initializeGate.complete();
     await initialization;
-    await disposal;
+    await Future<void>.delayed(Duration.zero);
+
+    expect(platform.disposedCount, 1);
+    expect(observer.snapshot.liveControllerCount, 0);
+  });
+
+  test('pending MP4 cleanup is identical when observation is disabled',
+      () async {
+    final observer = SocialVideoSessionObserver(enabled: false);
+    final initializeGate = Completer<void>();
+    final platform = _PreloadVideoPlatform(initializeGate: initializeGate);
+    VideoPlayerPlatform.instance = platform;
+    final wrapper = _cachedPlayer('pending-disabled');
+    final initialization = wrapper.initialize();
+
+    await disposeFeedCachedPreloadForObservation(
+      player: wrapper,
+      controller: null,
+      observer: observer,
+      postId: 'post-pending-disabled',
+      initialization: initialization,
+    );
+    expect(platform.disposedCount, 0);
+
+    initializeGate.complete();
+    await initialization;
+    await Future<void>.delayed(Duration.zero);
+
+    expect(platform.disposedCount, 1);
+    expect(observer.snapshot.events, isEmpty);
+    expect(observer.snapshot.liveControllerCount, 0);
+  });
+
+  test('detached pending MP4 cleanup swallows native disposal failure',
+      () async {
+    final observer = SocialVideoSessionObserver(enabled: true);
+    final initializeGate = Completer<void>();
+    final platform = _PreloadVideoPlatform(
+      initializeGate: initializeGate,
+      failDispose: true,
+    );
+    VideoPlayerPlatform.instance = platform;
+    final wrapper = _cachedPlayer('pending-dispose-failure');
+    final initialization = wrapper.initialize();
+
+    await disposeFeedCachedPreloadForObservation(
+      player: wrapper,
+      controller: null,
+      observer: observer,
+      postId: 'post-pending-dispose-failure',
+      initialization: initialization,
+    );
+
+    initializeGate.complete();
+    await initialization;
+    await Future<void>.delayed(Duration.zero);
 
     expect(platform.disposedCount, 1);
     expect(observer.snapshot.liveControllerCount, 0);
