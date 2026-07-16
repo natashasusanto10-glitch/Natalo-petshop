@@ -10,6 +10,30 @@ import 'package:natalo_petshop_flutter/services/profile_service.dart';
 import 'package:natalo_petshop_flutter/widgets/origin_expansion_route.dart';
 
 void main() {
+  testWidgets('entry refreshes chat config exactly once', (tester) async {
+    var fetchCount = 0;
+    const result = PublicProfileResult(
+      profile: PublicProfile(
+        id: 'creator-1',
+        name: 'Creator',
+        username: 'creator',
+        isOwner: true,
+      ),
+      posts: [],
+    );
+    final screen = PublicProfileScreen(
+      username: 'creator',
+      initialResult: result,
+      fetchChatConfig: () async => fetchCount++,
+    );
+
+    await tester.pumpWidget(MaterialApp(home: screen));
+    await tester.pumpWidget(MaterialApp(home: screen));
+
+    expect(fetchCount, 1);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   test('public profile tile keys stay stable and scoped to their content tab',
       () {
     final keys = ProfilePostOriginKeyCache();
@@ -70,6 +94,7 @@ void main() {
           username: 'creator',
           initialResult: result,
           warmHandoffFactory: (_) => warmHandoff,
+          fetchChatConfig: _noOpFetch,
         ),
       ),
     );
@@ -98,3 +123,5 @@ void main() {
     expect(find.byKey(const ValueKey('profile-post-video-1')), findsOneWidget);
   });
 }
+
+Future<void> _noOpFetch() async {}

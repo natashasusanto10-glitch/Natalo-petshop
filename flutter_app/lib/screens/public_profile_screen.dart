@@ -154,12 +154,15 @@ class PublicProfileScreen extends StatefulWidget {
   final PublicProfileResult? initialResult;
   @visibleForTesting
   final ProfileWarmHandoffFactory? warmHandoffFactory;
+  @visibleForTesting
+  final AsyncCallback? fetchChatConfig;
 
   const PublicProfileScreen({
     super.key,
     required this.username,
     this.initialResult,
     this.warmHandoffFactory,
+    this.fetchChatConfig,
   });
 
   @override
@@ -190,6 +193,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   @override
   void initState() {
     super.initState();
+    unawaited((widget.fetchChatConfig ?? chatStore.fetchConfig)());
     WidgetsBinding.instance.addObserver(this);
     _scrollController = ScrollController();
     _videoPrewarmer = ProfileVideoPrewarmer(

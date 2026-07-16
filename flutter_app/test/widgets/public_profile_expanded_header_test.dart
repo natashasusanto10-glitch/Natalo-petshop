@@ -1,3 +1,5 @@
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/public_profile.dart';
@@ -95,11 +97,41 @@ void main() {
     expect(find.text('Edit Profil'), findsNothing);
     expect(find.text('Ikuti'), findsNothing);
   });
+
+  for (final following in <bool>[false, true]) {
+    final label = following ? 'Mengikuti' : 'Ikuti';
+    testWidgets('busy $label keeps label, progress, and stable semantics',
+        (tester) async {
+      await tester.pumpWidget(headerHarness(
+        profile: PublicProfile(
+          id: 'user-1',
+          name: 'Mona',
+          isFollowing: following,
+        ),
+        followBusy: true,
+        width: 320,
+      ));
+
+      final semanticsFinder = find.bySemanticsLabel(label);
+      expect(semanticsFinder, findsOneWidget);
+      expect(
+        find.descendant(of: semanticsFinder, matching: find.text(label)),
+        findsOneWidget,
+      );
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      final semantics = tester.getSemantics(semanticsFinder);
+      expect(semantics.value, 'Sedang diproses');
+      expect(semantics.flagsCollection.isLiveRegion, isTrue);
+      expect(semantics.flagsCollection.isEnabled, Tristate.isFalse);
+      expect(tester.getSize(semanticsFinder).height, greaterThanOrEqualTo(44));
+    });
+  }
 }
 
 Widget headerHarness({
   required PublicProfile profile,
   bool chatEnabled = false,
+  bool followBusy = false,
   VoidCallback? onMessage,
   VoidCallback? onEditProfile,
   double width = 393,
@@ -119,7 +151,7 @@ Widget headerHarness({
             width: width,
             child: PublicProfileExpandedHeader(
               profile: profile,
-              followBusy: false,
+              followBusy: followBusy,
               chatEnabled: chatEnabled,
               onFollowToggle: () {},
               onFollowersTap: () {},

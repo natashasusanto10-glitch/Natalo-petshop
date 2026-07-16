@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/public_profile.dart';
 import 'package:natalo_petshop_flutter/screens/public_profile_screen.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_collapsing_header.dart';
+import 'package:natalo_petshop_flutter/widgets/public_profile_expanded_header.dart';
 
 void main() {
   Widget harness({
@@ -233,6 +234,7 @@ void main() {
                     expandedHeader: const PublicProfileExpandedHeader(
                       profile: profile,
                       followBusy: false,
+                      chatEnabled: false,
                       onFollowToggle: _noop,
                       onShareProfile: _noop,
                     ),
@@ -263,7 +265,12 @@ void main() {
   testWidgets('PublicProfileScreen scaffold never installs bottom navigation',
       (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(home: PublicProfileScreen(username: 'mona.pet')),
+      const MaterialApp(
+        home: PublicProfileScreen(
+          username: 'mona.pet',
+          fetchChatConfig: _noOpFetch,
+        ),
+      ),
     );
 
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
@@ -273,3 +280,5 @@ void main() {
 }
 
 void _noop() {}
+
+Future<void> _noOpFetch() async {}

@@ -575,15 +575,21 @@ class _HeaderAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final resolvedLabel = semanticLabel ?? label;
     Widget child = Semantics(
       button: true,
-      label: semanticLabel,
+      enabled: !busy,
+      liveRegion: busy,
+      label: resolvedLabel,
+      value: busy ? 'Sedang diproses' : null,
+      excludeSemantics: true,
+      onTap: busy ? null : onTap,
       child: SizedBox(
         height: 44,
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: onTap,
+            onTap: busy ? null : onTap,
             borderRadius: AppRadius.medium,
             child: Center(
               child: Container(
@@ -596,27 +602,37 @@ class _HeaderAction extends StatelessWidget {
                   border: Border.all(color: border),
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-                child: busy
-                    ? SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: foreground,
-                        ),
-                      )
-                    : icon != null
-                        ? Icon(icon, color: foreground, size: 18)
-                        : Text(
-                            label!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: foreground,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
+                child: icon != null
+                    ? Icon(icon, color: foreground, size: 18)
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (busy) ...[
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: foreground,
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                          ],
+                          Flexible(
+                            child: Text(
+                              label!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: foreground,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
+                        ],
+                      ),
               ),
             ),
           ),
