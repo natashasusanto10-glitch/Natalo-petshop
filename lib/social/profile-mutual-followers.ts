@@ -46,6 +46,22 @@ const emptySummary = (): PublicMutualFollowerSummary => ({
   totalCount: 0,
 });
 
+const publicMutualFollowerName = (
+  follower: MutualFollowerRow["follower"],
+): string => {
+  if (isAdminRole(follower.role)) {
+    return brandDisplayName(follower.role, follower.name);
+  }
+
+  const name = follower.name?.trim();
+  if (name) return name;
+
+  const username = follower.username?.trim().replace(/^@+/, "");
+  if (username) return `@${username}`;
+
+  return "Pengguna Natalo";
+};
+
 export function buildMutualFollowerWhere(
   viewerUserId: string,
   targetUserId: string,
@@ -100,7 +116,7 @@ export async function loadOfficialMutualFollowers(
     return {
       items: rows.map(({ follower }) => ({
         id: follower.id,
-        name: brandDisplayName(follower.role, follower.name),
+        name: publicMutualFollowerName(follower),
         username: follower.username,
         profilePhotoUrl: brandPhotoUrl(
           follower.role,

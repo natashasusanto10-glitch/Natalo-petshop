@@ -89,6 +89,73 @@ test("mutuals brandify admin previews and preserve total count", async () => {
   assert.equal(result.items[1]?.name, "Mona");
 });
 
+test("legacy mutual previews always expose a stable non-empty public label", async () => {
+  const dependencies: MutualFollowerDependencies = {
+    findMany: async () => [
+      {
+        follower: {
+          id: "named-user",
+          name: "  Mona  ",
+          username: "mona",
+          profilePhotoUrl: null,
+          role: "CUSTOMER",
+        },
+      },
+      {
+        follower: {
+          id: "username-user",
+          name: "   ",
+          username: "  legacy.user  ",
+          profilePhotoUrl: null,
+          role: "CUSTOMER",
+        },
+      },
+      {
+        follower: {
+          id: "anonymous-user",
+          name: null,
+          username: "   ",
+          profilePhotoUrl: null,
+          role: "CUSTOMER",
+        },
+      },
+      {
+        follower: {
+          id: "admin-user",
+          name: null,
+          username: null,
+          profilePhotoUrl: "https://cdn.example/private-admin.jpg",
+          role: "ADMIN",
+        },
+      },
+    ],
+    count: async () => 9,
+  };
+
+  const result = await loadOfficialMutualFollowers(
+    {
+      viewerUserId: "viewer-1",
+      targetUserId: "official-1",
+      isOfficial: true,
+      isOwner: false,
+    },
+    dependencies,
+  );
+
+  assert.equal(result.totalCount, 9);
+  assert.deepEqual(
+    result.items.map((item) => item.name),
+    [
+      "Mona",
+      "@legacy.user",
+      "Pengguna Natalo",
+      "Natalo Petshop Official",
+    ],
+  );
+  assert.equal(result.items[3]?.profilePhotoUrl, null);
+  assert.equal(result.items[3]?.isOfficial, true);
+});
+
 test("optional mutual failure returns empty summary", async () => {
   const dependencies: MutualFollowerDependencies = {
     findMany: async () => {
