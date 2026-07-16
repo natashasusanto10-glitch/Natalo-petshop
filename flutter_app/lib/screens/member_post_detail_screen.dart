@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../config/api_config.dart';
+import '../features/feed/layout/postingan_media_aspect_ratio.dart';
 import '../features/feed/video/post_video_coordinator.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../features/feed/video/video_player_session.dart';
@@ -301,7 +302,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   void _jumpNearPost(int targetIndex) {
     if (!_scrollController.hasClients) return;
     final maxExtent = _scrollController.position.maxScrollExtent;
-    final approxOffset = _estimatedPostExtent(context) * targetIndex;
+    final approxOffset = _estimatedOffsetToPost(context, targetIndex);
     final targetOffset = approxOffset.clamp(0.0, maxExtent).toDouble();
     _scrollController.jumpTo(targetOffset);
   }
@@ -325,15 +326,36 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     });
   }
 
-  double _estimatedPostExtent(BuildContext context) {
+  double _estimatedPostExtent(BuildContext context, FeedPost post) {
     final width = MediaQuery.of(context).size.width;
-    // Ikuti _safeAspectRatio: media di-clamp max 4:5 (tak ada lagi video
-    // 9:14 yang lebih tinggi) → estimasi extent pakai 4:5.
-    const mediaAspectRatio = 4 / 5;
+    final mediaAspectRatio = resolvePostinganMediaAspectRatio(
+      width: post.aspectWidthInt,
+      height: post.aspectHeightInt,
+      type: post.contentType,
+    );
     const authorRowHeight = 52.0;
     const actionCaptionDateHeight = 118.0;
     final mediaHeight = width / mediaAspectRatio;
     return mediaHeight + authorRowHeight + actionCaptionDateHeight;
+  }
+
+  double _maximumEstimatedPostExtent(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    const authorRowHeight = 52.0;
+    const actionCaptionDateHeight = 118.0;
+    return (width / postinganVideoMinAspectRatio) +
+        authorRowHeight +
+        actionCaptionDateHeight;
+  }
+
+  double _estimatedOffsetToPost(BuildContext context, int targetIndex) {
+    const separatorHeight = 24.0;
+    var offset = 0.0;
+    for (var index = 0; index < targetIndex && index < _posts.length; index++) {
+      offset += _estimatedPostExtent(context, _posts[index]);
+      offset += separatorHeight;
+    }
+    return offset;
   }
 
   @override
@@ -825,7 +847,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
               onRefresh: _refreshPosts,
               child: ListView.separated(
                 controller: _scrollController,
-                cacheExtent: _estimatedPostExtent(context) * 2,
+                cacheExtent: _maximumEstimatedPostExtent(context) * 2,
                 // Bottom padding extra space supaya post terakhir bisa di-
                 // scroll lega ke atas viewport (gak mepet ke home indicator).
                 padding: const EdgeInsets.only(top: 0, bottom: 48),
@@ -1065,7 +1087,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
 
     // Keep the destination inline dormant while the list is repositioned.
     _scrollController.jumpTo(
-      (_estimatedPostExtent(context) * index)
+      _estimatedOffsetToPost(context, index)
           .clamp(0.0, _scrollController.position.maxScrollExtent),
     );
     if (mounted) setState(() => _handoffSessionId = result.postId);
@@ -2212,11 +2234,9 @@ class _PostMediaSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Pass type ke aspect calculator — video pakai 3:5 fixed (immersive),
-    // photo/carousel pakai source aspect clamped ke 4:5.
-    final aspectRatio = _safeAspectRatio(
-      post.aspectWidthInt,
-      post.aspectHeightInt,
+    final aspectRatio = resolvePostinganMediaAspectRatio(
+      width: post.aspectWidthInt,
+      height: post.aspectHeightInt,
       type: post.contentType,
     );
     // Hero destination — wraps photo (single & carousel cover) dengan tag
@@ -2550,18 +2570,8 @@ class _ImageSurfaceState extends State<_ImageSurface>
     if (widget.imageUrl.trim().isEmpty) {
       return _MediaPlaceholder(icon: widget.placeholderIcon);
     }
-    // BoxFit.cover — per spec sheet final dari user (post landscape, post
-    // portrait, post video semua bilang "Object fit: cover"). Aspect
-    // ratio sudah follow source via _safeAspectRatio clamp (0.8-1.91):
-    //   - 4:3 landscape source → preserved 4:3 display, no crop
-    //   - 4:5 portrait source → preserved 4:5, no crop
-    //   - 16:9 landscape → preserved, no crop
-    //   - Tall phone screenshot 9:19.5 → clamped ke 4:5 + center crop
-    //     (top/bottom hidden, sesuai IG behavior untuk tall content)
-    //
-    // Sempat ganti ke contain di v1.0.45 atas hipotesis "IG fit no crop".
-    // Tapi spec final dari user konsisten cover di semua spec sheet —
-    // override hypothesis. Revert ke cover.
+    // The container ratio already follows the Postingan media policy. Cover
+    // only crops sources outside its supported portrait/landscape limits.
     return Container(
       color: Colors.black,
       alignment: Alignment.center,
@@ -3233,22 +3243,4 @@ class _CalmFeedScrollPhysics extends AlwaysScrollableScrollPhysics {
 
   @override
   double carriedMomentum(double existingVelocity) => 0;
-}
-
-/// Aspect ratio per media type — Postingan Saya memakai Instagram posts style:
-///   - SEMUA tipe (video/photo/carousel): rasio media asli dengan batas
-///     Instagram: portrait maksimum 4:5, landscape maksimum 1.91:1.
-///     Video dulu fixed 9:14 ("lebih tinggi dari foto") tapi itu TIDAK
-///     match IG asli — di halaman Posts IG, video di-crop max 4:5 sama
-///     seperti foto. 9:14 bikin frame ±25% lebih tinggi → crop vertikal
-///     lebih agresif (logo di atas video kepotong) dan post terasa
-///     "lebih besar ke bawah" dibanding IG.
-///
-/// Default fallback 4:5 kalau metadata tidak diketahui. Param [type]
-/// dipertahankan di signature untuk call-site stability.
-double _safeAspectRatio(int width, int height, {FeedContentType? type}) {
-  if (width <= 0 || height <= 0) return 4 / 5;
-  final ratio = width / height;
-  if (ratio.isNaN || ratio.isInfinite || ratio <= 0) return 4 / 5;
-  return ratio.clamp(4 / 5, 1.91).toDouble();
 }
