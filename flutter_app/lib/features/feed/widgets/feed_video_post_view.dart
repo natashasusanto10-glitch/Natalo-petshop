@@ -51,6 +51,12 @@ import 'feed_post_scrim.dart';
 import 'feed_post_shared_widgets.dart';
 import 'feed_video_scrubber.dart';
 
+/// D4 legacy — seam test: override fetch post segar untuk refresh signed-URL
+/// (default produksi: `feedService.fetchPostById`). Pola sama dengan
+/// `debugScopedFeedPostFetcher` di member_post_detail_screen.dart.
+@visibleForTesting
+Future<FeedPost?> Function(String id)? debugLegacyFeedPostFetcher;
+
 typedef FeedVideoHealthMonitorFactory = VideoPlaybackHealthMonitor Function({
   required VideoPlaybackSnapshot Function() readSnapshot,
   required Future<void> Function(Duration position) onPlaybackStall,
@@ -351,6 +357,21 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   bool _shareInFlight = false;
   bool _isPaused = false;
   bool _videoLoadFailed = false;
+
+  /// D4 legacy — override URL playback segar hasil refresh signed-URL
+  /// (init gagal + URL bertanda-tangan basi → re-fetch post). Null = pakai
+  /// data widget.post apa adanya. Di-reset di didUpdateWidget kalau parent
+  /// mengirim URL playback baru (data parent menang).
+  String? _refreshedVideoPlaybackUrl;
+  String? _refreshedDataSaverUrl;
+
+  String get _effectivePlaybackUrl =>
+      _refreshedVideoPlaybackUrl ?? widget.post.videoPlaybackUrl;
+
+  String? get _effectiveDataSaverUrl =>
+      _refreshedVideoPlaybackUrl != null
+          ? _refreshedDataSaverUrl
+          : widget.post.videoDataSaverUrl;
   _CommentDrawerPhase _commentDrawerPhase = _CommentDrawerPhase.closed;
   bool _commentOverlayLockHeld = false;
   int _commentOverlayLockEpoch = 0;
@@ -1340,6 +1361,12 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     if (oldWidget.post.id != widget.post.id && _commentDrawerMounted) {
       _forceDeactivateCommentDrawer(deferOverlayNotification: true);
     }
+    // D4 legacy: parent kirim URL playback baru (post segar) → data parent
+    // menang atas override hasil refresh internal.
+    if (oldWidget.post.videoPlaybackUrl != widget.post.videoPlaybackUrl) {
+      _refreshedVideoPlaybackUrl = null;
+      _refreshedDataSaverUrl = null;
+    }
     if (oldWidget.isActive != widget.isActive) {
       _resetBufferAheadReporting();
       if (widget.isActive) {
@@ -1411,8 +1438,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     // ada dua controller / dua download.
     if (_initInFlight) return;
     final url = videoQualityService.resolvePlaybackUrl(
-      widget.post.videoPlaybackUrl,
-      dataSaverUrl: widget.post.videoDataSaverUrl,
+      _effectivePlaybackUrl,
+      dataSaverUrl: _effectiveDataSaverUrl,
       userPreference: appSettingsStore.feedVideoQuality,
     );
     if (url.isEmpty) return;
@@ -1440,8 +1467,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     setState(() => _videoLoadFailed = false);
     // Sprint 2 #7 — Network-aware source selection + user preference.
     final resolvedUrl = videoQualityService.resolvePlaybackUrl(
-      widget.post.videoPlaybackUrl,
-      dataSaverUrl: widget.post.videoDataSaverUrl,
+      _effectivePlaybackUrl,
+      dataSaverUrl: _effectiveDataSaverUrl,
       userPreference: appSettingsStore.feedVideoQuality,
     );
     final isHls = resolvedUrl.contains('.m3u8');
@@ -1479,10 +1506,61 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     );
     if (secondAttempt || !mounted) return;
 
+    // Attempt 3 (D4, port dari jalur managed VideoPlayerSession
+    // `_maybeRefreshSignedUrl`): signed-URL Bunny (expiry 6 jam) bisa basi
+    // (cache offline feed lama, sesi panjang, clock skew) → CDN 403 →
+    // kedua attempt di atas gagal SELAMANYA untuk URL yang sama. Kalau URL
+    // tampak bertanda-tangan, fetch post segar (`GET /api/feed/posts/:id`
+    // di-sign ulang server tiap request) lalu SATU retry dengan URL baru.
+    // Maks sekali per siklus _runInitVideo (tap "Coba lagi" = siklus baru).
+    final looksSigned =
+        resolvedUrl.contains('token=') && resolvedUrl.contains('expires=');
+    if (looksSigned && await _maybeRefreshSignedPlaybackUrl()) {
+      if (!mounted) return;
+      final refreshedUrl = videoQualityService.resolvePlaybackUrl(
+        _effectivePlaybackUrl,
+        dataSaverUrl: _effectiveDataSaverUrl,
+        userPreference: appSettingsStore.feedVideoQuality,
+      );
+      if (refreshedUrl.isNotEmpty && refreshedUrl != resolvedUrl) {
+        _playbackHealthMonitor.record('video_url_refreshed');
+        // Bypass cache wrapper: URL beda query = cache-miss, wrapper tak
+        // memberi benefit di retry ini.
+        final thirdAttempt = await _tryInitVideoController(
+          resolvedUrl: refreshedUrl,
+          useCacheWrapper: false,
+          userInitiated: userInitiated,
+        );
+        if (thirdAttempt || !mounted) return;
+      }
+    }
+    if (!mounted) return;
+
     setState(() => _videoLoadFailed = true);
     _playbackHealthMonitor.record('video_init_failed', {
       'duration_ms': _startupStopwatch.elapsedMilliseconds,
     });
+  }
+
+  /// D4 legacy best-effort: fetch post segar dan simpan URL playback baru ke
+  /// override [_refreshedVideoPlaybackUrl]. True hanya bila dapat URL yang
+  /// non-kosong dan BERBEDA dari yang sekarang dipakai; selain itu (null,
+  /// kosong, sama, error apa pun) → false tanpa efek samping.
+  Future<bool> _maybeRefreshSignedPlaybackUrl() async {
+    try {
+      final fetchById = debugLegacyFeedPostFetcher ?? feedService.fetchPostById;
+      final fresh = await fetchById(widget.post.id);
+      if (!mounted || fresh == null) return false;
+      final freshUrl = fresh.videoPlaybackUrl.trim();
+      if (freshUrl.isEmpty || freshUrl == _effectivePlaybackUrl) return false;
+      final freshSaver = fresh.videoDataSaverUrl?.trim();
+      _refreshedVideoPlaybackUrl = freshUrl;
+      _refreshedDataSaverUrl =
+          (freshSaver == null || freshSaver.isEmpty) ? null : freshSaver;
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Helper init satu attempt. Return true kalau sukses (controller
@@ -1706,8 +1784,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
     if (attempt != 2 || !widget.ownsController || !_ownsLocalController) return;
     final resolvedUrl = videoQualityService.resolvePlaybackUrl(
-      widget.post.videoPlaybackUrl,
-      dataSaverUrl: widget.post.videoDataSaverUrl,
+      _effectivePlaybackUrl,
+      dataSaverUrl: _effectiveDataSaverUrl,
       userPreference: appSettingsStore.feedVideoQuality,
     );
     if (resolvedUrl.isEmpty) return;
