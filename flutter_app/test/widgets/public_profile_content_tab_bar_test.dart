@@ -71,6 +71,47 @@ void main() {
     expect(label.textScaler, const TextScaler.linear(1.3));
   });
 
+  testWidgets(
+    'full tab semantics remain buttons and selected outside visual scale cap',
+    (tester) async {
+      await tester.pumpWidget(
+        tabHarness(
+          width: 320,
+          textScaler: const TextScaler.linear(2),
+          isOfficial: false,
+          labelOpacity: 1,
+          pillOpacity: 1,
+          underlineOpacity: 0,
+        ),
+      );
+
+      for (final (label, selected) in <(String, bool)>[
+        ('Postingan', true),
+        ('Video', false),
+        ('Belanja', false),
+      ]) {
+        final semantics = tester.widget<Semantics>(
+          find
+              .ancestor(
+                of: find.byTooltip(label),
+                matching: find.byType(Semantics),
+              )
+              .first,
+        );
+        expect(semantics.properties.label, label);
+        expect(semantics.properties.button, isTrue);
+        expect(semantics.properties.selected, selected);
+      }
+
+      for (final label in const ['Postingan', 'Video', 'Belanja']) {
+        expect(
+          tester.widget<Text>(find.text(label)).textScaler,
+          const TextScaler.linear(1.3),
+        );
+      }
+    },
+  );
+
   testWidgets('public tabs preserve tap and swipe controller semantics', (
     tester,
   ) async {
