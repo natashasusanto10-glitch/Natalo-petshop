@@ -1,12 +1,21 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/widgets/public_profile_chrome_overlay.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_header_motion.dart';
+
+const _productionMetrics = PublicProfileHeaderMetrics(
+  topPadding: 59,
+  toolbarHeight: 56,
+  identityHeight: 271,
+  tabHeight: 52,
+);
+final _collapseDistance = _productionMetrics.scrollSpaceHeight;
 
 void main() {
   group('PublicProfileHeaderMotion', () {
     PublicProfileHeaderMotion resolve(double percentage) =>
         PublicProfileHeaderMotion.resolve(
-          scrollOffset: percentage * 2.4,
-          collapseDistance: 240,
+          scrollOffset: _collapseDistance * percentage / 100,
+          collapseDistance: _collapseDistance,
           reducedMotion: false,
         );
 
@@ -87,18 +96,18 @@ void main() {
 
     test('reverse scroll resolves byte-for-byte equal values', () {
       final forward = PublicProfileHeaderMotion.resolve(
-        scrollOffset: 120,
-        collapseDistance: 240,
+        scrollOffset: _collapseDistance * .5,
+        collapseDistance: _collapseDistance,
         reducedMotion: false,
       );
       PublicProfileHeaderMotion.resolve(
-        scrollOffset: 240,
-        collapseDistance: 240,
+        scrollOffset: _collapseDistance,
+        collapseDistance: _collapseDistance,
         reducedMotion: false,
       );
       final reverse = PublicProfileHeaderMotion.resolve(
-        scrollOffset: 120,
-        collapseDistance: 240,
+        scrollOffset: _collapseDistance * .5,
+        collapseDistance: _collapseDistance,
         reducedMotion: false,
       );
 
@@ -143,15 +152,15 @@ void main() {
       expect(
         PublicProfileHeaderMotion.resolve(
           scrollOffset: -24,
-          collapseDistance: 240,
+          collapseDistance: _collapseDistance,
           reducedMotion: false,
         ),
         resolve(0),
       );
       expect(
         PublicProfileHeaderMotion.resolve(
-          scrollOffset: 264,
-          collapseDistance: 240,
+          scrollOffset: _collapseDistance + 24,
+          collapseDistance: _collapseDistance,
           reducedMotion: false,
         ),
         resolve(100),
@@ -176,8 +185,8 @@ void main() {
 
     test('reduced motion uses linear progress and disables animated blur', () {
       final motion = PublicProfileHeaderMotion.resolve(
-        scrollOffset: 60,
-        collapseDistance: 240,
+        scrollOffset: _collapseDistance * .25,
+        collapseDistance: _collapseDistance,
         reducedMotion: true,
       );
 

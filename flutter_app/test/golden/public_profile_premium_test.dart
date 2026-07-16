@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/models/public_profile.dart';
+import 'package:natalo_petshop_flutter/screens/public_profile_screen.dart';
+import 'package:natalo_petshop_flutter/services/profile_service.dart';
 import 'package:natalo_petshop_flutter/theme/app_theme.dart';
 import 'package:natalo_petshop_flutter/theme/natalo_colors.dart';
 import 'package:natalo_petshop_flutter/widgets/profile_grid_geometry.dart';
@@ -66,6 +69,34 @@ void main() {
       matchesGoldenFile('public_profile_regular_collapsed.png'),
     );
   });
+
+  testWidgets('production screen collapsed glass underlaps the real grid',
+      (tester) async {
+    await _pumpProductionCollapsedGolden(tester);
+
+    final overlay = tester.widget<PublicProfileChromeOverlay>(
+      find.byType(PublicProfileChromeOverlay),
+    );
+    final nestedScrollables = find.descendant(
+      of: find.byType(NestedScrollView),
+      matching: find.byType(Scrollable),
+    );
+    final outerPosition =
+        tester.state<ScrollableState>(nestedScrollables.first).position;
+    outerPosition.jumpTo(overlay.metrics.scrollSpaceHeight);
+    await tester.pump();
+
+    final firstTile = tester.getRect(
+      find.byKey(const ValueKey('profile-post-golden-production-0')),
+    );
+    expect(firstTile.top, lessThanOrEqualTo(0.5));
+    expect(firstTile.bottom, greaterThan(0));
+    expect(find.byType(BackdropFilter), findsOneWidget);
+    await expectLater(
+      find.byKey(const Key('production_collapsed_golden')),
+      matchesGoldenFile('public_profile_production_collapsed.png'),
+    );
+  });
 }
 
 Future<void> _pumpGolden(
@@ -106,6 +137,7 @@ const _officialProfile = PublicProfile(
   id: 'official-profile',
   name: 'Natalo Petshop Official',
   username: 'natalopetshop',
+  bio: 'Akun resmi Natalo Petshop & Aquarium 🐾',
   postCount: 128,
   followersCount: 24800,
   followingCount: 86,
@@ -176,7 +208,7 @@ class _GoldenProfileState extends State<_GoldenProfile>
   Widget build(BuildContext context) {
     final profile = widget.profile;
     final metrics = PublicProfileHeaderMetrics.resolve(context, profile);
-    final scrollOffset = widget.collapsed ? metrics.identityHeight : 0.0;
+    final scrollOffset = widget.collapsed ? metrics.scrollSpaceHeight : 0.0;
     final headerDecoration = BoxDecoration(
       color: profile.isOfficial ? null : Theme.of(context).colorScheme.surface,
       gradient: profile.isOfficial ? NataloColors.heroGradientV : null,
@@ -250,6 +282,58 @@ class _GoldenProfileState extends State<_GoldenProfile>
     );
   }
 }
+
+Future<void> _pumpProductionCollapsedGolden(WidgetTester tester) async {
+  tester.view.devicePixelRatio = 3;
+  tester.view.physicalSize = _logicalSize * 3;
+  addTearDown(tester.view.resetDevicePixelRatio);
+  addTearDown(tester.view.resetPhysicalSize);
+
+  final posts = List.generate(
+    18,
+    (index) => FeedPost.fromJson({
+      'id': 'golden-production-$index',
+      'slug': 'golden-production-$index',
+      'kind': index.isEven ? 'USER_VIDEO' : 'USER_IMAGE',
+      'videoUrl': index.isEven ? 'invalid-video-$index' : null,
+      'thumbnailUrl': 'deterministic-local-placeholder-$index',
+      'author': const {
+        'id': 'production-profile',
+        'name': 'Mona & Mochi',
+      },
+      'createdAt': DateTime(2026, 7, 16).toIso8601String(),
+    }),
+  );
+  final result = PublicProfileResult(
+    profile: _regularProfile,
+    posts: posts,
+  );
+
+  await tester.pumpWidget(
+    MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light,
+      home: MediaQuery(
+        data: const MediaQueryData(
+          size: _logicalSize,
+          devicePixelRatio: 3,
+          padding: EdgeInsets.only(top: 59, bottom: 34),
+        ),
+        child: RepaintBoundary(
+          key: const Key('production_collapsed_golden'),
+          child: PublicProfileScreen(
+            username: 'mona.mochi',
+            initialResult: result,
+            fetchChatConfig: _noOpFetch,
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+}
+
+Future<void> _noOpFetch() async {}
 
 class _DeterministicProfileGrid extends StatelessWidget {
   static const _colors = <Color>[

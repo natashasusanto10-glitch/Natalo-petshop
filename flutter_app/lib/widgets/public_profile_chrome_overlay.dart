@@ -64,7 +64,11 @@ class PublicProfileHeaderMetrics {
     required bool hasBio,
     required bool hasMutuals,
   }) {
-    const base = 220.0;
+    // One logical pixel absorbs fractional line-height rounding from the
+    // production Jakarta Sans font (notably the official bio's paw emoji).
+    // Without it the exact brand bio + mutual row overflows by 0.45px at the
+    // iPhone 15 Pro logical viewport despite all nominal row sums fitting.
+    const base = 221.0;
     final bio = hasBio ? 8 + (scale > 1.3 ? 2 : 1) * 13 * 1.35 * scale : 0.0;
     final mutuals = hasMutuals ? 12 + 30 : 0.0;
     const scalableStatsAndActions = 31.0;

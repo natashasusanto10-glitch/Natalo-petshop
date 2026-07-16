@@ -9,7 +9,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(overlayHarness(
       width: 393,
-      scrollOffset: 0,
+      scrollFraction: 0,
       isOfficial: true,
     ));
 
@@ -21,7 +21,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(overlayHarness(
       width: 393,
-      scrollOffset: 300,
+      scrollFraction: .8,
       isOfficial: true,
     ));
 
@@ -33,7 +33,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(overlayHarness(
       width: 393,
-      scrollOffset: 280,
+      scrollFraction: 1,
       isOfficial: true,
     ));
 
@@ -54,7 +54,7 @@ void main() {
     for (final fraction in <double>[0, .25, .5, .75, 1]) {
       await tester.pumpWidget(overlayHarness(
         width: 393,
-        scrollOffset: 240 * fraction,
+        scrollFraction: fraction,
         isOfficial: false,
       ));
       rights.add(tester
@@ -68,7 +68,7 @@ void main() {
 
     await tester.pumpWidget(overlayHarness(
       width: 393,
-      scrollOffset: 120,
+      scrollFraction: .5,
       isOfficial: false,
     ));
     expect(
@@ -81,7 +81,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(overlayHarness(
       width: 360,
-      scrollOffset: 240,
+      scrollFraction: 1,
       isOfficial: false,
       disableAnimations: true,
     ));
@@ -99,7 +99,7 @@ void main() {
       for (final fraction in <double>[0, .25, .5, .75, 1]) {
         await tester.pumpWidget(overlayHarness(
           width: width,
-          scrollOffset: 240 * fraction,
+          scrollFraction: fraction,
           isOfficial: false,
         ));
         final rect = tester.getRect(
@@ -117,7 +117,7 @@ void main() {
     var tapped = -1;
     await tester.pumpWidget(overlayHarness(
       width: 320,
-      scrollOffset: 240,
+      scrollFraction: 1,
       isOfficial: false,
       initialIndex: 1,
       themeMode: ThemeMode.dark,
@@ -142,7 +142,7 @@ void main() {
     var gridTaps = 0;
     await tester.pumpWidget(overlayHarness(
       width: 393,
-      scrollOffset: 240,
+      scrollFraction: 1,
       isOfficial: false,
       onGridTap: () => gridTaps++,
     ));
@@ -210,6 +210,37 @@ void main() {
 
     expect(find.text('Ikuti'), findsOneWidget);
     expect(find.text('Pesan'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'official brand bio and mutuals fit iPhone 15 Pro at normal scale',
+      (tester) async {
+    await tester.pumpWidget(identityMetricsHarness(
+      width: 393,
+      textScale: 1,
+      profile: const PublicProfile(
+        id: 'official-1',
+        name: 'Natalo Petshop Official',
+        username: 'natalopetshop',
+        bio: 'Akun resmi Natalo Petshop & Aquarium 🐾',
+        isOfficial: true,
+        mutualFollowers: PublicProfileMutualSummary(
+          items: [
+            PublicProfileMutualFollower(
+              id: 'mutual-1',
+              name: 'Rani Anabul Medan',
+              username: 'rani.anabul',
+            ),
+          ],
+          totalCount: 24,
+        ),
+      ),
+    ));
+
+    expect(
+        find.text('Akun resmi Natalo Petshop & Aquarium 🐾'), findsOneWidget);
+    expect(find.textContaining('Diikuti oleh'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -293,7 +324,7 @@ class _NonlinearAccessibilityScaler extends TextScaler {
 
 Widget overlayHarness({
   required double width,
-  required double scrollOffset,
+  required double scrollFraction,
   required bool isOfficial,
   bool disableAnimations = false,
   int initialIndex = 0,
@@ -322,6 +353,7 @@ Widget overlayHarness({
         initialIndex: initialIndex,
         child: Builder(builder: (context) {
           final metrics = PublicProfileHeaderMetrics.resolve(context, profile);
+          final scrollOffset = metrics.scrollSpaceHeight * scrollFraction;
           return Scaffold(
             body: SizedBox(
               width: width,
