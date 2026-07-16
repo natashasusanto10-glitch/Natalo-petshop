@@ -234,6 +234,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   final SingleDisposeGuard<VideoPlayerController> _localControllerDisposeGuard =
       SingleDisposeGuard<VideoPlayerController>();
   int _localInitGeneration = 0;
+  Future<void>? _localCachedInitialization;
 
   SocialVideoSessionObserver get _observationObserver =>
       widget.observationObserver ?? socialVideoSessionObserver;
@@ -255,10 +256,16 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     VideoPlayerController? controller,
   }) async {
     if (wrapper != null && identical(wrapper, _localInitCachedPlayer)) {
-      final controllerIdentity = controller ??
-          _localInitController ??
-          (wrapper.isInitialized ? wrapper.controller : null);
+      final initialization = _localCachedInitialization;
       await _localWrapperDisposeGuard.dispose(wrapper, () async {
+        if (initialization != null) {
+          try {
+            await initialization;
+          } catch (_) {}
+        }
+        final controllerIdentity = controller ??
+            _localInitController ??
+            (wrapper.isInitialized ? wrapper.controller : null);
         try {
           await wrapper.dispose();
         } finally {
@@ -1507,7 +1514,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       _resetLoadingSpinnerTimer();
       if (mounted) setState(() {});
       if (useCacheWrapper) {
-        await wrapper!.initialize();
+        final initialization = wrapper!.initialize();
+        _localCachedInitialization = initialization;
+        await initialization;
         controller = wrapper.controller;
         _localInitController = controller;
       } else {
@@ -1699,6 +1708,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     _cachedPlayer = null;
     _localInitCachedPlayer = null;
     _localInitController = null;
+    _localCachedInitialization = null;
     _releaseAudio();
     try {
       if (wrapper != null) {

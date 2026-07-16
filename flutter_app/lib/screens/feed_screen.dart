@@ -73,8 +73,9 @@ Future<VideoPlayerController?> initializeFeedCachedPreloadForObservation({
   required SocialVideoSessionObserver observer,
   required String postId,
   required bool Function() isCurrent,
+  Future<void>? initialization,
 }) async {
-  await player.initialize();
+  await (initialization ?? player.initialize());
   final controller = player.controller;
   if (!isCurrent()) return null;
   observeFeedPreloadCreated(
@@ -97,7 +98,13 @@ Future<void> disposeFeedCachedPreloadForObservation({
   required VideoPlayerController? controller,
   required SocialVideoSessionObserver observer,
   required String postId,
+  Future<void>? initialization,
 }) async {
+  if (initialization != null) {
+    try {
+      await initialization;
+    } catch (_) {}
+  }
   final controllerIdentity =
       controller ?? (player.isInitialized ? player.controller : null);
   try {
@@ -166,6 +173,8 @@ class _FeedScreenState extends State<FeedScreen> {
   // perlu di-refactor.
   final Map<String, VideoPlayerController> _preloadedControllers = {};
   final Map<String, CachedVideoPlayerPlus> _preloadedCachedPlayers = {};
+  final Map<CachedVideoPlayerPlus, Future<void>> _cachedPreloadInitializations =
+      {};
   final Map<String, String> _preloadedUrls = {};
   final Map<String, int> _preloadSlotGenerations = {};
   final Set<String> _localControllerOwners = <String>{};
@@ -344,6 +353,7 @@ class _FeedScreenState extends State<FeedScreen> {
         controller: controller,
         observer: socialVideoSessionObserver,
         postId: postId,
+        initialization: _cachedPreloadInitializations[player],
       );
     });
   }
@@ -805,11 +815,14 @@ class _FeedScreenState extends State<FeedScreen> {
       _preloadedCachedPlayers[id] = cachedPlayer;
       _preloadedUrls[id] = resolvedUrl;
       _preloadSlotGenerations[id] = generation;
+      final initialization = cachedPlayer.initialize();
+      _cachedPreloadInitializations[cachedPlayer] = initialization;
       initFutures.add(
         initializeFeedCachedPreloadForObservation(
           player: cachedPlayer,
           observer: socialVideoSessionObserver,
           postId: id,
+          initialization: initialization,
           isCurrent: () => feedPreloadCompletionIsCurrent(
             registeredSlot: _preloadedCachedPlayers[id],
             candidate: cachedPlayer,
@@ -901,7 +914,9 @@ class _FeedScreenState extends State<FeedScreen> {
             tier: networkTier,
             windowSize: keepIds.length,
           );
-        }),
+        }).whenComplete(
+          () => _cachedPreloadInitializations.remove(cachedPlayer),
+        ),
       );
     }
     await Future.wait(initFutures);

@@ -12,9 +12,10 @@ import 'package:natalo_petshop_flutter/screens/feed_screen.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
 class _PreloadVideoPlatform extends VideoPlayerPlatform {
-  _PreloadVideoPlatform({this.failCreate = false});
+  _PreloadVideoPlatform({this.failCreate = false, this.initializeGate});
 
   final bool failCreate;
+  final Completer<void>? initializeGate;
   final Map<int, StreamController<VideoEvent>> _streams = {};
   var _nextId = 0;
   var disposedCount = 0;
@@ -33,11 +34,18 @@ class _PreloadVideoPlatform extends VideoPlayerPlatform {
     final id = _nextId++;
     final stream = StreamController<VideoEvent>();
     _streams[id] = stream;
-    stream.add(VideoEvent(
+    final initialized = VideoEvent(
       eventType: VideoEventType.initialized,
       size: const Size(720, 1280),
       duration: const Duration(seconds: 10),
-    ));
+    );
+    if (initializeGate == null) {
+      stream.add(initialized);
+    } else {
+      unawaited(initializeGate!.future.then((_) {
+        if (!stream.isClosed) stream.add(initialized);
+      }));
+    }
     return id;
   }
 
@@ -231,6 +239,33 @@ void main() {
     );
 
     expect(observer.snapshot.events, isEmpty);
+    expect(observer.snapshot.liveControllerCount, 0);
+  });
+
+  test('pending MP4 disposal waits for init and releases eventual controller',
+      () async {
+    final observer = SocialVideoSessionObserver(enabled: true);
+    final initializeGate = Completer<void>();
+    final platform = _PreloadVideoPlatform(initializeGate: initializeGate);
+    VideoPlayerPlatform.instance = platform;
+    final wrapper = _cachedPlayer('pending-success');
+    final initialization = wrapper.initialize();
+
+    final disposal = disposeFeedCachedPreloadForObservation(
+      player: wrapper,
+      controller: null,
+      observer: observer,
+      postId: 'post-pending-success',
+      initialization: initialization,
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(platform.disposedCount, 0);
+
+    initializeGate.complete();
+    await initialization;
+    await disposal;
+
+    expect(platform.disposedCount, 1);
     expect(observer.snapshot.liveControllerCount, 0);
   });
 

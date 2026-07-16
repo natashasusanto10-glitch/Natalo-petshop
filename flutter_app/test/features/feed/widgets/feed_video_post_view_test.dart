@@ -168,10 +168,12 @@ class _FailThenSucceedPlatform extends VideoPlayerPlatform {
   _FailThenSucceedPlatform({
     required this.failUntil,
     this.failWithInitializeEvent = false,
+    this.initializeGate,
   });
 
   final int failUntil;
   final bool failWithInitializeEvent;
+  final Completer<void>? initializeGate;
   final Map<int, StreamController<VideoEvent>> _streams = {};
   int _nextId = 0;
   int createCount = 0;
@@ -201,11 +203,18 @@ class _FailThenSucceedPlatform extends VideoPlayerPlatform {
         message: 'network down during initialization',
       ));
     } else {
-      stream.add(VideoEvent(
+      final initialized = VideoEvent(
         eventType: VideoEventType.initialized,
         size: const Size(720, 1280),
         duration: const Duration(seconds: 10),
-      ));
+      );
+      if (initializeGate == null) {
+        stream.add(initialized);
+      } else {
+        unawaited(initializeGate!.future.then((_) {
+          if (!stream.isClosed) stream.add(initialized);
+        }));
+      }
     }
     return id;
   }
@@ -615,6 +624,50 @@ void _registerLegacyFrameOutputRecoveryTests() {
       await tester.pump();
       await tester.runAsync(() => Future<void>.delayed(Duration.zero));
 
+      expect(
+        observer.snapshot.events.where(
+            (event) => event.type == SocialVideoLifecycleType.initialized),
+        isEmpty,
+      );
+      expect(observer.snapshot.liveControllerCount, 0);
+      await appSettingsStore.setFeedAutoplay(true);
+    });
+
+    testWidgets('pending MP4 local init disposes controller after it settles',
+        (tester) async {
+      await appSettingsStore.setFeedAutoplay(false);
+      final observer = SocialVideoSessionObserver(enabled: true);
+      final initializeGate = Completer<void>();
+      final delayedPlatform = _FailThenSucceedPlatform(
+        failUntil: 0,
+        initializeGate: initializeGate,
+      );
+      VideoPlayerPlatform.instance = delayedPlatform;
+      CachedVideoPlayerPlus.cacheManager = _NoopCacheManager();
+      CachedVideoPlayerPlus.metadataStorage = _NoopMetadataStorage();
+
+      await tester.pumpWidget(MaterialApp(
+        home: FeedVideoPostView(
+          post: _fakeVideoPost(hls: false),
+          isActive: true,
+          preloadedController: null,
+          observationObserver: observer,
+          healthMonitorFactory: monitorFactory(),
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ));
+      await tester.pump();
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      expect(delayedPlatform.disposeCount, 0);
+
+      initializeGate.complete();
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+
+      expect(delayedPlatform.disposeCount, 1);
       expect(
         observer.snapshot.events.where(
             (event) => event.type == SocialVideoLifecycleType.initialized),
