@@ -810,7 +810,11 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   }
 
   void _onCommentLikeStateChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    // A global interaction may have settled while an older page request was
+    // in flight. Invalidate that response so it cannot resurrect stale data.
+    _commentMutationRevision++;
+    setState(() {});
   }
 
   void _seedCommentInteractions(
