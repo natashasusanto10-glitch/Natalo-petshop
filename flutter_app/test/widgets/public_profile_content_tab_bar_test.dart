@@ -7,7 +7,6 @@ void main() {
   testWidgets('expanded public tabs are icon-only and neutral', (tester) async {
     await tester.pumpWidget(
       tabHarness(
-        isOfficial: false,
         labelOpacity: 0,
         pillOpacity: 0,
         underlineOpacity: 1,
@@ -29,7 +28,6 @@ void main() {
   ) async {
     await tester.pumpWidget(
       tabHarness(
-        isOfficial: true,
         labelOpacity: 1,
         pillOpacity: 1,
         underlineOpacity: 0,
@@ -55,7 +53,6 @@ void main() {
       tabHarness(
         width: 320,
         textScaler: const TextScaler.linear(2),
-        isOfficial: false,
         labelOpacity: 1,
         pillOpacity: 1,
         underlineOpacity: 0,
@@ -78,8 +75,7 @@ void main() {
         tabHarness(
           width: 320,
           textScaler: const TextScaler.linear(2),
-          isOfficial: false,
-          labelOpacity: 1,
+            labelOpacity: 1,
           pillOpacity: 1,
           underlineOpacity: 0,
         ),
@@ -118,7 +114,6 @@ void main() {
     var tappedIndex = -1;
     await tester.pumpWidget(
       tabHarness(
-        isOfficial: false,
         labelOpacity: 1,
         pillOpacity: 1,
         underlineOpacity: 0,
@@ -154,7 +149,6 @@ void _expectNeutralForegrounds(WidgetTester tester) {
 Widget tabHarness({
   double width = 400,
   TextScaler textScaler = TextScaler.noScaling,
-  required bool isOfficial,
   required double labelOpacity,
   required double pillOpacity,
   required double underlineOpacity,
@@ -169,7 +163,6 @@ Widget tabHarness({
           width: width,
           height: 200,
           child: _PublicTabsHarness(
-            isOfficial: isOfficial,
             labelOpacity: labelOpacity,
             pillOpacity: pillOpacity,
             underlineOpacity: underlineOpacity,
@@ -182,14 +175,12 @@ Widget tabHarness({
 }
 
 class _PublicTabsHarness extends StatefulWidget {
-  final bool isOfficial;
   final double labelOpacity;
   final double pillOpacity;
   final double underlineOpacity;
   final ValueChanged<int>? onTap;
 
   const _PublicTabsHarness({
-    required this.isOfficial,
     required this.labelOpacity,
     required this.pillOpacity,
     required this.underlineOpacity,
@@ -222,7 +213,6 @@ class _PublicTabsHarnessState extends State<_PublicTabsHarness>
       children: [
         PublicProfileContentTabBar(
           controller: _controller,
-          isOfficial: widget.isOfficial,
           labelOpacity: widget.labelOpacity,
           pillOpacity: widget.pillOpacity,
           underlineOpacity: widget.underlineOpacity,

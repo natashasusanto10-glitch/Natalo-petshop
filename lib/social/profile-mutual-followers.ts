@@ -34,10 +34,9 @@ export type MutualFollowerDependencies = {
   count: (where: Prisma.UserFollowWhereInput) => Promise<number>;
 };
 
-export type LoadOfficialMutualFollowersInput = {
+export type LoadMutualFollowersInput = {
   viewerUserId: string | null;
   targetUserId: string;
-  isOfficial: boolean;
   isOwner: boolean;
 };
 
@@ -97,11 +96,13 @@ const defaultDependencies: MutualFollowerDependencies = {
   count: (where) => prisma.userFollow.count({ where }),
 };
 
-export async function loadOfficialMutualFollowers(
-  input: LoadOfficialMutualFollowersInput,
+export async function loadMutualFollowers(
+  input: LoadMutualFollowersInput,
   dependencies: MutualFollowerDependencies = defaultDependencies,
 ): Promise<PublicMutualFollowerSummary> {
-  if (!input.viewerUserId || !input.isOfficial || input.isOwner) {
+  // Ala IG: "Diikuti oleh …" tampil di SEMUA profil (official maupun
+  // user biasa) — cukup gate viewer login + bukan profil sendiri.
+  if (!input.viewerUserId || input.isOwner) {
     return emptySummary();
   }
   const where = buildMutualFollowerWhere(

@@ -6,7 +6,6 @@ import 'package:natalo_petshop_flutter/models/public_profile.dart';
 import 'package:natalo_petshop_flutter/screens/public_profile_screen.dart';
 import 'package:natalo_petshop_flutter/services/profile_service.dart';
 import 'package:natalo_petshop_flutter/theme/app_theme.dart';
-import 'package:natalo_petshop_flutter/theme/natalo_colors.dart';
 import 'package:natalo_petshop_flutter/widgets/profile_grid_geometry.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_chrome_overlay.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_expanded_header.dart';
@@ -91,7 +90,7 @@ void main() {
     );
     expect(firstTile.top, lessThanOrEqualTo(0.5));
     expect(firstTile.bottom, greaterThan(0));
-    expect(find.byType(BackdropFilter), findsOneWidget);
+    expect(find.byType(BackdropFilter), findsWidgets);
     await expectLater(
       find.byKey(const Key('production_collapsed_golden')),
       matchesGoldenFile('public_profile_production_collapsed.png'),
@@ -172,6 +171,21 @@ const _regularProfile = PublicProfile(
   postCount: 42,
   followersCount: 1830,
   followingCount: 317,
+  mutualFollowers: PublicProfileMutualSummary(
+    items: [
+      PublicProfileMutualFollower(
+        id: 'mutual-henrico',
+        name: 'Henrico Julio',
+        username: 'henricojulio',
+      ),
+      PublicProfileMutualFollower(
+        id: 'mutual-natsu',
+        name: 'Im Natsu',
+        username: 'im_natsu',
+      ),
+    ],
+    totalCount: 7,
+  ),
 );
 
 class _GoldenProfile extends StatefulWidget {
@@ -209,9 +223,10 @@ class _GoldenProfileState extends State<_GoldenProfile>
     final profile = widget.profile;
     final metrics = PublicProfileHeaderMetrics.resolve(context, profile);
     final scrollOffset = widget.collapsed ? metrics.scrollSpaceHeight : 0.0;
+    // Satu layout IG putih untuk semua akun — tidak ada lagi gradient
+    // hero navy khusus official.
     final headerDecoration = BoxDecoration(
-      color: profile.isOfficial ? null : Theme.of(context).colorScheme.surface,
-      gradient: profile.isOfficial ? NataloColors.heroGradientV : null,
+      color: Theme.of(context).colorScheme.surface,
     );
 
     return RepaintBoundary(

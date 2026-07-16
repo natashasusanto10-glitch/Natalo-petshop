@@ -9,6 +9,13 @@ import 'official_brand_avatar.dart';
 import 'profile_avatar.dart';
 import 'public_profile_mutual_followers_row.dart';
 
+/// Expanded identity header — satu layout IG-style untuk SEMUA akun
+/// (official dan user biasa). Yang membedakan official hanyalah badge
+/// verified + chip "AKUN RESMI" + tombol "Pesan"; TIDAK ada lagi mode
+/// hero navy terpisah (sumber bug seam/gap lama).
+///
+/// Struktur (mengikuti IG): avatar kiri + stats horizontal di samping,
+/// nama, bio, mutual row, lalu baris aksi abu netral.
 class PublicProfileExpandedHeader extends StatelessWidget {
   final PublicProfile profile;
   final bool followBusy;
@@ -47,31 +54,21 @@ class PublicProfileExpandedHeader extends StatelessWidget {
     // labels below keep the complete accessible names and values.
     return MediaQuery.withClampedTextScaling(
       maxScaleFactor: 2,
-      child: profile.isOfficial
-          ? _OfficialExpandedHeader(
-              profile: profile,
-              followBusy: followBusy,
-              onFollowToggle: profile.isOwner ? null : onFollowToggle,
-              onFollowersTap: onFollowersTap,
-              onFollowingTap: onFollowingTap,
-              onEditProfile: profile.isOwner ? onEditProfile : null,
-              onShareProfile: onShareProfile,
-              onMessage: _showOfficialMessage ? onMessage : null,
-            )
-          : _RegularExpandedHeader(
-              profile: profile,
-              followBusy: followBusy,
-              onFollowToggle: profile.isOwner ? null : onFollowToggle,
-              onFollowersTap: onFollowersTap,
-              onFollowingTap: onFollowingTap,
-              onEditProfile: profile.isOwner ? onEditProfile : null,
-              onShareProfile: onShareProfile,
-            ),
+      child: _IgExpandedHeader(
+        profile: profile,
+        followBusy: followBusy,
+        onFollowToggle: profile.isOwner ? null : onFollowToggle,
+        onFollowersTap: onFollowersTap,
+        onFollowingTap: onFollowingTap,
+        onEditProfile: profile.isOwner ? onEditProfile : null,
+        onShareProfile: onShareProfile,
+        onMessage: _showOfficialMessage ? onMessage : null,
+      ),
     );
   }
 }
 
-class _OfficialExpandedHeader extends StatelessWidget {
+class _IgExpandedHeader extends StatelessWidget {
   final PublicProfile profile;
   final bool followBusy;
   final VoidCallback? onFollowToggle;
@@ -81,7 +78,7 @@ class _OfficialExpandedHeader extends StatelessWidget {
   final VoidCallback? onShareProfile;
   final VoidCallback? onMessage;
 
-  const _OfficialExpandedHeader({
+  const _IgExpandedHeader({
     required this.profile,
     required this.followBusy,
     this.onFollowToggle,
@@ -94,163 +91,41 @@ class _OfficialExpandedHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final hasBio = profile.bio?.trim().isNotEmpty == true;
     final hasMutuals = !profile.isOwner &&
         profile.mutualFollowers.items.isNotEmpty &&
         profile.mutualFollowers.totalCount > 0;
-    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.3;
-    return Container(
-      width: double.infinity,
-      decoration: const BoxDecoration(gradient: NataloColors.heroGradientV),
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.xl,
-        AppSpacing.md,
-        AppSpacing.xl,
-        AppSpacing.lg,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.18),
-                      blurRadius: 14,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: const ProfileAvatar(
-                  initial: 'N',
-                  size: 78,
-                  fontSize: 28,
-                  isOfficial: true,
-                  plain: true,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            profile.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 19,
-                              fontWeight: FontWeight.w700,
-                              height: 1.1,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: AppSpacing.xs),
-                        const OfficialVerifiedBadge(size: 18),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    const _OfficialChip(),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          if (hasBio) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              profile.bio!.trim(),
-              maxLines: largeText ? 2 : 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.88),
-                fontSize: 13,
-                height: 1.35,
-              ),
-            ),
-          ],
-          if (hasMutuals) ...[
-            const SizedBox(height: AppSpacing.md),
-            PublicProfileMutualFollowersRow(summary: profile.mutualFollowers),
-          ],
-          const SizedBox(height: AppSpacing.md),
-          _StatsRow(
-            profile: profile,
-            foreground: Colors.white,
-            secondary: Colors.white.withValues(alpha: 0.72),
-            onFollowersTap: onFollowersTap,
-            onFollowingTap: onFollowingTap,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          _ActionRow(
-            profile: profile,
-            followBusy: followBusy,
-            onFollowToggle: onFollowToggle,
-            onEditProfile: onEditProfile,
-            onShareProfile: onShareProfile,
-            onMessage: onMessage,
-            onHero: true,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RegularExpandedHeader extends StatelessWidget {
-  final PublicProfile profile;
-  final bool followBusy;
-  final VoidCallback? onFollowToggle;
-  final VoidCallback? onFollowersTap;
-  final VoidCallback? onFollowingTap;
-  final VoidCallback? onEditProfile;
-  final VoidCallback? onShareProfile;
-
-  const _RegularExpandedHeader({
-    required this.profile,
-    required this.followBusy,
-    this.onFollowToggle,
-    this.onFollowersTap,
-    this.onFollowingTap,
-    this.onEditProfile,
-    this.onShareProfile,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final hasBio = profile.bio?.trim().isNotEmpty == true;
     return ColoredBox(
       color: cs.surface,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
-          AppSpacing.xl,
-          AppSpacing.md,
-          AppSpacing.xl,
           AppSpacing.lg,
+          AppSpacing.md,
+          AppSpacing.lg,
+          AppSpacing.md,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                ProfileAvatar(
-                  initial: profile.initial,
-                  imageUrl: profile.profilePhotoUrl,
-                  size: 78,
-                  fontSize: 28,
-                  plain: true,
-                ),
-                const SizedBox(width: AppSpacing.md),
+                profile.isOfficial
+                    ? const ProfileAvatar(
+                        initial: 'N',
+                        size: 72,
+                        fontSize: 26,
+                        isOfficial: true,
+                        plain: true,
+                      )
+                    : ProfileAvatar(
+                        initial: profile.initial,
+                        imageUrl: profile.profilePhotoUrl,
+                        size: 72,
+                        fontSize: 26,
+                        plain: true,
+                      ),
+                const SizedBox(width: AppSpacing.lg),
                 Expanded(
                   child: _StatsRow(
                     profile: profile,
@@ -263,51 +138,56 @@ class _RegularExpandedHeader extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.md),
-            Text(
-              profile.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: cs.onSurface,
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                height: 1.15,
-              ),
-            ),
-            if (profile.username?.isNotEmpty == true) ...[
-              const SizedBox(height: 2),
-              Text(
-                '@${profile.username}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
+            Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    profile.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      height: 1.15,
+                    ),
+                  ),
                 ),
-              ),
+                if (profile.isOfficial) ...[
+                  const SizedBox(width: AppSpacing.xs),
+                  const OfficialVerifiedBadge(size: 16),
+                ],
+              ],
+            ),
+            if (profile.isOfficial) ...[
+              const SizedBox(height: 6),
+              const _OfficialChip(),
             ],
             if (hasBio) ...[
               const SizedBox(height: AppSpacing.sm),
               Text(
                 profile.bio!.trim(),
-                maxLines: 3,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: cs.onSurface,
-                  fontSize: 14,
+                  fontSize: 13,
                   height: 1.4,
                 ),
               ),
             ],
-            const SizedBox(height: AppSpacing.sm),
+            if (hasMutuals) ...[
+              const SizedBox(height: AppSpacing.sm),
+              PublicProfileMutualFollowersRow(summary: profile.mutualFollowers),
+            ],
+            const SizedBox(height: AppSpacing.md),
             _ActionRow(
               profile: profile,
               followBusy: followBusy,
               onFollowToggle: onFollowToggle,
               onEditProfile: onEditProfile,
               onShareProfile: onShareProfile,
-              onHero: false,
+              onMessage: onMessage,
             ),
           ],
         ),
@@ -334,7 +214,7 @@ class _OfficialChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.shield_rounded,
-              color: NataloColors.officialGold, size: 13),
+              color: NataloColors.officialGoldOnLight, size: 13),
           SizedBox(width: AppSpacing.xs),
           Flexible(
             child: Text(
@@ -342,7 +222,7 @@ class _OfficialChip extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: NataloColors.officialGold,
+                color: NataloColors.officialGoldOnLight,
                 fontSize: 10.5,
                 fontWeight: FontWeight.w700,
               ),
@@ -480,12 +360,10 @@ class _ActionRow extends StatelessWidget {
   final VoidCallback? onEditProfile;
   final VoidCallback? onShareProfile;
   final VoidCallback? onMessage;
-  final bool onHero;
 
   const _ActionRow({
     required this.profile,
     required this.followBusy,
-    required this.onHero,
     this.onFollowToggle,
     this.onEditProfile,
     this.onShareProfile,
@@ -495,11 +373,14 @@ class _ActionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final outline =
-        onHero ? Colors.white.withValues(alpha: 0.55) : cs.outlineVariant;
-    final foreground = onHero ? Colors.white : cs.onSurface;
+    // 1:1 IG: tombol default = fill abu netral tanpa border. Satu-satunya
+    // aksen adalah "Ikuti" biru brand saat belum follow (padanan Follow
+    // biru di IG); setelah follow SEMUA tombol abu.
+    final neutralFill = cs.surfaceContainerHighest;
+    final neutralForeground = cs.onSurface;
     final primaryCallback = profile.isOwner ? onEditProfile : onFollowToggle;
     final hasPrimary = primaryCallback != null;
+    final followAccent = !profile.isOwner && !profile.isFollowing;
     return Row(
       key: const Key('public_profile_action_row'),
       children: [
@@ -511,15 +392,8 @@ class _ActionRow extends StatelessWidget {
                   : (profile.isFollowing ? 'Mengikuti' : 'Ikuti'),
               onTap: primaryCallback,
               busy: !profile.isOwner && followBusy,
-              background: !profile.isOwner && !profile.isFollowing
-                  ? (onHero ? Colors.white : NataloColors.primary)
-                  : Colors.transparent,
-              foreground: !profile.isOwner && !profile.isFollowing
-                  ? (onHero ? NataloColors.heroBottom : Colors.white)
-                  : foreground,
-              border: !profile.isOwner && !profile.isFollowing
-                  ? Colors.transparent
-                  : outline,
+              background: followAccent ? NataloColors.primary : neutralFill,
+              foreground: followAccent ? Colors.white : neutralForeground,
             ),
           ),
         if (onMessage != null) ...[
@@ -529,27 +403,38 @@ class _ActionRow extends StatelessWidget {
               key: const Key('official_message_button'),
               label: 'Pesan',
               onTap: onMessage,
-              background: Colors.transparent,
-              foreground: foreground,
-              border: outline,
+              background: neutralFill,
+              foreground: neutralForeground,
             ),
           ),
         ],
         if (onShareProfile != null) ...[
           if (hasPrimary || onMessage != null)
             const SizedBox(width: AppSpacing.sm),
-          SizedBox(
-            width: 44,
-            child: _HeaderAction(
-              semanticLabel: 'Bagikan Profil',
-              tooltip: 'Bagikan Profil',
-              icon: Icons.ios_share_rounded,
-              onTap: onShareProfile,
-              background: Colors.transparent,
-              foreground: foreground,
-              border: outline,
+          // Owner (profil sendiri) meniru IG: "Edit Profil" + "Bagikan
+          // Profil" dua tombol sejajar. Viewer lain cukup ikon share.
+          if (profile.isOwner)
+            Expanded(
+              child: _HeaderAction(
+                label: 'Bagikan Profil',
+                tooltip: 'Bagikan Profil',
+                onTap: onShareProfile,
+                background: neutralFill,
+                foreground: neutralForeground,
+              ),
+            )
+          else
+            SizedBox(
+              width: 44,
+              child: _HeaderAction(
+                semanticLabel: 'Bagikan Profil',
+                tooltip: 'Bagikan Profil',
+                icon: Icons.ios_share_rounded,
+                onTap: onShareProfile,
+                background: neutralFill,
+                foreground: neutralForeground,
+              ),
             ),
-          ),
         ],
       ],
     );
@@ -565,7 +450,6 @@ class _HeaderAction extends StatelessWidget {
   final bool busy;
   final Color background;
   final Color foreground;
-  final Color border;
 
   const _HeaderAction({
     super.key,
@@ -577,7 +461,6 @@ class _HeaderAction extends StatelessWidget {
     this.busy = false,
     required this.background,
     required this.foreground,
-    required this.border,
   });
 
   @override
@@ -606,7 +489,6 @@ class _HeaderAction extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: background,
                   borderRadius: AppRadius.medium,
-                  border: Border.all(color: border),
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
                 child: icon != null
