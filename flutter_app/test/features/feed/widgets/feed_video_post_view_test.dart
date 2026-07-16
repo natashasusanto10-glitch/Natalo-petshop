@@ -2255,6 +2255,25 @@ void main() {
       TestWidgetsFlutterBinding.ensureInitialized();
       SharedPreferences.setMockInitialValues(<String, Object>{});
       VisibilityDetectorController.instance.updateInterval = Duration.zero;
+      // Thumbnail post → CachedNetworkImage → flutter_cache_manager →
+      // path_provider — tanpa stub ini, MissingPluginException muncul
+      // ASYNC SETELAH tes selesai (getApplicationSupportDirectory/
+      // getTemporaryDirectory) dan bikin tes gagal walau assertion-nya
+      // sendiri lulus. Pola sama dgn grup D4 legacy di bawah.
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        (call) async =>
+            Directory.systemTemp.createTempSync('t8_retry_fullscreen').path,
+      );
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        null,
+      );
     });
 
     Widget host({
@@ -2349,7 +2368,16 @@ void main() {
     // diam). Controller tak pernah di-dispose oleh widget saat unmount.
     testWidgets('retry sukses → re-adopt controller baru via revision + render',
         (tester) async {
-      final platform = _FailThenSucceedPlatform(failUntil: 2);
+      // failWithInitializeEvent:true WAJIB — throw sinkron di create() bikin
+      // dispose() VideoPlayerController asli menggantung selamanya menunggu
+      // _creatingCompleter yang tak pernah selesai (gotcha sama persis
+      // seperti komentar _UrlAwareFailPlatform di atas). Tanpa ini, retry
+      // kedua tak pernah kejadian — hasError tetap false selamanya (deadlock
+      // diam, bukan flaky order-dependent).
+      final platform = _FailThenSucceedPlatform(
+        failUntil: 2,
+        failWithInitializeEvent: true,
+      );
       VideoPlayerPlatform.instance = platform;
       tester.view.physicalSize = const Size(400, 1200);
       tester.view.devicePixelRatio = 1.0;
@@ -2371,6 +2399,13 @@ void main() {
       // gagal) + jadikan aktif (desired play + volume, poin 4).
       coordinator.attach('view-1', post.id);
       coordinator.setActive(post.id);
+      // Dua flush: beda dgn seam debugInitAttempt (sinkron), attempt via
+      // VideoPlayerController ASLI (event-stream StreamController + Completer
+      // sungguhan) butuh lebih banyak giliran microtask per attempt — 1x
+      // flushAsync (12 putaran) cukup utk attempt pertama tapi kadang tak
+      // cukup utk menuntaskan attempt KEDUA (create→gagal→cleanup→retry→
+      // create lagi) dlm satu window yg sama.
+      await flushAsync(tester);
       await flushAsync(tester);
       final session = coordinator.sessionFor(post.id) as VideoPlayerSession;
       expect(session.hasError, isTrue,
@@ -3113,7 +3148,10 @@ void main() {
           reason: 'attempt3 memakai URL SEGAR hasil refresh');
       expect(find.text('Coba lagi'), findsNothing,
           reason: 'init akhirnya sukses → tidak ada error surface');
-      expect(find.byType(VideoPlayer), findsOneWidget);
+      // findsWidgets (bukan findsOneWidget) — video aspect-mismatch sengaja
+      // dirender dua-lapis (backdrop blur cover + foreground contain) yang
+      // sama-sama VideoPlayer(ctrl); pola sama dgn tes T8 line ~2403.
+      expect(find.byType(VideoPlayer), findsWidgets);
 
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
