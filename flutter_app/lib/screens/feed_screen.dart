@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
@@ -22,11 +21,10 @@ import '../features/feed/video/video_media_cache.dart';
 import '../features/feed/video/video_preload_metrics.dart';
 import '../features/feed/widgets/feed_creator_overlay.dart';
 import '../features/feed/widgets/feed_post_shared_widgets.dart';
+import '../features/feed/widgets/feed_product_links_sheet.dart';
 import '../features/feed/widgets/feed_video_post_view.dart';
-import '../models/cart_item.dart';
 import '../models/feed_post.dart';
 import '../models/product.dart';
-import '../screens/checkout_screen.dart';
 import '../screens/feed_user_search_screen.dart';
 import '../services/api_client.dart';
 import '../services/block_service.dart';
@@ -1957,49 +1955,23 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   // open product sheet. Multi-produk → buka carousel sheet (Shop the Look).
   // Quick-add → direct cart add (skip variant picker kalau hasVariants).
 
-  Future<void> _onProductsTap(List<FeedProductLink> products) async {
+  Future<void> _openProductLinksSheet(List<FeedProductLink> products) async {
     if (products.isEmpty) return;
-    if (products.length == 1) {
-      await _onProductTap(products.first);
-      return;
-    }
     AppHaptics.tap();
-    widget.onOverlayStateChanged(true);
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.18),
-      builder: (_) => FeedPostTaggedProductsSheet(
-        products: products,
-        onOpenProduct: (link) async {
-          await _onProductTap(link);
-        },
-        onAdd: (link, quantity) async {
-          _addFeedLinkToCart(link, quantity: quantity);
-        },
-        onBuy: (link, quantity) async {
-          _buyFeedLinkNow(link, quantity: quantity);
-        },
-      ),
-    ).whenComplete(() => widget.onOverlayStateChanged(false));
+    await showFeedProductLinksSheet(
+      context,
+      products: products,
+      onOpenProduct: (link) => _openProductLinkDetail(link),
+      onAddToCart: (link) => _addFeedLinkToCart(link),
+      onOpened: () => widget.onOverlayStateChanged(true),
+      onClosed: () => widget.onOverlayStateChanged(false),
+    );
   }
 
-  Future<void> _quickAddProduct(FeedProductLink link) async {
-    _addFeedLinkToCart(link);
-  }
-
-  Future<void> _onProductTap(FeedProductLink link) async {
-    AppHaptics.tap();
-    widget.onOverlayStateChanged(true);
+  Future<void> _openProductLinkDetail(FeedProductLink link) async {
     final product = await productService.fetchProductBySlug(link.slug);
-    if (!mounted) {
-      widget.onOverlayStateChanged(false);
-      return;
-    }
+    if (!mounted) return;
     if (product == null) {
-      widget.onOverlayStateChanged(false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Produk tidak ditemukan.'),
@@ -2008,19 +1980,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
       );
       return;
     }
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.18),
-      builder: (_) => FeedPostProductSheet(
-        product: product,
-        onOpenProduct: () => _openProductDetail(product),
-        onAdd: (quantity) => _addProductToCart(product, quantity: quantity),
-        onBuy: (quantity) => _buyProductNow(product, quantity: quantity),
-      ),
-    ).whenComplete(() => widget.onOverlayStateChanged(false));
+    _openProductDetail(product);
   }
 
   void _openProductDetail(Product product) {
@@ -2034,7 +1994,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
       return;
     }
     if (link.hasVariants) {
-      _onProductTap(link);
+      _openProductLinkDetail(link);
       return;
     }
     final product = feedPostProductFromFeedLink(link);
@@ -2045,61 +2005,6 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
       quantity > 1
           ? '$quantity x ${link.name} masuk keranjang'
           : '${link.name} masuk keranjang',
-    );
-  }
-
-  void _addProductToCart(Product product, {int quantity = 1}) {
-    if (product.stock <= 0) {
-      _showProductUnavailable();
-      return;
-    }
-    if (product.hasVariants) {
-      _openProductDetail(product);
-      return;
-    }
-    cartStore.addProduct(product, quantity: quantity);
-    if (!mounted) return;
-    AppToast.showCartAdded(
-      context,
-      quantity > 1
-          ? '$quantity x ${product.title} masuk keranjang'
-          : '${product.title} masuk keranjang',
-    );
-  }
-
-  void _buyFeedLinkNow(FeedProductLink link, {int quantity = 1}) {
-    if (!link.isAvailable || link.stock <= 0) {
-      _showProductUnavailable();
-      return;
-    }
-    if (link.hasVariants) {
-      _onProductTap(link);
-      return;
-    }
-    _buyProductNow(feedPostProductFromFeedLink(link), quantity: quantity);
-  }
-
-  void _buyProductNow(Product product, {int quantity = 1}) {
-    if (product.stock <= 0) {
-      _showProductUnavailable();
-      return;
-    }
-    if (product.hasVariants) {
-      _openProductDetail(product);
-      return;
-    }
-    AppHaptics.impact();
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => CheckoutScreen(
-          items: [
-            CartItem(
-              product: product,
-              quantity: quantity.clamp(1, math.max(1, product.stock)),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -2157,9 +2062,6 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
 
     // Product chip — same rotation pattern dengan video post.
     final products = _rotatingProductsForPost(post);
-    final featuredProduct = products.isEmpty
-        ? null
-        : products[_featuredProductIndex % products.length];
 
     return VisibilityDetector(
       key: ValueKey('photo-post-${post.id}'),
@@ -2340,11 +2242,11 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                                   ignoring: _captionExpanded,
                                   child: Padding(
                                     padding: const EdgeInsets.only(bottom: 9),
-                                    child: feedPostProductAnchorCardFor(
-                                      featuredProduct!,
-                                      onTap: () => _onProductsTap(products),
-                                      onAddToCart: () =>
-                                          _quickAddProduct(featuredProduct),
+                                    child: feedProductPillFor(
+                                      products,
+                                      _featuredProductIndex,
+                                      onTap: () =>
+                                          _openProductLinksSheet(products),
                                     ),
                                   ),
                                 ),
