@@ -27,26 +27,6 @@ class PublicProfileHeaderMotion {
   final double controlSurfaceOpacity;
   final double blurSigma;
 
-  /// Temporary geometry bridge for the legacy collapsing-header caller.
-  @Deprecated('Task 6 replaces the legacy geometry-based header.')
-  double get widthFactor => lerpDouble(1, 0.62, tabTravel)!;
-
-  /// Temporary geometry bridge for the legacy collapsing-header caller.
-  @Deprecated('Task 6 replaces the legacy geometry-based header.')
-  double get horizontalAlignment => 1 - tabTravel;
-
-  /// Temporary geometry bridge for the legacy collapsing-header caller.
-  @Deprecated('Task 6 replaces the legacy geometry-based header.')
-  double get radius => lerpDouble(0, 24, tabTravel)!;
-
-  /// Temporary geometry bridge for the legacy collapsing-header caller.
-  @Deprecated('Task 6 replaces the legacy geometry-based header.')
-  double get gap => lerpDouble(24, 6, tabTravel)!;
-
-  /// Temporary geometry bridge for the legacy collapsing-header caller.
-  @Deprecated('Task 6 replaces the legacy geometry-based header.')
-  double get surfaceOpacity => pillOpacity;
-
   static PublicProfileHeaderMotion resolve({
     required double scrollOffset,
     required double collapseDistance,

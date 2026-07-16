@@ -8,8 +8,18 @@ import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
 import 'package:natalo_petshop_flutter/screens/public_profile_screen.dart';
 import 'package:natalo_petshop_flutter/services/profile_service.dart';
 import 'package:natalo_petshop_flutter/widgets/origin_expansion_route.dart';
+import 'package:natalo_petshop_flutter/widgets/public_profile_chrome_overlay.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 void main() {
+  setUp(() {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    addTearDown(() {
+      VisibilityDetectorController.instance.updateInterval =
+          const Duration(milliseconds: 500);
+    });
+  });
+
   testWidgets('entry refreshes chat config exactly once', (tester) async {
     var fetchCount = 0;
     const result = PublicProfileResult(
@@ -121,6 +131,81 @@ void main() {
     await tester.pump(const Duration(milliseconds: 220));
     expect(find.byType(MemberPostDetailScreen), findsNothing);
     expect(find.byKey(const ValueKey('profile-post-video-1')), findsOneWidget);
+  });
+
+  testWidgets(
+      'real scroll collapses and reverses chrome without resetting content',
+      (tester) async {
+    final post = FeedPost.fromJson({
+      'id': 'post-1',
+      'slug': 'post-1',
+      'kind': 'USER_POST',
+      'mediaUrl': 'not-a-network-url',
+      'author': {'id': 'creator-1', 'name': 'Creator'},
+      'createdAt': DateTime(2026).toIso8601String(),
+    });
+    final result = PublicProfileResult(
+      profile: const PublicProfile(
+        id: 'creator-1',
+        name: 'Creator',
+        username: 'creator',
+        bio: 'Profil kreator',
+        isOwner: true,
+      ),
+      posts: [post],
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: PublicProfileScreen(
+        username: 'creator',
+        initialResult: result,
+        fetchChatConfig: _noOpFetch,
+      ),
+    ));
+    await tester.pump();
+
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+    expect(scaffold.bottomNavigationBar, isNull);
+    expect(
+        find.byKey(const Key('public_profile_grid_underlay')), findsOneWidget);
+    expect(find.byType(PublicProfileChromeOverlay), findsOneWidget);
+    expect(find.byKey(const ValueKey('profile-post-post-1')), findsOneWidget);
+
+    final scrollView = find.byType(NestedScrollView);
+    final dragPoint = tester.getBottomLeft(scrollView) + const Offset(200, -80);
+    await tester.dragFrom(dragPoint, const Offset(0, -360));
+    await tester.pump();
+    final chrome = find.byType(PublicProfileChromeOverlay);
+    expect(find.descendant(of: chrome, matching: find.text('Postingan')),
+        findsOneWidget);
+    expect(find.descendant(of: chrome, matching: find.text('Video')),
+        findsOneWidget);
+    expect(find.descendant(of: chrome, matching: find.text('Belanja')),
+        findsOneWidget);
+
+    final selected = tester.widget<Semantics>(
+      find
+          .ancestor(
+            of: find.byTooltip('Postingan'),
+            matching: find.byType(Semantics),
+          )
+          .first,
+    );
+    expect(selected.properties.selected, isTrue);
+
+    await tester.dragFrom(dragPoint, const Offset(0, 360));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('profile-post-post-1')), findsOneWidget);
+    final reversedSelected = tester.widget<Semantics>(
+      find
+          .ancestor(
+            of: find.byTooltip('Postingan'),
+            matching: find.byType(Semantics),
+          )
+          .first,
+    );
+    expect(reversedSelected.properties.selected, isTrue);
+    expect(tester.takeException(), isNull);
   });
 }
 

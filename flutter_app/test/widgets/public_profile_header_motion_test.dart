@@ -35,30 +35,6 @@ void main() {
       expect(collapsed.blurSigma, 12);
     });
 
-    test('legacy geometry accessors derive from the new motion fields', () {
-      final expanded = resolve(0);
-      final middle = resolve(50);
-      final collapsed = resolve(100);
-
-      expect(expanded.widthFactor, 1);
-      expect(expanded.horizontalAlignment, 1);
-      expect(expanded.radius, 0);
-      expect(expanded.gap, 24);
-      expect(expanded.surfaceOpacity, 0);
-
-      expect(middle.widthFactor, closeTo(0.8034482759, 0.0000000001));
-      expect(middle.horizontalAlignment, closeTo(0.4827586207, 0.0000000001));
-      expect(middle.radius, closeTo(12.4137931034, 0.0000000001));
-      expect(middle.gap, closeTo(14.6896551724, 0.0000000001));
-      expect(middle.surfaceOpacity, middle.pillOpacity);
-
-      expect(collapsed.widthFactor, 0.62);
-      expect(collapsed.horizontalAlignment, 0);
-      expect(collapsed.radius, 24);
-      expect(collapsed.gap, 6);
-      expect(collapsed.surfaceOpacity, 1);
-    });
-
     test('0 25 50 75 and 100 percent use exact staged intervals', () {
       final zero = resolve(0);
       final twentyFive = resolve(25);

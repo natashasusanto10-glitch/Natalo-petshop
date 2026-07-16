@@ -8,7 +8,6 @@ import '../theme/natalo_colors.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../config/api_config.dart';
-import '../constants/official_brand.dart';
 import '../models/feed_post.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../models/public_profile.dart';
@@ -29,7 +28,7 @@ import '../widgets/moderation_action_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/origin_expansion_route.dart';
 import '../widgets/profile_grid_geometry.dart';
-import '../widgets/public_profile_collapsing_header.dart';
+import '../widgets/public_profile_chrome_overlay.dart';
 import '../widgets/public_profile_expanded_header.dart';
 import 'member_post_detail_screen.dart';
 import 'public_profile_follow_list_screen.dart';
@@ -833,7 +832,61 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
       return AppErrorState(description: _errorText!, onRetry: _load);
     }
     final profile = _profile!;
-    final scrollView = NataloPawRefreshIndicator(
+    final metrics = PublicProfileHeaderMetrics.resolve(context, profile);
+    final nestedScrollView = NestedScrollView(
+      controller: _scrollController,
+      headerSliverBuilder: (context, innerBoxIsScrolled) => [
+        SliverToBoxAdapter(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: profile.isOfficial
+                  ? null
+                  : Theme.of(context).colorScheme.surface,
+              gradient: profile.isOfficial ? NataloColors.heroGradientV : null,
+            ),
+            child: Column(
+              children: [
+                SizedBox(
+                  height: metrics.topPadding + metrics.toolbarHeight,
+                ),
+                SizedBox(
+                  height: metrics.identityHeight,
+                  child: AnimatedBuilder(
+                    animation: chatStore,
+                    builder: (context, child) => PublicProfileExpandedHeader(
+                      profile: profile,
+                      followBusy: _followBusy,
+                      chatEnabled: chatStore.chatEnabled,
+                      onFollowToggle: profile.isOwner ? null : _toggleFollow,
+                      onFollowersTap: () =>
+                          _openFollowList(FollowListKind.followers),
+                      onFollowingTap: () =>
+                          _openFollowList(FollowListKind.following),
+                      onEditProfile: profile.isOwner
+                          ? () => Navigator.pushNamed(
+                                context,
+                                '/member/profile',
+                              )
+                          : null,
+                      onShareProfile: _shareProfile,
+                      onMessage: profile.isOfficial && !profile.isOwner
+                          ? () => Navigator.pushNamed(context, '/chat')
+                          : null,
+                    ),
+                  ),
+                ),
+                SizedBox(height: metrics.tabHeight),
+              ],
+            ),
+          ),
+        ),
+      ],
+      body: TabBarView(
+        controller: _tabController,
+        children: _profileContentTabs.map(_buildContentPage).toList(),
+      ),
+    );
+    final refreshedContent = NataloPawRefreshIndicator(
       onRefresh: _refresh,
       triggerOffset: 96,
       requireFullPull: true,
@@ -844,57 +897,36 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
       refreshBackdropColor: profile.isOfficial
           ? NataloColors.heroTop
           : Theme.of(context).colorScheme.surface,
-      child: NestedScrollView(
-        controller: _scrollController,
-        headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: PublicProfileCollapsingHeaderDelegate(
+      child: nestedScrollView,
+    );
+    final scrollView = Stack(
+      children: [
+        RepaintBoundary(
+          key: const Key('public_profile_grid_underlay'),
+          child: refreshedContent,
+        ),
+        Positioned.fill(
+          child: AnimatedBuilder(
+            animation: _scrollController,
+            builder: (context, child) => PublicProfileChromeOverlay(
+              profile: profile,
               controller: _tabController,
-              title: profile.isOfficial
-                  ? kOfficialBrandName
-                  : profile.displayHandle,
-              topPadding: MediaQuery.paddingOf(context).top,
-              expandedHeight: PublicProfileCollapsingHeaderDelegate
-                  .responsiveExpandedHeight(
-                context,
-                isOfficial: profile.isOfficial,
-              ),
-              isOfficial: profile.isOfficial,
+              scrollOffset: _scrollController.hasClients
+                  ? _scrollController.offset
+                      .clamp(0.0, double.infinity)
+                      .toDouble()
+                  : 0,
+              metrics: metrics,
               onBack: () => Navigator.maybePop(context),
               onShareProfile: _shareProfile,
               onOverflow: !profile.isOwner && !profile.isOfficial
                   ? _openModeration
                   : null,
               onTabTap: _onTabTapped,
-              expandedHeader: AnimatedBuilder(
-                animation: chatStore,
-                builder: (context, child) => PublicProfileExpandedHeader(
-                  profile: profile,
-                  followBusy: _followBusy,
-                  chatEnabled: chatStore.chatEnabled,
-                  onFollowToggle: profile.isOwner ? null : _toggleFollow,
-                  onFollowersTap: () =>
-                      _openFollowList(FollowListKind.followers),
-                  onFollowingTap: () =>
-                      _openFollowList(FollowListKind.following),
-                  onEditProfile: profile.isOwner
-                      ? () => Navigator.pushNamed(context, '/member/profile')
-                      : null,
-                  onShareProfile: _shareProfile,
-                  onMessage: profile.isOfficial && !profile.isOwner
-                      ? () => Navigator.pushNamed(context, '/chat')
-                      : null,
-                ),
-              ),
             ),
           ),
-        ],
-        body: TabBarView(
-          controller: _tabController,
-          children: _profileContentTabs.map(_buildContentPage).toList(),
         ),
-      ),
+      ],
     );
     if (!profile.isOfficial) return scrollView;
     // Official: lapisan navy heroTop di belakang puncak scroll — saat
@@ -912,7 +944,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
           top: 0,
           left: 0,
           right: 0,
-          height: 220,
+          height: metrics.scrollSpaceHeight,
           child: AnimatedBuilder(
             animation: _scrollController,
             builder: (context, _) {
