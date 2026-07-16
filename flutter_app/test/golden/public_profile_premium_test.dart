@@ -6,7 +6,6 @@ import 'package:natalo_petshop_flutter/models/public_profile.dart';
 import 'package:natalo_petshop_flutter/screens/public_profile_screen.dart';
 import 'package:natalo_petshop_flutter/services/profile_service.dart';
 import 'package:natalo_petshop_flutter/theme/app_theme.dart';
-import 'package:natalo_petshop_flutter/theme/natalo_colors.dart';
 import 'package:natalo_petshop_flutter/widgets/profile_grid_geometry.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_chrome_overlay.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_expanded_header.dart';

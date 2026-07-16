@@ -411,17 +411,30 @@ class _ActionRow extends StatelessWidget {
         if (onShareProfile != null) ...[
           if (hasPrimary || onMessage != null)
             const SizedBox(width: AppSpacing.sm),
-          SizedBox(
-            width: 44,
-            child: _HeaderAction(
-              semanticLabel: 'Bagikan Profil',
-              tooltip: 'Bagikan Profil',
-              icon: Icons.ios_share_rounded,
-              onTap: onShareProfile,
-              background: neutralFill,
-              foreground: neutralForeground,
+          // Owner (profil sendiri) meniru IG: "Edit Profil" + "Bagikan
+          // Profil" dua tombol sejajar. Viewer lain cukup ikon share.
+          if (profile.isOwner)
+            Expanded(
+              child: _HeaderAction(
+                label: 'Bagikan Profil',
+                tooltip: 'Bagikan Profil',
+                onTap: onShareProfile,
+                background: neutralFill,
+                foreground: neutralForeground,
+              ),
+            )
+          else
+            SizedBox(
+              width: 44,
+              child: _HeaderAction(
+                semanticLabel: 'Bagikan Profil',
+                tooltip: 'Bagikan Profil',
+                icon: Icons.ios_share_rounded,
+                onTap: onShareProfile,
+                background: neutralFill,
+                foreground: neutralForeground,
+              ),
             ),
-          ),
         ],
       ],
     );
