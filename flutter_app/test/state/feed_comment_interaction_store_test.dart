@@ -43,6 +43,51 @@ void main() {
         hasLikeState(liked: true, count: 14));
   });
 
+  test('a server refresh replaces settled state but not a pending intent',
+      () async {
+    final response = Completer<int>();
+    final store = FeedCommentInteractionStore(
+      setCommentLiked: (commentId, {required liked}) => response.future,
+    );
+    addTearDown(store.dispose);
+    store.seed(
+      postId: 'post-1',
+      commentId: 'comment-1',
+      liked: false,
+      count: 3,
+    );
+
+    final completion = store.toggle(
+      postId: 'post-1',
+      commentId: 'comment-1',
+      currentlyLiked: false,
+      currentCount: 3,
+    );
+    store.seed(
+      postId: 'post-1',
+      commentId: 'comment-1',
+      liked: false,
+      count: 30,
+      authoritative: true,
+    );
+
+    expect(store.likeState('post-1', 'comment-1'),
+        hasLikeState(liked: true, count: 4));
+
+    response.complete(4);
+    await completion;
+    store.seed(
+      postId: 'post-1',
+      commentId: 'comment-1',
+      liked: false,
+      count: 5,
+      authoritative: true,
+    );
+
+    expect(store.likeState('post-1', 'comment-1'),
+        hasLikeState(liked: false, count: 5));
+  });
+
   test('rapid toggles serialize requests and settle on the latest intent',
       () async {
     final firstResponse = Completer<int>();
@@ -190,17 +235,26 @@ void main() {
         hasLikeState(liked: false, count: 10));
 
     finalResponse.completeError(StateError('second request failed'));
-    await expectLater(owner, throwsA(isA<StateError>()));
-    await coalesced;
+    await Future.wait([
+      expectLater(owner, throwsA(isA<StateError>())),
+      expectLater(coalesced, throwsA(isA<StateError>())),
+    ]);
     expect(store.likeState('post-1', 'comment-1'),
         hasLikeState(liked: true, count: 11));
   });
 
-  test('the request owner still receives API 401 after optimistic rollback',
+  test('every joined toggle receives a terminal API 401 after rollback',
       () async {
-    final response = Completer<int>();
+    final firstResponse = Completer<int>();
+    final finalResponse = Completer<int>();
+    var requestCount = 0;
     final store = FeedCommentInteractionStore(
-      setCommentLiked: (commentId, {required liked}) => response.future,
+      setCommentLiked: (commentId, {required liked}) {
+        requestCount++;
+        return requestCount == 1
+            ? firstResponse.future
+            : finalResponse.future;
+      },
     );
     addTearDown(store.dispose);
     store.seed(
@@ -223,23 +277,27 @@ void main() {
       currentCount: 4,
     );
 
-    response.completeError(
+    firstResponse.complete(4);
+    await Future<void>.delayed(Duration.zero);
+    expect(requestCount, 2);
+
+    finalResponse.completeError(
       const ApiException('Unauthorized', statusCode: 401),
     );
 
-    await expectLater(
-      owner,
-      throwsA(
-        isA<ApiException>().having(
-          (error) => error.statusCode,
-          'statusCode',
-          401,
-        ),
+    final unauthorized = throwsA(
+      isA<ApiException>().having(
+        (error) => error.statusCode,
+        'statusCode',
+        401,
       ),
     );
-    await coalesced;
+    await Future.wait([
+      expectLater(owner, unauthorized),
+      expectLater(coalesced, unauthorized),
+    ]);
     expect(store.likeState('post-1', 'comment-1'),
-        hasLikeState(liked: false, count: 3));
+        hasLikeState(liked: true, count: 4));
   });
 
   test('a failed server request rolls the optimistic state back', () async {

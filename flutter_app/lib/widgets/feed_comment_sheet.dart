@@ -813,15 +813,22 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     if (mounted) setState(() {});
   }
 
-  void _seedCommentInteractions(Iterable<FeedComment> comments) {
+  void _seedCommentInteractions(
+    Iterable<FeedComment> comments, {
+    bool authoritative = false,
+  }) {
     for (final comment in comments) {
       feedCommentInteractionStore.seed(
         postId: widget.post.id,
         commentId: comment.id,
         liked: comment.viewerLiked,
         count: comment.likeCount,
+        authoritative: authoritative,
       );
-      _seedCommentInteractions(comment.replies);
+      _seedCommentInteractions(
+        comment.replies,
+        authoritative: authoritative,
+      );
     }
   }
 
@@ -987,6 +994,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
               preserveLocalLikeIds: feedCommentInteractionStore
                   .pendingCommentIdsForPost(widget.post.id),
             );
+      _seedCommentInteractions(page.items, authoritative: true);
       _seedCommentInteractions(nextComments);
       setState(() {
         // Do not overwrite a comment/like/delete completed while a cached
@@ -1074,7 +1082,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
             .pendingCommentIdsForPost(widget.post.id),
       );
       _seedCommentInteractions(currentWithoutTombstones);
-      _seedCommentInteractions(fetchedPage);
+      _seedCommentInteractions(fetchedPage, authoritative: true);
       setState(() {
         final existingIds =
             currentWithoutTombstones.map((item) => item.id).toSet();

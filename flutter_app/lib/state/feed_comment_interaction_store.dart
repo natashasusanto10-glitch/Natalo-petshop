@@ -55,10 +55,15 @@ class FeedCommentInteractionStore extends ChangeNotifier {
     required String commentId,
     required bool liked,
     required int count,
+    bool authoritative = false,
   }) {
     final key = _key(postId, commentId);
-    if (_likes.containsKey(key) || _inFlight.containsKey(key)) return;
+    if (_inFlight.containsKey(key)) return;
+    final current = _likes[key];
+    if (current != null && !authoritative) return;
+    if (current?.liked == liked && current?.count == count) return;
     _likes[key] = FeedCommentLikeState(liked: liked, count: count);
+    notifyListeners();
   }
 
   Future<FeedCommentLikeState> toggle({
@@ -82,7 +87,7 @@ class FeedCommentInteractionStore extends ChangeNotifier {
     notifyListeners();
 
     final existingFlight = _inFlight[key];
-    if (existingFlight != null) return Future.value(_likes[key]!);
+    if (existingFlight != null) return existingFlight.result;
 
     final flight = _CommentLikeFlight();
     _inFlight[key] = flight;
