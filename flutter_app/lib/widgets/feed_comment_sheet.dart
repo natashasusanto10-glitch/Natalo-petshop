@@ -486,6 +486,43 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
     return _closeCompleter!.future;
   }
 
+  void _handleDragUpdate(DragUpdateDetails details) {
+    if (!_mountedDrawer || !_controller.isAttached || _closing) return;
+    final delta = details.primaryDelta ?? 0;
+    if (delta == 0) return;
+    final height = math.max(1.0, MediaQuery.sizeOf(context).height);
+    final next = (_controller.size - (delta / height))
+        .clamp(_minExtent, _maxExtent(context))
+        .toDouble();
+    _controller.jumpTo(next);
+  }
+
+  void _handleDragEnd(DragEndDetails details) {
+    if (!_mountedDrawer || !_controller.isAttached || _closing) return;
+    final maxExtent = _maxExtent(context);
+    final target = commentSnapTargetFor(
+      size: _controller.size,
+      velocity: details.primaryVelocity ?? 0,
+      maxExtent: maxExtent,
+    );
+    switch (target) {
+      case CommentSnapTarget.close:
+        _requestClose();
+      case CommentSnapTarget.max:
+        unawaited(_controller.animateTo(
+          maxExtent,
+          duration: feedCommentSnapDuration,
+          curve: Curves.easeOutCubic,
+        ));
+      case CommentSnapTarget.initial:
+        unawaited(_controller.animateTo(
+          _initialExtent,
+          duration: feedCommentSnapDuration,
+          curve: Curves.easeOutCubic,
+        ));
+    }
+  }
+
   void _closeDrawer() {
     if (!_mountedDrawer || _closing) return;
     final transition = ++_transition;
@@ -604,6 +641,8 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
                   sheetScrollController: scrollController,
                   onClose: _requestClose,
                   onCloseAndWait: _requestCloseAndWait,
+                  onDragUpdate: _handleDragUpdate,
+                  onDragEnd: _handleDragEnd,
                   sessionStore: widget.sessionStore,
                   viewerIdentityListenable: widget.viewerIdentityListenable,
                 ),
