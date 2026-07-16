@@ -5,7 +5,7 @@ import 'package:natalo_petshop_flutter/widgets/public_profile_chrome_overlay.dar
 import 'package:natalo_petshop_flutter/widgets/public_profile_expanded_header.dart';
 
 void main() {
-  testWidgets('expanded chrome does not install an inactive blur layer',
+  testWidgets('expanded chrome does not install any inactive blur layer',
       (tester) async {
     await tester.pumpWidget(overlayHarness(
       width: 393,
@@ -14,10 +14,9 @@ void main() {
     ));
 
     expect(find.byType(BackdropFilter), findsNothing);
-    expect(find.byKey(const Key('public_profile_glass_layer')), findsNothing);
   });
 
-  testWidgets('glass phase installs exactly one active blur layer',
+  testWidgets('glass phase installs floating per-chip blur layers',
       (tester) async {
     await tester.pumpWidget(overlayHarness(
       width: 393,
@@ -25,11 +24,10 @@ void main() {
       isOfficial: true,
     ));
 
-    expect(find.byType(BackdropFilter), findsOneWidget);
-    expect(find.byKey(const Key('public_profile_glass_layer')), findsOneWidget);
+    expect(find.byType(BackdropFilter), findsWidgets);
   });
 
-  testWidgets('collapsed chrome uses one blur layer above underlapping grid',
+  testWidgets('collapsed chrome floats glass chips above underlapping grid',
       (tester) async {
     await tester.pumpWidget(overlayHarness(
       width: 393,
@@ -37,15 +35,10 @@ void main() {
       isOfficial: true,
     ));
 
-    expect(find.byType(BackdropFilter), findsOneWidget);
-    expect(find.byKey(const Key('public_profile_glass_layer')), findsOneWidget);
+    expect(find.byType(BackdropFilter), findsWidgets);
     expect(
         find.byKey(const Key('public_profile_grid_underlay')), findsOneWidget);
     expect(find.byKey(const Key('public_tab_posts_pill')), findsOneWidget);
-    final tint = tester.widget<ColoredBox>(
-      find.byKey(const Key('public_profile_glass_tint')),
-    );
-    expect(tint.color.a, lessThan(1));
   });
 
   testWidgets('right edge moves left monotonically and reverses exactly',
@@ -88,8 +81,8 @@ void main() {
 
     expect(find.byType(BackdropFilter), findsNothing);
     expect(
-      find.byKey(const Key('public_profile_reduced_motion_tint')),
-      findsOneWidget,
+      find.byKey(const Key('liquid_glass_reduced_motion')),
+      findsWidgets,
     );
     expect(tester.takeException(), isNull);
   });

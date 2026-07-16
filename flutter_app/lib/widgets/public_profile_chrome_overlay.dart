@@ -1,10 +1,10 @@
-import 'dart:ui' show ImageFilter, lerpDouble;
+import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 
 import '../constants/official_brand.dart';
 import '../models/public_profile.dart';
-import '../theme/natalo_colors.dart';
+import 'liquid_glass.dart';
 import 'official_brand_avatar.dart';
 import 'public_profile_content_tab_bar.dart';
 import 'public_profile_header_motion.dart';
@@ -39,55 +39,43 @@ class PublicProfileHeaderMetrics {
       if (effectiveScale > scale) scale = effectiveScale;
     }
     final hasBio = profile.bio?.trim().isNotEmpty == true;
-    final hasMutuals = profile.isOfficial &&
-        !profile.isOwner &&
-        profile.mutualFollowers.items.isNotEmpty;
-    final identityHeight = profile.isOfficial
-        ? _officialIdentityHeight(
-            scale: scale,
-            hasBio: hasBio,
-            hasMutuals: hasMutuals,
-          )
-        : _regularIdentityHeight(scale: scale, hasBio: hasBio);
+    final hasMutuals = !profile.isOwner &&
+        profile.mutualFollowers.items.isNotEmpty &&
+        profile.mutualFollowers.totalCount > 0;
     return PublicProfileHeaderMetrics(
       topPadding: MediaQuery.paddingOf(context).top,
       toolbarHeight: 56,
-      identityHeight: identityHeight,
+      identityHeight: _identityHeight(
+        scale: scale,
+        hasBio: hasBio,
+        hasMutuals: hasMutuals,
+        isOfficial: profile.isOfficial,
+      ),
       tabHeight: PublicProfileContentTabBar.height,
     );
   }
 
-  /// Mirrors the official header's fixed vertical contract: padding, 84px
-  /// avatar row, statistics, action row, and their gaps total 220px.
-  static double _officialIdentityHeight({
+  /// Mirrors the unified IG-style header's fixed rows exactly:
+  /// padding(12) + avatar row(72) + gap(12) + name + [chip] + [bio] +
+  /// [mutuals] + gap(12) + actions(44) + padding(12). The +2 safety
+  /// absorbs fractional line-height rounding from Jakarta Sans.
+  static double _identityHeight({
     required double scale,
     required bool hasBio,
     required bool hasMutuals,
+    required bool isOfficial,
   }) {
-    // One logical pixel absorbs fractional line-height rounding from the
-    // production Jakarta Sans font (notably the official bio's paw emoji).
-    // Without it the exact brand bio + mutual row overflows by 0.45px at the
-    // iPhone 15 Pro logical viewport despite all nominal row sums fitting.
-    const base = 221.0;
-    final bio = hasBio ? 8 + (scale > 1.3 ? 2 : 1) * 13 * 1.35 * scale : 0.0;
-    final mutuals = hasMutuals ? 12 + 30 : 0.0;
-    const scalableStatsAndActions = 31.0;
-    final textAllowance = (scale - 1) * scalableStatsAndActions;
-    return base + bio + mutuals + textAllowance;
-  }
-
-  /// Mirrors the regular header's fixed rows and measures the optional
-  /// three-line bio and scalable name/handle rather than using a generic
-  /// allowance. The small base safety absorbs fractional line rounding.
-  static double _regularIdentityHeight({
-    required double scale,
-    required bool hasBio,
-  }) {
-    const base = 212.0;
-    const scalableNameAndHandle = (15 * 1.15) + (13 * 1.2);
-    final textAllowance = (scale - 1) * scalableNameAndHandle;
-    final bio = hasBio ? 8 + (3 * 14 * 1.4 * scale) : 0.0;
-    return base + textAllowance + bio;
+    const fixedRows = 12.0 + 72 + 12 + 12 + 44 + 12;
+    final nameRow = (15 * 1.15 * scale).clamp(16.0, double.infinity);
+    // Chip "AKUN RESMI": teks 10.5 ikut text-scale (line-height default
+    // font bisa ~1.25) + padding vertikal 8 + border 2.
+    final chip = isOfficial ? 6 + (10.5 * 1.25 * scale) + 10 : 0.0;
+    final bio = hasBio ? 8 + (2 * 13 * 1.4 * scale) : 0.0;
+    final mutuals = hasMutuals ? 8 + 30.0 : 0.0;
+    // Safety menyerap pembulatan line-height fraksional Jakarta Sans;
+    // tumbuh sedikit mengikuti scale karena pembulatan ikut membesar.
+    final safety = 2 + (scale - 1) * 6;
+    return fixedRows + nameRow + chip + bio + mutuals + safety;
   }
 }
 
@@ -131,46 +119,15 @@ class PublicProfileChromeOverlay extends StatelessWidget {
     final tabTop = lerpDouble(expandedTop, collapsedTop, motion.tabTravel)!;
     final horizontalInset = lerpDouble(0, 16, motion.tabTravel)!;
     final theme = Theme.of(context);
-    final foreground =
-        profile.isOfficial ? Colors.white : theme.colorScheme.onSurface;
+    // Satu layout terang untuk semua akun — tidak ada lagi chrome navy
+    // khusus official. Chip mengambang bergaya Liquid Glass (blur +
+    // saturasi + rim) menggantikan band blur full-width lama, persis
+    // pola chrome IG saat grid ter-scroll ke bawah pill.
+    final foreground = theme.colorScheme.onSurface;
 
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          height: metrics.collapsedChromeHeight,
-          child: IgnorePointer(
-            child: ClipRect(
-              child: reducedMotion
-                  ? ColoredBox(
-                      key: const Key('public_profile_reduced_motion_tint'),
-                      color: _glassTint(
-                        context,
-                        opacity: 0.82 * motion.glassOpacity,
-                      ),
-                    )
-                  : motion.glassOpacity <= 0
-                      ? const SizedBox.shrink()
-                      : BackdropFilter(
-                          key: const Key('public_profile_glass_layer'),
-                          filter: ImageFilter.blur(
-                            sigmaX: motion.blurSigma,
-                            sigmaY: motion.blurSigma,
-                          ),
-                          child: ColoredBox(
-                            key: const Key('public_profile_glass_tint'),
-                            color: _glassTint(
-                              context,
-                              opacity: 0.72 * motion.glassOpacity,
-                            ),
-                          ),
-                        ),
-            ),
-          ),
-        ),
         Positioned(
           top: metrics.topPadding,
           left: 4,
@@ -178,8 +135,9 @@ class PublicProfileChromeOverlay extends StatelessWidget {
           height: metrics.toolbarHeight,
           child: Row(
             children: [
-              _FrostedControl(
+              _GlassControl(
                 opacity: motion.controlSurfaceOpacity,
+                reducedMotion: reducedMotion,
                 child: IconButton(
                   onPressed: onBack,
                   tooltip: 'Kembali',
@@ -187,44 +145,69 @@ class PublicProfileChromeOverlay extends StatelessWidget {
                 ),
               ),
               Expanded(
-                child: profile.isOfficial
-                    ? Opacity(
-                        opacity: motion.compactIdentityOpacity,
-                        child: const Row(
-                          children: [
-                            OfficialBrandAvatar(size: 28),
-                            SizedBox(width: 8),
-                            Flexible(
-                              child: Text(
-                                kOfficialBrandName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: profile.isOfficial
+                      ? Opacity(
+                          opacity: motion.compactIdentityOpacity,
+                          child: LiquidGlass(
+                            opacity: motion.controlSurfaceOpacity,
+                            reducedMotion: reducedMotion,
+                            borderRadius: BorderRadius.circular(21),
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(5, 5, 12, 5),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const OfficialBrandAvatar(size: 26),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      kOfficialBrandName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: foreground,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const OfficialVerifiedBadge(size: 15),
+                                ],
                               ),
                             ),
-                            SizedBox(width: 4),
-                            OfficialVerifiedBadge(size: 16),
-                          ],
+                          ),
+                        )
+                      : LiquidGlass(
+                          opacity: motion.controlSurfaceOpacity,
+                          reducedMotion: reducedMotion,
+                          borderRadius: BorderRadius.circular(21),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            child: Text(
+                              profile.displayHandle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: foreground,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
                         ),
-                      )
-                    : Text(
-                        profile.displayHandle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: foreground,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+                ),
               ),
               if (onShareProfile != null || onOverflow != null)
-                _FrostedControl(
+                _GlassControl(
                   opacity: motion.controlSurfaceOpacity,
+                  reducedMotion: reducedMotion,
                   child: PopupMenuButton<_PublicProfileAction>(
                     tooltip: 'Opsi lainnya',
                     icon: Icon(Icons.more_horiz_rounded, color: foreground),
@@ -263,30 +246,28 @@ class PublicProfileChromeOverlay extends StatelessWidget {
           height: metrics.tabHeight,
           child: PublicProfileContentTabBar(
             controller: controller,
-            isOfficial: profile.isOfficial,
             labelOpacity: motion.labelOpacity,
             pillOpacity: motion.pillOpacity,
             underlineOpacity: motion.underlineOpacity,
+            reducedMotion: reducedMotion,
             onTap: onTabTap,
           ),
         ),
       ],
     );
   }
-
-  Color _glassTint(BuildContext context, {required double opacity}) {
-    if (profile.isOfficial) {
-      return NataloColors.heroTop.withValues(alpha: opacity);
-    }
-    return Theme.of(context).colorScheme.surface.withValues(alpha: opacity);
-  }
 }
 
-class _FrostedControl extends StatelessWidget {
+class _GlassControl extends StatelessWidget {
   final double opacity;
+  final bool reducedMotion;
   final Widget child;
 
-  const _FrostedControl({required this.opacity, required this.child});
+  const _GlassControl({
+    required this.opacity,
+    required this.reducedMotion,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -294,14 +275,10 @@ class _FrostedControl extends StatelessWidget {
       dimension: 48,
       child: Padding(
         padding: const EdgeInsets.all(2),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Theme.of(context)
-                .colorScheme
-                .surface
-                .withValues(alpha: 0.66 * opacity),
-          ),
+        child: LiquidGlass(
+          opacity: opacity,
+          reducedMotion: reducedMotion,
+          borderRadius: BorderRadius.circular(22),
           child: child,
         ),
       ),
