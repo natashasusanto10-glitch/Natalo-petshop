@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type React from "react";
 import ProductVideoDraft, { type ProductVideoDraftHandle } from "./ProductVideoDraft";
-import { canRemoveImage, removeImageAt } from "@/lib/product/product-media";
+import { canRemoveImage, removeImageAt, reorderImages } from "@/lib/product/product-media";
 import { uploadProductImageFiles } from "../MultiImageUpload";
 export { canRemoveImage, removeImageAt } from "@/lib/product/product-media";
 
@@ -27,6 +27,7 @@ export function ProductMediaRail({ images, video, onImagesChange, onVideoIntentC
   const activeVideoRef = (videoDraftRef ?? videoRef) as React.RefObject<ProductVideoDraftHandle>;
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   useEffect(() => { if (!preview) return; const close = (event: KeyboardEvent) => { if (event.key === "Escape") setPreview(null); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [preview]);
 
   async function addFiles(files: FileList | null) {
@@ -40,9 +41,9 @@ export function ProductMediaRail({ images, video, onImagesChange, onVideoIntentC
 
   return <div className="space-y-3">
     <div className="flex flex-wrap gap-2">
-      {images.map((url, index) => <div key={`${url}-${index}`} className="group relative h-20 w-20 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50">
-        <button type="button" aria-label={`Preview foto ${index + 1}`} onClick={() => setPreview(url)} className="h-full w-full">
-        <img src={url} alt={`Foto ${index + 1}`} className="h-full w-full object-cover" />
+      {images.map((url, index) => <div key={`${url}-${index}`} draggable onDragStart={() => setDraggedIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedIndex !== null) onImagesChange(reorderImages(images, draggedIndex, index)); setDraggedIndex(null); }} onDragEnd={() => setDraggedIndex(null)} className={`group relative h-20 w-20 overflow-hidden rounded-xl border bg-zinc-50 ${draggedIndex === index ? "border-natalo-500 opacity-60" : "border-zinc-200"}`}>
+        <button type="button" aria-label={`Preview foto ${index + 1}. Seret untuk mengubah urutan`} onClick={() => setPreview(url)} className="h-full w-full cursor-grab active:cursor-grabbing">
+        <img src={url} alt={`Foto ${index + 1}`} draggable={false} className="h-full w-full object-cover" />
         {index === 0 ? <span className="absolute bottom-0 inset-x-0 bg-zinc-950/75 py-0.5 text-[10px] font-semibold text-white">Cover</span> : null}
         </button><button type="button" aria-label={index === 0 ? "Hapus foto cover" : `Hapus foto ${index + 1}`} onClick={() => { if (canRemoveImage(images)) onImagesChange(removeImageAt(images, index)); }} className="absolute right-1 top-1 rounded-full bg-white/95 px-1.5 text-xs font-bold text-zinc-700 shadow">×</button>
       </div>)}

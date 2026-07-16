@@ -102,6 +102,7 @@ export type VariantEditorDraftPayload = {
     imageUrl?: string;
     isActive: boolean;
   }>;
+  validationErrors?: string[];
 };
 
 interface Props {
@@ -133,6 +134,8 @@ interface Props {
    * "Simpan Varian" standalone.
    */
   onChange?: (payload: VariantEditorDraftPayload) => void;
+  /** Error validasi dari submit parent ProductForm. */
+  externalErrors?: string[];
 }
 
 export function VariantEditor({
@@ -142,6 +145,7 @@ export function VariantEditor({
   initialAttributes,
   initialVariants,
   onChange,
+  externalErrors = [],
 }: Props) {
   const isDraftMode = mode === "controlled" || typeof onChange === "function";
   const [hasVariants, setHasVariants] = useState(initialHasVariants);
@@ -302,6 +306,7 @@ export function VariantEditor({
         imageUrl: r.imageUrl || undefined,
         isActive: r.isActive,
       })),
+      validationErrors,
     });
   }, [hasVariants, nonEmptyAttrs, rows, onChange]);
 
@@ -449,8 +454,14 @@ export function VariantEditor({
     if (rows.some((r) => r.isActive && (!r.price || Number(r.price) <= 0)))
       errs.push("Semua varian aktif harus punya harga > 0.");
     // SKU uniqueness (frontend check)
-    const skus = rows.filter((r) => r.sku.trim()).map((r) => r.sku.trim());
+    const skus = rows.filter((r) => r.sku.trim()).map((r) => r.sku.trim().toLowerCase());
     if (skus.length !== new Set(skus).size) errs.push("Kode SKU harus unik.");
+    if (rows.some((r) => r.sku.trim() && !/^[A-Za-z0-9_-]+$/.test(r.sku.trim()))) {
+      errs.push("Kode SKU hanya boleh mengandung huruf, angka, _ dan -.");
+    }
+    if (rows.some((r) => r.isActive && (!r.weightGram || Number(r.weightGram) <= 0))) {
+      errs.push("Semua varian aktif harus punya berat > 0 gram.");
+    }
     return errs;
   }, [hasVariants, attrs, nonEmptyAttrs, rows]);
 
@@ -1082,7 +1093,7 @@ export function VariantEditor({
           )}
 
           {/* Alasan spesifik dari server (422) — tunjuk baris/field yang salah. */}
-          {serverErrors && serverErrors.length > 0 && (
+          {(serverErrors?.length || externalErrors.length) > 0 && (
             <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
               <span className="text-red-500">⚠</span>
               <div className="flex-1 text-sm">
@@ -1090,7 +1101,7 @@ export function VariantEditor({
                   Server menolak — perbaiki hal berikut:
                 </p>
                 <ul className="mt-2 space-y-1 text-red-600">
-                  {serverErrors.map((e, i) => (
+                  {[...(serverErrors ?? []), ...externalErrors].map((e, i) => (
                     <li key={i}>• {e}</li>
                   ))}
                 </ul>

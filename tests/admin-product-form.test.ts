@@ -5,6 +5,7 @@ import { buildGenerationPayload } from "../lib/ai/product-description-context";
 import { mergePersistedDescriptionContext } from "../lib/ai/product-description-context";
 import { variantPersistenceMode } from "../lib/product/variant-editor";
 import { productFormCopy } from "../lib/product/product-form-copy";
+import { reorderImages } from "../lib/product/product-media";
 
 describe("admin product creation lifecycle", () => {
   it("uses one form copy for create and edit", () => {
@@ -66,5 +67,13 @@ describe("admin product creation lifecycle", () => {
     });
     expect(result.imageUrl).toBe("cover.jpg");
     expect(result.gallery).toEqual(["gallery-1.jpg", "gallery-2.jpg"]);
+  });
+
+  it("reorders product images while keeping the new cover first", () => {
+    expect(reorderImages(["cover.jpg", "side.jpg", "back.jpg"], 2, 0)).toEqual([
+      "back.jpg",
+      "cover.jpg",
+      "side.jpg",
+    ]);
   });
 });
