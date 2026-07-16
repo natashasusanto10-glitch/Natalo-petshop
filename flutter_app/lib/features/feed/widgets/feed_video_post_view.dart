@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -386,6 +387,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   int _featuredProductIndex = 0;
   Timer? _productRotationTimer;
   Timer? _commentDrawerOpenWatchdog;
+  Timer? _commentStrandedSettleTimer;
+  int _activeCommentDrawerPointers = 0;
+  final Map<int, VelocityTracker> _commentDrawerVelocityTrackers =
+      <int, VelocityTracker>{};
   double _commentDragOffset = 0;
 
   bool get _commentDrawerMounted =>
@@ -1931,6 +1936,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   }) {
     _commentDrawerOpenWatchdog?.cancel();
     _commentDrawerOpenWatchdog = null;
+    _commentStrandedSettleTimer?.cancel();
+    _commentStrandedSettleTimer = null;
+    _resetCommentDrawerPointerTracking();
     _commentSheetTransitionEpoch++;
     _stopCommentSheetAnimation();
     _commentDrawerPhase = _CommentDrawerPhase.closed;
@@ -2057,8 +2065,18 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     if ((_commentSheetExtent.value - extent).abs() > 0.002) {
       _commentSheetExtent.value = extent;
     }
-    if (!_commentSheetClosingFromDrag && extent >= _commentSheetDismissExtent) {
-      _activeCommentSession?.sheetExtent = extent;
+    // Sesi hanya menyimpan DETENT VALID (initial / expanded), bukan partial
+    // extent — kontrak state machine. Dulu setiap tick >= dismiss (0.30)
+    // ditulis mentah, sehingga band terlarang [0.30, 0.60) ikut tersimpan
+    // dan hanya "aman" karena pembaca kebetulan meng-clamp. Live tracking
+    // di antara detent tidak ditulis; drag-end/settle menulis detent final.
+    if (!_commentSheetClosingFromDrag) {
+      if ((extent - _commentSheetInitialExtent).abs() <=
+          feedCommentTerminalExtentEpsilon) {
+        _activeCommentSession?.sheetExtent = _commentSheetInitialExtent;
+      } else if (extent >= maxExtent - feedCommentTerminalExtentEpsilon) {
+        _activeCommentSession?.sheetExtent = maxExtent;
+      }
     }
 
     // Pause/resume video ala IG Reels — full-screen comment sheet berarti
@@ -2272,6 +2290,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     );
     _completeCommentDrawerClose();
     _commentDrawerClosedCompleter = Completer<void>();
+    // Listener pointer ikut unmount bersama drawer sebelumnya — mulai sesi
+    // pointer-tracking bersih.
+    _resetCommentDrawerPointerTracking();
     setState(() {
       _commentDrawerPhase = _CommentDrawerPhase.opening;
       _commentSheetReachedVisibleExtent = false;
@@ -2338,10 +2359,15 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       context,
       _commentSheetHostHeight(context),
     );
-    final targetExtent =
-        (_activeCommentSession?.sheetExtent ?? _commentSheetInitialExtent)
-            .clamp(_commentSheetInitialExtent, maxExtent)
-            .toDouble();
+    // Nilai tersimpan bisa berasal dari konteks maxExtent BERBEDA (keyboard
+    // terbuka menyusutkan max). Snap ke detent terdekat KONTEKS SEKARANG —
+    // reopen wajib mendarat di initial atau expanded, bukan di antara.
+    final stored = _activeCommentSession?.sheetExtent;
+    final targetExtent = stored == null
+        ? _commentSheetInitialExtent
+        : (stored >= (_commentSheetInitialExtent + maxExtent) / 2
+            ? maxExtent
+            : _commentSheetInitialExtent);
     _animateCommentSheetExtent(
       target: targetExtent,
       duration: const Duration(milliseconds: 260),
@@ -2380,6 +2406,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     }
     FocusScope.of(context).unfocus();
     AppHaptics.tap();
+    _commentStrandedSettleTimer?.cancel();
+    _commentStrandedSettleTimer = null;
     final transitionEpoch = ++_commentSheetTransitionEpoch;
     if (mounted) {
       setState(() {
@@ -2508,6 +2536,91 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         _activeCommentSession?.sheetExtent = _commentSheetInitialExtent;
         _animateCommentSheetTo(_commentSheetInitialExtent);
     }
+  }
+
+  /// Pointer cancellation di handle = release berkecepatan nol — policy
+  /// [commentSnapTargetFor] yang sama (kontrak Release Policy). Tanpa ini,
+  /// drag yang dibatalkan sistem meninggalkan sheet di extent jumpTo terakhir
+  /// yang arbitrer, tanpa snap framework sebagai fallback.
+  void _onCommentDragCancel() {
+    _onCommentDragEnd(DragEndDetails());
+  }
+
+  // ── Release-settle content-drag (paritas dengan FeedReelsCommentSurface) ──
+  // Pointer di area drawer di-track mentah (Listener, bukan gesture arena):
+  // pelepasan pointer TERAKHIR diselesaikan lewat policy bersama
+  // [commentSnapTargetFor] dengan velocity dari VelocityTracker. Settle tidak
+  // pernah berjalan selama masih ada pointer aktif — drawer wajib tetap
+  // mengikuti jari (tidak boleh disambar dari genggaman yang masih menahan).
+
+  void _onCommentDrawerPointerDown(PointerDownEvent event) {
+    _activeCommentDrawerPointers++;
+    _commentStrandedSettleTimer?.cancel();
+    _commentStrandedSettleTimer = null;
+    _commentDrawerVelocityTrackers[event.pointer] =
+        VelocityTracker.withKind(event.kind);
+  }
+
+  void _onCommentDrawerPointerMove(PointerMoveEvent event) {
+    _commentDrawerVelocityTrackers[event.pointer]
+        ?.addPosition(event.timeStamp, event.position);
+  }
+
+  void _onCommentDrawerPointerUp(PointerUpEvent event) {
+    final tracker = _commentDrawerVelocityTrackers.remove(event.pointer);
+    _activeCommentDrawerPointers =
+        math.max(0, _activeCommentDrawerPointers - 1);
+    if (_activeCommentDrawerPointers > 0) return;
+    _scheduleCommentReleaseSettle(
+      tracker?.getVelocity().pixelsPerSecond.dy ?? 0,
+    );
+  }
+
+  void _onCommentDrawerPointerCancel(PointerCancelEvent event) {
+    _commentDrawerVelocityTrackers.remove(event.pointer);
+    _activeCommentDrawerPointers =
+        math.max(0, _activeCommentDrawerPointers - 1);
+    if (_activeCommentDrawerPointers > 0) return;
+    // Cancellation = release berkecepatan nol (Release Policy).
+    _scheduleCommentReleaseSettle(0);
+  }
+
+  void _resetCommentDrawerPointerTracking() {
+    _activeCommentDrawerPointers = 0;
+    _commentDrawerVelocityTrackers.clear();
+  }
+
+  /// Timer Duration.zero menunda satu putaran event-loop supaya arena
+  /// gesture (drag-end handle / ballistic framework) berjalan dulu; kalau
+  /// jalur itu sudah mengambil alih, pemeriksaan applicable menolak.
+  void _scheduleCommentReleaseSettle(double velocity) {
+    _commentStrandedSettleTimer?.cancel();
+    _commentStrandedSettleTimer = Timer(Duration.zero, () {
+      if (!_commentStrandedSettleApplicable()) return;
+      final size = _commentSheetController.size;
+      // Di/atas initial: framework snap initial<->max sudah sesuai policy.
+      // Di bawah initial: policy bersama yang memutuskan (paritas handle).
+      if (size >=
+          _commentSheetInitialExtent - feedCommentTerminalExtentEpsilon) {
+        return;
+      }
+      _onCommentDragEnd(
+        DragEndDetails(
+          velocity: Velocity(pixelsPerSecond: Offset(0, velocity)),
+          primaryVelocity: velocity,
+        ),
+      );
+    });
+  }
+
+  bool _commentStrandedSettleApplicable() {
+    return mounted &&
+        _commentDrawerMounted &&
+        _commentDrawerPhase != _CommentDrawerPhase.closing &&
+        _commentDrawerPhase != _CommentDrawerPhase.opening &&
+        _activeCommentDrawerPointers == 0 &&
+        _commentSheetAnimationController == null &&
+        _commentSheetController.isAttached;
   }
 
   void _animateCommentSheetTo(double target) {
@@ -3076,55 +3189,76 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                     ),
                   ),
                 if (_commentDrawerMounted)
-                  AnimatedPadding(
-                    duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeOutCubic,
-                    padding: EdgeInsets.only(bottom: keyboard),
-                    child:
-                        NotificationListener<DraggableScrollableNotification>(
-                      onNotification: (notification) {
-                        // A drag that starts inside the comment list is owned
-                        // by DraggableScrollableSheet, so the custom handle's
-                        // onDragEnd is not called. Once the sheet has actually
-                        // opened, reaching its minimum must still complete the
-                        // overlay teardown instead of leaving an invisible
-                        // backdrop that intercepts all taps.
-                        if (_commentSheetReachedVisibleExtent &&
-                            !_commentSheetClosingFromDrag &&
-                            notification.extent <= 0.01) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) _closeComments();
-                          });
-                        }
-                        return false;
-                      },
-                      child: DraggableScrollableSheet(
-                        controller: _commentSheetController,
-                        initialChildSize: _commentSheetMinExtent,
-                        minChildSize: _commentSheetMinExtent,
-                        maxChildSize: commentSheetMaxExtent,
-                        snap: true,
-                        snapSizes:
-                            commentSheetMaxExtent > _commentSheetInitialExtent
-                                ? [
-                                    _commentSheetInitialExtent,
-                                    commentSheetMaxExtent,
-                                  ]
-                                : const [_commentSheetInitialExtent],
-                        builder: (context, scrollController) {
-                          return PrimaryScrollController(
-                            controller: scrollController,
-                            child: FeedCommentSheet(
-                              post: widget.post,
-                              applyKeyboardInset: false,
-                              sheetScrollController: scrollController,
-                              onClose: _closeComments,
-                              onCloseAndWait: _closeCommentsAndWait,
-                              onDragUpdate: _onCommentDragUpdate,
-                              onDragEnd: _onCommentDragEnd,
-                            ),
-                          );
+                  // Listener pointer mentah: melacak pointer aktif + velocity
+                  // supaya pelepasan pointer TERAKHIR diselesaikan lewat
+                  // policy bersama (release-settle) — paritas handle vs
+                  // content-drag + pertahanan untuk recognizer/scrollable
+                  // yang mati mid-gesture tanpa pernah memanggil drag-end.
+                  Listener(
+                    onPointerDown: _onCommentDrawerPointerDown,
+                    onPointerMove: _onCommentDrawerPointerMove,
+                    onPointerUp: _onCommentDrawerPointerUp,
+                    onPointerCancel: _onCommentDrawerPointerCancel,
+                    child: AnimatedPadding(
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOutCubic,
+                      padding: EdgeInsets.only(bottom: keyboard),
+                      child:
+                          NotificationListener<DraggableScrollableNotification>(
+                        onNotification: (notification) {
+                          // A drag that starts inside the comment list is
+                          // owned by DraggableScrollableSheet, so the custom
+                          // handle's onDragEnd is not called. Once the sheet
+                          // has actually opened, reaching its minimum must
+                          // still complete the overlay teardown instead of
+                          // leaving an invisible backdrop that intercepts all
+                          // taps. depth == 0 = hanya sheet drawer ini, bukan
+                          // scrollable nested lain (kontrak design).
+                          if (notification.depth != 0) return false;
+                          if (notification.extent >=
+                              _commentSheetDismissExtent) {
+                            _commentSheetReachedVisibleExtent = true;
+                          }
+                          if (_commentSheetReachedVisibleExtent &&
+                              !_commentSheetClosingFromDrag &&
+                              notification.extent <=
+                                  _commentSheetMinExtent +
+                                      feedCommentTerminalExtentEpsilon) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) _closeComments();
+                            });
+                          }
+                          return false;
                         },
+                        child: DraggableScrollableSheet(
+                          controller: _commentSheetController,
+                          initialChildSize: _commentSheetMinExtent,
+                          minChildSize: _commentSheetMinExtent,
+                          maxChildSize: commentSheetMaxExtent,
+                          snap: true,
+                          snapSizes: commentSheetMaxExtent >
+                                  _commentSheetInitialExtent
+                              ? [
+                                  _commentSheetInitialExtent,
+                                  commentSheetMaxExtent,
+                                ]
+                              : const [_commentSheetInitialExtent],
+                          builder: (context, scrollController) {
+                            return PrimaryScrollController(
+                              controller: scrollController,
+                              child: FeedCommentSheet(
+                                post: widget.post,
+                                applyKeyboardInset: false,
+                                sheetScrollController: scrollController,
+                                onClose: _closeComments,
+                                onCloseAndWait: _closeCommentsAndWait,
+                                onDragUpdate: _onCommentDragUpdate,
+                                onDragEnd: _onCommentDragEnd,
+                                onDragCancel: _onCommentDragCancel,
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ),
                   ),

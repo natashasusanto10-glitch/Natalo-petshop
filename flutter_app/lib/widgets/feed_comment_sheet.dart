@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -32,6 +33,24 @@ const double feedCommentInitialExtent = 0.60;
 const double feedCommentDismissExtent = 0.30;
 const double feedCommentFlingVelocity = 520;
 const Duration feedCommentSnapDuration = Duration(milliseconds: 220);
+
+/// Ambang guard terminal-extent defensif yang dipakai adapter Feed
+/// (foto/carousel + video): begitu drawer pernah mencapai extent visible,
+/// notifikasi extent <= minimum + epsilon ini meminta close lifecycle tepat
+/// satu kali. Sedikit di atas nol supaya jitter sub-pixel saat sheet
+/// menyentuh dasar tetap tertangkap; latch reached-visible yang mencegah
+/// guard menutup selama animasi opening melintasi extent kecil.
+const double feedCommentTerminalExtentEpsilon = 0.02;
+
+/// Release-settle: saat pointer TERAKHIR di area drawer terlepas/batal dan
+/// sheet berada di bawah initial, adapter menyelesaikannya lewat
+/// [commentSnapTargetFor] dengan velocity hasil VelocityTracker pointer itu.
+/// Ini adalah call-site "penyelesaian drag milik scrollable/list" dari
+/// design: content-drag memakai policy yang SAMA dengan handle (bukan snap
+/// directional framework), sekaligus pertahanan untuk gesture yang
+/// recognizer/scrollable-nya mati di tengah jalan (mis. body swap 104px
+/// saat content-drag). Tidak pernah berjalan selama masih ada pointer aktif
+/// — drawer wajib tetap mengikuti jari.
 
 enum CommentSnapTarget { close, initial, max }
 
@@ -444,11 +463,21 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface>
   late final DraggableScrollableController _controller;
   AnimationController? _extentAnimationController;
   Timer? _openWatchdog;
+  Timer? _closeWatchdog;
+  Timer? _strandedSettleTimer;
+  int _activeDrawerPointers = 0;
+  final Map<int, VelocityTracker> _drawerVelocityTrackers =
+      <int, VelocityTracker>{};
   Completer<void>? _closeCompleter;
   int _transition = 0;
   bool _mountedDrawer = false;
   bool _closing = false;
   bool _maximumNotified = false;
+
+  /// Latch guard terminal-extent: baru true setelah sheet mencapai extent
+  /// visible (>= dismiss). Mencegah guard menutup drawer saat animasi
+  /// opening baru melintasi extent kecil dari 0.
+  bool _reachedVisibleExtent = false;
   double _extent = 0;
   final ValueNotifier<double> _extentListenable = ValueNotifier<double>(0);
 
@@ -475,6 +504,8 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface>
   @override
   void dispose() {
     _openWatchdog?.cancel();
+    _closeWatchdog?.cancel();
+    _strandedSettleTimer?.cancel();
     _stopExtentAnimation();
     final completer = _closeCompleter;
     _closeCompleter = null;
@@ -563,6 +594,10 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface>
     final transition = ++_transition;
     _closing = false;
     _maximumNotified = false;
+    _reachedVisibleExtent = false;
+    // Listener pointer ikut unmount bersama drawer sebelumnya — pointer yang
+    // masih down saat itu tidak pernah mengirim up. Mulai sesi bersih.
+    _resetDrawerPointerTracking();
     setState(() {
       _mountedDrawer = true;
       _extent = 0;
@@ -593,10 +628,13 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface>
 
   void _failOpen() {
     _openWatchdog?.cancel();
+    _strandedSettleTimer?.cancel();
+    _resetDrawerPointerTracking();
     _stopExtentAnimation();
     _transition++;
     _closing = false;
     _maximumNotified = false;
+    _reachedVisibleExtent = false;
     if (mounted) {
       setState(() {
         _mountedDrawer = false;
@@ -637,11 +675,22 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface>
   }
 
   void _handleDragEnd(DragEndDetails details) {
+    _settleWithVelocity(details.primaryVelocity ?? 0);
+  }
+
+  /// Pointer cancellation di handle = release berkecepatan nol (policy sama,
+  /// sesuai kontrak Release Policy). Tanpa ini, drag yang dibatalkan sistem
+  /// meninggalkan sheet di extent jumpTo terakhir yang arbitrer.
+  void _handleDragCancel() {
+    _settleWithVelocity(0);
+  }
+
+  void _settleWithVelocity(double velocity) {
     if (!_mountedDrawer || !_controller.isAttached || _closing) return;
     final maxExtent = _maxExtent(context);
     final target = commentSnapTargetFor(
       size: _controller.size,
-      velocity: details.primaryVelocity ?? 0,
+      velocity: velocity,
       maxExtent: maxExtent,
     );
     switch (target) {
@@ -664,30 +713,124 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface>
     }
   }
 
+  // ── Release-settle content-drag (lihat doc konstanta
+  //    feedCommentTerminalExtentEpsilon di atas file) ──
+  // Pointer di-track mentah (Listener, bukan gesture arena) supaya adapter
+  // tahu kapan pointer TERAKHIR lepas dan berapa velocity-nya. Settle hanya
+  // berjalan saat tidak ada pointer aktif — drawer tidak boleh disambar
+  // dari jari yang masih menahan (kontrak: drawer mengikuti jari kontinu).
+
+  void _onDrawerPointerDown(PointerDownEvent event) {
+    _activeDrawerPointers++;
+    // Sentuhan baru membatalkan settle tertunda — jari yang menangkap sheet
+    // yang sedang bergerak memiliki kendali penuh lagi.
+    _strandedSettleTimer?.cancel();
+    _strandedSettleTimer = null;
+    _drawerVelocityTrackers[event.pointer] =
+        VelocityTracker.withKind(event.kind);
+  }
+
+  void _onDrawerPointerMove(PointerMoveEvent event) {
+    _drawerVelocityTrackers[event.pointer]
+        ?.addPosition(event.timeStamp, event.position);
+  }
+
+  void _onDrawerPointerUp(PointerUpEvent event) {
+    final tracker = _drawerVelocityTrackers.remove(event.pointer);
+    _activeDrawerPointers = math.max(0, _activeDrawerPointers - 1);
+    if (_activeDrawerPointers > 0) return;
+    _scheduleReleaseSettle(
+      tracker?.getVelocity().pixelsPerSecond.dy ?? 0,
+    );
+  }
+
+  void _onDrawerPointerCancel(PointerCancelEvent event) {
+    _drawerVelocityTrackers.remove(event.pointer);
+    _activeDrawerPointers = math.max(0, _activeDrawerPointers - 1);
+    if (_activeDrawerPointers > 0) return;
+    // Cancellation = release berkecepatan nol (Release Policy).
+    _scheduleReleaseSettle(0);
+  }
+
+  void _resetDrawerPointerTracking() {
+    _activeDrawerPointers = 0;
+    _drawerVelocityTrackers.clear();
+  }
+
+  /// Selesaikan pelepasan pointer terakhir lewat policy bersama. Timer
+  /// Duration.zero menunda satu putaran event-loop supaya arena gesture
+  /// (drag-end handle / ballistic framework) berjalan lebih dulu — kalau
+  /// jalur itu sudah mengambil alih (animator adapter aktif / closing),
+  /// pemeriksaan applicable menolak dan settle ini jadi no-op.
+  void _scheduleReleaseSettle(double velocity) {
+    _strandedSettleTimer?.cancel();
+    _strandedSettleTimer = Timer(Duration.zero, () {
+      if (!_strandedSettleApplicable()) return;
+      final size = _controller.size;
+      // Di/atas initial: framework snap initial<->max sudah sesuai policy;
+      // biarkan. Di bawah initial: policy bersama yang memutuskan — ini
+      // yang menyamakan content-drag dengan handle di ujung dismiss
+      // (snap directional framework bisa menutup dari release pelan yang
+      // masih di atas dismiss; policy mengembalikannya ke initial).
+      if (size >= _initialExtent - feedCommentTerminalExtentEpsilon) return;
+      _settleWithVelocity(velocity);
+    });
+  }
+
+  bool _strandedSettleApplicable() {
+    return mounted &&
+        _mountedDrawer &&
+        !_closing &&
+        _activeDrawerPointers == 0 &&
+        _extentAnimationController == null &&
+        _controller.isAttached;
+  }
+
   void _closeDrawer() {
     if (!_mountedDrawer || _closing) return;
     final transition = ++_transition;
     _closing = true;
     _openWatchdog?.cancel();
+    _strandedSettleTimer?.cancel();
     if (!_controller.isAttached) {
       _finishClose();
       return;
     }
+    const closeDuration = Duration(milliseconds: 220);
     _animateExtent(
       target: _minExtent,
-      duration: const Duration(milliseconds: 220),
+      duration: closeDuration,
       curve: Curves.easeOutCubic,
       isCurrent: () =>
           mounted && transition == _transition && _mountedDrawer && _closing,
       onComplete: _finishClose,
     );
+    // Close watchdog: kalau ticker di-mute mid-close (route lain menutup
+    // Feed, TickerMode false) callback completed animasi tidak pernah fire —
+    // tanpa fallback ini _finishClose tak jalan, onClosed tak pernah
+    // menotifikasi parent, dan overlay Feed terkunci selamanya. Guard
+    // transition menjamin watchdog tidak mempercepat close normal ataupun
+    // menjalankan finalizer dua kali; close normal membatalkannya di
+    // _finishClose.
+    _closeWatchdog?.cancel();
+    _closeWatchdog = Timer(
+      closeDuration + const Duration(milliseconds: 48),
+      () {
+        if (!mounted || transition != _transition || !_closing) return;
+        _finishClose();
+      },
+    );
   }
 
   void _finishClose() {
     _stopExtentAnimation();
+    _closeWatchdog?.cancel();
+    _strandedSettleTimer?.cancel();
+    _resetDrawerPointerTracking();
     _transition++;
     _closing = false;
     _maximumNotified = false;
+    _reachedVisibleExtent = false;
     if (mounted) {
       setState(() {
         _mountedDrawer = false;
@@ -726,33 +869,71 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface>
             ),
           ),
         if (_mountedDrawer)
-          AnimatedPadding(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            padding: EdgeInsets.only(bottom: keyboardInset),
-            child: DraggableScrollableSheet(
-              controller: _controller,
-              expand: false,
-              initialChildSize: _minExtent,
-              minChildSize: _minExtent,
-              maxChildSize: maxExtent,
-              snap: true,
-              snapSizes: maxExtent > _initialExtent
-                  ? [_initialExtent, maxExtent]
-                  : const [_initialExtent],
-              shouldCloseOnMinExtent: false,
-              builder: (context, scrollController) => PrimaryScrollController(
-                controller: scrollController,
-                child: FeedCommentSheet(
-                  post: widget.post,
-                  applyKeyboardInset: false,
-                  sheetScrollController: scrollController,
-                  onClose: _requestClose,
-                  onCloseAndWait: _requestCloseAndWait,
-                  onDragUpdate: _handleDragUpdate,
-                  onDragEnd: _handleDragEnd,
-                  sessionStore: widget.sessionStore,
-                  viewerIdentityListenable: widget.viewerIdentityListenable,
+          // Listener pointer mentah (bukan gesture arena): melacak pointer
+          // aktif + velocity supaya pelepasan pointer TERAKHIR di area drawer
+          // diselesaikan lewat policy bersama (release-settle) — paritas
+          // handle vs content-drag + pertahanan untuk recognizer/scrollable
+          // yang mati mid-gesture tanpa pernah memanggil drag-end.
+          Listener(
+            onPointerDown: _onDrawerPointerDown,
+            onPointerMove: _onDrawerPointerMove,
+            onPointerUp: _onDrawerPointerUp,
+            onPointerCancel: _onDrawerPointerCancel,
+            child: AnimatedPadding(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              padding: EdgeInsets.only(bottom: keyboardInset),
+              // Guard terminal-extent (paritas dengan adapter video): drag
+              // yang dimulai di dalam list komentar dimiliki
+              // DraggableScrollableSheet sehingga drag-end handle tidak
+              // pernah dipanggil. Begitu sheet pernah visible, sampainya
+              // extent ke minimum wajib meminta close lifecycle — tanpa ini
+              // sheet diam di extent 0 sementara _mountedDrawer tetap true:
+              // overlay/rail/nav/paging terkunci dan media tampil full-bleed
+              // tanpa jalan kembali (invisible-open).
+              child: NotificationListener<DraggableScrollableNotification>(
+                onNotification: (notification) {
+                  if (notification.depth != 0) return false;
+                  if (notification.extent >= _dismissExtent) {
+                    _reachedVisibleExtent = true;
+                  }
+                  if (_reachedVisibleExtent &&
+                      !_closing &&
+                      notification.extent <=
+                          _minExtent + feedCommentTerminalExtentEpsilon) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _requestClose();
+                    });
+                  }
+                  return false;
+                },
+                child: DraggableScrollableSheet(
+                  controller: _controller,
+                  expand: false,
+                  initialChildSize: _minExtent,
+                  minChildSize: _minExtent,
+                  maxChildSize: maxExtent,
+                  snap: true,
+                  snapSizes: maxExtent > _initialExtent
+                      ? [_initialExtent, maxExtent]
+                      : const [_initialExtent],
+                  shouldCloseOnMinExtent: false,
+                  builder: (context, scrollController) =>
+                      PrimaryScrollController(
+                    controller: scrollController,
+                    child: FeedCommentSheet(
+                      post: widget.post,
+                      applyKeyboardInset: false,
+                      sheetScrollController: scrollController,
+                      onClose: _requestClose,
+                      onCloseAndWait: _requestCloseAndWait,
+                      onDragUpdate: _handleDragUpdate,
+                      onDragEnd: _handleDragEnd,
+                      onDragCancel: _handleDragCancel,
+                      sessionStore: widget.sessionStore,
+                      viewerIdentityListenable: widget.viewerIdentityListenable,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -823,6 +1004,11 @@ class FeedCommentSheet extends StatefulWidget {
   /// dismiss saat user drag handle ke bawah.
   final ValueChanged<DragUpdateDetails>? onDragUpdate;
   final ValueChanged<DragEndDetails>? onDragEnd;
+
+  /// Pointer cancellation di handle — adapter WAJIB menyelesaikannya seperti
+  /// release berkecepatan nol (policy [commentSnapTargetFor] yang sama),
+  /// supaya drag yang dibatalkan sistem tidak meninggalkan partial extent.
+  final VoidCallback? onDragCancel;
   final FeedCommentSessionStore? sessionStore;
   final ValueListenable<FeedCommentViewerIdentity>? viewerIdentityListenable;
 
@@ -835,6 +1021,7 @@ class FeedCommentSheet extends StatefulWidget {
     this.onCloseAndWait,
     this.onDragUpdate,
     this.onDragEnd,
+    this.onDragCancel,
     this.sessionStore,
     this.viewerIdentityListenable,
   });
@@ -1631,18 +1818,34 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // DraggableScrollableSheet is mounted at extent 0 and then animated
-        // upward. During those first frames there is not enough room for the
-        // handle + composer, so laying out the complete sheet produces a
-        // transient RenderFlex overflow (and a visible flash in profile
-        // builds). Use a scrollable ultra-compact layout instead: controller
-        // attachment, drag, reply/mention, and the composer all stay active.
-        if (constraints.hasBoundedHeight &&
-            constraints.maxHeight < _minimumInteractiveHeight) {
-          return _buildUltraCompactSheet(keyboardInset);
-        }
-        final compactChrome = constraints.hasBoundedHeight &&
-            constraints.maxHeight < _compactInteractiveHeight;
+        // ── Stable sheet shell ──
+        // Clip, background Material, dan drag handle TIDAK pernah berganti
+        // identity, berapa pun tinggi sheet. Hanya BODY di bawah handle yang
+        // beradaptasi saat tinggi melintasi _minimumInteractiveHeight (104):
+        // body normal (list + composer pinned) vs body ultra-compact
+        // (scrollable, composer tetap terjangkau, bebas overflow).
+        //
+        // Dulu SELURUH root di-swap (Column <-> root ListView) dengan handle
+        // di dalam cabang yang di-swap. ValueKey handle tidak menyelamatkan
+        // element saat tipe parent berubah, jadi VerticalDragGestureRecognizer
+        // ikut di-unmount DI TENGAH gesture setiap tinggi melintasi 104px —
+        // onDragEnd tidak pernah fire dan sheet tertinggal sebagai sliver.
+        // Struktur Stack ini mengeliminasi unmount tersebut: handle selalu
+        // element yang sama.
+        final bounded = constraints.hasBoundedHeight;
+        final maxHeight = bounded ? constraints.maxHeight : double.infinity;
+        final ultraCompact = bounded && maxHeight < _minimumInteractiveHeight;
+        final compactChrome =
+            !ultraCompact && bounded && maxHeight < _compactInteractiveHeight;
+        // Body mulai di bawah handle; saat tinggi < tinggi handle, body
+        // mendapat 0 (Positioned dengan top ter-clamp) — tidak pernah
+        // menghasilkan constraint negatif ataupun RenderFlex overflow.
+        final bodyTop =
+            bounded ? math.min(_dragHandleExtent, maxHeight) : _dragHandleExtent;
+
+        final body = ultraCompact
+            ? _buildUltraCompactBody(keyboardInset)
+            : _buildNormalBody(keyboardInset, compactChrome: compactChrome);
 
         return ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -1658,21 +1861,24 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
             // bawah. Removed — Instagram Reels TIDAK punya border line di
             // tepi atas drawer.
             color: const Color(0xFF101114),
-            child: Column(
+            child: Stack(
               children: [
-                // ── Drag handle ──
-                _buildDragHandle(),
-
-                // ── List comments ──
-                Expanded(
-                  child: _buildListBody(),
+                // ── Body (satu-satunya bagian yang adaptif) ──
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: bodyTop,
+                  bottom: 0,
+                  child: body,
                 ),
-
-                // ── Reply banner ──
-                if (_replyTarget != null) _buildReplyBanner(),
-
-                // ── Input bar ──
-                _buildInputBar(keyboardInset, compact: compactChrome),
+                // ── Drag handle — identity stabil di semua tinggi ──
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  height: bodyTop,
+                  child: _buildDragHandle(),
+                ),
               ],
             ),
           ),
@@ -1681,28 +1887,47 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     );
   }
 
-  Widget _buildUltraCompactSheet(double keyboardInset) {
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      child: Material(
-        color: const Color(0xFF101114),
-        // DraggableScrollableSheet requires its supplied ScrollController to
-        // remain attached even at a tiny extent. A ListView also lets the
-        // composer/reply/mention chrome remain reachable instead of being
-        // permanently replaced by a decorative opening shell.
-        child: ListView(
-          controller: widget.sheetScrollController,
-          physics: const ClampingScrollPhysics(),
-          padding: EdgeInsets.zero,
-          children: [
-            _buildDragHandle(),
-            if (_replyTarget != null) _buildReplyBanner(),
-            _buildInputBar(keyboardInset, compact: true),
-          ],
+  /// Body normal (tinggi >= 104): list komentar mengisi ruang, reply banner
+  /// dan composer pinned di bawah — identik dengan layout Column lama minus
+  /// drag handle (yang kini hidup di shell stabil).
+  Widget _buildNormalBody(double keyboardInset, {required bool compactChrome}) {
+    return Column(
+      children: [
+        // ── List comments ──
+        Expanded(
+          child: _buildListBody(),
         ),
-      ),
+
+        // ── Reply banner ──
+        if (_replyTarget != null) _buildReplyBanner(),
+
+        // ── Input bar ──
+        _buildInputBar(keyboardInset, compact: compactChrome),
+      ],
     );
   }
+
+  /// Body ultra-compact (tinggi < 104): DraggableScrollableSheet is mounted
+  /// at extent 0 and then animated upward. During those first frames there is
+  /// not enough room for the composer, so laying out the complete body would
+  /// produce a transient RenderFlex overflow (and a visible flash in profile
+  /// builds). Use a scrollable layout instead: controller attachment,
+  /// reply/mention, and the composer all stay active. Drag handle TIDAK ada
+  /// di sini — ia hidup di shell stabil di atas body.
+  Widget _buildUltraCompactBody(double keyboardInset) {
+    return ListView(
+      controller: widget.sheetScrollController,
+      physics: const ClampingScrollPhysics(),
+      padding: EdgeInsets.zero,
+      children: [
+        if (_replyTarget != null) _buildReplyBanner(),
+        _buildInputBar(keyboardInset, compact: true),
+      ],
+    );
+  }
+
+  /// Tinggi area drag handle di shell stabil: padding vertical 10 + bar 4.
+  static const double _dragHandleExtent = 24;
 
   Widget _buildDragHandle() {
     return GestureDetector(
@@ -1710,6 +1935,9 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       behavior: HitTestBehavior.opaque,
       onVerticalDragUpdate: widget.onDragUpdate,
       onVerticalDragEnd: widget.onDragEnd,
+      // Pertahanan pointer-cancel: adapter menyelesaikan seperti release
+      // berkecepatan nol supaya tidak ada partial resting extent.
+      onVerticalDragCancel: widget.onDragCancel,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         alignment: Alignment.center,
@@ -1727,7 +1955,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
 
   Widget _buildListBody() {
     if (_loading && _comments.isEmpty) {
-      return const _CommentListSkeleton();
+      return _CommentListSkeleton(controller: widget.sheetScrollController);
     }
     if (_error != null && _comments.isEmpty) {
       return NataloPawRefreshIndicator(
@@ -2708,12 +2936,19 @@ class _SendButton extends StatelessWidget {
 }
 
 /// Skeleton loading state — 5 comment placeholder rows dengan shimmer.
+///
+/// [controller] = sheetScrollController milik DraggableScrollableSheet:
+/// WAJIB tetap attached ke scrollable aktif juga selama loading, supaya
+/// content-drag di atas skeleton tetap menggerakkan sheet (bukan mati rasa).
 class _CommentListSkeleton extends StatelessWidget {
-  const _CommentListSkeleton();
+  final ScrollController? controller;
+
+  const _CommentListSkeleton({this.controller});
 
   @override
   Widget build(BuildContext context) {
     return ListView(
+      controller: controller,
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: List.generate(
         5,

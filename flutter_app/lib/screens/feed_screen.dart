@@ -39,6 +39,7 @@ import '../state/feed_local_store.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../state/settings_store.dart';
+import '../utils/android_back_overlays.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/bottom_nav.dart';
@@ -1676,6 +1677,20 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   int _shareCount = 0;
   bool _shareInFlight = false;
   bool _commentDrawerOpen = false;
+
+  /// True selama animasi close yang dipicu Android back berjalan (flag
+  /// [_commentDrawerOpen] sudah false tapi surface masih hidup). Menjaga
+  /// back ownership selama fase itu — paritas dengan video yang memakai
+  /// phase `closing` (_commentDrawerMounted tetap true saat closing).
+  bool _commentDrawerClosing = false;
+
+  /// Lease lock overlay Feed — dilepas HANYA lewat
+  /// [_releaseCommentOverlayLock] supaya rail/chrome/nav/paging selalu pulih
+  /// tepat sekali, apa pun jalur close-nya.
+  bool _commentOverlayLockHeld = false;
+  bool _androidBackCommentCloserRegistered = false;
+  late final VoidCallback _androidBackCommentCloserCallback =
+      _androidBackCommentCloser;
   bool _hideOverlayForLongPress = false;
   bool _hideOverlayForPinchZoom = false;
 
@@ -1792,6 +1807,21 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
         _captionExpanded) {
       _captionExpanded = false;
     }
+  }
+
+  @override
+  void deactivate() {
+    // View keluar dari tree (swipe post lain / pindah tab) selagi drawer
+    // aktif: lepas back closer + lock overlay sekarang — surface ikut
+    // ter-unmount sehingga onClosed tidak akan pernah datang. Tanpa ini
+    // closer basi menelan back press tab lain dan Feed terkunci selamanya.
+    // Flag di-reset langsung (tanpa setState — ilegal saat deactivate)
+    // supaya reactivate membangun ulang dari keadaan closed yang konsisten.
+    _commentDrawerOpen = false;
+    _commentDrawerClosing = false;
+    _unregisterAndroidBackCommentCloser();
+    _releaseCommentOverlayLock(defer: true);
+    super.deactivate();
   }
 
   @override
@@ -1920,14 +1950,75 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     if (_commentDrawerOpen) return;
     AppHaptics.tap();
     FocusScope.of(context).unfocus();
-    widget.onOverlayStateChanged(true);
+    _acquireCommentOverlayLock();
+    // Android back ownership — paritas dengan adapter video: back menutup
+    // drawer DULU, bukan pindah tab / double-back exit.
+    _registerAndroidBackCommentCloser();
     if (mounted) setState(() => _commentDrawerOpen = true);
   }
 
+  /// SEMUA jalur close (handle, backdrop, guard terminal, Android back)
+  /// berakhir di sini via [FeedReelsCommentSurface.onClosed]. Lock overlay
+  /// dilepas berdasarkan lease terpisah — BUKAN flag [_commentDrawerOpen] —
+  /// supaya close yang diminta parent (back press men-set flag false lebih
+  /// dulu) tetap melepaskan lock saat surface selesai menutup.
   void _onEmbeddedCommentClosed() {
-    if (!mounted || !_commentDrawerOpen) return;
-    setState(() => _commentDrawerOpen = false);
-    widget.onOverlayStateChanged(false);
+    _commentDrawerClosing = false;
+    _unregisterAndroidBackCommentCloser();
+    if (mounted && _commentDrawerOpen) {
+      setState(() => _commentDrawerOpen = false);
+    }
+    _releaseCommentOverlayLock();
+  }
+
+  void _acquireCommentOverlayLock() {
+    if (_commentOverlayLockHeld) return;
+    _commentOverlayLockHeld = true;
+    widget.onOverlayStateChanged(true);
+  }
+
+  void _releaseCommentOverlayLock({bool defer = false}) {
+    if (!_commentOverlayLockHeld) return;
+    _commentOverlayLockHeld = false;
+    if (!defer) {
+      widget.onOverlayStateChanged(false);
+      return;
+    }
+    // Deactivate/dispose: parent tidak boleh setState di tengah teardown
+    // subtree — tunda ke microtask (pola yang sama dengan adapter video).
+    scheduleMicrotask(() {
+      if (_commentOverlayLockHeld) return;
+      widget.onOverlayStateChanged(false);
+    });
+  }
+
+  void _registerAndroidBackCommentCloser() {
+    if (_androidBackCommentCloserRegistered) return;
+    pushAndroidBackOverlayCloser(_androidBackCommentCloserCallback);
+    _androidBackCommentCloserRegistered = true;
+  }
+
+  void _unregisterAndroidBackCommentCloser() {
+    if (!_androidBackCommentCloserRegistered) return;
+    _androidBackCommentCloserRegistered = false;
+    popAndroidBackOverlayCloser(_androidBackCommentCloserCallback);
+  }
+
+  void _androidBackCommentCloser() {
+    // consumeAndroidBackOverlay melepas closer sebelum memanggilnya. Daftar
+    // ulang segera supaya back press kedua selama animasi close tetap
+    // dikonsumsi drawer ini (sebagai no-op), bukan jatuh ke tab nav di
+    // bawahnya — persis perilaku video (_commentDrawerMounted true saat
+    // closing). _commentDrawerClosing menjaga jendela animasi close saat
+    // _commentDrawerOpen sudah false.
+    _androidBackCommentCloserRegistered = false;
+    if (!_commentDrawerOpen && !_commentDrawerClosing) return;
+    _registerAndroidBackCommentCloser();
+    if (!_commentDrawerOpen) return; // sedang closing — back kedua = no-op
+    _commentDrawerClosing = true;
+    // Flag open false men-drive FeedReelsCommentSurface menutup (prop open);
+    // lock overlay TETAP dipegang sampai onClosed → _onEmbeddedCommentClosed.
+    if (mounted) setState(() => _commentDrawerOpen = false);
   }
 
   Future<void> _onShare() async {
