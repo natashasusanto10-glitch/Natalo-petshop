@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 enum SocialVideoSurface { mainFeed, profileGrid, postDetail, fullscreen }
 
 enum SocialVideoLifecycleType {
@@ -14,24 +16,22 @@ enum SocialVideoLifecycleType {
 class SocialVideoObservation {
   const SocialVideoObservation({
     required this.type,
-    required this.postId,
+    required this.mediaKey,
     required this.surface,
-    required this.ownerId,
   });
 
   final SocialVideoLifecycleType type;
-  final String postId;
+  final String mediaKey;
   final SocialVideoSurface surface;
-  final String ownerId;
 }
 
 class SocialVideoCollision {
   const SocialVideoCollision({
-    required this.postId,
+    required this.mediaKey,
     required this.controllerCount,
   });
 
-  final String postId;
+  final String mediaKey;
   final int controllerCount;
 }
 
@@ -48,6 +48,8 @@ class SocialVideoObserverSnapshot {
 }
 
 class SocialVideoSessionObserver {
+  static const int maxLiveControllerCount = 256;
+
   SocialVideoSessionObserver({
     required bool enabled,
     int eventLimit = 256,
@@ -65,11 +67,12 @@ class SocialVideoSessionObserver {
   final int _eventLimit;
   final void Function(SocialVideoCollision collision)? _onCollision;
   final Expando<int> _controllerIds = Expando<int>();
-  final Map<int, _LiveController> _liveControllers = <int, _LiveController>{};
+  final LinkedHashMap<int, _LiveController> _liveControllers =
+      LinkedHashMap<int, _LiveController>();
   final List<SocialVideoObservation> _events = <SocialVideoObservation>[];
   final Map<String, SocialVideoCollision> _collisions =
       <String, SocialVideoCollision>{};
-  final Set<String> _reportedCollisionPosts = <String>{};
+  final Map<String, Set<int>> _reportedCollisionSets = <String, Set<int>>{};
   int _nextControllerId = 0;
 
   void observeController({
@@ -88,9 +91,8 @@ class SocialVideoSessionObserver {
     _recordEvent(
       SocialVideoObservation(
         type: type,
-        postId: postId,
+        mediaKey: _anonymousMediaKey(postId),
         surface: surface,
-        ownerId: ownerId,
       ),
     );
 
@@ -98,10 +100,11 @@ class SocialVideoSessionObserver {
         type == SocialVideoLifecycleType.disposed) {
       _removeController(controllerId);
     } else {
+      _evictIfNeeded(controllerId);
       _liveControllers[controllerId] = _LiveController(
         postId: postId,
         surface: surface,
-        ownerId: ownerId,
+        dormant: type == SocialVideoLifecycleType.dormant,
       );
     }
     _refreshCollisions();
@@ -117,7 +120,7 @@ class SocialVideoSessionObserver {
     _liveControllers.clear();
     _events.clear();
     _collisions.clear();
-    _reportedCollisionPosts.clear();
+    _reportedCollisionSets.clear();
   }
 
   int _idFor(Object controllerIdentity) {
@@ -138,8 +141,23 @@ class SocialVideoSessionObserver {
     _liveControllers.remove(controllerId);
   }
 
+  void _evictIfNeeded(int controllerId) {
+    if (_liveControllers.containsKey(controllerId) ||
+        _liveControllers.length < maxLiveControllerCount) {
+      return;
+    }
+
+    MapEntry<int, _LiveController>? dormant;
+    for (final entry in _liveControllers.entries) {
+      if (entry.value.dormant) {
+        dormant = entry;
+        break;
+      }
+    }
+    _liveControllers.remove((dormant ?? _liveControllers.entries.first).key);
+  }
+
   void _refreshCollisions() {
-    final counts = <String, int>{};
     final controllerIdsByPost = <String, Set<int>>{};
     _liveControllers.forEach((controllerId, liveController) {
       controllerIdsByPost
@@ -147,42 +165,63 @@ class SocialVideoSessionObserver {
           .add(controllerId);
     });
 
-    controllerIdsByPost.forEach((postId, controllerIds) {
-      if (controllerIds.length > 1) counts[postId] = controllerIds.length;
-    });
+    final activeSets = <String, Set<int>>{
+      for (final entry in controllerIdsByPost.entries)
+        if (entry.value.length > 1) entry.key: entry.value,
+    };
 
     _collisions
       ..clear()
       ..addAll(
-        counts.map(
-          (postId, controllerCount) => MapEntry(
+        activeSets.map(
+          (postId, controllerIds) => MapEntry(
             postId,
             SocialVideoCollision(
-              postId: postId,
-              controllerCount: controllerCount,
+              mediaKey: _anonymousMediaKey(postId),
+              controllerCount: controllerIds.length,
             ),
           ),
         ),
       );
 
-    for (final entry in counts.entries) {
-      if (_reportedCollisionPosts.add(entry.key)) {
-        _onCollision?.call(_collisions[entry.key]!);
+    for (final entry in activeSets.entries) {
+      final previous = _reportedCollisionSets[entry.key];
+      if (!_sameControllerSet(previous, entry.value)) {
+        _reportedCollisionSets[entry.key] = Set<int>.of(entry.value);
+        try {
+          _onCollision?.call(_collisions[entry.key]!);
+        } catch (_) {
+          // Diagnostics must never interrupt lifecycle observation.
+        }
       }
     }
-    _reportedCollisionPosts
-        .removeWhere((postId) => !counts.containsKey(postId));
+    _reportedCollisionSets
+        .removeWhere((postId, _) => !activeSets.containsKey(postId));
   }
+
+  bool _sameControllerSet(Set<int>? first, Set<int> second) =>
+      first != null &&
+      first.length == second.length &&
+      first.containsAll(second);
 }
 
 class _LiveController {
   const _LiveController({
     required this.postId,
     required this.surface,
-    required this.ownerId,
+    required this.dormant,
   });
 
   final String postId;
   final SocialVideoSurface surface;
-  final String ownerId;
+  final bool dormant;
+}
+
+String _anonymousMediaKey(String postId) {
+  var hash = 0x811c9dc5;
+  for (final codeUnit in postId.codeUnits) {
+    hash ^= codeUnit;
+    hash = (hash * 0x01000193) & 0xffffffff;
+  }
+  return hash.toRadixString(16).padLeft(8, '0');
 }

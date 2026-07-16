@@ -35,7 +35,7 @@ void main() {
       controllerIdentity: Object(),
     );
 
-    expect(observer.snapshot.collisions.single.postId, 'post-a');
+    expect(observer.snapshot.collisions.single.mediaKey, isNot('post-a'));
     expect(observer.snapshot.collisions.single.controllerCount, 2);
   });
 
@@ -176,8 +176,8 @@ void main() {
     }
 
     expect(observer.snapshot.events, hasLength(256));
-    expect(observer.snapshot.events.first.postId, 'post-44');
-    expect(observer.snapshot.events.last.postId, 'post-299');
+    expect(observer.snapshot.events.first.mediaKey, _mediaKeyFor('post-44'));
+    expect(observer.snapshot.events.last.mediaKey, _mediaKeyFor('post-299'));
   });
 
   test('coalesces repeated identical collision sets and invokes callback once',
@@ -216,8 +216,7 @@ void main() {
     expect(collisions, hasLength(1));
   });
 
-  test('does not expose controller identities in observations or collisions',
-      () {
+  test('diagnostics expose only anonymous media keys and surface', () {
     final controller = Object();
     final observer = SocialVideoSessionObserver(enabled: true);
     observer.observeController(
@@ -228,9 +227,146 @@ void main() {
       controllerIdentity: controller,
     );
 
-    expect(observer.snapshot.events.single.toString(),
-        isNot(contains(controller.toString())));
-    expect(observer.snapshot.collisions.toString(),
-        isNot(contains(controller.toString())));
+    final event = observer.snapshot.events.single;
+    expect(event.mediaKey, _mediaKeyFor('post-a'));
+    expect(event.mediaKey, isNot('post-a'));
+    expect(event.surface, SocialVideoSurface.mainFeed);
+    expect(event.toString(), isNot(contains('post-a')));
+    expect(event.toString(), isNot(contains('feed')));
+    expect(event.toString(), isNot(contains(controller.toString())));
   });
+
+  test('same post id produces the same anonymous media key', () {
+    final first = SocialVideoSessionObserver(enabled: true);
+    final second = SocialVideoSessionObserver(enabled: true);
+
+    first.observeController(
+      type: SocialVideoLifecycleType.created,
+      postId: 'post-a',
+      surface: SocialVideoSurface.mainFeed,
+      ownerId: 'feed-a',
+      controllerIdentity: Object(),
+    );
+    second.observeController(
+      type: SocialVideoLifecycleType.created,
+      postId: 'post-a',
+      surface: SocialVideoSurface.postDetail,
+      ownerId: 'detail-a',
+      controllerIdentity: Object(),
+    );
+
+    expect(first.snapshot.events.single.mediaKey,
+        second.snapshot.events.single.mediaKey);
+  });
+
+  test('evicts the oldest live controller at the hard registry bound', () {
+    final observer = SocialVideoSessionObserver(enabled: true);
+    final firstController = Object();
+
+    observer.observeController(
+      type: SocialVideoLifecycleType.created,
+      postId: 'post-first',
+      surface: SocialVideoSurface.mainFeed,
+      ownerId: 'feed-first',
+      controllerIdentity: firstController,
+    );
+    for (var index = 1;
+        index < SocialVideoSessionObserver.maxLiveControllerCount;
+        index++) {
+      observer.observeController(
+        type: SocialVideoLifecycleType.created,
+        postId: 'post-$index',
+        surface: SocialVideoSurface.mainFeed,
+        ownerId: 'feed-$index',
+        controllerIdentity: Object(),
+      );
+    }
+
+    observer.observeController(
+      type: SocialVideoLifecycleType.created,
+      postId: 'post-overflow',
+      surface: SocialVideoSurface.mainFeed,
+      ownerId: 'feed-overflow',
+      controllerIdentity: Object(),
+    );
+
+    expect(observer.snapshot.liveControllerCount,
+        SocialVideoSessionObserver.maxLiveControllerCount);
+    observer.observeController(
+      type: SocialVideoLifecycleType.disposed,
+      postId: 'post-first',
+      surface: SocialVideoSurface.mainFeed,
+      ownerId: 'feed-first',
+      controllerIdentity: firstController,
+    );
+    expect(observer.snapshot.liveControllerCount,
+        SocialVideoSessionObserver.maxLiveControllerCount);
+  });
+
+  test('collision callback re-fires when the active controller set changes',
+      () {
+    final collisions = <SocialVideoCollision>[];
+    final observer = SocialVideoSessionObserver(
+      enabled: true,
+      onCollision: collisions.add,
+    );
+    final first = Object();
+    final second = Object();
+    final third = Object();
+
+    for (final controller in [first, second]) {
+      observer.observeController(
+        type: SocialVideoLifecycleType.created,
+        postId: 'post-a',
+        surface: SocialVideoSurface.mainFeed,
+        ownerId: 'feed',
+        controllerIdentity: controller,
+      );
+    }
+    observer.observeController(
+      type: SocialVideoLifecycleType.created,
+      postId: 'post-a',
+      surface: SocialVideoSurface.postDetail,
+      ownerId: 'detail',
+      controllerIdentity: third,
+    );
+
+    expect(collisions, hasLength(2));
+    expect(collisions.last.controllerCount, 3);
+  });
+
+  test('callback exceptions do not interrupt observation or lifecycle state',
+      () {
+    final observer = SocialVideoSessionObserver(
+      enabled: true,
+      onCollision: (_) => throw StateError('diagnostic failure'),
+    );
+
+    observer.observeController(
+      type: SocialVideoLifecycleType.created,
+      postId: 'post-a',
+      surface: SocialVideoSurface.mainFeed,
+      ownerId: 'feed',
+      controllerIdentity: Object(),
+    );
+    observer.observeController(
+      type: SocialVideoLifecycleType.created,
+      postId: 'post-a',
+      surface: SocialVideoSurface.postDetail,
+      ownerId: 'detail',
+      controllerIdentity: Object(),
+    );
+
+    expect(observer.snapshot.liveControllerCount, 2);
+    expect(observer.snapshot.collisions.single.controllerCount, 2);
+  });
+}
+
+String _mediaKeyFor(String postId) {
+  var hash = 0x811c9dc5;
+  for (final codeUnit in postId.codeUnits) {
+    hash ^= codeUnit;
+    hash = (hash * 0x01000193) & 0xffffffff;
+  }
+  return hash.toRadixString(16).padLeft(8, '0');
 }
