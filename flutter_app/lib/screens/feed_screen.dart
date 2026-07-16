@@ -2176,49 +2176,6 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
         post: post,
         open: _commentDrawerOpen,
         onClosed: _onEmbeddedCommentClosed,
-        child: ColoredBox(
-          color: Colors.black,
-          // Media-only child. Feed chrome lives in [overlay] so the drawer
-          // can compact the photo without squeezing captions/actions into it.
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onDoubleTapDown: _rememberHeartBurstPosition,
-            onDoubleTap: _onDoubleTapLike,
-            onLongPressStart: _onLongPressStart,
-            onLongPressEnd: _onLongPressEnd,
-            child: PageView.builder(
-              controller: _photoPageController,
-              itemCount: photos.length,
-              onPageChanged: (idx) => setState(() => _photoIndex = idx),
-              itemBuilder: (context, index) {
-                final photo = photos[index];
-                // Pinch-zoom sementara: begitu gesture selesai, foto
-                // snap back ke ukuran asli supaya feed tidak nyangkut
-                // dalam state zoom.
-                return SizedBox.expand(
-                  child: FeedPostSnapBackZoomMedia(
-                    clipBehavior: Clip.none,
-                    minScale: 1,
-                    maxScale: 4,
-                    onZoomingChanged: _onMediaZoomChanged,
-                    child: CachedNetworkImage(
-                      imageUrl: photo.url,
-                      fit: BoxFit.contain,
-                      placeholder: (_, __) => const SizedBox.shrink(),
-                      errorWidget: (_, __, ___) => const Center(
-                        child: Icon(
-                          Icons.broken_image_outlined,
-                          color: Colors.white54,
-                          size: 48,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
         overlay: Stack(
           fit: StackFit.expand,
           children: [
@@ -2415,6 +2372,49 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
               ),
             ),
           ],
+        ),
+        child: ColoredBox(
+          color: Colors.black,
+          // Media-only child. Feed chrome lives in [overlay] so the drawer
+          // can compact the photo without squeezing captions/actions into it.
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onDoubleTapDown: _rememberHeartBurstPosition,
+            onDoubleTap: _onDoubleTapLike,
+            onLongPressStart: _onLongPressStart,
+            onLongPressEnd: _onLongPressEnd,
+            child: PageView.builder(
+              controller: _photoPageController,
+              itemCount: photos.length,
+              onPageChanged: (idx) => setState(() => _photoIndex = idx),
+              itemBuilder: (context, index) {
+                final photo = photos[index];
+                // Pinch-zoom sementara: begitu gesture selesai, foto
+                // snap back ke ukuran asli supaya feed tidak nyangkut
+                // dalam state zoom.
+                return SizedBox.expand(
+                  child: FeedPostSnapBackZoomMedia(
+                    clipBehavior: Clip.none,
+                    minScale: 1,
+                    maxScale: 4,
+                    onZoomingChanged: _onMediaZoomChanged,
+                    child: CachedNetworkImage(
+                      imageUrl: photo.url,
+                      fit: BoxFit.contain,
+                      placeholder: (_, __) => const SizedBox.shrink(),
+                      errorWidget: (_, __, ___) => const Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.white54,
+                          size: 48,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
         ),
       ),
     );

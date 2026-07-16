@@ -123,6 +123,161 @@ void main() {
     expect(find.byType(FeedCommentSheet), findsOneWidget);
   });
 
+  testWidgets('photo comment handle drags drawer and media upward together',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final mediaKey = GlobalKey();
+    final open = ValueNotifier<bool>(false);
+    var extent = 0.0;
+    addTearDown(open.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder<bool>(
+            valueListenable: open,
+            builder: (context, isOpen, _) => FeedReelsCommentSurface(
+              post: _photoPost(),
+              open: isOpen,
+              onClosed: () => open.value = false,
+              onExtentChanged: (value) => extent = value,
+              child: ColoredBox(key: mediaKey, color: Colors.orange),
+            ),
+          ),
+        ),
+      ),
+    );
+    open.value = true;
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+
+    final handle = find.byKey(const ValueKey('feed-comment-drag-handle'));
+    final drawer = find.byType(FeedCommentSheet);
+    expect(extent, closeTo(feedCommentInitialExtent, 0.02));
+    final extentBefore = extent;
+    final mediaBottomBefore = tester.getRect(find.byKey(mediaKey)).bottom;
+
+    final gesture = await tester.startGesture(tester.getCenter(handle));
+    await gesture.moveBy(const Offset(0, -90));
+    await tester.pump();
+
+    expect(extent, greaterThan(extentBefore));
+    final extentAfterUp = extent;
+    final mediaBottomAfterUp = tester.getRect(find.byKey(mediaKey)).bottom;
+    expect(mediaBottomAfterUp, lessThan(mediaBottomBefore));
+    expect(
+      mediaBottomAfterUp,
+      closeTo(tester.getTopLeft(drawer).dy, 1),
+    );
+
+    await gesture.moveBy(const Offset(0, 45));
+    await tester.pump();
+
+    expect(extent, lessThan(extentAfterUp));
+    expect(
+      tester.getRect(find.byKey(mediaKey)).bottom,
+      greaterThan(mediaBottomAfterUp),
+    );
+    expect(
+      tester.getRect(find.byKey(mediaKey)).bottom,
+      closeTo(tester.getTopLeft(drawer).dy, 1),
+    );
+
+    await gesture.up();
+    await tester.pump();
+  });
+
+  testWidgets('photo comment surface closes and reopens from a clean extent',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final open = ValueNotifier<bool>(false);
+    var extent = 0.0;
+    addTearDown(open.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder<bool>(
+            valueListenable: open,
+            builder: (context, isOpen, _) => FeedReelsCommentSurface(
+              post: _photoPost(),
+              open: isOpen,
+              onClosed: () => open.value = false,
+              onExtentChanged: (value) => extent = value,
+              child: const ColoredBox(color: Colors.orange),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    open.value = true;
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+    expect(extent, closeTo(feedCommentInitialExtent, 0.02));
+
+    open.value = false;
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.byType(FeedCommentSheet), findsNothing);
+    expect(extent, 0);
+
+    open.value = true;
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.byType(FeedCommentSheet), findsOneWidget);
+    expect(extent, closeTo(feedCommentInitialExtent, 0.02));
+  });
+
+  testWidgets('short viewport still exposes the comment composer',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 150);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final open = ValueNotifier<bool>(false);
+    addTearDown(open.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder<bool>(
+            valueListenable: open,
+            builder: (context, isOpen, _) => FeedReelsCommentSurface(
+              post: _photoPost(),
+              open: isOpen,
+              onClosed: () => open.value = false,
+              child: const ColoredBox(color: Colors.orange),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    open.value = true;
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+
+    expect(
+        find.byKey(const ValueKey('feed-comment-drag-handle')), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+  });
+
   testWidgets('photo carousel uses contain fit without cropping',
       (tester) async {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;

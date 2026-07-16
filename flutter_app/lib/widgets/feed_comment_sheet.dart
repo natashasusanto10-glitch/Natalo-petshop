@@ -434,13 +434,15 @@ class FeedReelsCommentSurface extends StatefulWidget {
       _FeedReelsCommentSurfaceState();
 }
 
-class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
+class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface>
+    with TickerProviderStateMixin {
   static const double _minExtent = 0.0;
   static const double _initialExtent = feedCommentInitialExtent;
   static const double _dismissExtent = feedCommentDismissExtent;
   static const double _maxThreshold = 0.02;
 
   late final DraggableScrollableController _controller;
+  AnimationController? _extentAnimationController;
   Timer? _openWatchdog;
   Completer<void>? _closeCompleter;
   int _transition = 0;
@@ -473,6 +475,7 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
   @override
   void dispose() {
     _openWatchdog?.cancel();
+    _stopExtentAnimation();
     final completer = _closeCompleter;
     _closeCompleter = null;
     if (completer != null && !completer.isCompleted) completer.complete();
@@ -480,6 +483,55 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
     _controller.dispose();
     _extentListenable.dispose();
     super.dispose();
+  }
+
+  void _stopExtentAnimation() {
+    final animation = _extentAnimationController;
+    _extentAnimationController = null;
+    animation?.dispose();
+  }
+
+  void _animateExtent({
+    required double target,
+    required Duration duration,
+    required Curve curve,
+    required bool Function() isCurrent,
+    VoidCallback? onComplete,
+  }) {
+    _stopExtentAnimation();
+    if (!_controller.isAttached || !isCurrent()) {
+      onComplete?.call();
+      return;
+    }
+
+    final begin = _controller.size;
+    final animation = AnimationController(vsync: this, duration: duration);
+    _extentAnimationController = animation;
+
+    void applyExtent(double value) {
+      if (!mounted || !isCurrent() || !_controller.isAttached) return;
+      try {
+        _controller.jumpTo(value);
+      } catch (_) {
+        // The sheet position can detach while the route/widget is closing.
+      }
+    }
+
+    animation.addListener(() {
+      final progress = curve.transform(animation.value);
+      applyExtent(begin + ((target - begin) * progress));
+    });
+    animation.addStatusListener((status) {
+      if (status != AnimationStatus.completed ||
+          !identical(_extentAnimationController, animation)) {
+        return;
+      }
+      applyExtent(target);
+      _extentAnimationController = null;
+      animation.dispose();
+      if (mounted && isCurrent()) onComplete?.call();
+    });
+    animation.forward();
   }
 
   double _maxExtent(BuildContext context) {
@@ -522,17 +574,13 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
         _failOpen();
         return;
       }
-      unawaited(() async {
-        try {
-          await _controller.animateTo(
-            _initialExtent,
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeOutCubic,
-          );
-        } catch (_) {
-          if (mounted && transition == _transition) _failOpen();
-        }
-      }());
+      _animateExtent(
+        target: _initialExtent,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        isCurrent: () =>
+            mounted && transition == _transition && _mountedDrawer && !_closing,
+      );
       _openWatchdog?.cancel();
       _openWatchdog = Timer(const Duration(milliseconds: 700), () {
         if (!mounted || transition != _transition || !_mountedDrawer) return;
@@ -545,6 +593,7 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
 
   void _failOpen() {
     _openWatchdog?.cancel();
+    _stopExtentAnimation();
     _transition++;
     _closing = false;
     _maximumNotified = false;
@@ -579,6 +628,7 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
     if (!_mountedDrawer || !_controller.isAttached || _closing) return;
     final delta = details.primaryDelta ?? 0;
     if (delta == 0) return;
+    _stopExtentAnimation();
     final height = math.max(1.0, MediaQuery.sizeOf(context).height);
     final next = (_controller.size - (delta / height))
         .clamp(_minExtent, _maxExtent(context))
@@ -598,17 +648,19 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
       case CommentSnapTarget.close:
         _requestClose();
       case CommentSnapTarget.max:
-        unawaited(_controller.animateTo(
-          maxExtent,
+        _animateExtent(
+          target: maxExtent,
           duration: feedCommentSnapDuration,
           curve: Curves.easeOutCubic,
-        ));
+          isCurrent: () => mounted && _mountedDrawer && !_closing,
+        );
       case CommentSnapTarget.initial:
-        unawaited(_controller.animateTo(
-          _initialExtent,
+        _animateExtent(
+          target: _initialExtent,
           duration: feedCommentSnapDuration,
           curve: Curves.easeOutCubic,
-        ));
+          isCurrent: () => mounted && _mountedDrawer && !_closing,
+        );
     }
   }
 
@@ -621,21 +673,18 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface> {
       _finishClose();
       return;
     }
-    unawaited(() async {
-      try {
-        await _controller.animateTo(
-          _minExtent,
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-        );
-      } catch (_) {
-        // The route/widget may detach during the closing transition.
-      }
-      if (mounted && transition == _transition) _finishClose();
-    }());
+    _animateExtent(
+      target: _minExtent,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      isCurrent: () =>
+          mounted && transition == _transition && _mountedDrawer && _closing,
+      onComplete: _finishClose,
+    );
   }
 
   void _finishClose() {
+    _stopExtentAnimation();
     _transition++;
     _closing = false;
     _maximumNotified = false;
@@ -796,6 +845,8 @@ class FeedCommentSheet extends StatefulWidget {
 
 class _FeedCommentSheetState extends State<FeedCommentSheet> {
   static const int _replyBatchSize = 3;
+  static const double _minimumInteractiveHeight = 104;
+  static const double _compactInteractiveHeight = 144;
 
   late final TextEditingController _inputCtrl;
   final FocusNode _inputFocus = FocusNode();
@@ -1578,53 +1629,97 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         ? MediaQuery.viewInsetsOf(context).bottom
         : 0.0;
 
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // DraggableScrollableSheet is mounted at extent 0 and then animated
+        // upward. During those first frames there is not enough room for the
+        // handle + composer, so laying out the complete sheet produces a
+        // transient RenderFlex overflow (and a visible flash in profile
+        // builds). Use a scrollable ultra-compact layout instead: controller
+        // attachment, drag, reply/mention, and the composer all stay active.
+        if (constraints.hasBoundedHeight &&
+            constraints.maxHeight < _minimumInteractiveHeight) {
+          return _buildUltraCompactSheet(keyboardInset);
+        }
+        final compactChrome = constraints.hasBoundedHeight &&
+            constraints.maxHeight < _compactInteractiveHeight;
+
+        return ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: Material(
+            // Dark drawer Instagram Reels-style — bukan putih (user spec).
+            // Background, header text, divider, input — semua flip ke variant
+            // dark dengan white alpha variants untuk visual hierarchy.
+            //
+            // BUG FIX: SEBELUMNYA ada border: Border(top: BorderSide(white
+            // alpha 0.08)) yang render 1px line subtle di tepi atas drawer.
+            // Di TestFlight build, line ini visible sebagai "blur line"
+            // mengganggu antara video terang di atas dan drawer gelap di
+            // bawah. Removed — Instagram Reels TIDAK punya border line di
+            // tepi atas drawer.
+            color: const Color(0xFF101114),
+            child: Column(
+              children: [
+                // ── Drag handle ──
+                _buildDragHandle(),
+
+                // ── List comments ──
+                Expanded(
+                  child: _buildListBody(),
+                ),
+
+                // ── Reply banner ──
+                if (_replyTarget != null) _buildReplyBanner(),
+
+                // ── Input bar ──
+                _buildInputBar(keyboardInset, compact: compactChrome),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildUltraCompactSheet(double keyboardInset) {
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       child: Material(
-        // Dark drawer Instagram Reels-style — bukan putih (user spec).
-        // Background, header text, divider, input — semua flip ke variant
-        // dark dengan white alpha variants untuk visual hierarchy.
-        //
-        // BUG FIX: SEBELUMNYA ada border: Border(top: BorderSide(white
-        // alpha 0.08)) yang render 1px line subtle di tepi atas drawer.
-        // Di TestFlight build, line ini visible sebagai "blur line"
-        // mengganggu antara video terang di atas dan drawer gelap di
-        // bawah. Removed — Instagram Reels TIDAK punya border line di
-        // tepi atas drawer.
         color: const Color(0xFF101114),
-        child: Column(
+        // DraggableScrollableSheet requires its supplied ScrollController to
+        // remain attached even at a tiny extent. A ListView also lets the
+        // composer/reply/mention chrome remain reachable instead of being
+        // permanently replaced by a decorative opening shell.
+        child: ListView(
+          controller: widget.sheetScrollController,
+          physics: const ClampingScrollPhysics(),
+          padding: EdgeInsets.zero,
           children: [
-            // ── Drag handle ──
-            GestureDetector(
-              key: const ValueKey('feed-comment-drag-handle'),
-              behavior: HitTestBehavior.opaque,
-              onVerticalDragUpdate: widget.onDragUpdate,
-              onVerticalDragEnd: widget.onDragEnd,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                alignment: Alignment.center,
-                child: Container(
-                  width: 44,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-              ),
-            ),
-
-            // ── List comments ──
-            Expanded(
-              child: _buildListBody(),
-            ),
-
-            // ── Reply banner ──
+            _buildDragHandle(),
             if (_replyTarget != null) _buildReplyBanner(),
-
-            // ── Input bar ──
-            _buildInputBar(keyboardInset),
+            _buildInputBar(keyboardInset, compact: true),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDragHandle() {
+    return GestureDetector(
+      key: const ValueKey('feed-comment-drag-handle'),
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragUpdate: widget.onDragUpdate,
+      onVerticalDragEnd: widget.onDragEnd,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        alignment: Alignment.center,
+        child: Container(
+          width: 44,
+          height: 4,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(99),
+          ),
         ),
       ),
     );
@@ -1845,16 +1940,18 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     );
   }
 
-  Widget _buildInputBar(double keyboardInset) {
+  Widget _buildInputBar(double keyboardInset, {bool compact = false}) {
     final profile = memberStore.profile;
     final initial = (profile?.name.isNotEmpty ?? false)
         ? profile!.name.substring(0, 1).toUpperCase()
         : 'N';
     final isLoggedIn = memberStore.isLoggedIn;
     final bottomSafeArea = MediaQuery.viewPaddingOf(context).bottom;
-    final bottomPadding = keyboardInset > 0
-        ? 10 + keyboardInset
-        : 18 + (bottomSafeArea > 0 ? bottomSafeArea : 16.0);
+    final bottomPadding = compact
+        ? 8.0
+        : keyboardInset > 0
+            ? 10 + keyboardInset
+            : 18 + (bottomSafeArea > 0 ? bottomSafeArea : 16.0);
 
     return Container(
       decoration: BoxDecoration(
