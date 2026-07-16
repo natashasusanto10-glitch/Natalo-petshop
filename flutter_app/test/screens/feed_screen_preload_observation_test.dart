@@ -269,6 +269,26 @@ void main() {
     expect(observer.snapshot.liveControllerCount, 0);
   });
 
+  test('stale completion cannot register after its preload slot is replaced',
+      () {
+    final staleSlot = Object();
+    final replacementSlot = Object();
+    final controllers = <String, Object>{};
+
+    final registered = registerFeedPreloadControllerIfCurrent(
+      id: 'post-stale',
+      registeredSlots: <String, Object>{'post-stale': replacementSlot},
+      candidate: staleSlot,
+      registeredGenerations: <String, int>{'post-stale': 2},
+      startedGeneration: 1,
+      controllers: controllers,
+      controller: Object(),
+    );
+
+    expect(registered, isFalse);
+    expect(controllers, isEmpty);
+  });
+
   test('MP4 preload records actual post-init identity and eviction releases it',
       () async {
     final observer = SocialVideoSessionObserver(enabled: true);

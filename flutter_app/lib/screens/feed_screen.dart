@@ -68,6 +68,29 @@ bool feedPreloadCompletionIsCurrent({
 }
 
 @visibleForTesting
+bool registerFeedPreloadControllerIfCurrent<TSlot extends Object,
+    TController extends Object>({
+  required String id,
+  required Map<String, TSlot> registeredSlots,
+  required TSlot candidate,
+  required Map<String, int> registeredGenerations,
+  required int startedGeneration,
+  required Map<String, TController> controllers,
+  required TController controller,
+}) {
+  if (!feedPreloadCompletionIsCurrent(
+    registeredSlot: registeredSlots[id],
+    candidate: candidate,
+    registeredGeneration: registeredGenerations[id],
+    startedGeneration: startedGeneration,
+  )) {
+    return false;
+  }
+  controllers[id] = controller;
+  return true;
+}
+
+@visibleForTesting
 Future<VideoPlayerController?> initializeFeedCachedPreloadForObservation({
   required CachedVideoPlayerPlus player,
   required SocialVideoSessionObserver observer,
@@ -840,7 +863,18 @@ class _FeedScreenState extends State<FeedScreen> {
             }
             return;
           }
-          _preloadedControllers[id] = controller;
+          if (!registerFeedPreloadControllerIfCurrent(
+            id: id,
+            registeredSlots: _preloadedCachedPlayers,
+            candidate: cachedPlayer,
+            registeredGenerations: _preloadSlotGenerations,
+            startedGeneration: generation,
+            controllers: _preloadedControllers,
+            controller: controller,
+          )) {
+            await _disposeCachedPreloadOnce(id, cachedPlayer, controller);
+            return;
+          }
           // Prepared state: paused, frame 0 ready, muted, looping prepped.
           // Saat widget attach via preloadedController prop, tinggal play()
           // — instant, no init lag.
