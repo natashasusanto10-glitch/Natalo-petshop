@@ -941,9 +941,10 @@ void main() {
     await tester.pump();
   });
 
-  // Aturan fit ala IG Reels: video ±9:16 → cover full-bleed (crop tipis);
-  // video lebih pendek (4:5 / square / landscape) → contain letterbox,
-  // supaya tidak terasa "zoom". Diverifikasi lewat thumbnail background
+  // Aturan framing ala IG Reels: video ±9:16 dipertahankan penuh pada
+  // canvas portrait tanpa crop horizontal; video lebih pendek (4:5 /
+  // square / landscape) memakai contain letterbox supaya tidak terasa
+  // "zoom". Diverifikasi lewat thumbnail background
   // (jalur pra-video), yang WAJIB mengikuti aturan yang sama dengan
   // player supaya tidak ada lompatan cover→contain saat video siap.
   Future<BoxFit?> pumpAndReadThumbFit(
@@ -969,10 +970,10 @@ void main() {
     return images.isEmpty ? null : images.first.fit;
   }
 
-  testWidgets('video 9:16 → background cover (full-bleed ala IG)',
+  testWidgets('video 9:16 → background contain (canvas Reels tanpa crop)',
       (tester) async {
     final fit = await pumpAndReadThumbFit(tester, 0.5625);
-    expect(fit, BoxFit.cover);
+    expect(fit, BoxFit.contain);
   });
 
   testWidgets('video square → background contain (letterbox, bukan zoom)',
@@ -984,6 +985,12 @@ void main() {
   testWidgets('video 4:5 → background contain (letterbox, bukan zoom)',
       (tester) async {
     final fit = await pumpAndReadThumbFit(tester, 0.8);
+    expect(fit, BoxFit.contain);
+  });
+
+  testWidgets('video landscape 16:9 → background contain (letterbox)',
+      (tester) async {
+    final fit = await pumpAndReadThumbFit(tester, 16 / 9);
     expect(fit, BoxFit.contain);
   });
 

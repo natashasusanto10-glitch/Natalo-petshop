@@ -3332,16 +3332,21 @@ class _MediaBackground extends StatelessWidget {
     this.compactPreview = false,
   });
 
-  /// Aturan fit ala IG Reels: full-bleed cover HANYA kalau crop-nya tipis
-  /// (video ±9:16 = 0.5625 di layar 19.5:9 cuma kepotong ~9% per sisi).
-  /// Video yang lebih "pendek" (4:5, square, landscape) kalau di-cover
-  /// terpotong 30-50% → terasa zoom; IG me-letterbox-nya (fit-lebar,
-  /// bar hitam atas/bawah). 0.68 = titik tengah 9:16 (0.5625) dan 4:5
-  /// (0.8) supaya tidak ada kasus ambang yang goyah.
+  /// Aturan fit ala IG Reels: video portrait 9:16 dipertahankan sebagai
+  /// canvas terpusat tanpa crop horizontal. Video yang lebih "pendek"
+  /// (4:5, square, landscape) memakai letterbox agar tidak terasa zoom.
+  /// Rasio yang sedikit meleset dari 9:16 tetap diperlakukan sebagai
+  /// portrait Reels supaya thumbnail tidak berganti framing saat player siap.
   static const double _coverMaxAspect = 0.68;
+  static const double _reelsAspect = 9 / 16;
+  static const double _reelsAspectTolerance = 0.04;
 
-  static BoxFit _fitForAspect(double aspect) =>
-      aspect <= _coverMaxAspect ? BoxFit.cover : BoxFit.contain;
+  static BoxFit _fitForAspect(double aspect) {
+    final isReelsPortrait =
+        (aspect - _reelsAspect).abs() <= _reelsAspectTolerance;
+    if (isReelsPortrait) return BoxFit.contain;
+    return aspect <= _coverMaxAspect ? BoxFit.cover : BoxFit.contain;
+  }
 
   @override
   Widget build(BuildContext context) {
