@@ -66,6 +66,7 @@ class VideoPlayerSession implements PlaybackSession {
     @visibleForTesting VideoSessionSeekOperation? debugSeek,
     @visibleForTesting VideoSessionVolumeOperation? debugSetVolume,
     @visibleForTesting VideoSessionOperation? debugDisposePlayer,
+    @visibleForTesting Object? debugNativeControllerIdentity,
     SocialVideoSessionObserver? observationObserver,
     SocialVideoObservationContext? observationContext,
   })  : _currentUrl = url,
@@ -84,6 +85,7 @@ class VideoPlayerSession implements PlaybackSession {
         _debugSeek = debugSeek,
         _debugSetVolume = debugSetVolume,
         _debugDisposePlayer = debugDisposePlayer,
+        _debugNativeControllerIdentity = debugNativeControllerIdentity,
         _analyticsPostId = analyticsPostId,
         _analyticsSurface = analyticsSurface,
         _observationObserver =
@@ -130,12 +132,16 @@ class VideoPlayerSession implements PlaybackSession {
   final VideoSessionSeekOperation? _debugSeek;
   final VideoSessionVolumeOperation? _debugSetVolume;
   final VideoSessionOperation? _debugDisposePlayer;
+  final Object? _debugNativeControllerIdentity;
   final String? _analyticsPostId;
   final String _analyticsSurface;
   final SocialVideoSessionObserver _observationObserver;
   final SocialVideoObservationContext? _observationContext;
   final Object _debugObservationIdentity = Object();
   Object? _lastObservationIdentity;
+  Object? _createdObservationIdentity;
+  final List<SocialVideoObservationContext> _pendingObservationAttachments =
+      <SocialVideoObservationContext>[];
   late final VideoPlaybackHealthMonitor _healthMonitor;
   final Stopwatch _startupStopwatch = Stopwatch()..start();
   bool _playStartedRecorded = false;
@@ -210,9 +216,9 @@ class VideoPlayerSession implements PlaybackSession {
             await _cleanupResources();
             return;
           }
-          _observe(SocialVideoLifecycleType.created);
           _initialized = true;
           _observe(SocialVideoLifecycleType.initialized);
+          _flushPendingObservationAttachments();
           _registerHeartbeat();
           _visualOutputFailed = false;
           _error = null;
@@ -238,6 +244,7 @@ class VideoPlayerSession implements PlaybackSession {
               'error_type': error.runtimeType.toString(),
             });
             _observe(SocialVideoLifecycleType.failed);
+            _pendingObservationAttachments.clear();
             revision.value++;
             return;
           }
@@ -269,8 +276,13 @@ class VideoPlayerSession implements PlaybackSession {
   Future<void> _attemptInit(String url) async {
     final attempt = _debugInitAttempt;
     if (attempt != null) {
+      final nativeIdentity = _debugNativeControllerIdentity;
+      if (nativeIdentity != null) _recordObservationCreated(nativeIdentity);
       await attempt(url);
       _debugPlayerReady = true;
+      _recordObservationCreated(
+        nativeIdentity ?? _debugObservationIdentity,
+      );
       return;
     }
     if (url.trim().isEmpty) {
@@ -284,8 +296,9 @@ class VideoPlayerSession implements PlaybackSession {
     final isHls = resolved.contains('.m3u8');
     if (isHls) {
       final controller = VideoPlayerController.networkUrl(Uri.parse(resolved));
-      await controller.initialize();
       _controller = controller;
+      _recordObservationCreated(controller);
+      await controller.initialize();
       controller.addListener(_observePlaybackStateTransition);
     } else {
       final wrapper = CachedVideoPlayerPlus.networkUrl(
@@ -296,8 +309,9 @@ class VideoPlayerSession implements PlaybackSession {
           url: resolved,
         ),
       );
-      await wrapper.initialize();
       _wrapper = wrapper;
+      _recordObservationCreated(wrapper);
+      await wrapper.initialize();
       _controller = wrapper.controller;
       _controller!.addListener(_observePlaybackStateTransition);
     }
@@ -853,13 +867,44 @@ class VideoPlayerSession implements PlaybackSession {
       postId: postId,
       surface: surface == 'profile_grid'
           ? SocialVideoSurface.profileGrid
-          : SocialVideoSurface.postDetail,
+          : surface == 'fullscreen'
+              ? SocialVideoSurface.fullscreen
+              : SocialVideoSurface.postDetail,
       ownerId: 'coordinator-$postId',
     );
   }
 
   void recordObservationAttachment(SocialVideoObservationContext context) {
+    if (_disposed || _error != null) return;
+    if (!_initialized) {
+      if (!_pendingObservationAttachments.any(
+        (pending) =>
+            pending.postId == context.postId &&
+            pending.surface == context.surface &&
+            pending.ownerId == context.ownerId,
+      )) {
+        _pendingObservationAttachments.add(context);
+      }
+      return;
+    }
     _observe(SocialVideoLifecycleType.attached, context: context);
+  }
+
+  void _recordObservationCreated(Object identity) {
+    _lastObservationIdentity = identity;
+    if (identical(_createdObservationIdentity, identity)) return;
+    _createdObservationIdentity = identity;
+    _observe(SocialVideoLifecycleType.created);
+  }
+
+  void _flushPendingObservationAttachments() {
+    final pending = List<SocialVideoObservationContext>.of(
+      _pendingObservationAttachments,
+    );
+    _pendingObservationAttachments.clear();
+    for (final context in pending) {
+      _observe(SocialVideoLifecycleType.attached, context: context);
+    }
   }
 
   void _observe(

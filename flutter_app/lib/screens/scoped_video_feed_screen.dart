@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../features/feed/video/adaptive_video_preload_policy.dart';
 import '../features/feed/video/post_video_coordinator.dart';
+import '../features/feed/video/social_video_session_observer.dart';
+import '../features/feed/video/video_player_session.dart';
 import '../features/feed/widgets/feed_video_post_view.dart';
 import '../models/feed_post.dart';
 import '../state/feed_store.dart';
@@ -418,7 +420,16 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
     if (coord == null || coord.isDisposed) return;
     final postId = _posts[index].id;
     // (a) + attach untuk kejujuran refcount ("view ini sedang merender").
-    coord.attach(_viewIdFor(postId), postId);
+    final session = coord.attach(_viewIdFor(postId), postId);
+    if (session is VideoPlayerSession) {
+      session.recordObservationAttachment(
+        SocialVideoObservationContext(
+          postId: postId,
+          surface: SocialVideoSurface.fullscreen,
+          ownerId: _viewIdFor(postId),
+        ),
+      );
+    }
     _attachedPostId = postId;
     coord.setActive(postId);
     // (c) detach view lama (origin pun) — origin hidup via pinned.

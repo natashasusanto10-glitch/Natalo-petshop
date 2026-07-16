@@ -54,6 +54,29 @@ void main() {
     await session.dispose();
   });
 
+  test('native initialization failure retains its created identity', () async {
+    final observer = SocialVideoSessionObserver(enabled: true);
+    final session = VideoPlayerSession(
+      url: 'https://example.com/video.mp4',
+      observationObserver: observer,
+      observationContext: _context,
+      debugNativeControllerIdentity: Object(),
+      debugInitAttempt: (_) async => throw UnsupportedError('codec'),
+    );
+
+    await _settle();
+
+    expect(
+      observer.snapshot.events.map((event) => event.type),
+      equals(<SocialVideoLifecycleType>[
+        SocialVideoLifecycleType.created,
+        SocialVideoLifecycleType.failed,
+      ]),
+    );
+
+    await session.dispose();
+  });
+
   test('idempotent disposal records disposed once', () async {
     final observer = SocialVideoSessionObserver(enabled: true);
     var disposeCalls = 0;

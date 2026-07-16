@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/post_video_warm_handoff.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/social_video_session_observer.dart';
@@ -124,6 +126,49 @@ void main() {
     expect(
       observer.snapshot.events.last.surface,
       SocialVideoSurface.postDetail,
+    );
+
+    await claimed!.dispose();
+  });
+
+  test('pending claim records attached after session initialization', () async {
+    final observer = SocialVideoSessionObserver(enabled: true);
+    final initGate = Completer<void>();
+    final handoff = PostVideoWarmHandoff.create(
+      postId: 'post-a',
+      url: 'https://example.com/video.mp4',
+      hasAudio: true,
+      observationObserver: observer,
+      sessionFactory: ({
+        required postId,
+        required url,
+        required hasAudio,
+        observationObserver,
+        observationContext,
+      }) =>
+          VideoPlayerSession(
+        url: url,
+        observationObserver: observationObserver,
+        observationContext: observationContext,
+        debugInitAttempt: (_) => initGate.future,
+      ),
+    );
+
+    final claimed = handoff.claim(
+      postId: 'post-a',
+      url: 'https://example.com/video.mp4',
+      hasAudio: true,
+    );
+    initGate.complete();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      observer.snapshot.events.map((event) => event.type),
+      equals(<SocialVideoLifecycleType>[
+        SocialVideoLifecycleType.created,
+        SocialVideoLifecycleType.initialized,
+        SocialVideoLifecycleType.attached,
+      ]),
     );
 
     await claimed!.dispose();
