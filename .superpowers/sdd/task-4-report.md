@@ -1,19 +1,39 @@
-# Task 4 report
+# Task 4 — Final verification
 
-- Status: complete
-- Commit: `152186c` (`feat(admin): add compact product media rail`)
-- Tests: `npx vitest run tests/admin-product-media.test.ts tests/product-video-draft.test.ts` (5 passed)
-- Implemented compact nine-photo rail, cover promotion, preview dialog, accessible delete controls, and ProductVideoDraft integration.
-- Concerns: full TypeScript check still reports pre-existing `creationState`/Vitest type errors elsewhere; `MultiImageUpload` remains backwards-compatible and was not replaced.
+Status: complete. No production code or generated artifacts were changed.
 
-## Follow-up
+## Analyzer
 
-- Commit: `28a51656` (`fix(admin): harden compact media interactions`)
-- ProductVideoDraft now exposes picker and emits remove/replace intents; media tiles use sibling accessible buttons, and preview supports an explicit close button plus Escape.
-- Focused tests remain green (5 passed).
+Command (from `flutter_app`):
 
-## Upload helper follow-up
+```powershell
+flutter analyze lib/features/feed/widgets/feed_video_post_view.dart lib/features/feed/widgets/feed_post_shared_widgets.dart
+```
 
-- Commit: `c716a28d` (`fix(admin): share product image upload helper`)
-- Added shared `uploadProductImageFiles` validation/upload helper and wired the compact rail to it.
-- Added oversized-file coverage; focused suite now passes 6 tests.
+Result: exit code 1 because the analyzer reports six existing informational `use_key_in_widget_constructors` issues in `feed_post_shared_widgets.dart` (lines 200, 401, 549, 646, 1264, and 1538). No errors or warnings related to the audited Feed playback behavior were reported.
+
+## Focused tests
+
+Command:
+
+```powershell
+flutter test test/features/feed/widgets/feed_video_post_view_test.dart
+```
+
+Result: `00:05 +40: All tests passed!` Existing API 400 analytics/service logs are test-environment noise and did not fail tests.
+
+## Final diff review
+
+Commands:
+
+```powershell
+git diff --check
+git status --short
+git diff origin/main...HEAD --stat
+```
+
+`git diff --check` passed. The worktree is clean after this report is committed. The branch diff contains only audit/spec/report documents; no production source, version bump, generated artifacts, or stale direct Feed playback path was added.
+
+## Conclusion
+
+All ten matrix scenarios are behaviorally equivalent on current `main`, with the newer coordinator/audio-claim architecture preserved. No gap fix or rebase/cherry-pick is required. The legacy `claude/feed-profile-race-recover` branch can be deleted after explicit user confirmation; branch cleanup was not performed by this task.
