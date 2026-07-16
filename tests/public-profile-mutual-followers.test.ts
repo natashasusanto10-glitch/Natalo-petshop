@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildMutualFollowerWhere,
-  loadOfficialMutualFollowers,
+  loadMutualFollowers,
   type MutualFollowerDependencies,
 } from "@/lib/social/profile-mutual-followers";
 
@@ -17,7 +17,7 @@ test("mutual query intersects viewer following with target followers", () => {
   });
 });
 
-test("mutuals are gated to authenticated official non-owner viewers", async () => {
+test("mutuals are gated only to authenticated non-owner viewers", async () => {
   let calls = 0;
   const dependencies: MutualFollowerDependencies = {
     findMany: async () => {
@@ -30,17 +30,53 @@ test("mutuals are gated to authenticated official non-owner viewers", async () =
     },
   };
 
+  // Not logged in, or viewing own profile → never query, regardless of
+  // whether the target is official or a regular account.
   for (const input of [
-    { viewerUserId: null, targetUserId: "official-1", isOfficial: true, isOwner: false },
-    { viewerUserId: "viewer-1", targetUserId: "user-1", isOfficial: false, isOwner: false },
-    { viewerUserId: "official-1", targetUserId: "official-1", isOfficial: true, isOwner: true },
+    { viewerUserId: null, targetUserId: "official-1", isOwner: false },
+    { viewerUserId: null, targetUserId: "user-1", isOwner: false },
+    { viewerUserId: "official-1", targetUserId: "official-1", isOwner: true },
+    { viewerUserId: "user-1", targetUserId: "user-1", isOwner: true },
   ]) {
-    assert.deepEqual(await loadOfficialMutualFollowers(input, dependencies), {
+    assert.deepEqual(await loadMutualFollowers(input, dependencies), {
       items: [],
       totalCount: 0,
     });
   }
   assert.equal(calls, 0);
+});
+
+test("mutuals ARE computed for regular (non-official) profiles", async () => {
+  let calls = 0;
+  const dependencies: MutualFollowerDependencies = {
+    findMany: async () => {
+      calls += 1;
+      return [
+        {
+          follower: {
+            id: "shared-1",
+            name: "Rani",
+            username: "rani",
+            profilePhotoUrl: null,
+            role: "CUSTOMER",
+          },
+        },
+      ];
+    },
+    count: async () => {
+      calls += 1;
+      return 3;
+    },
+  };
+
+  const result = await loadMutualFollowers(
+    { viewerUserId: "viewer-1", targetUserId: "regular-1", isOwner: false },
+    dependencies,
+  );
+
+  assert.equal(calls, 2);
+  assert.equal(result.totalCount, 3);
+  assert.equal(result.items[0]?.name, "Rani");
 });
 
 test("mutuals brandify admin previews and preserve total count", async () => {
@@ -68,11 +104,10 @@ test("mutuals brandify admin previews and preserve total count", async () => {
     count: async () => 7,
   };
 
-  const result = await loadOfficialMutualFollowers(
+  const result = await loadMutualFollowers(
     {
       viewerUserId: "viewer-1",
       targetUserId: "official-1",
-      isOfficial: true,
       isOwner: false,
     },
     dependencies,
@@ -132,11 +167,10 @@ test("legacy mutual previews always expose a stable non-empty public label", asy
     count: async () => 9,
   };
 
-  const result = await loadOfficialMutualFollowers(
+  const result = await loadMutualFollowers(
     {
       viewerUserId: "viewer-1",
       targetUserId: "official-1",
-      isOfficial: true,
       isOwner: false,
     },
     dependencies,
@@ -172,11 +206,10 @@ test("legacy username fallback removes repeated sigils and surrounding space", a
     count: async () => 1,
   };
 
-  const result = await loadOfficialMutualFollowers(
+  const result = await loadMutualFollowers(
     {
       viewerUserId: "viewer-1",
       targetUserId: "official-1",
-      isOfficial: true,
       isOwner: false,
     },
     dependencies,
@@ -193,11 +226,10 @@ test("optional mutual failure returns empty summary", async () => {
     },
     count: async () => 4,
   };
-  const result = await loadOfficialMutualFollowers(
+  const result = await loadMutualFollowers(
     {
       viewerUserId: "viewer-1",
       targetUserId: "official-1",
-      isOfficial: true,
       isOwner: false,
     },
     dependencies,

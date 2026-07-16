@@ -35,7 +35,7 @@ import {
   brandDisplayName,
   brandPhotoUrl,
 } from "@/lib/social/brand-user";
-import { loadOfficialMutualFollowers } from "@/lib/social/profile-mutual-followers";
+import { loadMutualFollowers } from "@/lib/social/profile-mutual-followers";
 import { feedAccessibilityPayload } from "@/lib/feed/accessibility";
 
 // Postingan customer biasa: video komunitas + foto carousel.
@@ -241,10 +241,9 @@ export async function GET(
           select: { id: true },
         })
       : null,
-    loadOfficialMutualFollowers({
+    loadMutualFollowers({
       viewerUserId,
       targetUserId: target.id,
-      isOfficial,
       isOwner,
     }),
   ]);

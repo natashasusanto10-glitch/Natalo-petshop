@@ -33,21 +33,48 @@ void main() {
     expect(messageCount, 1);
   });
 
-  testWidgets('regular public has no message and no mutual row',
+  testWidgets('regular public has no message but shows IG-style mutual row',
       (tester) async {
     await tester.pumpWidget(headerHarness(
       profile: const PublicProfile(
         id: 'user-1',
         name: 'Mona',
         username: 'mona',
+        mutualFollowers: PublicProfileMutualSummary(
+          items: [
+            PublicProfileMutualFollower(id: 'user-2', name: 'Riko'),
+          ],
+          totalCount: 3,
+        ),
       ),
       chatEnabled: true,
       width: 320,
     ));
     expect(find.text('Pesan'), findsNothing);
-    expect(find.textContaining('Diikuti oleh'), findsNothing);
+    expect(find.textContaining('Diikuti oleh'), findsOneWidget);
     expect(find.text('Ikuti'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('official chip renders on official and never on regular',
+      (tester) async {
+    await tester.pumpWidget(headerHarness(
+      profile: const PublicProfile(
+        id: 'official-1',
+        name: 'Natalo Petshop Official',
+        isOfficial: true,
+      ),
+    ));
+    expect(find.text('AKUN RESMI'), findsOneWidget);
+
+    await tester.pumpWidget(headerHarness(
+      profile: const PublicProfile(
+        id: 'user-1',
+        name: 'Mona',
+        username: 'mona',
+      ),
+    ));
+    expect(find.text('AKUN RESMI'), findsNothing);
   });
 
   testWidgets('official owner gets edit and never follow or message',

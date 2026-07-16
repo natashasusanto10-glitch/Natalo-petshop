@@ -6,10 +6,16 @@ import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
 import 'package:video_player/video_player.dart';
 
+import 'package:share_plus/share_plus.dart';
+
+import '../config/api_config.dart';
+import '../constants/official_brand.dart';
 import '../models/feed_create_post_draft.dart';
 import '../models/feed_post.dart';
+import '../models/public_profile.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../services/feed_service.dart';
+import '../services/profile_service.dart';
 import '../services/video_quality_service.dart';
 import '../state/feed_draft_store.dart';
 import '../state/feed_store.dart';
@@ -20,9 +26,11 @@ import '../utils/haptics.dart';
 import 'feed_media_picker_screen.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/origin_expansion_route.dart';
-import '../widgets/profile_avatar.dart';
+import '../widgets/profile_grid_geometry.dart';
+import '../widgets/public_profile_expanded_header.dart';
 import 'feed_new_post_screen.dart';
 import 'member_post_detail_screen.dart';
+import 'public_profile_follow_list_screen.dart';
 
 const _brandBlue = NataloColors.primary;
 
@@ -54,21 +62,30 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
   static const _filters = [
     _PostsFilter(
       label: 'Semua',
+      icon: Icons.grid_on_rounded,
       type: _PostFilterType.all,
     ),
     _PostsFilter(
       label: 'Foto',
+      icon: Icons.photo_library_outlined,
       type: _PostFilterType.photo,
     ),
     _PostsFilter(
       label: 'Video',
+      icon: Icons.smart_display_outlined,
       type: _PostFilterType.video,
     ),
     _PostsFilter(
       label: 'Menunggu',
+      icon: Icons.schedule_rounded,
       type: _PostFilterType.review,
     ),
   ];
+
+  /// Total postingan publik untuk stat "Postingan" ala IG. Diambil dari
+  /// endpoint profil publik (punya hitungan server-side); null = belum
+  /// terisi → fallback jumlah post yang sudah dimuat.
+  int? _postCount;
 
   @override
   void initState() {
@@ -76,6 +93,22 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     _scrollController.addListener(_handleScrollLoadMore);
     _loadPosts();
     _loadDrafts();
+    _loadPostCount();
+  }
+
+  Future<void> _loadPostCount() async {
+    final username = memberStore.profile?.username;
+    if (username == null || username.isEmpty) return;
+    try {
+      final result = await profileService.fetchPublicProfile(
+        username: username,
+        limit: 1,
+      );
+      if (!mounted) return;
+      setState(() => _postCount = result.profile.postCount);
+    } catch (_) {
+      // Best-effort — fallback ke jumlah post termuat.
+    }
   }
 
   @override
@@ -346,6 +379,61 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     setState(() => _filterIndex = index);
   }
 
+  /// Profil sendiri dalam bentuk [PublicProfile] supaya header IG-style
+  /// bisa dipakai BERSAMA dengan halaman profil publik (satu komponen,
+  /// satu tampilan). Admin dirender sebagai brand official.
+  PublicProfile _ownPublicProfile() {
+    final profile = memberStore.profile;
+    final isOfficial = profile?.isAdmin ?? false;
+    return PublicProfile(
+      id: profile?.id ?? '',
+      name: isOfficial ? kOfficialBrandName : (profile?.name ?? ''),
+      username: profile?.username,
+      profilePhotoUrl: profile?.profilePhotoUrl,
+      bio: profile?.bio,
+      postCount: _postCount ?? _allPosts.length,
+      followersCount: profile?.followersCount ?? 0,
+      followingCount: profile?.followingCount ?? 0,
+      isOwner: true,
+      isOfficial: isOfficial,
+    );
+  }
+
+  Future<void> _openFollowList(FollowListKind kind) async {
+    AppHaptics.tap();
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PublicProfileFollowListScreen(
+          profile: _ownPublicProfile(),
+          initialKind: kind,
+        ),
+      ),
+    );
+  }
+
+  /// Share link profil publik sendiri — pola sama dengan
+  /// PublicProfileScreen._shareProfile (sharePositionOrigin wajib iOS).
+  Future<void> _shareProfile() async {
+    AppHaptics.tap();
+    try {
+      final profile = _ownPublicProfile();
+      final username = profile.username;
+      final url = (username != null && username.isNotEmpty)
+          ? ApiConfig.uri('/u/$username').toString()
+          : ApiConfig.uri('/').toString();
+      final label = profile.isOfficial ? profile.name : profile.displayHandle;
+      final box = context.findRenderObject() as RenderBox?;
+      await Share.share(
+        'Lihat profil $label di Natalo\n$url',
+        sharePositionOrigin:
+            box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+      );
+    } catch (_) {
+      // Cancel / share fail — silent.
+    }
+  }
+
   GlobalKey _tileKeyFor(String postId) =>
       _tileKeys.putIfAbsent(postId, GlobalKey.new);
 
@@ -400,23 +488,31 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
           icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface),
           onPressed: () => Navigator.maybePop(context),
         ),
-        title: Text(
-          'Postingan Saya',
-          style: TextStyle(
-            color: cs.onSurface,
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
+        // IG-style: bar atas profil sendiri menampilkan handle, bukan
+        // judul halaman.
+        title: AnimatedBuilder(
+          animation: memberStore,
+          builder: (context, _) => Text(
+            _ownPublicProfile().displayHandle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: cs.onSurface,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
-        centerTitle: true,
+        centerTitle: false,
+        titleSpacing: 0,
         actions: [
           IconButton(
             onPressed: _openUpload,
             tooltip: 'Buat postingan',
             icon: Icon(
-              Icons.add_rounded,
+              Icons.add_box_outlined,
               color: cs.onSurface,
-              size: 32,
+              size: 26,
             ),
           ),
           const SizedBox(width: 4),
@@ -426,30 +522,40 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
         onRefresh: () async {
           await _loadPosts();
           await _loadDrafts();
+          await _loadPostCount();
         },
         child: CustomScrollView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const _NlFeedIntro(),
-                    if (_drafts.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      _DraftSection(
-                        drafts: _drafts,
-                        onTap: _openDraft,
-                        onDelete: _confirmDeleteDraft,
-                      ),
-                    ],
-                  ],
+              child: AnimatedBuilder(
+                animation: memberStore,
+                builder: (context, _) => PublicProfileExpandedHeader(
+                  profile: _ownPublicProfile(),
+                  followBusy: false,
+                  chatEnabled: false,
+                  onFollowersTap: () =>
+                      _openFollowList(FollowListKind.followers),
+                  onFollowingTap: () =>
+                      _openFollowList(FollowListKind.following),
+                  onEditProfile: () =>
+                      Navigator.pushNamed(context, '/member/profile'),
+                  onShareProfile: _shareProfile,
                 ),
               ),
             ),
+            if (_drafts.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: _DraftSection(
+                    drafts: _drafts,
+                    onTap: _openDraft,
+                    onDelete: _confirmDeleteDraft,
+                  ),
+                ),
+              ),
             SliverToBoxAdapter(
               child: _FeedGalleryTabs(
                 filters: _filters,
@@ -486,15 +592,12 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
               )
             else
               SliverPadding(
-                padding: EdgeInsets.fromLTRB(12, 12, 12, bottomInset + 28),
+                padding: EdgeInsets.only(bottom: bottomInset + 28),
+                // Grid full-bleed 1:1 IG — delegate BERSAMA dengan grid
+                // profil publik (gap 1.5px tanpa padding samping).
                 sliver: SliverGrid.builder(
                   itemCount: visiblePosts.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    crossAxisSpacing: 4,
-                    mainAxisSpacing: 4,
-                    childAspectRatio: 1,
-                  ),
+                  gridDelegate: profileGridDelegate(),
                   itemBuilder: (context, index) {
                     final post = visiblePosts[index];
                     return _GalleryPostTile(
@@ -522,51 +625,14 @@ enum _PostFilterType { all, photo, video, review }
 
 class _PostsFilter {
   final String label;
+  final IconData icon;
   final _PostFilterType type;
 
   const _PostsFilter({
     required this.label,
+    required this.icon,
     required this.type,
   });
-}
-
-class _NlFeedIntro extends StatelessWidget {
-  const _NlFeedIntro();
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return AnimatedBuilder(
-      animation: memberStore,
-      builder: (context, _) {
-        final profile = memberStore.profile;
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            ProfileAvatar(
-              initial: profile?.initial ?? 'N',
-              imageUrl: profile?.profilePhotoUrl,
-              size: 50,
-              fontSize: 20,
-              isOfficial: profile?.isAdmin ?? false,
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                'Cerita lucu, gemas, dan seru kamu kumpul di sini. 🐾💙',
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontSize: 15.5,
-                  height: 1.36,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
 }
 
 /// Bagian "Draft" — header kecil + rail horizontal kartu draft. Muncul
@@ -810,50 +876,57 @@ class _FeedGalleryTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // Tab ikon ala IG: underline gelap netral (bukan biru brand), ikon
+    // rata melebar penuh — presentasi sama dengan tab profil publik.
     return Container(
       decoration: BoxDecoration(
         color: cs.surface,
         border: Border(bottom: BorderSide(color: cs.outlineVariant)),
       ),
-      height: 50,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        itemCount: filters.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 24),
-        itemBuilder: (context, index) {
-          final filter = filters[index];
-          final active = index == activeIndex;
-          return InkWell(
-            onTap: () => onTap(index),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    filter.label,
-                    style: TextStyle(
-                      color: active ? _brandBlue : cs.onSurfaceVariant,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
+      height: 46,
+      child: Row(
+        children: [
+          for (var index = 0; index < filters.length; index++)
+            Expanded(
+              child: Semantics(
+                label: filters[index].label,
+                button: true,
+                selected: index == activeIndex,
+                excludeSemantics: true,
+                child: Tooltip(
+                  message: filters[index].label,
+                  excludeFromSemantics: true,
+                  child: InkWell(
+                    onTap: () => onTap(index),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Icon(
+                          filters[index].icon,
+                          size: 24,
+                          color: index == activeIndex
+                              ? cs.onSurface
+                              : cs.onSurfaceVariant.withValues(alpha: 0.65),
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            height: 2.4,
+                            width: index == activeIndex ? 28 : 0,
+                            decoration: BoxDecoration(
+                              color: cs.onSurface,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    height: 3,
-                    width: active ? 38 : 0,
-                    decoration: BoxDecoration(
-                      color: _brandBlue,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
-          );
-        },
+        ],
       ),
     );
   }
@@ -884,9 +957,7 @@ class _GalleryPostTile extends StatelessWidget {
           onTap: onTap,
           onTapDown: (_) => onTapDown?.call(),
           onTapCancel: onTapCancel,
-          borderRadius: BorderRadius.circular(8),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+          child: ClipRect(
             child: Stack(
               fit: StackFit.expand,
               children: [

@@ -7,6 +7,7 @@ import 'package:natalo_petshop_flutter/models/public_profile.dart';
 import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
 import 'package:natalo_petshop_flutter/screens/public_profile_screen.dart';
 import 'package:natalo_petshop_flutter/services/profile_service.dart';
+import 'package:natalo_petshop_flutter/widgets/liquid_glass.dart';
 import 'package:natalo_petshop_flutter/widgets/origin_expansion_route.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_chrome_overlay.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -281,11 +282,14 @@ void main() {
     expect(overlay().scrollOffset, closeTo(intermediateOffset, 0.5));
     expect(intermediateTile.top, lessThan(metrics.collapsedChromeHeight));
     expect(intermediateTile.bottom, greaterThan(0));
-    final intermediateTint = tester.widget<ColoredBox>(
-      find.byKey(const Key('public_profile_glass_tint')),
-    );
-    expect(intermediateTint.color.a, greaterThan(0));
-    expect(intermediateTint.color.a, lessThan(0.72));
+    // Glass per-chip (Liquid Glass): saat intermediate, chip sudah mulai
+    // muncul tapi belum penuh — ada LiquidGlass dengan 0 < opacity < 1.
+    final intermediateOpacities = tester
+        .widgetList<LiquidGlass>(find.byType(LiquidGlass))
+        .map((glass) => glass.opacity)
+        .toList();
+    expect(intermediateOpacities, isNotEmpty);
+    expect(intermediateOpacities.any((o) => o > 0 && o < 1), isTrue);
 
     outerPosition.jumpTo(metrics.scrollSpaceHeight);
     await tester.pump();
@@ -295,11 +299,12 @@ void main() {
     expect(overlay().scrollOffset, closeTo(metrics.scrollSpaceHeight, 0.5));
     expect(collapsedTile.top, lessThanOrEqualTo(0.5));
     expect(collapsedTile.bottom, greaterThan(0));
-    expect(find.byType(BackdropFilter), findsOneWidget);
-    final collapsedTint = tester.widget<ColoredBox>(
-      find.byKey(const Key('public_profile_glass_tint')),
-    );
-    expect(collapsedTint.color.a, closeTo(0.72, 0.01));
+    expect(find.byType(BackdropFilter), findsWidgets);
+    final collapsedOpacities = tester
+        .widgetList<LiquidGlass>(find.byType(LiquidGlass))
+        .map((glass) => glass.opacity)
+        .toList();
+    expect(collapsedOpacities.any((o) => o >= 0.99), isTrue);
   });
 }
 

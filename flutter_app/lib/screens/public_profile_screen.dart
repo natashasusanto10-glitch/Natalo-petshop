@@ -786,19 +786,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // Akun official → hero biru premium: AppBar SOLID heroTop (bukan
-    // transparan + extendBodyBehindAppBar — inset math di dalam sliver
-    // rapuh, logo pernah overlap judul di device). Header body pakai
-    // heroGradientV (heroTop→heroMid) → menyambung mulus dgn AppBar tanpa
-    // hitung inset. Sesuai pola hero-blue halaman lain (Akun/Transaksi).
-    final isOfficial = _profile?.isOfficial ?? false;
+    // Satu layout IG-style putih untuk SEMUA akun — mode hero navy
+    // official (plus seluruh workaround seam/gap-nya) sudah dihapus.
+    // Official dibedakan lewat badge + chip di dalam header.
     final profile = _profile;
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: isOfficial
+      value: Theme.of(context).brightness == Brightness.dark
           ? SystemUiOverlayStyle.light
-          : (Theme.of(context).brightness == Brightness.dark
-              ? SystemUiOverlayStyle.light
-              : SystemUiOverlayStyle.dark),
+          : SystemUiOverlayStyle.dark,
       child: Scaffold(
         backgroundColor: cs.surface,
         // Loading/error routes retain a conventional back affordance. Once
@@ -839,10 +834,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
         SliverToBoxAdapter(
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: profile.isOfficial
-                  ? null
-                  : Theme.of(context).colorScheme.surface,
-              gradient: profile.isOfficial ? NataloColors.heroGradientV : null,
+              color: Theme.of(context).colorScheme.surface,
             ),
             child: Column(
               children: [
@@ -893,13 +885,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
       translateChild: false,
       minimalIndicator: true,
       includeSafeAreaPadding: false,
-      indicatorColor: profile.isOfficial ? Colors.white : _brandBlue,
-      refreshBackdropColor: profile.isOfficial
-          ? NataloColors.heroTop
-          : Theme.of(context).colorScheme.surface,
+      indicatorColor: _brandBlue,
+      refreshBackdropColor: Theme.of(context).colorScheme.surface,
       child: nestedScrollView,
     );
-    final scrollView = Stack(
+    return Stack(
       children: [
         RepaintBoundary(
           key: const Key('public_profile_grid_underlay'),
@@ -926,37 +916,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
             ),
           ),
         ),
-      ],
-    );
-    if (!profile.isOfficial) return scrollView;
-    // Official: lapisan navy heroTop di belakang puncak scroll — saat
-    // overscroll/pull-to-refresh, header tertarik turun dan area di
-    // atasnya menyingkap latar. Tanpa lapisan ini yang tersingkap putih
-    // (cs.surface) → terlihat seperti garis/celah memutus hero dari
-    // AppBar. Hanya tampil saat scroll dekat puncak — kalau selalu ada,
-    // navy mengintip lewat celah 1px antar tile grid saat grid
-    // ter-scroll ke region backdrop.
-    return Stack(
-      children: [
-        // Positioned WAJIB anak langsung Stack (ParentData) — kondisi
-        // show/hide lewat AnimatedBuilder DI DALAM Positioned.
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          height: metrics.scrollSpaceHeight,
-          child: AnimatedBuilder(
-            animation: _scrollController,
-            builder: (context, _) {
-              final show = !_scrollController.hasClients ||
-                  _scrollController.offset < 40;
-              return show
-                  ? const ColoredBox(color: NataloColors.heroTop)
-                  : const SizedBox.shrink();
-            },
-          ),
-        ),
-        Positioned.fill(child: scrollView),
       ],
     );
   }

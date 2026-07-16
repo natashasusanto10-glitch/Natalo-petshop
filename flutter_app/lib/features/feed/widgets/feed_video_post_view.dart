@@ -1,10 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -12,10 +11,8 @@ import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../../../config/api_config.dart';
-import '../../../models/cart_item.dart';
 import '../../../models/feed_post.dart';
 import '../../../models/product.dart';
-import '../../../screens/checkout_screen.dart';
 import '../../../services/api_client.dart';
 import '../../../services/block_service.dart';
 import '../../../services/feed_service.dart';
@@ -30,7 +27,6 @@ import '../../../state/member_store.dart';
 import '../../../state/settings_store.dart';
 import '../../../utils/android_back_overlays.dart';
 import '../../../utils/app_route_observer.dart';
-import '../../../utils/formatters.dart';
 import '../../../utils/haptics.dart';
 import '../video/post_video_coordinator.dart';
 import '../video/frame_output_heartbeat_service.dart';
@@ -49,6 +45,7 @@ import 'feed_accessibility_overlay.dart';
 import 'feed_creator_overlay.dart';
 import 'feed_post_scrim.dart';
 import 'feed_post_shared_widgets.dart';
+import 'feed_product_links_sheet.dart';
 import 'feed_video_scrubber.dart';
 
 /// D4 legacy — seam test: override fetch post segar untuk refresh signed-URL
@@ -81,7 +78,8 @@ enum FeedVideoFraming {
 ///    sesuai kebutuhan supaya video Postingan berhenti di balik route.
 ///  - [appBackground] → `pauseAll` (app ke background/lock → nol audio hantu).
 ///  - [commentSheetFull] → `pauseAll` (comment sheet full menutup video).
-enum CoverPauseReason { routePush, appBackground, commentSheetFull }
+///  - [productSheet] → `pauseAll` (sheet Links produk terbuka menutup video).
+enum CoverPauseReason { routePush, appBackground, commentSheetFull, productSheet }
 
 /// Hasil klaim preload dari pemilik map (FeedScreen). Controller +
 /// wrapper cache 1:1 — wrapper bisa null (HLS bypass wrapper), controller
@@ -393,10 +391,15 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   FeedCommentSession? _activeCommentSession;
   Completer<void>? _commentDrawerClosedCompleter;
   bool _pausedByCommentSheet = false;
+  bool _pausedByProductSheet = false;
   int _commentSheetTransitionEpoch = 0;
   int _featuredProductIndex = 0;
   Timer? _productRotationTimer;
   Timer? _commentDrawerOpenWatchdog;
+  Timer? _commentStrandedSettleTimer;
+  int _activeCommentDrawerPointers = 0;
+  final Map<int, VelocityTracker> _commentDrawerVelocityTrackers =
+      <int, VelocityTracker>{};
   double _commentDragOffset = 0;
 
   bool get _commentDrawerMounted =>
@@ -409,14 +412,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   bool get _commentSheetClosingFromDrag =>
       _commentDrawerPhase == _CommentDrawerPhase.closing;
 
-  // Product CTA card — slide-in sekali di detik ~4 (min(4s, durasi/2))
-  // lalu menetap sampai user dismiss (gaya TikTok Shop). Tombol "Beli"
-  // lebih prominent dari product chip kecil di bottom info yang selalu
-  // visible. Dismiss sticky per post; reset saat swipe ke post lain.
-  // Skip untuk post tanpa tagged products.
-  bool _endOfVideoCtaVisible = false;
-  bool _endOfVideoCtaDismissed = false;
-
   // Panel caption ala IG: saat terbuka, scrim gelap naik + pill produk
   // fade menghilang (mode baca fokus). State di-lift ke sini supaya semua
   // elemen ber-transisi serempak dan tap area video bisa menutup panel.
@@ -425,9 +420,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   void _setCaptionExpanded(bool value) {
     if (_captionExpanded == value || !mounted) return;
     setState(() => _captionExpanded = value);
-    // Card CTA pop-up otomatis tertutup saat caption naik — jangan ada
-    // dua permukaan commerce beradu di mode baca.
-    if (value && _endOfVideoCtaVisible) _dismissEndOfVideoCta();
   }
 
   // Delayed loading spinner — sebagian besar video load <1s (preloaded
@@ -1267,37 +1259,15 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     if (mounted) setState(() {});
   }
 
-  /// Listener position video → trigger product CTA visibility.
+  /// Listener position video → observe playback health/buffer/play metric.
   /// Dipanggil tiap frame video (puluhan kali/detik). Cepat-keluar untuk
   /// kondisi yang gak perlu re-render supaya gak ngabisin frame budget.
-  ///
-  /// Gaya TikTok Shop: kartu muncul SEKALI di detik ~4 (atau setengah
-  /// durasi untuk video pendek) lalu MENETAP sampai user dismiss — tidak
-  /// hilang saat loop. Pola lama (2.5 dtk terakhir tiap loop) tidak
-  /// efektif: mayoritas penonton swipe sebelum video habis, dan 2.5 dtk
-  /// tidak cukup untuk baca produk + harga.
   void _handleVideoPositionForCta() {
     final ctrl = _videoController;
     if (ctrl == null || !mounted) return;
     _playbackHealthMonitor.observePlaybackStateTransition();
     _reportBufferAhead(ctrl.value);
     if (ctrl.value.isPlaying) _recordPlayMetric();
-    if (_endOfVideoCtaVisible || _endOfVideoCtaDismissed) return;
-    final value = ctrl.value;
-    if (!value.isInitialized) return;
-
-    final durMs = value.duration.inMilliseconds;
-    if (durMs <= 0) return;
-    final posMs = value.position.inMilliseconds;
-
-    // Trigger: min(4 dtk, setengah durasi) — video 5 dtk tetap dapat
-    // kartu di ~2.5 dtk.
-    final showAtMs = durMs ~/ 2 < 4000 ? durMs ~/ 2 : 4000;
-    if (posMs < showAtMs) return;
-    // Cek post punya tagged product yang valid sebelum trigger setState —
-    // hindari render kosong.
-    if (_rotatingProductsForPost(widget.post).isEmpty) return;
-    setState(() => _endOfVideoCtaVisible = true);
   }
 
   void _resetBufferAheadReporting() {
@@ -1322,14 +1292,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     _lastReportedBufferAhead = ahead;
     _lastBufferAheadReportAt = now;
     callback(ahead);
-  }
-
-  void _dismissEndOfVideoCta() {
-    if (!mounted) return;
-    setState(() {
-      _endOfVideoCtaVisible = false;
-      _endOfVideoCtaDismissed = true;
-    });
   }
 
   /// Reset spinner-delay timer setelah controller di-set atau di-swap. Kalau
@@ -1397,10 +1359,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         _forceDeactivateCommentDrawer(deferOverlayNotification: true);
         _featuredProductIndex = 0;
         _commentDragOffset = 0;
-        // Reset CTA: user swipe ke post lain → next visit dapat fresh
-        // chance (dismissed flag clear, visible flag clear).
-        _endOfVideoCtaVisible = false;
-        _endOfVideoCtaDismissed = false;
         // Panel caption ikut tertutup — post berikutnya mulai collapsed.
         _captionExpanded = false;
         // Reset long-press state (paused / 2x speed) + scrubber state.
@@ -1432,8 +1390,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         oldWidget.post.taggedProducts.length !=
             widget.post.taggedProducts.length) {
       _featuredProductIndex = 0;
-      _endOfVideoCtaVisible = false;
-      _endOfVideoCtaDismissed = false;
       _syncProductRotation();
     }
   }
@@ -1942,6 +1898,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   }) {
     _commentDrawerOpenWatchdog?.cancel();
     _commentDrawerOpenWatchdog = null;
+    _commentStrandedSettleTimer?.cancel();
+    _commentStrandedSettleTimer = null;
+    _resetCommentDrawerPointerTracking();
     _commentSheetTransitionEpoch++;
     _stopCommentSheetAnimation();
     _commentDrawerPhase = _CommentDrawerPhase.closed;
@@ -2068,8 +2027,18 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     if ((_commentSheetExtent.value - extent).abs() > 0.002) {
       _commentSheetExtent.value = extent;
     }
-    if (!_commentSheetClosingFromDrag && extent >= _commentSheetDismissExtent) {
-      _activeCommentSession?.sheetExtent = extent;
+    // Sesi hanya menyimpan DETENT VALID (initial / expanded), bukan partial
+    // extent — kontrak state machine. Dulu setiap tick >= dismiss (0.30)
+    // ditulis mentah, sehingga band terlarang [0.30, 0.60) ikut tersimpan
+    // dan hanya "aman" karena pembaca kebetulan meng-clamp. Live tracking
+    // di antara detent tidak ditulis; drag-end/settle menulis detent final.
+    if (!_commentSheetClosingFromDrag) {
+      if ((extent - _commentSheetInitialExtent).abs() <=
+          feedCommentTerminalExtentEpsilon) {
+        _activeCommentSession?.sheetExtent = _commentSheetInitialExtent;
+      } else if (extent >= maxExtent - feedCommentTerminalExtentEpsilon) {
+        _activeCommentSession?.sheetExtent = maxExtent;
+      }
     }
 
     // Pause/resume video ala IG Reels — full-screen comment sheet berarti
@@ -2283,6 +2252,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     );
     _completeCommentDrawerClose();
     _commentDrawerClosedCompleter = Completer<void>();
+    // Listener pointer ikut unmount bersama drawer sebelumnya — mulai sesi
+    // pointer-tracking bersih.
+    _resetCommentDrawerPointerTracking();
     setState(() {
       _commentDrawerPhase = _CommentDrawerPhase.opening;
       _commentSheetReachedVisibleExtent = false;
@@ -2349,10 +2321,15 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       context,
       _commentSheetHostHeight(context),
     );
-    final targetExtent =
-        (_activeCommentSession?.sheetExtent ?? _commentSheetInitialExtent)
-            .clamp(_commentSheetInitialExtent, maxExtent)
-            .toDouble();
+    // Nilai tersimpan bisa berasal dari konteks maxExtent BERBEDA (keyboard
+    // terbuka menyusutkan max). Snap ke detent terdekat KONTEKS SEKARANG —
+    // reopen wajib mendarat di initial atau expanded, bukan di antara.
+    final stored = _activeCommentSession?.sheetExtent;
+    final targetExtent = stored == null
+        ? _commentSheetInitialExtent
+        : (stored >= (_commentSheetInitialExtent + maxExtent) / 2
+            ? maxExtent
+            : _commentSheetInitialExtent);
     _animateCommentSheetExtent(
       target: targetExtent,
       duration: const Duration(milliseconds: 260),
@@ -2391,6 +2368,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     }
     FocusScope.of(context).unfocus();
     AppHaptics.tap();
+    _commentStrandedSettleTimer?.cancel();
+    _commentStrandedSettleTimer = null;
     final transitionEpoch = ++_commentSheetTransitionEpoch;
     if (mounted) {
       setState(() {
@@ -2521,6 +2500,91 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     }
   }
 
+  /// Pointer cancellation di handle = release berkecepatan nol — policy
+  /// [commentSnapTargetFor] yang sama (kontrak Release Policy). Tanpa ini,
+  /// drag yang dibatalkan sistem meninggalkan sheet di extent jumpTo terakhir
+  /// yang arbitrer, tanpa snap framework sebagai fallback.
+  void _onCommentDragCancel() {
+    _onCommentDragEnd(DragEndDetails());
+  }
+
+  // ── Release-settle content-drag (paritas dengan FeedReelsCommentSurface) ──
+  // Pointer di area drawer di-track mentah (Listener, bukan gesture arena):
+  // pelepasan pointer TERAKHIR diselesaikan lewat policy bersama
+  // [commentSnapTargetFor] dengan velocity dari VelocityTracker. Settle tidak
+  // pernah berjalan selama masih ada pointer aktif — drawer wajib tetap
+  // mengikuti jari (tidak boleh disambar dari genggaman yang masih menahan).
+
+  void _onCommentDrawerPointerDown(PointerDownEvent event) {
+    _activeCommentDrawerPointers++;
+    _commentStrandedSettleTimer?.cancel();
+    _commentStrandedSettleTimer = null;
+    _commentDrawerVelocityTrackers[event.pointer] =
+        VelocityTracker.withKind(event.kind);
+  }
+
+  void _onCommentDrawerPointerMove(PointerMoveEvent event) {
+    _commentDrawerVelocityTrackers[event.pointer]
+        ?.addPosition(event.timeStamp, event.position);
+  }
+
+  void _onCommentDrawerPointerUp(PointerUpEvent event) {
+    final tracker = _commentDrawerVelocityTrackers.remove(event.pointer);
+    _activeCommentDrawerPointers =
+        math.max(0, _activeCommentDrawerPointers - 1);
+    if (_activeCommentDrawerPointers > 0) return;
+    _scheduleCommentReleaseSettle(
+      tracker?.getVelocity().pixelsPerSecond.dy ?? 0,
+    );
+  }
+
+  void _onCommentDrawerPointerCancel(PointerCancelEvent event) {
+    _commentDrawerVelocityTrackers.remove(event.pointer);
+    _activeCommentDrawerPointers =
+        math.max(0, _activeCommentDrawerPointers - 1);
+    if (_activeCommentDrawerPointers > 0) return;
+    // Cancellation = release berkecepatan nol (Release Policy).
+    _scheduleCommentReleaseSettle(0);
+  }
+
+  void _resetCommentDrawerPointerTracking() {
+    _activeCommentDrawerPointers = 0;
+    _commentDrawerVelocityTrackers.clear();
+  }
+
+  /// Timer Duration.zero menunda satu putaran event-loop supaya arena
+  /// gesture (drag-end handle / ballistic framework) berjalan dulu; kalau
+  /// jalur itu sudah mengambil alih, pemeriksaan applicable menolak.
+  void _scheduleCommentReleaseSettle(double velocity) {
+    _commentStrandedSettleTimer?.cancel();
+    _commentStrandedSettleTimer = Timer(Duration.zero, () {
+      if (!_commentStrandedSettleApplicable()) return;
+      final size = _commentSheetController.size;
+      // Di/atas initial: framework snap initial<->max sudah sesuai policy.
+      // Di bawah initial: policy bersama yang memutuskan (paritas handle).
+      if (size >=
+          _commentSheetInitialExtent - feedCommentTerminalExtentEpsilon) {
+        return;
+      }
+      _onCommentDragEnd(
+        DragEndDetails(
+          velocity: Velocity(pixelsPerSecond: Offset(0, velocity)),
+          primaryVelocity: velocity,
+        ),
+      );
+    });
+  }
+
+  bool _commentStrandedSettleApplicable() {
+    return mounted &&
+        _commentDrawerMounted &&
+        _commentDrawerPhase != _CommentDrawerPhase.closing &&
+        _commentDrawerPhase != _CommentDrawerPhase.opening &&
+        _activeCommentDrawerPointers == 0 &&
+        _commentSheetAnimationController == null &&
+        _commentSheetController.isAttached;
+  }
+
   void _animateCommentSheetTo(double target) {
     if (!_commentSheetController.isAttached || !_commentDrawerMounted) return;
     final transitionEpoch = _commentSheetTransitionEpoch;
@@ -2597,15 +2661,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     _heartBurstPosition = details.localPosition;
   }
 
-  void _openCart({bool fromFeed = false}) {
-    AppHaptics.tap();
-    Navigator.pushNamed(
-      context,
-      '/cart',
-      arguments: fromFeed ? const {'origin': 'feed'} : null,
-    );
-  }
-
   /// Sprint 3 #10 — Cinema mode fullscreen native player.
   ///
   /// Push fullscreen route dengan VideoPlayer yang re-attach ke controller
@@ -2647,58 +2702,69 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     }
   }
 
-  Future<void> _openFeedCartSheet() async {
+  Future<void> _openProductLinksSheet(List<FeedProductLink> products) async {
+    if (products.isEmpty) return;
     AppHaptics.tap();
-    widget.onOverlayStateChanged(true);
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.22),
-      builder: (sheetContext) => _FeedCartSheet(
-        onOpenFullCart: () {
-          Navigator.of(sheetContext).pop();
-          _openCart(fromFeed: true);
-        },
-      ),
-    ).whenComplete(() => widget.onOverlayStateChanged(false));
+    await showFeedProductLinksSheet(
+      context,
+      products: products,
+      onOpenProduct: (link) => _openProductLinkDetail(link),
+      onAddToCart: (link) => _addFeedLinkToCart(link),
+      onOpened: () {
+        widget.onOverlayStateChanged(true);
+        _pauseForProductSheet();
+      },
+      onClosed: () {
+        widget.onOverlayStateChanged(false);
+        _resumeAfterProductSheet();
+      },
+    );
   }
 
-  Future<void> _onProductsTap(List<FeedProductLink> products) async {
-    if (products.isEmpty) {
-      await _openFeedCartSheet();
+  void _pauseForProductSheet() {
+    if (_managed) {
+      if (!_pausedByProductSheet) {
+        _pausedByProductSheet = true;
+        widget.onRequestPause?.call(CoverPauseReason.productSheet);
+      }
       return;
     }
-    if (products.length == 1) {
-      await _onProductTap(products.first);
-      return;
+    final ctrl = _videoController;
+    if (!_pausedByProductSheet &&
+        ctrl != null &&
+        ctrl.value.isInitialized &&
+        ctrl.value.isPlaying) {
+      _pausedByProductSheet = true;
+      ctrl.pause();
     }
-    AppHaptics.tap();
-    widget.onOverlayStateChanged(true);
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.18),
-      builder: (_) => FeedPostTaggedProductsSheet(
-        products: products,
-        onOpenProduct: (link) async {
-          await _onProductTap(link);
-        },
-        onAdd: (link, quantity) async {
-          _addFeedLinkToCart(link, quantity: quantity);
-        },
-        onBuy: (link, quantity) async {
-          _buyFeedLinkNow(link, quantity: quantity);
-        },
-      ),
-    ).whenComplete(() => widget.onOverlayStateChanged(false));
   }
 
-  Future<void> _quickAddProduct(FeedProductLink link) async {
-    _addFeedLinkToCart(link);
+  void _resumeAfterProductSheet() {
+    if (!_pausedByProductSheet) return;
+    _pausedByProductSheet = false;
+    if (_managed) {
+      widget.onRequestPlay?.call();
+      return;
+    }
+    final ctrl = _videoController;
+    if (_canAutoplayNow() && ctrl != null && ctrl.value.isInitialized) {
+      unawaited(_playLegacy(ctrl, 'product-sheet-close'));
+    }
+  }
+
+  Future<void> _openProductLinkDetail(FeedProductLink link) async {
+    final product = await productService.fetchProductBySlug(link.slug);
+    if (!mounted) return;
+    if (product == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Produk tidak ditemukan.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    _openProductDetail(product);
   }
 
   void _addFeedLinkToCart(FeedProductLink link, {int quantity = 1}) {
@@ -2708,7 +2774,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     }
 
     if (link.hasVariants) {
-      _onProductTap(link);
+      _openProductLinkDetail(link);
       return;
     }
 
@@ -2723,100 +2789,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     );
   }
 
-  void _buyFeedLinkNow(FeedProductLink link, {int quantity = 1}) {
-    if (!link.isAvailable || link.stock <= 0) {
-      _showProductUnavailable();
-      return;
-    }
-
-    if (link.hasVariants) {
-      _onProductTap(link);
-      return;
-    }
-
-    _buyProductNow(feedPostProductFromFeedLink(link), quantity: quantity);
-  }
-
-  Future<void> _onProductTap(FeedProductLink link) async {
-    AppHaptics.tap();
-    widget.onOverlayStateChanged(true);
-    final product = await productService.fetchProductBySlug(link.slug);
-    if (!mounted) {
-      widget.onOverlayStateChanged(false);
-      return;
-    }
-    if (product == null) {
-      widget.onOverlayStateChanged(false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Produk tidak ditemukan.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.18),
-      builder: (_) => FeedPostProductSheet(
-        product: product,
-        onOpenProduct: () => _openProductDetail(product),
-        onAdd: (quantity) => _addProductToCart(product, quantity: quantity),
-        onBuy: (quantity) => _buyProductNow(product, quantity: quantity),
-      ),
-    ).whenComplete(() => widget.onOverlayStateChanged(false));
-  }
-
   void _openProductDetail(Product product) {
     AppHaptics.tap();
     Navigator.pushNamed(context, '/product-detail', arguments: product);
-  }
-
-  void _addProductToCart(Product product, {int quantity = 1}) {
-    if (product.stock <= 0) {
-      _showProductUnavailable();
-      return;
-    }
-    if (product.hasVariants) {
-      _openProductDetail(product);
-      return;
-    }
-    cartStore.addProduct(product, quantity: quantity);
-    if (!mounted) return;
-    AppToast.showCartAdded(
-      context,
-      quantity > 1
-          ? '$quantity x ${product.title} masuk keranjang'
-          : '${product.title} masuk keranjang',
-    );
-  }
-
-  void _buyProductNow(Product product, {int quantity = 1}) {
-    if (product.stock <= 0) {
-      _showProductUnavailable();
-      return;
-    }
-    if (product.hasVariants) {
-      _openProductDetail(product);
-      return;
-    }
-    AppHaptics.impact();
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => CheckoutScreen(
-          items: [
-            CartItem(
-              product: product,
-              quantity: quantity.clamp(1, math.max(1, product.stock)),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   void _showProductUnavailable() {
@@ -2989,9 +2964,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   Widget build(BuildContext context) {
     final post = widget.post;
     final products = _rotatingProductsForPost(post);
-    final featuredProduct = products.isEmpty
-        ? null
-        : products[_featuredProductIndex % products.length];
     return VisibilityDetector(
       key: ValueKey('feed-post-${post.id}'),
       onVisibilityChanged: (info) {
@@ -3091,55 +3063,76 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                     ),
                   ),
                 if (_commentDrawerMounted)
-                  AnimatedPadding(
-                    duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeOutCubic,
-                    padding: EdgeInsets.only(bottom: keyboard),
-                    child:
-                        NotificationListener<DraggableScrollableNotification>(
-                      onNotification: (notification) {
-                        // A drag that starts inside the comment list is owned
-                        // by DraggableScrollableSheet, so the custom handle's
-                        // onDragEnd is not called. Once the sheet has actually
-                        // opened, reaching its minimum must still complete the
-                        // overlay teardown instead of leaving an invisible
-                        // backdrop that intercepts all taps.
-                        if (_commentSheetReachedVisibleExtent &&
-                            !_commentSheetClosingFromDrag &&
-                            notification.extent <= 0.01) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) _closeComments();
-                          });
-                        }
-                        return false;
-                      },
-                      child: DraggableScrollableSheet(
-                        controller: _commentSheetController,
-                        initialChildSize: _commentSheetMinExtent,
-                        minChildSize: _commentSheetMinExtent,
-                        maxChildSize: commentSheetMaxExtent,
-                        snap: true,
-                        snapSizes:
-                            commentSheetMaxExtent > _commentSheetInitialExtent
-                                ? [
-                                    _commentSheetInitialExtent,
-                                    commentSheetMaxExtent,
-                                  ]
-                                : const [_commentSheetInitialExtent],
-                        builder: (context, scrollController) {
-                          return PrimaryScrollController(
-                            controller: scrollController,
-                            child: FeedCommentSheet(
-                              post: widget.post,
-                              applyKeyboardInset: false,
-                              sheetScrollController: scrollController,
-                              onClose: _closeComments,
-                              onCloseAndWait: _closeCommentsAndWait,
-                              onDragUpdate: _onCommentDragUpdate,
-                              onDragEnd: _onCommentDragEnd,
-                            ),
-                          );
+                  // Listener pointer mentah: melacak pointer aktif + velocity
+                  // supaya pelepasan pointer TERAKHIR diselesaikan lewat
+                  // policy bersama (release-settle) — paritas handle vs
+                  // content-drag + pertahanan untuk recognizer/scrollable
+                  // yang mati mid-gesture tanpa pernah memanggil drag-end.
+                  Listener(
+                    onPointerDown: _onCommentDrawerPointerDown,
+                    onPointerMove: _onCommentDrawerPointerMove,
+                    onPointerUp: _onCommentDrawerPointerUp,
+                    onPointerCancel: _onCommentDrawerPointerCancel,
+                    child: AnimatedPadding(
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOutCubic,
+                      padding: EdgeInsets.only(bottom: keyboard),
+                      child:
+                          NotificationListener<DraggableScrollableNotification>(
+                        onNotification: (notification) {
+                          // A drag that starts inside the comment list is
+                          // owned by DraggableScrollableSheet, so the custom
+                          // handle's onDragEnd is not called. Once the sheet
+                          // has actually opened, reaching its minimum must
+                          // still complete the overlay teardown instead of
+                          // leaving an invisible backdrop that intercepts all
+                          // taps. depth == 0 = hanya sheet drawer ini, bukan
+                          // scrollable nested lain (kontrak design).
+                          if (notification.depth != 0) return false;
+                          if (notification.extent >=
+                              _commentSheetDismissExtent) {
+                            _commentSheetReachedVisibleExtent = true;
+                          }
+                          if (_commentSheetReachedVisibleExtent &&
+                              !_commentSheetClosingFromDrag &&
+                              notification.extent <=
+                                  _commentSheetMinExtent +
+                                      feedCommentTerminalExtentEpsilon) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) _closeComments();
+                            });
+                          }
+                          return false;
                         },
+                        child: DraggableScrollableSheet(
+                          controller: _commentSheetController,
+                          initialChildSize: _commentSheetMinExtent,
+                          minChildSize: _commentSheetMinExtent,
+                          maxChildSize: commentSheetMaxExtent,
+                          snap: true,
+                          snapSizes: commentSheetMaxExtent >
+                                  _commentSheetInitialExtent
+                              ? [
+                                  _commentSheetInitialExtent,
+                                  commentSheetMaxExtent,
+                                ]
+                              : const [_commentSheetInitialExtent],
+                          builder: (context, scrollController) {
+                            return PrimaryScrollController(
+                              controller: scrollController,
+                              child: FeedCommentSheet(
+                                post: widget.post,
+                                applyKeyboardInset: false,
+                                sheetScrollController: scrollController,
+                                onClose: _closeComments,
+                                onCloseAndWait: _closeCommentsAndWait,
+                                onDragUpdate: _onCommentDragUpdate,
+                                onDragEnd: _onCommentDragEnd,
+                                onDragCancel: _onCommentDragCancel,
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ),
                   ),
@@ -3462,25 +3455,13 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                                                 padding: const EdgeInsets.only(
                                                   bottom: 12,
                                                 ),
-                                                child:
-                                                    _ProductCommerceOverlayGroup(
-                                                  featuredProduct:
-                                                      featuredProduct!,
-                                                  showProductCard:
-                                                      _endOfVideoCtaVisible &&
-                                                          !_commentSheetOpen,
-                                                  onTap: () => _onProductsTap(
+                                                child: feedProductPillFor(
+                                                  products,
+                                                  _featuredProductIndex,
+                                                  onTap: () =>
+                                                      _openProductLinksSheet(
                                                     products,
                                                   ),
-                                                  onBuy: () => _quickAddProduct(
-                                                    featuredProduct,
-                                                  ),
-                                                  onQuickAdd: () =>
-                                                      _quickAddProduct(
-                                                    featuredProduct,
-                                                  ),
-                                                  onDismiss:
-                                                      _dismissEndOfVideoCta,
                                                 ),
                                               ),
                                             ),
@@ -3540,42 +3521,27 @@ class _MediaBackground extends StatelessWidget {
     this.framing = FeedVideoFraming.immersive,
   });
 
-  /// Sigma blur untuk backdrop pengisi ala IG/Reels.
-  static const double _backdropBlurSigma = 26;
-
-  /// Fit lapisan DEPAN (video tajam): selalu penuhi LEBAR layar. Ini menjaga
-  /// video pada skala naturalnya tanpa terasa "zoom" — beda dengan `cover`
-  /// yang memaksa tinggi & memotong sisi pada media yang lebih lebar dari
-  /// 9:16. Sisa ruang atas/bawah (untuk media non-9:16) tidak dibiarkan hitam
-  /// polos melainkan diisi oleh backdrop blur di baliknya, persis IG.
+  /// Fit lapisan media: selalu penuhi LEBAR layar. Ini menjaga video pada
+  /// skala naturalnya tanpa terasa "zoom" — beda dengan `cover` yang memaksa
+  /// tinggi & memotong sisi pada media yang lebih lebar dari 9:16.
   static const BoxFit _foregroundFit = BoxFit.fitWidth;
 
-  /// Susun lapisan imersif: latar hitam → salinan media di-`cover` + blur
-  /// (pengisi anti-letterbox) → peredup tipis → media tajam fit-lebar.
-  static Widget _immersiveStack({
-    required Widget backdrop,
-    required Widget foreground,
-  }) {
+  /// Rata ATAS: video mulai penuh dari tepi atas layar persis IG. Untuk media
+  /// yang lebih pendek dari layar (non-9:16) sisa ruang jatuh SELURUHNYA di
+  /// bawah — di belakang chrome (kartu produk, caption) — bukan terbagi rata
+  /// atas-bawah yang menurunkan komposisi. Latar dasar tetap hitam polos;
+  /// tidak ada blurred backdrop di Feed/fullscreen normal.
+  static const Alignment _foregroundAlign = Alignment.topCenter;
+
+  /// Susun media di atas latar hitam. `media` sudah fit-lebar + rata atas
+  /// sendiri; StackFit.expand memberi constraint fullscreen sehingga sisa
+  /// ruang bawah = area hitam (ala IG), bukan letterbox terbagi.
+  static Widget _mediaStack(Widget media) {
     return Stack(
       fit: StackFit.expand,
       children: [
         const ColoredBox(color: Colors.black),
-        Positioned.fill(
-          child: ImageFiltered(
-            imageFilter: ui.ImageFilter.blur(
-              sigmaX: _backdropBlurSigma,
-              sigmaY: _backdropBlurSigma,
-              tileMode: TileMode.decal,
-            ),
-            child: backdrop,
-          ),
-        ),
-        // Peredup tipis supaya media tajam di depan tetap kontras terhadap
-        // backdrop yang di-blur.
-        const Positioned.fill(
-          child: ColoredBox(color: Color(0x40000000)),
-        ),
-        foreground,
+        media,
       ],
     );
   }
@@ -3587,7 +3553,7 @@ class _MediaBackground extends StatelessWidget {
     if (ctrl != null && ctrl.value.isInitialized) {
       final size = ctrl.value.size;
       // Preview kompak (drawer komentar minimized): pertahankan contain
-      // sederhana tanpa backdrop.
+      // sederhana & terpusat, terpisah dari kebijakan Feed/fullscreen.
       if (compactPreview) {
         return Stack(
           fit: StackFit.expand,
@@ -3607,7 +3573,7 @@ class _MediaBackground extends StatelessWidget {
       }
       Widget videoLayer(
         BoxFit fit, {
-        Alignment alignment = Alignment.center,
+        Alignment alignment = _foregroundAlign,
       }) =>
           FittedBox(
             fit: fit,
@@ -3620,19 +3586,10 @@ class _MediaBackground extends StatelessWidget {
             ),
           );
       if (framing == FeedVideoFraming.mainFeed) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            const ColoredBox(color: Colors.black),
-            videoLayer(BoxFit.cover, alignment: Alignment.topCenter),
-          ],
-        );
+        return _mediaStack(videoLayer(BoxFit.cover));
       }
-      return _immersiveStack(
-        // Backdrop = video yang sama, di-cover (isi penuh, tepi terpotong) lalu
-        // di-blur → mengisi sisa ruang tanpa hitam polos.
-        backdrop: videoLayer(BoxFit.cover),
-        foreground: videoLayer(_foregroundFit),
+      return _mediaStack(
+        videoLayer(_foregroundFit),
       );
     }
     final thumb = post.thumbnailUrl;
@@ -3652,32 +3609,23 @@ class _MediaBackground extends StatelessWidget {
         );
       }
       if (framing == FeedVideoFraming.mainFeed) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            const ColoredBox(color: Colors.black),
-            CachedNetworkImage(
-              imageUrl: thumb,
-              fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-              placeholder: (_, __) => const SizedBox.shrink(),
-              errorWidget: (_, __, ___) => const SizedBox.shrink(),
-            ),
-          ],
+        return _mediaStack(
+          CachedNetworkImage(
+            imageUrl: thumb,
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            placeholder: (_, __) => const SizedBox.shrink(),
+            errorWidget: (_, __, ___) => const SizedBox.shrink(),
+          ),
         );
       }
-      // Thumbnail mengikuti framing yang sama dengan video → tidak ada lompatan
-      // saat player siap.
-      return _immersiveStack(
-        backdrop: CachedNetworkImage(
-          imageUrl: thumb,
-          fit: BoxFit.cover,
-          placeholder: (_, __) => const SizedBox.shrink(),
-          errorWidget: (_, __, ___) => const SizedBox.shrink(),
-        ),
-        foreground: CachedNetworkImage(
+      // Thumbnail mengikuti framing yang sama dengan video (fit-lebar + rata
+      // atas) → tidak ada lompatan saat player siap.
+      return _mediaStack(
+        CachedNetworkImage(
           imageUrl: thumb,
           fit: _foregroundFit,
+          alignment: _foregroundAlign,
           placeholder: (_, __) => const SizedBox.shrink(),
           errorWidget: (_, __, ___) => const SizedBox.shrink(),
         ),
@@ -4013,749 +3961,6 @@ class _PausedControlButtonState extends State<_PausedControlButton> {
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ProductCommerceOverlayGroup extends StatelessWidget {
-  final FeedProductLink featuredProduct;
-  final bool showProductCard;
-  final VoidCallback onTap;
-  final VoidCallback onBuy;
-  final VoidCallback? onQuickAdd;
-  final VoidCallback onDismiss;
-
-  const _ProductCommerceOverlayGroup({
-    required this.featuredProduct,
-    required this.showProductCard,
-    required this.onTap,
-    required this.onBuy,
-    this.onQuickAdd,
-    required this.onDismiss,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        AnimatedSize(
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOutCubic,
-          alignment: Alignment.bottomCenter,
-          child: showProductCard
-              ? Column(
-                  key: const ValueKey('product-card-open'),
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AnimatedSlide(
-                      duration: const Duration(milliseconds: 280),
-                      curve: Curves.easeOutCubic,
-                      offset: Offset.zero,
-                      child: AnimatedOpacity(
-                        duration: const Duration(milliseconds: 220),
-                        opacity: 1,
-                        child: _EndOfVideoProductCta(
-                          product: featuredProduct,
-                          onTap: onTap,
-                          onBuy: onBuy,
-                          onDismiss: onDismiss,
-                        ),
-                      ),
-                    ),
-                    const _ProductCardArrowPointer(),
-                  ],
-                )
-              : const SizedBox.shrink(key: ValueKey('product-card-closed')),
-        ),
-        feedPostProductAnchorCardFor(
-          featuredProduct,
-          onTap: onTap,
-          onAddToCart: onQuickAdd,
-        ),
-      ],
-    );
-  }
-}
-
-class _ProductCardArrowPointer extends StatelessWidget {
-  const _ProductCardArrowPointer();
-
-  @override
-  Widget build(BuildContext context) {
-    return const CustomPaint(size: Size(22, 10), painter: _DownArrowPainter());
-  }
-}
-
-class _DownArrowPainter extends CustomPainter {
-  const _DownArrowPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final path = Path()
-      ..moveTo(0, 0)
-      ..lineTo(size.width / 2, size.height)
-      ..lineTo(size.width, 0)
-      ..close();
-
-    final fill = Paint()
-      ..color = Colors.black.withValues(alpha: 0.50)
-      ..style = PaintingStyle.fill;
-    canvas.drawPath(path, fill);
-
-    final stroke = Paint()
-      ..color = Colors.white.withValues(alpha: 0.14)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    canvas.drawPath(path, stroke);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _FeedCartSheet extends StatelessWidget {
-  final VoidCallback onOpenFullCart;
-
-  const _FeedCartSheet({required this.onOpenFullCart});
-
-  @override
-  Widget build(BuildContext context) {
-    return FractionallySizedBox(
-      heightFactor: 0.60,
-      child: Container(
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: const Color(0xFF0B0D12),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-          border: Border(
-            top: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.45),
-              blurRadius: 30,
-              offset: const Offset(0, -14),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          top: false,
-          child: AnimatedBuilder(
-            animation: cartStore,
-            builder: (context, _) {
-              final items = cartStore.items;
-              final itemCount = cartStore.totalQuantity;
-              final subtotal = cartStore.subtotal;
-
-              return Padding(
-                padding: const EdgeInsets.fromLTRB(18, 10, 18, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        height: 4,
-                        width: 42,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.30),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Keranjang Feed',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      itemCount > 0
-                          ? '$itemCount item di keranjang utama.'
-                          : 'Keranjang masih kosong.',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.58),
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Expanded(
-                      child: items.isEmpty
-                          ? const _FeedCartEmptyState()
-                          : ListView.separated(
-                              padding: EdgeInsets.zero,
-                              itemCount: items.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 10),
-                              itemBuilder: (context, index) {
-                                final item = items[index];
-                                return _FeedCartItemTile(item: item);
-                              },
-                            ),
-                    ),
-                    const SizedBox(height: 14),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.10),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  itemCount > 0
-                                      ? '$itemCount item'
-                                      : 'Belum ada item',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.56),
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  formatRupiah(subtotal),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w900,
-                                    height: 1,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          FilledButton(
-                            onPressed: onOpenFullCart,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: Colors.black,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 13,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                            ),
-                            child: const Text(
-                              'Lihat Keranjang',
-                              style: TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FeedCartEmptyState extends StatelessWidget {
-  const _FeedCartEmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 28),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.045),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              height: 58,
-              width: 58,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.07),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Icon(
-                Icons.shopping_bag_outlined,
-                color: feedPostGoldColor,
-                size: 28,
-              ),
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              'Keranjang masih kosong',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Tap tombol kecil di produk video untuk menambahkan item tanpa keluar dari Feed.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.56),
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                height: 1.35,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FeedCartItemTile extends StatelessWidget {
-  final CartItem item;
-
-  const _FeedCartItemTile({required this.item});
-
-  @override
-  Widget build(BuildContext context) {
-    final imageUrl = item.product.imageUrl;
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-      ),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: SizedBox(
-              height: 62,
-              width: 62,
-              child: imageUrl.isEmpty
-                  ? const ColoredBox(
-                      color: Color(0xFF171B22),
-                      child: Icon(
-                        Icons.shopping_bag_outlined,
-                        color: Colors.white70,
-                      ),
-                    )
-                  : imageUrl.startsWith('assets/')
-                      ? Image.asset(imageUrl, fit: BoxFit.cover)
-                      : CachedNetworkImage(
-                          imageUrl: imageUrl,
-                          fit: BoxFit.cover,
-                          errorWidget: (_, __, ___) => const ColoredBox(
-                            color: Color(0xFF171B22),
-                            child: Icon(
-                              Icons.shopping_bag_outlined,
-                              color: Colors.white70,
-                            ),
-                          ),
-                        ),
-            ),
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.product.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w900,
-                    height: 1.18,
-                  ),
-                ),
-                if (item.variantLabel != null) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    item.variantLabel!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.52),
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 7),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        formatRupiah(item.unitPrice),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: feedPostGoldColor,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 9,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.12),
-                        ),
-                      ),
-                      child: Text(
-                        'x${item.quantity}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                          height: 1,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EndOfVideoProductCta extends StatelessWidget {
-  final FeedProductLink product;
-  final VoidCallback onTap;
-  final VoidCallback onBuy;
-  final VoidCallback onDismiss;
-
-  const _EndOfVideoProductCta({
-    required this.product,
-    required this.onTap,
-    required this.onBuy,
-    required this.onDismiss,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final pricing = feedPostProductPricing(product);
-    final canBuy = product.isAvailable && product.stock > 0;
-    final imageUrl = product.imageUrl;
-    final hasRatingData = product.avgRating > 0 || product.soldCount > 0;
-
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Stack(
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.50),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.14),
-                    width: 1,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.30),
-                      blurRadius: 24,
-                      offset: const Offset(0, 12),
-                    ),
-                  ],
-                ),
-                child: InkWell(
-                  onTap: onTap,
-                  borderRadius: BorderRadius.circular(18),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // ── Thumbnail produk (4:5 portrait) ──
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: SizedBox(
-                            width: 72,
-                            height: 90,
-                            child: imageUrl != null && imageUrl.isNotEmpty
-                                ? CachedNetworkImage(
-                                    imageUrl: imageUrl,
-                                    fit: BoxFit.cover,
-                                    placeholder: (_, __) => Container(
-                                      color: const Color(0xFF2A2F36),
-                                    ),
-                                    errorWidget: (_, __, ___) => Container(
-                                      color: const Color(0xFF2A2F36),
-                                    ),
-                                  )
-                                : Container(color: const Color(0xFF2A2F36)),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        // ── Content right ──
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // Spacer kecil supaya beri ruang untuk X di top-right
-                              // tanpa overlap text. Padding right ~20 lewat
-                              // contentPadding gak available — pakai SizedBox.
-                              Padding(
-                                padding: const EdgeInsets.only(right: 22),
-                                child: Text(
-                                  product.name,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w800,
-                                    height: 1.18,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 5),
-                              // Badges row
-                              Wrap(
-                                spacing: 5,
-                                runSpacing: 4,
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [
-                                  if (pricing.hasPromo)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 5,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFFF4D4F),
-                                        borderRadius: BorderRadius.circular(5),
-                                      ),
-                                      child: Text(
-                                        'Diskon ${pricing.discountPercent}%',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 9.5,
-                                          fontWeight: FontWeight.w900,
-                                          height: 1,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              // Rating row (conditional)
-                              if (hasRatingData) ...[
-                                const SizedBox(height: 5),
-                                FeedPostProductRatingRow(
-                                  avgRating: product.avgRating,
-                                  soldCount: product.soldCount,
-                                ),
-                              ],
-                              const SizedBox(height: 6),
-                              // Harga row
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 3,
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [
-                                  if (pricing.hasPromo)
-                                    Text(
-                                      formatRupiah(pricing.originalPrice),
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.45,
-                                        ),
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.w700,
-                                        decoration: TextDecoration.lineThrough,
-                                        decorationColor: Colors.white
-                                            .withValues(alpha: 0.45),
-                                        height: 1,
-                                      ),
-                                    ),
-                                  Text(
-                                    formatRupiah(pricing.displayPrice),
-                                    style: const TextStyle(
-                                      color: Color(0xFFFF4D4F),
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w900,
-                                      height: 1,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              // Cart icon + Beli button row
-                              Row(
-                                children: [
-                                  _PopupCartButton(
-                                    enabled: canBuy,
-                                    onTap: canBuy ? onBuy : null,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: _CtaBuyButton(
-                                      enabled: canBuy,
-                                      onTap: canBuy ? onBuy : null,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              // ── X dismiss (top-right) ──
-              Positioned(
-                top: 6,
-                right: 6,
-                child: InkResponse(
-                  onTap: onDismiss,
-                  radius: 18,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.45),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.close_rounded,
-                      size: 14,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Tombol Beli di popup preview — spec: warna Natalo biru agak ringan
-/// (bukan merah). Match `_FeedPrimaryProductButton` style.
-class _CtaBuyButton extends StatelessWidget {
-  final bool enabled;
-  final VoidCallback? onTap;
-
-  const _CtaBuyButton({required this.enabled, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        height: 36,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          gradient: enabled
-              ? const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFF5FBFFF), Color(0xFF1E87FF)],
-                )
-              : null,
-          color: enabled ? null : Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Text(
-          enabled ? 'Beli' : 'Habis',
-          style: TextStyle(
-            color:
-                enabled ? Colors.white : Colors.white.withValues(alpha: 0.45),
-            fontSize: 12.5,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0.2,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Cart icon button di popup preview — line biru tema Natalo.
-class _PopupCartButton extends StatelessWidget {
-  final bool enabled;
-  final VoidCallback? onTap;
-
-  const _PopupCartButton({required this.enabled, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: enabled
-              ? const Color(0xFF1E5BFF).withValues(alpha: 0.15)
-              : Colors.white.withValues(alpha: 0.04),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: const Color(
-              0xFF1E5BFF,
-            ).withValues(alpha: enabled ? 0.65 : 0.15),
-            width: 1.4,
-          ),
-        ),
-        child: Icon(
-          Icons.shopping_cart_outlined,
-          color: enabled
-              ? const Color(0xFF1E5BFF)
-              : Colors.white.withValues(alpha: 0.28),
-          size: 18,
         ),
       ),
     );
