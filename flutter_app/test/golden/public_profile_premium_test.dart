@@ -8,7 +8,9 @@ import 'package:natalo_petshop_flutter/services/profile_service.dart';
 import 'package:natalo_petshop_flutter/theme/app_theme.dart';
 import 'package:natalo_petshop_flutter/widgets/profile_grid_geometry.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_chrome_overlay.dart';
+import 'package:natalo_petshop_flutter/widgets/public_profile_content_tab_bar.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_expanded_header.dart';
+import 'package:natalo_petshop_flutter/widgets/public_profile_header_motion.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 const _logicalSize = Size(393, 852);
@@ -222,11 +224,34 @@ class _GoldenProfileState extends State<_GoldenProfile>
   Widget build(BuildContext context) {
     final profile = widget.profile;
     final metrics = PublicProfileHeaderMetrics.resolve(context, profile);
-    final scrollOffset = widget.collapsed ? metrics.scrollSpaceHeight : 0.0;
+    // Chrome and the tab bar now share ONE normalized progress `t` (0 fully
+    // expanded, 1 fully collapsed/pinned) instead of a raw pixel
+    // scrollOffset — this is the exact same shared value the real
+    // NestedScrollView drives both pieces with in production.
+    final t = widget.collapsed ? 1.0 : 0.0;
+    final motion =
+        PublicProfileHeaderMotion.resolve(t: t, reducedMotion: false);
     // Satu layout IG putih untuk semua akun — tidak ada lagi gradient
     // hero navy khusus official.
     final headerDecoration = BoxDecoration(
       color: Theme.of(context).colorScheme.surface,
+    );
+    // Tab bar rendering moved OUT of PublicProfileChromeOverlay (Task 2) into
+    // its own sliver-hosted widget (Task 3). This mock reconstructs it in the
+    // exact screen position chrome used to paint it in, using the same
+    // motion values, so the visual composition here matches the pre-refactor
+    // appearance pixel-for-pixel.
+    final tabBar = DecoratedBox(
+      decoration: headerDecoration,
+      child: SizedBox(
+        height: metrics.tabHeight,
+        child: PublicProfileContentTabBar(
+          controller: _controller,
+          labelOpacity: motion.labelOpacity,
+          pillOpacity: motion.pillOpacity,
+          underlineOpacity: motion.underlineOpacity,
+        ),
+      ),
     );
 
     return RepaintBoundary(
@@ -234,7 +259,7 @@ class _GoldenProfileState extends State<_GoldenProfile>
         body: SizedBox.expand(
           child: Stack(
             children: [
-              if (widget.collapsed)
+              if (widget.collapsed) ...[
                 const Positioned(
                   top: 0,
                   left: 0,
@@ -242,8 +267,14 @@ class _GoldenProfileState extends State<_GoldenProfile>
                   child: RepaintBoundary(
                     child: _DeterministicProfileGrid(),
                   ),
-                )
-              else
+                ),
+                Positioned(
+                  top: metrics.topPadding + metrics.toolbarHeight,
+                  left: 0,
+                  right: 0,
+                  child: tabBar,
+                ),
+              ] else
                 Positioned(
                   top: 0,
                   left: 0,
@@ -269,7 +300,7 @@ class _GoldenProfileState extends State<_GoldenProfile>
                                 onMessage: profile.isOfficial ? () {} : null,
                               ),
                             ),
-                            SizedBox(height: metrics.tabHeight),
+                            tabBar,
                           ],
                         ),
                       ),
@@ -279,16 +310,17 @@ class _GoldenProfileState extends State<_GoldenProfile>
                     ],
                   ),
                 ),
-              Positioned.fill(
-                child: PublicProfileChromeOverlay(
-                  profile: profile,
-                  controller: _controller,
-                  scrollOffset: scrollOffset,
-                  metrics: metrics,
-                  onBack: () {},
-                  onShareProfile: () {},
-                  onOverflow: profile.isOfficial ? null : () {},
-                ),
+              // PublicProfileChromeOverlay.build() returns a bare Positioned
+              // itself — it MUST be a direct Stack child, never wrapped in
+              // Positioned.fill(...) (throws "Incorrect use of
+              // ParentDataWidget").
+              PublicProfileChromeOverlay(
+                profile: profile,
+                t: t,
+                metrics: metrics,
+                onBack: () {},
+                onShareProfile: () {},
+                onOverflow: profile.isOfficial ? null : () {},
               ),
             ],
           ),
