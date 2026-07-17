@@ -3118,12 +3118,22 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                                 ]
                               : const [_commentSheetInitialExtent],
                           builder: (context, scrollController) {
-                            return PrimaryScrollController(
+                            // scrollController TIDAK dipasang ke daftar komentar
+                            // (yang bikin scroll komentar menyeret sheet naik →
+                            // video pause). Ia di-anchor oleh
+                            // CommentSheetScrollAnchor supaya
+                            // DraggableScrollableController tetap isAttached;
+                            // FeedCommentSheet memakai controller list sendiri
+                            // (sheetScrollController: null). Overscroll list di
+                            // tepi atas → pull-to-dismiss via policy handle.
+                            return CommentSheetScrollAnchor(
                               controller: scrollController,
+                              onPullDown: _onCommentDragUpdate,
+                              onPullSettle: _onCommentDragCancel,
                               child: FeedCommentSheet(
                                 post: widget.post,
                                 applyKeyboardInset: false,
-                                sheetScrollController: scrollController,
+                                sheetScrollController: null,
                                 onClose: _closeComments,
                                 onCloseAndWait: _closeCommentsAndWait,
                                 onDragUpdate: _onCommentDragUpdate,
