@@ -2801,16 +2801,18 @@ class _CustomerPostCard extends StatelessWidget {
           onActivePostChanged: (id) {
             reverseMorphEnabled.value = id == post.id;
           },
-          onPrepareClose: (result, _) async {
+          onPrepareClose: (result, signal) async {
             final returned = allPosts.cast<_ProductCustomerPost?>().firstWhere(
                   (p) => p?.id == result.postId,
                   orElse: () => null,
                 );
             if (returned == null) return;
-            reverseTarget.value = await rail.resolveReturnTarget(
+            final target = await rail.resolveReturnTarget(
               result.postId,
               imageUrl: returned.thumbnailUrl,
             );
+            if (signal.isCancelled || !context.mounted) return;
+            reverseTarget.value = target;
             reverseMorphEnabled.value = true;
           },
         ),
