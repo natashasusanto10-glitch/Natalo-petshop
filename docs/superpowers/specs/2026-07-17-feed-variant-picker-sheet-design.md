@@ -37,17 +37,20 @@ class ProductVariantPickerSheet extends StatefulWidget {
     required this.productSlug,
     this.preselectedVariant, // null untuk alur baru (feed); variant existing untuk alur Cart (ganti varian)
     required this.confirmLabel, // "Simpan" (Cart) vs "Tambah ke Keranjang" (feed)
+    required this.confirmColor, // hijau (Cart, sama seperti sekarang) vs biru brand (feed, sesuai mockup)
   });
 
   final String productSlug;
   final ProductVariant? preselectedVariant;
   final String confirmLabel;
+  final Color confirmColor;
 
   static Future<ProductVariantPickResult?> show(
     BuildContext context, {
     required String productSlug,
     ProductVariant? preselectedVariant,
     required String confirmLabel,
+    required Color confirmColor,
   });
 }
 
@@ -61,7 +64,8 @@ class ProductVariantPickResult {
 - Fetch: `productService.fetchProductBySlug(productSlug)` di `initState` (sama pola dengan `_CartVariantPickerSheet._loadFullProduct`, hanya sumber slug dari parameter langsung, bukan dari `cartItem.product.slug`).
 - Pre-seleksi opsi: kalau `preselectedVariant != null`, isi `_selectedOptions` dari variant itu (perilaku Cart, "ganti varian" dari pilihan sekarang). Kalau `null` (alur feed baru), `_selectedOptions` mulai kosong — tombol confirm disabled sampai kombinasi lengkap valid dipilih (sama seperti behavior existing untuk cart: `_matchedVariant == null` → tombol disabled).
 - `confirmLabel` menggantikan teks hardcoded "Simpan" — dipakai untuk teks tombol bawah sheet.
-- Loading/error state sama seperti sekarang (spinner, error+retry — TIDAK fallback diam ke alur lama).
+- Loading/error state sama PERSIS seperti sekarang: spinner saat loading, teks error ("Gagal memuat varian. Coba lagi." / "Produk tidak ditemukan.") saat gagal — TIDAK ada tombol retry (mengikuti pola `_CartVariantPickerSheet` yang existing, ekstraksi faithful), dan TIDAK fallback diam ke alur navigasi lama.
+- Seam testabilitas: parameter `@visibleForTesting ProductFetcher? productFetcher` (default `null` → pakai global `productService.fetchProductBySlug`). Global `productService` tidak injectable, jadi test menyuntik fetcher palsu — pola yang sudah dipakai codebase (lihat memory widget-test shimmer-hang "inject fetchers").
 - `FractionallySizedBox(heightFactor: 0.78)` dipertahankan sama seperti sekarang.
 
 ### 2. Refactor `cart_screen.dart` memakai widget baru
@@ -110,6 +114,10 @@ Catatan mekanisme tutup-dua-sheet: `ProductVariantPickerSheet.show` sudah otomat
 
 Tidak ada perubahan pada `feed_product_links_sheet.dart` — `onAddToCart` callback tetap sama persis, hanya implementasinya di pemanggil (`_addFeedLinkToCart`) yang bercabang berdasarkan `hasVariants`.
 
+**Ekstraksi untuk testabilitas:** logika `_addFeedLinkToCart` (guard unavailable + cabang varian + add langsung + toast) dipindah ke fungsi publik `addFeedLinkToCart(BuildContext, FeedProductLink, {ProductFetcher? productFetcher})` di file kecil baru `lib/features/feed/widgets/feed_link_cart_actions.dart`. `_addFeedLinkToCart` di `feed_video_post_view.dart` jadi delegasi satu baris. Ini memungkinkan test menyuntik fetcher + NavigatorObserver tanpa harus me-mount `FeedVideoPostView` yang berat (butuh controller video). Fungsi ini yang memanggil `ProductVariantPickerSheet.show`, lalu pop sheet Links + toast pada path varian; path non-varian tetap TIDAK menutup sheet Links (user bisa tambah beberapa produk berturut-turut — perilaku sekarang dipertahankan).
+
+Catatan pop: penutupan sheet Links (`Navigator.of(context).pop()`) HANYA terjadi pada path varian setelah confirm. Path non-varian tidak pop (sama seperti sekarang).
+
 ### 4. Test
 
 - Widget test baru untuk `ProductVariantPickerSheet`: loading→pilih opsi lengkap→tombol enabled→confirm→pop dengan `ProductVariantPickResult` yang benar; opsi habis stok ter-disable; error+retry.
@@ -120,5 +128,6 @@ Tidak ada perubahan pada `feed_product_links_sheet.dart` — `onAddToCart` callb
 
 - Baru: `lib/widgets/product_variant_picker_sheet.dart`
 - Modifikasi: `lib/screens/cart_screen.dart` (hapus 3 private class, pakai widget baru)
-- Modifikasi: `lib/features/feed/widgets/feed_video_post_view.dart` (`_addFeedLinkToCart` bercabang, tambah `_openVariantPickerForFeedLink`)
+- Baru: `lib/features/feed/widgets/feed_link_cart_actions.dart` (fungsi publik `addFeedLinkToCart` + typedef `ProductFetcher`)
+- Modifikasi: `lib/features/feed/widgets/feed_video_post_view.dart` (`_addFeedLinkToCart` jadi delegasi ke `addFeedLinkToCart`)
 - Tidak berubah: `lib/features/feed/widgets/feed_product_links_sheet.dart`, `lib/models/feed_post.dart`, logic pause/resume video existing
