@@ -829,6 +829,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     }
     final profile = _profile!;
     final metrics = PublicProfileHeaderMetrics.resolve(context, profile);
+    final headerLeadInset = metrics.topPadding + metrics.toolbarHeight;
     final nestedScrollView = NestedScrollView(
       controller: _scrollController,
       headerSliverBuilder: (context, innerBoxIsScrolled) => [
@@ -844,10 +845,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
         SliverPersistentHeader(
           pinned: true,
           delegate: CollapsingHeaderDelegate(
-            minHeight: metrics.topPadding + metrics.toolbarHeight,
-            maxHeight: metrics.topPadding + metrics.toolbarHeight,
+            minHeight: headerLeadInset,
+            maxHeight: headerLeadInset,
             builder: (context, t) => SizedBox(
-              height: metrics.topPadding + metrics.toolbarHeight,
+              height: headerLeadInset,
             ),
           ),
         ),
@@ -919,7 +920,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
             // `t` yang dihitung CollapsingHeaderDelegate dari shrinkOffset
             // lokal sliver identity — tanpa ini, chrome akan tampak "selesai"
             // collapse jauh sebelum identity di bawahnya benar-benar habis.
-            final headerLeadInset = metrics.topPadding + metrics.toolbarHeight;
             final shrinkOffset = _scrollController.hasClients
                 ? (_scrollController.offset - headerLeadInset)
                     .clamp(0.0, metrics.identityHeight)
