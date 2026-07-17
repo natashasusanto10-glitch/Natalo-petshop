@@ -1248,6 +1248,11 @@ class _PostFeedItemState extends State<_PostFeedItem>
   late final Animation<double> _burstOpacity;
   Offset? _heartBurstPosition;
 
+  // Anchor key video inline (dilaporkan lewat onVideoAnchorReady) — dipakai
+  // outer detector untuk memicu fullscreen saat single tap (menggantikan
+  // onTap milik _InlineVideoPlayer, supaya single & double tap satu detector).
+  GlobalKey? _videoAnchorKey;
+
   @override
   void initState() {
     super.initState();
@@ -1357,6 +1362,17 @@ class _PostFeedItemState extends State<_PostFeedItem>
     _heartBurstController.forward(from: 0);
   }
 
+  void _rememberVideoAnchor(String postId, GlobalKey anchorKey) {
+    _videoAnchorKey = anchorKey;
+    widget.onVideoAnchorReady?.call(postId, anchorKey);
+  }
+
+  void _handleVideoSingleTap() {
+    final anchorKey = _videoAnchorKey;
+    if (anchorKey == null) return;
+    widget.onOpenScopedFeed?.call(widget.post.id, anchorKey);
+  }
+
   @override
   Widget build(BuildContext context) {
     final post = widget.post;
@@ -1399,8 +1415,11 @@ class _PostFeedItemState extends State<_PostFeedItem>
         // jalan karena swipe ≠ tap gesture.
         GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onDoubleTapDown: post.isVideo ? null : _rememberHeartBurstPosition,
-          onDoubleTap: post.isVideo ? null : _handleDoubleTap,
+          // Single tap video → fullscreen (ditunda framework karena onDoubleTap
+          // juga terpasang di detector yang SAMA). Foto: single tap no-op.
+          onTap: post.isVideo ? _handleVideoSingleTap : null,
+          onDoubleTapDown: _rememberHeartBurstPosition,
+          onDoubleTap: _handleDoubleTap,
           child: Stack(
             children: [
               _PostMediaSurface(
@@ -1408,13 +1427,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
                 coordinator: widget.coordinator,
                 registerVideoUrl: widget.registerVideoUrl,
                 handoffSessionId: widget.handoffSessionId,
-                // Tap video → buka viewer feed scoped (swipeable) ke semua
-                // video user ini (konsisten dgn flow "Postingan Terkait").
-                // Coordinator handoff (§2.6) diurus di level halaman.
-                onVideoExpandRequested: (sessionId, anchorKey) {
-                  widget.onOpenScopedFeed?.call(sessionId, anchorKey);
-                },
-                onVideoAnchorReady: widget.onVideoAnchorReady,
+                onVideoAnchorReady: _rememberVideoAnchor,
               ),
               if (post.isVideo)
                 Positioned(
@@ -2219,8 +2232,6 @@ class _PostMediaSurface extends StatelessWidget {
   final PostVideoCoordinator coordinator;
   final void Function(String sessionId, String url) registerVideoUrl;
   final String? handoffSessionId;
-  final void Function(String sessionId, GlobalKey anchorKey)?
-      onVideoExpandRequested;
   final void Function(String postId, GlobalKey anchorKey)? onVideoAnchorReady;
 
   const _PostMediaSurface({
@@ -2228,7 +2239,6 @@ class _PostMediaSurface extends StatelessWidget {
     required this.coordinator,
     required this.registerVideoUrl,
     required this.handoffSessionId,
-    this.onVideoExpandRequested,
     this.onVideoAnchorReady,
   });
 
@@ -2260,7 +2270,6 @@ class _PostMediaSurface extends StatelessWidget {
             ),
             thumbnailUrl: post.thumbnailUrl,
             aspectRatio: aspectRatio,
-            onExpandRequested: onVideoExpandRequested,
             onAnchorReady: onVideoAnchorReady,
           ),
         FeedContentType.carousel => Hero(
@@ -2661,7 +2670,6 @@ class _InlineVideoPlayer extends StatefulWidget {
   final String mediaUrl;
   final String? thumbnailUrl;
   final double aspectRatio;
-  final void Function(String sessionId, GlobalKey anchorKey)? onExpandRequested;
   final void Function(String postId, GlobalKey anchorKey)? onAnchorReady;
 
   const _InlineVideoPlayer({
@@ -2672,7 +2680,6 @@ class _InlineVideoPlayer extends StatefulWidget {
     required this.thumbnailUrl,
     required this.aspectRatio,
     this.dormant = false,
-    this.onExpandRequested,
     this.onAnchorReady,
   });
 
@@ -2844,10 +2851,6 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     }
   }
 
-  void _openFullscreen() {
-    widget.onExpandRequested?.call(widget.postId, _anchorKey);
-  }
-
   @override
   Widget build(BuildContext context) {
     final session = _boundSession;
@@ -2869,7 +2872,6 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
       child: GestureDetector(
         key: _anchorKey,
         behavior: HitTestBehavior.opaque,
-        onTap: widget.dormant ? null : _openFullscreen,
         child: Stack(
           fit: StackFit.expand,
           children: [

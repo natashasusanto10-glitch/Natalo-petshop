@@ -281,9 +281,19 @@ void main() {
 
       expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
       await tester.tap(find.byIcon(Icons.volume_off_rounded));
-      await tester.pump();
+      // Task 1 (unify single/double-tap on the outer media GestureDetector)
+      // means the mute button's own tap now shares the SAME pointer arena
+      // as that outer detector's onTap+onDoubleTap — Flutter defers ALL
+      // taps in that arena by kDoubleTapTimeout (~300ms) so it can rule
+      // out a second tap, even for a descendant tap target with no double
+      // -tap semantics of its own. This mirrors the "deferral ~300ms is
+      // acceptable" tradeoff already sanctioned for the video single-tap
+      // case; a single un-timed pump() (0ms elapsed) is no longer enough.
+      await tester.pump(const Duration(milliseconds: 350));
       expect(find.byIcon(Icons.volume_up_rounded), findsOneWidget,
-          reason: 'mute tap should update immediately');
+          reason: 'mute tap should update (now deferred ~300ms by the '
+              'shared tap/double-tap arena, same tradeoff as single-tap '
+              'video fullscreen)');
       expect(find.byType(ScopedVideoFeedScreen), findsNothing,
           reason: 'mute tap must not open the scoped feed');
 
@@ -393,7 +403,13 @@ void main() {
 
       await pumpAndInitialize(tester);
       await tester.tapAt(tester.getCenter(find.byType(VideoPlayer).first));
-      for (var i = 0; i < 10; i++) {
+      // Task 1: single tap on video is now deferred ~kDoubleTapTimeout
+      // (~300ms) because the SAME outer detector also listens for
+      // onDoubleTap. The original 10x20ms=200ms budget predates that
+      // deferral; bumped so the loop has headroom to actually observe the
+      // route appear (matches the ~300ms tradeoff already sanctioned
+      // elsewhere in this suite, e.g. the 30x50ms loops).
+      for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 20));
         if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
       }
