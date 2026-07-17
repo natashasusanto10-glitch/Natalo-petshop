@@ -16,7 +16,7 @@ void main() {
     expect(find.text('Postingan'), findsNothing);
     expect(find.byKey(const Key('public_tab_posts_pill')), findsOneWidget);
     expect(
-      find.byKey(const Key('public_tab_expanded_underline')),
+      find.byKey(const Key('public_tab_sliding_underline')),
       findsOneWidget,
     );
     expect(find.byType(BackdropFilter), findsNothing);
@@ -42,7 +42,7 @@ void main() {
     expect(find.byKey(const Key('public_tab_shop_pill')), findsOneWidget);
     expect(find.byKey(const Key('public_tab_shared_surface')), findsNothing);
     expect(
-      find.byKey(const Key('public_tab_expanded_underline')),
+      find.byKey(const Key('public_tab_sliding_underline')),
       findsNothing,
     );
     _expectNeutralForegrounds(tester);
@@ -152,6 +152,43 @@ void main() {
     final tabBar = tester.widget<TabBar>(find.byType(TabBar));
     expect(tabBar.dividerColor, Colors.transparent);
     expect(tabBar.dividerHeight, 0);
+  });
+
+  testWidgets('active tab indicator slides between tabs (no snap)', (tester) async {
+    final controller = TabController(length: 3, vsync: const TestVSync());
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 300,
+          child: PublicProfileContentTabBar(
+            controller: controller,
+            labelOpacity: 0,
+            pillOpacity: 0,
+            underlineOpacity: 1,
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+    final underline = find.byKey(const Key('public_tab_sliding_underline'));
+    expect(underline, findsOneWidget);
+    final atTab0 = tester.getCenter(underline).dx;
+
+    // Mulai transisi ke tab 1, pump SEBAGIAN (belum selesai).
+    controller.animateTo(1);
+    // Tick pertama animasi selalu elapsed=0 (baseline Ticker) — pump nol
+    // durasi dulu untuk memulai animasi sebelum mengukur progres parsial.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    final midway = tester.getCenter(underline).dx;
+
+    // Indikator sudah bergeser dari tab 0, tapi belum sampai pusat tab 1.
+    final tab1Center = 300 / 3 * 1.5; // slot width * (1 + 0.5)
+    expect(midway, greaterThan(atTab0), reason: 'indikator harus bergeser, bukan snap');
+    expect(midway, lessThan(tab1Center), reason: 'belum sampai tab 1 di tengah transisi');
+
+    await tester.pump(const Duration(milliseconds: 400)); // selesaikan animasi
   });
 }
 
