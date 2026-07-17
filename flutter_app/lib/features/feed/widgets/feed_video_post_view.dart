@@ -64,6 +64,7 @@ typedef FeedVideoHealthMonitorFactory = VideoPlaybackHealthMonitor Function({
 enum FeedVideoFraming {
   immersive,
   mainFeed,
+  fullscreenFeed,
 }
 
 /// Alasan sebuah cover-pause dilaporkan lewat [FeedVideoPostView.onRequestPause]
@@ -3585,7 +3586,8 @@ class _MediaBackground extends StatelessWidget {
               child: VideoPlayer(ctrl),
             ),
           );
-      if (framing == FeedVideoFraming.mainFeed) {
+      if (framing == FeedVideoFraming.mainFeed ||
+          framing == FeedVideoFraming.fullscreenFeed) {
         return _mediaStack(videoLayer(BoxFit.cover));
       }
       return _mediaStack(
@@ -3608,7 +3610,8 @@ class _MediaBackground extends StatelessWidget {
           ],
         );
       }
-      if (framing == FeedVideoFraming.mainFeed) {
+      if (framing == FeedVideoFraming.mainFeed ||
+          framing == FeedVideoFraming.fullscreenFeed) {
         return _mediaStack(
           CachedNetworkImage(
             imageUrl: thumb,
