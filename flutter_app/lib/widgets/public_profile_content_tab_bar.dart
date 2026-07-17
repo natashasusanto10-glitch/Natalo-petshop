@@ -76,7 +76,9 @@ class PublicProfileContentTabBar extends StatelessWidget {
                 pillKey: const Key('public_tab_video_pill'),
                 controller: controller,
                 index: 1,
-                icon: Icons.smart_display_outlined,
+                // Samakan glyph dgn bottom nav (Icons.play_circle_outline_
+                // rounded) supaya konsep "Video" konsisten sepanjang app.
+                icon: Icons.play_circle_outline_rounded,
                 label: 'Video',
                 labelOpacity: labelOpacity,
                 pillOpacity: pillOpacity,

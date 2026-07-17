@@ -17,6 +17,7 @@ import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_notification_button.dart';
+import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
 import 'feed_media_picker_screen.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
@@ -552,33 +553,27 @@ class _ProfileTopBar extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              IconButton(
+              // Trio kanan pakai AppHeaderIconButton bersama (minWidth 34)
+              // supaya jaraknya seragam & konsisten dgn header lain — dulu
+              // bookmark & settings pakai IconButton mentah (minSize 48)
+              // sehingga terlihat lebih renggang dari lonceng di tengahnya.
+              AppHeaderIconButton(
                 onPressed: () =>
                     Navigator.pushNamed(context, '/member/saved'),
                 tooltip: 'Postingan tersimpan',
-                style: IconButton.styleFrom(
-                  minimumSize: const Size(48, 48),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                icon: Icon(
-                  Icons.bookmark_border_rounded,
-                  color: ink,
-                  size: 28,
-                ),
+                color: ink,
+                child: const Icon(Icons.bookmark_border_rounded, size: 28),
               ),
               IconTheme(
                 data: IconThemeData(color: ink, size: 28),
                 child: AppNotificationButton(iconColor: ink),
               ),
-              IconButton(
+              AppHeaderIconButton(
                 onPressed: () =>
                     Navigator.pushNamed(context, '/account/settings'),
                 tooltip: 'Pengaturan akun',
-                style: IconButton.styleFrom(
-                  minimumSize: const Size(48, 48),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                icon: Icon(Icons.settings_outlined, color: ink, size: 28),
+                color: ink,
+                child: const Icon(Icons.settings_outlined, size: 28),
               ),
               const SizedBox(width: 8),
             ],
