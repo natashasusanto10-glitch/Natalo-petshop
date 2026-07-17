@@ -272,11 +272,17 @@ void main() {
     final outerPosition =
         tester.state<ScrollableState>(nestedScrollables.first).position;
     final metrics = overlay().metrics;
+    // The header sliver list now leads with a PINNED spacer reserving
+    // topPadding+toolbarHeight (fix for the tab-bar-under-status-bar
+    // regression) — that spacer consumes real scroll extent before the
+    // identity+tab sliver's own shrink begins, so every offset that targets
+    // "N% through the identity shrink" must add this inset first.
+    final headerLeadInset = metrics.topPadding + metrics.toolbarHeight;
 
     // Midway through the identity shrink — well before the grid can reach
     // the chrome — the glass must already be gradually fading in (never an
     // instant snap from 0 straight to full opacity).
-    final midOffset = metrics.identityHeight * 0.75;
+    final midOffset = headerLeadInset + metrics.identityHeight * 0.75;
     outerPosition.jumpTo(midOffset);
     await tester.pump();
     expect(overlay().t, closeTo(0.75, 0.01));
@@ -294,7 +300,7 @@ void main() {
     // so by the time t reaches 1 the glass has ALREADY finished fading in —
     // there is no frame where the grid is visible beneath a still-partial
     // chip.
-    final intermediateOffset = metrics.identityHeight + 1;
+    final intermediateOffset = headerLeadInset + metrics.identityHeight + 1;
     outerPosition.jumpTo(intermediateOffset);
     await tester.pump();
     final intermediateTile = tester.getRect(

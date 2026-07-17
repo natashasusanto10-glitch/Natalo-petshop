@@ -832,6 +832,25 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     final nestedScrollView = NestedScrollView(
       controller: _scrollController,
       headerSliverBuilder: (context, innerBoxIsScrolled) => [
+        // PINNED spacer (bukan SliverToBoxAdapter biasa) — sengaja. Sliver
+        // pinned lain di bawahnya (tab bar) selalu menempel ke Y=0 viewport
+        // begitu scroll penuh, TERLEPAS dari tinggi konten non-pinned di
+        // atasnya (mekanisme pinning Flutter: header pinned "nempel" ke tepi
+        // viewport, bukan ke posisi setelah sliver sebelumnya). Supaya tab
+        // bar berhenti TEPAT di bawah toolbar overlay (bukan di y=0 balik
+        // lagi), spacer ini juga harus pinned dgn minExtent==maxExtent —
+        // jadi ia sendiri yang "duduk" permanen di y=0..H, dan sliver
+        // pinned berikutnya otomatis bertumpuk tepat di bawahnya.
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: CollapsingHeaderDelegate(
+            minHeight: metrics.topPadding + metrics.toolbarHeight,
+            maxHeight: metrics.topPadding + metrics.toolbarHeight,
+            builder: (context, t) => SizedBox(
+              height: metrics.topPadding + metrics.toolbarHeight,
+            ),
+          ),
+        ),
         SliverPersistentHeader(
           pinned: true,
           delegate: CollapsingHeaderDelegate(
@@ -893,8 +912,16 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
         AnimatedBuilder(
           animation: _scrollController,
           builder: (context, child) {
+            // Sliver leading (pinned spacer topPadding+toolbarHeight) kini
+            // mendahului sliver identity+tab, jadi ia ikut memakan
+            // scrollExtent sebelum identity mulai menyusut. Kurangi dulu
+            // supaya `t` di sini (crossfade chrome) tetap SAMA PERSIS dengan
+            // `t` yang dihitung CollapsingHeaderDelegate dari shrinkOffset
+            // lokal sliver identity — tanpa ini, chrome akan tampak "selesai"
+            // collapse jauh sebelum identity di bawahnya benar-benar habis.
+            final headerLeadInset = metrics.topPadding + metrics.toolbarHeight;
             final shrinkOffset = _scrollController.hasClients
-                ? _scrollController.offset
+                ? (_scrollController.offset - headerLeadInset)
                     .clamp(0.0, metrics.identityHeight)
                     .toDouble()
                 : 0.0;
