@@ -38,16 +38,40 @@ class PublicProfileHeaderMetrics {
       final effectiveScale = scaler.scale(fontSize) / fontSize;
       if (effectiveScale > scale) scale = effectiveScale;
     }
-    final hasBio = profile.bio?.trim().isNotEmpty == true;
     final hasMutuals = !profile.isOwner &&
         profile.mutualFollowers.items.isNotEmpty &&
         profile.mutualFollowers.totalCount > 0;
+    final bioText = profile.bio?.trim() ?? '';
+    double bioBlockHeight = 0;
+    if (bioText.isNotEmpty) {
+      final availableWidth =
+          MediaQuery.sizeOf(context).width - (16 * 2); // AppSpacing.lg kiri+kanan
+      final painter = TextPainter(
+        text: TextSpan(
+          text: bioText,
+          // WAJIB sama dengan font produksi (app_theme.dart:55-56) —
+          // advance-width glyph beda antar font mengubah jumlah baris
+          // WRAP, jadi salah font → salah ukur baris → tinggi kurang →
+          // tab menimpa aksi / header ter-clip di device.
+          style: const TextStyle(
+            fontSize: 13,
+            height: 1.4,
+            fontFamily: 'PlusJakartaSans',
+            fontFamilyFallback: ['Roboto', 'Arial'],
+          ),
+        ),
+        maxLines: 2,
+        textDirection: TextDirection.ltr,
+        textScaler: scaler,
+      )..layout(maxWidth: availableWidth);
+      bioBlockHeight = 8 + painter.height; // 8 = AppSpacing.sm gap sebelum bio
+    }
     return PublicProfileHeaderMetrics(
       topPadding: MediaQuery.paddingOf(context).top,
       toolbarHeight: 56,
       identityHeight: _identityHeight(
         scale: scale,
-        hasBio: hasBio,
+        bioBlockHeight: bioBlockHeight,
         hasMutuals: hasMutuals,
         isOfficial: profile.isOfficial,
       ),
@@ -61,7 +85,7 @@ class PublicProfileHeaderMetrics {
   /// absorbs fractional line-height rounding from Jakarta Sans.
   static double _identityHeight({
     required double scale,
-    required bool hasBio,
+    required double bioBlockHeight,
     required bool hasMutuals,
     required bool isOfficial,
   }) {
@@ -70,12 +94,11 @@ class PublicProfileHeaderMetrics {
     // Chip "AKUN RESMI": teks 10.5 ikut text-scale (line-height default
     // font bisa ~1.25) + padding vertikal 8 + border 2.
     final chip = isOfficial ? 6 + (10.5 * 1.25 * scale) + 10 : 0.0;
-    final bio = hasBio ? 8 + (2 * 13 * 1.4 * scale) : 0.0;
     final mutuals = hasMutuals ? 8 + 30.0 : 0.0;
     // Safety menyerap pembulatan line-height fraksional Jakarta Sans;
     // tumbuh sedikit mengikuti scale karena pembulatan ikut membesar.
     final safety = 2 + (scale - 1) * 6;
-    return fixedRows + nameRow + chip + bio + mutuals + safety;
+    return fixedRows + nameRow + chip + bioBlockHeight + mutuals + safety;
   }
 }
 

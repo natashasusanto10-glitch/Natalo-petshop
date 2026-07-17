@@ -393,7 +393,15 @@ void main() {
 
       await pumpAndInitialize(tester);
       await tester.tapAt(tester.getCenter(find.byType(VideoPlayer).first));
-      for (var i = 0; i < 10; i++) {
+      // NOTE: unlike the mute/retry controls (now instant again — they are
+      // Stack siblings ABOVE the media detector), the video's single-tap
+      // -to-fullscreen is STILL deferred ~kDoubleTapTimeout (~300ms),
+      // because single-tap and double-tap-to-like intentionally coexist on
+      // the SAME media detector (the accepted Task 1 tradeoff). So this
+      // poll needs >300ms of budget; the original 10x20ms=200ms predates
+      // any unification and is too tight. This is orthogonal to the
+      // controls-lag fix.
+      for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 20));
         if (find.byType(ScopedVideoFeedScreen).evaluate().isNotEmpty) break;
       }

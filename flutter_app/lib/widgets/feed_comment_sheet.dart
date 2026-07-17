@@ -120,6 +120,100 @@ bool shouldPauseForCommentExtent({
   return extent >= maxExtent - 0.02;
 }
 
+/// Membungkus body sheet Feed (video/foto) supaya scroll daftar komentar
+/// TERPISAH dari resize sheet, sekaligus mempertahankan perilaku "tarik ke
+/// bawah saat sudah di atas → tutup" ala IG Reels.
+///
+/// Kendala framework: [DraggableScrollableController] hanya `isAttached` selama
+/// [controller] (dari builder [DraggableScrollableSheet]) terpasang ke sebuah
+/// Scrollable, dan Scrollable itulah yang meng-couple overscroll konten ke
+/// resize sheet (`_DraggableScrollableSheetScrollPosition.applyUserOffset`).
+/// Jadi kita:
+///  - Pasang [controller] ke Scrollable 0-pixel tak terlihat (anchor) — cukup
+///    untuk menjaga `isAttached`, tanpa menerima gesture apa pun.
+///  - Biarkan daftar komentar asli memakai controller-nya sendiri
+///    ([FeedCommentSheet] otomatis begitu `sheetScrollController` null).
+///  - Dengarkan [OverscrollNotification] daftar komentar (depth 0, di tepi
+///    atas): saat user menahan tarik ke bawah setelah list mentok di atas,
+///    delta-nya diteruskan ke [onPullDown] (adapter menggerakkan sheet lewat
+///    policy yang SAMA dengan handle), dan pelepasan → [onPullSettle].
+class CommentSheetScrollAnchor extends StatefulWidget {
+  const CommentSheetScrollAnchor({
+    super.key,
+    required this.controller,
+    required this.onPullDown,
+    required this.onPullSettle,
+    required this.child,
+  });
+
+  /// Controller dari `DraggableScrollableSheet.builder` — di-anchor, bukan
+  /// dipasang ke list.
+  final ScrollController controller;
+
+  /// Dipanggil saat user overscroll daftar ke bawah di tepi atas (menyeret
+  /// sheet turun). Menerima [DragUpdateDetails] asli dari gesture list.
+  final ValueChanged<DragUpdateDetails> onPullDown;
+
+  /// Dipanggil sekali saat gesture berakhir SETELAH sempat menarik sheet —
+  /// adapter menyelesaikan ke detent valid (release kecepatan nol).
+  final VoidCallback onPullSettle;
+
+  final Widget child;
+
+  @override
+  State<CommentSheetScrollAnchor> createState() =>
+      _CommentSheetScrollAnchorState();
+}
+
+class _CommentSheetScrollAnchorState extends State<CommentSheetScrollAnchor> {
+  bool _pulling = false;
+
+  bool _onNotification(ScrollNotification notification) {
+    // Hanya scrollable daftar komentar level teratas — abaikan nested.
+    if (notification.depth != 0) return false;
+    if (notification is OverscrollNotification) {
+      // overscroll < 0 = ditarik melewati tepi ATAS (list sudah paling atas).
+      if (notification.overscroll < 0 && notification.dragDetails != null) {
+        _pulling = true;
+        widget.onPullDown(notification.dragDetails!);
+      }
+    } else if (notification is ScrollEndNotification) {
+      if (_pulling) {
+        _pulling = false;
+        widget.onPullSettle();
+      }
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onNotification,
+      child: Stack(
+        children: [
+          widget.child,
+          // Anchor 0-pixel: menahan controller tetap attached tanpa pernah
+          // menerima gesture (IgnorePointer + NeverScrollable + ukuran nol).
+          Positioned(
+            left: 0,
+            top: 0,
+            width: 0,
+            height: 0,
+            child: IgnorePointer(
+              child: SingleChildScrollView(
+                controller: widget.controller,
+                physics: const NeverScrollableScrollPhysics(),
+                child: const SizedBox.shrink(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 Future<void>? _activeFeedCommentDrawerFlight;
 
 /// Opens the same comment experience used by the fullscreen Feed from
@@ -372,7 +466,7 @@ class FeedCommentMediaFrame extends StatelessWidget {
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(end: open ? 1 : 0),
       duration: Duration(milliseconds: open ? 260 : 220),
-      curve: open ? Curves.easeOutCubic : Curves.easeInOutCubic,
+      curve: Curves.easeOutCubic,
       child: RepaintBoundary(child: child),
       builder: (context, openProgress, child) {
         return ValueListenableBuilder<double>(
@@ -919,12 +1013,18 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface>
                       : const [_initialExtent],
                   shouldCloseOnMinExtent: false,
                   builder: (context, scrollController) =>
-                      PrimaryScrollController(
+                      CommentSheetScrollAnchor(
+                    // scrollController di-anchor (0-pixel) supaya scroll daftar
+                    // komentar tidak menyeret sheet; FeedCommentSheet memakai
+                    // controller list sendiri. Overscroll tepi atas →
+                    // pull-to-dismiss via policy handle yang sama.
                     controller: scrollController,
+                    onPullDown: _handleDragUpdate,
+                    onPullSettle: _handleDragCancel,
                     child: FeedCommentSheet(
                       post: widget.post,
                       applyKeyboardInset: false,
-                      sheetScrollController: scrollController,
+                      sheetScrollController: null,
                       onClose: _requestClose,
                       onCloseAndWait: _requestCloseAndWait,
                       onDragUpdate: _handleDragUpdate,
@@ -1040,6 +1140,23 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   late final MentionPickerController _mentionCtrl =
       MentionPickerController(textController: _inputCtrl);
 
+  /// Controller untuk daftar komentar.
+  ///
+  /// Saat [FeedCommentSheet.sheetScrollController] disuplai (mis. modal
+  /// Postingan), list memakainya — perilaku lama `DraggableScrollableSheet`
+  /// di mana overscroll konten menggerakkan sheet.
+  ///
+  /// Saat null (adapter Feed video/foto), list memakai controller INDEPENDEN
+  /// [_ownListController] ini supaya scroll komentar TIDAK ikut menyeret sheet
+  /// naik ke max (yang memicu video pause). Adapter Feed meng-anchor controller
+  /// bawaan `DraggableScrollableSheet` ke scrollable 0-pixel terpisah agar
+  /// `DraggableScrollableController` tetap `isAttached` (handle drag & terminal
+  /// guard tetap jalan), sementara resize sheet hanya lewat handle + pull-to-
+  /// dismiss overscroll yang digerakkan adapter.
+  ScrollController? _ownListController;
+  ScrollController get _listController =>
+      widget.sheetScrollController ?? _ownListController!;
+
   List<FeedComment> _comments = const [];
   String? _nextCursor;
   bool _loading = true;
@@ -1145,6 +1262,9 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   @override
   void initState() {
     super.initState();
+    if (widget.sheetScrollController == null) {
+      _ownListController = ScrollController();
+    }
     _boundViewerIdentity = _currentViewerIdentity;
     _viewerIdentitySource = widget.viewerIdentityListenable ?? memberStore;
     _viewerIdentitySource.addListener(_onViewerIdentityChanged);
@@ -1173,7 +1293,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     _hasLoadedComments = _session.hasLoaded;
     _restoreScrollPending = _session.scrollOffset > 0;
     _loadInitial(showLoading: !_session.hasLoaded);
-    widget.sheetScrollController?.addListener(_handleScroll);
+    _listController.addListener(_handleScroll);
     _scheduleScrollRestore();
     // Listen blockService — user block lewat sheet ini sendiri
     // → setState rebuild + filter di _buildDisplayItems otomatis hide
@@ -1191,7 +1311,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     if (_sessionListenerAttached) {
       _session.removeListener(_onSessionContentChanged);
     }
-    widget.sheetScrollController?.removeListener(_handleScroll);
+    _listController.removeListener(_handleScroll);
+    _ownListController?.dispose();
     blockService.removeListener(_onBlocklistChanged);
     _mentionCtrl.dispose();
     _inputCtrl
@@ -1265,8 +1386,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       _observedSessionRevision = _session.revision;
       _comments = List<FeedComment>.from(_session.comments);
     }
-    final ctrl = widget.sheetScrollController;
-    if (!_restoreScrollPending && ctrl != null && ctrl.hasClients) {
+    final ctrl = _listController;
+    if (!_restoreScrollPending && ctrl.hasClients) {
       _session.scrollOffset = ctrl.position.pixels;
     }
   }
@@ -1329,8 +1450,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     if (!_restoreScrollPending) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_restoreScrollPending) return;
-      final ctrl = widget.sheetScrollController;
-      if (ctrl == null || !ctrl.hasClients) {
+      final ctrl = _listController;
+      if (!ctrl.hasClients) {
         if (_scrollRestoreAttempts++ < 3) _scheduleScrollRestore();
         return;
       }
@@ -1345,8 +1466,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   }
 
   void _handleScroll() {
-    final ctrl = widget.sheetScrollController;
-    if (ctrl == null || !ctrl.hasClients) return;
+    final ctrl = _listController;
+    if (!ctrl.hasClients) return;
     if (!_restoreScrollPending) {
       _session.scrollOffset = ctrl.position.pixels;
     }
@@ -1916,7 +2037,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   /// di sini — ia hidup di shell stabil di atas body.
   Widget _buildUltraCompactBody(double keyboardInset) {
     return ListView(
-      controller: widget.sheetScrollController,
+      controller: _listController,
       physics: const ClampingScrollPhysics(),
       padding: EdgeInsets.zero,
       children: [
@@ -1955,13 +2076,13 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
 
   Widget _buildListBody() {
     if (_loading && _comments.isEmpty) {
-      return _CommentListSkeleton(controller: widget.sheetScrollController);
+      return _CommentListSkeleton(controller: _listController);
     }
     if (_error != null && _comments.isEmpty) {
       return NataloPawRefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
-          controller: widget.sheetScrollController,
+          controller: _listController,
           padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 32),
           children: [
             Center(
@@ -1996,7 +2117,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     final emptyCaptionText = _resolveCaption();
     if (_comments.isEmpty) {
       return ListView(
-        controller: widget.sheetScrollController,
+        controller: _listController,
         padding: EdgeInsets.zero,
         children: [
           if (emptyCaptionText.isNotEmpty)
@@ -2057,7 +2178,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     return NataloPawRefreshIndicator(
       onRefresh: _refresh,
       child: ListView.builder(
-        controller: widget.sheetScrollController,
+        controller: _listController,
         padding: const EdgeInsets.fromLTRB(0, 8, 0, 24),
         physics: const AlwaysScrollableScrollPhysics(),
         itemCount: totalCount,
