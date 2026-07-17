@@ -42,16 +42,32 @@ class LiquidGlass extends StatelessWidget {
     final visible = opacity > 0.01;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final fillBase = isDark ? const Color(0xFF23262B) : Colors.white;
-    final rimBase = Colors.white.withValues(alpha: isDark ? 0.20 : 0.55);
+    // Rim highlight terang tipis — kesan cahaya membias di tepi kaca
+    // (IG/iOS 26). Lebih terang dari versi lama (0.72 vs 0.55).
+    final rimBase = Colors.white.withValues(alpha: isDark ? 0.30 : 0.72);
+    // Fill JAUH lebih tembus pandang dari sebelumnya (~0.45 vs 0.72) supaya
+    // konten grid di belakang benar-benar terlihat menembus kaca — kunci
+    // tampilan "glass" IG. Gradient halus (atas sedikit lebih pekat)
+    // memberi kedalaman. Tanpa blur (reduced motion) fill dinaikkan agar
+    // teks tetap terbaca. Blur kuat (24) menjaga keterbacaan meski tipis.
     final decorated = DecoratedBox(
       decoration: BoxDecoration(
-        color: fillBase.withValues(
-          alpha: (reducedMotion ? 0.90 : 0.72) * opacity,
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            fillBase.withValues(
+              alpha: (reducedMotion ? 0.92 : 0.50) * opacity,
+            ),
+            fillBase.withValues(
+              alpha: (reducedMotion ? 0.88 : 0.40) * opacity,
+            ),
+          ],
         ),
         borderRadius: borderRadius,
         border: Border.all(
           color: rimBase.withValues(alpha: rimBase.a * opacity),
-          width: 0.8,
+          width: 1.1,
         ),
       ),
       child: child,
@@ -67,7 +83,7 @@ class LiquidGlass extends StatelessWidget {
     return ClipRRect(
       borderRadius: borderRadius,
       child: BackdropFilter(
-        filter: glassFilter(14 * opacity),
+        filter: glassFilter(24 * opacity),
         child: decorated,
       ),
     );
