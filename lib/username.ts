@@ -18,6 +18,19 @@ import { prisma } from "@/lib/prisma";
 /** Hari reservasi handle lama setelah user ganti. */
 export const USERNAME_RESERVATION_DAYS = 30;
 
+/** Jeda minimum antar ganti username (anti-spam ganti-ganti handle). */
+export const USERNAME_CHANGE_COOLDOWN_DAYS = 30;
+
+/** Thrown saat user coba ganti username sebelum cooldown selesai. */
+export class UsernameCooldownError extends Error {
+  nextAllowedAt: Date;
+  constructor(nextAllowedAt: Date) {
+    super("USERNAME_COOLDOWN");
+    this.name = "UsernameCooldownError";
+    this.nextAllowedAt = nextAllowedAt;
+  }
+}
+
 export const USERNAME_MIN_LENGTH = 3;
 export const USERNAME_MAX_LENGTH = 30;
 
@@ -325,7 +338,7 @@ export async function setUserUsername(
   return prisma.$transaction(async (tx) => {
     const user = await tx.user.findUnique({
       where: { id: userId },
-      select: { id: true, username: true },
+      select: { id: true, username: true, usernameUpdatedAt: true },
     });
     if (!user) {
       throw new Error("USER_NOT_FOUND");
@@ -334,6 +347,24 @@ export async function setUserUsername(
     // No-op kalau sama dengan current (idempotent).
     if (user.username === normalized) {
       return { username: normalized };
+    }
+
+    // Cooldown: username auto-assign saat registrasi TIDAK terhitung —
+    // ganti pertama kali selalu gratis. UsernameHistory row hanya
+    // tercipta dari ganti manual (lihat bawah), jadi count 0 = belum
+    // pernah ganti manual = lewati cooldown. Mulai ganti kedua dst,
+    // cooldown berlaku dihitung dari usernameUpdatedAt terakhir.
+    const priorChangeCount = await tx.usernameHistory.count({
+      where: { userId },
+    });
+    if (priorChangeCount > 0 && user.usernameUpdatedAt) {
+      const cooldownEnds = new Date(
+        user.usernameUpdatedAt.getTime() +
+          USERNAME_CHANGE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
+      );
+      if (cooldownEnds > new Date()) {
+        throw new UsernameCooldownError(cooldownEnds);
+      }
     }
 
     // Availability check INSIDE transaction supaya race-safe.
