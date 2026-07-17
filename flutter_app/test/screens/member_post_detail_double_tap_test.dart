@@ -12,6 +12,7 @@ import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/features/feed/widgets/feed_post_shared_widgets.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
 import 'package:natalo_petshop_flutter/screens/scoped_video_feed_screen.dart';
@@ -269,7 +270,7 @@ void main() {
 
     // Heart burst overlay muncul → _handleDoubleTap terpanggil (bukan
     // _handleVideoSingleTap).
-    expect(find.byIcon(Icons.favorite_rounded), findsOneWidget,
+    expect(find.byType(FeedPostBurstHeart), findsOneWidget,
         reason: 'double-tap harus memicu heart burst (me-like)');
     // Double-tap TIDAK membuka scoped feed.
     await tester.pump(const Duration(milliseconds: 400));
@@ -332,10 +333,34 @@ void main() {
 
     // Burst feedback tetap muncul tiap double-tap (tanda handler jalan),
     // tapi count tidak pernah turun ke 0 — tidak ada un-like network call.
-    expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
+    expect(find.byType(FeedPostBurstHeart), findsOneWidget);
     expect(find.text('1'), findsWidgets,
         reason: 'double-tap saat sudah liked tidak boleh un-like');
     expect(find.text('0'), findsNothing);
+
+    await disposeTree(tester);
+  });
+
+  testWidgets('double-tap shows a flying burst heart overlay', (tester) async {
+    await pumpAndInitialize(tester);
+    final center = tester.getCenter(find.byType(VideoPlayer).first);
+
+    await tester.tapAt(center);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tapAt(center);
+    // See the comment on the first test above: the burst controller's
+    // Ticker anchors elapsed=0 on the first frame after forward(from: 0),
+    // so a second pump is required to observe real progress.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 30));
+
+    expect(find.byType(FeedPostBurstHeart), findsOneWidget,
+        reason: 'burst heart harus dirender di overlay saat double-tap');
+
+    // Setelah animasi selesai, overlay dibersihkan.
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(find.byType(FeedPostBurstHeart), findsNothing,
+        reason: 'burst heart harus hilang setelah animasi');
 
     await disposeTree(tester);
   });

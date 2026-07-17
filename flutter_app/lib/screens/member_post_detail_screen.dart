@@ -11,6 +11,7 @@ import 'package:visibility_detector/visibility_detector.dart';
 
 import '../config/api_config.dart';
 import '../features/feed/layout/postingan_media_aspect_ratio.dart';
+import '../features/feed/widgets/feed_post_shared_widgets.dart';
 import '../features/feed/video/post_video_coordinator.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../features/feed/video/video_player_session.dart';
@@ -1246,7 +1247,10 @@ class _PostFeedItemState extends State<_PostFeedItem>
   late final AnimationController _heartBurstController;
   late final Animation<double> _burstScale;
   late final Animation<double> _burstOpacity;
+  late final Animation<double> _burstTravel;
   Offset? _heartBurstPosition;
+  final GlobalKey _likeButtonKey = GlobalKey();
+  OverlayEntry? _flyingHeartEntry;
 
   // Anchor key video inline (dilaporkan lewat onVideoAnchorReady) — dipakai
   // outer detector untuk memicu fullscreen saat single tap (menggantikan
@@ -1328,10 +1332,18 @@ class _PostFeedItemState extends State<_PostFeedItem>
         weight: 37,
       ),
     ]).animate(_heartBurstController);
+
+    // Terbang ke tombol like: mulai setelah pop (0.5) lalu melesat easeIn.
+    _burstTravel = CurvedAnimation(
+      parent: _heartBurstController,
+      curve: const Interval(0.5, 1.0, curve: Curves.easeInCubic),
+    );
   }
 
   @override
   void dispose() {
+    _flyingHeartEntry?.remove();
+    _flyingHeartEntry = null;
     _heartScaleController.dispose();
     _heartBurstController.dispose();
     super.dispose();
@@ -1347,7 +1359,14 @@ class _PostFeedItemState extends State<_PostFeedItem>
   }
 
   void _rememberHeartBurstPosition(TapDownDetails details) {
-    _heartBurstPosition = details.localPosition;
+    _heartBurstPosition = details.globalPosition;
+  }
+
+  Offset? _resolveLikeCenter() {
+    final box =
+        _likeButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return box.localToGlobal(box.size.center(Offset.zero));
   }
 
   void _handleDoubleTap() {
@@ -1359,7 +1378,36 @@ class _PostFeedItemState extends State<_PostFeedItem>
     if (!widget.liked) {
       _handleLikeTap();
     }
-    _heartBurstController.forward(from: 0);
+    _showFlyingHeart();
+  }
+
+  void _showFlyingHeart() {
+    final overlay = Overlay.maybeOf(context);
+    if (overlay == null) return;
+    _flyingHeartEntry?.remove();
+    final tap = _heartBurstPosition;
+    final target = _resolveLikeCenter();
+    final entry = OverlayEntry(
+      builder: (context) => IgnorePointer(
+        child: AnimatedBuilder(
+          animation: _heartBurstController,
+          builder: (context, _) => feedPostBuildFlyingBurstHeart(
+            tap: tap,
+            target: target,
+            scale: _burstScale.value,
+            opacity: _burstOpacity.value,
+            travel: _burstTravel.value,
+            screenSize: MediaQuery.sizeOf(context),
+          ),
+        ),
+      ),
+    );
+    _flyingHeartEntry = entry;
+    overlay.insert(entry);
+    _heartBurstController.forward(from: 0).whenComplete(() {
+      _flyingHeartEntry?.remove();
+      _flyingHeartEntry = null;
+    });
   }
 
   void _rememberVideoAnchor(String postId, GlobalKey anchorKey) {
@@ -1443,56 +1491,6 @@ class _PostFeedItemState extends State<_PostFeedItem>
                     onMenuTap: widget.onMenuTap,
                   ),
                 ),
-              // Heart burst overlay — posisi mengikuti titik double-tap.
-              // IgnorePointer supaya tidak intercept tap berikutnya.
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: AnimatedBuilder(
-                    animation: _heartBurstController,
-                    builder: (context, _) {
-                      if (_burstOpacity.value == 0) {
-                        return const SizedBox.shrink();
-                      }
-                      final position = _heartBurstPosition;
-                      final progress = _heartBurstController.value;
-                      final heart = Opacity(
-                        opacity: _burstOpacity.value,
-                        child: Transform.translate(
-                          offset: Offset(0, -14 * progress),
-                          child: Transform.scale(
-                            scale: _burstScale.value,
-                            child: Transform.rotate(
-                              angle: -0.08,
-                              child: const Icon(
-                                Icons.favorite_rounded,
-                                color: Color(0xFFEF4444),
-                                size: 128,
-                                shadows: [
-                                  Shadow(color: Colors.black54, blurRadius: 28),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                      if (position == null) {
-                        return Center(child: heart);
-                      }
-                      return Stack(
-                        children: [
-                          Positioned(
-                            left: position.dx - 64,
-                            top: position.dy - 64,
-                            width: 128,
-                            height: 128,
-                            child: Center(child: heart),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ),
             ],
           ),
         ),
@@ -1514,6 +1512,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
               ScaleTransition(
                 scale: _heartScale,
                 child: NataloPostActionButton(
+                  key: _likeButtonKey,
                   type: NataloPostActionIconType.like,
                   isActive: liked,
                   iconSize: 30,
