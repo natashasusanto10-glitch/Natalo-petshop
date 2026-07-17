@@ -30,6 +30,7 @@ import '../utils/app_route_observer.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/calm_scroll_physics.dart';
 import '../widgets/feed_comment_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/official_brand_avatar.dart';
@@ -853,8 +854,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                 // Bottom padding extra space supaya post terakhir bisa di-
                 // scroll lega ke atas viewport (gak mepet ke home indicator).
                 padding: const EdgeInsets.only(top: 0, bottom: 48),
-                // Fling diredam ala IG — lihat _CalmFeedScrollPhysics.
-                physics: const _CalmFeedScrollPhysics(),
+                // Fling diredam ala IG — lihat CalmScrollPhysics.
+                physics: const CalmScrollPhysics(),
                 itemCount: _posts.length,
                 // Whitespace pemisah antar post tetap ada, tapi lebih compact
                 // supaya detail terasa seperti feed/post Instagram.
@@ -3248,42 +3249,3 @@ class _EditCaptionSheetState extends State<_EditCaptionSheet> {
   }
 }
 
-/// Physics scroll "kalem" ala halaman Posts Instagram.
-///
-/// Default Flutter (Android ClampingScrollPhysics / iOS Bouncing) meluncur
-/// sangat jauh per fling — di list post yang tiap itemnya hampir setinggi
-/// layar, satu flick bisa melewati 3-4 post sekaligus. IG meredam ini:
-/// satu flick ≈ satu-dua post, dan flick beruntun tidak saling menumpuk
-/// jadi "roket". Dua tuas yang dipakai:
-///  1. Kecepatan fling di-skala turun sebelum masuk simulasi balistik
-///     → jarak luncur lebih pendek, decay terasa lebih cepat.
-///  2. carriedMomentum dimatikan → flick kedua tidak mewarisi sisa
-///     kecepatan flick pertama (penyebab utama scroll "terbang").
-///
-/// Drag langsung (jari nempel) TIDAK berubah — 1:1 mengikuti jari.
-class _CalmFeedScrollPhysics extends AlwaysScrollableScrollPhysics {
-  const _CalmFeedScrollPhysics({super.parent});
-
-  /// Skala kecepatan fling (1.0 = default Flutter). 0.55 dipilih supaya
-  /// satu flick kencang mendarat ±1-2 post, mendekati rasa IG.
-  static const double _flingVelocityScale = 0.55;
-
-  @override
-  _CalmFeedScrollPhysics applyTo(ScrollPhysics? ancestor) =>
-      _CalmFeedScrollPhysics(parent: buildParent(ancestor));
-
-  @override
-  double get maxFlingVelocity => super.maxFlingVelocity * _flingVelocityScale;
-
-  @override
-  Simulation? createBallisticSimulation(
-      ScrollMetrics position, double velocity) {
-    return super.createBallisticSimulation(
-      position,
-      velocity * _flingVelocityScale,
-    );
-  }
-
-  @override
-  double carriedMomentum(double existingVelocity) => 0;
-}

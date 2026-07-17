@@ -25,6 +25,7 @@ import '../state/settings_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_ui.dart';
+import '../widgets/calm_scroll_physics.dart';
 import '../widgets/collapsing_header_delegate.dart';
 import '../widgets/moderation_action_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
@@ -833,6 +834,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     final headerLeadInset = metrics.topPadding + metrics.toolbarHeight;
     final nestedScrollView = NestedScrollView(
       controller: _scrollController,
+      // Fling diredam ala IG — lihat CalmScrollPhysics.
+      physics: const CalmScrollPhysics(),
       headerSliverBuilder: (context, innerBoxIsScrolled) => [
         // PINNED spacer (bukan SliverToBoxAdapter biasa) — sengaja. Sliver
         // pinned lain di bawahnya (tab bar) selalu menempel ke Y=0 viewport
