@@ -53,6 +53,8 @@ class PublicProfileContentTabBar extends StatelessWidget {
         labelPadding: EdgeInsets.zero,
         splashFactory: NoSplash.splashFactory,
         overlayColor: WidgetStateProperty.all<Color>(Colors.transparent),
+        dividerColor: Colors.transparent,
+        dividerHeight: 0,
         tabs: [
           _PublicProfileTab(
             pillKey: const Key('public_tab_posts_pill'),

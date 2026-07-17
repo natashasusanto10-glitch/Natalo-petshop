@@ -135,6 +135,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Belanja page'), findsOneWidget);
   });
+
+  testWidgets('tab bar draws no full-width Material divider', (tester) async {
+    final controller = TabController(length: 3, vsync: const TestVSync());
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PublicProfileContentTabBar(
+          controller: controller,
+          labelOpacity: 0,
+          pillOpacity: 0,
+          underlineOpacity: 1,
+        ),
+      ),
+    ));
+    final tabBar = tester.widget<TabBar>(find.byType(TabBar));
+    expect(tabBar.dividerColor, Colors.transparent);
+    expect(tabBar.dividerHeight, 0);
+  });
 }
 
 void _expectNeutralForegrounds(WidgetTester tester) {
