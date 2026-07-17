@@ -11,6 +11,7 @@ import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../../../config/api_config.dart';
+import '../../../theme/natalo_text.dart';
 import '../../../models/feed_post.dart';
 import '../../../models/product.dart';
 import '../../../services/api_client.dart';
@@ -3813,7 +3814,7 @@ class _VideoRetryButton extends StatelessWidget {
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 12.5,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
             ],
