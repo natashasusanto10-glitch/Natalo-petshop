@@ -29,6 +29,7 @@ import 'checkout_screen.dart';
 import 'member_post_detail_screen.dart';
 import 'scoped_video_feed_screen.dart';
 import '../widgets/scaled_video_feed_route.dart';
+import '../widgets/related_posts_rail.dart';
 import '../utils/fly_to_cart.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -2372,7 +2373,7 @@ class _ProductDescriptionSection extends StatelessWidget {
   }
 }
 
-class _ProductCustomerPostsSection extends StatelessWidget {
+class _ProductCustomerPostsSection extends StatefulWidget {
   final List<_ProductCustomerPost> posts;
   final int total;
   final bool loading;
@@ -2386,8 +2387,23 @@ class _ProductCustomerPostsSection extends StatelessWidget {
   });
 
   @override
+  State<_ProductCustomerPostsSection> createState() =>
+      _ProductCustomerPostsSectionState();
+}
+
+class _ProductCustomerPostsSectionState
+    extends State<_ProductCustomerPostsSection> {
+  final RelatedPostsRail _rail = RelatedPostsRail();
+
+  @override
+  void dispose() {
+    _rail.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (!loading && posts.isEmpty) return const SizedBox.shrink();
+    if (!widget.loading && widget.posts.isEmpty) return const SizedBox.shrink();
 
     final cs = Theme.of(context).colorScheme;
     return _SectionShell(
@@ -2406,19 +2422,19 @@ class _ProductCustomerPostsSection extends StatelessWidget {
                   ),
                 ),
               ),
-              if (!loading && posts.isNotEmpty) ...[
+              if (!widget.loading && widget.posts.isNotEmpty) ...[
                 Text(
-                  '$total post',
+                  '${widget.total} post',
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                if (total > posts.length) ...[
+                if (widget.total > widget.posts.length) ...[
                   const SizedBox(width: 10),
                   AppPressable(
-                    onTap: onViewAll,
+                    onTap: widget.onViewAll,
                     borderRadius: BorderRadius.circular(8),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
@@ -2446,17 +2462,19 @@ class _ProductCustomerPostsSection extends StatelessWidget {
           const SizedBox(height: 12),
           SizedBox(
             height: 190,
-            child: loading
+            child: widget.loading
                 ? const _CustomerPostLoadingList()
                 : ListView.separated(
+                    controller: _rail.scroll,
                     scrollDirection: Axis.horizontal,
-                    itemCount: posts.length,
+                    itemCount: widget.posts.length,
                     separatorBuilder: (_, __) => const SizedBox(width: 10),
                     itemBuilder: (context, index) {
                       return _CustomerPostCard(
-                        post: posts[index],
-                        allPosts: posts,
+                        post: widget.posts[index],
+                        allPosts: widget.posts,
                         index: index,
+                        rail: _rail,
                       );
                     },
                   ),
@@ -2489,7 +2507,8 @@ class _ProductCustomerPostsScreenState
     extends State<_ProductCustomerPostsScreen> {
   static const _pageSize = 24;
 
-  final ScrollController _controller = ScrollController();
+  final RelatedPostsRail _rail = RelatedPostsRail();
+  ScrollController get _controller => _rail.scroll;
   late List<_ProductCustomerPost> _posts;
   late int _total;
   late int _nextOffset;
@@ -2512,9 +2531,8 @@ class _ProductCustomerPostsScreenState
 
   @override
   void dispose() {
-    _controller
-      ..removeListener(_handleScroll)
-      ..dispose();
+    _controller.removeListener(_handleScroll);
+    _rail.dispose();
     super.dispose();
   }
 
@@ -2600,6 +2618,7 @@ class _ProductCustomerPostsScreenState
                       post: _posts[index],
                       allPosts: _posts,
                       index: index,
+                      rail: _rail,
                     ),
                   );
                 }
@@ -2657,12 +2676,13 @@ class _CustomerPostCard extends StatelessWidget {
   final _ProductCustomerPost post;
   final List<_ProductCustomerPost> allPosts;
   final int index;
-  final GlobalKey _thumbnailKey = GlobalKey();
+  final RelatedPostsRail rail;
 
-  _CustomerPostCard({
+  const _CustomerPostCard({
     required this.post,
     required this.allPosts,
     required this.index,
+    required this.rail,
   });
 
   /// Buka postingan pelanggan DI DALAM app (bukan browser web). Fetch
@@ -2763,16 +2783,42 @@ class _CustomerPostCard extends StatelessWidget {
     // out as null), tappedIndex is -1 and we fall back to the first
     // successfully-fetched video — a cosmetic edge case only.
     final tappedIndex = fetched.indexWhere((fp) => fp.id == post.id);
-    await pushScaledVideoFeed(
-      context,
-      thumbnailKey: _thumbnailKey,
-      thumbnailImageUrl: post.thumbnailUrl,
-      thumbnailBorderRadius: 14,
-      destinationBuilder: (_) => ScopedVideoFeedScreen(
-        posts: fetched,
-        initialIndex: tappedIndex >= 0 ? tappedIndex : 0,
-      ),
-    );
+    final reverseMorphEnabled = ValueNotifier<bool>(true);
+    final reverseTarget = ValueNotifier<ScaledVideoFeedReverseTarget?>(null);
+    try {
+      await pushScaledVideoFeed<ScopedVideoFeedResult>(
+        context,
+        thumbnailKey: rail.keyFor(post.id),
+        thumbnailImageUrl: post.thumbnailUrl,
+        thumbnailBorderRadius: 14,
+        reverseMorphEnabled: reverseMorphEnabled,
+        reverseTarget: reverseTarget,
+        destinationBuilder: (_) => ScopedVideoFeedScreen(
+          posts: fetched,
+          initialIndex: tappedIndex >= 0 ? tappedIndex : 0,
+          coordinator: null,
+          originPostId: null,
+          onActivePostChanged: (id) {
+            reverseMorphEnabled.value = id == post.id;
+          },
+          onPrepareClose: (result, _) async {
+            final returned = allPosts.cast<_ProductCustomerPost?>().firstWhere(
+                  (p) => p?.id == result.postId,
+                  orElse: () => null,
+                );
+            if (returned == null) return;
+            reverseTarget.value = await rail.resolveReturnTarget(
+              result.postId,
+              imageUrl: returned.thumbnailUrl,
+            );
+            reverseMorphEnabled.value = true;
+          },
+        ),
+      );
+    } finally {
+      reverseMorphEnabled.dispose();
+      reverseTarget.dispose();
+    }
   }
 
   @override
@@ -2784,7 +2830,7 @@ class _CustomerPostCard extends StatelessWidget {
         onTap: () => _openPost(context),
         borderRadius: BorderRadius.circular(14),
         child: ClipRRect(
-          key: _thumbnailKey,
+          key: rail.keyFor(post.id),
           borderRadius: BorderRadius.circular(14),
           child: Stack(
             fit: StackFit.expand,
