@@ -1,7 +1,7 @@
 # Migrasi Feed utama ke PostVideoCoordinator (Opsi D)
 
 **Tanggal:** 2026-07-17
-**Status:** DESAIN v2 — arsitektur matang (revisi 2026-07-17 menutup 6 gap dari review kedua: urutan rollback, gerbang collision, kontrak `clearActive()`, kontrak gesture transient, kontradiksi internal, kontrak session-factory Feed). Belum ada kode ditulis, menunggu greenlight terpisah untuk eksekusi.
+**Status:** DESAIN v3 — arsitektur matang (v2 menutup 6 gap dari review kedua: urutan rollback, gerbang collision, kontrak `clearActive()`, kontrak gesture transient, kontradiksi internal, kontrak session-factory Feed. v3 menutup 3 gap dari review ketiga: **race nyata di urutan `clearActive()`** — generation-bump WAJIB sinkron sebelum pause/mute, bukan sesudah; **transient-gesture butuh lease** beridentitas — analog `VideoAudioClaim` — bukan bare method tanpa token; **urutan attach/detach/dispose dieksplisitkan** jadi 4 sekuens konkret). Belum ada kode ditulis, menunggu greenlight terpisah untuk eksekusi.
 **Keputusan desain terkunci:** `PlaybackSession` (interface abstrak) DIPERLUAS dengan 2 method transient-gesture (Opsi A dari 2 opsi yang dipertimbangkan — lihat §Kontrak API). Konsekuensi: **semua implementer interface ikut berubah**, bukan cuma `VideoPlayerSession`.
 **File terdampak (nanti):**
 - `flutter_app/lib/screens/feed_screen.dart` (2416 baris) — migrasi utama + wiring RouteAware/WidgetsBindingObserver level-screen (baru, lihat §Lingkup #7).
@@ -58,36 +58,55 @@ Keputusan: **Opsi D adalah arah jangka panjang yang benar**, tapi bukan patch �
 
 ### Kontrak API baru (WAJIB presisi — ini yang paling sering jadi sumber bug migrasi)
 
-**A. `PostVideoCoordinator.clearActive()`** — dipanggil saat item PageView aktif adalah post FOTO (bukan video). Kontrak lengkap (bukan cuma "pause+mute+null"):
-1. Ambil sesi `_activePostId` lama (kalau ada) → `pause()` + `setVolume(0)`.
-2. `_activePostId = null`.
-3. **Naikkan `_playbackGeneration`** — ini yang membatalkan operasi `_claimAndPlay` manapun yang masih tertunda dari `setActive()` sebelumnya (guard `_canPlayEntry` sudah cek `generation == _playbackGeneration`, lihat `post_video_coordinator.dart:441-470` — jadi play yang di-enqueue sebelum `clearActive()` akan otomatis no-op begitu generation berubah, TAPI method ini tetap harus eksplisit set volume 0 + pause pada entry yang mungkin sudah terlanjur `play()` sebelum generation-check kedua kena).
-4. **Lepas audio claim** — panggil `_releaseAudioClaim()` (bukan biarkan menggantung sampai focus-lost berikutnya).
-5. Reset `_userPausedActive = false` (state pause-manual-user tidak relevan lagi untuk item yang sudah bukan aktif).
-6. Naikkan `_playbackRevision.value++` (supaya listener registry-nya konsisten dengan `setActive()`).
-7. Jalankan `_evict()` (sesi lama mungkin sekarang jadi kandidat eviction karena tak lagi aktif/pinned).
+**A. `PostVideoCoordinator.clearActive()`** — dipanggil saat item PageView aktif adalah post FOTO (bukan video). **Urutan berikut WAJIB persis begini** (ditemukan race nyata di v2: menaruh pause/mute SEBELUM generation-bump membuka celah — lihat penjelasan di bawah tabel):
 
-**Test wajib:** `setActive(A)` → SEGERA `clearActive()` sebelum `await` play A selesai (simulasikan race async) → assert A berakhir `paused == true, volume == 0` — bukan ikut ter-play oleh operasi lama yang menang race.
+**Fase sinkron (SATU pemanggilan `_guard(() {...})`, NOL `await` di dalamnya):**
+1. `_activePostId = null`.
+2. **Naikkan `_playbackGeneration`** SEGERA, sebelum apa pun lain — ini satu-satunya yang membatalkan operasi `_claimAndPlay` tertunda dari `setActive()` sebelumnya.
+3. **Lepas audio claim** — `_releaseAudioClaim()` (sinkron, bukan lewat `await`).
+4. Reset `_userPausedActive = false`.
+5. Naikkan `_playbackRevision.value++`.
+6. Jalankan `_evict()`.
 
-**B. `PlaybackSession` interface diperluas 2 method** (keputusan: **Opsi A** — perluas interface abstrak, bukan capability-check `is VideoPlayerSession`. Alasan: interface sudah kecil (5 method), menambah 2 lagi murah dibanding merusak prinsip "semua sesi punya kontrak sama"; kalau nanti fullscreen butuh gesture serupa, tinggal pakai tanpa refactor ulang):
+**Fase asinkron (SETELAH fase sinkron selesai, via `_enqueuePlayback` — SAMA persis pola yang dipakai `setActive()` untuk mem-pause sesi sebelumnya, [:230-234](../../../flutter_app/lib/features/feed/video/post_video_coordinator.dart)):**
+7. `_enqueuePlayback(() async { await oldEntry.session.setVolume(0); await oldEntry.session.pause(); })` — pause+mute sesi yang tadinya aktif, dikirim ke antrean serial, BUKAN di-`await` langsung di badan `clearActive()`.
+
+**Kenapa urutan ini krusial (bug race di v2):** `_canPlayEntry` ([:441-447](../../../flutter_app/lib/features/feed/video/post_video_coordinator.dart)) membandingkan `generation` **parameter yang di-capture saat operasi di-enqueue** terhadap `_playbackGeneration` **field live** — generation bump hanya efektif membatalkan operasi lama kalau terjadi **sebelum** operasi lama sempat memeriksa ulang gate itu. `_guard` sendiri sinkron murni (`T Function()`, bukan `Future`). Kalau `clearActive()` menaruh `await pause()/setVolume(0)` LEBIH DULU (seperti v2), `await` itu menyerahkan kendali ke event loop — persis di celah itu, `_claimAndPlay` lama (dari `setActive()` sebelumnya, sudah di-enqueue via antrean serial `_playbackTail`) bisa lanjut jalan dan lolos gate SEBELUM generation sempat di-bump, lalu `play()` menang race. Fix: seluruh mutasi state (generation, activePostId, audio claim, revision, evict) **sinkron murni, nol await**, baru pause/mute entry lama dikirim ke antrean setelahnya.
+
+**Test wajib:**
+1. `setActive(A)` → SEGERA `clearActive()` sebelum operasi `_claimAndPlay(A)` yang ter-enqueue sempat jalan (simulasikan race — pastikan test benar-benar mengeksploitasi celah await, bukan cuma memanggil kedua method berurutan tanpa microtask di antaranya) → assert **A tidak pernah menerima panggilan `play()` sama sekali** (bukan cuma cek state akhir `paused==true,volume==0` — assert count `playCalls==0` pada fake session, karena state akhir yang benar bisa saja tercapai lewat urutan panggilan yang salah/kebetulan).
+2. video→foto→foreground (dari risiko #3 di bawah).
+
+**B. `PlaybackSession` interface diperluas 2 method — DIBUNGKUS LEASE** (keputusan: **Opsi A** — perluas interface abstrak, bukan capability-check `is VideoPlayerSession`. Direvisi dari v2: `endTransientGesture()` tanpa parameter tidak punya identitas — kalau A di-long-press-2x lalu user swipe ke B sebelum jari lepas, panggilan akhir bisa salah sasaran ke sesi B atau gagal mengembalikan A ke speed 1x. Fix: tiru pola `VideoAudioClaim` yang sudah ada dan terbukti — `claim()`/`.isCurrent`/`.release()` — bukan bare method):
 
 ```dart
 abstract class PlaybackSession {
   // ...5 method existing (play/pause/seekTo/setVolume/dispose/position)...
-  Future<void> beginTransientGesture(TransientGestureKind kind);
-  Future<void> endTransientGesture();
+  TransientGestureLease beginTransientGesture(TransientGestureKind kind);
 }
 
 enum TransientGestureKind { peekPause, doubleSpeed }
+
+/// Analog VideoAudioClaim — token identitas yang membungkus postId, sesi,
+/// generation-saat-begin, dan state playback awal. `endTransientGesture()`
+/// jadi method PADA LEASE (bukan pada session), sehingga otomatis tak
+/// berpengaruh kalau lease sudah using stale (sesi berbeda/sudah diganti).
+abstract class TransientGestureLease {
+  bool get isCurrent; // false kalau sesi sudah diganti/dievict/gesture lain menimpa
+  Future<void> end(); // no-op kalau !isCurrent
+}
 ```
 
-Jaminan yang WAJIB dipenuhi implementasi (`VideoPlayerSession`) + coordinator forwarding:
-- **Swipe/keluar-item saat `doubleSpeed` aktif** → video WAJIB kembali ke speed 1x sebelum sesi dilepas/pause/detach (jangan biarkan speed 2x nyangkut ke sesi yang dipakai ulang).
-- **Route ditutup (Feed→Profile) selama transient-gesture berlangsung** → `endTransientGesture()` di akhir long-press TIDAK BOLEH memicu resume — harus tetap tunduk ke `_routeCovered`/`_canAutoplayNow` yang sudah ada (transient-gesture bukan alasan menembus guard route-cover).
-- **User-pause eksplisit tak boleh tertimpa** — kalau user sempat tap-pause di tengah/sebelum transient-gesture, `endTransientGesture()` tidak boleh otomatis resume play (harus cek `isUserPaused` sebelum resume).
-- **Dispose selama gesture aktif tetap aman** — `dispose()` sesi harus bisa dipanggil kapan pun tanpa exception/state korup meski `beginTransientGesture` belum di-`end`.
+Jaminan yang WAJIB dipenuhi implementasi (`VideoPlayerSession`/coordinator) — semua lewat mekanisme lease, BUKAN diasumsikan widget selalu sempat memanggil `end()` di waktu yang tepat:
+- **Swipe/keluar-item saat `doubleSpeed` aktif** → video WAJIB kembali ke speed 1x sebelum sesi dilepas/pause/detach. Karena gesture Flutter BISA diinterupsi (kalah/menang arena ke drag PageView) sehingga `onLongPressEnd` **tidak selalu terpanggil**, jalur **detach/evict coordinator sendiri** (bukan cuma widget) harus memeriksa apakah entry yang mau di-detach/evict masih punya lease aktif → paksa `lease.end()` (restore speed 1x) SEBELUM detach/evict jalan.
+- **`lease.isCurrent` palsu setelah swipe ke item lain** — begin lease di A menyimpan identitas sesi A; kalau setelah itu sesi A diganti/dievict/di-detach (karena user swipe ke B), `isCurrent` harus jadi `false`, sehingga `end()` yang terlambat dipanggil widget jadi no-op aman, TIDAK memengaruhi sesi B.
+- **Route ditutup (Feed→Profile) selama gesture berlangsung** → `lease.end()` TIDAK BOLEH memicu resume — tetap tunduk ke `_routeCovered`/`_canAutoplayNow` yang sudah ada.
+- **User-pause eksplisit tak boleh tertimpa** — state awal playback (playing/paused) di-capture SAAT `beginTransientGesture` dipanggil (bagian dari lease); `end()` mengembalikan ke state awal itu, BUKAN otomatis resume-play — kalau state awal sudah paused (user-pause), `end()` mengembalikan ke paused, bukan play.
+- **Dispose selama gesture aktif tetap aman** — `session.dispose()` bisa dipanggil kapan pun; lease yang masih terbuka otomatis jadi `!isCurrent` (tak crash, tak memanggil method pada sesi yang sudah disposed).
 
-**File terdampak untuk kontrak ini:** `post_video_coordinator.dart` (interface + forwarding), `video_player_session.dart` (implementasi), **3 file test fake** (harus implement 2 method baru — kesempatan sekaligus menambah test kasus di atas).
+**Test wajib:** A di-`beginTransientGesture(doubleSpeed)` → sebelum `end()`, sesi A di-evict/detach (simulasikan swipe cepat) → assert speed A ter-restore ke 1x DAN `lease.isCurrent == false` → panggil `lease.end()` (terlambat) → assert no-op, TIDAK ada efek pada sesi B yang sekarang aktif.
+
+**File terdampak untuk kontrak ini:** `post_video_coordinator.dart` (interface + kelas lease + logic detach/evict yang memeriksa lease aktif), `video_player_session.dart` (implementasi), **3 file test fake** (harus implement method baru — kesempatan sekaligus menambah test kasus di atas).
 
 ### Kontrak session-factory Feed (baru — sebelumnya tak eksplisit)
 
@@ -98,14 +117,23 @@ Saat `feed_screen` membuat `PlaybackSessionFactory` untuk instance coordinator-n
 - **Pertahankan D4 (refresh signed-URL)** dan quality resolver (`videoQualityService.resolvePlaybackUrl`) di dalam session factory — ini yang selama ini jadi keunggulan coordinator dibanding legacy (PR #140); jangan sampai factory Feed yang baru malah lupa mewarisi ini.
 - **Invariant jumlah sesi yang bisa diuji**: steady-state (setelah swipe settle) maksimal 4 sesi hidup (1 aktif + `maxPreloadSessions=3`); BOLEH sementara sampai 5 di tengah transisi swipe cepat (sebelum eviction lama selesai) — tapi harus turun ke ≤4 begitu settle. Test harus assert kedua kondisi ini secara terpisah (transient vs settled), bukan cuma cap keras `<=5` sepanjang waktu.
 
+### Urutan attach/detach/dispose (eksplisit — sebelumnya cuma tersirat "mirip _activateManaged")
+
+Empat sekuens WAJIB, semua sudah punya preseden terverifikasi di kode existing, tinggal dinyatakan eksplisit sebagai acceptance-criteria migrasi Feed:
+
+1. **Video A → video B** (transisi antar-video): `coord.attach(viewIdB, B)` → `coord.setActive(B)` → `coord.detach(viewIdA, A)`. Persis urutan `scoped_video_feed_screen._activateManaged` ([:423-441](../../../flutter_app/lib/screens/scoped_video_feed_screen.dart)) — attach BARU dulu, baru detach LAMA. `setActive()` sendiri TIDAK memanggil detach (simetris dengan `clearActive()` yang juga tidak memanggil detach — lihat §Kontrak API — detach selalu tanggung jawab TERPISAH si pemanggil, bukan efek samping implisit method aktivasi).
+2. **Video A → foto**: `coord.clearActive()` → (kalau A memang keluar window, bukan sekadar jadi non-aktif tapi masih di jendela preload backward) `coord.detach(viewIdA, A)`. `clearActive()` sendiri TIDAK memanggil detach, simetris dengan poin 1.
+3. **Refresh/post dihapus dari list** (pull-to-refresh, infinite-scroll replace): `detach()`/hapus dari preload window untuk SEMUA postId yang tak lagi ada di list baru **SEBELUM** `_posts`/`_visiblePosts` ditukar ke list baru — mencegah coordinator menyimpan attach/pinned entry untuk postId yang sudah tak valid di UI (kelas bug "closure-stale-list" dari §Kontrak session-factory Feed, di sini dinyatakan sebagai urutan operasional konkret).
+4. **Dispose screen**: `feed_screen.dispose()` memanggil `_videoCoordinator.dispose()` SEKALI — yang secara internal men-dispose SEMUA entry sesi (`post_video_coordinator.dart:370-389`, sudah invariant coordinator: "SATU-SATUNYA pemanggil `PlaybackSession.dispose`"). `FeedVideoPostView` instance manapun (managed) TIDAK PERNAH memanggil `session.dispose()` sendiri — sudah terjamin arsitektural oleh `ownsController:false`, tapi WAJIB jadi assertion eksplisit di test migrasi (mis. spy/counter di fake session: `disposeCallCount` dari widget harus selalu 0 saat managed).
+
 ### Lingkup
 
 1. **[PRASYARAT]** Tambah `clearActive()` di `PostVideoCoordinator` sesuai kontrak lengkap di atas + test race `setActive→clearActive`.
-2. **[PRASYARAT]** Perluas `PlaybackSession` (interface + `VideoPlayerSession` + 3 fake test) dengan `beginTransientGesture`/`endTransientGesture`, penuhi 4 jaminan di atas. Ganti `_onLongPressStart`/`_onLongPressEnd` di `feed_video_post_view.dart` dari `ctrl.pause()/setPlaybackSpeed()` langsung ke intent lewat coordinator saat `_managed` (bukan lagi early-return kosong).
+2. **[PRASYARAT]** Perluas `PlaybackSession` (interface + `VideoPlayerSession` + 3 fake test) dengan `beginTransientGesture(kind) → TransientGestureLease` (`lease.end()`, bukan method terpisah di session), penuhi 4 jaminan di atas. Ganti `_onLongPressStart`/`_onLongPressEnd` di `feed_video_post_view.dart` dari `ctrl.pause()/setPlaybackSpeed()` langsung ke intent lewat coordinator (simpan lease saat begin, panggil `lease.end()` saat end) saat `_managed` (bukan lagi early-return kosong).
 3. Punya satu `PostVideoCoordinator` instance per screen-lifetime, **di balik feature flag yang DIKUNCI sejak `initState`** (dibaca sekali, tak reaktif). Pola instance identik `member_post_detail_screen:196`.
 4. `FeedVideoPostView` diinstansiasi dengan `ownsController:false, playbackManagedExternally:true, coordinator:` saat flag ON.
-5. `_managePreloadWindow` diganti memanggil `coordinator.setActive(activePostId)` ATAU `coordinator.clearActive()` (kalau item aktif foto) + `coordinator.setPreloadWindow(targetIds)` — persis pola `scoped_video_feed_screen.dart:453-468`, `targetIds` dari `adaptiveVideoPreloadPolicy.offsets(...)` yang **sudah** dipakai (tak berubah). Ikuti Kontrak session-factory Feed di atas.
-6. **`attach()` HANYA untuk item video yang benar-benar aktif** (satu panggilan, mirroring `_activateManaged`) — item di jendela preload **tidak** di-`attach()`, cukup lewat `setPreloadWindow` (pinned+paused+mute, tanpa `attachedViewIds`).
+5. `_managePreloadWindow` diganti memanggil urutan §Urutan attach/detach/dispose #1/#2 (attach→setActive→detach ATAU clearActive→detach) + `coordinator.setPreloadWindow(targetIds)` — `targetIds` dari `adaptiveVideoPreloadPolicy.offsets(...)` yang **sudah** dipakai (tak berubah). Ikuti Kontrak session-factory Feed di atas. Refresh/replace list post ikuti §Urutan #3 (detach sebelum swap list).
+6. **`attach()` HANYA untuk item video yang benar-benar aktif** (satu panggilan, mirroring `_activateManaged`) — item di jendela preload **tidak** di-`attach()`, cukup lewat `setPreloadWindow` (pinned+paused+mute, tanpa `attachedViewIds`). Dispose screen ikuti §Urutan #4 (coordinator satu-satunya pemanggil dispose sesi).
 7. **[BARU]** Wire `WidgetsBindingObserver`+`RouteAware` di LEVEL `feed_screen` sendiri (screen ini belum punya sama sekali hari ini — logic route-cover legacy hidup di dalam widget, bukan screen), memanggil `coordinator.pauseAll()`/`resumeAll()` mengikuti pola `member_post_detail_screen:374,393,405` — supaya route-cover benar-benar berfungsi, bukan asumsi "built-in".
 8. Hapus infrastruktur legacy yang jadi mati (`_preloadedControllers`/`_preloadedCachedPlayers` map, `_claimPreloadedVideo`, create/dispose manual) — **HANYA setelah flag di-hardcode ON permanen** (lihat Sequencing — bukan sekadar "setelah stabil" sambil flag mekanisme rollback masih ada).
 
@@ -137,10 +165,10 @@ Karena Feed dan Postingan sengaja tetap dua instance coordinator terpisah (non-g
 
 ### Sequencing (8 langkah, urutan rollback DIPERBAIKI — lihat catatan ⚠️)
 
-1. Tambahkan `clearActive()` (kontrak lengkap di atas) + test race `setActive→clearActive` + test video→foto→foreground.
-2. Perluas `PlaybackSession` dengan transient-gesture (kontrak lengkap di atas) + update 3 fake test + lengkapi intent gesture managed di `feed_video_post_view.dart`.
+1. Tambahkan `clearActive()` dengan urutan sinkron-dulu-baru-enqueue yang benar (kontrak lengkap di atas) + test race `setActive→clearActive` yang membuktikan `playCalls==0` (bukan cuma cek state akhir) + test video→foto→foreground.
+2. Perluas `PlaybackSession` dengan `TransientGestureLease` (kontrak lengkap di atas) + update 3 fake test + lengkapi intent gesture managed di `feed_video_post_view.dart` + test evict-saat-gesture-aktif (`lease.isCurrent` jadi false, `end()` terlambat = no-op).
 3. Pasang coordinator Feed di balik feature flag, **default OFF**, dikunci sejak screen dibuat (belum dipakai widget — PR kecil, nol perubahan perilaku user-facing). Wire RouteAware/WidgetsBindingObserver level-screen (Lingkup #7) di langkah ini juga (di balik flag yang sama).
-4. Swap instansiasi `FeedVideoPostView` ke mode managed di balik flag (masih default OFF, dites internal dengan flag di-ON-kan manual). **Hanya item video aktif yang `attach()`; item di jendela preload tetap pinned tapi TIDAK di-attach.**
+4. Swap instansiasi `FeedVideoPostView` ke mode managed di balik flag (masih default OFF, dites internal dengan flag di-ON-kan manual). Ikuti §Urutan attach/detach/dispose #1-2 persis (attach→setActive→detach / clearActive→detach).
 5. Uji matriks dengan flag ON internal: iOS/Android, WiFi/4G, Data Saver, background/lock, Feed→Profile, **DAN periksa `social_video_controller_collision`** memakai Gerbang rollout granular di atas (bukan "nol global").
 6. **Nyalakan flag DEFAULT TRUE** untuk semua user (map legacy MASIH ADA di titik ini — flag tetap jadi jalur rollback kalau ada laporan regresi) — observasi masa aman (collision sesama-owner nol, audio-ganda nol, jumlah sesi konsisten ≤4 steady-state).
 7. **⚠️ HANYA setelah masa observasi #6 aman:** hapus feature flag DAN infrastruktur preload manual legacy (`_preloadedControllers`/`_preloadedCachedPlayers`/`_claimPreloadedVideo`) DALAM SATU PR YANG SAMA. Titik ini adalah pergantian mekanisme rollback: SEBELUM PR ini, rollback = flip flag; SESUDAH PR ini, rollback = revert/redeploy versi sebelumnya (flag sudah tak ada, jalur legacy sudah tak ada, flip flag tak lagi bermakna apa pun). *(Versi sebelumnya dari dokumen ini salah menaruh penghapusan legacy sebagai langkah terpisah setelah "flag ON stabil" TANPA menghapus flag itu sendiri — kontradiksi yang membuat rollback mustahil di titik itu. Sudah diperbaiki di sini.)*
@@ -150,7 +178,7 @@ Tiap langkah = PR terpisah, revert-able sendiri-sendiri (via flag untuk langkah 
 
 ## Estimasi & keputusan yang masih terbuka
 
-- **Kematangan arsitektur:** v2 (dokumen ini) menutup 6 gap dari review kedua — urutan rollback, gerbang collision granular, kontrak `clearActive()` lengkap, kontrak transient-gesture + keputusan Opsi A (perluas interface), 4 kontradiksi internal, kontrak session-factory Feed. Tidak ada lagi gap arsitektur yang diketahui terbuka.
-- **Ukuran kerja:** sedang-besar — lebih besar dari perkiraan v1 karena Lingkup #1-2 (clearActive + transient-gesture interface) ternyata butuh perubahan interface abstrak + 3 file test fake, bukan cuma "port pola yang sudah ada". Tetap bukan "quick patch"; 8 langkah bertahap, masing-masing PR terpisah dengan gerbang sendiri.
+- **Kematangan arsitektur:** v3 (dokumen ini) menutup 9 gap total dari tiga putaran review — v2: urutan rollback, gerbang collision granular, kontrak `clearActive()`, kontrak transient-gesture (keputusan Opsi A), 4 kontradiksi internal, kontrak session-factory Feed. v3: race nyata di urutan sinkron/async `clearActive()`, lease beridentitas untuk transient-gesture (analog `VideoAudioClaim`), 4 sekuens attach/detach/dispose eksplisit. Tidak ada lagi gap arsitektur yang diketahui terbuka — dua putaran review berturut-turut tidak menemukan gap baru di luar penyempurnaan poin yang sudah ada.
+- **Ukuran kerja:** sedang-besar — Langkah 1-2 (kontrak API `clearActive`+lease) kini kandidat kuat untuk **review adversarial berbasis mutasi** sebelum lanjut ke langkah berikutnya, karena keduanya fondasi seluruh migrasi dan sudah terbukti dua kali menyembunyikan race/gap halus pada percobaan spesifikasi pertama (v1→v2→v3). Tetap bukan "quick patch"; 8 langkah bertahap, masing-masing PR terpisah dengan gerbang sendiri.
 - **Kapan dieksekusi:** BELUM diputuskan. Dokumen ini adalah *rencana*, bukan izin eksekusi. Perlu keputusan terpisah untuk mulai Langkah 1 — termasuk mempertimbangkan apakah `feed_screen.dart`/`post_video_coordinator.dart` sedang tenang dari aktivitas paralel (Codex atau lainnya) sebelum memulai, karena sequencing 8-langkah ini butuh beberapa PR berurutan di file yang sama.
 - **Siapa mengerjakan tiap langkah:** subagent-driven per langkah (pola yang sudah terbukti di sesi-sesi sebelumnya — implement→review adversarial→fix→verify), bukan satu agen mengerjakan semua langkah sekaligus. Langkah 1-2 (kontrak API) cocok diverifikasi ekstra ketat (mis. review adversarial berbasis mutasi, seperti yang dipakai sesi ini untuk kasus lain) karena keduanya jadi fondasi seluruh langkah berikutnya.
