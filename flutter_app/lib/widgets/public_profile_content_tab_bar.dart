@@ -2,6 +2,7 @@ import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 
+import '../theme/natalo_text.dart';
 import 'liquid_glass.dart';
 
 /// Public-profile content navigation with distinct neutral tab pills.
@@ -44,61 +45,109 @@ class PublicProfileContentTabBar extends StatelessWidget {
 
     return SizedBox(
       height: height,
-      child: TabBar(
-        controller: controller,
-        onTap: onTap,
-        indicator: const BoxDecoration(color: Colors.transparent),
-        indicatorColor: Colors.transparent,
-        indicatorWeight: 0.001,
-        labelPadding: EdgeInsets.zero,
-        splashFactory: NoSplash.splashFactory,
-        overlayColor: WidgetStateProperty.all<Color>(Colors.transparent),
-        tabs: [
-          _PublicProfileTab(
-            pillKey: const Key('public_tab_posts_pill'),
+      child: Stack(
+        children: [
+          TabBar(
             controller: controller,
-            index: 0,
-            icon: Icons.grid_on_rounded,
-            label: 'Postingan',
-            labelOpacity: labelOpacity,
-            pillOpacity: pillOpacity,
-            underlineOpacity: underlineOpacity,
-            reducedMotion: reducedMotion,
-            expandedForeground: expandedForeground,
-            activeSurface: activeSurface,
-            activeForeground: activeForeground,
-            inactiveForeground: inactiveForeground,
+            onTap: onTap,
+            indicator: const BoxDecoration(color: Colors.transparent),
+            indicatorColor: Colors.transparent,
+            indicatorWeight: 0.001,
+            labelPadding: EdgeInsets.zero,
+            splashFactory: NoSplash.splashFactory,
+            overlayColor: WidgetStateProperty.all<Color>(Colors.transparent),
+            dividerColor: Colors.transparent,
+            dividerHeight: 0,
+            tabs: [
+              _PublicProfileTab(
+                pillKey: const Key('public_tab_posts_pill'),
+                controller: controller,
+                index: 0,
+                icon: Icons.grid_on_rounded,
+                label: 'Postingan',
+                labelOpacity: labelOpacity,
+                pillOpacity: pillOpacity,
+                reducedMotion: reducedMotion,
+                expandedForeground: expandedForeground,
+                activeSurface: activeSurface,
+                activeForeground: activeForeground,
+                inactiveForeground: inactiveForeground,
+              ),
+              _PublicProfileTab(
+                pillKey: const Key('public_tab_video_pill'),
+                controller: controller,
+                index: 1,
+                // Samakan glyph dgn bottom nav (Icons.play_circle_outline_
+                // rounded) supaya konsep "Video" konsisten sepanjang app.
+                icon: Icons.play_circle_outline_rounded,
+                label: 'Video',
+                labelOpacity: labelOpacity,
+                pillOpacity: pillOpacity,
+                reducedMotion: reducedMotion,
+                expandedForeground: expandedForeground,
+                activeSurface: activeSurface,
+                activeForeground: activeForeground,
+                inactiveForeground: inactiveForeground,
+              ),
+              _PublicProfileTab(
+                pillKey: const Key('public_tab_shop_pill'),
+                controller: controller,
+                index: 2,
+                icon: Icons.shopping_bag_outlined,
+                label: 'Belanja',
+                labelOpacity: labelOpacity,
+                pillOpacity: pillOpacity,
+                reducedMotion: reducedMotion,
+                expandedForeground: expandedForeground,
+                activeSurface: activeSurface,
+                activeForeground: activeForeground,
+                inactiveForeground: inactiveForeground,
+              ),
+            ],
           ),
-          _PublicProfileTab(
-            pillKey: const Key('public_tab_video_pill'),
-            controller: controller,
-            index: 1,
-            icon: Icons.smart_display_outlined,
-            label: 'Video',
-            labelOpacity: labelOpacity,
-            pillOpacity: pillOpacity,
-            underlineOpacity: underlineOpacity,
-            reducedMotion: reducedMotion,
-            expandedForeground: expandedForeground,
-            activeSurface: activeSurface,
-            activeForeground: activeForeground,
-            inactiveForeground: inactiveForeground,
-          ),
-          _PublicProfileTab(
-            pillKey: const Key('public_tab_shop_pill'),
-            controller: controller,
-            index: 2,
-            icon: Icons.shopping_bag_outlined,
-            label: 'Belanja',
-            labelOpacity: labelOpacity,
-            pillOpacity: pillOpacity,
-            underlineOpacity: underlineOpacity,
-            reducedMotion: reducedMotion,
-            expandedForeground: expandedForeground,
-            activeSurface: activeSurface,
-            activeForeground: activeForeground,
-            inactiveForeground: inactiveForeground,
-          ),
+          if (underlineOpacity > 0.001)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 3,
+              height: 2.4,
+              child: IgnorePointer(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return AnimatedBuilder(
+                      animation: controller.animation ?? controller,
+                      builder: (context, _) {
+                        final pos = controller.animation?.value ??
+                            controller.index.toDouble();
+                        final slot = constraints.maxWidth / 3;
+                        const indicatorWidth = 24.0;
+                        final centerX = slot * (pos + 0.5);
+                        return Stack(
+                          children: [
+                            Positioned(
+                              left: centerX - indicatorWidth / 2,
+                              top: 0,
+                              bottom: 0,
+                              width: indicatorWidth,
+                              child: Opacity(
+                                opacity: underlineOpacity.clamp(0.0, 1.0),
+                                child: DecoratedBox(
+                                  key: const Key('public_tab_sliding_underline'),
+                                  decoration: BoxDecoration(
+                                    color: expandedForeground,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -113,7 +162,6 @@ class _PublicProfileTab extends StatelessWidget {
   final String label;
   final double labelOpacity;
   final double pillOpacity;
-  final double underlineOpacity;
   final bool reducedMotion;
   final Color expandedForeground;
   final Color activeSurface;
@@ -128,7 +176,6 @@ class _PublicProfileTab extends StatelessWidget {
     required this.label,
     required this.labelOpacity,
     required this.pillOpacity,
-    required this.underlineOpacity,
     required this.reducedMotion,
     required this.expandedForeground,
     required this.activeSurface,
@@ -200,7 +247,7 @@ class _PublicProfileTab extends StatelessWidget {
                             style: TextStyle(
                               color: foreground,
                               fontSize: 11,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: NataloWeight.strong,
                             ),
                           ),
                         ),
@@ -237,21 +284,6 @@ class _PublicProfileTab extends StatelessWidget {
                       child: pillContent,
                     ),
                   ),
-                  if (underlineOpacity > 0.001 && emphasis > 0.5)
-                    Positioned(
-                      bottom: 3,
-                      child: Opacity(
-                        opacity: underlineOpacity * emphasis,
-                        child: DecoratedBox(
-                          key: const Key('public_tab_expanded_underline'),
-                          decoration: BoxDecoration(
-                            color: expandedForeground,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                          child: const SizedBox(width: 24, height: 2.4),
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),

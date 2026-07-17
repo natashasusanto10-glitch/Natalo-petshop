@@ -4,6 +4,7 @@ import '../models/public_profile.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 import '../utils/formatters.dart';
 import 'official_brand_avatar.dart';
 import 'profile_avatar.dart';
@@ -148,7 +149,7 @@ class _IgExpandedHeader extends StatelessWidget {
                     style: TextStyle(
                       color: cs.onSurface,
                       fontSize: 15,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: NataloWeight.strong,
                       height: 1.15,
                     ),
                   ),
@@ -224,7 +225,7 @@ class _OfficialChip extends StatelessWidget {
               style: TextStyle(
                 color: NataloColors.officialGoldOnLight,
                 fontSize: 10.5,
-                fontWeight: FontWeight.w700,
+                fontWeight: NataloWeight.strong,
               ),
             ),
           ),
@@ -316,7 +317,7 @@ class _Stat extends StatelessWidget {
               style: TextStyle(
                 color: foreground,
                 fontSize: 16,
-                fontWeight: FontWeight.w800,
+                fontWeight: NataloWeight.strong,
                 height: 1.05,
               ),
             ),
@@ -328,7 +329,7 @@ class _Stat extends StatelessWidget {
               style: TextStyle(
                 color: secondary,
                 fontSize: 11.5,
-                fontWeight: FontWeight.w600,
+                fontWeight: NataloWeight.body,
                 height: 1.05,
               ),
             ),
@@ -516,7 +517,7 @@ class _HeaderAction extends StatelessWidget {
                               style: TextStyle(
                                 color: foreground,
                                 fontSize: 13,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: NataloWeight.strong,
                               ),
                             ),
                           ),

@@ -1637,6 +1637,44 @@ void main() {
     expect(find.byType(ImageFiltered), findsNothing);
   });
 
+  testWidgets('fullscreen Feed uses one top-aligned cover thumbnail',
+      (tester) async {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(
+          size: Size(393, 852),
+          padding: EdgeInsets.only(bottom: 34),
+        ),
+        child: MaterialApp(
+          home: FeedVideoPostView(
+            post: _fakeVideoPost(aspectRatio: 9 / 16),
+            isActive: false,
+            preloadedController: null,
+            framing: FeedVideoFraming.fullscreenFeed,
+            onOverlayStateChanged: (_) {},
+            onMediaZoomChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final thumbnails = tester
+        .widgetList<CachedNetworkImage>(find.byType(CachedNetworkImage))
+        .where((image) => image.imageUrl.endsWith('.jpg'))
+        .toList();
+    expect(thumbnails, hasLength(1));
+    expect(thumbnails.single.fit, BoxFit.cover);
+    expect(thumbnails.single.alignment, Alignment.topCenter);
+
+    final mediaViewport = tester.widget<Positioned>(
+      find.byKey(const ValueKey('feed-video-media-viewport')),
+    );
+    expect(mediaViewport.top, 0);
+    expect(mediaViewport.bottom, 0);
+  });
+
   testWidgets('main Feed initialized player shares cover topCenter framing',
       (tester) async {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
@@ -1680,6 +1718,90 @@ void main() {
       ),
       findsNothing,
     );
+  });
+
+  testWidgets(
+      'fullscreen Feed initialized player shares cover topCenter framing',
+      (tester) async {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    final platform = _FakeVideoPlayerPlatform();
+    VideoPlayerPlatform.instance = platform;
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse('https://example.com/fullscreen-feed.m3u8'),
+    );
+    await controller.initialize();
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(
+          size: Size(393, 852),
+          padding: EdgeInsets.only(bottom: 34),
+        ),
+        child: MaterialApp(
+          home: FeedVideoPostView(
+            post: _fakeVideoPost(aspectRatio: 9 / 16, hls: true),
+            isActive: true,
+            preloadedController: controller,
+            framing: FeedVideoFraming.fullscreenFeed,
+            onOverlayStateChanged: (_) {},
+            onMediaZoomChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final mediaFittedBoxes = tester.widgetList<FittedBox>(
+      find.descendant(
+        of: find.byKey(const ValueKey('feed-video-media-viewport')),
+        matching: find.byType(FittedBox),
+      ),
+    );
+    expect(mediaFittedBoxes, isNotEmpty);
+    expect(mediaFittedBoxes.last.fit, BoxFit.cover);
+    expect(mediaFittedBoxes.last.alignment, Alignment.topCenter);
+  });
+
+  testWidgets(
+      'fullscreen compact comment preview keeps contained initialized media',
+      (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    VideoPlayerPlatform.instance = _FakeVideoPlayerPlatform();
+    await appSettingsStore.setFeedAutoplay(false);
+    addTearDown(() => appSettingsStore.setFeedAutoplay(true));
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse('https://example.com/fullscreen-comment-preview.m3u8'),
+    );
+    await controller.initialize();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeedVideoPostView(
+          post: _fakeVideoPost(aspectRatio: 9 / 16, hls: true),
+          isActive: true,
+          preloadedController: controller,
+          framing: FeedVideoFraming.fullscreenFeed,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsLabel('Komentar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 320));
+
+    final mediaFittedBoxes = tester.widgetList<FittedBox>(
+      find.descendant(
+        of: find.byKey(const ValueKey('feed-video-media-viewport')),
+        matching: find.byType(FittedBox),
+      ),
+    );
+    expect(mediaFittedBoxes, isNotEmpty);
+    expect(mediaFittedBoxes.last.fit, BoxFit.contain);
   });
 
   testWidgets('main Feed media stops at the bottom navigation inset',

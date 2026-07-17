@@ -685,6 +685,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
     if (coordinator == null) {
       return FeedVideoPostView(
         post: post,
+        framing: FeedVideoFraming.fullscreenFeed,
         isActive: index == _activeIndex,
         preloadedController: null,
         preloadedCachedPlayer: null,
@@ -701,6 +702,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
       // swipe bolak-balik (re-adopt sesi via notifier, bukan state baru).
       key: ValueKey('scoped-fs-$postId'),
       post: post,
+      framing: FeedVideoFraming.fullscreenFeed,
       isActive: index == _activeIndex,
       // §2.1: coordinator pemilik controller (dispose) + pengendali playback.
       // Widget hanya merender + melapor intent + adopt sesi via notifier.

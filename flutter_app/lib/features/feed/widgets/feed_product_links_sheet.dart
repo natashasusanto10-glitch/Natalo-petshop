@@ -143,7 +143,11 @@ Future<void> showFeedProductLinksSheet(
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.40),
-    enableDrag: false, // DraggableScrollableSheet yang pegang gesture
+    // Drag-to-dismiss bawaan modal: tarik turun dari handle/header/atas-grid
+    // menutup sheet (ala TikTok Links). Sebelumnya false + DraggableScrollable
+    // Sheet(minChildSize .45) → tarik turun cuma mengecil ke 45% lalu mentok,
+    // tak pernah menutup, dan handle tak menggerakkan sheet.
+    enableDrag: true,
     builder: (sheetContext) => _FeedProductLinksSheet(
       products: products,
       onOpenProduct: (link) {
@@ -168,69 +172,65 @@ class _FeedProductLinksSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.66,
-      minChildSize: 0.45,
-      maxChildSize: 0.92,
-      expand: false,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: commerceGridSurfaceTint(context),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              children: [
-                const SheetDragHandle(),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Produk (${products.length})',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
+    // Tinggi tetap ~72% layar; drag-to-dismiss ditangani modal (enableDrag).
+    // GridView scroll independen dengan controller-nya sendiri.
+    return FractionallySizedBox(
+      heightFactor: 0.72,
+      child: Container(
+        decoration: BoxDecoration(
+          color: commerceGridSurfaceTint(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              const SheetDragHandle(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
+                child: Row(
+                  children: [
+                    Text(
+                      'Produk (${products.length})',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: () => Navigator.of(context).maybePop(),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: GridView.builder(
-                    controller: scrollController,
-                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 10,
-                      crossAxisSpacing: 10,
-                      childAspectRatio: 0.62,
                     ),
-                    itemCount: products.length,
-                    itemBuilder: (context, i) {
-                      final product = products[i];
-                      return FeedProductGridCard(
-                        product: product,
-                        onTap: () => onOpenProduct(product),
-                        onAddToCart: () => onAddToCart(product),
-                      );
-                    },
-                  ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              Expanded(
+                child: GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: 0.62,
+                  ),
+                  itemCount: products.length,
+                  itemBuilder: (context, i) {
+                    final product = products[i];
+                    return FeedProductGridCard(
+                      product: product,
+                      onTap: () => onOpenProduct(product),
+                      onAddToCart: () => onAddToCart(product),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

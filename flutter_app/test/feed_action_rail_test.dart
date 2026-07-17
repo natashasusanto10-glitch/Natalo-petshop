@@ -85,7 +85,7 @@ void main() {
     expect(find.bySemanticsLabel('Hapus dari tersimpan'), findsOneWidget);
   });
 
-  testWidgets('five actions use 10dp gaps and fit a 290dp compact rail',
+  testWidgets('five actions use 6dp gaps and fit a 274dp compact rail',
       (tester) async {
     await tester.pumpWidget(_wrap(const FeedActionRail(
       likeCount: 1,
@@ -94,12 +94,12 @@ void main() {
       shareCount: 1,
     )));
 
-    expect(tester.getSize(find.byType(FeedActionRail)).height, 290);
+    expect(tester.getSize(find.byType(FeedActionRail)).height, 274);
 
     final likeRect = tester.getRect(find.byTooltip('Sukai'));
     final commentRect = tester.getRect(find.byTooltip('Komentar'));
     final shareRect = tester.getRect(find.byTooltip('Bagikan'));
-    expect(commentRect.top - likeRect.bottom, 10);
-    expect(shareRect.top - commentRect.bottom, 10);
+    expect(commentRect.top - likeRect.bottom, 6);
+    expect(shareRect.top - commentRect.bottom, 6);
   });
 }

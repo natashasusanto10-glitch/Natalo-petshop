@@ -11,6 +11,7 @@ import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../config/api_config.dart';
+import '../theme/natalo_text.dart';
 import '../features/feed/widgets/feed_action_rail.dart';
 import '../features/feed/video/adaptive_video_preload_policy.dart';
 import '../features/feed/video/feed_video_observation.dart';
@@ -1379,7 +1380,7 @@ class _FeedTopIconButton extends StatelessWidget {
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 10,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: NataloWeight.strong,
                   height: 1,
                 ),
               ),
@@ -1535,7 +1536,7 @@ class _EmptyState extends StatelessWidget {
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 16,
-                fontWeight: FontWeight.w900,
+                fontWeight: NataloWeight.strong,
               ),
             ),
             const SizedBox(height: 6),
@@ -1545,7 +1546,7 @@ class _EmptyState extends StatelessWidget {
               style: TextStyle(
                 color: Colors.white70,
                 fontSize: 13,
-                fontWeight: FontWeight.w600,
+                fontWeight: NataloWeight.body,
                 height: 1.5,
               ),
             ),
@@ -1592,7 +1593,7 @@ class _FeedErrorState extends StatelessWidget {
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 16,
-                fontWeight: FontWeight.w900,
+                fontWeight: NataloWeight.strong,
               ),
             ),
             const SizedBox(height: 6),
@@ -1602,7 +1603,7 @@ class _FeedErrorState extends StatelessWidget {
               style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 13,
-                fontWeight: FontWeight.w600,
+                fontWeight: NataloWeight.body,
                 height: 1.5,
               ),
             ),
@@ -1617,7 +1618,7 @@ class _FeedErrorState extends StatelessWidget {
                 'Coba lagi',
                 style: TextStyle(
                   color: Colors.white,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
               style: OutlinedButton.styleFrom(

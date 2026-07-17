@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../models/feed_post.dart';
+import '../../../theme/natalo_text.dart';
 import '../../../models/product.dart';
 import '../../../services/follow_service.dart';
 import '../../../state/follow_override_store.dart';
@@ -66,13 +67,13 @@ class FeedPostSocialProof extends StatelessWidget {
                     const TextSpan(text: 'Disukai oleh '),
                     TextSpan(
                       text: primaryName,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
+                      style: const TextStyle(fontWeight: NataloWeight.strong),
                     ),
                     if (others > 0) ...[
                       const TextSpan(text: ' dan '),
                       TextSpan(
                         text: '$others orang lainnya',
-                        style: const TextStyle(fontWeight: FontWeight.w800),
+                        style: const TextStyle(fontWeight: NataloWeight.strong),
                       ),
                     ],
                   ],
@@ -82,7 +83,7 @@ class FeedPostSocialProof extends StatelessWidget {
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 12,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: NataloWeight.onMedia,
                   height: 1.25,
                   shadows: [Shadow(color: Colors.black87, blurRadius: 5)],
                 ),
@@ -139,7 +140,7 @@ class _FeedSocialProofAvatars extends StatelessWidget {
               alignment: Alignment.center,
               child: Text(
                 (author?.displayName ?? 'N').characters.first.toUpperCase(),
-                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+                style: const TextStyle(fontSize: 10, fontWeight: NataloWeight.strong),
               ),
             )
           : CachedNetworkImage(

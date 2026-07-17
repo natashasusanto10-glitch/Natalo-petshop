@@ -16,6 +16,59 @@ class ScaledVideoFeedReverseTarget {
   });
 }
 
+typedef ScaledVideoFeedImageBuilder = Widget Function(
+    BuildContext context, String imageUrl);
+
+/// Isi jendela morph. Media dirender SEUKURAN [screenSize] (fitWidth + topCenter,
+/// identik framing fullscreen `_MediaLayer`) di dalam OverflowBox, sehingga saat
+/// jendela luar (Positioned) membesar/mengecil, media TIDAK meregang — hanya
+/// tersingkap (clip-window ala IG).
+class ScaledVideoFeedMorphContent extends StatelessWidget {
+  const ScaledVideoFeedMorphContent({
+    super.key,
+    required this.screenSize,
+    required this.imageUrl,
+    required this.borderRadius,
+    required this.opacity,
+    this.imageBuilder,
+  });
+
+  final Size screenSize;
+  final String imageUrl;
+  final double borderRadius;
+  final double opacity;
+  final ScaledVideoFeedImageBuilder? imageBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    final image = (imageBuilder ?? _defaultImage)(context, imageUrl);
+    return IgnorePointer(
+      child: Opacity(
+        opacity: opacity,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(borderRadius),
+          child: OverflowBox(
+            alignment: Alignment.topCenter,
+            minWidth: screenSize.width,
+            maxWidth: screenSize.width,
+            minHeight: screenSize.height,
+            maxHeight: screenSize.height,
+            child: image,
+          ),
+        ),
+      ),
+    );
+  }
+
+  static Widget _defaultImage(BuildContext context, String imageUrl) =>
+      CachedNetworkImage(
+        imageUrl: imageUrl,
+        fit: BoxFit.fitWidth,
+        alignment: Alignment.topCenter,
+        errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black),
+      );
+}
+
 /// Pushes [destinationBuilder] with a scale/morph transition: the
 /// on-screen rect of the widget attached to [thumbnailKey] grows to fill
 /// the screen (~260ms, easeOutCubic) before the destination becomes
@@ -75,10 +128,12 @@ Future<T?> pushScaledVideoFeed<T>(
             children: [
               // Destination fades in once the scale is mostly complete —
               // avoids a visible "cut" from snapshot to live video.
-              FadeTransition(
-                opacity: CurvedAnimation(
-                  parent: animation,
-                  curve: const Interval(0.55, 1.0, curve: Curves.easeIn),
+              AnimatedBuilder(
+                animation: animation,
+                builder: (context, child) => Opacity(
+                  opacity: const Interval(0.55, 1.0, curve: Curves.easeIn)
+                      .transform(animation.value),
+                  child: child,
                 ),
                 child: child,
               ),
@@ -93,10 +148,9 @@ Future<T?> pushScaledVideoFeed<T>(
                   (animation.status != AnimationStatus.reverse ||
                       allowReverseMorph))
                 AnimatedBuilder(
-                  animation: curved,
+                  animation: animation,
                   builder: (context, _) {
                     final t = curved.value;
-                    // Snapshot rect morphs from `origin` to fullscreen.
                     final left =
                         activeOrigin.left + (0 - activeOrigin.left) * t;
                     final top = activeOrigin.top + (0 - activeOrigin.top) * t;
@@ -104,33 +158,19 @@ Future<T?> pushScaledVideoFeed<T>(
                         (screenSize.width - activeOrigin.width) * t;
                     final height = activeOrigin.height +
                         (screenSize.height - activeOrigin.height) * t;
-                    final radius = activeBorderRadius * (1 - t);
+                    final revealT = const Interval(0.55, 1.0,
+                            curve: Curves.easeIn)
+                        .transform(animation.value);
                     return Positioned(
                       left: left,
                       top: top,
                       width: width,
                       height: height,
-                      child: IgnorePointer(
-                        child: Opacity(
-                          // Snapshot fades OUT over the same interval the
-                          // destination fades in, so there is no double-
-                          // exposure flash.
-                          opacity: 1 -
-                              CurvedAnimation(
-                                parent: animation,
-                                curve: const Interval(0.55, 1.0,
-                                    curve: Curves.easeIn),
-                              ).value,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(radius),
-                            child: CachedNetworkImage(
-                              imageUrl: activeImageUrl,
-                              fit: BoxFit.cover,
-                              errorWidget: (_, __, ___) =>
-                                  const ColoredBox(color: Colors.black),
-                            ),
-                          ),
-                        ),
+                      child: ScaledVideoFeedMorphContent(
+                        screenSize: screenSize,
+                        imageUrl: activeImageUrl,
+                        borderRadius: activeBorderRadius * (1 - t),
+                        opacity: 1 - revealT,
                       ),
                     );
                   },

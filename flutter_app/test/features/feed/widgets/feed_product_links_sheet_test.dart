@@ -55,4 +55,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(closedFired, isTrue);
   });
+
+  // NB: drag-to-dismiss (tarik turun menutup sheet) mengandalkan `enableDrag`
+  // bawaan showModalBottomSheet — perilaku framework, sama seperti sheet lain
+  // di app (added_to_cart_sheet dll). Simulasi gesture pembuangan modal +
+  // inner-scrollable tidak andal di widget test, jadi tidak diuji unit di sini;
+  // WAJIB device-verify.
 }

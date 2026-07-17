@@ -175,6 +175,25 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
   });
 
+  testWidgets('legacy-owned fullscreen feed uses fullscreen framing',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScopedVideoFeedScreen(
+          posts: [_fakeVideoPost('scoped-fs-legacy-framing')],
+          initialIndex: 0,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final view = tester.widget<FeedVideoPostView>(
+      find.byType(FeedVideoPostView),
+    );
+    expect(view.framing, FeedVideoFraming.fullscreenFeed);
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
   testWidgets('loads next profile pages and skips photo-only page',
       (tester) async {
     final requestedCursors = <String?>[];
@@ -912,6 +931,19 @@ void main() {
             reason: 'preload lahir paused + muted');
       },
     );
+
+    testWidgets('managed fullscreen feed uses fullscreen framing',
+        (tester) async {
+      await pumpScoped(
+        tester,
+        posts: [_fakeVideoPost('managed-framing')],
+      );
+
+      final view = tester.widget<FeedVideoPostView>(
+        find.byKey(const ValueKey('scoped-fs-managed-framing')),
+      );
+      expect(view.framing, FeedVideoFraming.fullscreenFeed);
+    });
 
     testWidgets('fullscreen reuse records an attachment without a new session',
         (tester) async {

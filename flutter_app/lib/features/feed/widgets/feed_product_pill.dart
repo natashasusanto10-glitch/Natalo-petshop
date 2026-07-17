@@ -49,7 +49,7 @@ class FeedProductPill extends StatelessWidget {
                 onTap: onTap,
                 borderRadius: BorderRadius.circular(999),
                 child: Container(
-                  padding: const EdgeInsets.fromLTRB(3, 3, 9, 3),
+                  padding: const EdgeInsets.fromLTRB(4, 4, 11, 4),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.40),
                     borderRadius: BorderRadius.circular(999),
@@ -62,21 +62,21 @@ class FeedProductPill extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        width: 19,
-                        height: 19,
+                        width: 22,
+                        height: 22,
                         decoration: BoxDecoration(
                           color: NataloColors.primary,
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius: BorderRadius.circular(7),
                         ),
                         child: const Icon(
                           Icons.shopping_bag_outlined,
-                          size: 12,
+                          size: 14,
                           color: Colors.white,
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 7),
                       ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 150),
+                        constraints: const BoxConstraints(maxWidth: 170),
                         child: AnimatedSwitcher(
                           duration: const Duration(milliseconds: 260),
                           transitionBuilder: (child, animation) =>
@@ -88,26 +88,26 @@ class FeedProductPill extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 11.5,
+                              fontSize: 13,
                               fontWeight: FontWeight.w500,
                               height: 1.2,
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 7),
                       Text(
                         '·$count',
                         style: TextStyle(
                           color: white80,
-                          fontSize: 11,
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w500,
                           height: 1,
                         ),
                       ),
                       Icon(
                         Icons.keyboard_arrow_down_rounded,
-                        size: 13,
+                        size: 15,
                         color: white80,
                       ),
                     ],
@@ -130,21 +130,21 @@ class _PillDiscountBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
         color: const Color(0xFFFF4D4F),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.local_offer, size: 10, color: Colors.white),
-          const SizedBox(width: 3),
+          const Icon(Icons.local_offer, size: 11, color: Colors.white),
+          const SizedBox(width: 4),
           Text(
             'Diskon s/d $percent%',
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 9.5,
+              fontSize: 10.5,
               fontWeight: FontWeight.w500,
               height: 1,
             ),

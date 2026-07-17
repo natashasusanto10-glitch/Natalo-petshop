@@ -11,6 +11,7 @@ import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../../../config/api_config.dart';
+import '../../../theme/natalo_text.dart';
 import '../../../models/feed_post.dart';
 import '../../../models/product.dart';
 import '../../../services/api_client.dart';
@@ -19,7 +20,6 @@ import '../../../services/feed_service.dart';
 import '../../../services/product_service.dart';
 import '../../../services/report_service.dart';
 import '../../../services/video_quality_service.dart';
-import '../../../state/cart_store.dart';
 import '../../../state/feed_comment_session_store.dart';
 import '../../../state/feed_local_store.dart';
 import '../../../state/feed_store.dart';
@@ -43,6 +43,7 @@ import '../../../widgets/moderation_action_sheet.dart';
 import 'feed_action_rail.dart';
 import 'feed_accessibility_overlay.dart';
 import 'feed_creator_overlay.dart';
+import 'feed_link_cart_actions.dart';
 import 'feed_post_scrim.dart';
 import 'feed_post_shared_widgets.dart';
 import 'feed_product_links_sheet.dart';
@@ -64,6 +65,7 @@ typedef FeedVideoHealthMonitorFactory = VideoPlaybackHealthMonitor Function({
 enum FeedVideoFraming {
   immersive,
   mainFeed,
+  fullscreenFeed,
 }
 
 /// Alasan sebuah cover-pause dilaporkan lewat [FeedVideoPostView.onRequestPause]
@@ -2768,38 +2770,12 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   }
 
   void _addFeedLinkToCart(FeedProductLink link, {int quantity = 1}) {
-    if (!link.isAvailable || link.stock <= 0) {
-      _showProductUnavailable();
-      return;
-    }
-
-    if (link.hasVariants) {
-      _openProductLinkDetail(link);
-      return;
-    }
-
-    final product = feedPostProductFromFeedLink(link);
-    cartStore.addProduct(product, quantity: quantity);
-    if (!mounted) return;
-    AppToast.showCartAdded(
-      context,
-      quantity > 1
-          ? '$quantity x ${link.name} masuk keranjang'
-          : '${link.name} masuk keranjang',
-    );
+    unawaited(addFeedLinkToCart(context, link, quantity: quantity));
   }
 
   void _openProductDetail(Product product) {
     AppHaptics.tap();
     Navigator.pushNamed(context, '/product-detail', arguments: product);
-  }
-
-  void _showProductUnavailable() {
-    AppToast.show(
-      context,
-      'Produk sedang tidak tersedia.',
-      kind: ToastKind.warning,
-    );
   }
 
   Future<void> _onTapMedia() async {
@@ -3118,12 +3094,22 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                                 ]
                               : const [_commentSheetInitialExtent],
                           builder: (context, scrollController) {
-                            return PrimaryScrollController(
+                            // scrollController TIDAK dipasang ke daftar komentar
+                            // (yang bikin scroll komentar menyeret sheet naik →
+                            // video pause). Ia di-anchor oleh
+                            // CommentSheetScrollAnchor supaya
+                            // DraggableScrollableController tetap isAttached;
+                            // FeedCommentSheet memakai controller list sendiri
+                            // (sheetScrollController: null). Overscroll list di
+                            // tepi atas → pull-to-dismiss via policy handle.
+                            return CommentSheetScrollAnchor(
                               controller: scrollController,
+                              onPullDown: _onCommentDragUpdate,
+                              onPullSettle: _onCommentDragCancel,
                               child: FeedCommentSheet(
                                 post: widget.post,
                                 applyKeyboardInset: false,
-                                sheetScrollController: scrollController,
+                                sheetScrollController: null,
                                 onClose: _closeComments,
                                 onCloseAndWait: _closeCommentsAndWait,
                                 onDragUpdate: _onCommentDragUpdate,
@@ -3585,7 +3571,8 @@ class _MediaBackground extends StatelessWidget {
               child: VideoPlayer(ctrl),
             ),
           );
-      if (framing == FeedVideoFraming.mainFeed) {
+      if (framing == FeedVideoFraming.mainFeed ||
+          framing == FeedVideoFraming.fullscreenFeed) {
         return _mediaStack(videoLayer(BoxFit.cover));
       }
       return _mediaStack(
@@ -3608,7 +3595,8 @@ class _MediaBackground extends StatelessWidget {
           ],
         );
       }
-      if (framing == FeedVideoFraming.mainFeed) {
+      if (framing == FeedVideoFraming.mainFeed ||
+          framing == FeedVideoFraming.fullscreenFeed) {
         return _mediaStack(
           CachedNetworkImage(
             imageUrl: thumb,
@@ -3826,7 +3814,7 @@ class _VideoRetryButton extends StatelessWidget {
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 12.5,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
             ],

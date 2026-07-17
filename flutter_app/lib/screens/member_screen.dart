@@ -4,7 +4,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 
+import '../constants/official_brand.dart';
 import '../models/feed_post.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../models/public_profile.dart';
@@ -14,17 +16,16 @@ import '../services/video_quality_service.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../state/settings_store.dart';
-import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_notification_button.dart';
+import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
 import 'feed_media_picker_screen.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/origin_expansion_route.dart';
-import '../widgets/profile_avatar.dart';
-import '../widgets/profile_content_tab_bar.dart';
 import '../widgets/profile_grid_geometry.dart';
-import '../widgets/update_profile_photo_sheet.dart';
+import '../widgets/public_profile_content_tab_bar.dart';
+import '../widgets/public_profile_expanded_header.dart';
 import '../widgets/username_prompt_banner.dart';
 import 'member_post_detail_screen.dart';
 import 'profile_qr_screen.dart';
@@ -276,37 +277,39 @@ class _ProfilePageState extends State<_ProfilePage>
     );
   }
 
-  /// Buka daftar Pengikut / Mengikuti. Bangun PublicProfile dari
-  /// MemberProfile (owner view) supaya reuse layar follow-list yang sama
-  /// dgn profil publik.
-  Future<void> _openFollowList(FollowListKind kind) async {
+  /// Bangun PublicProfile dari MemberProfile (owner view) supaya reuse
+  /// header + layar follow-list yang sama dengan profil publik — satu
+  /// komponen visual untuk profil sendiri dan profil orang lain.
+  PublicProfile _ownPublicProfile() {
     final profile = memberStore.profile;
-    if (profile == null) return;
-    AppHaptics.tap();
-    final pub = PublicProfile(
-      id: profile.id,
-      name: profile.name,
-      username: profile.username,
-      profilePhotoUrl: profile.profilePhotoUrl,
-      bio: profile.bio,
+    final isOfficial = profile?.isAdmin ?? false;
+    return PublicProfile(
+      id: profile?.id ?? '',
+      name: isOfficial ? kOfficialBrandName : (profile?.name ?? ''),
+      username: profile?.username,
+      profilePhotoUrl: profile?.profilePhotoUrl,
+      bio: profile?.bio,
       postCount: _allPosts.length,
-      followersCount: profile.followersCount,
-      followingCount: profile.followingCount,
+      followersCount: profile?.followersCount ?? 0,
+      followingCount: profile?.followingCount ?? 0,
       isOwner: true,
+      isOfficial: isOfficial,
     );
+  }
+
+  Future<void> _openFollowList(FollowListKind kind) async {
+    if (memberStore.profile == null) return;
+    AppHaptics.tap();
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            PublicProfileFollowListScreen(profile: pub, initialKind: kind),
+        builder: (_) => PublicProfileFollowListScreen(
+          profile: _ownPublicProfile(),
+          initialKind: kind,
+        ),
       ),
     );
     if (mounted) await memberStore.hydrateFromApi();
-  }
-
-  void _openProfilePhotoSheet() {
-    AppHaptics.tap();
-    showUpdateProfilePhotoSheet(context);
   }
 
   GlobalKey _tileKeyFor(String scope, String postId) =>
@@ -351,89 +354,74 @@ class _ProfilePageState extends State<_ProfilePage>
 
   @override
   Widget build(BuildContext context) {
-    final profile = memberStore.profile!;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: cs.surface,
       // extendBody: konten tembus di belakang floating glass nav.
       extendBody: true,
-      // Status bar biru + ikon header IN-BODY — pola hero biru seragam
-      // dengan Beranda/Belanja/Transaksi/Notifikasi. Sebelumnya Akun
-      // sendirian pakai Scaffold.appBar + flexibleSpace yang menyisakan
-      // status bar PUTIH (celah putih di atas hero). AnnotatedRegion +
-      // strip heroTop di belakang status bar menjamin area notch ikut biru
-      // dan ikon status bar putih — sama persis mekanisme 4 halaman lain.
+      // Satu layout putih ala IG — sama dengan profil publik/orang lain.
+      // Hero navy dibuang; status bar pakai ikon gelap di atas latar putih.
       body: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.light,
-        child: Stack(
-          children: [
-            // Satu kotak gradasi VERTIKAL menutup status bar + baris ikon
-            // sebagai satu sapuan heroTop→heroMid. Dulu: strip flat heroTop +
-            // _ProfileTopBar bergradien sendiri (diagonal) — di kotak 56px yang
-            // lebar-pendek, diagonal jadi ~horizontal sehingga arah gradasi
-            // patah di batas ke blok profil = seam "biru tidak menyatu".
-            // _ProfileTopBar sekarang transparan; gradasi tunggal ini yang
-            // tembus di belakangnya.
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: MediaQuery.paddingOf(context).top + kToolbarHeight,
-              child: const DecoratedBox(
-                decoration: BoxDecoration(gradient: NataloColors.heroGradientV),
+        value: Theme.of(context).brightness == Brightness.dark
+            ? SystemUiOverlayStyle.light
+            : SystemUiOverlayStyle.dark,
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              // Ikon header (+ / tersimpan / notifikasi / pengaturan) — TIDAK
+              // diubah bentuk/urutan/logikanya, hanya direcolor gelap +
+              // username ditambahkan di tengah (ala IG own-profile).
+              _ProfileTopBar(
+                onCreatePost: _openingCreatePost ? null : _openCreatePost,
+                createPostOriginKey: _createPostOriginKey,
+                username: _ownPublicProfile().displayHandle,
               ),
-            ),
-            SafeArea(
-              bottom: false,
-              child: Column(
-                children: [
-                  // Ikon header (+ / notifikasi / pengaturan) — dulu di
-                  // Scaffold.appBar, kini in-body supaya gradasi mengalir
-                  // mulus status bar → ikon → blok profil (satu hero).
-                  _ProfileTopBar(
-                    onCreatePost: _openingCreatePost ? null : _openCreatePost,
-                    createPostOriginKey: _createPostOriginKey,
-                  ),
-                  Expanded(
-                    child: NataloPawRefreshIndicator(
-                      onRefresh: _refresh,
-                      triggerOffset: 96,
-                      requireFullPull: true,
-                      translateChild: false,
-                      minimalIndicator: true,
-                      includeSafeAreaPadding: false,
-                      indicatorColor: Colors.white,
-                      refreshBackdropColor: NataloColors.heroTop,
-                      child: NestedScrollView(
-                        headerSliverBuilder: (context, innerScrolled) => [
-                          // Blok profil = hero biru (avatar + statistik + nama di atas
-                          // gradasi). Meneruskan gradasi app bar → satu hero.
-                          SliverToBoxAdapter(
-                            child: _ProfileSection(
-                              profile: profile,
-                              postsCount: _allPosts.length,
-                              onAvatarTap: _openProfilePhotoSheet,
-                              onEditProfile: _openEditProfile,
-                              onShareProfile: _shareProfile,
-                              onFollowersTap: () =>
-                                  _openFollowList(FollowListKind.followers),
-                              onFollowingTap: () =>
-                                  _openFollowList(FollowListKind.following),
-                            ),
+              Expanded(
+                child: NataloPawRefreshIndicator(
+                  onRefresh: _refresh,
+                  triggerOffset: 96,
+                  requireFullPull: true,
+                  translateChild: false,
+                  minimalIndicator: true,
+                  includeSafeAreaPadding: false,
+                  indicatorColor: _brandBlue,
+                  refreshBackdropColor: cs.surface,
+                  child: NestedScrollView(
+                    headerSliverBuilder: (context, innerScrolled) => [
+                      // Header IG bersama — komponen sama dengan profil
+                      // publik/orang lain (avatar kiri + stats horizontal +
+                      // Edit Profil/Bagikan Profil).
+                      SliverToBoxAdapter(
+                        child: AnimatedBuilder(
+                          animation: memberStore,
+                          builder: (context, _) => PublicProfileExpandedHeader(
+                            profile: _ownPublicProfile(),
+                            followBusy: false,
+                            chatEnabled: false,
+                            onFollowersTap: () =>
+                                _openFollowList(FollowListKind.followers),
+                            onFollowingTap: () =>
+                                _openFollowList(FollowListKind.following),
+                            onEditProfile: _openEditProfile,
+                            onShareProfile: _shareProfile,
                           ),
-                          // Banner reminder pilih @username — dipindah ke bawah hero
-                          // (area putih) supaya tidak memotong blok biru. Auto-hide kalau
-                          // user sudah set / pernah snooze 7 hari.
-                          const SliverToBoxAdapter(
-                            child: UsernamePromptBanner(),
-                          ),
-                          SliverPersistentHeader(
-                            pinned: true,
-                            delegate: ProfileContentTabHeaderDelegate(
-                              controller: _tabController,
-                              onTap: (_) => AppHaptics.tap(),
-                            ),
-                          ),
-                        ],
+                        ),
+                      ),
+                      // Banner reminder pilih @username — di area putih di
+                      // bawah header. Auto-hide kalau user sudah set / pernah
+                      // snooze 7 hari.
+                      const SliverToBoxAdapter(
+                        child: UsernamePromptBanner(),
+                      ),
+                      SliverPersistentHeader(
+                        pinned: true,
+                        delegate: _AccountTabHeaderDelegate(
+                          controller: _tabController,
+                          onTap: (_) => AppHaptics.tap(),
+                        ),
+                      ),
+                    ],
                         body: TabBarView(
                           controller: _tabController,
                           children: [
@@ -511,346 +499,151 @@ class _ProfilePageState extends State<_ProfilePage>
                 ],
               ),
             ),
-          ],
-        ),
-      ),
+          ),
       bottomNavigationBar: const BottomNavBar(currentIndex: 4),
     );
   }
 }
 
+
 // ─── Header top bar (in-body, di atas hero biru) ───────────────────
 
-/// Baris ikon header (+ / notifikasi / pengaturan) di atas hero biru.
+/// Baris ikon header (+ / tersimpan / notifikasi / pengaturan) di atas
+/// latar putih, + username di tengah (ala IG own-profile top bar).
 ///
-/// Dulu `_ProfileAppBar` (Scaffold.appBar + flexibleSpace). Diganti widget
-/// IN-BODY supaya gradasi hero mengalir mulus dari strip status bar → baris
-/// ikon → blok profil, seragam dengan Beranda/Belanja/Transaksi/Notifikasi.
-/// Mekanisme appBar+flexibleSpace lama menyisakan status bar putih (celah
-/// putih di atas hero). Ikon putih di atas gradasi biru.
+/// PENTING: setiap ikon di sini — jumlah, urutan, bentuk, dan
+/// `onPressed`-nya — TIDAK diubah dari versi hero-navy sebelumnya. Yang
+/// berubah hanya warna (putih → gelap, mengikuti tema) dan penambahan
+/// username di tengah lewat lapisan overlay terpisah (tidak mengganggu
+/// Row/tap-target ikon yang sudah ada).
 class _ProfileTopBar extends StatelessWidget {
   final VoidCallback? onCreatePost;
   final GlobalKey createPostOriginKey;
+  final String? username;
 
   const _ProfileTopBar({
     required this.onCreatePost,
     required this.createPostOriginKey,
+    this.username,
   });
 
   @override
   Widget build(BuildContext context) {
-    const ink = Colors.white;
-    // Latar TRANSPARAN — gradasi hero dicat oleh kotak vertikal tunggal di
-    // belakang (lihat _ProfilePageState.build). Sebelumnya baris ini punya
-    // DecoratedBox(heroGradient) sendiri; di kotak 56px yang lebar-pendek,
-    // diagonal jadi ~horizontal → seam dengan blok profil. Kini satu sapuan.
+    final ink = Theme.of(context).colorScheme.onSurface;
+    final hasUsername = username != null && username!.isNotEmpty;
     return SizedBox(
       height: kToolbarHeight,
-      child: Row(
+      child: Stack(
+        alignment: Alignment.center,
         children: [
-          const SizedBox(width: 4),
-          // Plus icon kiri — buka create-post flow existing.
-          RepaintBoundary(
-            key: createPostOriginKey,
-            child: IconButton(
-              key: const ValueKey('profile-create-post'),
-              onPressed: onCreatePost,
-              tooltip: 'Buat postingan',
-              style: IconButton.styleFrom(
-                minimumSize: const Size(52, 52),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              icon: const Icon(Icons.add_rounded, size: 36, color: ink),
-            ),
-          ),
-          const Spacer(),
-          IconButton(
-            onPressed: () => Navigator.pushNamed(context, '/member/saved'),
-            tooltip: 'Postingan tersimpan',
-            style: IconButton.styleFrom(
-              minimumSize: const Size(48, 48),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            icon: const Icon(
-              Icons.bookmark_border_rounded,
-              color: ink,
-              size: 28,
-            ),
-          ),
-          const IconTheme(
-            data: IconThemeData(color: ink, size: 28),
-            child: AppNotificationButton(iconColor: ink),
-          ),
-          IconButton(
-            onPressed: () => Navigator.pushNamed(context, '/account/settings'),
-            tooltip: 'Pengaturan akun',
-            style: IconButton.styleFrom(
-              minimumSize: const Size(48, 48),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            icon: const Icon(Icons.settings_outlined, color: ink, size: 28),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Profile section (photo + name + stats) ───────────────────────
-
-class _ProfileSection extends StatelessWidget {
-  final dynamic profile; // MemberProfile — keep dynamic supaya tidak import.
-  final int postsCount;
-  final VoidCallback onAvatarTap;
-  final VoidCallback onEditProfile;
-  final VoidCallback onShareProfile;
-  final VoidCallback onFollowersTap;
-  final VoidCallback onFollowingTap;
-
-  const _ProfileSection({
-    required this.profile,
-    required this.postsCount,
-    required this.onAvatarTap,
-    required this.onEditProfile,
-    required this.onShareProfile,
-    required this.onFollowersTap,
-    required this.onFollowingTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const ink = Colors.white;
-    final username = profile.username as String?;
-    final hasUsername = username != null && username.isNotEmpty;
-    // Blok profil meneruskan sapuan hero VERTIKAL (heroMid→heroBottom) dari
-    // kotak status+ikon di atasnya. Batas atas = heroMid identik dengan batas
-    // bawah heroGradientV → menyatu tanpa seam. Sudut bawah membulat sebagai
-    // penutup hero sebelum area tab/grid putih.
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: NataloColors.heroGradientVContinue,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
-      ),
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Baris atas: avatar + stats sejajar (IG-modern).
           Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              ProfileAvatar(
-                initial: profile.initial as String? ?? '?',
-                imageUrl: profile.profilePhotoUrl as String?,
-                size: 80,
-                fontSize: 30,
-                isOfficial: profile.isAdmin == true,
-                showCameraBadge: profile.isAdmin != true,
-                onTap: onAvatarTap,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _ProfileStat(
-                        value: postsCount,
-                        label: 'Postingan',
-                      ),
-                    ),
-                    Expanded(
-                      child: _ProfileStat(
-                        value: profile.followersCount as int,
-                        label: 'Pengikut',
-                        onTap: onFollowersTap,
-                      ),
-                    ),
-                    Expanded(
-                      child: _ProfileStat(
-                        value: profile.followingCount as int,
-                        label: 'Mengikuti',
-                        onTap: onFollowingTap,
-                      ),
-                    ),
-                  ],
+              const SizedBox(width: 4),
+              // Plus icon kiri — buka create-post flow existing.
+              RepaintBoundary(
+                key: createPostOriginKey,
+                child: IconButton(
+                  key: const ValueKey('profile-create-post'),
+                  onPressed: onCreatePost,
+                  tooltip: 'Buat postingan',
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(52, 52),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  icon: Icon(Icons.add_rounded, size: 36, color: ink),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Nama + @username (IG-style, full-width di bawah row).
-          Text(
-            (profile.name as String?) ?? 'Member Natalo',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: ink,
-              fontSize: 15.5,
-              fontWeight: FontWeight.w800,
-              height: 1.15,
-            ),
-          ),
-          if (hasUsername) ...[
-            const SizedBox(height: 2),
-            Text(
-              '@$username',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: NataloColors.onHeroSubtle,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                height: 1.1,
-              ),
-            ),
-          ],
-          // Bio (kalau ada) — auto-hide kalau null/empty.
-          if ((profile.bio as String?)?.trim().isNotEmpty ?? false) ...[
-            const SizedBox(height: 8),
-            Text(
-              profile.bio as String,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              const Spacer(),
+              // Trio kanan pakai AppHeaderIconButton bersama (minWidth 34)
+              // supaya jaraknya seragam & konsisten dgn header lain — dulu
+              // bookmark & settings pakai IconButton mentah (minSize 48)
+              // sehingga terlihat lebih renggang dari lonceng di tengahnya.
+              AppHeaderIconButton(
+                onPressed: () =>
+                    Navigator.pushNamed(context, '/member/saved'),
+                tooltip: 'Postingan tersimpan',
                 color: ink,
-                fontSize: 14,
-                fontWeight: FontWeight.w400,
-                height: 1.4,
+                child: const Icon(Icons.bookmark_border_rounded, size: 28),
               ),
-            ),
-          ],
-          const SizedBox(height: 14),
-          // Tombol Edit Profil + Bagikan (dua tombol setara ala IG).
-          Row(
-            children: [
-              Expanded(
-                child: _ProfileActionButton(
-                  label: 'Edit Profil',
-                  onTap: onEditProfile,
-                  primary: true,
-                ),
+              IconTheme(
+                data: IconThemeData(color: ink, size: 28),
+                child: AppNotificationButton(iconColor: ink),
+              ),
+              AppHeaderIconButton(
+                onPressed: () =>
+                    Navigator.pushNamed(context, '/account/settings'),
+                tooltip: 'Pengaturan akun',
+                color: ink,
+                child: const Icon(Icons.settings_outlined, size: 28),
               ),
               const SizedBox(width: 8),
-              Expanded(
-                child: _ProfileActionButton(
-                  label: 'Bagikan Profil',
-                  onTap: onShareProfile,
-                ),
-              ),
             ],
           ),
+          if (hasUsername)
+            IgnorePointer(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 72),
+                child: Text(
+                  username!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: ink,
+                    fontSize: 15,
+                    fontWeight: NataloWeight.strong,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-class _ProfileActionButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
+// ─── Content tab header (pinned, sistem sama dengan profil publik) ─
 
-  /// true = tombol utama (Edit Profil): putih solid, teks navy. false =
-  /// sekunder (Bagikan): transparan dengan border putih. Keduanya di atas
-  /// hero biru.
-  final bool primary;
+/// Bungkus [PublicProfileContentTabBar] jadi pinned sliver header untuk
+/// tab Akun. `pillOpacity: 0` + `underlineOpacity: 1` menjaga tampilan
+/// selalu "expanded": ikon saja + indikator pendek di bawah tab aktif,
+/// TANPA garis full-width — persis sistem tab profil publik yang baru.
+class _AccountTabHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final TabController controller;
+  final ValueChanged<int>? onTap;
 
-  const _ProfileActionButton({
-    required this.label,
-    required this.onTap,
-    this.primary = false,
+  const _AccountTabHeaderDelegate({
+    required this.controller,
+    this.onTap,
   });
 
   @override
-  Widget build(BuildContext context) {
-    const textStyle = TextStyle(fontSize: 13, fontWeight: FontWeight.w800);
-    final shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(8),
-    );
-    return SizedBox(
-      height: 34,
-      child: primary
-          ? FilledButton(
-              onPressed: onTap,
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: NataloColors.heroMid,
-                padding: EdgeInsets.zero,
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                textStyle: textStyle,
-                shape: shape,
-              ),
-              child: Text(label),
-            )
-          : OutlinedButton(
-              onPressed: onTap,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: BorderSide(color: Colors.white.withValues(alpha: 0.55)),
-                padding: EdgeInsets.zero,
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                textStyle: textStyle,
-                shape: shape,
-              ),
-              child: Text(label),
-            ),
-    );
-  }
-}
-
-class _ProfileStat extends StatelessWidget {
-  final int value;
-  final String label;
-  final VoidCallback? onTap;
-
-  const _ProfileStat({required this.value, required this.label, this.onTap});
+  double get minExtent => PublicProfileContentTabBar.height;
 
   @override
-  Widget build(BuildContext context) {
-    // Di atas hero biru: angka putih, label biru muda (onHeroSubtle).
-    final content = Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Text(
-          formatCountCompact(value),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-            height: 1.0,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: NataloColors.onHeroSubtle,
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            height: 1.05,
-          ),
-        ),
-      ],
-    );
-    if (onTap == null) return content;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
+  double get maxExtent => PublicProfileContentTabBar.height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return ColoredBox(
+      color: Theme.of(context).colorScheme.surface,
+      child: PublicProfileContentTabBar(
+        controller: controller,
+        labelOpacity: 0,
+        pillOpacity: 0,
+        underlineOpacity: 1,
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: content,
-        ),
       ),
     );
+  }
+
+  @override
+  bool shouldRebuild(covariant _AccountTabHeaderDelegate oldDelegate) {
+    return oldDelegate.controller != controller || oldDelegate.onTap != onTap;
   }
 }
 
@@ -967,7 +760,7 @@ class _ErrorState extends StatelessWidget {
               style: TextStyle(
                 color: cs.onSurfaceVariant,
                 fontSize: 14,
-                fontWeight: FontWeight.w500,
+                fontWeight: NataloWeight.body,
                 height: 1.35,
               ),
             ),
@@ -983,7 +776,7 @@ class _ErrorState extends StatelessWidget {
               ),
               child: const Text(
                 'Coba lagi',
-                style: TextStyle(fontWeight: FontWeight.w600),
+                style: TextStyle(fontWeight: NataloWeight.strong),
               ),
             ),
           ],
@@ -1172,7 +965,7 @@ class _EmptyState extends StatelessWidget {
               style: TextStyle(
                 color: cs.onSurface,
                 fontSize: 16.5,
-                fontWeight: FontWeight.w700,
+                fontWeight: NataloWeight.strong,
               ),
             ),
             const SizedBox(height: 6),
@@ -1182,7 +975,7 @@ class _EmptyState extends StatelessWidget {
               style: TextStyle(
                 color: cs.onSurfaceVariant,
                 fontSize: 13.5,
-                fontWeight: FontWeight.w500,
+                fontWeight: NataloWeight.body,
                 height: 1.4,
               ),
             ),
@@ -1193,7 +986,7 @@ class _EmptyState extends StatelessWidget {
                 icon: const Icon(Icons.add_rounded, size: 20),
                 label: const Text(
                   'Buat Postingan',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                  style: TextStyle(fontWeight: NataloWeight.strong),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _brandBlue,
