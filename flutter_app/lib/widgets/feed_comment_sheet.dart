@@ -466,7 +466,7 @@ class FeedCommentMediaFrame extends StatelessWidget {
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(end: open ? 1 : 0),
       duration: Duration(milliseconds: open ? 260 : 220),
-      curve: open ? Curves.easeOutCubic : Curves.easeInOutCubic,
+      curve: Curves.easeOutCubic,
       child: RepaintBoundary(child: child),
       builder: (context, openProgress, child) {
         return ValueListenableBuilder<double>(
