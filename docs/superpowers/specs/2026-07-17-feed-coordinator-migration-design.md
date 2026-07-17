@@ -1,7 +1,7 @@
 # Migrasi Feed utama ke PostVideoCoordinator (Opsi D)
 
 **Tanggal:** 2026-07-17
-**Status:** DESAIN v7 — arsitektur matang (v2: 6 gap; v3: 3 gap; v4: 2 gap; v5: 3 gap; v6: 2 gap — cleanup async wajib `_guard()`, otoritas resume via `allowResume`+gate-live. **v7 menutup 1 gap FUNDAMENTAL dari review ketujuh**: v6 menaruh `beginTransientGesture()` di `PlaybackSession` (session) padahal gate live (`_activePostId`/`_suspended`/`_userPausedActive`) **hanya dipunyai coordinator** — session sengaja coordinator-agnostic, jadi struktur kelas v6 SECARA ARSITEKTUR tak bisa menegakkan narasi otoritas-resume-nya sendiri, berisiko widget menyerahkan lease mentah dan resume tanpa cek live gate (kelas bug audio-hantu balik lagi). Fix: `beginTransientGesture(postId, kind)` dipindah jadi method `PostVideoCoordinator`, lease dibuat & di-track privat di sana (`entry.activeLease`); `PlaybackSession` cuma dapat 1 primitif trivial `setPlaybackSpeed(double)` — sekaligus MENGECILKAN beban 3 file test fake dari "implement seluruh lease/gate" jadi "implement 1 method sederhana"). Belum ada kode ditulis, menunggu greenlight terpisah untuk eksekusi.
+**Status:** DESAIN v8 — arsitektur matang (v2: 6 gap; v3: 3 gap; v4: 2 gap; v5: 3 gap; v6: 2 gap; v7: 1 gap fundamental — lease/gate dipindah dari session ke coordinator. **v8 menutup 4 gap dari review kedelapan, 3 di antaranya P1**: (1) `end()` bisa stale-resume — gate dicek lalu `await` tanpa validasi ulang, sama seperti race `clearActive()` yang sudah ditutup tapi lupa diterapkan di sini; fix: reuse `_claimAndPlay` (sudah punya double-check pasca-await) alih-alih reimplementasi gate manual. (2) lease belum idempotent — panggilan `end()` kedua bisa jalan ulang; fix: `identical(entry.activeLease,this)` + `_endFuture` dibagi + `allowResume:false` menang permanen atas `true`. (3) `cleanupInFlight` bisa tertinggal SELAMANYA pada skenario detach→reattach-cepat→gesture-baru — kedua jalur pembersih generation-guard sama-sama bail-out; fix PALING KONSERVATIF: `beginTransientGesture` menolak (`null`) gesture baru selagi cleanup lama masih tertunda, menutup skenario di akar. (4) operasi begin (speed 2x) tak diserialkan dengan end (speed 1x) — bisa saling mendahului; fix: keduanya lewat `_enqueuePlayback` yang sama). Belum ada kode ditulis, menunggu greenlight terpisah untuk eksekusi.
 **Keputusan desain terkunci:** `PlaybackSession` (interface abstrak) DIPERLUAS dengan **1 primitif trivial** (`setPlaybackSpeed(double)`) SAJA. Seluruh logika lease/gesture/gate (`beginTransientGesture`, `TransientGestureLease`, otoritas resume) **hidup di `PostVideoCoordinator`**, bukan di `PlaybackSession` (Opsi A tetap dipertahankan untuk perluasan interface abstrak, tapi cakupannya kini jauh lebih kecil — lihat §Kontrak API). Konsekuensi: `VideoPlayerSession` + 3 fake test cuma perlu implement 1 method sederhana, bukan seluruh mesin gesture.
 **File terdampak (nanti):**
 - `flutter_app/lib/screens/feed_screen.dart` (2416 baris) — migrasi utama + wiring RouteAware/WidgetsBindingObserver level-screen (baru, lihat §Lingkup #7).
@@ -102,71 +102,111 @@ abstract class TransientGestureLease {
 }
 ```
 
-Di `PostVideoCoordinator` (bukan lagi di session):
+Di `PostVideoCoordinator` (bukan lagi di session) — **direvisi lagi di v8 (review kedelapan menemukan 4 race lanjutan, 3 di antaranya P1)**: begin diserialkan lewat antrean yang sama dengan end (poin 4), `beginTransientGesture` menolak gesture baru selagi cleanup lama masih jalan (poin 3, paling konservatif — mencegah skenario orphan sepenuhnya alih-alih mencoba rekonsiliasi generasi tumpang tindih):
 ```dart
 /// Satu-satunya cara membuat TransientGestureLease. Return null kalau
-/// entry tak ditemukan/tak eligible — widget WAJIB menangani null (gesture
-/// jadi no-op, bukan crash).
+/// entry tak ditemukan/tak eligible ATAU entry masih punya cleanup/lease
+/// tertunda dari siklus SEBELUMNYA (widget WAJIB menangani null — gesture
+/// jadi no-op sesaat, bukan crash; kejadian sangat jarang, cuma saat
+/// swipe-balik-lalu-langsung-gesture-lagi dalam window sangat sempit).
 TransientGestureLease? beginTransientGesture(
   String postId,
   TransientGestureKind kind,
 ) {
   final entry = _entries[postId];
   if (entry == null) return null;
-  final targetSpeed = kind == TransientGestureKind.doubleSpeed ? 2.0 : 1.0;
-  if (kind == TransientGestureKind.doubleSpeed) {
-    unawaited(entry.session.setPlaybackSpeed(targetSpeed));
-  } else {
-    unawaited(entry.session.pause());
-  }
-  final generation = ++entry.cleanupGeneration; // field SAMA yang dipakai §C —
-                                                  // satu sumber kebenaran generasi
-                                                  // per entry, bukan dua terpisah.
+  if (entry.cleanupInFlight || entry.activeLease != null) return null;
+  final generation = ++entry.cleanupGeneration;
   final lease = _CoordinatorTransientGestureLease(
     coordinator: this, postId: postId, entry: entry, generation: generation,
   );
   entry.activeLease = lease; // dilacak supaya detach() (§C) bisa force-end
                               // lease yang SAMA, bukan bikin cleanup terpisah.
+  // Poin 4 fix: kirim perubahan speed/pause ke ANTREAN SERIAL yang SAMA
+  // dipakai end() — supaya speed 2x (begin) DIJAMIN selesai sebelum speed
+  // 1x (end) sempat dieksekusi, walau gesture berumur sangat pendek.
+  _enqueuePlayback(() async {
+    if (kind == TransientGestureKind.doubleSpeed) {
+      await entry.session.setPlaybackSpeed(2.0);
+    } else {
+      await entry.session.pause();
+    }
+  });
   return lease;
 }
 ```
 
-**Otoritas resume — urutan `end()` PERSIS 6 langkah, tak bisa diloncat/diacak (kontrak diperjelas review ketujuh):**
+**Kelas lease — idempotent + otoritas resume via `_claimAndPlay` (bukan reimplementasi gate manual):**
 ```dart
-// Implementasi _CoordinatorTransientGestureLease.end() di post_video_coordinator.dart:
-Future<void> end({required bool allowResume}) async {
-  if (!isCurrent) return; // (identical(_entries[postId], entry) && entry.cleanupGeneration == generation)
-  // 1. Akhiri sisi SESSION dulu — speed SELALU balik ke 1x, TANPA SYARAT,
-  //    terlepas dari allowResume. Video tak boleh nyangkut 2x dalam kondisi APA PUN.
-  await entry.session.setPlaybackSpeed(1.0);
-  entry.activeLease = null; // lease ini selesai; detach() tak perlu force-end lagi.
-  // 2. Identitas entry + generation — SUDAH dicek via `isCurrent` di atas.
-  // 3. Post masih aktif?
-  final stillActive = identical(_entries[_activePostId]?.session, entry.session);
-  // 4. Route tak covered / coordinator tak suspended?
-  final notSuspended = !_suspended;
-  // 5. User belum pause eksplisit?
-  final notUserPaused = !_userPausedActive;
-  // 6. HANYA kalau SEMUA syarat 3-5 lolos DAN allowResume==true, baru klaim audio + play.
-  if (allowResume && stillActive && notSuspended && notUserPaused) {
-    final claim = _audioArbiter.claim(owner: this, onFocusLost: _onAudioFocusLost);
-    _audioClaim = claim;
-    await entry.session.setVolume(!_readMuted() && claim.isCurrent ? 1 : 0);
-    if (claim.isCurrent) await entry.session.play();
+class _CoordinatorTransientGestureLease implements TransientGestureLease {
+  _CoordinatorTransientGestureLease({
+    required this.coordinator, required this.postId,
+    required this.entry, required this.generation,
+  });
+  final PostVideoCoordinator coordinator;
+  final String postId;
+  final _SessionEntry entry;
+  final int generation;
+  Future<void>? _endFuture; // poin 2 fix: satu Future dibagi ke SEMUA
+                             // pemanggil end() — kerja nyata jalan SEKALI,
+                             // berapa kali pun end() dipanggil.
+  bool _resumeVetoed = false; // poin 2 fix: allowResume:false PERMANEN
+                               // mengalahkan true, walau true datang lebih
+                               // dulu dan masih "sedang diproses".
+
+  @override
+  bool get isCurrent =>
+      identical(coordinator._entries[postId], entry) &&
+      entry.cleanupGeneration == generation &&
+      identical(entry.activeLease, this); // poin 2 fix: cek identitas LEASE
+                                            // sendiri, bukan cuma entry+gen —
+                                            // supaya lease yang SAMA yang
+                                            // sudah di-`end()` tak dianggap
+                                            // current lagi oleh panggilan kedua.
+
+  @override
+  Future<void> end({required bool allowResume}) {
+    if (!allowResume) _resumeVetoed = true;
+    return _endFuture ??= _performEnd();
+  }
+
+  Future<void> _performEnd() {
+    // Poin 4 fix (lanjutan): end juga lewat antrean serial YANG SAMA —
+    // dijamin berjalan SETELAH operasi begin (speed 2x) di atas selesai,
+    // karena FIFO ketat pada `_playbackTail`.
+    return coordinator._enqueuePlayback(() async {
+      if (!isCurrent) return; // sudah disusul gesture baru / entry lenyap
+      entry.activeLease = null; // clear SEGERA, sinkron di awal closure.
+      // Langkah 1 — speed SELALU balik ke 1x, TANPA SYARAT allowResume.
+      await entry.session.setPlaybackSpeed(1.0);
+      if (_resumeVetoed) return; // false menang, walau diminta belakangan.
+      // Poin 1 fix: JANGAN reimplementasi gate+audio-claim+play manual —
+      // pakai `_claimAndPlay` yang SUDAH benar (double-check `_canPlayEntry`
+      // setelah tiap await internalnya). `_canPlayEntry` SUDAH mencakup
+      // ketiga gate (post masih aktif, tak suspended, tak user-paused) —
+      // tak perlu duplikasi cek manual. Generation BARU (bukan `generation`
+      // milik lease yang sudah basi) supaya operasi lama tak menang race
+      // kalau state berubah SELAGI `_performEnd()` masih di antrean.
+      final freshGeneration = ++coordinator._playbackGeneration;
+      await coordinator._claimAndPlay(entry, freshGeneration);
+    });
   }
 }
 ```
 
 **Kontrak eksplisit:**
 - **Widget HANYA menerima `TransientGestureLease` dari `coordinator.beginTransientGesture(postId, kind)`** — tak ada jalur untuk mendapat lease dari `PlaybackSession` langsung; interface session TIDAK PUNYA method gesture sama sekali.
-- **Speed SELALU dikembalikan ke 1x** (langkah 1 `end()`), tanpa syarat `allowResume` — dijalankan LEBIH DULU sebelum keempat gate dicek, supaya video tak pernah nyangkut 2x apa pun hasil evaluasi gate berikutnya.
-- **Resume (play) HANYA setelah keenam langkah lolos berurutan** — bukan dievaluasi paralel/diacak; audio-claim+`play()` adalah LANGKAH TERAKHIR, bukan langkah pertama.
+- **`beginTransientGesture` return `null` kalau entry masih `cleanupInFlight` ATAU sudah punya `activeLease`** — mencegah dua siklus gesture tumpang tindih untuk entry yang sama, akar penyebab orphan `cleanupInFlight` (lihat §C poin 8).
+- **`end()` idempotent** — panggilan kedua/berulang (natural dari widget + forced dari detach yang kebetulan nyaris bersamaan) mengembalikan `Future` yang SAMA; kerja nyata (speed-restore, gate-check, resume) jalan PERSIS SEKALI.
+- **`allowResume:false` PERMANEN mengalahkan `true`** — walau `end(allowResume:true)` dipanggil lebih dulu dan closure-nya belum selesai, `end(allowResume:false)` yang menyusul tetap mem-veto resume (`_resumeVetoed` dicek di titik PALING AKHIR sebelum keputusan resume, bukan di-capture di awal).
+- **Speed SELALU dikembalikan ke 1x** tanpa syarat `allowResume`, LEBIH DULU sebelum keputusan resume dievaluasi.
+- **Resume (play) HANYA lewat `_claimAndPlay`** — bukan audio-claim+play manual yang diinline; ini menghindari duplikasi logika gate DAN otomatis mewarisi double-check pasca-`await` yang sudah terbukti benar di `_claimAndPlay`.
 - **Cleanup akibat detach/evict (§C) SELALU memakai `allowResume: false`**, dan memanggil lease yang SAMA (`entry.activeLease`) — bukan membuat mekanisme cleanup terpisah dari lease yang mungkin masih dipegang widget.
-- **Widget-triggered natural end** (user lepas jari tanpa interupsi) memakai `allowResume: true` — tapi resume TETAP hanya benar-benar terjadi kalau langkah 3-5 lolos; `allowResume:true` adalah *izin*, bukan *jaminan*.
+- **Begin (speed 2x/pause) dan end (speed 1x) SAMA-SAMA lewat `_enqueuePlayback`** — FIFO ketat menjamin urutan penyelesaian, walau gesture berumur sangat pendek (tap-lepas cepat).
 
 Jaminan lain yang WAJIB dipenuhi:
-- **`lease.isCurrent` palsu setelah swipe ke item lain** — begin lease di A menyimpan identitas entry+generation A; kalau setelah itu sesi A diganti/dievict/di-detach, `isCurrent` jadi `false`, `end()` yang terlambat dipanggil widget jadi no-op total, TIDAK memengaruhi sesi B.
-- **Dispose selama gesture aktif tetap aman** — `session.dispose()` bisa dipanggil kapan pun; lease yang masih terbuka otomatis jadi `!isCurrent` lewat cek identity/generation (tak crash, tak memanggil method pada sesi yang sudah disposed).
+- **`lease.isCurrent` palsu setelah swipe ke item lain ATAU setelah `end()` pertama sukses** — kedua kasus dicek via kombinasi identity+generation+`identical(entry.activeLease, this)`.
+- **Dispose selama gesture aktif tetap aman** — `session.dispose()` bisa dipanggil kapan pun; lease yang masih terbuka otomatis jadi `!isCurrent` (tak crash, tak memanggil method pada sesi yang sudah disposed).
 
 **C. Barrier teardown asinkron — mekanisme KONKRET, bukan cuma "requirement" (gap ditemukan di v3: §B menyatakan "detach/evict coordinator paksa `lease.end()` SEBELUM detach/evict jalan" tanpa menentukan CARANYA — ternyata secara arsitektur TIDAK MUNGKIN begitu saja):**
 
@@ -207,17 +247,23 @@ Diverifikasi ke kode: `detach()` (`post_video_coordinator.dart:176`) dan `_evict
    });
    ```
 4. **Kenapa `_disposeStaleUnprotectedEntries()` + `_evict()` WAJIB dipanggil BERPASANGAN, bukan `_evict()` saja (bug ditemukan di v4 — celah nyata, bukan cuma soal gaya):** `_evict()` (`:522`) punya early-return `if (_entries.length <= maxSessions) return;` — untuk Feed yang biasanya jauh di bawah `maxSessions=5` sesi hidup bersamaan, memanggil `_evict()` sendirian **tidak berbuat apa-apa**, entry yang barusan selesai cleanup jadi **yatim permanen** di `_entries` (tak pernah ter-dispose, karena tak ada tekanan LRU yang memicunya). `_disposeStaleUnprotectedEntries()` (`:505`) yang TANPA gerbang `maxSessions` — membuang entry unpinned+unattached apa pun jumlah total sesi. Pola pasangan ini **sudah ada** persis di `setPreloadWindow` (`:276-277`, `_disposeStaleUnprotectedEntries(); _evict();` berurutan) — cukup direplikasi, bukan pola baru.
-5. **Kenapa `cleanupGeneration`, bukan `bool` polos:** `_SessionEntry` **dipakai ulang** per postId selama masih di `_entries` (`_ensureEntry:487-490` — kembalikan entry existing kalau ada, bukan buat baru). Skenario nyata: user long-press-2x di A → swipe ke B (detach A, cleanup dimulai, `cleanupInFlight=true`) → swipe balik ke A dengan cepat (A jadi aktif lagi, mungkin mulai gesture BARU) → cleanup LAMA akhirnya selesai lewat antrean serial dan mencoba `entry.cleanupInFlight = false` — TANPA guard generation, ini bisa menimpa status siklus cleanup BARU yang sedang berjalan untuk entry YANG SAMA (`identical(_entries[postId], entry)` tetap true karena objek entry sama). Guard `entry.cleanupGeneration == generation` memastikan hanya siklus PALING BARU yang boleh membersihkan flag & memicu eviction; siklus lama yang sudah disusul jadi no-op diam di titik itu (finally tetap jalan, tapi kondisi di dalamnya gagal, jadi tak ada efek).
+5. **Kenapa `cleanupGeneration`, bukan `bool` polos:** `_SessionEntry` **dipakai ulang** per postId selama masih di `_entries` (`_ensureEntry:487-490` — kembalikan entry existing kalau ada, bukan buat baru). Guard `entry.cleanupGeneration == generation` di finally-block (poin 3) memastikan hanya siklus cleanup PALING BARU yang boleh membersihkan flag & memicu eviction.
 6. Kalau entry TIDAK punya lease aktif (kasus normal, mayoritas), `detach()` berjalan persis seperti sekarang — nol overhead tambahan untuk jalur yang tak melibatkan gesture.
 7. **Seluruh mutasi state cleanup (`cleanupInFlight=false`, `_disposeStaleUnprotectedEntries()`, `_evict()`) WAJIB dibungkus `_guard(() {...})`** (bug ditemukan di review keenam — bukan gaya penulisan, tapi kebenaran fungsional): `_registryRevision.value++` **hanya** di-flush oleh `_guard()`'s finally block (`_mutationDepth==0 && _registryDirty`, `:397-408`). Diverifikasi: **semua 7 titik pemanggilan** `_evict()`/`_disposeStaleUnprotectedEntries()` yang sudah ada di kode (`:147,169,182,209,237,276-277`) **selalu** terbungkus `_guard()`, tanpa kecuali. Kalau cleanup di fase asinkron (poin 3) memanggil method-method ini TANPA `_guard()` (seperti draf pseudocode v5), `_entries` termutasi & `_registryDirty` ter-set TRUE, tapi `_registryRevision.value++` **tak pernah terjadi** — widget managed yang men-`listen` `registryListenable` untuk adopsi-ulang sesi (mekanisme T7) tak pernah dapat notifikasi, berisiko menyimpan referensi ke sesi yang sudah dihapus/disposed selamanya.
+8. **BUG DITEMUKAN review kedelapan — `cleanupInFlight` bisa tertinggal SELAMANYA (ditutup di ROOT, bukan direkonsiliasi):** Skenario yang tadinya mungkin: user long-press-2x di A (gen G1, `activeLease=lease1`) → swipe ke B (detach A: `cleanupInFlight=true`, capture generation G1, enqueue `lease1.end()`) → **SEBELUM** cleanup itu jalan, swipe balik ke A dengan cepat dan mulai gesture BARU (gen **G2**, `activeLease=lease2`) → cleanup lama akhirnya jalan: `lease1.end()` no-op (generation G2≠G1) DAN barrier `_guard()` di detach() JUGA early-return (guard yang sama di poin 3, generation mismatch) — **`cleanupInFlight` TAK PERNAH di-set `false`**, karena kedua jalur yang seharusnya membersihkannya sama-sama bail-out akibat generation tak cocok. Tanpa detach kedua yang kebetulan terjadi lagi, entry terlindung dari eviction **selamanya** — kebocoran nyata.
+   **Fix dipilih (paling konservatif, menutup di akar):** `beginTransientGesture()` (§B) SEKARANG menolak (`return null`) membuat gesture baru kalau `entry.cleanupInFlight == true` ATAU `entry.activeLease != null` — skenario "gesture BARU mulai selagi cleanup LAMA masih tertunda" jadi TIDAK MUNGKIN terjadi sama sekali, bukan dicoba direkonsiliasi setelah kejadian. Konsekuensi UX: swipe-balik-lalu-langsung-gesture-lagi dalam jendela sangat sempit (durasi satu siklus `_enqueuePlayback`, biasanya sub-milidetik-hingga-beberapa-milidetik) membuat gesture baru sesaat tak berefek (widget dapat `null`, WAJIB menangani sebagai no-op) — tradeoff yang jauh lebih aman daripada entry bocor permanen. Guard generation di poin 3/5 TETAP dipertahankan sebagai lapisan pertahanan kedua (defense-in-depth) — kini jarang benar-benar diuji karena skenario pemicunya sudah tertutup di sini, tapi tak berbahaya membiarkannya (nol biaya tambahan, melindungi dari deviasi implementasi di masa depan).
 
 **Test wajib (lease, diperluas lagi):**
 1. A di-`beginTransientGesture(doubleSpeed)` → sebelum `end()`, sesi A di-`detach()` (simulasikan swipe cepat) → assert **A TIDAK langsung ter-dispose** (`disposeCallCount==0` segera setelah `detach()` return) → assert speed A ter-restore ke 1x DAN `lease.isCurrent == false` **setelah antrean serial di-flush** → assert A **sekarang** ter-dispose (`disposeCallCount==1`) — **WAJIB dites dengan total sesi hidup ≤ `maxSessions`** (skenario Feed tipikal), supaya kegagalan "`_evict()` sendirian tak berbuat apa-apa" akan terdeteksi test, bukan cuma lolos kebetulan karena skenario tes kebetulan sudah di atas ambang LRU.
 2. Panggil `lease.end(allowResume: true)` (terlambat, sesudah kasus di atas — `isCurrent` sudah `false`) → assert no-op total, tak ada efek pada sesi B yang sekarang aktif (termasuk TAK memicu play meski `allowResume:true`).
 3. **Race A→B→A→B**: begin gesture di A → detach A (cleanup #1 mulai, `allowResume:false`) → SEBELUM cleanup #1 selesai, attach+begin gesture BARU di A lagi (cleanup generation naik) → detach A lagi (cleanup #2 mulai, `cleanupGeneration` bertambah lagi) → flush antrean → assert cleanup #1 yang telat selesai TIDAK menimpa state cleanup #2 (final state entry konsisten dengan siklus TERAKHIR, bukan tercampur/rusak).
 4. **Registry notification setelah cleanup async**: begin gesture di A → detach A → flush antrean sampai cleanup selesai → assert `coordinator.sessionFor(A) == null` DAN listener `registryListenable`/`registryRevision` benar-benar terpanggil (bukan cuma `_entries` yang berubah diam-diam tanpa notifikasi) — test ini yang akan gagal kalau `_guard()` di poin 7 terlewat.
-5. **Otoritas resume — allowResume tak cukup sendirian**: A aktif & playing → mulai gesture `doubleSpeed` → SELAGI gesture berlangsung, route Profile dibuka (`_suspended`/route-covered jadi true) → user lepas jari secara natural, widget panggil `lease.end(allowResume: true)` → assert speed A kembali 1x TAPI A **TIDAK** resume play (tetap paused/mute) karena gate live (`!_suspended`) gagal — membuktikan keputusan resume live-evaluated saat `end()`, bukan berdasar snapshot kondisi saat `begin()`.
+5. **Otoritas resume — allowResume tak cukup sendirian**: A aktif & playing → mulai gesture `doubleSpeed` → SELAGI gesture berlangsung, route Profile dibuka (`_suspended`/route-covered jadi true) → user lepas jari secara natural, widget panggil `lease.end(allowResume: true)` → assert speed A kembali 1x TAPI A **TIDAK** resume play (tetap paused/mute) karena `_claimAndPlay` internal-nya menolak lewat `_canPlayEntry` — membuktikan keputusan resume live-evaluated saat `end()`, bukan berdasar snapshot kondisi saat `begin()`.
 6. **Otoritas resume — user-pause menang**: A aktif & playing → mulai gesture → SELAGI gesture berlangsung, user tap-pause eksplisit di tempat lain (`_userPausedActive=true`) → lepas jari, `end(allowResume:true)` → assert TAK resume (state pause user dihormati, bukan ditimpa).
+7. **Idempotency `end()`**: panggil `lease.end(allowResume:true)` DUA KALI berturut-turut (simulasikan double-dispatch) → assert kerja nyata (speed-restore, gate-check, resume) cuma jalan SEKALI (mis. `setPlaybackSpeed` invoked count == 1, bukan 2) DAN kedua panggilan mengembalikan `Future` yang identik/selesai bersamaan.
+8. **`allowResume:false` menang atas `true` yang masih diproses**: panggil `lease.end(allowResume:true)` (belum selesai, masih di antrean) → SEBELUM selesai, panggil `lease.end(allowResume:false)` (mis. dari detach paksa) → flush antrean → assert TAK resume play, walau panggilan pertama minta `true`.
+9. **`beginTransientGesture` menolak selagi cleanup pending**: begin gesture A → detach A (cleanup mulai, belum selesai) → SEBELUM cleanup selesai, panggil `beginTransientGesture(A, ...)` lagi → assert return `null` (bukan lease baru) — membuktikan skenario orphan poin 8 §C tak lagi bisa terjadi. Lanjutkan: flush antrean cleanup lama → assert `cleanupInFlight` akhirnya `false` (bukan tertinggal) → begin gesture baru di A sekarang berhasil (non-null).
+10. **Begin-end diserialkan (speed tak terbalik)**: begin gesture `doubleSpeed` di A, LANGSUNG (tanpa flush apa pun) panggil `lease.end(allowResume:false)` (gesture sangat pendek) → flush antrean penuh → assert speed AKHIR A adalah `1.0`, BUKAN `2.0` — membuktikan operasi begin (speed→2x) selesai lebih dulu sebelum end (speed→1x) sempat dieksekusi, berkat FIFO `_enqueuePlayback` yang sama.
 
 **File terdampak untuk kontrak ini:** `post_video_coordinator.dart` (SELURUH logika: `beginTransientGesture()`, kelas privat `_CoordinatorTransientGestureLease` dengan `end()` 6-langkah, field `cleanupInFlight`+`cleanupGeneration`+`activeLease` di `_SessionEntry` + guard eviction + `detach()` bercabang + pasangan `_disposeStaleUnprotectedEntries()`+`_evict()`), `video_player_session.dart` (implementasi TRIVIAL — cuma `setPlaybackSpeed(double)`, tanpa logika gesture/gate sama sekali), **3 file test fake** (kini HANYA perlu implement `setPlaybackSpeed` — beban jauh lebih ringan dibanding v6 yang menuntut seluruh lease/gate di tiap fake).
 
@@ -242,7 +288,7 @@ Empat sekuens WAJIB, semua sudah punya preseden terverifikasi di kode existing, 
 ### Lingkup
 
 1. **[PRASYARAT]** Tambah `clearActive()` di `PostVideoCoordinator` sesuai kontrak lengkap di atas + test race `setActive→clearActive`.
-2. **[PRASYARAT]** Tambah `PostVideoCoordinator.beginTransientGesture(postId, kind) → TransientGestureLease?` + kelas privat lease dengan `end({required allowResume})` 6-langkah (§B) TERMASUK mekanisme barrier `cleanupInFlight`+`activeLease`+`_guard()` (§C) di `detach()`/`_evict()`. Perluas `PlaybackSession` HANYA dengan `setPlaybackSpeed(double)` (+ implementasi `VideoPlayerSession` + 3 fake test — beban kecil, cuma 1 method trivial). Ganti `_onLongPressStart`/`_onLongPressEnd` di `feed_video_post_view.dart` dari `ctrl.pause()/setPlaybackSpeed()` langsung ke `widget.coordinator!.beginTransientGesture(postId, kind)` (simpan lease saat begin, panggil `lease.end(allowResume:true)` saat lepas jari natural) saat `_managed` (bukan lagi early-return kosong).
+2. **[PRASYARAT]** Tambah `PostVideoCoordinator.beginTransientGesture(postId, kind) → TransientGestureLease?` + kelas privat lease dengan `end({required allowResume})` idempotent yang reuse `_claimAndPlay` untuk otoritas resume (§B) TERMASUK mekanisme barrier `cleanupInFlight`+`activeLease`+`_guard()` (§C) di `detach()`/`_evict()`. Perluas `PlaybackSession` HANYA dengan `setPlaybackSpeed(double)` (+ implementasi `VideoPlayerSession` + 3 fake test — beban kecil, cuma 1 method trivial). Ganti `_onLongPressStart`/`_onLongPressEnd` di `feed_video_post_view.dart` dari `ctrl.pause()/setPlaybackSpeed()` langsung ke `widget.coordinator!.beginTransientGesture(postId, kind)` (simpan lease saat begin, panggil `lease.end(allowResume:true)` saat lepas jari natural) saat `_managed` (bukan lagi early-return kosong).
 3. Punya satu `PostVideoCoordinator` instance per screen-lifetime, **di balik feature flag yang DIKUNCI sejak `initState`** (dibaca sekali, tak reaktif). Pola instance identik `member_post_detail_screen:196`.
 4. `FeedVideoPostView` diinstansiasi dengan `ownsController:false, playbackManagedExternally:true, coordinator:` saat flag ON.
 5. `_managePreloadWindow` diganti memanggil urutan §Urutan attach/detach/dispose #1/#2 (attach→setActive→detach ATAU clearActive→detach) + `coordinator.setPreloadWindow(targetIds)` — `targetIds` dari `adaptiveVideoPreloadPolicy.offsets(...)` yang **sudah** dipakai (tak berubah). Ikuti Kontrak session-factory Feed di atas. Refresh/replace list post ikuti §Urutan #3 (detach sebelum swap list).
@@ -291,7 +337,7 @@ Tiap langkah = PR terpisah, revert-able sendiri-sendiri (via flag untuk langkah 
 
 ## Estimasi & keputusan yang masih terbuka
 
-- **Kematangan arsitektur:** v7 (dokumen ini) menutup 17 gap total dari tujuh putaran review. v2: urutan rollback, gerbang collision granular, kontrak `clearActive()`, kontrak transient-gesture (keputusan Opsi A), 4 kontradiksi internal, kontrak session-factory Feed. v3: race sinkron/async `clearActive()`, lease beridentitas, 4 sekuens attach/detach/dispose. v4: detach video→foto tak bersyarat, barrier teardown asinkron konkret. v5: pasangan `_disposeStaleUnprotectedEntries()`+`_evict()`, `cleanupGeneration`, capture `oldEntry` eksplisit. v6: cleanup async wajib `_guard()`, otoritas resume via `allowResume`+gate-live. v7: **gap fundamental** — pemilik lease/gate dipindah dari session (yang tak punya akses ke state coordinator) ke coordinator sepenuhnya; `PlaybackSession` diperkecil jadi 1 primitif trivial. **Pola tujuh putaran ini sendiri adalah sinyal penting**: enam putaran pertama menyempurnakan DETAIL implementasi di dalam struktur yang SUDAH benar; putaran ketujuh menemukan struktur KELAS-nya sendiri salah tempat — ini kelas kesalahan yang lebih mendasar dan seharusnya ditangkap lebih awal (saat memilih Opsi A "perluas interface" di v2/v3, pertanyaan "method ini idealnya milik siapa" belum ditanyakan setegas ini). `§Kontrak API` tetap area kompleksitas tertinggi di seluruh migrasi, LAYAK waktu/perhatian ekstra saat implementasi.
-- **Ukuran kerja:** sedang — Langkah 1-2 (kontrak API `clearActive`+`beginTransientGesture`+barrier+otoritas-resume, semua kini di satu file `post_video_coordinator.dart`) adalah fondasi paling berisiko (6 putaran review berturut-turut menemukan race/gap/struktur-kelas yang keliru di situ), **WAJIB review adversarial berbasis mutasi** sebelum lanjut ke langkah 3+, bukan sekadar review teks. Pertimbangkan menulis test-nya lebih dulu (TDD) mengingat kompleksitas konkurensinya. Restrukturisasi v7 justru mengecilkan ripple ke `VideoPlayerSession`+3 test fake (cuma 1 method trivial, bukan lagi seluruh mesin gesture) — sedikit mengurangi ukuran kerja dari v6. Tetap bukan "quick patch"; 8 langkah bertahap, masing-masing PR terpisah dengan gerbang sendiri.
+- **Kematangan arsitektur:** v8 (dokumen ini) menutup 21 gap total dari delapan putaran review. v2-v6: lihat riwayat status di atas dokumen. v7: gap fundamental (lease/gate pindah session→coordinator). v8: 4 gap lanjutan (3 P1) — stale-resume di `end()` (fix: reuse `_claimAndPlay`), lease belum idempotent (fix: `_endFuture`+veto), `cleanupInFlight` bisa bocor permanen (fix: `beginTransientGesture` menolak overlap di akar), begin/end tak diserialkan (fix: satu antrean `_enqueuePlayback`). **Pola delapan putaran**: v2-v6 menyempurnakan detail konkurensi di struktur yang benar; v7 menemukan struktur kelasnya salah tempat; v8 menemukan bahwa struktur BARU v7 (yang secara arsitektur sudah benar) masih perlu state-machine yang benar-benar rapat — kepemilikan yang tepat (coordinator) adalah syarat PERLU tapi bukan CUKUP untuk bebas race; setiap operasi async di dalamnya tetap butuh diperlakukan dengan kedisiplinan sama seperti `clearActive()`/`_claimAndPlay` yang sudah lebih dulu terbukti benar. `§Kontrak API` tetap area kompleksitas tertinggi di seluruh migrasi.
+- **Ukuran kerja:** sedang — Langkah 1-2 (kontrak API `clearActive`+`beginTransientGesture`+lease+barrier+otoritas-resume, semua di `post_video_coordinator.dart`) adalah fondasi paling berisiko (7 putaran review berturut-turut menemukan race/gap/struktur-kelas yang keliru di situ), **WAJIB review adversarial berbasis mutasi** sebelum lanjut ke langkah 3+, bukan sekadar review teks — dan sebaiknya diverifikasi TERPISAH dari langkah lain sebelum dianggap selesai, mengingat rekam jejak tujuh putaran. Pertimbangkan menulis test-nya lebih dulu (TDD). Tetap bukan "quick patch"; 8 langkah bertahap, masing-masing PR terpisah dengan gerbang sendiri.
 - **Kapan dieksekusi:** BELUM diputuskan. Dokumen ini adalah *rencana*, bukan izin eksekusi. Perlu keputusan terpisah untuk mulai Langkah 1 — termasuk mempertimbangkan apakah `feed_screen.dart`/`post_video_coordinator.dart` sedang tenang dari aktivitas paralel (Codex atau lainnya) sebelum memulai, karena sequencing 8-langkah ini butuh beberapa PR berurutan di file yang sama.
 - **Siapa mengerjakan tiap langkah:** subagent-driven per langkah (pola yang sudah terbukti di sesi-sesi sebelumnya — implement→review adversarial→fix→verify), bukan satu agen mengerjakan semua langkah sekaligus. Langkah 1-2 (kontrak API) cocok diverifikasi ekstra ketat (mis. review adversarial berbasis mutasi, seperti yang dipakai sesi ini untuk kasus lain) karena keduanya jadi fondasi seluruh langkah berikutnya.
