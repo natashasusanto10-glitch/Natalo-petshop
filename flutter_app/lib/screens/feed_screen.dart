@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
@@ -22,11 +21,10 @@ import '../features/feed/video/video_media_cache.dart';
 import '../features/feed/video/video_preload_metrics.dart';
 import '../features/feed/widgets/feed_creator_overlay.dart';
 import '../features/feed/widgets/feed_post_shared_widgets.dart';
+import '../features/feed/widgets/feed_product_links_sheet.dart';
 import '../features/feed/widgets/feed_video_post_view.dart';
-import '../models/cart_item.dart';
 import '../models/feed_post.dart';
 import '../models/product.dart';
-import '../screens/checkout_screen.dart';
 import '../screens/feed_user_search_screen.dart';
 import '../services/api_client.dart';
 import '../services/block_service.dart';
@@ -39,6 +37,7 @@ import '../state/feed_local_store.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../state/settings_store.dart';
+import '../utils/android_back_overlays.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/bottom_nav.dart';
@@ -1115,6 +1114,7 @@ class _FeedScreenState extends State<FeedScreen> {
                         key: ValueKey('feed-video-${post.id}'),
                         post: post,
                         isActive: index == _activeIndex,
+                        framing: FeedVideoFraming.mainFeed,
                         // Fix A5: JANGAN remove() dari map di build().
                         // Kalau parent rebuild tapi state ber-key sama masih
                         // hidup (initState tidak jalan lagi), controller yang
@@ -1676,6 +1676,20 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   int _shareCount = 0;
   bool _shareInFlight = false;
   bool _commentDrawerOpen = false;
+
+  /// True selama animasi close yang dipicu Android back berjalan (flag
+  /// [_commentDrawerOpen] sudah false tapi surface masih hidup). Menjaga
+  /// back ownership selama fase itu — paritas dengan video yang memakai
+  /// phase `closing` (_commentDrawerMounted tetap true saat closing).
+  bool _commentDrawerClosing = false;
+
+  /// Lease lock overlay Feed — dilepas HANYA lewat
+  /// [_releaseCommentOverlayLock] supaya rail/chrome/nav/paging selalu pulih
+  /// tepat sekali, apa pun jalur close-nya.
+  bool _commentOverlayLockHeld = false;
+  bool _androidBackCommentCloserRegistered = false;
+  late final VoidCallback _androidBackCommentCloserCallback =
+      _androidBackCommentCloser;
   bool _hideOverlayForLongPress = false;
   bool _hideOverlayForPinchZoom = false;
 
@@ -1792,6 +1806,21 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
         _captionExpanded) {
       _captionExpanded = false;
     }
+  }
+
+  @override
+  void deactivate() {
+    // View keluar dari tree (swipe post lain / pindah tab) selagi drawer
+    // aktif: lepas back closer + lock overlay sekarang — surface ikut
+    // ter-unmount sehingga onClosed tidak akan pernah datang. Tanpa ini
+    // closer basi menelan back press tab lain dan Feed terkunci selamanya.
+    // Flag di-reset langsung (tanpa setState — ilegal saat deactivate)
+    // supaya reactivate membangun ulang dari keadaan closed yang konsisten.
+    _commentDrawerOpen = false;
+    _commentDrawerClosing = false;
+    _unregisterAndroidBackCommentCloser();
+    _releaseCommentOverlayLock(defer: true);
+    super.deactivate();
   }
 
   @override
@@ -1920,14 +1949,75 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     if (_commentDrawerOpen) return;
     AppHaptics.tap();
     FocusScope.of(context).unfocus();
-    widget.onOverlayStateChanged(true);
+    _acquireCommentOverlayLock();
+    // Android back ownership — paritas dengan adapter video: back menutup
+    // drawer DULU, bukan pindah tab / double-back exit.
+    _registerAndroidBackCommentCloser();
     if (mounted) setState(() => _commentDrawerOpen = true);
   }
 
+  /// SEMUA jalur close (handle, backdrop, guard terminal, Android back)
+  /// berakhir di sini via [FeedReelsCommentSurface.onClosed]. Lock overlay
+  /// dilepas berdasarkan lease terpisah — BUKAN flag [_commentDrawerOpen] —
+  /// supaya close yang diminta parent (back press men-set flag false lebih
+  /// dulu) tetap melepaskan lock saat surface selesai menutup.
   void _onEmbeddedCommentClosed() {
-    if (!mounted || !_commentDrawerOpen) return;
-    setState(() => _commentDrawerOpen = false);
-    widget.onOverlayStateChanged(false);
+    _commentDrawerClosing = false;
+    _unregisterAndroidBackCommentCloser();
+    if (mounted && _commentDrawerOpen) {
+      setState(() => _commentDrawerOpen = false);
+    }
+    _releaseCommentOverlayLock();
+  }
+
+  void _acquireCommentOverlayLock() {
+    if (_commentOverlayLockHeld) return;
+    _commentOverlayLockHeld = true;
+    widget.onOverlayStateChanged(true);
+  }
+
+  void _releaseCommentOverlayLock({bool defer = false}) {
+    if (!_commentOverlayLockHeld) return;
+    _commentOverlayLockHeld = false;
+    if (!defer) {
+      widget.onOverlayStateChanged(false);
+      return;
+    }
+    // Deactivate/dispose: parent tidak boleh setState di tengah teardown
+    // subtree — tunda ke microtask (pola yang sama dengan adapter video).
+    scheduleMicrotask(() {
+      if (_commentOverlayLockHeld) return;
+      widget.onOverlayStateChanged(false);
+    });
+  }
+
+  void _registerAndroidBackCommentCloser() {
+    if (_androidBackCommentCloserRegistered) return;
+    pushAndroidBackOverlayCloser(_androidBackCommentCloserCallback);
+    _androidBackCommentCloserRegistered = true;
+  }
+
+  void _unregisterAndroidBackCommentCloser() {
+    if (!_androidBackCommentCloserRegistered) return;
+    _androidBackCommentCloserRegistered = false;
+    popAndroidBackOverlayCloser(_androidBackCommentCloserCallback);
+  }
+
+  void _androidBackCommentCloser() {
+    // consumeAndroidBackOverlay melepas closer sebelum memanggilnya. Daftar
+    // ulang segera supaya back press kedua selama animasi close tetap
+    // dikonsumsi drawer ini (sebagai no-op), bukan jatuh ke tab nav di
+    // bawahnya — persis perilaku video (_commentDrawerMounted true saat
+    // closing). _commentDrawerClosing menjaga jendela animasi close saat
+    // _commentDrawerOpen sudah false.
+    _androidBackCommentCloserRegistered = false;
+    if (!_commentDrawerOpen && !_commentDrawerClosing) return;
+    _registerAndroidBackCommentCloser();
+    if (!_commentDrawerOpen) return; // sedang closing — back kedua = no-op
+    _commentDrawerClosing = true;
+    // Flag open false men-drive FeedReelsCommentSurface menutup (prop open);
+    // lock overlay TETAP dipegang sampai onClosed → _onEmbeddedCommentClosed.
+    if (mounted) setState(() => _commentDrawerOpen = false);
   }
 
   Future<void> _onShare() async {
@@ -1957,49 +2047,23 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   // open product sheet. Multi-produk → buka carousel sheet (Shop the Look).
   // Quick-add → direct cart add (skip variant picker kalau hasVariants).
 
-  Future<void> _onProductsTap(List<FeedProductLink> products) async {
+  Future<void> _openProductLinksSheet(List<FeedProductLink> products) async {
     if (products.isEmpty) return;
-    if (products.length == 1) {
-      await _onProductTap(products.first);
-      return;
-    }
     AppHaptics.tap();
-    widget.onOverlayStateChanged(true);
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.18),
-      builder: (_) => FeedPostTaggedProductsSheet(
-        products: products,
-        onOpenProduct: (link) async {
-          await _onProductTap(link);
-        },
-        onAdd: (link, quantity) async {
-          _addFeedLinkToCart(link, quantity: quantity);
-        },
-        onBuy: (link, quantity) async {
-          _buyFeedLinkNow(link, quantity: quantity);
-        },
-      ),
-    ).whenComplete(() => widget.onOverlayStateChanged(false));
+    await showFeedProductLinksSheet(
+      context,
+      products: products,
+      onOpenProduct: (link) => _openProductLinkDetail(link),
+      onAddToCart: (link) => _addFeedLinkToCart(link),
+      onOpened: () => widget.onOverlayStateChanged(true),
+      onClosed: () => widget.onOverlayStateChanged(false),
+    );
   }
 
-  Future<void> _quickAddProduct(FeedProductLink link) async {
-    _addFeedLinkToCart(link);
-  }
-
-  Future<void> _onProductTap(FeedProductLink link) async {
-    AppHaptics.tap();
-    widget.onOverlayStateChanged(true);
+  Future<void> _openProductLinkDetail(FeedProductLink link) async {
     final product = await productService.fetchProductBySlug(link.slug);
-    if (!mounted) {
-      widget.onOverlayStateChanged(false);
-      return;
-    }
+    if (!mounted) return;
     if (product == null) {
-      widget.onOverlayStateChanged(false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Produk tidak ditemukan.'),
@@ -2008,19 +2072,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
       );
       return;
     }
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.18),
-      builder: (_) => FeedPostProductSheet(
-        product: product,
-        onOpenProduct: () => _openProductDetail(product),
-        onAdd: (quantity) => _addProductToCart(product, quantity: quantity),
-        onBuy: (quantity) => _buyProductNow(product, quantity: quantity),
-      ),
-    ).whenComplete(() => widget.onOverlayStateChanged(false));
+    _openProductDetail(product);
   }
 
   void _openProductDetail(Product product) {
@@ -2034,7 +2086,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
       return;
     }
     if (link.hasVariants) {
-      _onProductTap(link);
+      _openProductLinkDetail(link);
       return;
     }
     final product = feedPostProductFromFeedLink(link);
@@ -2045,61 +2097,6 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
       quantity > 1
           ? '$quantity x ${link.name} masuk keranjang'
           : '${link.name} masuk keranjang',
-    );
-  }
-
-  void _addProductToCart(Product product, {int quantity = 1}) {
-    if (product.stock <= 0) {
-      _showProductUnavailable();
-      return;
-    }
-    if (product.hasVariants) {
-      _openProductDetail(product);
-      return;
-    }
-    cartStore.addProduct(product, quantity: quantity);
-    if (!mounted) return;
-    AppToast.showCartAdded(
-      context,
-      quantity > 1
-          ? '$quantity x ${product.title} masuk keranjang'
-          : '${product.title} masuk keranjang',
-    );
-  }
-
-  void _buyFeedLinkNow(FeedProductLink link, {int quantity = 1}) {
-    if (!link.isAvailable || link.stock <= 0) {
-      _showProductUnavailable();
-      return;
-    }
-    if (link.hasVariants) {
-      _onProductTap(link);
-      return;
-    }
-    _buyProductNow(feedPostProductFromFeedLink(link), quantity: quantity);
-  }
-
-  void _buyProductNow(Product product, {int quantity = 1}) {
-    if (product.stock <= 0) {
-      _showProductUnavailable();
-      return;
-    }
-    if (product.hasVariants) {
-      _openProductDetail(product);
-      return;
-    }
-    AppHaptics.impact();
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => CheckoutScreen(
-          items: [
-            CartItem(
-              product: product,
-              quantity: quantity.clamp(1, math.max(1, product.stock)),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -2157,9 +2154,6 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
 
     // Product chip — same rotation pattern dengan video post.
     final products = _rotatingProductsForPost(post);
-    final featuredProduct = products.isEmpty
-        ? null
-        : products[_featuredProductIndex % products.length];
 
     return VisibilityDetector(
       key: ValueKey('photo-post-${post.id}'),
@@ -2340,11 +2334,11 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                                   ignoring: _captionExpanded,
                                   child: Padding(
                                     padding: const EdgeInsets.only(bottom: 9),
-                                    child: feedPostProductAnchorCardFor(
-                                      featuredProduct!,
-                                      onTap: () => _onProductsTap(products),
-                                      onAddToCart: () =>
-                                          _quickAddProduct(featuredProduct),
+                                    child: feedProductPillFor(
+                                      products,
+                                      _featuredProductIndex,
+                                      onTap: () =>
+                                          _openProductLinksSheet(products),
                                     ),
                                   ),
                                 ),

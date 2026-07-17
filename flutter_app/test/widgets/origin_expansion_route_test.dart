@@ -212,6 +212,8 @@ void main() {
     await tester.pumpWidget(_buildSource(key));
     await _openSnapshotRoute(tester, key);
 
+    final route = ModalRoute.of(tester.element(find.text('Destination')))!;
+
     final gesture = await tester.startGesture(const Offset(1, 300));
     await gesture.moveBy(
       const Offset(20, 0),
@@ -228,15 +230,26 @@ void main() {
           .userGestureInProgress,
       isTrue,
     );
-    expect(_snapshotPositioned(tester).width, lessThan(400));
+    // The route follows the finger: its view animation drops below the
+    // fully-open value of 1.0 as the edge gesture drives it back.
+    expect(route.animation!.value, lessThan(1));
 
     await gesture.up(timeStamp: const Duration(milliseconds: 600));
     await tester.pump();
     expect(find.text('Destination'), findsOneWidget);
 
     await tester.pumpAndSettle();
+    // Released below the 25% completion fraction (and under the fling
+    // velocity), so the route springs back to fully open rather than popping:
+    // the destination stays mounted, the user gesture ends, and the view
+    // animation settles back to the fully-open value of 1.0.
     expect(find.text('Destination'), findsOneWidget);
-    expect(_snapshotPositioned(tester).width, 400);
+    expect(
+      Navigator.of(tester.element(find.text('Destination')))
+          .userGestureInProgress,
+      isFalse,
+    );
+    expect(route.animation!.value, 1.0);
   });
 
   testWidgets('edge swipe pops at 25 percent width', (tester) async {
@@ -435,17 +448,30 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final key = GlobalKey();
-    await tester.pumpWidget(_buildSource(key));
+    final observer = _GestureObserver();
+    await tester.pumpWidget(_buildSource(key, navigatorObservers: [observer]));
     await _openSnapshotRoute(tester, key);
+
+    final route = ModalRoute.of(tester.element(find.text('Destination')))!;
 
     final gesture = await tester.startGesture(const Offset(40, 300));
     await gesture.moveBy(const Offset(150, 0));
     await tester.pump();
 
-    expect(_snapshotPositioned(tester).width, 400);
+    // x=40 is past the 28px edge zone, so the back-gesture recognizer is never
+    // armed: no user gesture starts and the route is not driven — its view
+    // animation stays pinned at the fully-open value of 1.0.
+    expect(observer.starts, 0);
+    expect(
+      Navigator.of(tester.element(find.text('Destination')))
+          .userGestureInProgress,
+      isFalse,
+    );
+    expect(route.animation!.value, 1.0);
 
     await gesture.up();
     await tester.pumpAndSettle();
+    expect(observer.starts, 0);
     expect(find.text('Destination'), findsOneWidget);
   });
 
@@ -503,15 +529,6 @@ Future<void> _openSnapshotRoute(WidgetTester tester, GlobalKey key) async {
   expect(
     find.byKey(const ValueKey('origin-expansion-edge-back')),
     findsOneWidget,
-  );
-}
-
-Positioned _snapshotPositioned(WidgetTester tester) {
-  return tester.widget<Positioned>(
-    find.ancestor(
-      of: find.byKey(const ValueKey('origin-expansion-snapshot')),
-      matching: find.byType(Positioned),
-    ),
   );
 }
 
