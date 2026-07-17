@@ -24,12 +24,13 @@ import '../state/settings_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_ui.dart';
+import '../widgets/collapsing_header_delegate.dart';
 import '../widgets/moderation_action_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/origin_expansion_route.dart';
 import '../widgets/profile_grid_geometry.dart';
 import '../widgets/public_profile_chrome_overlay.dart';
-import '../widgets/public_profile_expanded_header.dart';
+import '../widgets/public_profile_identity_tab_header.dart';
 import 'member_post_detail_screen.dart';
 import 'public_profile_follow_list_screen.dart';
 
@@ -831,44 +832,38 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     final nestedScrollView = NestedScrollView(
       controller: _scrollController,
       headerSliverBuilder: (context, innerBoxIsScrolled) => [
-        SliverToBoxAdapter(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-            ),
-            child: Column(
-              children: [
-                SizedBox(
-                  height: metrics.topPadding + metrics.toolbarHeight,
-                ),
-                SizedBox(
-                  height: metrics.identityHeight,
-                  child: AnimatedBuilder(
-                    animation: chatStore,
-                    builder: (context, child) => PublicProfileExpandedHeader(
-                      profile: profile,
-                      followBusy: _followBusy,
-                      chatEnabled: chatStore.chatEnabled,
-                      onFollowToggle: profile.isOwner ? null : _toggleFollow,
-                      onFollowersTap: () =>
-                          _openFollowList(FollowListKind.followers),
-                      onFollowingTap: () =>
-                          _openFollowList(FollowListKind.following),
-                      onEditProfile: profile.isOwner
-                          ? () => Navigator.pushNamed(
-                                context,
-                                '/member/profile',
-                              )
-                          : null,
-                      onShareProfile: _shareProfile,
-                      onMessage: profile.isOfficial && !profile.isOwner
-                          ? () => Navigator.pushNamed(context, '/chat')
-                          : null,
-                    ),
-                  ),
-                ),
-                SizedBox(height: metrics.tabHeight),
-              ],
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: CollapsingHeaderDelegate(
+            minHeight: metrics.tabHeight,
+            maxHeight: metrics.identityHeight + metrics.tabHeight,
+            builder: (context, t) => AnimatedBuilder(
+              animation: chatStore,
+              builder: (context, child) => PublicProfileIdentityTabHeader(
+                profile: profile,
+                followBusy: _followBusy,
+                chatEnabled: chatStore.chatEnabled,
+                tabController: _tabController,
+                identityHeight: metrics.identityHeight,
+                tabHeight: metrics.tabHeight,
+                t: t,
+                onFollowToggle: profile.isOwner ? null : _toggleFollow,
+                onFollowersTap: () =>
+                    _openFollowList(FollowListKind.followers),
+                onFollowingTap: () =>
+                    _openFollowList(FollowListKind.following),
+                onEditProfile: profile.isOwner
+                    ? () => Navigator.pushNamed(
+                          context,
+                          '/member/profile',
+                        )
+                    : null,
+                onShareProfile: _shareProfile,
+                onMessage: profile.isOfficial && !profile.isOwner
+                    ? () => Navigator.pushNamed(context, '/chat')
+                    : null,
+                onTabTap: _onTabTapped,
+              ),
             ),
           ),
         ),
@@ -895,26 +890,28 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
           key: const Key('public_profile_grid_underlay'),
           child: refreshedContent,
         ),
-        Positioned.fill(
-          child: AnimatedBuilder(
-            animation: _scrollController,
-            builder: (context, child) => PublicProfileChromeOverlay(
+        AnimatedBuilder(
+          animation: _scrollController,
+          builder: (context, child) {
+            final shrinkOffset = _scrollController.hasClients
+                ? _scrollController.offset
+                    .clamp(0.0, metrics.identityHeight)
+                    .toDouble()
+                : 0.0;
+            final t = metrics.identityHeight > 0
+                ? shrinkOffset / metrics.identityHeight
+                : 1.0;
+            return PublicProfileChromeOverlay(
               profile: profile,
-              controller: _tabController,
-              scrollOffset: _scrollController.hasClients
-                  ? _scrollController.offset
-                      .clamp(0.0, double.infinity)
-                      .toDouble()
-                  : 0,
+              t: t,
               metrics: metrics,
               onBack: () => Navigator.maybePop(context),
               onShareProfile: _shareProfile,
               onOverflow: !profile.isOwner && !profile.isOfficial
                   ? _openModeration
                   : null,
-              onTabTap: _onTabTapped,
-            ),
-          ),
+            );
+          },
         ),
       ],
     );
