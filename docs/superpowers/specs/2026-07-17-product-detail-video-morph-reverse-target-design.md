@@ -50,7 +50,8 @@ Antarmuka:
   kartu **mana pun** (termasuk saudara).
 - `Future<ScaledVideoFeedReverseTarget?> resolveReturnTarget(String postId)`:
   1. Jika key belum terdaftar → return `null` (morph fallback aman).
-  2. `Scrollable.ensureVisible(context, duration: ...)` ke context key tsb.
+  2. `Scrollable.ensureVisible(context, duration: Duration.zero)` ke context key
+     tsb. Instan (tanpa easing) — morph menutupi scroll, seperti IG.
   3. Tunggu satu post-frame (`WidgetsBinding.addPostFrameCallback`).
   4. Ukur `RenderBox` via key → `rect = localToGlobal(Offset.zero) & size`.
   5. Return `ScaledVideoFeedReverseTarget(rect: rect, imageUrl:
