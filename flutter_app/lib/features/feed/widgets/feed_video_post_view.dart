@@ -19,7 +19,6 @@ import '../../../services/feed_service.dart';
 import '../../../services/product_service.dart';
 import '../../../services/report_service.dart';
 import '../../../services/video_quality_service.dart';
-import '../../../state/cart_store.dart';
 import '../../../state/feed_comment_session_store.dart';
 import '../../../state/feed_local_store.dart';
 import '../../../state/feed_store.dart';
@@ -43,6 +42,7 @@ import '../../../widgets/moderation_action_sheet.dart';
 import 'feed_action_rail.dart';
 import 'feed_accessibility_overlay.dart';
 import 'feed_creator_overlay.dart';
+import 'feed_link_cart_actions.dart';
 import 'feed_post_scrim.dart';
 import 'feed_post_shared_widgets.dart';
 import 'feed_product_links_sheet.dart';
@@ -2768,38 +2768,12 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   }
 
   void _addFeedLinkToCart(FeedProductLink link, {int quantity = 1}) {
-    if (!link.isAvailable || link.stock <= 0) {
-      _showProductUnavailable();
-      return;
-    }
-
-    if (link.hasVariants) {
-      _openProductLinkDetail(link);
-      return;
-    }
-
-    final product = feedPostProductFromFeedLink(link);
-    cartStore.addProduct(product, quantity: quantity);
-    if (!mounted) return;
-    AppToast.showCartAdded(
-      context,
-      quantity > 1
-          ? '$quantity x ${link.name} masuk keranjang'
-          : '${link.name} masuk keranjang',
-    );
+    unawaited(addFeedLinkToCart(context, link, quantity: quantity));
   }
 
   void _openProductDetail(Product product) {
     AppHaptics.tap();
     Navigator.pushNamed(context, '/product-detail', arguments: product);
-  }
-
-  void _showProductUnavailable() {
-    AppToast.show(
-      context,
-      'Produk sedang tidak tersedia.',
-      kind: ToastKind.warning,
-    );
   }
 
   Future<void> _onTapMedia() async {
