@@ -239,18 +239,26 @@ class _GoldenProfileState extends State<_GoldenProfile>
     // Tab bar rendering moved OUT of PublicProfileChromeOverlay (Task 2) into
     // its own sliver-hosted widget (Task 3). This mock reconstructs it in the
     // exact screen position chrome used to paint it in, using the same
-    // motion values, so the visual composition here matches the pre-refactor
-    // appearance pixel-for-pixel.
-    final tabBar = DecoratedBox(
-      decoration: headerDecoration,
-      child: SizedBox(
-        height: metrics.tabHeight,
-        child: PublicProfileContentTabBar(
-          controller: _controller,
-          labelOpacity: motion.labelOpacity,
-          pillOpacity: motion.pillOpacity,
-          underlineOpacity: motion.underlineOpacity,
-        ),
+    // motion values. `tabBarContent` itself carries NO enclosing opaque
+    // background — matching production's `PublicProfileIdentityTabHeader`,
+    // which wraps `PublicProfileContentTabBar` in a bare `SizedBox` only.
+    // Individual pills paint their own background via LiquidGlass +
+    // `solidFill` (see PublicProfileContentTabBar). Whether the composition
+    // reads as opaque or glass-over-grid depends entirely on what the
+    // caller wraps THIS in below: the expanded branch nests it inside a
+    // DecoratedBox(headerDecoration) that already covers the whole
+    // identity+tab column, so it's opaque there just like production
+    // (identity block above hasn't scrolled under the grid yet). The
+    // collapsed branch must NOT add its own opaque wrapper — in production
+    // there the grid is directly behind the tab row, visible through the
+    // semi-transparent glass pills.
+    final tabBarContent = SizedBox(
+      height: metrics.tabHeight,
+      child: PublicProfileContentTabBar(
+        controller: _controller,
+        labelOpacity: motion.labelOpacity,
+        pillOpacity: motion.pillOpacity,
+        underlineOpacity: motion.underlineOpacity,
       ),
     );
 
@@ -272,7 +280,7 @@ class _GoldenProfileState extends State<_GoldenProfile>
                   top: metrics.topPadding + metrics.toolbarHeight,
                   left: 0,
                   right: 0,
-                  child: tabBar,
+                  child: tabBarContent,
                 ),
               ] else
                 Positioned(
@@ -300,7 +308,7 @@ class _GoldenProfileState extends State<_GoldenProfile>
                                 onMessage: profile.isOfficial ? () {} : null,
                               ),
                             ),
-                            tabBar,
+                            tabBarContent,
                           ],
                         ),
                       ),
