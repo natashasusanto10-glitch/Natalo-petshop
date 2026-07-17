@@ -1762,6 +1762,48 @@ void main() {
     expect(mediaFittedBoxes.last.alignment, Alignment.topCenter);
   });
 
+  testWidgets(
+      'fullscreen compact comment preview keeps contained initialized media',
+      (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    VideoPlayerPlatform.instance = _FakeVideoPlayerPlatform();
+    await appSettingsStore.setFeedAutoplay(false);
+    addTearDown(() => appSettingsStore.setFeedAutoplay(true));
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse('https://example.com/fullscreen-comment-preview.m3u8'),
+    );
+    await controller.initialize();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeedVideoPostView(
+          post: _fakeVideoPost(aspectRatio: 9 / 16, hls: true),
+          isActive: true,
+          preloadedController: controller,
+          framing: FeedVideoFraming.fullscreenFeed,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsLabel('Komentar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 320));
+
+    final mediaFittedBoxes = tester.widgetList<FittedBox>(
+      find.descendant(
+        of: find.byKey(const ValueKey('feed-video-media-viewport')),
+        matching: find.byType(FittedBox),
+      ),
+    );
+    expect(mediaFittedBoxes, isNotEmpty);
+    expect(mediaFittedBoxes.last.fit, BoxFit.contain);
+  });
+
   testWidgets('main Feed media stops at the bottom navigation inset',
       (tester) async {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
