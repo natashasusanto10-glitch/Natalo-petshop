@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/public_profile.dart';
+import '../theme/natalo_text.dart';
 import 'profile_avatar.dart';
 
 /// Baris "Diikuti oleh X, Y, dan N lainnya" ala IG — avatar tumpuk +
@@ -64,12 +65,12 @@ class PublicProfileMutualFollowersRow extends StatelessWidget {
     final base = TextStyle(
       color: cs.onSurfaceVariant,
       fontSize: 12,
-      fontWeight: FontWeight.w500,
+      fontWeight: NataloWeight.body,
     );
     final emphasis = TextStyle(
       color: cs.onSurface,
       fontSize: 12,
-      fontWeight: FontWeight.w700,
+      fontWeight: NataloWeight.strong,
     );
     return Semantics(
       label: copy,

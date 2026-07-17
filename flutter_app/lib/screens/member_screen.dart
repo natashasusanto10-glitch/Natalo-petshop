@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 
 import '../constants/official_brand.dart';
 import '../models/feed_post.dart';
@@ -590,7 +591,7 @@ class _ProfileTopBar extends StatelessWidget {
                   style: TextStyle(
                     color: ink,
                     fontSize: 15,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
               ),
@@ -759,7 +760,7 @@ class _ErrorState extends StatelessWidget {
               style: TextStyle(
                 color: cs.onSurfaceVariant,
                 fontSize: 14,
-                fontWeight: FontWeight.w500,
+                fontWeight: NataloWeight.body,
                 height: 1.35,
               ),
             ),
@@ -775,7 +776,7 @@ class _ErrorState extends StatelessWidget {
               ),
               child: const Text(
                 'Coba lagi',
-                style: TextStyle(fontWeight: FontWeight.w600),
+                style: TextStyle(fontWeight: NataloWeight.strong),
               ),
             ),
           ],
@@ -964,7 +965,7 @@ class _EmptyState extends StatelessWidget {
               style: TextStyle(
                 color: cs.onSurface,
                 fontSize: 16.5,
-                fontWeight: FontWeight.w700,
+                fontWeight: NataloWeight.strong,
               ),
             ),
             const SizedBox(height: 6),
@@ -974,7 +975,7 @@ class _EmptyState extends StatelessWidget {
               style: TextStyle(
                 color: cs.onSurfaceVariant,
                 fontSize: 13.5,
-                fontWeight: FontWeight.w500,
+                fontWeight: NataloWeight.body,
                 height: 1.4,
               ),
             ),
@@ -985,7 +986,7 @@ class _EmptyState extends StatelessWidget {
                 icon: const Icon(Icons.add_rounded, size: 20),
                 label: const Text(
                   'Buat Postingan',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                  style: TextStyle(fontWeight: NataloWeight.strong),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _brandBlue,

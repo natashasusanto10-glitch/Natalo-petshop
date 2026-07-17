@@ -25,6 +25,7 @@ import '../state/member_store.dart';
 import '../state/post_caption_session_store.dart';
 import '../state/settings_store.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 import '../utils/app_route_observer.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -800,7 +801,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
               style: TextStyle(
                 color: cs.onSurface,
                 fontSize: 16,
-                fontWeight: FontWeight.w800,
+                fontWeight: NataloWeight.strong,
                 height: 1.05,
               ),
             ),
@@ -819,7 +820,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                           ? NataloColors.officialGoldOnLight
                           : cs.onSurfaceVariant,
                       fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: NataloWeight.strong,
                       height: 1.05,
                     ),
                   ),
@@ -840,7 +841,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
                   fontSize: 14,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: NataloWeight.body,
                 ),
               ),
             )
@@ -1574,7 +1575,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
-              fontWeight: FontWeight.w700,
+              fontWeight: NataloWeight.body,
             ),
           ),
         ),
@@ -1633,7 +1634,7 @@ class _PostAuthorRow extends StatelessWidget {
                           ? NataloColors.officialGoldOnLight
                           : cs.onSurface,
                       fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: NataloWeight.strong,
                       height: 1.15,
                     ),
                   ),
@@ -1719,7 +1720,7 @@ class _VideoPostAuthorOverlay extends StatelessWidget {
                             ? NataloColors.officialGold
                             : Colors.white,
                         fontSize: 15,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: NataloWeight.strong,
                         height: 1.15,
                         shadows: const [
                           Shadow(color: Colors.black54, blurRadius: 10),
@@ -1879,14 +1880,14 @@ class _LikedByLineState extends State<_LikedByLine> {
                 const TextSpan(text: 'Disukai oleh '),
                 TextSpan(
                   text: primaryName,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
+                  style: const TextStyle(fontWeight: NataloWeight.strong),
                   recognizer: _primaryNameRecognizer,
                 ),
                 if (othersCount > 0) ...[
                   const TextSpan(text: ' dan '),
                   TextSpan(
                     text: '$othersCount orang lainnya',
-                    style: const TextStyle(fontWeight: FontWeight.w900),
+                    style: const TextStyle(fontWeight: NataloWeight.strong),
                     recognizer: _othersRecognizer,
                   ),
                 ],
@@ -1897,7 +1898,7 @@ class _LikedByLineState extends State<_LikedByLine> {
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurface,
               fontSize: 13,
-              fontWeight: FontWeight.w600,
+              fontWeight: NataloWeight.body,
               height: 1.3,
             ),
           ),
@@ -2027,7 +2028,7 @@ class _MiniAvatar extends StatelessWidget {
         style: TextStyle(
           color: backgroundColor != null ? Colors.white : cs.onSurface,
           fontSize: size * 0.45,
-          fontWeight: FontWeight.w900,
+          fontWeight: NataloWeight.strong,
         ),
       ),
     );
@@ -2084,7 +2085,7 @@ class _PostCaptionState extends State<PostCaption>
   TextStyle _style(BuildContext context) => TextStyle(
         color: Theme.of(context).colorScheme.onSurface,
         fontSize: 13.5,
-        fontWeight: FontWeight.w600,
+        fontWeight: NataloWeight.body,
         height: 1.35,
       );
 
@@ -2097,7 +2098,7 @@ class _PostCaptionState extends State<PostCaption>
           TextSpan(
               text: '${widget.memberName} ',
               style: TextStyle(
-                  fontWeight: FontWeight.w900,
+                  fontWeight: NataloWeight.strong,
                   color: widget.isOfficial
                       ? NataloColors.officialGoldOnLight
                       : null)),
@@ -2146,7 +2147,7 @@ class _PostCaptionState extends State<PostCaption>
         TextSpan(
             text: '${widget.memberName} ',
             style: TextStyle(
-                fontWeight: FontWeight.w900,
+                fontWeight: NataloWeight.strong,
                 color: widget.isOfficial
                     ? NataloColors.officialGoldOnLight
                     : null)),
@@ -2155,7 +2156,7 @@ class _PostCaptionState extends State<PostCaption>
           TextSpan(
               text: 'selengkapnya',
               recognizer: _expandRecognizer,
-              style: const TextStyle(fontWeight: FontWeight.w800)),
+              style: const TextStyle(fontWeight: NataloWeight.strong)),
         ] else
           TextSpan(text: text),
       ]);
@@ -2203,7 +2204,7 @@ class _PostStatusBadge extends StatelessWidget {
             style: TextStyle(
               color: fg,
               fontSize: 12,
-              fontWeight: FontWeight.w900,
+              fontWeight: NataloWeight.strong,
             ),
           ),
           const SizedBox(width: 8),
@@ -2215,7 +2216,7 @@ class _PostStatusBadge extends StatelessWidget {
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
-                fontWeight: FontWeight.w700,
+                fontWeight: NataloWeight.body,
               ),
             ),
           ),
@@ -2399,7 +2400,7 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 12,
-                fontWeight: FontWeight.w800,
+                fontWeight: NataloWeight.strong,
               ),
             ),
           ),
@@ -2981,7 +2982,7 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: NataloWeight.onMedia,
                       ),
                     ),
                   ),
@@ -3015,7 +3016,7 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 12,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: NataloWeight.strong,
                             ),
                           ),
                         ],
@@ -3090,7 +3091,7 @@ class _PostMenuSheet extends StatelessWidget {
                 style: TextStyle(
                   color: cs.onSurface,
                   fontSize: 14,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
               onTap: () => Navigator.pop(context, _PostMenuAction.edit),
@@ -3105,7 +3106,7 @@ class _PostMenuSheet extends StatelessWidget {
                 style: TextStyle(
                   color: Color(0xFFDC2626),
                   fontSize: 14,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
               onTap: () => Navigator.pop(context, _PostMenuAction.delete),
@@ -3159,7 +3160,7 @@ class _EditCaptionSheetState extends State<_EditCaptionSheet> {
                 style: TextStyle(
                   color: cs.onSurface,
                   fontSize: 16,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
               const SizedBox(height: 4),
@@ -3169,7 +3170,7 @@ class _EditCaptionSheetState extends State<_EditCaptionSheet> {
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
                   fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: NataloWeight.body,
                 ),
               ),
               const SizedBox(height: 14),
@@ -3211,7 +3212,7 @@ class _EditCaptionSheetState extends State<_EditCaptionSheet> {
                         'Batal',
                         style: TextStyle(
                           color: cs.onSurface,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: NataloWeight.strong,
                         ),
                       ),
                     ),
@@ -3232,7 +3233,7 @@ class _EditCaptionSheetState extends State<_EditCaptionSheet> {
                         'Simpan',
                         style: TextStyle(
                           color: Colors.white,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: NataloWeight.strong,
                         ),
                       ),
                     ),
