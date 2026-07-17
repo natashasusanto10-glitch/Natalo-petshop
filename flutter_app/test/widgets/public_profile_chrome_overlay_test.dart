@@ -9,7 +9,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(overlayHarness(
       width: 393,
-      scrollFraction: 0,
+      t: 0,
       isOfficial: true,
     ));
 
@@ -20,7 +20,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(overlayHarness(
       width: 393,
-      scrollFraction: .8,
+      t: .8,
       isOfficial: true,
     ));
 
@@ -31,50 +31,20 @@ void main() {
       (tester) async {
     await tester.pumpWidget(overlayHarness(
       width: 393,
-      scrollFraction: 1,
+      t: 1,
       isOfficial: true,
     ));
 
     expect(find.byType(BackdropFilter), findsWidgets);
     expect(
         find.byKey(const Key('public_profile_grid_underlay')), findsOneWidget);
-    expect(find.byKey(const Key('public_tab_posts_pill')), findsOneWidget);
-  });
-
-  testWidgets('right edge moves left monotonically and reverses exactly',
-      (tester) async {
-    final rights = <double>[];
-    for (final fraction in <double>[0, .25, .5, .75, 1]) {
-      await tester.pumpWidget(overlayHarness(
-        width: 393,
-        scrollFraction: fraction,
-        isOfficial: false,
-      ));
-      rights.add(tester
-          .getRect(find.byKey(const Key('public_profile_tab_group')))
-          .right);
-    }
-    expect(rights[1], lessThanOrEqualTo(rights[0]));
-    expect(rights[2], lessThanOrEqualTo(rights[1]));
-    expect(rights[3], lessThanOrEqualTo(rights[2]));
-    expect(rights[4], lessThanOrEqualTo(rights[3]));
-
-    await tester.pumpWidget(overlayHarness(
-      width: 393,
-      scrollFraction: .5,
-      isOfficial: false,
-    ));
-    expect(
-      tester.getRect(find.byKey(const Key('public_profile_tab_group'))).right,
-      rights[2],
-    );
   });
 
   testWidgets('reduced motion removes blur but retains readable tint',
       (tester) async {
     await tester.pumpWidget(overlayHarness(
       width: 360,
-      scrollFraction: 1,
+      t: 1,
       isOfficial: false,
       disableAnimations: true,
     ));
@@ -88,54 +58,23 @@ void main() {
   });
 
   for (final width in <double>[320, 360, 393, 430]) {
-    testWidgets('all motion snapshots fit at width $width', (tester) async {
-      for (final fraction in <double>[0, .25, .5, .75, 1]) {
+    testWidgets('toolbar fits at width $width', (tester) async {
+      for (final t in <double>[0, .25, .5, .75, 1]) {
         await tester.pumpWidget(overlayHarness(
           width: width,
-          scrollFraction: fraction,
+          t: t,
           isOfficial: false,
         ));
-        final rect = tester.getRect(
-          find.byKey(const Key('public_profile_tab_group')),
-        );
-        expect(rect.left, greaterThanOrEqualTo(0));
-        expect(rect.right, lessThanOrEqualTo(width));
         expect(tester.takeException(), isNull);
       }
     });
   }
 
-  testWidgets('dark chrome retains selected tab and forwards tab taps',
-      (tester) async {
-    var tapped = -1;
-    await tester.pumpWidget(overlayHarness(
-      width: 320,
-      scrollFraction: 1,
-      isOfficial: false,
-      initialIndex: 1,
-      themeMode: ThemeMode.dark,
-      onTabTap: (index) => tapped = index,
-    ));
-
-    final selected = tester.widget<Semantics>(
-      find
-          .ancestor(
-            of: find.byTooltip('Video'),
-            matching: find.byType(Semantics),
-          )
-          .first,
-    );
-    expect(selected.properties.selected, isTrue);
-    await tester.tap(find.byTooltip('Belanja'));
-    await tester.pumpAndSettle();
-    expect(tapped, 2);
-  });
-
   testWidgets('only real chrome controls intercept the grid', (tester) async {
     var gridTaps = 0;
     await tester.pumpWidget(overlayHarness(
       width: 393,
-      scrollFraction: 1,
+      t: 1,
       isOfficial: false,
       onGridTap: () => gridTaps++,
     ));
@@ -317,12 +256,9 @@ class _NonlinearAccessibilityScaler extends TextScaler {
 
 Widget overlayHarness({
   required double width,
-  required double scrollFraction,
+  required double t,
   required bool isOfficial,
   bool disableAnimations = false,
-  int initialIndex = 0,
-  ThemeMode themeMode = ThemeMode.light,
-  ValueChanged<int>? onTabTap,
   VoidCallback? onGridTap,
 }) {
   final profile = PublicProfile(
@@ -332,52 +268,40 @@ Widget overlayHarness({
     isOfficial: isOfficial,
   );
   return MaterialApp(
-    themeMode: themeMode,
-    theme: ThemeData.light(),
-    darkTheme: ThemeData.dark(),
     home: MediaQuery(
       data: MediaQueryData(
         size: Size(width, 852),
         padding: const EdgeInsets.only(top: 47),
         disableAnimations: disableAnimations,
       ),
-      child: DefaultTabController(
-        length: 3,
-        initialIndex: initialIndex,
-        child: Builder(builder: (context) {
-          final metrics = PublicProfileHeaderMetrics.resolve(context, profile);
-          final scrollOffset = metrics.scrollSpaceHeight * scrollFraction;
-          return Scaffold(
-            body: SizedBox(
-              width: width,
-              height: 852,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: GestureDetector(
-                      key: const Key('public_profile_grid_underlay'),
-                      behavior: HitTestBehavior.opaque,
-                      onTap: onGridTap,
-                    ),
+      child: Builder(builder: (context) {
+        final metrics = PublicProfileHeaderMetrics.resolve(context, profile);
+        return Scaffold(
+          body: SizedBox(
+            width: width,
+            height: 852,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: GestureDetector(
+                    key: const Key('public_profile_grid_underlay'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onGridTap,
                   ),
-                  Positioned.fill(
-                    child: PublicProfileChromeOverlay(
-                      profile: profile,
-                      controller: DefaultTabController.of(context),
-                      scrollOffset: scrollOffset,
-                      metrics: metrics,
-                      onBack: () {},
-                      onShareProfile: () {},
-                      onOverflow: isOfficial ? null : () {},
-                      onTabTap: onTabTap,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                PublicProfileChromeOverlay(
+                  profile: profile,
+                  t: t,
+                  metrics: metrics,
+                  onBack: () {},
+                  onShareProfile: () {},
+                  onOverflow: isOfficial ? null : () {},
+                ),
+              ],
             ),
-          );
-        }),
-      ),
+          ),
+        );
+      }),
     ),
   );
 }

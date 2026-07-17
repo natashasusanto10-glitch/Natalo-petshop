@@ -1,5 +1,3 @@
-import 'dart:ui' show lerpDouble;
-
 import 'package:flutter/material.dart';
 
 import '../constants/official_brand.dart';
@@ -81,43 +79,29 @@ class PublicProfileHeaderMetrics {
 
 class PublicProfileChromeOverlay extends StatelessWidget {
   final PublicProfile profile;
-  final TabController controller;
-  final double scrollOffset;
+  final double t;
   final PublicProfileHeaderMetrics metrics;
   final VoidCallback onBack;
   final VoidCallback? onShareProfile;
   final VoidCallback? onOverflow;
-  final ValueChanged<int>? onTabTap;
 
   const PublicProfileChromeOverlay({
     super.key,
     required this.profile,
-    required this.controller,
-    required this.scrollOffset,
+    required this.t,
     required this.metrics,
     required this.onBack,
     this.onShareProfile,
     this.onOverflow,
-    this.onTabTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
     final motion = PublicProfileHeaderMotion.resolve(
-      scrollOffset: scrollOffset,
-      // The outer sliver consumes the complete spacer before the inner grid
-      // owns the scroll. Keeping choreography on that same distance means the
-      // glass transition is still in flight while the first row moves beneath
-      // the collapsed chrome, instead of completing before any underlap.
-      collapseDistance: metrics.scrollSpaceHeight,
+      t: t,
       reducedMotion: reducedMotion,
     );
-    final expandedTop =
-        metrics.topPadding + metrics.toolbarHeight + metrics.identityHeight;
-    final collapsedTop = metrics.topPadding + metrics.toolbarHeight;
-    final tabTop = lerpDouble(expandedTop, collapsedTop, motion.tabTravel)!;
-    final horizontalInset = lerpDouble(0, 16, motion.tabTravel)!;
     final theme = Theme.of(context);
     // Satu layout terang untuk semua akun — tidak ada lagi chrome navy
     // khusus official. Chip mengambang bergaya Liquid Glass (blur +
@@ -125,135 +109,115 @@ class PublicProfileChromeOverlay extends StatelessWidget {
     // pola chrome IG saat grid ter-scroll ke bawah pill.
     final foreground = theme.colorScheme.onSurface;
 
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Positioned(
-          top: metrics.topPadding,
-          left: 4,
-          right: 4,
-          height: metrics.toolbarHeight,
-          child: Row(
-            children: [
-              _GlassControl(
-                opacity: motion.controlSurfaceOpacity,
-                reducedMotion: reducedMotion,
-                child: IconButton(
-                  onPressed: onBack,
-                  tooltip: 'Kembali',
-                  icon: Icon(Icons.arrow_back_rounded, color: foreground),
-                ),
-              ),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: profile.isOfficial
-                      ? Opacity(
-                          opacity: motion.compactIdentityOpacity,
-                          child: LiquidGlass(
-                            opacity: motion.controlSurfaceOpacity,
-                            reducedMotion: reducedMotion,
-                            borderRadius: BorderRadius.circular(21),
-                            child: Padding(
-                              padding:
-                                  const EdgeInsets.fromLTRB(5, 5, 12, 5),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const OfficialBrandAvatar(size: 26),
-                                  const SizedBox(width: 8),
-                                  Flexible(
-                                    child: Text(
-                                      kOfficialBrandName,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: foreground,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  const OfficialVerifiedBadge(size: 15),
-                                ],
-                              ),
-                            ),
-                          ),
-                        )
-                      : LiquidGlass(
-                          opacity: motion.controlSurfaceOpacity,
-                          reducedMotion: reducedMotion,
-                          borderRadius: BorderRadius.circular(21),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            child: Text(
-                              profile.displayHandle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: foreground,
-                                fontSize: 17,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                ),
-              ),
-              if (onShareProfile != null || onOverflow != null)
-                _GlassControl(
-                  opacity: motion.controlSurfaceOpacity,
-                  reducedMotion: reducedMotion,
-                  child: PopupMenuButton<_PublicProfileAction>(
-                    tooltip: 'Opsi lainnya',
-                    icon: Icon(Icons.more_horiz_rounded, color: foreground),
-                    onSelected: (action) {
-                      switch (action) {
-                        case _PublicProfileAction.share:
-                          onShareProfile?.call();
-                        case _PublicProfileAction.moderate:
-                          onOverflow?.call();
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      if (onShareProfile != null)
-                        const PopupMenuItem(
-                          value: _PublicProfileAction.share,
-                          child: Text('Bagikan profil'),
-                        ),
-                      if (onOverflow != null)
-                        const PopupMenuItem(
-                          value: _PublicProfileAction.moderate,
-                          child: Text('Laporkan atau blokir'),
-                        ),
-                    ],
-                  ),
-                )
-              else
-                const SizedBox(width: 48),
-            ],
-          ),
-        ),
-        Positioned(
-          key: const Key('public_profile_tab_group'),
-          top: tabTop,
-          left: horizontalInset,
-          right: horizontalInset,
-          height: metrics.tabHeight,
-          child: PublicProfileContentTabBar(
-            controller: controller,
-            labelOpacity: motion.labelOpacity,
-            pillOpacity: motion.pillOpacity,
-            underlineOpacity: motion.underlineOpacity,
+    return Positioned(
+      top: metrics.topPadding,
+      left: 4,
+      right: 4,
+      height: metrics.toolbarHeight,
+      child: Row(
+        children: [
+          _GlassControl(
+            opacity: motion.controlSurfaceOpacity,
             reducedMotion: reducedMotion,
-            onTap: onTabTap,
+            child: IconButton(
+              onPressed: onBack,
+              tooltip: 'Kembali',
+              icon: Icon(Icons.arrow_back_rounded, color: foreground),
+            ),
           ),
-        ),
-      ],
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: profile.isOfficial
+                  ? Opacity(
+                      opacity: motion.compactIdentityOpacity,
+                      child: LiquidGlass(
+                        opacity: motion.controlSurfaceOpacity,
+                        reducedMotion: reducedMotion,
+                        borderRadius: BorderRadius.circular(21),
+                        child: Padding(
+                          padding:
+                              const EdgeInsets.fromLTRB(5, 5, 12, 5),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const OfficialBrandAvatar(size: 26),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  kOfficialBrandName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: foreground,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const OfficialVerifiedBadge(size: 15),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )
+                  : LiquidGlass(
+                      opacity: motion.controlSurfaceOpacity,
+                      reducedMotion: reducedMotion,
+                      borderRadius: BorderRadius.circular(21),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          profile.displayHandle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: foreground,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+          if (onShareProfile != null || onOverflow != null)
+            _GlassControl(
+              opacity: motion.controlSurfaceOpacity,
+              reducedMotion: reducedMotion,
+              child: PopupMenuButton<_PublicProfileAction>(
+                tooltip: 'Opsi lainnya',
+                icon: Icon(Icons.more_horiz_rounded, color: foreground),
+                onSelected: (action) {
+                  switch (action) {
+                    case _PublicProfileAction.share:
+                      onShareProfile?.call();
+                    case _PublicProfileAction.moderate:
+                      onOverflow?.call();
+                  }
+                },
+                itemBuilder: (context) => [
+                  if (onShareProfile != null)
+                    const PopupMenuItem(
+                      value: _PublicProfileAction.share,
+                      child: Text('Bagikan profil'),
+                    ),
+                  if (onOverflow != null)
+                    const PopupMenuItem(
+                      value: _PublicProfileAction.moderate,
+                      child: Text('Laporkan atau blokir'),
+                    ),
+                ],
+              ),
+            )
+          else
+            const SizedBox(width: 48),
+        ],
+      ),
     );
   }
 }
