@@ -20,6 +20,7 @@ import '../utils/haptics.dart';
 import '../widgets/app_notification_button.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
+import '../widgets/calm_scroll_physics.dart';
 import 'feed_media_picker_screen.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/origin_expansion_route.dart';
@@ -388,6 +389,8 @@ class _ProfilePageState extends State<_ProfilePage>
                   indicatorColor: _brandBlue,
                   refreshBackdropColor: cs.surface,
                   child: NestedScrollView(
+                    // Fling diredam ala IG — lihat CalmScrollPhysics.
+                    physics: const CalmScrollPhysics(),
                     headerSliverBuilder: (context, innerScrolled) => [
                       // Header IG bersama — komponen sama dengan profil
                       // publik/orang lain (avatar kiri + stats horizontal +
