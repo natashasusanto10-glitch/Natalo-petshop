@@ -1408,18 +1408,16 @@ class _PostFeedItemState extends State<_PostFeedItem>
             isOfficial: widget.memberIsOfficial,
             onMenuTap: widget.onMenuTap,
           ),
-        // Double-tap detector wrap media: signature Instagram-feel "tap
-        // dua kali untuk like". Single tap ke media tetap fall-through
-        // ke gesture detector dalam (mis. _InlineVideoPlayer onTap →
-        // fullscreen). PageView swipe horizontal di carousel juga tetap
-        // jalan karena swipe ≠ tap gesture.
+        // Double-tap detector membungkus media — HANYA untuk FOTO/carousel.
+        // Untuk VIDEO, gesture (single-tap fullscreen + double-tap like)
+        // ditangani di dalam _InlineVideoPlayer (detector yang membungkus
+        // HANYA layer media, dengan kontrol mute/retry sebagai sibling di
+        // atasnya) supaya kontrol tetap instan (pola feed) — video route-nya
+        // di-forward balik ke handler _PostFeedItem via callback di bawah.
         GestureDetector(
           behavior: HitTestBehavior.opaque,
-          // Single tap video → fullscreen (ditunda framework karena onDoubleTap
-          // juga terpasang di detector yang SAMA). Foto: single tap no-op.
-          onTap: post.isVideo ? _handleVideoSingleTap : null,
-          onDoubleTapDown: _rememberHeartBurstPosition,
-          onDoubleTap: _handleDoubleTap,
+          onDoubleTapDown: post.isVideo ? null : _rememberHeartBurstPosition,
+          onDoubleTap: post.isVideo ? null : _handleDoubleTap,
           child: Stack(
             children: [
               _PostMediaSurface(
@@ -1428,6 +1426,9 @@ class _PostFeedItemState extends State<_PostFeedItem>
                 registerVideoUrl: widget.registerVideoUrl,
                 handoffSessionId: widget.handoffSessionId,
                 onVideoAnchorReady: _rememberVideoAnchor,
+                onVideoMediaSingleTap: _handleVideoSingleTap,
+                onVideoMediaDoubleTapDown: _rememberHeartBurstPosition,
+                onVideoMediaDoubleTap: _handleDoubleTap,
               ),
               if (post.isVideo)
                 Positioned(
@@ -2233,6 +2234,11 @@ class _PostMediaSurface extends StatelessWidget {
   final void Function(String sessionId, String url) registerVideoUrl;
   final String? handoffSessionId;
   final void Function(String postId, GlobalKey anchorKey)? onVideoAnchorReady;
+  // Gesture area media video — diteruskan ke _InlineVideoPlayer supaya
+  // tap/double-tap video di-handle _PostFeedItem (kontrol tetap instan).
+  final VoidCallback? onVideoMediaSingleTap;
+  final void Function(TapDownDetails)? onVideoMediaDoubleTapDown;
+  final VoidCallback? onVideoMediaDoubleTap;
 
   const _PostMediaSurface({
     required this.post,
@@ -2240,6 +2246,9 @@ class _PostMediaSurface extends StatelessWidget {
     required this.registerVideoUrl,
     required this.handoffSessionId,
     this.onVideoAnchorReady,
+    this.onVideoMediaSingleTap,
+    this.onVideoMediaDoubleTapDown,
+    this.onVideoMediaDoubleTap,
   });
 
   @override
@@ -2271,6 +2280,9 @@ class _PostMediaSurface extends StatelessWidget {
             thumbnailUrl: post.thumbnailUrl,
             aspectRatio: aspectRatio,
             onAnchorReady: onVideoAnchorReady,
+            onMediaSingleTap: onVideoMediaSingleTap,
+            onMediaDoubleTapDown: onVideoMediaDoubleTapDown,
+            onMediaDoubleTap: onVideoMediaDoubleTap,
           ),
         FeedContentType.carousel => Hero(
             tag: 'post-thumb-${post.id}',
@@ -2672,6 +2684,16 @@ class _InlineVideoPlayer extends StatefulWidget {
   final double aspectRatio;
   final void Function(String postId, GlobalKey anchorKey)? onAnchorReady;
 
+  /// Gesture pada AREA MEDIA (bukan kontrol). Dipasang di detector yang
+  /// membungkus HANYA layer media (hitam+video+thumbnail+spinner). Kontrol
+  /// (mute, retry) adalah SIBLING di ATAS detector ini — tap kontrol
+  /// terserap dulu → arena double-tap media tak pernah aktif → kontrol
+  /// instan (pola sama seperti feed). Video mengalihkan tap/double-tap ke
+  /// _PostFeedItem lewat callback ini.
+  final VoidCallback? onMediaSingleTap;
+  final void Function(TapDownDetails)? onMediaDoubleTapDown;
+  final VoidCallback? onMediaDoubleTap;
+
   const _InlineVideoPlayer({
     required this.postId,
     required this.coordinator,
@@ -2681,6 +2703,9 @@ class _InlineVideoPlayer extends StatefulWidget {
     required this.aspectRatio,
     this.dormant = false,
     this.onAnchorReady,
+    this.onMediaSingleTap,
+    this.onMediaDoubleTapDown,
+    this.onMediaDoubleTap,
   });
 
   @override
@@ -2869,148 +2894,164 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     return VisibilityDetector(
       key: ValueKey('inline-video-${widget.postId}'),
       onVisibilityChanged: _onVisibilityChanged,
-      child: GestureDetector(
-        key: _anchorKey,
-        behavior: HitTestBehavior.opaque,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Container(color: Colors.black),
-            if (ready)
-              ClipRect(
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: controller.value.size.width > 0
-                        ? controller.value.size.width
-                        : 100,
-                    height: controller.value.size.height > 0
-                        ? controller.value.size.height
-                        : 100,
-                    child: VideoPlayer(controller),
-                  ),
-                ),
-              )
-            else if (widget.thumbnailUrl != null &&
-                widget.thumbnailUrl!.trim().isNotEmpty)
-              _ImageSurface(
-                imageUrl: widget.thumbnailUrl!,
-                placeholderIcon: Icons.video_collection_outlined,
-              )
-            else
-              const _MediaPlaceholder(icon: Icons.video_collection_outlined),
-            // Saat controller sudah initialized tetapi frame pertamanya belum
-            // terbukti keluar, pertahankan thumbnail. Ini mencegah surface
-            // beku/black terlihat sementara audio gate dan recovery bekerja.
-            if (ready &&
-                !hasVisualOutput &&
-                widget.thumbnailUrl != null &&
-                widget.thumbnailUrl!.trim().isNotEmpty)
-              _ImageSurface(
-                imageUrl: widget.thumbnailUrl!,
-                placeholderIcon: Icons.video_collection_outlined,
-              ),
-            if (loading)
-              const Center(
-                child: SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.4,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            if (hasError && !widget.dormant)
-              Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Text(
-                        'Video belum bisa diputar',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Media detector — membungkus HANYA layer media. Kontrol (mute,
+          // retry) di bawah adalah SIBLING di ATAS detector ini (pola feed):
+          // tap kontrol terserap dulu → arena double-tap media tak aktif →
+          // kontrol instan. _anchorKey WAJIB tetap di sini (morph transition
+          // anchor; bounds tak berubah krn ini child pertama full-size Stack).
+          GestureDetector(
+            key: _anchorKey,
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.dormant ? null : widget.onMediaSingleTap,
+            onDoubleTapDown: widget.onMediaDoubleTapDown,
+            onDoubleTap: widget.onMediaDoubleTap,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Container(color: Colors.black),
+                if (ready)
+                  ClipRect(
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: controller.value.size.width > 0
+                            ? controller.value.size.width
+                            : 100,
+                        height: controller.value.size.height > 0
+                            ? controller.value.size.height
+                            : 100,
+                        child: VideoPlayer(controller),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _onRetry,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.16),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.55),
-                          ),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.refresh_rounded,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                            SizedBox(width: 6),
-                            Text(
-                              'Coba lagi',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
+                  )
+                else if (widget.thumbnailUrl != null &&
+                    widget.thumbnailUrl!.trim().isNotEmpty)
+                  _ImageSurface(
+                    imageUrl: widget.thumbnailUrl!,
+                    placeholderIcon: Icons.video_collection_outlined,
+                  )
+                else
+                  const _MediaPlaceholder(
+                      icon: Icons.video_collection_outlined),
+                // Saat controller sudah initialized tetapi frame pertamanya
+                // belum terbukti keluar, pertahankan thumbnail. Ini mencegah
+                // surface beku/black terlihat sementara audio gate dan
+                // recovery bekerja.
+                if (ready &&
+                    !hasVisualOutput &&
+                    widget.thumbnailUrl != null &&
+                    widget.thumbnailUrl!.trim().isNotEmpty)
+                  _ImageSurface(
+                    imageUrl: widget.thumbnailUrl!,
+                    placeholderIcon: Icons.video_collection_outlined,
+                  ),
+                if (loading)
+                  const Center(
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: Colors.white,
                       ),
                     ),
-                  ],
-                ),
-              ),
-            // Ikon mute pojok kanan bawah — mengikuti feedMuted global.
-            if (ready && !hasError && !widget.dormant)
-              Positioned(
-                right: 10,
-                bottom: 10,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _toggleMute,
-                  child: Container(
-                    width: 32,
-                    height: 32,
+                  ),
+              ],
+            ),
+          ),
+          // ── Kontrol: SIBLING di ATAS media detector (bukan child-nya) ──
+          if (hasError && !widget.dormant)
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.55),
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(999),
                     ),
-                    child: Icon(
-                      muted
-                          ? Icons.volume_off_rounded
-                          : Icons.volume_up_rounded,
-                      color: Colors.white,
-                      size: 16,
+                    child: const Text(
+                      'Video belum bisa diputar',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _onRetry,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.55),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.refresh_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            'Coba lagi',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          // Ikon mute pojok kanan bawah — mengikuti feedMuted global.
+          if (ready && !hasError && !widget.dormant)
+            Positioned(
+              right: 10,
+              bottom: 10,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _toggleMute,
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    muted
+                        ? Icons.volume_off_rounded
+                        : Icons.volume_up_rounded,
+                    color: Colors.white,
+                    size: 16,
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
