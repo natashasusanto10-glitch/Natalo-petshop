@@ -1497,7 +1497,8 @@ class _PreviewVideoPlayerState extends State<_PreviewVideoPlayer> {
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 12,
-                    fontWeight: NataloWeight.strong,
+                    // Error video over-media → onMedia (selaras post detail).
+                    fontWeight: NataloWeight.onMedia,
                   ),
                 ),
               ),
