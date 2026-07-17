@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../config/api_config.dart';
@@ -1127,7 +1128,7 @@ class _PostTile extends StatelessWidget {
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 10.5,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: NataloWeight.strong,
                               height: 1,
                             ),
                           ),
@@ -1154,7 +1155,7 @@ class _PostTile extends StatelessWidget {
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 10.5,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: NataloWeight.strong,
                           height: 1,
                         ),
                       ),
@@ -1276,7 +1277,7 @@ class _ProfileContentError extends StatelessWidget {
               style: TextStyle(
                 color: cs.onSurfaceVariant,
                 fontSize: 13,
-                fontWeight: FontWeight.w500,
+                fontWeight: NataloWeight.body,
               ),
             ),
             const SizedBox(height: 14),
@@ -1328,7 +1329,7 @@ class _EmptyPosts extends StatelessWidget {
               style: TextStyle(
                 color: cs.onSurface,
                 fontSize: 14,
-                fontWeight: FontWeight.w800,
+                fontWeight: NataloWeight.strong,
                 height: 1.2,
               ),
             ),
@@ -1364,7 +1365,7 @@ class _NotFoundView extends StatelessWidget {
               style: TextStyle(
                 color: cs.onSurface,
                 fontSize: 16,
-                fontWeight: FontWeight.w900,
+                fontWeight: NataloWeight.strong,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1374,7 +1375,7 @@ class _NotFoundView extends StatelessWidget {
               style: TextStyle(
                 color: cs.onSurfaceVariant,
                 fontSize: 13,
-                fontWeight: FontWeight.w600,
+                fontWeight: NataloWeight.body,
               ),
               textAlign: TextAlign.center,
             ),

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 import 'package:video_player/video_player.dart';
 
 import 'package:share_plus/share_plus.dart';
@@ -499,7 +500,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
             style: TextStyle(
               color: cs.onSurface,
               fontSize: 18,
-              fontWeight: FontWeight.w800,
+              fontWeight: NataloWeight.strong,
             ),
           ),
         ),
@@ -660,7 +661,7 @@ class _DraftSection extends StatelessWidget {
           style: TextStyle(
             color: cs.onSurface,
             fontSize: 14,
-            fontWeight: FontWeight.w900,
+            fontWeight: NataloWeight.strong,
           ),
         ),
         const SizedBox(height: 10),
@@ -800,7 +801,7 @@ class _DraftCard extends StatelessWidget {
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 10.5,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: NataloWeight.body,
                 ),
               ),
             ],
@@ -838,7 +839,7 @@ class _DraftTypeBadge extends StatelessWidget {
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 9.5,
-                fontWeight: FontWeight.w800,
+                fontWeight: NataloWeight.strong,
               ),
             ),
           ],
@@ -1107,7 +1108,7 @@ class _StatusBadge extends StatelessWidget {
               style: TextStyle(
                 color: style.fg,
                 fontSize: style.label.length > 9 ? 9.2 : 10.5,
-                fontWeight: FontWeight.w900,
+                fontWeight: NataloWeight.strong,
                 height: 1,
               ),
             ),
@@ -1154,7 +1155,7 @@ class _EmptyPostsCard extends StatelessWidget {
           style: TextStyle(
             color: cs.onSurface,
             fontSize: 18,
-            fontWeight: FontWeight.w900,
+            fontWeight: NataloWeight.strong,
           ),
         ),
         const SizedBox(height: 7),
@@ -1165,7 +1166,7 @@ class _EmptyPostsCard extends StatelessWidget {
             color: cs.onSurfaceVariant,
             fontSize: 13,
             height: 1.4,
-            fontWeight: FontWeight.w600,
+            fontWeight: NataloWeight.body,
           ),
         ),
         const SizedBox(height: 18),
@@ -1182,7 +1183,7 @@ class _EmptyPostsCard extends StatelessWidget {
             ),
             child: const Text(
               'Buat Postingan',
-              style: TextStyle(fontWeight: FontWeight.w900),
+              style: TextStyle(fontWeight: NataloWeight.strong),
             ),
           ),
         ),
@@ -1203,7 +1204,7 @@ class _FilteredEmptyState extends StatelessWidget {
       style: TextStyle(
         color: Theme.of(context).colorScheme.onSurfaceVariant,
         fontSize: 13,
-        fontWeight: FontWeight.w700,
+        fontWeight: NataloWeight.body,
       ),
     );
   }
@@ -1303,7 +1304,7 @@ class _MemberPostPreviewScreenState extends State<_MemberPostPreviewScreen> {
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 12,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: NataloWeight.strong,
                       ),
                     ),
                   ),
@@ -1496,7 +1497,7 @@ class _PreviewVideoPlayerState extends State<_PreviewVideoPlayer> {
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 12,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
               ),

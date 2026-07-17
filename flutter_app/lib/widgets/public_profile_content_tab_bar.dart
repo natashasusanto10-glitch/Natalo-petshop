@@ -2,6 +2,7 @@ import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 
+import '../theme/natalo_text.dart';
 import 'liquid_glass.dart';
 
 /// Public-profile content navigation with distinct neutral tab pills.
@@ -246,7 +247,7 @@ class _PublicProfileTab extends StatelessWidget {
                             style: TextStyle(
                               color: foreground,
                               fontSize: 11,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: NataloWeight.strong,
                             ),
                           ),
                         ),

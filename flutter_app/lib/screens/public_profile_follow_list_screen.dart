@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
@@ -87,7 +88,7 @@ class _PublicProfileFollowListScreenState
           style: TextStyle(
             color: cs.onSurface,
             fontSize: 18,
-            fontWeight: FontWeight.w800,
+            fontWeight: NataloWeight.strong,
             height: 1.1,
           ),
         ),
@@ -108,11 +109,11 @@ class _PublicProfileFollowListScreenState
               indicatorWeight: 2,
               labelStyle: const TextStyle(
                 fontSize: 13,
-                fontWeight: FontWeight.w800,
+                fontWeight: NataloWeight.strong,
               ),
               unselectedLabelStyle: const TextStyle(
                 fontSize: 13,
-                fontWeight: FontWeight.w700,
+                fontWeight: NataloWeight.body,
               ),
               tabs: [
                 Tab(text: 'Pengikut $_followersCount'),
@@ -504,7 +505,7 @@ class _FollowUserTile extends StatelessWidget {
                                 ? NataloColors.officialGoldOnLight
                                 : cs.onSurface,
                             fontSize: 14,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: NataloWeight.strong,
                             height: 1.2,
                           ),
                         ),
@@ -524,7 +525,7 @@ class _FollowUserTile extends StatelessWidget {
                       style: TextStyle(
                         color: cs.onSurfaceVariant,
                         fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: NataloWeight.body,
                         height: 1.25,
                       ),
                     ),
@@ -545,7 +546,7 @@ class _FollowUserTile extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   textStyle: const TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: NataloWeight.strong,
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -571,7 +572,7 @@ class _FollowUserTile extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   textStyle: const TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: NataloWeight.strong,
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -685,7 +686,7 @@ class _FollowListMessage extends StatelessWidget {
               style: TextStyle(
                 color: cs.onSurface,
                 fontSize: 14,
-                fontWeight: FontWeight.w800,
+                fontWeight: NataloWeight.strong,
               ),
             ),
             if (actionLabel != null && onAction != null) ...[

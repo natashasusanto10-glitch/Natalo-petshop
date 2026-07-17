@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../constants/official_brand.dart';
 import '../models/public_profile.dart';
+import '../theme/natalo_text.dart';
 import 'liquid_glass.dart';
 import 'official_brand_avatar.dart';
 import 'public_profile_content_tab_bar.dart';
@@ -193,7 +194,7 @@ class PublicProfileChromeOverlay extends StatelessWidget {
                                       style: TextStyle(
                                         color: foreground,
                                         fontSize: 14,
-                                        fontWeight: FontWeight.w700,
+                                        fontWeight: NataloWeight.strong,
                                       ),
                                     ),
                                   ),
@@ -220,7 +221,7 @@ class PublicProfileChromeOverlay extends StatelessWidget {
                               style: TextStyle(
                                 color: foreground,
                                 fontSize: 17,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: NataloWeight.strong,
                               ),
                             ),
                           ),
