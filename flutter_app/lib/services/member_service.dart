@@ -171,6 +171,23 @@ class MemberService {
     }
   }
 
+  /// Ambil `nextAllowedAt` — kapan user boleh ganti username lagi
+  /// (cooldown 30 hari), null kalau sudah boleh ganti sekarang.
+  Future<DateTime?> fetchUsernameNextAllowedAt() async {
+    try {
+      final data = await apiClient.getJson('/api/me/username');
+      if (data is Map<String, dynamic> && data['nextAllowedAt'] is String) {
+        return DateTime.tryParse(data['nextAllowedAt'] as String);
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[memberService.fetchUsernameNextAllowedAt] $e');
+      }
+      return null;
+    }
+  }
+
   /// Set / change username. Server validate + reserve 30 hari handle
   /// lama. Return updated username pada sukses, throw ApiException
   /// kalau gagal (caller display error.message).

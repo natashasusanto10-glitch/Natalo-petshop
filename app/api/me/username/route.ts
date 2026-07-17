@@ -15,6 +15,8 @@ import {
   validateUsernameFormat,
   setUserUsername,
   normalizeUsername,
+  UsernameCooldownError,
+  USERNAME_CHANGE_COOLDOWN_DAYS,
 } from "@/lib/username";
 
 export async function GET() {
@@ -34,9 +36,26 @@ export async function GET() {
     return NextResponse.json({ error: "User tidak ditemukan." }, { status: 404 });
   }
 
+  // Ganti pertama kali (dari auto-assign registrasi) selalu gratis —
+  // cooldown baru berlaku mulai ganti kedua. Lihat setUserUsername.
+  const priorChangeCount = await prisma.usernameHistory.count({
+    where: { userId: session.sub },
+  });
+  const nextAllowedAt =
+    priorChangeCount > 0 && user.usernameUpdatedAt
+      ? new Date(
+          user.usernameUpdatedAt.getTime() +
+            USERNAME_CHANGE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
+        )
+      : null;
+
   return NextResponse.json({
     username: user.username,
     usernameUpdatedAt: user.usernameUpdatedAt?.toISOString() ?? null,
+    nextAllowedAt:
+      nextAllowedAt && nextAllowedAt > new Date()
+        ? nextAllowedAt.toISOString()
+        : null,
   });
 }
 
@@ -72,6 +91,16 @@ export async function PATCH(request: NextRequest) {
     const result = await setUserUsername(session.sub, normalized);
     return NextResponse.json({ ok: true, username: result.username });
   } catch (error) {
+    if (error instanceof UsernameCooldownError) {
+      return NextResponse.json(
+        {
+          error: `Kamu bisa ganti username lagi pada ${error.nextAllowedAt.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}.`,
+          code: "COOLDOWN",
+          nextAllowedAt: error.nextAllowedAt.toISOString(),
+        },
+        { status: 429 },
+      );
+    }
     const message = error instanceof Error ? error.message : "UNKNOWN";
     if (message === "USERNAME_TAKEN") {
       return NextResponse.json(

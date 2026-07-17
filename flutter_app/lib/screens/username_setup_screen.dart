@@ -31,6 +31,10 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
   bool _saving = false;
   UsernameAvailability? _result;
   String? _formatError;
+  DateTime? _nextAllowedAt;
+
+  bool get _inCooldown =>
+      _nextAllowedAt != null && _nextAllowedAt!.isAfter(DateTime.now());
 
   @override
   void initState() {
@@ -38,6 +42,10 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
     final current = memberStore.profile?.username ?? '';
     _controller = TextEditingController(text: current);
     _controller.addListener(_onChanged);
+    memberService.fetchUsernameNextAllowedAt().then((value) {
+      if (!mounted) return;
+      setState(() => _nextAllowedAt = value);
+    });
   }
 
   @override
@@ -99,6 +107,7 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
     if (raw.isEmpty) return false;
     if (_formatError != null) return false;
     if (_checking || _saving) return false;
+    if (_inCooldown && raw != memberStore.profile?.username) return false;
     // Same as current → save no-op tapi user mungkin mau "konfirmasi", OK enable.
     if (raw == memberStore.profile?.username) return true;
     return _result?.available == true;
@@ -114,8 +123,14 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
       if (!mounted) return;
       // Optimistic sync to memberStore biar UI lain instant update.
       final current = memberStore.profile;
+      final wasChanged = current?.username != newUsername;
       if (current != null) {
         memberStore.setProfile(current.copyWith(username: newUsername));
+      }
+      if (wasChanged) {
+        setState(
+          () => _nextAllowedAt = DateTime.now().add(const Duration(days: 30)),
+        );
       }
       AppHaptics.success();
       AppToast.show(
@@ -173,14 +188,19 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
           const SizedBox(height: 6),
           Text(
             'Username dipakai untuk @mention di komentar/caption dan '
-            'URL profile kamu. Ganti kapan aja — handle lama akan '
-            'di-reserve 30 hari supaya tidak diambil orang lain.',
+            'URL profile kamu. Bisa diganti maksimal sekali tiap 30 hari — '
+            'handle lama akan di-reserve 30 hari supaya tidak diambil '
+            'orang lain.',
             style: TextStyle(
               fontSize: 13,
               color: cs.onSurfaceVariant,
               height: 1.4,
             ),
           ),
+          if (_inCooldown) ...[
+            const SizedBox(height: 14),
+            _CooldownBanner(nextAllowedAt: _nextAllowedAt!),
+          ],
           const SizedBox(height: 20),
           _UsernameField(
             controller: _controller,
@@ -220,6 +240,49 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
                       ),
                     )
                   : const Text('Simpan Username'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CooldownBanner extends StatelessWidget {
+  final DateTime nextAllowedAt;
+  const _CooldownBanner({required this.nextAllowedAt});
+
+  static const _months = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final d = nextAllowedAt;
+    final formatted = '${d.day} ${_months[d.month - 1]} ${d.year}';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFED7AA)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.access_time_rounded,
+              color: Color(0xFFD97706), size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Kamu bisa ganti username lagi pada $formatted.',
+              style: const TextStyle(
+                color: Color(0xFF92400E),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                height: 1.4,
+              ),
             ),
           ),
         ],
@@ -426,6 +489,7 @@ class _RulesPanel extends StatelessWidget {
           const _RuleLine('Tidak boleh diawali atau diakhiri titik'),
           const _RuleLine('Tidak boleh dua titik berurutan'),
           const _RuleLine('Handle lama di-reserve 30 hari setelah diganti'),
+          const _RuleLine('Ganti username lagi baru bisa 30 hari kemudian'),
         ],
       ),
     );
