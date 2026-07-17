@@ -49,7 +49,16 @@ class PublicProfileHeaderMetrics {
       final painter = TextPainter(
         text: TextSpan(
           text: bioText,
-          style: const TextStyle(fontSize: 13, height: 1.4),
+          // WAJIB sama dengan font produksi (app_theme.dart:55-56) —
+          // advance-width glyph beda antar font mengubah jumlah baris
+          // WRAP, jadi salah font → salah ukur baris → tinggi kurang →
+          // tab menimpa aksi / header ter-clip di device.
+          style: const TextStyle(
+            fontSize: 13,
+            height: 1.4,
+            fontFamily: 'PlusJakartaSans',
+            fontFamilyFallback: ['Roboto', 'Arial'],
+          ),
         ),
         maxLines: 2,
         textDirection: TextDirection.ltr,
