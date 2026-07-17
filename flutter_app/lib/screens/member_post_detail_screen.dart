@@ -11,6 +11,7 @@ import 'package:visibility_detector/visibility_detector.dart';
 
 import '../config/api_config.dart';
 import '../features/feed/layout/postingan_media_aspect_ratio.dart';
+import '../features/feed/widgets/feed_post_shared_widgets.dart';
 import '../features/feed/video/post_video_coordinator.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../features/feed/video/video_player_session.dart';
@@ -1246,7 +1247,15 @@ class _PostFeedItemState extends State<_PostFeedItem>
   late final AnimationController _heartBurstController;
   late final Animation<double> _burstScale;
   late final Animation<double> _burstOpacity;
+  late final Animation<double> _burstTravel;
   Offset? _heartBurstPosition;
+  final GlobalKey _likeButtonKey = GlobalKey();
+  OverlayEntry? _flyingHeartEntry;
+
+  // Anchor key video inline (dilaporkan lewat onVideoAnchorReady) — dipakai
+  // outer detector untuk memicu fullscreen saat single tap (menggantikan
+  // onTap milik _InlineVideoPlayer, supaya single & double tap satu detector).
+  GlobalKey? _videoAnchorKey;
 
   @override
   void initState() {
@@ -1323,10 +1332,18 @@ class _PostFeedItemState extends State<_PostFeedItem>
         weight: 37,
       ),
     ]).animate(_heartBurstController);
+
+    // Terbang ke tombol like: mulai setelah pop (0.5) lalu melesat easeIn.
+    _burstTravel = CurvedAnimation(
+      parent: _heartBurstController,
+      curve: const Interval(0.5, 1.0, curve: Curves.easeInCubic),
+    );
   }
 
   @override
   void dispose() {
+    _flyingHeartEntry?.remove();
+    _flyingHeartEntry = null;
     _heartScaleController.dispose();
     _heartBurstController.dispose();
     super.dispose();
@@ -1342,7 +1359,14 @@ class _PostFeedItemState extends State<_PostFeedItem>
   }
 
   void _rememberHeartBurstPosition(TapDownDetails details) {
-    _heartBurstPosition = details.localPosition;
+    _heartBurstPosition = details.globalPosition;
+  }
+
+  Offset? _resolveLikeCenter() {
+    final box =
+        _likeButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return box.localToGlobal(box.size.center(Offset.zero));
   }
 
   void _handleDoubleTap() {
@@ -1354,7 +1378,47 @@ class _PostFeedItemState extends State<_PostFeedItem>
     if (!widget.liked) {
       _handleLikeTap();
     }
-    _heartBurstController.forward(from: 0);
+    _showFlyingHeart();
+  }
+
+  void _showFlyingHeart() {
+    final overlay = Overlay.maybeOf(context);
+    if (overlay == null) return;
+    _flyingHeartEntry?.remove();
+    final tap = _heartBurstPosition;
+    final target = _resolveLikeCenter();
+    final entry = OverlayEntry(
+      builder: (context) => IgnorePointer(
+        child: AnimatedBuilder(
+          animation: _heartBurstController,
+          builder: (context, _) => feedPostBuildFlyingBurstHeart(
+            tap: tap,
+            target: target,
+            scale: _burstScale.value,
+            opacity: _burstOpacity.value,
+            travel: _burstTravel.value,
+            screenSize: MediaQuery.sizeOf(context),
+          ),
+        ),
+      ),
+    );
+    _flyingHeartEntry = entry;
+    overlay.insert(entry);
+    _heartBurstController.forward(from: 0).whenComplete(() {
+      _flyingHeartEntry?.remove();
+      _flyingHeartEntry = null;
+    });
+  }
+
+  void _rememberVideoAnchor(String postId, GlobalKey anchorKey) {
+    _videoAnchorKey = anchorKey;
+    widget.onVideoAnchorReady?.call(postId, anchorKey);
+  }
+
+  void _handleVideoSingleTap() {
+    final anchorKey = _videoAnchorKey;
+    if (anchorKey == null) return;
+    widget.onOpenScopedFeed?.call(widget.post.id, anchorKey);
   }
 
   @override
@@ -1392,11 +1456,12 @@ class _PostFeedItemState extends State<_PostFeedItem>
             isOfficial: widget.memberIsOfficial,
             onMenuTap: widget.onMenuTap,
           ),
-        // Double-tap detector wrap media: signature Instagram-feel "tap
-        // dua kali untuk like". Single tap ke media tetap fall-through
-        // ke gesture detector dalam (mis. _InlineVideoPlayer onTap →
-        // fullscreen). PageView swipe horizontal di carousel juga tetap
-        // jalan karena swipe ≠ tap gesture.
+        // Double-tap detector membungkus media — HANYA untuk FOTO/carousel.
+        // Untuk VIDEO, gesture (single-tap fullscreen + double-tap like)
+        // ditangani di dalam _InlineVideoPlayer (detector yang membungkus
+        // HANYA layer media, dengan kontrol mute/retry sebagai sibling di
+        // atasnya) supaya kontrol tetap instan (pola feed) — video route-nya
+        // di-forward balik ke handler _PostFeedItem via callback di bawah.
         GestureDetector(
           behavior: HitTestBehavior.opaque,
           onDoubleTapDown: post.isVideo ? null : _rememberHeartBurstPosition,
@@ -1408,13 +1473,10 @@ class _PostFeedItemState extends State<_PostFeedItem>
                 coordinator: widget.coordinator,
                 registerVideoUrl: widget.registerVideoUrl,
                 handoffSessionId: widget.handoffSessionId,
-                // Tap video → buka viewer feed scoped (swipeable) ke semua
-                // video user ini (konsisten dgn flow "Postingan Terkait").
-                // Coordinator handoff (§2.6) diurus di level halaman.
-                onVideoExpandRequested: (sessionId, anchorKey) {
-                  widget.onOpenScopedFeed?.call(sessionId, anchorKey);
-                },
-                onVideoAnchorReady: widget.onVideoAnchorReady,
+                onVideoAnchorReady: _rememberVideoAnchor,
+                onVideoMediaSingleTap: _handleVideoSingleTap,
+                onVideoMediaDoubleTapDown: _rememberHeartBurstPosition,
+                onVideoMediaDoubleTap: _handleDoubleTap,
               ),
               if (post.isVideo)
                 Positioned(
@@ -1429,56 +1491,6 @@ class _PostFeedItemState extends State<_PostFeedItem>
                     onMenuTap: widget.onMenuTap,
                   ),
                 ),
-              // Heart burst overlay — posisi mengikuti titik double-tap.
-              // IgnorePointer supaya tidak intercept tap berikutnya.
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: AnimatedBuilder(
-                    animation: _heartBurstController,
-                    builder: (context, _) {
-                      if (_burstOpacity.value == 0) {
-                        return const SizedBox.shrink();
-                      }
-                      final position = _heartBurstPosition;
-                      final progress = _heartBurstController.value;
-                      final heart = Opacity(
-                        opacity: _burstOpacity.value,
-                        child: Transform.translate(
-                          offset: Offset(0, -14 * progress),
-                          child: Transform.scale(
-                            scale: _burstScale.value,
-                            child: Transform.rotate(
-                              angle: -0.08,
-                              child: const Icon(
-                                Icons.favorite_rounded,
-                                color: Color(0xFFEF4444),
-                                size: 128,
-                                shadows: [
-                                  Shadow(color: Colors.black54, blurRadius: 28),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                      if (position == null) {
-                        return Center(child: heart);
-                      }
-                      return Stack(
-                        children: [
-                          Positioned(
-                            left: position.dx - 64,
-                            top: position.dy - 64,
-                            width: 128,
-                            height: 128,
-                            child: Center(child: heart),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ),
             ],
           ),
         ),
@@ -1500,6 +1512,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
               ScaleTransition(
                 scale: _heartScale,
                 child: NataloPostActionButton(
+                  key: _likeButtonKey,
                   type: NataloPostActionIconType.like,
                   isActive: liked,
                   iconSize: 30,
@@ -2219,17 +2232,22 @@ class _PostMediaSurface extends StatelessWidget {
   final PostVideoCoordinator coordinator;
   final void Function(String sessionId, String url) registerVideoUrl;
   final String? handoffSessionId;
-  final void Function(String sessionId, GlobalKey anchorKey)?
-      onVideoExpandRequested;
   final void Function(String postId, GlobalKey anchorKey)? onVideoAnchorReady;
+  // Gesture area media video — diteruskan ke _InlineVideoPlayer supaya
+  // tap/double-tap video di-handle _PostFeedItem (kontrol tetap instan).
+  final VoidCallback? onVideoMediaSingleTap;
+  final void Function(TapDownDetails)? onVideoMediaDoubleTapDown;
+  final VoidCallback? onVideoMediaDoubleTap;
 
   const _PostMediaSurface({
     required this.post,
     required this.coordinator,
     required this.registerVideoUrl,
     required this.handoffSessionId,
-    this.onVideoExpandRequested,
     this.onVideoAnchorReady,
+    this.onVideoMediaSingleTap,
+    this.onVideoMediaDoubleTapDown,
+    this.onVideoMediaDoubleTap,
   });
 
   @override
@@ -2260,8 +2278,10 @@ class _PostMediaSurface extends StatelessWidget {
             ),
             thumbnailUrl: post.thumbnailUrl,
             aspectRatio: aspectRatio,
-            onExpandRequested: onVideoExpandRequested,
             onAnchorReady: onVideoAnchorReady,
+            onMediaSingleTap: onVideoMediaSingleTap,
+            onMediaDoubleTapDown: onVideoMediaDoubleTapDown,
+            onMediaDoubleTap: onVideoMediaDoubleTap,
           ),
         FeedContentType.carousel => Hero(
             tag: 'post-thumb-${post.id}',
@@ -2661,8 +2681,17 @@ class _InlineVideoPlayer extends StatefulWidget {
   final String mediaUrl;
   final String? thumbnailUrl;
   final double aspectRatio;
-  final void Function(String sessionId, GlobalKey anchorKey)? onExpandRequested;
   final void Function(String postId, GlobalKey anchorKey)? onAnchorReady;
+
+  /// Gesture pada AREA MEDIA (bukan kontrol). Dipasang di detector yang
+  /// membungkus HANYA layer media (hitam+video+thumbnail+spinner). Kontrol
+  /// (mute, retry) adalah SIBLING di ATAS detector ini — tap kontrol
+  /// terserap dulu → arena double-tap media tak pernah aktif → kontrol
+  /// instan (pola sama seperti feed). Video mengalihkan tap/double-tap ke
+  /// _PostFeedItem lewat callback ini.
+  final VoidCallback? onMediaSingleTap;
+  final void Function(TapDownDetails)? onMediaDoubleTapDown;
+  final VoidCallback? onMediaDoubleTap;
 
   const _InlineVideoPlayer({
     required this.postId,
@@ -2672,8 +2701,10 @@ class _InlineVideoPlayer extends StatefulWidget {
     required this.thumbnailUrl,
     required this.aspectRatio,
     this.dormant = false,
-    this.onExpandRequested,
     this.onAnchorReady,
+    this.onMediaSingleTap,
+    this.onMediaDoubleTapDown,
+    this.onMediaDoubleTap,
   });
 
   @override
@@ -2844,10 +2875,6 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     }
   }
 
-  void _openFullscreen() {
-    widget.onExpandRequested?.call(widget.postId, _anchorKey);
-  }
-
   @override
   Widget build(BuildContext context) {
     final session = _boundSession;
@@ -2866,149 +2893,164 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     return VisibilityDetector(
       key: ValueKey('inline-video-${widget.postId}'),
       onVisibilityChanged: _onVisibilityChanged,
-      child: GestureDetector(
-        key: _anchorKey,
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.dormant ? null : _openFullscreen,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Container(color: Colors.black),
-            if (ready)
-              ClipRect(
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: controller.value.size.width > 0
-                        ? controller.value.size.width
-                        : 100,
-                    height: controller.value.size.height > 0
-                        ? controller.value.size.height
-                        : 100,
-                    child: VideoPlayer(controller),
-                  ),
-                ),
-              )
-            else if (widget.thumbnailUrl != null &&
-                widget.thumbnailUrl!.trim().isNotEmpty)
-              _ImageSurface(
-                imageUrl: widget.thumbnailUrl!,
-                placeholderIcon: Icons.video_collection_outlined,
-              )
-            else
-              const _MediaPlaceholder(icon: Icons.video_collection_outlined),
-            // Saat controller sudah initialized tetapi frame pertamanya belum
-            // terbukti keluar, pertahankan thumbnail. Ini mencegah surface
-            // beku/black terlihat sementara audio gate dan recovery bekerja.
-            if (ready &&
-                !hasVisualOutput &&
-                widget.thumbnailUrl != null &&
-                widget.thumbnailUrl!.trim().isNotEmpty)
-              _ImageSurface(
-                imageUrl: widget.thumbnailUrl!,
-                placeholderIcon: Icons.video_collection_outlined,
-              ),
-            if (loading)
-              const Center(
-                child: SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.4,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            if (hasError && !widget.dormant)
-              Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Text(
-                        'Video belum bisa diputar',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Media detector — membungkus HANYA layer media. Kontrol (mute,
+          // retry) di bawah adalah SIBLING di ATAS detector ini (pola feed):
+          // tap kontrol terserap dulu → arena double-tap media tak aktif →
+          // kontrol instan. _anchorKey WAJIB tetap di sini (morph transition
+          // anchor; bounds tak berubah krn ini child pertama full-size Stack).
+          GestureDetector(
+            key: _anchorKey,
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.dormant ? null : widget.onMediaSingleTap,
+            onDoubleTapDown: widget.onMediaDoubleTapDown,
+            onDoubleTap: widget.onMediaDoubleTap,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Container(color: Colors.black),
+                if (ready)
+                  ClipRect(
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: controller.value.size.width > 0
+                            ? controller.value.size.width
+                            : 100,
+                        height: controller.value.size.height > 0
+                            ? controller.value.size.height
+                            : 100,
+                        child: VideoPlayer(controller),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _onRetry,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.16),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.55),
-                          ),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.refresh_rounded,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                            SizedBox(width: 6),
-                            Text(
-                              'Coba lagi',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
+                  )
+                else if (widget.thumbnailUrl != null &&
+                    widget.thumbnailUrl!.trim().isNotEmpty)
+                  _ImageSurface(
+                    imageUrl: widget.thumbnailUrl!,
+                    placeholderIcon: Icons.video_collection_outlined,
+                  )
+                else
+                  const _MediaPlaceholder(
+                      icon: Icons.video_collection_outlined),
+                // Saat controller sudah initialized tetapi frame pertamanya
+                // belum terbukti keluar, pertahankan thumbnail. Ini mencegah
+                // surface beku/black terlihat sementara audio gate dan
+                // recovery bekerja.
+                if (ready &&
+                    !hasVisualOutput &&
+                    widget.thumbnailUrl != null &&
+                    widget.thumbnailUrl!.trim().isNotEmpty)
+                  _ImageSurface(
+                    imageUrl: widget.thumbnailUrl!,
+                    placeholderIcon: Icons.video_collection_outlined,
+                  ),
+                if (loading)
+                  const Center(
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: Colors.white,
                       ),
                     ),
-                  ],
-                ),
-              ),
-            // Ikon mute pojok kanan bawah — mengikuti feedMuted global.
-            if (ready && !hasError && !widget.dormant)
-              Positioned(
-                right: 10,
-                bottom: 10,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _toggleMute,
-                  child: Container(
-                    width: 32,
-                    height: 32,
+                  ),
+              ],
+            ),
+          ),
+          // ── Kontrol: SIBLING di ATAS media detector (bukan child-nya) ──
+          if (hasError && !widget.dormant)
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.55),
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(999),
                     ),
-                    child: Icon(
-                      muted
-                          ? Icons.volume_off_rounded
-                          : Icons.volume_up_rounded,
-                      color: Colors.white,
-                      size: 16,
+                    child: const Text(
+                      'Video belum bisa diputar',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _onRetry,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.55),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.refresh_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            'Coba lagi',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          // Ikon mute pojok kanan bawah — mengikuti feedMuted global.
+          if (ready && !hasError && !widget.dormant)
+            Positioned(
+              right: 10,
+              bottom: 10,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _toggleMute,
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    muted
+                        ? Icons.volume_off_rounded
+                        : Icons.volume_up_rounded,
+                    color: Colors.white,
+                    size: 16,
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
