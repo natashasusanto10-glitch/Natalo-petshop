@@ -25,12 +25,13 @@ import '../state/settings_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_ui.dart';
+import '../widgets/collapsing_header_delegate.dart';
 import '../widgets/moderation_action_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/origin_expansion_route.dart';
 import '../widgets/profile_grid_geometry.dart';
 import '../widgets/public_profile_chrome_overlay.dart';
-import '../widgets/public_profile_expanded_header.dart';
+import '../widgets/public_profile_identity_tab_header.dart';
 import 'member_post_detail_screen.dart';
 import 'public_profile_follow_list_screen.dart';
 
@@ -829,47 +830,61 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     }
     final profile = _profile!;
     final metrics = PublicProfileHeaderMetrics.resolve(context, profile);
+    final headerLeadInset = metrics.topPadding + metrics.toolbarHeight;
     final nestedScrollView = NestedScrollView(
       controller: _scrollController,
       headerSliverBuilder: (context, innerBoxIsScrolled) => [
-        SliverToBoxAdapter(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
+        // PINNED spacer (bukan SliverToBoxAdapter biasa) — sengaja. Sliver
+        // pinned lain di bawahnya (tab bar) selalu menempel ke Y=0 viewport
+        // begitu scroll penuh, TERLEPAS dari tinggi konten non-pinned di
+        // atasnya (mekanisme pinning Flutter: header pinned "nempel" ke tepi
+        // viewport, bukan ke posisi setelah sliver sebelumnya). Supaya tab
+        // bar berhenti TEPAT di bawah toolbar overlay (bukan di y=0 balik
+        // lagi), spacer ini juga harus pinned dgn minExtent==maxExtent —
+        // jadi ia sendiri yang "duduk" permanen di y=0..H, dan sliver
+        // pinned berikutnya otomatis bertumpuk tepat di bawahnya.
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: CollapsingHeaderDelegate(
+            minHeight: headerLeadInset,
+            maxHeight: headerLeadInset,
+            builder: (context, t) => SizedBox(
+              height: headerLeadInset,
             ),
-            child: Column(
-              children: [
-                SizedBox(
-                  height: metrics.topPadding + metrics.toolbarHeight,
-                ),
-                SizedBox(
-                  height: metrics.identityHeight,
-                  child: AnimatedBuilder(
-                    animation: chatStore,
-                    builder: (context, child) => PublicProfileExpandedHeader(
-                      profile: profile,
-                      followBusy: _followBusy,
-                      chatEnabled: chatStore.chatEnabled,
-                      onFollowToggle: profile.isOwner ? null : _toggleFollow,
-                      onFollowersTap: () =>
-                          _openFollowList(FollowListKind.followers),
-                      onFollowingTap: () =>
-                          _openFollowList(FollowListKind.following),
-                      onEditProfile: profile.isOwner
-                          ? () => Navigator.pushNamed(
-                                context,
-                                '/member/profile',
-                              )
-                          : null,
-                      onShareProfile: _shareProfile,
-                      onMessage: profile.isOfficial && !profile.isOwner
-                          ? () => Navigator.pushNamed(context, '/chat')
-                          : null,
-                    ),
-                  ),
-                ),
-                SizedBox(height: metrics.tabHeight),
-              ],
+          ),
+        ),
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: CollapsingHeaderDelegate(
+            minHeight: metrics.tabHeight,
+            maxHeight: metrics.identityHeight + metrics.tabHeight,
+            builder: (context, t) => AnimatedBuilder(
+              animation: chatStore,
+              builder: (context, child) => PublicProfileIdentityTabHeader(
+                profile: profile,
+                followBusy: _followBusy,
+                chatEnabled: chatStore.chatEnabled,
+                tabController: _tabController,
+                identityHeight: metrics.identityHeight,
+                tabHeight: metrics.tabHeight,
+                t: t,
+                onFollowToggle: profile.isOwner ? null : _toggleFollow,
+                onFollowersTap: () =>
+                    _openFollowList(FollowListKind.followers),
+                onFollowingTap: () =>
+                    _openFollowList(FollowListKind.following),
+                onEditProfile: profile.isOwner
+                    ? () => Navigator.pushNamed(
+                          context,
+                          '/member/profile',
+                        )
+                    : null,
+                onShareProfile: _shareProfile,
+                onMessage: profile.isOfficial && !profile.isOwner
+                    ? () => Navigator.pushNamed(context, '/chat')
+                    : null,
+                onTabTap: _onTabTapped,
+              ),
             ),
           ),
         ),
@@ -896,26 +911,35 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
           key: const Key('public_profile_grid_underlay'),
           child: refreshedContent,
         ),
-        Positioned.fill(
-          child: AnimatedBuilder(
-            animation: _scrollController,
-            builder: (context, child) => PublicProfileChromeOverlay(
+        AnimatedBuilder(
+          animation: _scrollController,
+          builder: (context, child) {
+            // Sliver leading (pinned spacer topPadding+toolbarHeight) kini
+            // mendahului sliver identity+tab, jadi ia ikut memakan
+            // scrollExtent sebelum identity mulai menyusut. Kurangi dulu
+            // supaya `t` di sini (crossfade chrome) tetap SAMA PERSIS dengan
+            // `t` yang dihitung CollapsingHeaderDelegate dari shrinkOffset
+            // lokal sliver identity — tanpa ini, chrome akan tampak "selesai"
+            // collapse jauh sebelum identity di bawahnya benar-benar habis.
+            final shrinkOffset = _scrollController.hasClients
+                ? (_scrollController.offset - headerLeadInset)
+                    .clamp(0.0, metrics.identityHeight)
+                    .toDouble()
+                : 0.0;
+            final t = metrics.identityHeight > 0
+                ? shrinkOffset / metrics.identityHeight
+                : 1.0;
+            return PublicProfileChromeOverlay(
               profile: profile,
-              controller: _tabController,
-              scrollOffset: _scrollController.hasClients
-                  ? _scrollController.offset
-                      .clamp(0.0, double.infinity)
-                      .toDouble()
-                  : 0,
+              t: t,
               metrics: metrics,
               onBack: () => Navigator.maybePop(context),
               onShareProfile: _shareProfile,
               onOverflow: !profile.isOwner && !profile.isOfficial
                   ? _openModeration
                   : null,
-              onTabTap: _onTabTapped,
-            ),
-          ),
+            );
+          },
         ),
       ],
     );

@@ -190,12 +190,15 @@ void main() {
     final dragPoint = tester.getBottomLeft(scrollView) + const Offset(200, -80);
     await tester.dragFrom(dragPoint, const Offset(0, -360));
     await tester.pump();
-    final chrome = find.byType(PublicProfileChromeOverlay);
-    expect(find.descendant(of: chrome, matching: find.text('Postingan')),
+    // Tab labels now render inside PublicProfileIdentityTabHeader's sliver
+    // (Key('public_profile_tab_group')), not inside PublicProfileChromeOverlay
+    // (which only owns the toolbar row since Task 2's refactor).
+    final tabGroup = find.byKey(const Key('public_profile_tab_group'));
+    expect(find.descendant(of: tabGroup, matching: find.text('Postingan')),
         findsOneWidget);
-    expect(find.descendant(of: chrome, matching: find.text('Video')),
+    expect(find.descendant(of: tabGroup, matching: find.text('Video')),
         findsOneWidget);
-    expect(find.descendant(of: chrome, matching: find.text('Belanja')),
+    expect(find.descendant(of: tabGroup, matching: find.text('Belanja')),
         findsOneWidget);
 
     final selected = tester.widget<Semantics>(
@@ -269,34 +272,56 @@ void main() {
     final outerPosition =
         tester.state<ScrollableState>(nestedScrollables.first).position;
     final metrics = overlay().metrics;
+    // The header sliver list now leads with a PINNED spacer reserving
+    // topPadding+toolbarHeight (fix for the tab-bar-under-status-bar
+    // regression) — that spacer consumes real scroll extent before the
+    // identity+tab sliver's own shrink begins, so every offset that targets
+    // "N% through the identity shrink" must add this inset first.
+    final headerLeadInset = metrics.topPadding + metrics.toolbarHeight;
+
+    // Midway through the identity shrink — well before the grid can reach
+    // the chrome — the glass must already be gradually fading in (never an
+    // instant snap from 0 straight to full opacity).
+    final midOffset = headerLeadInset + metrics.identityHeight * 0.75;
+    outerPosition.jumpTo(midOffset);
+    await tester.pump();
+    expect(overlay().t, closeTo(0.75, 0.01));
+    final midOpacities = tester
+        .widgetList<LiquidGlass>(find.byType(LiquidGlass))
+        .map((glass) => glass.opacity)
+        .toList();
+    expect(midOpacities, isNotEmpty);
+    expect(midOpacities.any((o) => o > 0 && o < 1), isTrue);
 
     // One logical pixel beyond identity collapse is the first moment the real
-    // grid enters beneath the collapsed chrome. The glass must still be in an
-    // intermediate phase here, not already snapped to its endpoint.
-    final intermediateOffset = metrics.identityHeight + 1;
+    // grid enters beneath the collapsed chrome. Chrome and the tab bar now
+    // share the exact same shrink progress `t` (the fix for the old
+    // independent-timing bug that used to let the chrome glass lag behind),
+    // so by the time t reaches 1 the glass has ALREADY finished fading in —
+    // there is no frame where the grid is visible beneath a still-partial
+    // chip.
+    final intermediateOffset = headerLeadInset + metrics.identityHeight + 1;
     outerPosition.jumpTo(intermediateOffset);
     await tester.pump();
     final intermediateTile = tester.getRect(
       find.byKey(const ValueKey('profile-post-geometry-0')),
     );
-    expect(overlay().scrollOffset, closeTo(intermediateOffset, 0.5));
+    expect(overlay().t, 1.0);
     expect(intermediateTile.top, lessThan(metrics.collapsedChromeHeight));
     expect(intermediateTile.bottom, greaterThan(0));
-    // Glass per-chip (Liquid Glass): saat intermediate, chip sudah mulai
-    // muncul tapi belum penuh — ada LiquidGlass dengan 0 < opacity < 1.
     final intermediateOpacities = tester
         .widgetList<LiquidGlass>(find.byType(LiquidGlass))
         .map((glass) => glass.opacity)
         .toList();
     expect(intermediateOpacities, isNotEmpty);
-    expect(intermediateOpacities.any((o) => o > 0 && o < 1), isTrue);
+    expect(intermediateOpacities.every((o) => o == 0 || o >= 0.99), isTrue);
 
     outerPosition.jumpTo(metrics.scrollSpaceHeight);
     await tester.pump();
     final collapsedTile = tester.getRect(
       find.byKey(const ValueKey('profile-post-geometry-0')),
     );
-    expect(overlay().scrollOffset, closeTo(metrics.scrollSpaceHeight, 0.5));
+    expect(overlay().t, 1.0);
     expect(collapsedTile.top, lessThanOrEqualTo(0.5));
     expect(collapsedTile.bottom, greaterThan(0));
     expect(find.byType(BackdropFilter), findsWidgets);
