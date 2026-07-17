@@ -11,7 +11,7 @@ const _feedActionTextShadowColor = Color(0xB3000000);
 const _feedActionIconSize = 30.0;
 const _feedActionStrokeWidth = 2.2;
 const _feedActionCountFontSize = 12.0;
-const _feedActionItemSpacing = 10.0;
+const _feedActionItemSpacing = 6.0;
 
 /// Rail aksi kanan feed video/foto — like, comment, share, save, more.
 /// Ekstraksi 1:1 dari feed_screen (ikon CustomPaint 30px stroke 2.2,
