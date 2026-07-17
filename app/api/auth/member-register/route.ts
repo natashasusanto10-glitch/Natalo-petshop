@@ -14,7 +14,7 @@ import {
   checkUsernameAvailability,
   generateUniqueUsername,
 } from "@/lib/username";
-import { grantWelcomeVoucher } from "@/lib/welcome-voucher";
+import { grantWelcomeVoucher, WELCOME_VOUCHER_CONFIG } from "@/lib/welcome-voucher";
 import bcrypt from "bcryptjs";
 
 const OTP_EXPIRES_MS = 10 * 60_000;
@@ -257,12 +257,21 @@ export async function POST(request: NextRequest) {
     // jalan → user baru tidak pernah dapat voucher selamat datang.
     // Kalau grant gagal, register tetap sukses (helper menelan error +
     // return null), user bisa dapat voucher manual nanti via admin grant.
-    await grantWelcomeVoucher(createdUser.id);
+    const welcomeVoucherCode = await grantWelcomeVoucher(createdUser.id);
 
     return NextResponse.json({
       ok: true,
       registered: true,
       user: createdUser,
+      // null kalau grant gagal/duplikat — Flutter skip popup kalau null.
+      welcomeVoucher: welcomeVoucherCode
+        ? {
+            code: welcomeVoucherCode,
+            discountAmount: WELCOME_VOUCHER_CONFIG.discountAmount,
+            minimumOrder: WELCOME_VOUCHER_CONFIG.minimumOrder,
+            expiresAfterDays: WELCOME_VOUCHER_CONFIG.expiresAfterDays,
+          }
+        : null,
     });
   }
 

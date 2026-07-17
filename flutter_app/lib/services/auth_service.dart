@@ -2,6 +2,52 @@ import '../models/member_profile.dart';
 import '../utils/read_only_mode.dart';
 import 'api_client.dart';
 
+/// Voucher selamat datang yang di-auto-grant server saat registrasi
+/// sukses (lihat lib/welcome-voucher.ts di backend). Null kalau grant
+/// gagal/duplikat — caller skip popup.
+class WelcomeVoucherInfo {
+  final String code;
+  final int discountAmount;
+  final int minimumOrder;
+  final int expiresAfterDays;
+
+  const WelcomeVoucherInfo({
+    required this.code,
+    required this.discountAmount,
+    required this.minimumOrder,
+    required this.expiresAfterDays,
+  });
+
+  static WelcomeVoucherInfo? fromApiJson(dynamic json) {
+    if (json is! Map<String, dynamic>) return null;
+    final code = json['code'];
+    final discountAmount = json['discountAmount'];
+    final minimumOrder = json['minimumOrder'];
+    final expiresAfterDays = json['expiresAfterDays'];
+    if (code is! String ||
+        discountAmount is! num ||
+        minimumOrder is! num ||
+        expiresAfterDays is! num) {
+      return null;
+    }
+    return WelcomeVoucherInfo(
+      code: code,
+      discountAmount: discountAmount.toInt(),
+      minimumOrder: minimumOrder.toInt(),
+      expiresAfterDays: expiresAfterDays.toInt(),
+    );
+  }
+}
+
+/// Hasil register step 2 (dengan OTP) — user yang baru dibuat + voucher
+/// welcome kalau berhasil di-grant.
+class RegisterResult {
+  final MemberProfile user;
+  final WelcomeVoucherInfo? welcomeVoucher;
+
+  const RegisterResult({required this.user, this.welcomeVoucher});
+}
+
 class AuthService {
   String? _lastSessionToken;
 
@@ -33,7 +79,7 @@ class AuthService {
   ///
   /// Match endpoint PWA POST /api/auth/member-register dengan dua mode di
   /// satu endpoint (otp empty = step 1, otp filled = step 2).
-  Future<MemberProfile?> register({
+  Future<RegisterResult?> register({
     required String name,
     // Username OPSIONAL — server auto-generate dari nama kalau tidak dikirim.
     // User bisa atur username sendiri nanti (UsernameSetupScreen).
@@ -73,7 +119,10 @@ class AuthService {
     // Step 2 (dengan OTP) return user. Step 1 return {message: "OTP terkirim"}.
     final user = data['user'];
     if (user is Map<String, dynamic>) {
-      return MemberProfile.fromApiJson(user);
+      return RegisterResult(
+        user: MemberProfile.fromApiJson(user),
+        welcomeVoucher: WelcomeVoucherInfo.fromApiJson(data['welcomeVoucher']),
+      );
     }
     return null;
   }

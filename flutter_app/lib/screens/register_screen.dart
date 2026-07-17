@@ -277,12 +277,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
         await prefs.remove(_kRegisterOtpCooldownKey);
       } catch (_) {}
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Akun berhasil dibuat. Silakan login.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+
+      final voucher = result.welcomeVoucher;
+      if (voucher != null) {
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => _WelcomeVoucherDialog(voucher: voucher),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Akun berhasil dibuat. Silakan login.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/member/login');
     } catch (error) {
       if (!mounted) return;
@@ -1360,6 +1371,245 @@ class _ResendOtpRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Rp1.234.567 — thousands separator titik, tanpa desimal.
+String _formatRupiah(int amount) {
+  final digits = amount.toString();
+  final buffer = StringBuffer();
+  for (var i = 0; i < digits.length; i++) {
+    final fromEnd = digits.length - i;
+    buffer.write(digits[i]);
+    if (fromEnd > 1 && fromEnd % 3 == 1) buffer.write('.');
+  }
+  return buffer.toString();
+}
+
+/// Popup voucher selamat datang — tampil sekali setelah registrasi
+/// sukses. Warna biru brand + aksen amber/coral, motif paw khas
+/// petshop. Tidak auto-dismiss — user tap salah satu tombol.
+class _WelcomeVoucherDialog extends StatelessWidget {
+  final WelcomeVoucherInfo voucher;
+  const _WelcomeVoucherDialog({required this.voucher});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: Container(
+          color: _brandBlue,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned(
+                    top: -40,
+                    right: -40,
+                    child: Container(
+                      width: 140,
+                      height: 140,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFFFAC775).withValues(alpha: 0.18),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: -20,
+                    left: -36,
+                    child: Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.08),
+                      ),
+                    ),
+                  ),
+                  const Positioned(
+                    top: 20,
+                    left: 22,
+                    child: Icon(Icons.pets_rounded,
+                        size: 18, color: Color(0x4DFFFFFF)),
+                  ),
+                  const Positioned(
+                    top: 60,
+                    right: 36,
+                    child: Icon(Icons.pets_rounded,
+                        size: 14, color: Color(0x40FFFFFF)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(22, 30, 22, 0),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFAC775),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Text(
+                            'Khusus member baru',
+                            style: TextStyle(
+                              color: Color(0xFF412402),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        const Text(
+                          'Selamat datang di Natalo!',
+                          style: TextStyle(
+                            color: Color(0xDDFFFFFF),
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Rp${_formatRupiah(voucher.discountAmount)}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 44,
+                            fontWeight: FontWeight.w700,
+                            height: 1.05,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'langsung potong belanja pertamamu',
+                          style: TextStyle(
+                            color: Color(0xBFFFFFFF),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 22, 16, 0),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _VoucherInfoCell(
+                        label: 'Min. belanja',
+                        value: 'Rp${_formatRupiah(voucher.minimumOrder)}',
+                      ),
+                      Container(
+                        width: 1,
+                        height: 28,
+                        color: Colors.white.withValues(alpha: 0.2),
+                      ),
+                      _VoucherInfoCell(
+                        label: 'Berlaku',
+                        value: '${voucher.expiresAfterDays} hari',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                margin: const EdgeInsets.only(top: 22),
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFD85A30),
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size.fromHeight(50),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text('Pakai voucher sekarang'),
+                            SizedBox(width: 6),
+                            Icon(Icons.arrow_forward_rounded, size: 16),
+                          ],
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text(
+                        'Simpan untuk nanti',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VoucherInfoCell extends StatelessWidget {
+  final String label;
+  final String value;
+  const _VoucherInfoCell({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: const TextStyle(
+            color: Color(0xA6FFFFFF),
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.4,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
     );
   }
 }
