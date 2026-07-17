@@ -17,9 +17,14 @@ Pada halaman profil (profil publik `PublicProfileScreen` maupun tab Akun `Member
 
 ## Tujuan
 
-1. Rapatkan gap tab agar ≈ konten (tab duduk dekat baris tombol, jarak nafas kecil ala IG), tanpa risiko clipping saat bio 2 baris / text-scale besar.
+1. Rapatkan gap tab agar ≈ konten (tab duduk dekat baris tombol, jarak nafas kecil ala IG), tanpa risiko clipping saat bio 2 baris / text-scale besar. **Berlaku untuk KETIGA jenis halaman profil**: profil publik official, profil publik user biasa, dan profil sendiri (tab Akun).
 2. Hilangkan garis panjang divider TabBar di semua halaman profil.
 3. Indikator tab aktif menggeser mulus mengikuti animasi controller saat pindah tab.
+
+### Catatan mekanisme gap per layar
+
+- **Profil publik (official + user biasa)** — `PublicProfileScreen` membungkus header dalam `SizedBox(height: identityHeight)`; over-reservation `_identityHeight` menyebabkan ~45px ruang mati. Ini yang diperbaiki dengan merapatkan `identityHeight`.
+- **Profil sendiri (tab Akun)** — `MemberScreen` memakai `SliverToBoxAdapter` content-sized (bukan `identityHeight`), jadi tidak ada 45px ruang mati; gap-nya hanya padding bawah header (~12px). Tetap diverifikasi (golden) agar rapat dan konsisten dengan profil publik setelah perbaikan; kalau masih ada sisa gap, rapatkan padding bawah header seperlunya.
 
 ## Non-tujuan
 
