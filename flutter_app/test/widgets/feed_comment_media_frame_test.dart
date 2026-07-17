@@ -48,4 +48,34 @@ void main() {
     expect(draggedRect.top, closeTo(44, 1));
     expect(draggedRect.bottom, closeTo(225, 1));
   });
+
+  testWidgets('media frame uses easeOutCubic for both open and close',
+      (tester) async {
+    for (final open in [true, false]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Stack(
+              fit: StackFit.expand,
+              children: [
+                FeedCommentMediaFrame(
+                  open: open,
+                  extentListenable: ValueNotifier<double>(0.60),
+                  dragOffsetPx: 0,
+                  keyboardInsetPx: 0,
+                  screenSize: const Size(400, 900),
+                  child: const ColoredBox(color: Colors.orange),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      final anim = tester.widget<TweenAnimationBuilder<double>>(
+        find.byType(TweenAnimationBuilder<double>),
+      );
+      expect(anim.curve, Curves.easeOutCubic,
+          reason: 'open=$open harus easeOutCubic');
+    }
+  });
 }
