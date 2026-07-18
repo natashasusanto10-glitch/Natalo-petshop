@@ -7,8 +7,10 @@
  *   ke tab REKOMENDASI atau PROMO. status auto-ACTIVE + publishedAt=now.
  *   PRODUCT_ONLY deprecated dari create — feed sekarang video-first.
  *   Existing PRODUCT_ONLY post di DB tetap render (backward compat).
- * - Customer session: hanya bisa create kind COMMUNITY ke tab KOMUNITAS.
- *   status auto-PENDING_REVIEW (admin moderasi sebelum tampil).
+ * - Customer session: kind COMMUNITY (video) atau PHOTO_CAROUSEL ke tab
+ *   KOMUNITAS. PHOTO_CAROUSEL auto-ACTIVE (auto-approve, moderasi reaktif);
+ *   COMMUNITY (video) auto-PENDING_REVIEW (admin moderasi sebelum tampil).
+ *   Lihat lib/feed/post-moderation.ts.
  *
  * Validasi per kind:
  * - VIDEO_ONLY / COMMUNITY: wajib videoUrl + thumbnailUrl, optional productId
@@ -27,6 +29,7 @@ import {
   resolveMentionedUsers,
 } from "@/lib/feed/mentions";
 import { listFeedPosts } from "@/lib/feed/queries";
+import { resolveInitialPostStatus } from "@/lib/feed/post-moderation";
 import { ADMIN_VIDEO_CONFIG, USER_VIDEO_CONFIG } from "@/lib/feed/video-config";
 import {
   parseFeedAccessibilityMetadata,
@@ -477,9 +480,10 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Status workflow ───────────────────────────────────────────────
-  // Admin auto-ACTIVE; user COMMUNITY masuk PENDING_REVIEW.
-  const status = isAdmin ? "ACTIVE" : "PENDING_REVIEW";
-  const publishedAt = isAdmin ? new Date() : null;
+  // Sumber kebenaran tunggal di lib/feed/post-moderation.ts: admin & customer
+  // PHOTO_CAROUSEL → ACTIVE (auto-approve); video customer (COMMUNITY) →
+  // PENDING_REVIEW. Gate encoding-ready video tetap di PUBLIC_FEED_POST_WHERE.
+  const { status, publishedAt } = resolveInitialPostStatus({ isAdmin, kind });
 
   // Admin-only: opsi "beri tahu pelanggan" via push saat post publish.
   // Customer request diabaikan sepenuhnya — post mereka masuk PENDING_REVIEW,
