@@ -41,7 +41,8 @@ void main() {
     // di seluruh lebar toolbar walau transparan, menutupi header per-post).
     expect(find.byType(AppBar), findsNothing);
     expect(find.text('Postingan'), findsOneWidget);
-    expect(find.byType(LiquidGlass), findsWidgets);
+    // Back button ala IG: ikon polos tanpa pill kaca/border.
+    expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
 
     // Frosted-tipis di strip header (BackdropFilter) — konten tembus tapi
     // teks kebaca (paritas IG).

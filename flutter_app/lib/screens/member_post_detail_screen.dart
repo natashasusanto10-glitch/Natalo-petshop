@@ -1686,7 +1686,7 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
 
   // Ketebalan frosted — SANGAT tipis (konten tembus, sekadar melembutkan
   // supaya teks gelap kebaca). Satu angka, gampang di-tune saat device-verify.
-  static const double _frostedSigma = 3;
+  static const double _frostedSigma = 2;
   // Warna teks/ikon header: GELAP. Saat pertama buka header duduk di atas
   // latar putih (media mulai di bawahnya); saat discroll media lewat di
   // belakang frosted-tipis yang melembutkannya → gelap tetap kebaca di
@@ -1710,23 +1710,14 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
         child: Row(
           children: [
             Padding(
-              padding: const EdgeInsets.only(left: 10),
-              child: LiquidGlass(
-                opacity: 1,
-                reducedMotion: reducedMotion,
-                borderRadius: BorderRadius.circular(15),
-                child: SizedBox(
-                  width: 30,
-                  height: 30,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    onPressed: () => Navigator.maybePop(context),
-                    icon: const Icon(
-                      Icons.arrow_back_rounded,
-                      color: _fg,
-                      size: 18,
-                    ),
-                  ),
+              padding: const EdgeInsets.only(left: 4),
+              // Ala IG: ikon polos tanpa pill kaca/border, lebih besar.
+              child: IconButton(
+                onPressed: () => Navigator.maybePop(context),
+                icon: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: _fg,
+                  size: 26,
                 ),
               ),
             ),
