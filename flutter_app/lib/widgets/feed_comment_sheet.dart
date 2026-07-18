@@ -233,6 +233,9 @@ class CommentErrorRetryView extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       controller: scrollController,
+      // Selalu scrollable supaya tarik-bawah tetap memicu overscroll →
+      // pull-to-dismiss (tutup) walau konten error pendek. Konsisten dgn AC.
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 32),
       children: [
         Center(
@@ -2149,6 +2152,9 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     if (_comments.isEmpty) {
       return ListView(
         controller: _listController,
+        // Selalu scrollable supaya tarik-bawah di state kosong tetap memicu
+        // pull-to-dismiss (tutup), konsisten dengan state populated.
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.zero,
         children: [
           if (emptyCaptionText.isNotEmpty)
