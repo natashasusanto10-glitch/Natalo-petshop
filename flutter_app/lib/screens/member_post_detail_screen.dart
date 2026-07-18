@@ -1718,7 +1718,7 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
                 icon: const Icon(
                   Icons.arrow_back_ios_new_rounded,
                   color: _fg,
-                  size: 22,
+                  size: 24,
                 ),
               ),
             ),
