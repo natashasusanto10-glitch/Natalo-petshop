@@ -292,6 +292,29 @@ void main() {
     await disposeTree(tester);
   });
 
+  // Burst like GANJIL (3 tap): tap ke-3 tak berpasangan resolve jadi
+  // single-tap → TANPA guard akan membuka fullscreen tak sengaja. Guard
+  // menekan single-tap dalam jendela singkat sesudah double-tap-like.
+  testWidgets('burst like ganjil (3 tap) TIDAK membuka fullscreen',
+      (tester) async {
+    await pumpAndInitialize(tester);
+    final center = tester.getCenter(find.byType(VideoPlayer).first);
+
+    await tester.tapAt(center);
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.tapAt(center); // double-tap (like) di sini
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.tapAt(center); // tap ganjil
+    // Resolve single-tap + beri waktu navigasi seandainya (keliru) terpicu.
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.byType(ScopedVideoFeedScreen), findsNothing,
+        reason: 'burst like tidak boleh membuka fullscreen');
+
+    await disposeTree(tester);
+  });
+
   // Starts from an ALREADY-liked post (viewerLiked: true, likeCount: 1) so
   // the assertion doesn't depend on a real network round-trip at all: per
   // `_handleDoubleTap`'s `if (!widget.liked) _handleLikeTap();` gate, when
