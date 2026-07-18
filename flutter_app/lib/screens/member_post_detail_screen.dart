@@ -1,9 +1,11 @@
 // ignore_for_file: use_build_context_synchronously
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:video_player/video_player.dart';
@@ -329,6 +331,16 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
         duration: Duration.zero,
         alignment: 0.0,
         alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+      );
+      // ensureVisible menaruh post di y=0 (tepi atas viewport) — itu DI BAWAH
+      // header frosted yang overlay. Geser balik sebesar tinggi header supaya
+      // post target mendarat di bawah header (tidak ketutup), konsisten dgn
+      // framing post pertama yang dapat top-padding ListView.
+      final headerInset =
+          MediaQuery.paddingOf(context).top + kToolbarHeight;
+      final pos = _scrollController.position;
+      _scrollController.jumpTo(
+        (pos.pixels - headerInset).clamp(0.0, pos.maxScrollExtent).toDouble(),
       );
       return;
     }
@@ -812,9 +824,16 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                   child: ListView.separated(
                     controller: _scrollController,
                     cacheExtent: _maximumEstimatedPostExtent(context) * 2,
-                    // Bottom padding extra space supaya post terakhir bisa di-
-                    // scroll lega ke atas viewport (gak mepet ke home indicator).
-                    padding: const EdgeInsets.only(top: 0, bottom: 48),
+                    // Top: media post pertama mulai TEPAT di bawah header (status
+                    // bar + toolbar), jadi saat pertama buka media tidak "over ke
+                    // atas" / kepotong — framing 9:16 utuh (paritas IG). Saat
+                    // discroll, media lewat di belakang header frosted-tipis.
+                    // Bottom: extra space supaya post terakhir bisa discroll lega
+                    // ke atas viewport (gak mepet ke home indicator).
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.paddingOf(context).top + kToolbarHeight,
+                      bottom: 48,
+                    ),
                     // Fling diredam ala IG — lihat CalmScrollPhysics.
                     physics: const CalmScrollPhysics(),
                     itemCount: _posts.length,
@@ -1665,11 +1684,27 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
     required this.authorInitiallyFollowing,
   });
 
+  // Ketebalan frosted — SANGAT tipis (konten tembus, sekadar melembutkan
+  // supaya teks gelap kebaca). Satu angka, gampang di-tune saat device-verify.
+  static const double _frostedSigma = 3;
+  // Warna teks/ikon header: GELAP. Saat pertama buka header duduk di atas
+  // latar putih (media mulai di bawahnya); saat discroll media lewat di
+  // belakang frosted-tipis yang melembutkannya → gelap tetap kebaca di
+  // kedua keadaan (paritas IG). Bukan putih.
+  static const Color _fg = Color(0xFF1A1A1A);
+
   @override
   Widget build(BuildContext context) {
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
-    return SafeArea(
-      bottom: false,
+    final topInset = MediaQuery.paddingOf(context).top;
+    // Tint putih tipis di atas blur — cukup menjaga keterbacaan teks gelap,
+    // tetap tembus. reducedMotion: blur dimatikan, tint dinaikkan agar teks
+    // tetap kebaca tanpa efek kaca.
+    final tint = Colors.white.withValues(alpha: reducedMotion ? 0.86 : 0.14);
+
+    final bar = Container(
+      color: tint,
+      padding: EdgeInsets.only(top: topInset),
       child: SizedBox(
         height: kToolbarHeight,
         child: Row(
@@ -1688,7 +1723,7 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
                     onPressed: () => Navigator.maybePop(context),
                     icon: const Icon(
                       Icons.arrow_back_rounded,
-                      color: Colors.white,
+                      color: _fg,
                       size: 18,
                     ),
                   ),
@@ -1703,13 +1738,10 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
                     const Text(
                       'Postingan',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: _fg,
                         fontSize: 16,
                         fontWeight: NataloWeight.strong,
                         height: 1.05,
-                        shadows: [
-                          Shadow(color: Colors.black54, blurRadius: 8),
-                        ],
                       ),
                     ),
                     // memberName kosong = mode lintas akun (authorPerPost) —
@@ -1727,19 +1759,14 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                // Official → emas identitas brand; shadow
-                                // permanen karena header sekarang overlay
-                                // transparan di atas media (bukan sheet
-                                // putih solid).
+                                // Official → emas gelap-di-terang (kontras di
+                                // atas frosted terang).
                                 color: authorIsOfficial
-                                    ? NataloColors.officialGold
-                                    : Colors.white,
+                                    ? NataloColors.officialGoldOnLight
+                                    : const Color(0xFF5A5A5A),
                                 fontSize: 12,
                                 fontWeight: NataloWeight.strong,
                                 height: 1.05,
-                                shadows: const [
-                                  Shadow(color: Colors.black54, blurRadius: 8),
-                                ],
                               ),
                             ),
                           ),
@@ -1767,6 +1794,25 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
           ],
         ),
       ),
+    );
+
+    // Ikon status bar GELAP (header terang). AnnotatedRegion sinkron dgn
+    // warna teks header.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark.copyWith(
+        statusBarColor: Colors.transparent,
+      ),
+      child: reducedMotion
+          ? bar
+          : ClipRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(
+                  sigmaX: _frostedSigma,
+                  sigmaY: _frostedSigma,
+                ),
+                child: bar,
+              ),
+            ),
     );
   }
 }
@@ -1840,11 +1886,14 @@ class _PostDetailFollowChipState extends State<_PostDetailFollowChip> {
                 child: Center(
                   child: Text(
                     following ? 'Mengikuti' : 'Ikuti',
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      // Gelap — header kini terang (frosted), samakan dgn
+                      // teks judul. Following sedikit lebih redup.
+                      color: following
+                          ? const Color(0xFF5A5A5A)
+                          : const Color(0xFF1A1A1A),
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      shadows: [Shadow(color: Colors.black45, blurRadius: 4)],
                     ),
                   ),
                 ),
