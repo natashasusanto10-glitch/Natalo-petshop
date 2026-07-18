@@ -706,6 +706,13 @@ class _PostGrid extends StatelessWidget {
       context: context,
       removeTop: true,
       child: GridView.builder(
+        // WAJIB sama dgn physics NestedScrollView outer (di parent) —
+        // physics outer TIDAK otomatis diwariskan ke body (dok
+        // NestedScrollView.physics: "the inner scroll view is not directly
+        // configured"). Beda physics outer/inner bikin hand-off ballistic
+        // pincang: scroll ke atas terasa "stuck" (outer diredam) lalu
+        // "terdorong" (inner masih kecepatan penuh baru menyusul).
+        physics: const CalmScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 100),
         gridDelegate: profileGridDelegate(),
         itemCount: posts.length,
