@@ -131,6 +131,10 @@ kembali. Perilaku ini sudah jalan; dipertahankan.
    resolusi author per-post.
 3. `lib/features/feed/widgets/gallery_post_tile.dart` (baru) — ekstrak `GalleryPostTile`
    (+ sub-widget pendukung); `member_posts_screen.dart` memakainya.
+4. `lib/features/feed/widgets/post_gallery_opener.dart` (baru) — mixin `PostGalleryOpener`
+   (tile-key + warm handoff + `pushOriginExpansion` → viewer) yang dipakai SavedPostsScreen,
+   agar glue buka-post tidak diduplikasi. Alur buka `member_posts_screen.dart` **tidak**
+   di-refactor (risiko regresi minimal); bisa diadopsi kemudian di luar scope ini.
 
 ## Yang TIDAK berubah
 
