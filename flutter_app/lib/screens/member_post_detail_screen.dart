@@ -1423,6 +1423,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
             memberInitial: memberInitial,
             memberPhotoUrl: memberPhotoUrl,
             isOfficial: widget.memberIsOfficial,
+            authorUsername: post.author.username,
             onMenuTap: widget.onMenuTap,
           ),
         // Double-tap detector membungkus media — HANYA untuk FOTO/carousel.
@@ -1457,6 +1458,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
                     memberInitial: memberInitial,
                     memberPhotoUrl: memberPhotoUrl,
                     isOfficial: widget.memberIsOfficial,
+                    authorUsername: post.author.username,
                     onMenuTap: widget.onMenuTap,
                   ),
                 ),
@@ -1553,6 +1555,20 @@ class _PostFeedItemState extends State<_PostFeedItem>
   }
 }
 
+/// Tap avatar+nama header (foto/video) → buka profil author. Gate sama
+/// dengan header identity chip feed & nama caption: butuh username valid
+/// (kosong/null = tidak tappable, no-op aman).
+void _openPostHeaderProfile(BuildContext context, String? username) {
+  if (username == null || username.isEmpty) return;
+  AppHaptics.tap();
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => PublicProfileScreen(username: username),
+    ),
+  );
+}
+
 class _PostAuthorRow extends StatelessWidget {
   final String memberName;
   final String memberInitial;
@@ -1563,12 +1579,16 @@ class _PostAuthorRow extends StatelessWidget {
   // Nullable — non-owner viewer tidak punya menu actions di sini.
   final VoidCallback? onMenuTap;
 
+  /// Username author — dipakai untuk tap avatar+nama → buka profil.
+  final String? authorUsername;
+
   const _PostAuthorRow({
     required this.memberName,
     required this.memberInitial,
     required this.memberPhotoUrl,
     this.isOfficial = false,
     required this.onMenuTap,
+    this.authorUsername,
   });
 
   @override
@@ -1579,40 +1599,50 @@ class _PostAuthorRow extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
       child: Row(
         children: [
-          ProfileAvatar(
-            initial: memberInitial,
-            imageUrl: memberPhotoUrl,
-            size: 36,
-            fontSize: 15,
-            isOfficial: isOfficial,
-            plain: isOfficial,
-          ),
-          const SizedBox(width: 10),
           Expanded(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text(
-                    memberName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      // Official → emas identitas (latar putih).
-                      color: isOfficial
-                          ? NataloColors.officialGoldOnLight
-                          : cs.onSurface,
-                      fontSize: 15,
-                      fontWeight: NataloWeight.strong,
-                      height: 1.15,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _openPostHeaderProfile(context, authorUsername),
+              child: Row(
+                children: [
+                  ProfileAvatar(
+                    initial: memberInitial,
+                    imageUrl: memberPhotoUrl,
+                    size: 36,
+                    fontSize: 15,
+                    isOfficial: isOfficial,
+                    plain: isOfficial,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            memberName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              // Official → emas identitas (latar putih).
+                              color: isOfficial
+                                  ? NataloColors.officialGoldOnLight
+                                  : cs.onSurface,
+                              fontSize: 15,
+                              fontWeight: NataloWeight.strong,
+                              height: 1.15,
+                            ),
+                          ),
+                        ),
+                        if (isOfficial) ...[
+                          const SizedBox(width: 4),
+                          const OfficialVerifiedBadge(size: 15),
+                        ],
+                      ],
                     ),
                   ),
-                ),
-                if (isOfficial) ...[
-                  const SizedBox(width: 4),
-                  const OfficialVerifiedBadge(size: 15),
                 ],
-              ],
+              ),
             ),
           ),
           if (onMenuTap != null)
@@ -1639,12 +1669,16 @@ class _VideoPostAuthorOverlay extends StatelessWidget {
   /// Akun official → logo NL + nama emas + rosette (identitas brand).
   final bool isOfficial;
 
+  /// Username author — dipakai untuk tap avatar+nama → buka profil.
+  final String? authorUsername;
+
   const _VideoPostAuthorOverlay({
     required this.memberName,
     required this.memberInitial,
     required this.memberPhotoUrl,
     this.isOfficial = false,
     required this.onMenuTap,
+    this.authorUsername,
   });
 
   @override
@@ -1665,43 +1699,53 @@ class _VideoPostAuthorOverlay extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 10, 6, 28),
         child: Row(
           children: [
-            ProfileAvatar(
-              initial: memberInitial,
-              imageUrl: memberPhotoUrl,
-              size: 36,
-              fontSize: 15,
-              isOfficial: isOfficial,
-              plain: isOfficial,
-            ),
-            const SizedBox(width: 10),
             Expanded(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: Text(
-                      memberName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        // Official → emas identitas (overlay gelap).
-                        color: isOfficial
-                            ? NataloColors.officialGold
-                            : Colors.white,
-                        fontSize: 15,
-                        fontWeight: NataloWeight.strong,
-                        height: 1.15,
-                        shadows: const [
-                          Shadow(color: Colors.black54, blurRadius: 10),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _openPostHeaderProfile(context, authorUsername),
+                child: Row(
+                  children: [
+                    ProfileAvatar(
+                      initial: memberInitial,
+                      imageUrl: memberPhotoUrl,
+                      size: 36,
+                      fontSize: 15,
+                      isOfficial: isOfficial,
+                      plain: isOfficial,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              memberName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                // Official → emas identitas (overlay gelap).
+                                color: isOfficial
+                                    ? NataloColors.officialGold
+                                    : Colors.white,
+                                fontSize: 15,
+                                fontWeight: NataloWeight.strong,
+                                height: 1.15,
+                                shadows: const [
+                                  Shadow(color: Colors.black54, blurRadius: 10),
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (isOfficial) ...[
+                            const SizedBox(width: 4),
+                            const OfficialVerifiedBadge(size: 15),
+                          ],
                         ],
                       ),
                     ),
-                  ),
-                  if (isOfficial) ...[
-                    const SizedBox(width: 4),
-                    const OfficialVerifiedBadge(size: 15),
                   ],
-                ],
+                ),
               ),
             ),
             if (onMenuTap != null)
