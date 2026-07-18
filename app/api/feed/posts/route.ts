@@ -23,6 +23,7 @@ import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { sendFeedPendingReviewNotification } from "@/lib/feed/notifications";
+import { sendNewPostToFollowersNotification } from "@/lib/social/notifications";
 import { sendMentionNotifications } from "@/lib/feed/activity-notifications";
 import {
   extractMentionHandles,
@@ -605,6 +606,15 @@ export async function POST(request: NextRequest) {
       authorName: session.name ?? "Customer",
       title: title,
     });
+  }
+
+  // Customer PHOTO_CAROUSEL auto-approve (ACTIVE langsung, tanpa admin
+  // approve) — beri tahu follower author SEKARANG, karena tidak akan ada
+  // event approve terpisah yang biasanya men-trigger notif ini. HANYA ke
+  // follower (bukan broadcast); admin di-skip oleh helper-nya sendiri.
+  // WAJIB await — void promise bisa dibekukan Vercel sebelum jalan.
+  if (!isAdmin && post.status === "ACTIVE") {
+    await sendNewPostToFollowersNotification(post.id);
   }
 
   // Publish-push — guard internal (admin/ACTIVE/ready/notifyOnPublish/
