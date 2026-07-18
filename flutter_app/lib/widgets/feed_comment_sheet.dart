@@ -24,7 +24,6 @@ import '../utils/mention_text.dart';
 import 'app_toast.dart';
 import 'mention_picker.dart';
 import 'moderation_action_sheet.dart';
-import 'natalo_paw_refresh_indicator.dart';
 import 'profile_avatar.dart';
 
 /// Shared detents and gesture policy for both comment drawer presentation
@@ -210,6 +209,65 @@ class _CommentSheetScrollAnchorState extends State<CommentSheetScrollAnchor> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Tampilan error daftar komentar: pesan + tombol "Coba lagi".
+///
+/// Menggantikan pull-to-refresh di state error supaya gesture tarik-bawah
+/// tetap konsisten = tutup sheet, sementara retry tetap tersedia lewat tombol.
+class CommentErrorRetryView extends StatelessWidget {
+  const CommentErrorRetryView({
+    super.key,
+    required this.message,
+    required this.onRetry,
+    this.scrollController,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+  final ScrollController? scrollController;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      controller: scrollController,
+      // Selalu scrollable supaya tarik-bawah tetap memicu overscroll →
+      // pull-to-dismiss (tutup) walau konten error pendek. Konsisten dgn AC.
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 32),
+      children: [
+        Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.wifi_off_rounded,
+                color: Colors.white.withValues(alpha: 0.35),
+                size: 40,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.65),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: onRetry,
+                style: TextButton.styleFrom(
+                  foregroundColor: NataloColors.primary,
+                ),
+                child: const Text('Coba lagi'),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2079,34 +2137,10 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       return _CommentListSkeleton(controller: _listController);
     }
     if (_error != null && _comments.isEmpty) {
-      return NataloPawRefreshIndicator(
-        onRefresh: _refresh,
-        child: ListView(
-          controller: _listController,
-          padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 32),
-          children: [
-            Center(
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.wifi_off_rounded,
-                    color: Colors.white.withValues(alpha: 0.35),
-                    size: 40,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    _error!,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.65),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+      return CommentErrorRetryView(
+        message: _error!,
+        onRetry: () => unawaited(_refresh()),
+        scrollController: _listController,
       );
     }
     // IG pattern — Compute caption SEBELUM check _comments.isEmpty supaya
@@ -2118,6 +2152,9 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     if (_comments.isEmpty) {
       return ListView(
         controller: _listController,
+        // Selalu scrollable supaya tarik-bawah di state kosong tetap memicu
+        // pull-to-dismiss (tutup), konsisten dengan state populated.
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.zero,
         children: [
           if (emptyCaptionText.isNotEmpty)
@@ -2175,72 +2212,69 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     final captionOffset = hasCaption ? 1 : 0;
     final totalCount = items.length + captionOffset + (_loadingMore ? 1 : 0);
 
-    return NataloPawRefreshIndicator(
-      onRefresh: _refresh,
-      child: ListView.builder(
-        controller: _listController,
-        padding: const EdgeInsets.fromLTRB(0, 8, 0, 24),
-        physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: totalCount,
-        itemBuilder: (context, index) {
-          // Caption header — index 0 kalau hasCaption.
-          if (hasCaption && index == 0) {
-            return _CaptionTile(
-              post: widget.post,
-              captionText: captionText,
-              onAuthorTap: _openAuthorProfile,
-              onMentionTap: _openMentionProfile,
-            );
-          }
-          final adjustedIndex = index - captionOffset;
-          if (adjustedIndex >= items.length) {
-            return const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: NataloColors.primary,
-                  ),
-                ),
-              ),
-            );
-          }
-          final item = items[adjustedIndex];
-          if (item.kind == _CommentDisplayItemKind.repliesControl) {
-            return _RepliesControl(
-              totalReplies: item.totalReplies,
-              visibleReplies: item.visibleReplies,
-              onShowMore: () => _showMoreReplies(
-                item.parentId!,
-                item.totalReplies,
-              ),
-              onHide: item.visibleReplies > 0
-                  ? () => _hideReplies(item.parentId!)
-                  : null,
-            );
-          }
-          final comment = _withGlobalCommentLikeState(item.comment!);
-          // canDelete = current user adalah author komentar. Drives
-          // tampilan "Hapus" di moderation sheet (vs Laporkan/Blokir
-          // untuk komentar orang lain).
-          final currentUserId = memberStore.profile?.id;
-          final isOwn =
-              currentUserId != null && currentUserId == comment.author.id;
-          return _CommentTile(
-            comment: comment,
-            isReply: item.isReply,
-            onLike: () => _toggleLike(comment),
-            onReply: () => _setReplyTarget(comment),
+    return ListView.builder(
+      controller: _listController,
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 24),
+      physics: const AlwaysScrollableScrollPhysics(),
+      itemCount: totalCount,
+      itemBuilder: (context, index) {
+        // Caption header — index 0 kalau hasCaption.
+        if (hasCaption && index == 0) {
+          return _CaptionTile(
+            post: widget.post,
+            captionText: captionText,
             onAuthorTap: _openAuthorProfile,
             onMentionTap: _openMentionProfile,
-            canDelete: isOwn,
-            onDelete: isOwn ? () => _deleteComment(comment) : null,
           );
-        },
-      ),
+        }
+        final adjustedIndex = index - captionOffset;
+        if (adjustedIndex >= items.length) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: NataloColors.primary,
+                ),
+              ),
+            ),
+          );
+        }
+        final item = items[adjustedIndex];
+        if (item.kind == _CommentDisplayItemKind.repliesControl) {
+          return _RepliesControl(
+            totalReplies: item.totalReplies,
+            visibleReplies: item.visibleReplies,
+            onShowMore: () => _showMoreReplies(
+              item.parentId!,
+              item.totalReplies,
+            ),
+            onHide: item.visibleReplies > 0
+                ? () => _hideReplies(item.parentId!)
+                : null,
+          );
+        }
+        final comment = _withGlobalCommentLikeState(item.comment!);
+        // canDelete = current user adalah author komentar. Drives
+        // tampilan "Hapus" di moderation sheet (vs Laporkan/Blokir
+        // untuk komentar orang lain).
+        final currentUserId = memberStore.profile?.id;
+        final isOwn =
+            currentUserId != null && currentUserId == comment.author.id;
+        return _CommentTile(
+          comment: comment,
+          isReply: item.isReply,
+          onLike: () => _toggleLike(comment),
+          onReply: () => _setReplyTarget(comment),
+          onAuthorTap: _openAuthorProfile,
+          onMentionTap: _openMentionProfile,
+          canDelete: isOwn,
+          onDelete: isOwn ? () => _deleteComment(comment) : null,
+        );
+      },
     );
   }
 

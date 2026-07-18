@@ -103,4 +103,10 @@ void main() {
     await newTick;
     newLease.dispose();
   });
+
+  test('default revalidation interval is 5 seconds', () {
+    final coordinator = FeedCommentSyncCoordinator();
+    addTearDown(coordinator.clear);
+    expect(coordinator.interval, const Duration(seconds: 5));
+  });
 }

@@ -27,7 +27,7 @@ class FeedCommentSyncLease {
 /// class only coordinates visibility, lifecycle, and request serialization.
 class FeedCommentSyncCoordinator with WidgetsBindingObserver {
   FeedCommentSyncCoordinator({
-    this.interval = const Duration(seconds: 10),
+    this.interval = const Duration(seconds: 5),
   });
 
   final Duration interval;
