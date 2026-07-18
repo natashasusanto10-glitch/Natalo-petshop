@@ -9,6 +9,12 @@ import 'package:flutter/rendering.dart';
 void Function(AnimationStatus status, bool hasSnapshot)?
     debugOriginExpansionStatusObserver;
 
+/// Curve morph ala IG/Material-3 (emphasized). Decelerate saat buka —
+/// terasa "mendarat" lembut; accelerate saat tutup — menutup gesit.
+/// Menggantikan easeOutCubic/easeInCubic yang terasa terlalu datar/cepat.
+const Curve _kOriginOpenCurve = Cubic(0.05, 0.7, 0.1, 1.0);
+const Curve _kOriginCloseCurve = Cubic(0.3, 0.0, 0.8, 0.15);
+
 /// Keeps a snapshot-driven origin out of Navigator Hero matching.
 ///
 /// The destination route remains Hero-enabled, so later navigation from that
@@ -92,11 +98,13 @@ class _OriginExpansionPageRoute<T> extends PageRoute<T> {
   @override
   bool get maintainState => true;
 
+  // Pace ala IG/iOS shared-element expand: ~300ms buka (240ms terasa
+  // terlalu snappy), tutup sedikit lebih gesit.
   @override
-  Duration get transitionDuration => const Duration(milliseconds: 240);
+  Duration get transitionDuration => const Duration(milliseconds: 300);
 
   @override
-  Duration get reverseTransitionDuration => const Duration(milliseconds: 220);
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 250);
 
   @override
   Widget buildPage(
@@ -426,7 +434,7 @@ class _OriginExpansionTransitionState extends State<OriginExpansionTransition> {
         final animationValue = widget.animation.value;
         final progress = linear
             ? animationValue
-            : (reverse ? Curves.easeInCubic : Curves.easeOutCubic)
+            : (reverse ? _kOriginCloseCurve : _kOriginOpenCurve)
                 .transform(animationValue);
         final destinationOpacity = linear
             ? const Interval(0.55, 1).transform(animationValue)
