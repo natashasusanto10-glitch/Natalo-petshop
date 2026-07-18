@@ -16,7 +16,6 @@ import '../features/feed/video/post_video_coordinator.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../features/feed/video/video_player_session.dart';
 import '../models/feed_post.dart';
-import '../services/api_client.dart';
 import '../services/feed_service.dart';
 import '../services/video_quality_service.dart';
 import '../state/feed_local_store.dart';
@@ -658,43 +657,19 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
 
   Future<void> _editCaption(int index) async {
     final post = _posts[index];
-    final controller = TextEditingController(text: post.caption ?? '');
-    final result = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) => _EditCaptionSheet(controller: controller),
+    final changed = await Navigator.pushNamed(
+      context,
+      '/member/post-edit',
+      arguments: post,
     );
-    if (result == null || !mounted) return;
-    final newCaption = result.trim();
-    if (newCaption == (post.caption ?? '').trim()) return;
-    final syncedTitle = newCaption.isEmpty
-        ? 'Postingan baru'
-        : newCaption.substring(
-            0,
-            newCaption.length > 80 ? 80 : newCaption.length,
-          );
-    try {
-      await apiClient.patchJson(
-        '/api/feed/posts/${Uri.encodeComponent(post.id)}',
-        body: {'title': syncedTitle, 'description': newCaption},
-      );
-      if (!mounted) return;
-      final updated = _withCaption(post, newCaption);
+    if (changed != true || !mounted) return;
+    // MemberPostEditScreen sudah PATCH + feedStore.applyPostUpdate. Tarik
+    // ulang dari store supaya state lokal halaman ini ikut ter-update.
+    final synced = feedStore.get(post.id);
+    if (synced != null) {
       setState(() {
-        _posts[index] = updated;
+        _posts[index] = synced;
       });
-      // Sync ke FeedStore — Reels feed / grid lain yang display caption
-      // post ini ikut update. Status reset ke PENDING_REVIEW di backend
-      // (lihat _withCaption) → store reflect itu juga.
-      feedStore.applyPostUpdate(updated);
-      AppToast.show(context, 'Caption diperbarui — menunggu review admin');
-    } catch (_) {
-      if (!mounted) return;
-      AppToast.show(context, 'Gagal update caption, coba lagi');
     }
   }
 
@@ -1147,14 +1122,6 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     }
   }
 
-  FeedPost _withCaption(FeedPost post, String newCaption) {
-    return post.copyWith(
-      caption: newCaption.isEmpty ? null : newCaption,
-      description: newCaption.isEmpty ? '' : newCaption,
-      // Edit caption reset status ke PENDING_REVIEW per backend logic.
-      status: 'PENDING_REVIEW',
-    );
-  }
 }
 
 bool _sameLikerIds(List<FeedAuthor> a, List<FeedAuthor> b) {
@@ -3113,136 +3080,6 @@ class _PostMenuSheet extends StatelessWidget {
               onTap: () => Navigator.pop(context, _PostMenuAction.delete),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Edit caption bottom sheet ──────────────────────────────────────
-
-class _EditCaptionSheet extends StatefulWidget {
-  final TextEditingController controller;
-
-  const _EditCaptionSheet({required this.controller});
-
-  @override
-  State<_EditCaptionSheet> createState() => _EditCaptionSheetState();
-}
-
-class _EditCaptionSheetState extends State<_EditCaptionSheet> {
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: keyboardInset),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.symmetric(vertical: 6),
-                decoration: BoxDecoration(
-                  color: cs.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Edit Caption',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 16,
-                  fontWeight: NataloWeight.strong,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Caption diubah akan kembali ke status menunggu review admin.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontSize: 12,
-                  fontWeight: NataloWeight.body,
-                ),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: widget.controller,
-                maxLines: 6,
-                minLines: 3,
-                maxLength: 2000,
-                autofocus: true,
-                style: TextStyle(color: cs.onSurface, fontSize: 14),
-                decoration: InputDecoration(
-                  hintText: 'Tulis caption…',
-                  filled: true,
-                  fillColor: cs.surfaceContainerHighest,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: BorderSide(color: cs.outlineVariant),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(
-                        'Batal',
-                        style: TextStyle(
-                          color: cs.onSurface,
-                          fontWeight: NataloWeight.strong,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () =>
-                          Navigator.pop(context, widget.controller.text),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        backgroundColor: NataloColors.primary,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'Simpan',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: NataloWeight.strong,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
         ),
       ),
     );
