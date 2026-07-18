@@ -21,6 +21,7 @@ import '../services/connectivity_service.dart';
 import '../services/search_service.dart';
 import '../services/product_service.dart';
 import '../state/feed_upload_store.dart';
+import '../state/home_snapshot_store.dart';
 import '../state/recently_viewed_store.dart';
 import '../state/search_history_store.dart';
 import '../state/trending_placeholder_controller.dart';
@@ -75,7 +76,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late final Future<ProductResult> _productsFuture;
   // ── Infinite scroll "Jelajahi Produk Natalo" — match PWA HomeExploreProducts ──
   final ScrollController _scrollController = ScrollController();
   // ── Collapse header: engine 1:1 mengikuti jari (SAMA dengan halaman
@@ -109,11 +109,6 @@ class _HomeScreenState extends State<HomeScreen> {
   static int _globalExploreGeneration = 0;
   static int _globalNextRegenerateThreshold = 2;
 
-  // ── Brand, Category, Banner dynamic fetch ──
-  List<PetBrand> _brands = const [];
-  List<HomeCategory> _categories = const [];
-  List<HomeBanner> _banners = const [];
-
   /// Brand untuk slider "Brand Favorit" di Home — HANYA brand yang punya
   /// logo gambar (admin upload). Brand tanpa logo (fallback huruf inisial)
   /// disembunyikan dari Home supaya rapi & profesional; tetap muncul di
@@ -121,7 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// position (API /api/brands orderBy position asc), jadi brand prioritas
   /// otomatis di slide depan. Sebelumnya di-cap take(12) → cuma 2 slide
   /// walau brand banyak.
-  List<PetBrand> get _logoBrands => _brands
+  List<PetBrand> get _logoBrands => homeSnapshotStore.brands
       .where((b) => b.logoUrl != null && b.logoUrl!.trim().isNotEmpty)
       .toList();
 
@@ -157,9 +152,11 @@ class _HomeScreenState extends State<HomeScreen> {
       unawaited(feedUploadStore.checkForResumableUpload());
     });
 
-    _productsFuture = productService.fetchProducts(limit: 48);
+    // Revalidate data home (SWR) — Beranda render dari homeSnapshotStore
+    // (memori saat pindah tab, disk saat cold start), fetch segar jalan
+    // diam-diam di belakang. Soft-throttle 30s di dalam store.
+    homeSnapshotStore.refresh();
     _scrollController.addListener(_onScroll);
-    _loadDynamicSections();
     // ORDER MATTERS: personalized recs load DULU, lalu explore initial.
     // Sebelumnya kedua-duanya paralel → explore initial fetch dengan
     // exclude list kosong → ambil top personalized yang SAMA dengan
@@ -213,21 +210,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _loadDynamicSections() async {
-    // Fetch paralel — semua endpoint cached di server (revalidate 300s).
-    final results = await Future.wait([
-      productService.fetchBrands(),
-      productService.fetchCategories(),
-      productService.fetchBanners(),
-    ]);
-    if (!mounted) return;
-    setState(() {
-      _brands = results[0] as List<PetBrand>;
-      _categories = results[1] as List<HomeCategory>;
-      _banners = results[2] as List<HomeBanner>;
-    });
-  }
-
   /// Pull-to-refresh handler — refetch semua data home (brands, categories,
   /// banners, recommendations, explore products) sekaligus. Haptic medium
   /// di awal supaya user dapat tactile confirmation refresh dimulai.
@@ -237,11 +219,15 @@ class _HomeScreenState extends State<HomeScreen> {
     _resetExploreProducts(regenerate: true);
     // Reset debounce supaya pull-to-refresh selalu trigger ulang.
     _lastPersonalizedFetch = null;
-    // _loadDynamicSections paralel — tidak ada dependency dengan
-    // personalized/explore. _initializeRecsAndExplore sequential
-    // internal (personalized DULU baru explore — mencegah race
-    // duplikat IDs).
-    await Future.wait([_loadDynamicSections(), _initializeRecsAndExplore()]);
+    // Store refresh force:true — user eksplisit minta, bypass throttle;
+    // sekaligus membuat saran banner "tarik ke bawah" jujur (dulu fetch
+    // produk utama tidak pernah di-retry). _initializeRecsAndExplore
+    // sequential internal (personalized DULU baru explore — mencegah
+    // race duplikat IDs).
+    await Future.wait([
+      homeSnapshotStore.refresh(force: true),
+      _initializeRecsAndExplore(),
+    ]);
   }
 
   @override
@@ -650,18 +636,15 @@ class _HomeScreenState extends State<HomeScreen> {
             SafeArea(
               top: true,
               bottom: false,
-              child: FutureBuilder<ProductResult>(
-                future: _productsFuture,
-                // Initial data empty supaya skeleton/loading UI muncul first paint
-                // — bukan flash sampleProducts mock. Capacitor admin dashboard
-                // adalah single source of truth.
-                initialData: const ProductResult(
-                  products: <Product>[],
-                  fromApi: false,
-                ),
-                builder: (context, snapshot) {
-                  final result = snapshot.data;
-                  final products = result?.products ?? const <Product>[];
+              child: ListenableBuilder(
+                listenable: homeSnapshotStore,
+                // Store-driven (SWR): render langsung dari snapshot store —
+                // memori saat pindah tab, disk saat cold start. FutureBuilder
+                // + initialData(fromApi:false) lama dihapus: initialData itu
+                // yang membuat banner error tampil SELAMA loading (salah
+                // label), karena kondisi banner cuma cek fromApi == false.
+                builder: (context, _) {
+                  final products = homeSnapshotStore.products;
                   // 3-tier eligibility — match backend getFlashSaleProducts():
                   //   1. Explicit flashSaleEndsAt set + di future → always
                   //   2. flashSaleEndsAt null + discount >= 20% → auto-include
@@ -746,7 +729,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         // upload feed post aktif. AnimatedSize handle collapse
                         // smooth saat task hilang (success auto-dismiss).
                         const SliverToBoxAdapter(child: FeedUploadBar()),
-                        if (result?.fromApi == false)
+                        // Banner HANYA saat benar-benar tidak ada yang bisa
+                        // ditampilkan: fetch produk berakhir gagal DAN store
+                        // kosong (tak ada cache). Selama loading → tidak ada
+                        // banner. Konten cache tampil + refresh gagal → diam
+                        // (keputusan produk, ala IG/Shopee).
+                        if (!homeSnapshotStore.hasContent &&
+                            homeSnapshotStore.lastRefreshFailed)
                           const SliverToBoxAdapter(child: _ApiFallbackNotice()),
                         // Trust marquee SEKARANG bagian sticky header (ikut
                         // terlipat saat collapse) — lihat _HomeHeader. Sliver
@@ -754,9 +743,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         // header "Cara 1", membalikkan keputusan PR #54 dengan
                         // persetujuan user setelah demo perbandingan).
                         // API banner carousel kalau ada banner aktif dari admin.
-                        // Section auto-hide kalau _banners kosong (di _HeroBanner).
+                        // Section auto-hide kalau banners kosong (di _HeroBanner).
                         SliverToBoxAdapter(
-                          child: _HeroBanner(banners: _banners),
+                          child: _HeroBanner(banners: homeSnapshotStore.banners),
                         ),
                         SliverToBoxAdapter(
                           child: _ShortcutGrid(
@@ -808,7 +797,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         SliverToBoxAdapter(
                           child: _CategorySection(
-                            categories: _categories,
+                            categories: homeSnapshotStore.categories,
                             // Pass category name — ProductsScreen filter cocok by name
                             // (lihat `_filter.category == null || product.category == _filter.category`).
                             onTap: (name) =>
