@@ -106,7 +106,7 @@ void main() {
     await homeSnapshotStore.refresh(force: true);
     await pumpBounded(tester);
     // CustomScrollView lazy — section produk (Terlaris) bisa di bawah
-    // fold viewport test 800x600; scroll dulu supaya kartunya ter-build.
+    // fold viewport ponsel (390x844); scroll dulu supaya kartunya ter-build.
     await tester.drag(
       find.byType(CustomScrollView),
       const Offset(0, -600),
