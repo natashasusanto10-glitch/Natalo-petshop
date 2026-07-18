@@ -114,7 +114,7 @@ void main() {
       findsNothing,
     );
 
-    await tester.pump(const Duration(milliseconds: 240));
+    await tester.pump(const Duration(milliseconds: 300));
     Navigator.of(tester.element(find.byKey(const ValueKey('route-context'))))
         .pop();
     await tester.pump();
@@ -499,7 +499,7 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 241));
+    await tester.pump(const Duration(milliseconds: 301));
 
     final gesture = await tester.startGesture(const Offset(1, 300));
     await gesture.moveBy(const Offset(0, 80));
@@ -523,7 +523,7 @@ Future<void> _openSnapshotRoute(WidgetTester tester, GlobalKey key) async {
     ),
   );
   await tester.pump();
-  await tester.pump(const Duration(milliseconds: 240));
+  await tester.pump(const Duration(milliseconds: 300));
   await tester.pump(const Duration(milliseconds: 1));
   expect(find.text('Destination'), findsOneWidget);
   expect(
