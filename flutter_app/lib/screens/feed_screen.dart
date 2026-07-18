@@ -15,7 +15,9 @@ import '../theme/natalo_text.dart';
 import '../features/feed/widgets/feed_action_rail.dart';
 import '../features/feed/video/adaptive_video_preload_policy.dart';
 import '../features/feed/video/feed_video_observation.dart';
+import '../features/feed/video/post_video_coordinator.dart';
 import '../features/feed/video/preload_generation.dart';
+import '../features/feed/video/video_player_session.dart';
 import '../features/feed/video/single_dispose_guard.dart';
 import '../features/feed/video/social_video_session_observer.dart';
 import '../features/feed/video/video_media_cache.dart';
@@ -39,6 +41,7 @@ import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/android_back_overlays.dart';
+import '../utils/app_route_observer.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/bottom_nav.dart';
@@ -55,6 +58,30 @@ const _feedActionShadowColor = Color(0x99000000);
 // 12px ke atas hit-area scrubber 28px (zona transparan) supaya caption/rail
 // duduk dekat garis progress ala IG, bukan melayang di atas seluruh box.
 const _feedTopActionRightInset = 8.0;
+
+/// Feature flag migrasi Feed → PostVideoCoordinator (Opsi D, Langkah 3).
+/// DEFAULT OFF — dikunci sejak `initState` (dibaca SEKALI via
+/// [feedCoordinatorEnabled], tak reaktif). Rollout bertahap: nyalakan build
+/// internal (via [debugFeedCoordinatorEnabledOverride]) → device-verify →
+/// baru default true. Saat OFF, feed_screen berperilaku 100% seperti legacy —
+/// coordinator tak dibuat, tak ada observer lifecycle didaftarkan.
+const bool _kFeedCoordinatorDefault = false;
+
+/// Test/dev seam: paksa [feedCoordinatorEnabled] (null = pakai default).
+@visibleForTesting
+bool? debugFeedCoordinatorEnabledOverride;
+
+/// Test seam: suntik coordinator (mis. spy) alih-alih membuat
+/// [PostVideoCoordinator] asli. Produksi meninggalkannya null.
+@visibleForTesting
+PostVideoCoordinator Function({
+  required PlaybackSessionFactory sessionFactory,
+})? debugFeedCoordinatorFactory;
+
+/// Apakah jalur coordinator Feed aktif. Dibaca SEKALI di initState.
+@visibleForTesting
+bool feedCoordinatorEnabled() =>
+    debugFeedCoordinatorEnabledOverride ?? _kFeedCoordinatorDefault;
 
 @visibleForTesting
 bool feedPreloadCompletionIsCurrent({
@@ -197,9 +224,24 @@ class FeedScreen extends StatefulWidget {
   State<FeedScreen> createState() => _FeedScreenState();
 }
 
-class _FeedScreenState extends State<FeedScreen> {
+class _FeedScreenState extends State<FeedScreen>
+    with WidgetsBindingObserver, RouteAware {
   final PageController _pageController = PageController();
   final GlobalKey _createPostOriginKey = GlobalKey();
+
+  // ── Migrasi Feed→PostVideoCoordinator (Opsi D, Langkah 3) ─────────────
+  // DI BALIK feature flag [feedCoordinatorEnabled], dikunci sejak initState.
+  // Saat OFF (default): coordinator null, tak ada observer lifecycle — feed
+  // berperilaku 100% legacy. Saat ON: coordinator dimiliki screen (lifecycle
+  // app + route push/pop → pauseAll/resumeAll), TAPI belum dipakai widget item
+  // (itu Langkah 4). Nol perubahan user-facing di Langkah 3.
+  late final bool _coordinatorEnabled;
+  PostVideoCoordinator? _videoCoordinator;
+  bool _routeSubscribed = false;
+
+  /// Seam test-only: verifikasi keberadaan + wiring lifecycle coordinator.
+  @visibleForTesting
+  PostVideoCoordinator? get debugVideoCoordinator => _videoCoordinator;
   // Parallel maps: _preloadedControllers untuk reads (.value, VideoPlayer
   // widget, play/pause). _preloadedCachedPlayers untuk lifecycle (dispose
   // via wrapper supaya cache file di-track properly oleh
@@ -242,6 +284,20 @@ class _FeedScreenState extends State<FeedScreen> {
   @override
   void initState() {
     super.initState();
+    // Feature flag dikunci SEKALI di sini (tak reaktif). Lihat
+    // [feedCoordinatorEnabled].
+    _coordinatorEnabled = feedCoordinatorEnabled();
+    if (_coordinatorEnabled) {
+      final make = debugFeedCoordinatorFactory ??
+          ({required PlaybackSessionFactory sessionFactory}) =>
+              PostVideoCoordinator(sessionFactory: sessionFactory);
+      _videoCoordinator = make(sessionFactory: _buildFeedSession);
+      // Lifecycle app (background/foreground) — pause/resume SEMUA sesi,
+      // menutup audio hantu. Route visibility didaftarkan di
+      // didChangeDependencies (butuh context). Pola identik
+      // member_post_detail_screen (§2.5).
+      WidgetsBinding.instance.addObserver(this);
+    }
     // Gap #11: load offline cache first untuk show stale data instantly
     // sambil network fetch jalan. Plus #7: hydrate likedStore.
     _bootstrapFromCache();
@@ -272,9 +328,111 @@ class _FeedScreenState extends State<FeedScreen> {
     });
   }
 
+  // ── Coordinator lifecycle (Langkah 3) — hanya aktif saat flag ON ────────
+
+  /// Factory sesi coordinator Feed. Mengikuti Kontrak session-factory Feed:
+  /// baca state post TERBARU (bukan closure list lama), tag `main_feed`, D4
+  /// preserve. Hanya dipanggil untuk post video (attach/setActive/preload di
+  /// Langkah 4+ yang menjaga video-only); di Langkah 3 belum dipanggil.
+  PlaybackSession _buildFeedSession(String postId) {
+    final post = _postForSessionId(postId);
+    final url = post == null
+        ? ''
+        : videoQualityService.resolvePlaybackUrl(
+            post.videoPlaybackUrl,
+            dataSaverUrl: post.videoDataSaverUrl,
+            userPreference: appSettingsStore.feedVideoQuality,
+          );
+    return VideoPlayerSession(
+      url: url,
+      hasAudio: post?.hasAudio != false,
+      analyticsPostId: postId,
+      analyticsSurface: 'main_feed',
+      // D4: refresh signed URL Bunny expired best-effort — re-fetch post
+      // segar yang meng-sign ulang URL tiap request.
+      urlRefresher: () => _refreshFeedVideoUrl(postId),
+    );
+  }
+
+  /// Lookup post TERBARU by id dari list yang sedang tampil (bukan snapshot
+  /// lama) — cegah closure-stale-list saat infinite-scroll/refresh.
+  FeedPost? _postForSessionId(String postId) {
+    for (final p in _posts) {
+      if (p.id == postId) return p;
+    }
+    return null;
+  }
+
+  /// D4 best-effort: fetch post segar → URL playback baru bila berbeda.
+  Future<String?> _refreshFeedVideoUrl(String postId) async {
+    try {
+      final fresh = await feedService.fetchPostById(postId);
+      if (fresh == null) return null;
+      final url = videoQualityService.resolvePlaybackUrl(
+        fresh.videoPlaybackUrl,
+        dataSaverUrl: fresh.videoDataSaverUrl,
+        userPreference: appSettingsStore.feedVideoQuality,
+      );
+      return url.isEmpty ? null : url;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_coordinatorEnabled || _routeSubscribed) return;
+    // RouteAware SEKALI di level halaman — pause deterministik saat route
+    // opaque menutup Feed, resume saat kembali. (Lingkup #7 — feed_screen
+    // belum punya wiring ini di jalur legacy.)
+    final route = ModalRoute.of(context);
+    if (route != null) {
+      appRouteObserver.subscribe(this, route);
+      _routeSubscribed = true;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final coordinator = _videoCoordinator;
+    if (coordinator == null) return;
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+        coordinator.pauseAll();
+      case AppLifecycleState.resumed:
+        coordinator.resumeAll();
+      case AppLifecycleState.detached:
+        break;
+    }
+  }
+
+  @override
+  void didPushNext() {
+    final coordinator = _videoCoordinator;
+    if (coordinator == null) return;
+    // Route opaque didorong di atas Feed → pause semua sesi.
+    if (lastPushedRouteIsOpaque()) {
+      coordinator.pauseAll();
+    }
+  }
+
+  @override
+  void didPopNext() {
+    _videoCoordinator?.resumeAll();
+  }
+
   @override
   void dispose() {
     _disposing = true;
+    if (_coordinatorEnabled) {
+      WidgetsBinding.instance.removeObserver(this);
+      if (_routeSubscribed) appRouteObserver.unsubscribe(this);
+      // Coordinator SATU-SATUNYA pemanggil dispose sesi (§Urutan #4).
+      _videoCoordinator?.dispose();
+    }
     cartStore.removeListener(_syncTopCartCount);
     blockService.removeListener(_onBlocklistChanged);
     appSettingsStore.removeListener(_onPreloadSettingsChanged);
