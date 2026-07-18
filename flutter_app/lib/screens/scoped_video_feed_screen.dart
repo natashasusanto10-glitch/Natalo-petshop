@@ -814,7 +814,9 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
                               width: 48,
                               height: 48,
                               child: Icon(
-                                Icons.chevron_left_rounded,
+                                // Chevron "<" tipis ala iOS — konsisten dgn
+                                // back button halaman Postingan.
+                                Icons.arrow_back_ios_new_rounded,
                                 color: Colors.white,
                                 size: 32,
                                 shadows: [
