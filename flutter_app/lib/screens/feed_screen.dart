@@ -242,6 +242,19 @@ class _FeedScreenState extends State<FeedScreen>
   /// Seam test-only: verifikasi keberadaan + wiring lifecycle coordinator.
   @visibleForTesting
   PostVideoCoordinator? get debugVideoCoordinator => _videoCoordinator;
+
+  /// viewId tunggal untuk item Feed yang sedang aktif (satu PageView, satu
+  /// slot "aktif" pada satu waktu — beda dengan Postingan yang punya banyak
+  /// carousel item, Feed cukup satu viewId tetap).
+  static const String _kFeedActiveViewId = 'feed-active';
+
+  /// Post video yang TERAKHIR di-`attach`+`setActive` ke coordinator (Langkah
+  /// 4). Null kalau item aktif saat ini bukan video (foto) atau belum ada.
+  /// Dibandingkan by-id (bukan index) supaya transisi tetap benar walau
+  /// `_visiblePosts` bergeser (blokir user / refresh list, §Urutan #3) —
+  /// perbandingan id secara struktural sudah menutup kelas bug
+  /// closure-stale-list tanpa perlu langkah "detach sebelum swap" terpisah.
+  String? _managedActivePostId;
   // Parallel maps: _preloadedControllers untuk reads (.value, VideoPlayer
   // widget, play/pause). _preloadedCachedPlayers untuk lifecycle (dispose
   // via wrapper supaya cache file di-track properly oleh
@@ -646,6 +659,12 @@ class _FeedScreenState extends State<FeedScreen>
           // Tetap _loading=true sampai fetch network done — supaya kalau
           // network sukses, cache di-replace tanpa flicker UX.
         });
+        // Langkah 4: mode managed TIDAK punya jalur self-init widget seperti
+        // legacy (ownsController:false — widget menunggu coordinator attach).
+        // Tanpa ini, render offline-cache-only (network gagal/lambat) tak
+        // pernah men-attach item aktif ke coordinator → layar kosong/beku.
+        // Legacy tak butuh ini (widget init controller sendiri saat isActive).
+        if (_coordinatorEnabled) unawaited(_managePreloadWindow(_activeIndex));
       }
     } catch (e, st) {
       if (kDebugMode) {
@@ -785,7 +804,69 @@ class _FeedScreenState extends State<FeedScreen>
   /// Total RAM aktif: 4 controllers × ~30MB = ~120MB. Safe untuk phone
   /// 2GB+. Android ExoPlayer limit ~8 slot di low-end device, kita pakai 4
   /// jadi masih ample headroom untuk PIP/background notifications.
+  ///
+  /// Langkah 4 (Opsi D): jalur coordinator. §Urutan #1/#2 — attach BARU→
+  /// setActive BARU→detach LAMA (video→video) ATAU clearActive→detach LAMA
+  /// TAK BERSYARAT (video→foto/kosong). Preload window video-only via
+  /// `coordinator.setPreloadWindow` memakai `offsets` yang SAMA (tak diubah,
+  /// Lingkup #5) dari `adaptiveVideoPreloadPolicy` yang sudah dipakai jalur
+  /// legacy di bawah.
+  Future<void> _manageCoordinatorPreloadWindow(int activeIndex) async {
+    final coordinator = _videoCoordinator;
+    if (coordinator == null) return;
+    final visible = _visiblePosts;
+    final activePost =
+        (activeIndex >= 0 && activeIndex < visible.length)
+            ? visible[activeIndex]
+            : null;
+    final previousActiveId = _managedActivePostId;
+
+    if (activePost != null && activePost.isVideo) {
+      if (previousActiveId != activePost.id) {
+        // §Urutan #1: attach BARU dulu, baru setActive, baru detach LAMA.
+        coordinator.attach(_kFeedActiveViewId, activePost.id);
+        coordinator.setActive(activePost.id);
+        if (previousActiveId != null) {
+          coordinator.detach(_kFeedActiveViewId, previousActiveId);
+        }
+        _managedActivePostId = activePost.id;
+      }
+    } else if (previousActiveId != null) {
+      // §Urutan #2: item aktif sekarang BUKAN video (foto/kosong) — clearActive
+      // lalu detach LAMA TAK BERSYARAT, simetris dengan §Urutan #1.
+      coordinator.clearActive();
+      coordinator.detach(_kFeedActiveViewId, previousActiveId);
+      _managedActivePostId = null;
+    }
+
+    // Preload window: video-only (Kontrak session-factory Feed). Foto tak
+    // pernah masuk — coordinator hanya memiliki sesi video.
+    final offsets = adaptiveVideoPreloadPolicy.offsets(
+      qualityPreference: appSettingsStore.feedVideoQuality,
+      networkTier: videoQualityService.currentTier,
+      autoplayEnabled: appSettingsStore.feedAutoplay,
+      swipeDirection: _swipeDirection,
+      activeBufferAhead: _activeBufferAhead,
+      interactionLocked: _interactionLocked || _mediaZooming,
+    );
+    final targetIds = <String>[];
+    for (final offset in offsets) {
+      final i = activeIndex + offset;
+      if (i < 0 || i >= visible.length) continue;
+      final candidate = visible[i];
+      if (candidate.isVideo) targetIds.add(candidate.id);
+    }
+    coordinator.setPreloadWindow(targetIds);
+  }
+
   Future<void> _managePreloadWindow(int activeIndex) async {
+    // Langkah 4: coordinator dipakai penuh menggantikan seluruh mesin preload
+    // legacy di bawah — bukan berjalan paralel (dua mesin sekaligus akan
+    // rebutan controller). Hanya aktif saat flag ON.
+    if (_coordinatorEnabled) {
+      await _manageCoordinatorPreloadWindow(activeIndex);
+      return;
+    }
     final generation = ++_preloadGeneration;
     final networkTier = videoQualityService.currentTier;
     final qualityPreference = appSettingsStore.feedVideoQuality;
@@ -1267,6 +1348,45 @@ class _FeedScreenState extends State<FeedScreen>
                           isActive: index == _activeIndex,
                           onOverlayStateChanged: _setFeedInteractionLocked,
                           onMediaZoomChanged: _setFeedMediaZooming,
+                        );
+                      }
+                      if (_coordinatorEnabled) {
+                        // Langkah 4 (Opsi D): coordinator pemilik controller
+                        // (dispose) + pengendali playback. Widget hanya
+                        // merender + melapor intent lewat callback; coordinator
+                        // yang eksekusi (attach/setActive/detach sudah diurus
+                        // `_manageCoordinatorPreloadWindow` di atas). Pola
+                        // identik `scoped_video_feed_screen._buildItem`.
+                        final coordinator = _videoCoordinator!;
+                        final postId = post.id;
+                        return FeedVideoPostView(
+                          key: ValueKey('feed-video-$postId'),
+                          post: post,
+                          isActive: index == _activeIndex,
+                          framing: FeedVideoFraming.mainFeed,
+                          ownsController: false,
+                          playbackManagedExternally: true,
+                          coordinator: coordinator,
+                          preloadedController: null,
+                          onBufferAheadChanged: (ahead) =>
+                              _onActiveBufferAheadChanged(postId, ahead),
+                          onOverlayStateChanged: _setFeedInteractionLocked,
+                          onMediaZoomChanged: _setFeedMediaZooming,
+                          // Visibilitas → resume/pause sesi yang MEMANG aktif;
+                          // setActive authoritative di
+                          // `_manageCoordinatorPreloadWindow` — di sini tidak
+                          // setActive supaya urutan transisi tetap deterministik.
+                          onVisibleChanged: (visible) {
+                            if (coordinator.activePostId != postId) return;
+                            if (visible) {
+                              coordinator.reportVisible(postId);
+                            } else {
+                              coordinator.reportHidden(postId);
+                            }
+                          },
+                          onRequestUserTogglePlay: coordinator.userTogglePlay,
+                          onRequestPlay: coordinator.resumeAll,
+                          onRequestPause: (_) => coordinator.pauseAll(),
                         );
                       }
                       return FeedVideoPostView(
