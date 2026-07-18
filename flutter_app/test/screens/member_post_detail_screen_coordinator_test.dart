@@ -47,6 +47,9 @@ class _FakeSession implements PlaybackSession {
   Future<void> setVolume(double v) async => volume = v;
 
   @override
+  Future<void> setPlaybackSpeed(double speed) async {}
+
+  @override
   Future<void> dispose() async => disposeCount++;
 
   @override
