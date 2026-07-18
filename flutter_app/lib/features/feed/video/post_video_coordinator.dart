@@ -296,6 +296,36 @@ class PostVideoCoordinator {
     });
   }
 
+  /// Kosongkan status "video aktif" — dipakai saat item aktif Feed BUKAN video
+  /// (post foto/carousel). Video aktif lama di-pause + mute; TIDAK ada video
+  /// baru yang play. Bekas aktif kehilangan pin, jadi bisa dieviction bila
+  /// keluar window LRU. Idempotent & aman saat belum ada aktif.
+  ///
+  /// Fase SINKRON (urutan penting): tangkap bekas aktif DULU, baru null-kan
+  /// `_activePostId`, naikkan generation (batalkan play in-flight), lepas audio
+  /// claim, bump revision, evict. Fase ASINKRON: pause + mute bekas aktif lewat
+  /// antrean serial (konsisten dgn setActive).
+  void clearActive() {
+    if (_disposed) return;
+    final previous = _activePostId;
+    if (previous == null) return;
+    _guard(() {
+      final previousSession = _entries[previous]?.session;
+      _activePostId = null;
+      _userPausedActive = false;
+      _playbackGeneration++;
+      _releaseAudioClaim();
+      _playbackRevision.value++;
+      if (previousSession != null) {
+        _enqueuePlayback(() async {
+          await previousSession.setVolume(0);
+          await previousSession.pause();
+        });
+      }
+      _evict();
+    });
+  }
+
   /// Siapkan satu video berikutnya: sesi dibuat paused + volume 0 dan
   /// pinned sampai window berubah (preload berikutnya / jadi aktif).
   void preloadNext(String postId) {

@@ -1029,4 +1029,76 @@ void main() {
       coord.dispose();
     });
   });
+
+  group('clearActive (Step 1 §A)', () {
+    test('clearActive pauses old active, mutes it, and clears active state',
+        () async {
+      final source = FakeMutedSource()..muted = false;
+      final coord = PostVideoCoordinator(
+        sessionFactory: (id) => (sessions[id] = FakePlaybackSession(id)),
+        mutedListenable: source,
+        readMuted: () => source.muted,
+        audioArbiter: VideoAudioArbiter(),
+      );
+      coord.setActive('A');
+      await settlePlayback();
+      expect(sessions['A']!.playing, isTrue);
+
+      coord.clearActive();
+      await settlePlayback();
+
+      expect(coord.activePostId, isNull);
+      expect(sessions['A']!.playing, isFalse);
+      expect(sessions['A']!.volume, 0);
+      coord.dispose();
+    });
+
+    test('clearActive is idempotent and safe with no active', () async {
+      final source = FakeMutedSource()..muted = false;
+      final coord = PostVideoCoordinator(
+        sessionFactory: (id) => (sessions[id] = FakePlaybackSession(id)),
+        mutedListenable: source,
+        readMuted: () => source.muted,
+        audioArbiter: VideoAudioArbiter(),
+      );
+      coord.clearActive(); // no active yet
+      await settlePlayback();
+      expect(coord.activePostId, isNull);
+
+      coord.setActive('A');
+      await settlePlayback();
+      coord.clearActive();
+      coord.clearActive();
+      await settlePlayback();
+      expect(coord.activePostId, isNull);
+      coord.dispose();
+    });
+
+    test('after clearActive, a stale in-flight play does not resume old active',
+        () async {
+      final source = FakeMutedSource()..muted = false;
+      final a = DeferredPlaySession('A');
+      final coord = PostVideoCoordinator(
+        sessionFactory: (_) => a,
+        mutedListenable: source,
+        readMuted: () => source.muted,
+        audioArbiter: VideoAudioArbiter(),
+      );
+      // Gate A's play so a resume is in-flight when we clearActive.
+      a.playGate = Completer<void>();
+      coord.setActive('A');
+      await settlePlayback();
+      expect(a.playing, isFalse, reason: 'play masih ter-gate');
+
+      coord.clearActive();
+      a.playGate!.complete();
+      await settlePlayback();
+      await settlePlayback();
+
+      expect(coord.activePostId, isNull);
+      expect(a.playing, isFalse,
+          reason: 'generation naik oleh clearActive → play in-flight batal');
+      coord.dispose();
+    });
+  });
 }
