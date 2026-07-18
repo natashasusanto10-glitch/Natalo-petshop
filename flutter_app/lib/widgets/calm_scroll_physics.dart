@@ -16,9 +16,10 @@ import 'package:flutter/widgets.dart';
 class CalmScrollPhysics extends AlwaysScrollableScrollPhysics {
   const CalmScrollPhysics({super.parent});
 
-  /// Skala kecepatan fling (1.0 = default Flutter). 0.55 dipilih supaya
-  /// satu flick kencang mendarat pendek, mendekati rasa IG.
-  static const double _flingVelocityScale = 0.55;
+  /// Skala kecepatan fling (1.0 = default Flutter). 0.7 dipilih supaya scroll
+  /// list Postingan tak terasa terlalu berat (sebelumnya 0.55 terasa nahan),
+  /// tapi tetap sedikit teredam dibanding default Flutter — dekat rasa IG.
+  static const double _flingVelocityScale = 0.7;
 
   @override
   CalmScrollPhysics applyTo(ScrollPhysics? ancestor) =>

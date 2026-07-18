@@ -212,6 +212,19 @@ class FeedLocalStore extends ChangeNotifier {
   void resetSession() {
     _viewedThisSession.clear();
   }
+
+  /// Test-only: kembalikan singleton ini seolah belum pernah `initialize()`.
+  /// Tanpa ini, `_initialized` yang bertahan lintas-test membuat
+  /// `SharedPreferences.setMockInitialValues` di test berikutnya diam-diam
+  /// diabaikan (initialize() no-op) — `_cachedPosts` basi milik test
+  /// sebelumnya. Produksi tidak pernah memanggil ini.
+  @visibleForTesting
+  void debugResetForTest() {
+    _initialized = false;
+    _cachedPosts = const [];
+    _likedIds.clear();
+    _viewedThisSession.clear();
+  }
 }
 
 final FeedLocalStore feedLocalStore = FeedLocalStore._();

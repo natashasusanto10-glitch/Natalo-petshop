@@ -40,6 +40,7 @@ import '../video/video_playback_health_monitor.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/feed_comment_sheet.dart';
 import '../../../widgets/moderation_action_sheet.dart';
+import 'double_tap_burst_guard.dart';
 import 'feed_action_rail.dart';
 import 'feed_accessibility_overlay.dart';
 import 'feed_creator_overlay.dart';
@@ -2020,6 +2021,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     _cachedPlayer = null;
     _replaceController(null);
     _heartBurstController.dispose();
+    _doubleTapBurstGuard.dispose();
     super.dispose();
   }
 
@@ -2228,6 +2230,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   }
 
   void _onDoubleTapLike() {
+    // Tekan single-tap nyasar dari burst-like (tap ganjil) — lihat
+    // [DoubleTapBurstGuard].
+    _doubleTapBurstGuard.registerDoubleTap();
     if (!_liked) {
       _onLikePressed();
     } else {
@@ -2785,6 +2790,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   }
 
   Future<void> _onTapMedia() async {
+    // Burst-like guard: single-tap yang datang tepat sesudah double-tap-like
+    // (tap ganjil dalam burst) adalah noise — jangan toggle play/pause.
+    if (_doubleTapBurstGuard.shouldSuppressSingleTap) return;
     // Managed (§2.1): tap = intent user-toggle ke coordinator; widget tidak
     // play/pause langsung dan tidak init sendiri (controller dari luar).
     if (_managed) {
@@ -2829,6 +2837,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   bool _longPressSpeedActive = false;
   bool _hideOverlayForLongPress = false;
   bool _hideOverlayForPinchZoom = false;
+
+  /// Menekan single-tap nyasar dari burst double-tap-like (tap ganjil).
+  final DoubleTapBurstGuard _doubleTapBurstGuard = DoubleTapBurstGuard();
 
   /// Lease gesture transien AKTIF saat managed (long-press → coordinator).
   /// Non-null hanya selama jari menahan di mode managed. SELURUH otoritas

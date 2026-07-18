@@ -2126,6 +2126,61 @@ void main() {
           reason: 'ownsController:false → controller tidak di-dispose widget');
     });
 
+    // Burst double-tap-like (jumlah tap GANJIL): tap terakhir yang tak
+    // berpasangan resolve jadi single-tap (gesture arena menunggu
+    // kDoubleTapTimeout), lalu men-toggle play/pause — padahal user cuma
+    // like beruntun. Guard: single-tap dalam jendela singkat sesudah
+    // double-tap-like diabaikan.
+    testWidgets('managed: burst like ganjil (3 tap) TIDAK men-toggle playback',
+        (tester) async {
+      installPlatform();
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final borrowed = VideoPlayerController.networkUrl(
+        Uri.parse('https://example.com/managed-burst.mp4'),
+      );
+      await tester.runAsync(() => borrowed.initialize());
+      addTearDown(borrowed.dispose);
+
+      var toggleCalls = 0;
+      await tester.pumpWidget(host(
+        isActive: true,
+        preloaded: borrowed,
+        ownsController: false,
+        playbackManagedExternally: true,
+        liked: true,
+        onRequestUserTogglePlay: () => toggleCalls++,
+      ));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      const center = Offset(200, 600);
+      Future<void> tap() async {
+        final g = await tester.startGesture(center);
+        await g.up();
+      }
+
+      // 3 tap beruntun: tap1+tap2 → double-tap (like); tap3 sendirian.
+      await tap();
+      await tester.pump(const Duration(milliseconds: 60));
+      await tap(); // double-tap fires di sini
+      await tester.pump(const Duration(milliseconds: 60));
+      await tap(); // tap ganjil
+      await tester.pump(const Duration(milliseconds: 350)); // resolve single-tap
+
+      expect(toggleCalls, 0,
+          reason:
+              'burst like (tap ganjil) tidak boleh men-toggle play/pause');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+    });
+
     // FIX 1 (T2 review): scrubber di managed mode TIDAK boleh play/pause
     // controller pinjaman — hanya seek. Cegah race scrub-pause → background
     // → lepas scrub → play() menembus suspend = audio hantu.
