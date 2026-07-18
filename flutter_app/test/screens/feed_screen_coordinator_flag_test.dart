@@ -109,16 +109,26 @@ void main() {
     debugFeedCoordinatorFactory = null;
   });
 
-  test('feedCoordinatorEnabled default OFF; override memaksa', () {
-    expect(feedCoordinatorEnabled(), isFalse);
-    debugFeedCoordinatorEnabledOverride = true;
+  test('feedCoordinatorEnabled default TRUE (Langkah 6); override memaksa', () {
     expect(feedCoordinatorEnabled(), isTrue);
     debugFeedCoordinatorEnabledOverride = false;
     expect(feedCoordinatorEnabled(), isFalse);
+    debugFeedCoordinatorEnabledOverride = true;
+    expect(feedCoordinatorEnabled(), isTrue);
     debugFeedCoordinatorEnabledOverride = null;
   });
 
-  testWidgets('flag OFF (default) → tak ada coordinator', (tester) async {
+  testWidgets('default (tanpa override) → coordinator dibuat (Langkah 6)',
+      (tester) async {
+    await _pumpFeed(tester);
+    expect(_feedState(tester).debugVideoCoordinator, isNotNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('flag OFF (override, jalur rollback) → tak ada coordinator',
+      (tester) async {
+    debugFeedCoordinatorEnabledOverride = false;
     await _pumpFeed(tester);
     expect(_feedState(tester).debugVideoCoordinator, isNull);
     await tester.pumpWidget(const SizedBox());

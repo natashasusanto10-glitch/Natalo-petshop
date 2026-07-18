@@ -59,13 +59,17 @@ const _feedActionShadowColor = Color(0x99000000);
 // duduk dekat garis progress ala IG, bukan melayang di atas seluruh box.
 const _feedTopActionRightInset = 8.0;
 
-/// Feature flag migrasi Feed → PostVideoCoordinator (Opsi D, Langkah 3).
-/// DEFAULT OFF — dikunci sejak `initState` (dibaca SEKALI via
-/// [feedCoordinatorEnabled], tak reaktif). Rollout bertahap: nyalakan build
-/// internal (via [debugFeedCoordinatorEnabledOverride]) → device-verify →
-/// baru default true. Saat OFF, feed_screen berperilaku 100% seperti legacy —
-/// coordinator tak dibuat, tak ada observer lifecycle didaftarkan.
-const bool _kFeedCoordinatorDefault = false;
+/// Feature flag migrasi Feed → PostVideoCoordinator (Opsi D).
+/// DEFAULT TRUE sejak Langkah 6 (device-verify iOS+Android lolos: audio
+/// tunggal, burst-like, playback, lifecycle Feed→Profil/background). Dikunci
+/// sejak `initState` (dibaca SEKALI via [feedCoordinatorEnabled], tak reaktif).
+///
+/// Flag + infrastruktur preload legacy SENGAJA masih ada di titik ini sebagai
+/// JALUR ROLLBACK: kalau ada laporan regresi di produksi, cukup balik nilai
+/// ini ke false (bukan git-revert). Penghapusan flag + legacy dilakukan
+/// TERPISAH di Langkah 7 setelah masa observasi aman — dan HANYA di titik itu
+/// rollback berubah jadi git-revert.
+const bool _kFeedCoordinatorDefault = true;
 
 /// Test/dev seam: paksa [feedCoordinatorEnabled] (null = pakai default).
 @visibleForTesting
