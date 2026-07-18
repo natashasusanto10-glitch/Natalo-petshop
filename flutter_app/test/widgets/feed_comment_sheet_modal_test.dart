@@ -7,6 +7,7 @@ import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/state/feed_comment_interaction_store.dart';
 import 'package:natalo_petshop_flutter/state/feed_comment_session_store.dart';
 import 'package:natalo_petshop_flutter/widgets/feed_comment_sheet.dart';
+import 'package:natalo_petshop_flutter/widgets/natalo_paw_refresh_indicator.dart';
 
 FeedPost _post() => FeedPost.fromJson({
       'id': 'comment-post',
@@ -456,5 +457,25 @@ void main() {
         reason: 'removing a covered drawer must release single-flight');
     Navigator.of(tester.element(find.byType(FeedCommentSheet))).pop();
     await tester.pump(const Duration(milliseconds: 350));
+  });
+
+  testWidgets('daftar komentar populated tidak punya pull-to-refresh',
+      (tester) async {
+    final sessions = FeedCommentSessionStore();
+    sessions
+        .sessionFor(viewerId: 'guest', postId: _post().id)
+        .replaceComments([_comment(likeCount: 1, viewerLiked: false)], null);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FeedCommentSheet(post: _post(), sessionStore: sessions),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(NataloPawRefreshIndicator), findsNothing,
+        reason: 'tarik-bawah di puncak = tutup, bukan refresh');
   });
 }

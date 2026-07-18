@@ -2175,72 +2175,69 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     final captionOffset = hasCaption ? 1 : 0;
     final totalCount = items.length + captionOffset + (_loadingMore ? 1 : 0);
 
-    return NataloPawRefreshIndicator(
-      onRefresh: _refresh,
-      child: ListView.builder(
-        controller: _listController,
-        padding: const EdgeInsets.fromLTRB(0, 8, 0, 24),
-        physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: totalCount,
-        itemBuilder: (context, index) {
-          // Caption header — index 0 kalau hasCaption.
-          if (hasCaption && index == 0) {
-            return _CaptionTile(
-              post: widget.post,
-              captionText: captionText,
-              onAuthorTap: _openAuthorProfile,
-              onMentionTap: _openMentionProfile,
-            );
-          }
-          final adjustedIndex = index - captionOffset;
-          if (adjustedIndex >= items.length) {
-            return const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: NataloColors.primary,
-                  ),
-                ),
-              ),
-            );
-          }
-          final item = items[adjustedIndex];
-          if (item.kind == _CommentDisplayItemKind.repliesControl) {
-            return _RepliesControl(
-              totalReplies: item.totalReplies,
-              visibleReplies: item.visibleReplies,
-              onShowMore: () => _showMoreReplies(
-                item.parentId!,
-                item.totalReplies,
-              ),
-              onHide: item.visibleReplies > 0
-                  ? () => _hideReplies(item.parentId!)
-                  : null,
-            );
-          }
-          final comment = _withGlobalCommentLikeState(item.comment!);
-          // canDelete = current user adalah author komentar. Drives
-          // tampilan "Hapus" di moderation sheet (vs Laporkan/Blokir
-          // untuk komentar orang lain).
-          final currentUserId = memberStore.profile?.id;
-          final isOwn =
-              currentUserId != null && currentUserId == comment.author.id;
-          return _CommentTile(
-            comment: comment,
-            isReply: item.isReply,
-            onLike: () => _toggleLike(comment),
-            onReply: () => _setReplyTarget(comment),
+    return ListView.builder(
+      controller: _listController,
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 24),
+      physics: const AlwaysScrollableScrollPhysics(),
+      itemCount: totalCount,
+      itemBuilder: (context, index) {
+        // Caption header — index 0 kalau hasCaption.
+        if (hasCaption && index == 0) {
+          return _CaptionTile(
+            post: widget.post,
+            captionText: captionText,
             onAuthorTap: _openAuthorProfile,
             onMentionTap: _openMentionProfile,
-            canDelete: isOwn,
-            onDelete: isOwn ? () => _deleteComment(comment) : null,
           );
-        },
-      ),
+        }
+        final adjustedIndex = index - captionOffset;
+        if (adjustedIndex >= items.length) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: NataloColors.primary,
+                ),
+              ),
+            ),
+          );
+        }
+        final item = items[adjustedIndex];
+        if (item.kind == _CommentDisplayItemKind.repliesControl) {
+          return _RepliesControl(
+            totalReplies: item.totalReplies,
+            visibleReplies: item.visibleReplies,
+            onShowMore: () => _showMoreReplies(
+              item.parentId!,
+              item.totalReplies,
+            ),
+            onHide: item.visibleReplies > 0
+                ? () => _hideReplies(item.parentId!)
+                : null,
+          );
+        }
+        final comment = _withGlobalCommentLikeState(item.comment!);
+        // canDelete = current user adalah author komentar. Drives
+        // tampilan "Hapus" di moderation sheet (vs Laporkan/Blokir
+        // untuk komentar orang lain).
+        final currentUserId = memberStore.profile?.id;
+        final isOwn =
+            currentUserId != null && currentUserId == comment.author.id;
+        return _CommentTile(
+          comment: comment,
+          isReply: item.isReply,
+          onLike: () => _toggleLike(comment),
+          onReply: () => _setReplyTarget(comment),
+          onAuthorTap: _openAuthorProfile,
+          onMentionTap: _openMentionProfile,
+          canDelete: isOwn,
+          onDelete: isOwn ? () => _deleteComment(comment) : null,
+        );
+      },
     );
   }
 
