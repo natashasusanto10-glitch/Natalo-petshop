@@ -184,8 +184,10 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final showReviewNotice =
-        widget.post.statusInfo == FeedPostStatus.active && widget.post.isVideo;
+    final showReviewNotice = feedPostEditNeedsReview(
+      wasActive: widget.post.statusInfo == FeedPostStatus.active,
+      isVideo: widget.post.isVideo,
+    );
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
