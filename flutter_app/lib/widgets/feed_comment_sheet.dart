@@ -24,7 +24,6 @@ import '../utils/mention_text.dart';
 import 'app_toast.dart';
 import 'mention_picker.dart';
 import 'moderation_action_sheet.dart';
-import 'natalo_paw_refresh_indicator.dart';
 import 'profile_avatar.dart';
 
 /// Shared detents and gesture policy for both comment drawer presentation
@@ -210,6 +209,62 @@ class _CommentSheetScrollAnchorState extends State<CommentSheetScrollAnchor> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Tampilan error daftar komentar: pesan + tombol "Coba lagi".
+///
+/// Menggantikan pull-to-refresh di state error supaya gesture tarik-bawah
+/// tetap konsisten = tutup sheet, sementara retry tetap tersedia lewat tombol.
+class CommentErrorRetryView extends StatelessWidget {
+  const CommentErrorRetryView({
+    super.key,
+    required this.message,
+    required this.onRetry,
+    this.scrollController,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+  final ScrollController? scrollController;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      controller: scrollController,
+      padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 32),
+      children: [
+        Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.wifi_off_rounded,
+                color: Colors.white.withValues(alpha: 0.35),
+                size: 40,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.65),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: onRetry,
+                style: TextButton.styleFrom(
+                  foregroundColor: NataloColors.primary,
+                ),
+                child: const Text('Coba lagi'),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2079,34 +2134,10 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       return _CommentListSkeleton(controller: _listController);
     }
     if (_error != null && _comments.isEmpty) {
-      return NataloPawRefreshIndicator(
-        onRefresh: _refresh,
-        child: ListView(
-          controller: _listController,
-          padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 32),
-          children: [
-            Center(
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.wifi_off_rounded,
-                    color: Colors.white.withValues(alpha: 0.35),
-                    size: 40,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    _error!,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.65),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+      return CommentErrorRetryView(
+        message: _error!,
+        onRetry: () => unawaited(_refresh()),
+        scrollController: _listController,
       );
     }
     // IG pattern — Compute caption SEBELUM check _comments.isEmpty supaya
