@@ -619,11 +619,13 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   }
 
   String _authorNameFor(FeedPost post) {
-    final name = post.author.name.trim();
+    final name = post.author.displayName.trim();
     return name.isEmpty ? 'Pengguna' : name;
   }
 
   String _authorInitialFor(FeedPost post) {
+    final initial = post.author.initial.trim();
+    if (initial.isNotEmpty) return initial;
     final nm = _authorNameFor(post);
     return nm.isEmpty ? '?' : nm.substring(0, 1).toUpperCase();
   }
@@ -878,7 +880,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                         ? _authorPhotoFor(post)
                         : _memberPhotoUrl,
                     memberIsOfficial: widget.authorPerPost
-                        ? post.author.isOfficial
+                        ? post.author.isOfficialAccount
                         : widget.authorIsOfficial,
                     liked: _likedCache[post.id] ?? false,
                     // Hide ... menu ketika viewing post user lain — tidak ada
