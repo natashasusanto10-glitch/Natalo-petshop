@@ -138,4 +138,59 @@ void main() {
     }
     expect(find.text('Mengikuti'), findsOneWidget);
   });
+
+  testWidgets(
+      'authorIsFollowing override wins over post.author (profile payload '
+      'has no author object — regression: chip stuck on "Ikuti")',
+      (tester) async {
+    // Simulasi item /api/u/{username}: TIDAK ada objek author sama sekali
+    // → FeedAuthor default (id '', isFollowing false).
+    final post = FeedPost.fromJson({
+      'id': 'appbar-profile-shape',
+      'slug': 'appbar-profile-shape',
+      'kind': 'PHOTO',
+      'caption': '',
+      'createdAt': '2026-07-18T00:00:00.000Z',
+    });
+
+    await tester.pumpWidget(MaterialApp(
+      home: MemberPostDetailScreen(
+        post: post,
+        isOwner: false,
+        authorName: 'Rani',
+        authorId: 'author-1',
+        authorIsFollowing: true,
+      ),
+    ));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.text('Mengikuti'), findsOneWidget);
+    expect(find.text('Ikuti'), findsNothing);
+  });
+
+  testWidgets('chip hidden when author id unresolvable (empty)',
+      (tester) async {
+    final post = FeedPost.fromJson({
+      'id': 'appbar-no-author-id',
+      'slug': 'appbar-no-author-id',
+      'kind': 'PHOTO',
+      'caption': '',
+      'createdAt': '2026-07-18T00:00:00.000Z',
+    });
+
+    await tester.pumpWidget(MaterialApp(
+      home: MemberPostDetailScreen(
+        post: post,
+        isOwner: false,
+        authorName: 'Rani',
+      ),
+    ));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    // follow('') pasti gagal — lebih baik chip tak tampil.
+    expect(find.text('Ikuti'), findsNothing);
+    expect(find.text('Mengikuti'), findsNothing);
+  });
 }

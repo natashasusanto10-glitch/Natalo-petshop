@@ -600,6 +600,15 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
           // Official → detail render identitas brand (logo + emas +
           // rosette) di author row, caption, dan subtitle AppBar.
           authorIsOfficial: profile?.isOfficial ?? false,
+          // Item /api/u/{username} TIDAK bawa objek author → post.author.id
+          // kosong & isFollowing false. Chip "Ikuti/Mengikuti" header butuh
+          // identitas dari level profil (yang akurat + key-nya sama dgn
+          // followOverrides yang di-set tombol follow profil).
+          authorId: profile?.id,
+          authorIsFollowing: resolveFollowState(
+            profile?.id ?? '',
+            profile?.isFollowing ?? false,
+          ),
           isOwner: profile?.isOwner ?? false,
           warmVideoHandoff: handoff,
           initialNextCursor: _contentStates[content]!.nextCursor,
