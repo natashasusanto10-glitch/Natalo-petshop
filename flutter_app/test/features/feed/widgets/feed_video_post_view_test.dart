@@ -957,6 +957,64 @@ void _registerLegacyFrameOutputRecoveryTests() {
   });
 }
 
+/// Lease palsu untuk merekam panggilan [TransientGestureLease.end].
+class _SpyLease implements TransientGestureLease {
+  final List<bool> endCalls = <bool>[];
+  bool _current = true;
+
+  @override
+  bool get isCurrent => _current;
+
+  @override
+  Future<void> end({required bool allowResume}) async {
+    endCalls.add(allowResume);
+    _current = false;
+  }
+}
+
+/// Coordinator mata-mata: merekam tiap [beginTransientGesture] dan
+/// mengembalikan lease palsu yang bisa di-inspeksi. `returnNull` mensimulasi
+/// coordinator menolak gesture (post tak aktif / tak eligible).
+class _SpyCoordinator extends PostVideoCoordinator {
+  _SpyCoordinator({this.returnNull = false})
+      : super(sessionFactory: (id) => _NullSpySession());
+
+  final bool returnNull;
+  final List<({String postId, TransientGestureKind kind})> beginCalls =
+      <({String postId, TransientGestureKind kind})>[];
+  final List<_SpyLease> leases = <_SpyLease>[];
+
+  @override
+  TransientGestureLease? beginTransientGesture(
+    String postId,
+    TransientGestureKind kind,
+  ) {
+    beginCalls.add((postId: postId, kind: kind));
+    if (returnNull) return null;
+    final lease = _SpyLease();
+    leases.add(lease);
+    return lease;
+  }
+}
+
+/// Sesi kosong — spy coordinator tak pernah benar-benar memutar apa pun.
+class _NullSpySession implements PlaybackSession {
+  @override
+  Future<void> play() async {}
+  @override
+  Future<void> pause() async {}
+  @override
+  Future<void> seekTo(Duration position) async {}
+  @override
+  Future<void> setVolume(double volume) async {}
+  @override
+  Future<void> setPlaybackSpeed(double speed) async {}
+  @override
+  Future<void> dispose() async {}
+  @override
+  Duration get position => Duration.zero;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -3542,6 +3600,133 @@ void main() {
 
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
+    });
+  });
+
+  // ── Wiring long-press managed → coordinator.beginTransientGesture ──────
+  // Sebelumnya long-press di-nonaktifkan total saat managed (if (_managed)
+  // return). Sekarang di-delegasikan ke coordinator: zona kiri/kanan = 2x
+  // (doubleSpeed), zona tengah = peek-pause (peekPause). Widget TIDAK menyentuh
+  // controller pinjaman langsung — SELURUH otoritas ada di coordinator.
+  group('managed long-press → beginTransientGesture', () {
+    Widget host(PostVideoCoordinator coordinator) => MaterialApp(
+          home: FeedVideoPostView(
+            key: const ValueKey('feed-video-gesture'),
+            post: _fakeVideoPost(id: 'gest-1', hls: true),
+            isActive: true,
+            preloadedController: null,
+            ownsController: false,
+            playbackManagedExternally: true,
+            coordinator: coordinator,
+            onOverlayStateChanged: (_) {},
+            onMediaZoomChanged: (_) {},
+          ),
+        );
+
+    setUp(() {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    });
+
+    testWidgets('zona kiri → doubleSpeed; release → end(allowResume:true)',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final coordinator = _SpyCoordinator();
+      addTearDown(coordinator.dispose);
+      await tester.pumpWidget(host(coordinator));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // Zona kiri: x = 40 / 400 = 0.1 < 0.4 → doubleSpeed.
+      final gesture =
+          await tester.startGesture(const Offset(40, 600));
+      await tester.pump(const Duration(milliseconds: 600)); // trigger long-press
+      expect(coordinator.beginCalls, hasLength(1));
+      expect(coordinator.beginCalls.single.kind, TransientGestureKind.doubleSpeed);
+      expect(coordinator.beginCalls.single.postId, 'gest-1');
+
+      await gesture.up();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(coordinator.leases.single.endCalls, [true],
+          reason: 'lepas jari natural → end(allowResume:true)');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    testWidgets('zona tengah → peekPause', (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final coordinator = _SpyCoordinator();
+      addTearDown(coordinator.dispose);
+      await tester.pumpWidget(host(coordinator));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // Zona tengah: x = 200 / 400 = 0.5 ∈ [0.4, 0.6] → peekPause.
+      final gesture = await tester.startGesture(const Offset(200, 600));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(coordinator.beginCalls.single.kind, TransientGestureKind.peekPause);
+
+      await gesture.up();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    testWidgets('coordinator tolak (null) → tak crash, tak ada state tersangkut',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final coordinator = _SpyCoordinator(returnNull: true);
+      addTearDown(coordinator.dispose);
+      await tester.pumpWidget(host(coordinator));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      final gesture = await tester.startGesture(const Offset(40, 600));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(coordinator.beginCalls, hasLength(1));
+      expect(coordinator.leases, isEmpty);
+
+      await gesture.up();
+      await tester.pump(const Duration(milliseconds: 50));
+      // Tak ada lease → tak ada end() dipanggil, tak crash.
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    testWidgets('dispose mid-press → end(allowResume:false)', (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final coordinator = _SpyCoordinator();
+      addTearDown(coordinator.dispose);
+      await tester.pumpWidget(host(coordinator));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      final gesture = await tester.startGesture(const Offset(40, 600));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(coordinator.leases, hasLength(1));
+
+      // Widget dibongkar SELAGI jari masih menahan (swipe cepat / navigasi).
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(coordinator.leases.single.endCalls, [false],
+          reason: 'teardown selagi gesture aktif → end(allowResume:false)');
+
+      await gesture.up();
     });
   });
 }

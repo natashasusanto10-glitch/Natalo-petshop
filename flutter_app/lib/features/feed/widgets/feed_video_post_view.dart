@@ -1371,6 +1371,8 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         _hideOverlayForLongPress = false;
         _hideOverlayForPinchZoom = false;
         _isScrubbing = false;
+        // Managed: post tak lagi aktif (swipe) → akhiri gesture TANPA resume.
+        _endManagedGesture(allowResume: false);
         widget.onMediaZoomChanged(false);
         // Managed: coordinator yang mem-pause aktif-lama saat setActive ke
         // video lain (dan tetap pinned untuk resume di timestamp — §2.6).
@@ -1926,6 +1928,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
   @override
   void dispose() {
+    // Managed: teardown selagi gesture aktif → akhiri lease TANPA resume
+    // (widget lenyap, tak boleh ada resume/speed nyangkut). Coordinator tetap
+    // pemilik sesi; ini cuma melepas gesture, bukan dispose sesi.
+    _endManagedGesture(allowResume: false);
     _forceDeactivateCommentDrawer(deferOverlayNotification: true);
     _legacyDisposed = true;
     _localInitGeneration++;
@@ -2823,6 +2829,22 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   bool _longPressSpeedActive = false;
   bool _hideOverlayForLongPress = false;
   bool _hideOverlayForPinchZoom = false;
+
+  /// Lease gesture transien AKTIF saat managed (long-press → coordinator).
+  /// Non-null hanya selama jari menahan di mode managed. SELURUH otoritas
+  /// resume/speed ada di coordinator; widget cuma memegang handle untuk
+  /// mengakhiri gesture (lepas jari / teardown).
+  TransientGestureLease? _activeGestureLease;
+
+  /// Akhiri gesture managed yang sedang aktif (bila ada). [allowResume] false
+  /// dipakai saat teardown/swipe (post tak lagi aktif → jangan resume); true
+  /// saat lepas jari natural.
+  void _endManagedGesture({required bool allowResume}) {
+    final lease = _activeGestureLease;
+    if (lease == null) return;
+    _activeGestureLease = null;
+    unawaited(lease.end(allowResume: allowResume));
+  }
   // Last-known media area width (set di build LayoutBuilder). Dipakai
   // untuk hitung zone dari localPosition.dx. Default screen width — akan
   // di-update ke real value saat build pertama.
@@ -2839,14 +2861,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   }
 
   void _onLongPressStart(LongPressStartDetails details) {
-    // Managed (§2.1): playback dikuasai coordinator — peek-pause & 2x-speed
-    // menyentuh controller pinjaman langsung → race (resume bisa menembus
-    // _suspended = audio hantu; speed 2x bisa nyangkut kalau widget disposed
-    // mid-press). Nonaktifkan gesture ini saat managed (default aman D5/§2.1).
-    if (_managed) return;
     if (_isScrubbing) return; // Scrubber priority
-    final ctrl = _videoController;
-    if (ctrl == null || !ctrl.value.isInitialized) return;
 
     // Zone detection: 0-0.4 = left, 0.4-0.6 = center, 0.6-1.0 = right.
     // Center zone dibuat lebih kecil supaya 2x speed lebih mudah
@@ -2856,6 +2871,30 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         : MediaQuery.of(context).size.width;
     final ratio = (details.localPosition.dx / width).clamp(0.0, 1.0);
     final isCenterZone = ratio >= 0.4 && ratio <= 0.6;
+
+    // Managed (§2.1): playback dikuasai coordinator. Peek-pause & 2x-speed
+    // TIDAK boleh menyentuh controller pinjaman langsung (race: resume nembus
+    // _suspended = audio hantu; speed 2x nyangkut kalau disposed mid-press).
+    // Delegasikan ke coordinator via lease — SELURUH otoritas/gate resume di
+    // sana. Coordinator menolak (null) kalau post tak aktif/tak eligible.
+    if (_managed) {
+      final coordinator = widget.coordinator;
+      if (coordinator == null) return;
+      final kind = isCenterZone
+          ? TransientGestureKind.peekPause
+          : TransientGestureKind.doubleSpeed;
+      final lease = coordinator.beginTransientGesture(widget.post.id, kind);
+      if (lease == null) return; // coordinator menolak → no-op.
+      AppHaptics.impact();
+      setState(() {
+        _activeGestureLease = lease;
+        _hideOverlayForLongPress = true;
+      });
+      return;
+    }
+
+    final ctrl = _videoController;
+    if (ctrl == null || !ctrl.value.isInitialized) return;
 
     if (isCenterZone) {
       // Center: pause-while-held (existing behavior).
@@ -2879,10 +2918,18 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   }
 
   Future<void> _onLongPressEnd(LongPressEndDetails details) async {
-    // Managed: gesture di-nonaktifkan di _onLongPressStart → tidak ada state
-    // long-press yang perlu di-resume/reset di sini. Guard simetris supaya
-    // tak ada ctrl.play/setPlaybackSpeed/seek langsung saat managed.
-    if (_managed) return;
+    // Managed: lepas jari natural → akhiri lease dengan allowResume:true.
+    // Coordinator yang memutuskan boleh-resume atau tidak (post masih aktif &
+    // eligible). Widget TIDAK menyentuh controller/speed langsung.
+    if (_managed) {
+      if (_activeGestureLease != null) {
+        if (mounted) {
+          setState(() => _hideOverlayForLongPress = false);
+        }
+        _endManagedGesture(allowResume: true);
+      }
+      return;
+    }
     final ctrl = _videoController;
     if (_longPressPaused) {
       setState(() {
