@@ -1,14 +1,17 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../features/feed/widgets/gallery_post_tile.dart';
+import '../features/feed/widgets/post_gallery_opener.dart';
 import '../models/feed_post.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
 import '../state/feed_store.dart';
 import '../theme/natalo_colors.dart';
-import 'member_post_detail_screen.dart';
+import '../theme/natalo_text.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
+import '../widgets/profile_grid_geometry.dart';
 
 typedef SavedPostsFetcher = Future<FeedPage> Function(
     {String? cursor, required int limit});
@@ -24,8 +27,7 @@ class SavedPostsScreen extends StatefulWidget {
 }
 
 class _SavedPostsScreenState extends State<SavedPostsScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
+    with PostGalleryOpener<SavedPostsScreen> {
   final ScrollController _scrollController = ScrollController();
 
   List<String> _postIds = const [];
@@ -39,14 +41,12 @@ class _SavedPostsScreenState extends State<SavedPostsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _scrollController.addListener(_handleScroll);
     unawaited(_loadInitial());
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     _scrollController
       ..removeListener(_handleScroll)
       ..dispose();
@@ -66,18 +66,10 @@ class _SavedPostsScreenState extends State<SavedPostsScreen>
     }
   }
 
-  List<FeedPost> get _allSavedPosts => feedStore
+  List<FeedPost> get _savedPosts => feedStore
       .getMany(_postIds)
       .where((post) => post.viewerSaved)
       .toList(growable: false);
-
-  List<FeedPost> get _visiblePosts {
-    final posts = _allSavedPosts;
-    if (_tabController.index == 0) return posts;
-    return posts
-        .where((post) => post.hasLinkedProducts)
-        .toList(growable: false);
-  }
 
   List<FeedPost> _normalizeSaved(Iterable<FeedPost> posts) => posts
       .map((post) => post.viewerSaved ? post : post.copyWith(viewerSaved: true))
@@ -104,7 +96,6 @@ class _SavedPostsScreenState extends State<SavedPostsScreen>
         _nextCursor = page.nextCursor;
         _loading = false;
       });
-      _scheduleShoppingPrefetch();
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -134,14 +125,11 @@ class _SavedPostsScreenState extends State<SavedPostsScreen>
       setState(() {
         _postIds = [
           ..._postIds,
-          ...posts
-              .where((post) => knownIds.add(post.id))
-              .map((post) => post.id),
+          ...posts.where((post) => knownIds.add(post.id)).map((p) => p.id),
         ];
         _nextCursor = page.nextCursor;
         _loadingMore = false;
       });
-      _scheduleShoppingPrefetch();
     } catch (_) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -151,69 +139,44 @@ class _SavedPostsScreenState extends State<SavedPostsScreen>
     }
   }
 
-  void _scheduleShoppingPrefetch() {
-    if (_tabController.index != 1 ||
-        _visiblePosts.length >= 6 ||
-        _loadingMore ||
-        _nextCursor == null) {
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _tabController.index != 1) return;
-      unawaited(_loadMore());
-    });
-  }
-
   Future<void> _openPost(List<FeedPost> posts, int index) async {
-    final post = posts[index];
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => MemberPostDetailScreen(
-          post: post,
-          posts: [post],
-          authorName: post.author.displayName,
-          authorPhotoUrl: post.author.avatarUrl,
-          authorInitial: post.author.initial,
-          authorIsOfficial: post.author.isOfficialAccount,
-          isOwner: false,
-        ),
-      ),
+    await openPostGallery(
+      posts: posts,
+      index: index,
+      loadMore: (cursor) => widget.fetchPosts(cursor: cursor, limit: 20),
+      authorIsOfficial: false,
+      isOwner: false,
+      authorPerPost: true,
+      initialNextCursor: _nextCursor,
     );
     if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: colors.surface,
-        surfaceTintColor: colors.surface,
+        backgroundColor: cs.surface,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: cs.surface,
         leading: IconButton(
           onPressed: () => Navigator.maybePop(context),
-          icon: const Icon(Icons.arrow_back_rounded),
+          icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface),
           tooltip: 'Kembali',
         ),
-        title: const Text(
+        title: Text(
           'Postingan Tersimpan',
-          style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            color: cs.onSurface,
+            fontSize: 18,
+            fontWeight: NataloWeight.strong,
+          ),
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          onTap: (_) {
-            setState(() {});
-            _scheduleShoppingPrefetch();
-          },
-          labelColor: NataloColors.primary,
-          unselectedLabelColor: colors.onSurfaceVariant,
-          indicatorColor: NataloColors.primary,
-          indicatorWeight: 3,
-          tabs: const [
-            Tab(text: 'Semua'),
-            Tab(text: 'Belanja'),
-          ],
-        ),
+        centerTitle: false,
+        titleSpacing: 0,
       ),
       body: AnimatedBuilder(
         animation: feedStore,
@@ -223,13 +186,11 @@ class _SavedPostsScreenState extends State<SavedPostsScreen>
   }
 
   Widget _buildBody(BuildContext context) {
-    final posts = _visiblePosts;
+    final posts = _savedPosts;
     if (_loading && _postIds.isEmpty) {
       return const Center(
         child: CircularProgressIndicator(
-          color: NataloColors.primary,
-          strokeWidth: 2.4,
-        ),
+            color: NataloColors.primary, strokeWidth: 2.4),
       );
     }
     if (_errorText != null && _postIds.isEmpty) {
@@ -241,44 +202,30 @@ class _SavedPostsScreenState extends State<SavedPostsScreen>
       );
     }
     if (posts.isEmpty) {
-      final shopping = _tabController.index == 1;
       return _SavedPostsMessage(
-        icon: shopping
-            ? Icons.shopping_bag_outlined
-            : Icons.bookmark_border_rounded,
-        title: shopping
-            ? 'Belum ada postingan belanja tersimpan'
-            : 'Belum ada postingan tersimpan',
-        subtitle: shopping
-            ? 'Postingan tersimpan yang menampilkan produk akan muncul di sini.'
-            : 'Tap ikon simpan di Feed untuk melihatnya lagi di sini.',
+        icon: Icons.bookmark_border_rounded,
+        title: 'Belum ada postingan tersimpan',
+        subtitle: 'Tap ikon simpan di Feed untuk melihatnya lagi di sini.',
         onRefresh: _loadInitial,
       );
     }
 
-    return RefreshIndicator(
-      color: NataloColors.primary,
+    return NataloPawRefreshIndicator(
       onRefresh: _loadInitial,
       child: CustomScrollView(
         controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          SliverPadding(
-            padding: const EdgeInsets.all(2),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                mainAxisSpacing: 2,
-                crossAxisSpacing: 2,
-                childAspectRatio: 1,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) => _SavedPostTile(
-                  post: posts[index],
-                  onTap: () => _openPost(posts, index),
-                ),
-                childCount: posts.length,
-              ),
+          SliverGrid.builder(
+            gridDelegate: profileGridDelegate(),
+            itemCount: posts.length,
+            itemBuilder: (context, index) => GalleryPostTile(
+              key: tileKeyFor(posts[index].id),
+              post: posts[index],
+              onTap: () => _openPost(posts, index),
+              onTapDown: () => preparePostVideo(posts[index]),
+              onTapCancel: () => cancelPreparedPost(posts[index].id),
+              showStatusBadge: false,
             ),
           ),
           SliverToBoxAdapter(
@@ -291,9 +238,7 @@ class _SavedPostsScreenState extends State<SavedPostsScreen>
                         child: SizedBox.square(
                           dimension: 22,
                           child: CircularProgressIndicator(
-                            color: NataloColors.primary,
-                            strokeWidth: 2.2,
-                          ),
+                              color: NataloColors.primary, strokeWidth: 2.2),
                         ),
                       )
                     : _loadMoreFailed
@@ -309,94 +254,6 @@ class _SavedPostsScreenState extends State<SavedPostsScreen>
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SavedPostTile extends StatelessWidget {
-  final FeedPost post;
-  final VoidCallback onTap;
-
-  const _SavedPostTile({required this.post, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final previewUrl = post.previewMediaUrl.trim();
-    return Semantics(
-      button: true,
-      label: 'Buka postingan tersimpan dari ${post.author.displayName}',
-      child: Material(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        child: InkWell(
-          key: ValueKey('saved-post-${post.id}'),
-          onTap: onTap,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (previewUrl.isNotEmpty)
-                CachedNetworkImage(
-                  imageUrl: previewUrl,
-                  fit: BoxFit.cover,
-                  placeholder: (_, __) => const _SavedPostFallback(),
-                  errorWidget: (_, __, ___) => const _SavedPostFallback(),
-                )
-              else
-                const _SavedPostFallback(),
-              if (post.isVideo || post.isCarousel)
-                Positioned(
-                  top: 7,
-                  right: 7,
-                  child: _MediaBadge(
-                    icon: post.isVideo
-                        ? Icons.play_arrow_rounded
-                        : Icons.collections_rounded,
-                  ),
-                ),
-              if (post.hasLinkedProducts)
-                const Positioned(
-                  left: 7,
-                  bottom: 7,
-                  child: _MediaBadge(icon: Icons.shopping_bag_rounded),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SavedPostFallback extends StatelessWidget {
-  const _SavedPostFallback();
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: Icon(
-        Icons.image_outlined,
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-      ),
-    );
-  }
-}
-
-class _MediaBadge extends StatelessWidget {
-  final IconData icon;
-
-  const _MediaBadge({required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.54),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Icon(icon, color: Colors.white, size: 17),
       ),
     );
   }
@@ -422,8 +279,7 @@ class _SavedPostsMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return RefreshIndicator(
-      color: NataloColors.primary,
+    return NataloPawRefreshIndicator(
       onRefresh: onRefresh ?? onAction ?? () async {},
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -437,7 +293,7 @@ class _SavedPostsMessage extends StatelessWidget {
             style: TextStyle(
               color: colors.onSurface,
               fontSize: 17,
-              fontWeight: FontWeight.w800,
+              fontWeight: NataloWeight.strong,
             ),
           ),
           if (subtitle != null) ...[
@@ -446,10 +302,7 @@ class _SavedPostsMessage extends StatelessWidget {
               subtitle!,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: colors.onSurfaceVariant,
-                fontSize: 13,
-                height: 1.45,
-              ),
+                  color: colors.onSurfaceVariant, fontSize: 13, height: 1.45),
             ),
           ],
           if (onAction != null && actionLabel != null) ...[
