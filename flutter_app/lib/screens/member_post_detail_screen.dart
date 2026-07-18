@@ -659,7 +659,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     final post = _posts[index];
     final changed = await Navigator.pushNamed(
       context,
-      '/member/post-edit',
+      '/member/postingan-edit',
       arguments: post,
     );
     if (changed != true || !mounted) return;
