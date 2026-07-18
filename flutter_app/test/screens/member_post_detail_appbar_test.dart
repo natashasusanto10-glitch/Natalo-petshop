@@ -42,6 +42,17 @@ void main() {
     expect(find.byType(AppBar), findsNothing);
     expect(find.text('Postingan'), findsOneWidget);
     expect(find.byType(LiquidGlass), findsWidgets);
+
+    // Frosted-tipis di strip header (BackdropFilter) — konten tembus tapi
+    // teks kebaca (paritas IG).
+    expect(find.byType(BackdropFilter), findsWidgets);
+
+    // Media post pertama mulai DI BAWAH header — ListView diberi top padding
+    // (status bar + toolbar) supaya tidak "over ke atas" / kepotong.
+    final listPadding = tester
+        .widget<ListView>(find.byType(ListView))
+        .padding as EdgeInsets;
+    expect(listPadding.top, greaterThan(0));
   });
 
   testWidgets(
