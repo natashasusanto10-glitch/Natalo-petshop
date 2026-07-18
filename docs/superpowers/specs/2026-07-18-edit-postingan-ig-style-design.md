@@ -31,7 +31,7 @@ Status re-moderasi ditentukan **server-side**, bukan oleh payload client:
   }
   ```
   → reset **semua** customer ACTIVE post ke PENDING_REVIEW saat edit, **tanpa gate media type** (foto, carousel, video sama saja). Server mengabaikan apa pun status yang dikirim client.
-- Backend saat ini juga TIDAK auto-approve foto/carousel saat CREATE (`app/api/feed/posts/route.ts:480`: `const status = isAdmin ? "ACTIVE" : "PENDING_REVIEW"`). Auto-approve foto/carousel = PR #168, **belum merge** (lihat memory "Feed auto-approve foto/carousel").
+- CREATE sudah benar: `app/api/feed/posts/route.ts` memakai `resolveInitialPostStatus({isAdmin, kind})` dari `lib/feed/post-moderation.ts` → foto/carousel customer auto-ACTIVE (auto-approve), video customer (COMMUNITY) PENDING_REVIEW. **PR #168 SUDAH merge ke main** (memori lama "belum merge" sudah usang). Yang belum konsisten adalah EDIT path.
 
 Konsekuensi: perubahan Flutter-saja (sembunyikan notice / jangan kirim PENDING_REVIEW untuk foto) akan membuat UI **berbohong** — post tetap balik ke review karena server yang memutuskan. Agar perilaku "foto/carousel tidak masuk review lagi saat di-edit" jadi NYATA, WAJIB ada perubahan **backend** pada edit path.
 
@@ -47,9 +47,9 @@ Konsekuensi: perubahan Flutter-saja (sembunyikan notice / jangan kirim PENDING_R
 ## Batas cakupan backend (penting — anti-collision)
 
 - **HANYA** edit path (`app/api/feed/posts/[id]/route.ts:562-565`) yang diubah.
-- **JANGAN** sentuh create path (`app/api/feed/posts/route.ts:480`) — auto-approve foto/carousel saat CREATE adalah domain PR #168 (belum merge); mengubahnya di sini akan tabrakan.
-- Konsekuensi sadar: pra-#168, foto/carousel customer masih PENDING_REVIEW saat pertama dibuat (perlu approve admin sekali), tapi setelah ACTIVE, edit caption/produk-nya TIDAK lagi memicu review ulang. Ini kebijakan yang koheren ("sekali lolos, edit foto tidak perlu direview lagi") dan tidak bergantung pada #168.
-- Kalau saat implementasi ditemukan PR #168 sudah menambah helper `lib/feed/post-moderation.ts` yang juga relevan untuk edit path, gunakan helper itu demi konsistensi; kalau belum ada (kondisi branch saat ini), inline cek `post.kind` langsung di PATCH handler.
+- **JANGAN** sentuh create path (`app/api/feed/posts/route.ts`, `resolveInitialPostStatus`) — sudah benar (#168 merged: foto/carousel auto-approve saat create). Perubahan hanya di EDIT path.
+- Hasil akhir konsisten: foto/carousel auto-approve saat create DAN tidak re-review saat edit (dipercaya penuh); video customer review saat create DAN re-review saat edit.
+- Gunakan modul helper yang SAMA (`lib/feed/post-moderation.ts`, tempat `resolveInitialPostStatus` berada) — tambah fungsi `editReTriggersModeration` di situ, jangan buat file terpisah.
 
 ## Arsitektur
 
@@ -197,7 +197,7 @@ Konsekuensi: perubahan Flutter-saja (sembunyikan notice / jangan kirim PENDING_R
 
 ## Yang TIDAK berubah (di luar cakupan)
 
-- Create path backend (`posts/route.ts:480`) — domain PR #168, jangan disentuh.
+- Create path backend (`posts/route.ts`, `resolveInitialPostStatus`) — sudah benar (#168 merged), jangan disentuh.
 - Endpoint/payload `feedService.updateMyPost` — struktur tidak berubah (server tetap yang memutuskan status; kita hanya mengubah ATURAN keputusan server di edit path).
 - `_TaggedProductPickerSheet` — picker produk tidak di-redesign, cuma dipanggil dari row baru.
 - Fitur IG "Edit info" yang tak relevan (Tag people, Add location, Add AI Label, Content funding) — TIDAK ditambahkan; cakupan hanya meniru bahasa visual, bukan replikasi section.

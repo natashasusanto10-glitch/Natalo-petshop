@@ -13,7 +13,7 @@
 - Batas caption backend = **2000** karakter (`app/api/feed/posts/route.ts:175`); client tidak boleh cap lebih rendah. `MemberPostEditScreen._maxCaptionLength` WAJIB `2000`.
 - Server = sumber kebenaran status. Optimistic status client HARUS memprediksi keputusan server yang baru, tidak boleh menyimpang.
 - Discriminator video vs foto/carousel: **server** pakai `post.kind` (`COMMUNITY` = video customer, `PHOTO_CAROUSEL` = foto/carousel); **client** pakai `post.isVideo` (`contentType == FeedContentType.video`). Keduanya harus konsisten untuk post yang sama.
-- Backend: **HANYA** ubah edit path (`[id]/route.ts`). JANGAN sentuh create path (`posts/route.ts:480`) — itu domain PR #168 (belum merge), akan tabrakan.
+- Backend: **HANYA** ubah edit path (`[id]/route.ts`). Create path (`posts/route.ts`) sudah benar via `resolveInitialPostStatus()` (PR #168 SUDAH merge ke main — foto/carousel auto-approve saat create); jangan disentuh.
 - Aturan re-moderasi edit: customer edit post ACTIVE → reset ke `PENDING_REVIEW` HANYA kalau `kind !== "PHOTO_CAROUSEL"` (yakni video). Admin edit tidak pernah reset. Post non-ACTIVE tidak berubah statusnya.
 - Judul header layar = "Edit info" (label IG), bukan "Edit Postingan".
 - Jangan tambah section IG yang tak relevan (Tag people, Add location, AI Label, Content funding).
@@ -22,9 +22,9 @@
 
 ## File Structure
 
-- **Create** `lib/feed/edit-moderation.ts` — helper pure `editReTriggersModeration(...)` (satu tanggung jawab: keputusan reset status saat edit). Dipakai route handler; diuji unit.
+- **Modify** `lib/feed/post-moderation.ts` — tambah fungsi pure `editReTriggersModeration(...)` di modul yang SAMA dengan `resolveInitialPostStatus` (sumber kebenaran tunggal moderasi). Diuji unit.
 - **Create** `tests/feed-edit-moderation.test.ts` — unit test helper (pola `node:test` seperti `tests/feed-saves.test.ts`).
-- **Modify** `app/api/feed/posts/[id]/route.ts` (baris 562-565) — panggil helper alih-alih gate hardcode.
+- **Modify** `app/api/feed/posts/[id]/route.ts` (gate re-moderasi edit ~baris 562-565) — panggil helper alih-alih gate hardcode.
 - **Modify** `flutter_app/lib/screens/member_post_edit_screen.dart` — restyle header/caption/produk-row + maxLength 2000 + notice/status video-only + top-level `feedPostEditNeedsReview(...)`.
 - **Create** `flutter_app/test/screens/member_post_edit_screen_test.dart` — widget test layar edit.
 - **Modify** `flutter_app/lib/screens/member_post_detail_screen.dart` — `_editCaption` navigasi ke route; hapus `_EditCaptionSheet`, `_EditCaptionSheetState`, `_withCaption`.
@@ -35,12 +35,12 @@
 ## Task 1: Backend — gate edit re-moderasi ke video-only (helper + wire + test)
 
 **Files:**
-- Create: `lib/feed/edit-moderation.ts`
+- Modify: `lib/feed/post-moderation.ts` (tambah `editReTriggersModeration`)
 - Create: `tests/feed-edit-moderation.test.ts`
-- Modify: `app/api/feed/posts/[id]/route.ts:562-565`
+- Modify: `app/api/feed/posts/[id]/route.ts` (gate ~562-565)
 
 **Interfaces:**
-- Produces: `editReTriggersModeration({ isAdmin: boolean, status: FeedPostStatus, kind: FeedKind }): boolean` — dipakai route handler PATCH.
+- Produces: `editReTriggersModeration({ isAdmin: boolean, status: FeedPostStatus, kind: FeedPostKind }): boolean` — dipakai route handler PATCH. Ditaruh di `lib/feed/post-moderation.ts` (bareng `resolveInitialPostStatus`), pakai tipe Prisma `FeedPostKind`/`FeedPostStatus` yang sudah di-import file itu.
 
 - [ ] **Step 1: Tulis failing test**
 
@@ -49,7 +49,7 @@ Buat `tests/feed-edit-moderation.test.ts`:
 ```ts
 import assert from "node:assert/strict";
 import test from "node:test";
-import { editReTriggersModeration } from "../lib/feed/edit-moderation";
+import { editReTriggersModeration } from "../lib/feed/post-moderation";
 
 test("customer edit video (COMMUNITY) ACTIVE re-triggers moderation", () => {
   assert.equal(
@@ -83,37 +83,31 @@ test("non-ACTIVE post edit does not reset status", () => {
 - [ ] **Step 2: Jalankan test — harus GAGAL**
 
 Run: `npx tsx --test tests/feed-edit-moderation.test.ts` (atau perintah test backend yang dipakai repo — cek `package.json` scripts `test`; kalau pakai `node --test` dengan loader tsx/ts-node, ikuti itu).
-Expected: FAIL — `Cannot find module '../lib/feed/edit-moderation'`.
+Expected: FAIL — `editReTriggersModeration` belum di-export dari `lib/feed/post-moderation.ts`.
 
-- [ ] **Step 3: Tulis helper**
+- [ ] **Step 3: Tambah helper ke `lib/feed/post-moderation.ts`**
 
-Buat `lib/feed/edit-moderation.ts`:
+`lib/feed/post-moderation.ts` sudah `import type { FeedPostKind, FeedPostStatus } from "@prisma/client";` dan meng-export `resolveInitialPostStatus`. Tambah fungsi baru di file yang SAMA (jangan buat file baru), konsisten dengan konsep `autoApprove` di `resolveInitialPostStatus`:
 
 ```ts
-import type { FeedKind, FeedPostStatus } from "@prisma/client";
-
 /**
  * Apakah edit oleh customer harus mengembalikan post ke antrian review admin?
  *
- * Aturan:
+ * Konsisten dengan `resolveInitialPostStatus`: foto/carousel (PHOTO_CAROUSEL)
+ * dipercaya (auto-approve saat create → juga tak re-review saat edit); video
+ * customer (COMMUNITY) yang sudah tayang → re-review saat di-edit.
  * - Admin edit: TIDAK pernah re-review (return false).
  * - Hanya post yang sedang ACTIVE yang relevan (non-ACTIVE tidak diubah).
- * - Video customer (kind COMMUNITY, dan kind customer non-foto lainnya)
- *   → re-review (return true).
- * - Foto/carousel (PHOTO_CAROUSEL) → dipercaya, TIDAK re-review (return false).
- *
- * Catatan: create-path auto-approve foto/carousel adalah domain terpisah
- * (PR #168); helper ini khusus edit path.
+ * - Foto/carousel (PHOTO_CAROUSEL) → return false; selain itu (video) → true.
  */
-export function editReTriggersModeration(args: {
+export function editReTriggersModeration(input: {
   isAdmin: boolean;
   status: FeedPostStatus;
-  kind: FeedKind;
+  kind: FeedPostKind;
 }): boolean {
-  const { isAdmin, status, kind } = args;
-  if (isAdmin) return false;
-  if (status !== "ACTIVE") return false;
-  return kind !== "PHOTO_CAROUSEL";
+  if (input.isAdmin) return false;
+  if (input.status !== "ACTIVE") return false;
+  return input.kind !== "PHOTO_CAROUSEL";
 }
 ```
 
@@ -124,10 +118,10 @@ Expected: PASS (4/4).
 
 - [ ] **Step 5: Wire ke route handler**
 
-Di `app/api/feed/posts/[id]/route.ts`, tambah import di blok import atas (dekat import `lib/feed/*` lain, mis. setelah baris 6):
+Di `app/api/feed/posts/[id]/route.ts`, tambah import di blok import atas (dekat import `lib/feed/*` lain, mis. setelah `import { MY_FEED_VISIBLE_STATUSES } from "@/lib/feed/my-posts";`):
 
 ```ts
-import { editReTriggersModeration } from "@/lib/feed/edit-moderation";
+import { editReTriggersModeration } from "@/lib/feed/post-moderation";
 ```
 
 Ganti baris 562-565:
@@ -162,8 +156,8 @@ Run: `npx tsx --test tests/feed-edit-moderation.test.ts` — tetap 4/4.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add lib/feed/edit-moderation.ts tests/feed-edit-moderation.test.ts "app/api/feed/posts/[id]/route.ts"
-git commit -m "feat(feed): edit foto/carousel tidak re-review, gate re-moderasi edit ke video-only (helper editReTriggersModeration)"
+git add lib/feed/post-moderation.ts tests/feed-edit-moderation.test.ts "app/api/feed/posts/[id]/route.ts"
+git commit -m "feat(feed): edit foto/carousel tidak re-review, gate re-moderasi edit ke video-only (editReTriggersModeration di post-moderation.ts)"
 ```
 
 ---
