@@ -13,7 +13,7 @@ workflows:
     instance_type: mac_mini_m2
 
     environment:
-      flutter: stable
+      flutter: 3.41.9
       xcode: latest
       cocoapods: default
       # Code signing handled explicitly via script step di bawah —

@@ -3,8 +3,8 @@ description: Native Flutter app for Natalo Petshop.
 publish_to: none
 version: 1.0.184+225
 environment:
-  sdk: '>=3.0.0 <4.0.0'
-  flutter: '>=3.7.0'
+  sdk: '>=3.11.0 <4.0.0'
+  flutter: '>=3.41.9'
 dependencies:
   flutter:
     sdk: flutter
