@@ -7,9 +7,19 @@ import '../services/api_client.dart';
 import '../services/feed_service.dart';
 import '../state/feed_store.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
+
+/// Apakah edit ini akan mengembalikan post ke antrian review admin?
+/// Cocok dengan aturan server (edit-moderation.ts): hanya video yang sudah
+/// tayang yang re-review; foto/carousel tetap tayang.
+bool feedPostEditNeedsReview({
+  required bool wasActive,
+  required bool isVideo,
+}) =>
+    wasActive && isVideo;
 
 /// Edit Postingan — edit caption + manage tagged products.
 /// Video/thumbnail tidak bisa di-edit (replace upload ulang).
@@ -30,7 +40,7 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
   bool _loadingProducts = false;
   String? _productError;
 
-  static const _maxCaptionLength = 280;
+  static const _maxCaptionLength = 2000;
   static const _maxTaggedProducts = 3;
 
   @override
@@ -60,20 +70,30 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
       );
       if (!mounted) return;
       final wasActive = widget.post.statusInfo == FeedPostStatus.active;
+      final needsReview = feedPostEditNeedsReview(
+        wasActive: wasActive,
+        isVideo: widget.post.isVideo,
+      );
       // Sync ke FeedStore — semua screen lain (Reels, grid Postingan Saya,
-      // Detail) yang baca caption/status post ini ikut update. Status
-      // backend reset ke PENDING_REVIEW kalau wasActive (re-review).
-      final existing = feedStore.get(widget.post.id);
-      if (existing != null) {
-        feedStore.applyPostUpdate(existing.copyWith(
-          caption: caption.isEmpty ? null : caption,
-          description: caption.isEmpty ? '' : caption,
-          status: wasActive ? 'PENDING_REVIEW' : existing.status,
-        ));
-      }
+      // Detail) yang baca caption/status post ini ikut update. Server hanya
+      // re-review VIDEO yang tayang; foto/carousel tetap ACTIVE — optimistic
+      // status di sini memprediksi keputusan server itu.
+      //
+      // Fallback ke widget.post kalau post ini belum ada di store (mis.
+      // screen dibuka dari rute yang tidak sempat seed FeedStore terlebih
+      // dulu). Tanpa fallback ini, caller re-sync (feedStore.get →
+      // setState) jadi no-op diam-diam dan caption/status baru baru
+      // kelihatan setelah refetch — store TETAP harus ditulis di kedua
+      // kasus, bukan cuma saat sudah ada entry.
+      final base = feedStore.get(widget.post.id) ?? widget.post;
+      feedStore.applyPostUpdate(base.copyWith(
+        caption: caption.isEmpty ? null : caption,
+        description: caption.isEmpty ? '' : caption,
+        status: needsReview ? 'PENDING_REVIEW' : base.status,
+      ));
       AppToast.show(
         context,
-        wasActive
+        needsReview
             ? 'Perubahan tersimpan. Postingan masuk review ulang.'
             : 'Perubahan tersimpan.',
       );
@@ -166,321 +186,231 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
     });
   }
 
-  List<_EditableTaggedProduct> get _selectedProducts {
-    if (_selectedProductIds.isEmpty) return const [];
-    final byId = {
-      for (final product in _taggableProducts) product.id: product,
-    };
-    return _selectedProductIds
-        .map((id) => byId[id])
-        .whereType<_EditableTaggedProduct>()
-        .toList();
-  }
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final showReviewNotice = feedPostEditNeedsReview(
+      wasActive: widget.post.statusInfo == FeedPostStatus.active,
+      isVideo: widget.post.isVideo,
+    );
     return Scaffold(
-      // Page bg off-white (#F7FAFF light) seperti semula — pakai
-      // scaffoldBackgroundColor, BUKAN cs.surface (putih) yang bikin
-      // kartu putih hilang kontras.
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: const Text('Edit Postingan'),
-        // AppBar tint off-white (#F7FAFF) di light seperti semula; dark
-        // pakai surface gelap.
-        backgroundColor: isDark ? cs.surface : const Color(0xFFF7FAFF),
-        elevation: 0,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Video preview thumbnail
-          Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: const Color(0xFF1F2937),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: AspectRatio(
-              aspectRatio: widget.post.aspectRatio,
-              child: Stack(
-                fit: StackFit.expand,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Header IG "Edit info": X (batal) kiri, judul tengah, centang
+            // bulat (simpan) kanan.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 4, 8, 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  if (widget.post.thumbnailUrl != null &&
-                      widget.post.thumbnailUrl!.isNotEmpty)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: CachedNetworkImage(
-                        imageUrl: widget.post.thumbnailUrl!,
-                        fit: BoxFit.cover,
-                        fadeInDuration: const Duration(milliseconds: 220),
-                        fadeOutDuration: const Duration(milliseconds: 120),
-                        fadeInCurve: Curves.easeOut,
-                        placeholder: (_, __) => Shimmer.fromColors(
-                          baseColor: cs.surfaceContainerHighest,
-                          highlightColor: cs.outlineVariant,
-                          child: Container(color: cs.surfaceContainerHighest),
-                        ),
-                        errorWidget: (_, __, ___) => Container(),
-                      ),
+                  IconButton(
+                    icon: Icon(Icons.close_rounded, color: cs.onSurface),
+                    onPressed: _saving ? null : () => Navigator.pop(context),
+                    tooltip: 'Batal',
+                  ),
+                  Text(
+                    'Edit info',
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontSize: 16,
+                      fontWeight: NataloWeight.strong,
                     ),
-                  Center(
-                    child: Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.45),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.play_arrow_rounded,
-                        color: Colors.white,
-                        size: 36,
-                      ),
-                    ),
+                  ),
+                  _SaveCheckButton(
+                    saving: _saving,
+                    onTap: _saving ? null : _save,
                   ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              widget.post.isVideo
-                  ? 'Video tidak bisa diganti. Untuk video baru, hapus postingan lalu upload ulang.'
-                  : 'Media tidak bisa diganti. Untuk foto baru, hapus postingan lalu upload ulang.',
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          // Caption editor
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-            child: Text(
-              'Caption',
-              style: TextStyle(
-                color: cs.onSurface,
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          TextField(
-            controller: _captionController,
-            maxLines: 5,
-            minLines: 3,
-            maxLength: _maxCaptionLength,
-            enabled: !_saving,
-            decoration: InputDecoration(
-              hintText: 'Tulis caption postingan…',
-              filled: true,
-              fillColor: cs.surface,
-              border: const OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Tagged products section
-          _TaggedProductsCard(
-            selectedProducts: _selectedProducts,
-            selectedCount: _selectedProductIds.length,
-            loading: _loadingProducts,
-            onManage: _saving ? null : _openProductPicker,
-          ),
-          const SizedBox(height: 10),
-          if (widget.post.statusInfo == FeedPostStatus.active)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFFBEB),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFDE68A)),
-              ),
-              child: const Text(
-                'Catatan: perubahan pada postingan yang sudah tayang akan masuk review admin lagi sebelum tampil publik.',
-                style: TextStyle(
-                  color: Color(0xFF92400E),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  height: 1.35,
-                ),
-              ),
-            ),
-          const SizedBox(height: 24),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.4,
-                      color: Colors.white,
+            Divider(height: 1, color: cs.outlineVariant),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                children: [
+                  // Cover thumbnail + caption borderless dalam satu Row (ala IG).
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _CoverThumb(post: widget.post),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _captionController,
+                          minLines: 3,
+                          maxLines: 8,
+                          maxLength: _maxCaptionLength,
+                          enabled: !_saving,
+                          style: TextStyle(color: cs.onSurface, fontSize: 14),
+                          decoration: const InputDecoration(
+                            hintText: 'Tulis caption...',
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                            filled: false,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                            counterText: '',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.post.isVideo
+                        ? 'Video tidak bisa diganti. Untuk video baru, hapus postingan lalu upload ulang.'
+                        : 'Media tidak bisa diganti. Untuk foto baru, hapus postingan lalu upload ulang.',
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
+                      fontSize: 11,
+                      fontWeight: NataloWeight.body,
                     ),
-                  )
-                : const Text('Simpan Perubahan'),
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: _saving ? null : () => Navigator.pop(context),
-            child: Text(
-              'Batal',
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TaggedProductsCard extends StatelessWidget {
-  final List<_EditableTaggedProduct> selectedProducts;
-  final int selectedCount;
-  final bool loading;
-  final VoidCallback? onManage;
-
-  const _TaggedProductsCard({
-    required this.selectedProducts,
-    required this.selectedCount,
-    required this.loading,
-    required this.onManage,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final hasResolvedProducts = selectedProducts.isNotEmpty;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFCE7F3),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.local_offer_outlined,
-                  color: Color(0xFFBE185D),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Produk Ditag',
-                      style: TextStyle(
-                        color: cs.onSurface,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
+                  ),
+                  const SizedBox(height: 8),
+                  Divider(height: 1, color: cs.outlineVariant),
+                  // Baris "Produk ditandai" (list polos + chevron).
+                  InkWell(
+                    onTap: _saving ? null : _openProductPicker,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Produk ditandai',
+                            style: TextStyle(
+                              color: cs.onSurface,
+                              fontSize: 15,
+                              fontWeight: NataloWeight.body,
+                            ),
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _loadingProducts
+                                    ? 'Memuat...'
+                                    : _selectedProductIds.isEmpty
+                                        ? 'Tambah'
+                                        : '${_selectedProductIds.length} dipilih',
+                                style: TextStyle(
+                                  color: cs.onSurfaceVariant,
+                                  fontSize: 13,
+                                  fontWeight: NataloWeight.body,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.chevron_right_rounded,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      loading
-                          ? 'Memuat produk...'
-                          : selectedCount == 0
-                              ? 'Belum ada produk'
-                              : '$selectedCount produk ditag',
-                      style: TextStyle(
-                        color: cs.onSurfaceVariant,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                  ),
+                  Divider(height: 1, color: cs.outlineVariant),
+                  if (showReviewNotice) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFFBEB),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFFDE68A)),
+                      ),
+                      child: const Text(
+                        'Catatan: perubahan pada video yang sudah tayang akan masuk review admin lagi sebelum tampil publik.',
+                        style: TextStyle(
+                          color: Color(0xFF92400E),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          height: 1.35,
+                        ),
                       ),
                     ),
                   ],
-                ),
-              ),
-              TextButton(
-                onPressed: onManage,
-                child: const Text(
-                  'Atur',
-                  style: TextStyle(
-                    color: NataloColors.primary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (hasResolvedProducts) ...[
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final product in selectedProducts)
-                    _SelectedProductChip(product: product),
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CoverThumb extends StatelessWidget {
+  final FeedPost post;
+  const _CoverThumb({required this.post});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final url = post.thumbnailUrl;
+    return Container(
+      width: 56,
+      height: 56,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F2937),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (url != null && url.isNotEmpty)
+            CachedNetworkImage(
+              imageUrl: url,
+              fit: BoxFit.cover,
+              placeholder: (_, __) => Shimmer.fromColors(
+                baseColor: cs.surfaceContainerHighest,
+                highlightColor: cs.outlineVariant,
+                child: Container(color: cs.surfaceContainerHighest),
+              ),
+              errorWidget: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          if (post.isVideo)
+            const Center(
+              child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
+            ),
         ],
       ),
     );
   }
 }
 
-class _SelectedProductChip extends StatelessWidget {
-  final _EditableTaggedProduct product;
-
-  const _SelectedProductChip({required this.product});
+class _SaveCheckButton extends StatelessWidget {
+  final bool saving;
+  final VoidCallback? onTap;
+  const _SaveCheckButton({required this.saving, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 220),
-      padding: const EdgeInsets.fromLTRB(6, 5, 9, 5),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: cs.outlineVariant),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _ProductThumb(url: product.imageUrl, size: 24),
-          const SizedBox(width: 7),
-          Flexible(
-            child: Text(
-              product.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: cs.onSurface,
-                fontSize: 11.5,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 32,
+        height: 32,
+        margin: const EdgeInsets.only(right: 8),
+        decoration: const BoxDecoration(
+          color: NataloColors.primary,
+          shape: BoxShape.circle,
+        ),
+        child: saving
+            ? const Padding(
+                padding: EdgeInsets.all(8),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : const Icon(Icons.check_rounded, color: Colors.white, size: 18),
       ),
     );
   }

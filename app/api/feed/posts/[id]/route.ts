@@ -7,6 +7,7 @@ import { MY_FEED_VISIBLE_STATUSES } from "@/lib/feed/my-posts";
 import { deleteFeedAssets } from "@/lib/feed/cleanup";
 import { signBunnyUrl } from "@/lib/feed/bunny";
 import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
+import { editReTriggersModeration } from "@/lib/feed/post-moderation";
 import {
   getViewerSavedPostIds,
   resolveFeedProductDiscount,
@@ -559,9 +560,11 @@ export async function PATCH(
     }
   }
 
-  // Customer edit re-trigger moderation — status ke PENDING_REVIEW.
-  // Admin edit stays at current status.
-  if (!isAdmin && post.status === "ACTIVE") {
+  // Customer edit re-trigger moderation HANYA untuk video (kind bukan
+  // PHOTO_CAROUSEL). Foto/carousel yang sudah ACTIVE tetap ACTIVE saat
+  // di-edit — dipercaya, tidak perlu review ulang. Sinkron dgn sisi Flutter
+  // (MemberPostEditScreen: notice + optimistic status video-only).
+  if (editReTriggersModeration({ isAdmin, status: post.status, kind: post.kind })) {
     updates.status = "PENDING_REVIEW";
   }
 
