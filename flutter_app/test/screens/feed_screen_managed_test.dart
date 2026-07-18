@@ -257,13 +257,16 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('flag OFF (default): FeedVideoPostView tetap own-controller',
+  testWidgets('flag OFF (override, rollback): FeedVideoPostView own-controller',
       (tester) async {
     tester.view.physicalSize = const Size(400, 1200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
+    // Default kini TRUE (Langkah 6) — paksa OFF eksplisit untuk memverifikasi
+    // jalur legacy/rollback masih utuh.
+    debugFeedCoordinatorEnabledOverride = false;
     SharedPreferences.setMockInitialValues({
       'feed_offline_cache_v2': jsonEncode([_videoJson('v1')]),
     });
