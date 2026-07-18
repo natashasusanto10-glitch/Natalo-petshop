@@ -99,6 +99,16 @@ class MemberPostDetailScreen extends StatefulWidget {
   /// feed/komentar/profil). Di-pass dari public profile (isOfficial).
   final bool authorIsOfficial;
 
+  /// Identitas follow author untuk chip "Ikuti/Mengikuti" di header.
+  /// WAJIB di-pass saat open dari public profile: item `/api/u/{username}`
+  /// TIDAK membawa objek `author` (author implisit = pemilik profil), jadi
+  /// `post.author.id` kosong & `post.author.isFollowing` selalu false —
+  /// tanpa override ini chip selalu "Ikuti" walau sudah follow (bug
+  /// device-verify), dan overrides tak nyambung (key '' vs profile.id).
+  /// Null → fallback ke `post.author.*` (feed utama yang authornya lengkap).
+  final String? authorId;
+  final bool? authorIsFollowing;
+
   /// Owner mode flag. True (default) untuk "Postingan Saya" — show
   /// Edit/Delete menu di "...". False saat view post user lain — sembunyikan
   /// menu owner-only (edit caption + hapus), supaya tidak ada aksi destructive
@@ -122,6 +132,8 @@ class MemberPostDetailScreen extends StatefulWidget {
     this.authorPhotoUrl,
     this.authorInitial,
     this.authorIsOfficial = false,
+    this.authorId,
+    this.authorIsFollowing,
     this.isOwner = true,
     this.authorPerPost = false,
     this.warmVideoHandoff,
@@ -897,9 +909,15 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
               memberName: widget.authorPerPost ? '' : _memberName,
               authorIsOfficial:
                   widget.authorPerPost ? false : widget.authorIsOfficial,
-              showFollowChip: !widget.isOwner && !widget.authorPerPost,
-              authorId: widget.post.author.id,
-              authorInitiallyFollowing: widget.post.author.isFollowing,
+              // authorId kosong (data profil tak lengkap) → chip
+              // disembunyikan: follow('') pasti gagal + override tak pernah
+              // nyambung, lebih baik tak tampil daripada selalu "Ikuti".
+              showFollowChip: !widget.isOwner &&
+                  !widget.authorPerPost &&
+                  (widget.authorId ?? widget.post.author.id).isNotEmpty,
+              authorId: widget.authorId ?? widget.post.author.id,
+              authorInitiallyFollowing:
+                  widget.authorIsFollowing ?? widget.post.author.isFollowing,
             ),
           ),
         ],
@@ -1710,15 +1728,27 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
         child: Row(
           children: [
             Padding(
-              padding: const EdgeInsets.only(left: 4),
-              // Ala IG: ikon polos tanpa pill kaca/border, lebih besar.
-              child: IconButton(
-                onPressed: () => Navigator.maybePop(context),
-                // Chevron polos "<" ala IG (bukan panah berekor).
-                icon: const Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: _fg,
-                  size: 24,
+              padding: const EdgeInsets.only(left: 10),
+              // Bubble kaca bulat — SAMA ukuran dgn pill Ikuti (tinggi 32)
+              // supaya sejajar rapi. Tanpa kaca chevron gelap tenggelam di
+              // atas media gelap (temuan device-verify).
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.maybePop(context),
+                child: LiquidGlass(
+                  opacity: 1,
+                  reducedMotion: reducedMotion,
+                  borderRadius: BorderRadius.circular(999),
+                  child: const SizedBox(
+                    width: 32,
+                    height: 32,
+                    // Chevron "<" ala IG (bukan panah berekor).
+                    child: Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      color: _fg,
+                      size: 17,
+                    ),
+                  ),
                 ),
               ),
             ),
