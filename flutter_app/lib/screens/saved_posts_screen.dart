@@ -174,6 +174,7 @@ class _SavedPostsScreenState extends State<SavedPostsScreen>
           authorName: post.author.displayName,
           authorPhotoUrl: post.author.avatarUrl,
           authorInitial: post.author.initial,
+          authorIsOfficial: post.author.isOfficialAccount,
           isOwner: false,
         ),
       ),
