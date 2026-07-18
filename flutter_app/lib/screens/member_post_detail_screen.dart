@@ -102,6 +102,11 @@ class MemberPostDetailScreen extends StatefulWidget {
   /// menu owner-only (edit caption + hapus), supaya tidak ada aksi destructive
   /// yang bocor ke viewer non-owner.
   final bool isOwner;
+
+  /// Cross-account mode. True → identitas author diambil per post dari
+  /// `post.author` (dipakai Postingan Tersimpan yang lintas akun). Default
+  /// false → perilaku single-author lama (Postingan Saya / public profile).
+  final bool authorPerPost;
   final PostVideoWarmHandoff? warmVideoHandoff;
   final String? initialNextCursor;
   final ScopedPostPageLoader? loadMoreScopedPosts;
@@ -116,6 +121,7 @@ class MemberPostDetailScreen extends StatefulWidget {
     this.authorInitial,
     this.authorIsOfficial = false,
     this.isOwner = true,
+    this.authorPerPost = false,
     this.warmVideoHandoff,
     this.initialNextCursor,
     this.loadMoreScopedPosts,
@@ -617,7 +623,26 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     }
   }
 
+  String _authorNameFor(FeedPost post) {
+    final name = post.author.displayName.trim();
+    return name.isEmpty ? 'Pengguna' : name;
+  }
+
+  String _authorInitialFor(FeedPost post) {
+    final initial = post.author.initial.trim();
+    if (initial.isNotEmpty) return initial;
+    final nm = _authorNameFor(post);
+    return nm.isEmpty ? '?' : nm.substring(0, 1).toUpperCase();
+  }
+
+  String? _authorPhotoFor(FeedPost post) {
+    final photo =
+        (post.author.profilePhotoUrl ?? post.author.avatarUrl)?.trim();
+    return photo == null || photo.isEmpty ? null : photo;
+  }
+
   FeedPost _postWithResolvedAuthor(FeedPost post) {
+    if (widget.authorPerPost) return post;
     final source = post.author;
     final ownerProfile = widget.isOwner ? memberStore.profile : null;
     final resolvedPhoto = _memberPhotoUrl;
@@ -806,10 +831,18 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                         coordinator: _videoCoordinator,
                         registerVideoUrl: _registerVideoUrl,
                         handoffSessionId: _handoffSessionId,
-                        memberName: _memberName,
-                        memberInitial: _memberInitial,
-                        memberPhotoUrl: _memberPhotoUrl,
-                        memberIsOfficial: widget.authorIsOfficial,
+                        memberName: widget.authorPerPost
+                            ? _authorNameFor(post)
+                            : _memberName,
+                        memberInitial: widget.authorPerPost
+                            ? _authorInitialFor(post)
+                            : _memberInitial,
+                        memberPhotoUrl: widget.authorPerPost
+                            ? _authorPhotoFor(post)
+                            : _memberPhotoUrl,
+                        memberIsOfficial: widget.authorPerPost
+                            ? post.author.isOfficialAccount
+                            : widget.authorIsOfficial,
                         liked: _likedCache[post.id] ?? false,
                         // Hide ... menu ketika viewing post user lain — tidak ada
                         // edit/delete option untuk non-owner. (Bisa ekspansi nanti
@@ -836,9 +869,16 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
             left: 0,
             right: 0,
             child: _PostDetailTransparentHeaderBar(
-              memberName: _memberName,
-              authorIsOfficial: widget.authorIsOfficial,
-              showFollowChip: !widget.isOwner,
+              // Cross-account (authorPerPost): overlay ini fixed di atas
+              // SELURUH pager, bukan per-index — tak ada satu author yang
+              // representatif saat isinya lintas akun. Sembunyikan
+              // nama/badge/chip ikuti (sama alasan dgn subtitle AppBar lama
+              // yang disembunyikan di mode ini), sisakan cuma judul +
+              // tombol back.
+              memberName: widget.authorPerPost ? '' : _memberName,
+              authorIsOfficial:
+                  widget.authorPerPost ? false : widget.authorIsOfficial,
+              showFollowChip: !widget.isOwner && !widget.authorPerPost,
               authorId: widget.post.author.id,
               authorInitiallyFollowing: widget.post.author.isFollowing,
             ),
@@ -1096,7 +1136,6 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       _handoffSessionId = null;
     }
   }
-
 }
 
 bool _sameLikerIds(List<FeedAuthor> a, List<FeedAuthor> b) {
@@ -1347,8 +1386,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
   }
 
   Offset? _resolveLikeCenter() {
-    final box =
-        _likeButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    final box = _likeButtonKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) return null;
     return box.localToGlobal(box.size.center(Offset.zero));
   }
@@ -1674,38 +1712,44 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 3),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            memberName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              // Official → emas identitas brand; shadow
-                              // permanen karena header sekarang overlay
-                              // transparan di atas media (bukan sheet
-                              // putih solid).
-                              color: authorIsOfficial
-                                  ? NataloColors.officialGold
-                                  : Colors.white,
-                              fontSize: 12,
-                              fontWeight: NataloWeight.strong,
-                              height: 1.05,
-                              shadows: const [
-                                Shadow(color: Colors.black54, blurRadius: 8),
-                              ],
+                    // memberName kosong = mode lintas akun (authorPerPost) —
+                    // overlay ini fixed di atas seluruh pager, jadi tak ada
+                    // satu author yang representatif untuk ditampilkan di
+                    // sini (per-post identity tampil di _PostAuthorRow).
+                    if (memberName.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              memberName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                // Official → emas identitas brand; shadow
+                                // permanen karena header sekarang overlay
+                                // transparan di atas media (bukan sheet
+                                // putih solid).
+                                color: authorIsOfficial
+                                    ? NataloColors.officialGold
+                                    : Colors.white,
+                                fontSize: 12,
+                                fontWeight: NataloWeight.strong,
+                                height: 1.05,
+                                shadows: const [
+                                  Shadow(color: Colors.black54, blurRadius: 8),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        if (authorIsOfficial) ...[
-                          const SizedBox(width: 3),
-                          const OfficialVerifiedBadge(size: 12),
+                          if (authorIsOfficial) ...[
+                            const SizedBox(width: 3),
+                            const OfficialVerifiedBadge(size: 12),
+                          ],
                         ],
-                      ],
-                    ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -3326,9 +3370,7 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    muted
-                        ? Icons.volume_off_rounded
-                        : Icons.volume_up_rounded,
+                    muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
                     color: Colors.white,
                     size: 16,
                   ),
@@ -3401,4 +3443,3 @@ class _PostMenuSheet extends StatelessWidget {
     );
   }
 }
-
