@@ -11,6 +11,7 @@ import 'package:visibility_detector/visibility_detector.dart';
 
 import '../config/api_config.dart';
 import '../features/feed/layout/postingan_media_aspect_ratio.dart';
+import '../features/feed/widgets/double_tap_burst_guard.dart';
 import '../features/feed/widgets/feed_post_shared_widgets.dart';
 import '../features/feed/video/post_video_coordinator.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
@@ -1221,6 +1222,9 @@ class _PostFeedItemState extends State<_PostFeedItem>
   final GlobalKey _likeButtonKey = GlobalKey();
   OverlayEntry? _flyingHeartEntry;
 
+  /// Menekan single-tap nyasar dari burst double-tap-like (tap ganjil).
+  final DoubleTapBurstGuard _doubleTapBurstGuard = DoubleTapBurstGuard();
+
   // Anchor key video inline (dilaporkan lewat onVideoAnchorReady) — dipakai
   // outer detector untuk memicu fullscreen saat single tap (menggantikan
   // onTap milik _InlineVideoPlayer, supaya single & double tap satu detector).
@@ -1315,6 +1319,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
     _flyingHeartEntry = null;
     _heartScaleController.dispose();
     _heartBurstController.dispose();
+    _doubleTapBurstGuard.dispose();
     super.dispose();
   }
 
@@ -1343,6 +1348,10 @@ class _PostFeedItemState extends State<_PostFeedItem>
     // Kalau belum liked, fire onLike. Kalau sudah liked, skip toggle
     // tapi tetap show burst (heart kedap-kedip jadi feedback bahwa
     // user sudah suka).
+    // Tekan single-tap nyasar dari burst-like (tap ganjil) — di inline
+    // Postingan single-tap membuka fullscreen, jadi burst bisa tak sengaja
+    // navigasi keluar. Lihat [DoubleTapBurstGuard].
+    _doubleTapBurstGuard.registerDoubleTap();
     AppHaptics.impact();
     if (!widget.liked) {
       _handleLikeTap();
@@ -1385,6 +1394,9 @@ class _PostFeedItemState extends State<_PostFeedItem>
   }
 
   void _handleVideoSingleTap() {
+    // Burst-like guard: single-tap tepat sesudah double-tap-like (tap ganjil)
+    // adalah noise — jangan buka fullscreen tak sengaja.
+    if (_doubleTapBurstGuard.shouldSuppressSingleTap) return;
     final anchorKey = _videoAnchorKey;
     if (anchorKey == null) return;
     widget.onOpenScopedFeed?.call(widget.post.id, anchorKey);
