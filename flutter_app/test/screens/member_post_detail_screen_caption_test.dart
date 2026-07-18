@@ -1,7 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
+import 'package:natalo_petshop_flutter/screens/public_profile_screen.dart';
 import 'package:natalo_petshop_flutter/state/post_caption_session_store.dart';
 
 void main() {
@@ -72,5 +74,71 @@ void main() {
     await tester.tap(find.textContaining('selengkapnya'));
     await tester.pump();
     expect(find.textContaining('Kabar baik... selengkapnya'), findsOneWidget);
+  });
+
+  testWidgets('tapping the leading name in caption opens that user\'s profile',
+      (tester) async {
+    const author = FeedAuthor(
+      id: 'author-1',
+      name: 'Rani',
+      username: 'rani_official',
+    );
+    await tester.pumpWidget(const MaterialApp(
+      home: SizedBox(
+        width: 320,
+        child: PostCaption(
+          postId: 'name-tap-post',
+          memberName: 'Rani',
+          caption: 'Halo semua!',
+          author: author,
+        ),
+      ),
+    ));
+
+    final paragraph =
+        tester.renderObject<RenderParagraph>(find.byType(RichText));
+    final plainText = paragraph.text.toPlainText();
+    final nameEnd = plainText.indexOf(' ');
+    expect(nameEnd, greaterThan(0));
+    final boxes = paragraph.getBoxesForSelection(
+      TextSelection(baseOffset: 0, extentOffset: nameEnd),
+    );
+    expect(boxes, isNotEmpty);
+    await tester.tapAt(paragraph.localToGlobal(boxes.first.toRect().center));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PublicProfileScreen), findsOneWidget);
+    expect(
+      tester.widget<PublicProfileScreen>(find.byType(PublicProfileScreen)).username,
+      'rani_official',
+    );
+  });
+
+  testWidgets('caption name without username stays non-tappable',
+      (tester) async {
+    const author = FeedAuthor(id: 'author-2', name: 'Budi');
+    await tester.pumpWidget(const MaterialApp(
+      home: SizedBox(
+        width: 320,
+        child: PostCaption(
+          postId: 'no-username-post',
+          memberName: 'Budi',
+          caption: 'Halo semua!',
+          author: author,
+        ),
+      ),
+    ));
+
+    final paragraph =
+        tester.renderObject<RenderParagraph>(find.byType(RichText));
+    final plainText = paragraph.text.toPlainText();
+    final nameEnd = plainText.indexOf(' ');
+    final boxes = paragraph.getBoxesForSelection(
+      TextSelection(baseOffset: 0, extentOffset: nameEnd),
+    );
+    await tester.tapAt(paragraph.localToGlobal(boxes.first.toRect().center));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PublicProfileScreen), findsNothing);
   });
 }

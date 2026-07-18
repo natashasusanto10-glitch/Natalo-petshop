@@ -1531,6 +1531,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
               memberName: memberName,
               caption: post.caption!,
               isOfficial: widget.memberIsOfficial,
+              author: post.author,
             ),
           ),
         ],
@@ -2012,12 +2013,18 @@ class PostCaption extends StatefulWidget {
   /// Akun official → nama author di prefix caption pakai emas identitas.
   final bool isOfficial;
 
+  /// Author lengkap — dipakai untuk gate + navigasi tap nama ke profil
+  /// (sama seperti header identity chip: `author.hasUsername`). Null =
+  /// nama tetap pajangan (mis. caller lama yang belum plumbing author).
+  final FeedAuthor? author;
+
   const PostCaption({
     super.key,
     required this.postId,
     required this.memberName,
     required this.caption,
     this.isOfficial = false,
+    this.author,
   });
 
   @override
@@ -2028,6 +2035,7 @@ class _PostCaptionState extends State<PostCaption>
     with SingleTickerProviderStateMixin {
   late final TapGestureRecognizer _expandRecognizer = TapGestureRecognizer()
     ..onTap = _expand;
+  TapGestureRecognizer? _nameRecognizer;
 
   @override
   void initState() {
@@ -2043,10 +2051,23 @@ class _PostCaptionState extends State<PostCaption>
     postCaptionSessionStore.markExpanded(widget.postId);
   }
 
+  void _openAuthorProfile() {
+    final username = widget.author?.username;
+    if (username == null || username.isEmpty) return;
+    AppHaptics.tap();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PublicProfileScreen(username: username),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     postCaptionSessionStore.removeListener(_onSessionChanged);
     _expandRecognizer.dispose();
+    _nameRecognizer?.dispose();
     super.dispose();
   }
 
@@ -2111,9 +2132,16 @@ class _PostCaptionState extends State<PostCaption>
       // short caption containing this literal phrase remains plain text.
       final suffixIndex =
           truncated == null ? -1 : text.lastIndexOf('... selengkapnya');
+      _nameRecognizer?.dispose();
+      _nameRecognizer = null;
+      final canTapName = widget.author?.hasUsername ?? false;
+      if (canTapName) {
+        _nameRecognizer = TapGestureRecognizer()..onTap = _openAuthorProfile;
+      }
       final span = TextSpan(children: [
         TextSpan(
             text: '${widget.memberName} ',
+            recognizer: _nameRecognizer,
             style: TextStyle(
                 fontWeight: NataloWeight.strong,
                 color: widget.isOfficial
