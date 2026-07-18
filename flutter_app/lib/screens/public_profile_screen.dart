@@ -956,6 +956,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
           _handleContentScroll(content, notification),
       child: CustomScrollView(
         key: PageStorageKey<String>('public-profile-${content.name}'),
+        // WAJIB sama dgn physics NestedScrollView outer (di atas) — physics
+        // outer TIDAK otomatis diwariskan ke body (dok NestedScrollView.
+        // physics: "the inner scroll view is not directly configured").
+        // Beda physics outer/inner bikin hand-off ballistic pincang: scroll
+        // ke atas terasa "stuck" (outer diredam) lalu "terdorong" (inner
+        // masih kecepatan penuh baru menyusul).
+        physics: const CalmScrollPhysics(),
         slivers: [
           if ((!contentState.loaded || contentState.loading) && posts.isEmpty)
             const SliverToBoxAdapter(child: _ProfileGridLoading())
