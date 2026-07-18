@@ -164,7 +164,10 @@ class _SavedPostsScreenState extends State<SavedPostsScreen>
         surfaceTintColor: cs.surface,
         leading: IconButton(
           onPressed: () => Navigator.maybePop(context),
-          icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface),
+          // Chevron "<" ala IG — samakan dgn back button halaman Postingan
+          // (member_post_detail_screen).
+          icon: Icon(Icons.arrow_back_ios_new_rounded,
+              color: cs.onSurface, size: 24),
           tooltip: 'Kembali',
         ),
         title: Text(
@@ -175,7 +178,7 @@ class _SavedPostsScreenState extends State<SavedPostsScreen>
             fontWeight: NataloWeight.strong,
           ),
         ),
-        centerTitle: false,
+        centerTitle: true,
         titleSpacing: 0,
       ),
       body: AnimatedBuilder(
