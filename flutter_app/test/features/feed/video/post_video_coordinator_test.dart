@@ -13,6 +13,8 @@ class FakePlaybackSession implements PlaybackSession {
   int pauseCount = 0;
   int disposeCount = 0;
   double volume = 1;
+  double speed = 1;
+  int setSpeedCount = 0;
   bool playing = false;
   Duration _position = Duration.zero;
 
@@ -20,6 +22,12 @@ class FakePlaybackSession implements PlaybackSession {
   Future<void> play() async {
     playCount++;
     playing = true;
+  }
+
+  @override
+  Future<void> setPlaybackSpeed(double value) async {
+    setSpeedCount++;
+    speed = value;
   }
 
   @override
@@ -763,6 +771,262 @@ void main() {
       expect(coordinator.livePostIds, {'A', 'C', 'D'});
       expect(sessions['A']!.disposeCount, 0);
       expect(sessions['D']!.disposeCount, 0);
+    });
+  });
+
+  group('transient gesture lease (Step 1)', () {
+    test('beginTransientGesture doubleSpeed sets active session speed to 2x',
+        () async {
+      coordinator.setActive('A');
+      await settlePlayback();
+
+      final lease = coordinator.beginTransientGesture(
+        'A',
+        TransientGestureKind.doubleSpeed,
+      );
+      expect(lease, isNotNull);
+      await settlePlayback();
+
+      expect(sessions['A']!.speed, 2.0);
+    });
+
+    test('end(allowResume:true) restores speed to 1x and keeps A playing',
+        () async {
+      final source = FakeMutedSource()..muted = false;
+      final coord = PostVideoCoordinator(
+        sessionFactory: (id) => (sessions[id] = FakePlaybackSession(id)),
+        mutedListenable: source,
+        readMuted: () => source.muted,
+        audioArbiter: VideoAudioArbiter(),
+      );
+      coord.setActive('A');
+      await settlePlayback();
+
+      final lease =
+          coord.beginTransientGesture('A', TransientGestureKind.doubleSpeed)!;
+      await settlePlayback();
+      expect(sessions['A']!.speed, 2.0);
+
+      await lease.end(allowResume: true);
+      await settlePlayback();
+
+      expect(sessions['A']!.speed, 1.0);
+      expect(sessions['A']!.playing, isTrue, reason: 'A masih aktif → resume');
+      coord.dispose();
+    });
+
+    test('end(allowResume:false) restores speed to 1x but does NOT resume',
+        () async {
+      final source = FakeMutedSource()..muted = false;
+      final coord = PostVideoCoordinator(
+        sessionFactory: (id) => (sessions[id] = FakePlaybackSession(id)),
+        mutedListenable: source,
+        readMuted: () => source.muted,
+        audioArbiter: VideoAudioArbiter(),
+      );
+      coord.setActive('A');
+      await settlePlayback();
+      final lease =
+          coord.beginTransientGesture('A', TransientGestureKind.peekPause)!;
+      await settlePlayback();
+
+      // peekPause pauses; user releases with allowResume:false (mis. teardown).
+      final before = sessions['A']!.playCount;
+      await lease.end(allowResume: false);
+      await settlePlayback();
+
+      expect(sessions['A']!.speed, 1.0);
+      expect(sessions['A']!.playCount, before,
+          reason: 'allowResume:false → tak ada play() tambahan');
+      coord.dispose();
+    });
+
+    test('idempotent end(): work runs once for repeated end() calls', () async {
+      final source = FakeMutedSource()..muted = false;
+      final coord = PostVideoCoordinator(
+        sessionFactory: (id) => (sessions[id] = FakePlaybackSession(id)),
+        mutedListenable: source,
+        readMuted: () => source.muted,
+        audioArbiter: VideoAudioArbiter(),
+      );
+      coord.setActive('A');
+      await settlePlayback();
+      final lease =
+          coord.beginTransientGesture('A', TransientGestureKind.doubleSpeed)!;
+      await settlePlayback();
+      final speedCallsAfterBegin = sessions['A']!.setSpeedCount;
+
+      final f1 = lease.end(allowResume: true);
+      final f2 = lease.end(allowResume: true);
+      expect(identical(f1, f2), isTrue, reason: 'Future yang sama dibagi');
+      await Future.wait([f1, f2]);
+      await settlePlayback();
+
+      // Hanya SATU setPlaybackSpeed(1.0) tambahan setelah begin (bukan dua).
+      expect(sessions['A']!.setSpeedCount, speedCallsAfterBegin + 1);
+      coord.dispose();
+    });
+
+    test('allowResume:false wins over an in-flight allowResume:true', () async {
+      final source = FakeMutedSource()..muted = false;
+      final a = DeferredPlaySession('A');
+      final coord = PostVideoCoordinator(
+        sessionFactory: (_) => a,
+        mutedListenable: source,
+        readMuted: () => source.muted,
+        audioArbiter: VideoAudioArbiter(),
+      );
+      coord.setActive('A');
+      await settlePlayback();
+      final lease =
+          coord.beginTransientGesture('A', TransientGestureKind.peekPause)!;
+      await settlePlayback();
+      a.playing = false;
+      a.playCount = 0;
+
+      // Gate the resume play() so veto can arrive mid-flight.
+      a.playGate = Completer<void>();
+      final fTrue = lease.end(allowResume: true);
+      await settlePlayback();
+      final fFalse = lease.end(allowResume: false);
+      a.playGate!.complete();
+      await Future.wait([fTrue, fFalse]);
+      await settlePlayback();
+
+      // _claimAndPlay (pola existing) boleh memanggil play() lalu pause() di
+      // post-check saat veto datang mid-await; jaminannya = TERMINAL paused +
+      // volume 0, bukan play() nol dipanggil.
+      expect(a.playing, isFalse, reason: 'veto false menang → terminal paused');
+      expect(a.volume, 0);
+      coord.dispose();
+    });
+
+    test('beginTransientGesture returns null when post is not active or paused',
+        () async {
+      coordinator.setActive('A');
+      coordinator.setPreloadWindow(['B']);
+      await settlePlayback();
+
+      // B hanya preload, bukan aktif.
+      expect(
+        coordinator.beginTransientGesture('B', TransientGestureKind.doubleSpeed),
+        isNull,
+      );
+      // A aktif tapi user pause eksplisit.
+      coordinator.userTogglePlay();
+      expect(
+        coordinator.beginTransientGesture('A', TransientGestureKind.doubleSpeed),
+        isNull,
+      );
+    });
+
+    test('begin then immediate end: speed settles at 1x, not stuck at 2x',
+        () async {
+      final source = FakeMutedSource()..muted = false;
+      final coord = PostVideoCoordinator(
+        sessionFactory: (id) => (sessions[id] = FakePlaybackSession(id)),
+        mutedListenable: source,
+        readMuted: () => source.muted,
+        audioArbiter: VideoAudioArbiter(),
+      );
+      coord.setActive('A');
+      await settlePlayback();
+
+      final lease =
+          coord.beginTransientGesture('A', TransientGestureKind.doubleSpeed)!;
+      // No flush between begin and end (very short gesture).
+      await lease.end(allowResume: true);
+      await settlePlayback();
+
+      expect(sessions['A']!.speed, 1.0,
+          reason: 'FIFO: begin(2x) selesai sebelum end(1x)');
+      coord.dispose();
+    });
+
+    test('detach during active gesture: no deadlock, session eventually disposed',
+        () async {
+      final source = FakeMutedSource()..muted = false;
+      final coord = PostVideoCoordinator(
+        sessionFactory: (id) => (sessions[id] = FakePlaybackSession(id)),
+        mutedListenable: source,
+        readMuted: () => source.muted,
+        audioArbiter: VideoAudioArbiter(),
+      );
+      final view = coord.attach('v1', 'A');
+      coord.setActive('A');
+      await settlePlayback();
+      expect(view, same(sessions['A']));
+
+      final lease =
+          coord.beginTransientGesture('A', TransientGestureKind.doubleSpeed)!;
+      await settlePlayback();
+
+      // Swipe away: no longer active/origin/preload, then detach the view.
+      coord.setActive('B');
+      coord.detach('v1', 'A');
+
+      // Flush with a hard timeout — a deadlock would hang here.
+      await Future<void>.delayed(Duration.zero);
+      await settlePlayback();
+      await settlePlayback();
+
+      expect(lease.isCurrent, isFalse);
+      expect(coord.sessionFor('A'), isNull,
+          reason: 'barrier teardown selesai → A ter-dispose & keluar registry');
+      coord.dispose();
+    });
+
+    test('P1: veto via detach(A) does NOT cancel autoplay of B', () async {
+      final source = FakeMutedSource()..muted = false;
+      final coord = PostVideoCoordinator(
+        sessionFactory: (id) => (sessions[id] = FakePlaybackSession(id)),
+        mutedListenable: source,
+        readMuted: () => source.muted,
+        audioArbiter: VideoAudioArbiter(),
+      );
+      coord.attach('vA', 'A');
+      coord.setActive('A');
+      await settlePlayback();
+      coord.beginTransientGesture('A', TransientGestureKind.doubleSpeed)!;
+      await settlePlayback();
+
+      // Official transition order: setActive(B) THEN detach(A).
+      coord.setActive('B');
+      coord.detach('vA', 'A');
+      await settlePlayback();
+      await settlePlayback();
+
+      expect(sessions['B']!.playing, isTrue,
+          reason: 'veto lease A tak boleh membasikan generation B');
+      expect(sessions['B']!.volume, 1);
+      coord.dispose();
+    });
+
+    test('P1: natural end(true) A does NOT cancel autoplay of B', () async {
+      final source = FakeMutedSource()..muted = false;
+      final coord = PostVideoCoordinator(
+        sessionFactory: (id) => (sessions[id] = FakePlaybackSession(id)),
+        mutedListenable: source,
+        readMuted: () => source.muted,
+        audioArbiter: VideoAudioArbiter(),
+      );
+      coord.setActive('A');
+      await settlePlayback();
+      final lease =
+          coord.beginTransientGesture('A', TransientGestureKind.doubleSpeed)!;
+      await settlePlayback();
+
+      // end(true) enqueued but NOT flushed; B becomes active before end runs.
+      final endFuture = lease.end(allowResume: true);
+      coord.setActive('B');
+      await endFuture;
+      await settlePlayback();
+      await settlePlayback();
+
+      expect(sessions['B']!.playing, isTrue,
+          reason: 'resume A yang telat tak boleh membasikan generation B');
+      expect(sessions['B']!.volume, 1);
+      coord.dispose();
     });
   });
 }

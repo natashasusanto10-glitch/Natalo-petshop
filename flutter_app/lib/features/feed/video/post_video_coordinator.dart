@@ -15,10 +15,43 @@ abstract class PlaybackSession {
   Future<void> pause();
   Future<void> seekTo(Duration position);
   Future<void> setVolume(double volume);
+
+  /// Primitif trivial untuk gesture peek (long-press 2x speed). Implementasi
+  /// nyata mendelegasi ke `VideoPlayerController.setPlaybackSpeed`. SELURUH
+  /// logika gesture/otoritas/gate ada di [PostVideoCoordinator], BUKAN di sini.
+  Future<void> setPlaybackSpeed(double speed);
+
   Future<void> dispose();
 
   /// Posisi playback terakhir yang diketahui (untuk resume timestamp).
   Duration get position;
+}
+
+/// Jenis gesture transien (long-press) di atas video aktif.
+enum TransientGestureKind {
+  /// Percepat playback (peek 2x) selama jari ditahan.
+  doubleSpeed,
+
+  /// Pause sementara selama jari ditahan.
+  peekPause,
+}
+
+/// Lease PUBLIK yang dilihat widget — instance konkretnya PRIVATE, hanya
+/// dibuat oleh [PostVideoCoordinator.beginTransientGesture]. Widget TAK pernah
+/// bisa membuat/memegang lease session mentah; SELURUH otoritas resume ada di
+/// coordinator.
+abstract class TransientGestureLease {
+  /// True selama lease ini masih yang memegang gesture aktif untuk post-nya
+  /// (entry sama, generation sama, dan lease identik). False setelah swipe ke
+  /// item lain, dispose, atau setelah [end] pertama sukses.
+  bool get isCurrent;
+
+  /// Akhiri gesture. [allowResume] true = boleh resume playback bila post masih
+  /// aktif & eligible (lepas jari natural); false = jangan pernah resume
+  /// (detach/evict/teardown). Idempotent: panggilan berulang kembalikan Future
+  /// yang sama, kerja nyata jalan sekali. `allowResume:false` PERMANEN
+  /// mengalahkan `true` walau datang belakangan.
+  Future<void> end({required bool allowResume});
 }
 
 /// Factory pembuat sesi playback untuk sebuah post. Coordinator TIDAK tahu
@@ -179,7 +212,32 @@ class PostVideoCoordinator {
     if (entry == null) return;
     _guard(() {
       entry.attachedViewIds.remove(viewId);
-      _evict();
+      final lease = entry.activeLease;
+      if (lease != null) {
+        // Barrier teardown asinkron: ada gesture aktif. Paksa lease berakhir
+        // TANPA resume, lalu bersihkan registry setelah selesai. JANGAN
+        // dispose entry di sini — biarkan barrier + eviction menyelesaikannya.
+        entry.cleanupInFlight = true;
+        final generation = entry.cleanupGeneration; // BACA, jangan naikkan.
+        // Panggil end() LANGSUNG (ia sudah enqueue sendiri) — membungkusnya
+        // dalam _enqueuePlayback lagi = deadlock. whenComplete jalankan guard.
+        lease.end(allowResume: false).whenComplete(() {
+          _guard(() {
+            // Hanya siklus cleanup PALING BARU utk entry ini yg boleh bersihkan
+            // flag + memicu eviction (cegah siklus lama menimpa yang baru).
+            if (!identical(_entries[postId], entry) ||
+                entry.cleanupGeneration != generation) {
+              return;
+            }
+            entry.cleanupInFlight = false;
+            // WAJIB PASANGAN — _evict() sendiri no-op saat sesi ≤ maxSessions.
+            _disposeStaleUnprotectedEntries();
+            _evict();
+          });
+        });
+      } else {
+        _evict();
+      }
     });
   }
 
@@ -332,6 +390,53 @@ class PostVideoCoordinator {
     }
   }
 
+  /// Mulai gesture transien (long-press) di atas video [postId]. Satu-satunya
+  /// cara membuat [TransientGestureLease]. Return null bila:
+  /// - coordinator sudah dispose, entry tak ada, atau
+  /// - entry masih `cleanupInFlight`/punya `activeLease` dari siklus SEBELUMNYA
+  ///   (mencegah dua siklus gesture tumpang tindih → akar orphan cleanup), atau
+  /// - post bukan aktif / suspended / user sedang pause (gesture pada post
+  ///   non-aktif tak masuk akal).
+  /// Widget WAJIB menangani null sebagai no-op (bukan crash).
+  TransientGestureLease? beginTransientGesture(
+    String postId,
+    TransientGestureKind kind,
+  ) {
+    if (_disposed) return null;
+    final entry = _entries[postId];
+    if (entry == null) return null;
+    if (entry.cleanupInFlight || entry.activeLease != null) return null;
+    if (postId != _activePostId || _suspended || _userPausedActive) return null;
+    final generation = ++entry.cleanupGeneration;
+    final lease = _CoordinatorTransientGestureLease(
+      coordinator: this,
+      postId: postId,
+      entry: entry,
+      generation: generation,
+    );
+    entry.activeLease = lease;
+    // Kirim perubahan speed/pause ke ANTREAN SERIAL yang SAMA dipakai end() —
+    // supaya speed 2x (begin) DIJAMIN selesai sebelum speed 1x (end) sempat
+    // dieksekusi, walau gesture berumur sangat pendek.
+    _enqueuePlayback(() async {
+      // Recheck penuh: saat op ini dapat giliran, lease bisa sudah di-end,
+      // coordinator dispose, route covered, post tak aktif, atau user-pause.
+      if (!identical(entry.activeLease, lease) ||
+          _disposed ||
+          postId != _activePostId ||
+          _suspended ||
+          _userPausedActive) {
+        return;
+      }
+      if (kind == TransientGestureKind.doubleSpeed) {
+        await entry.session.setPlaybackSpeed(2.0);
+      } else {
+        await entry.session.pause();
+      }
+    });
+    return lease;
+  }
+
   /// Background / route tertutup → pause SEMUA sesi (audio hantu #2).
   /// Tidak ada yang di-dispose; resume butuh intent baru.
   void pauseAll() {
@@ -420,7 +525,10 @@ class PostVideoCoordinator {
     ));
   }
 
-  void _enqueuePlayback(Future<void> Function() operation) {
+  /// Mengembalikan Future operasi yang baru di-enqueue supaya pemanggil bisa
+  /// meng-`await` penyelesaiannya (dipakai lease.end()). Tetap non-breaking
+  /// untuk pemanggil lama yang mengabaikan return value.
+  Future<void> _enqueuePlayback(Future<void> Function() operation) {
     Future<void> run() {
       return operation();
     }
@@ -436,6 +544,7 @@ class PostVideoCoordinator {
     unawaited(next.whenComplete(() {
       if (identical(_playbackTail, next)) _playbackTail = null;
     }));
+    return next;
   }
 
   bool _canPlayEntry(_SessionEntry entry, int generation) {
@@ -446,8 +555,20 @@ class PostVideoCoordinator {
         identical(_entries[_activePostId]?.session, entry.session);
   }
 
-  Future<void> _claimAndPlay(_SessionEntry entry, int generation) async {
-    if (!_canPlayEntry(entry, generation)) {
+  /// [extraCanPlay] adalah gate opsional LEASE-SCOPED tambahan (mis. veto
+  /// `!_resumeVetoed && lease.isCurrent`), dievaluasi BERSAMA [_canPlayEntry]
+  /// di ketiga checkpoint. Default null = perilaku existing. Dipakai lease
+  /// gesture untuk mem-veto resume TANPA menyentuh generation global (yang
+  /// akan ikut membatalkan autoplay video lain).
+  Future<void> _claimAndPlay(
+    _SessionEntry entry,
+    int generation, {
+    bool Function()? extraCanPlay,
+  }) async {
+    bool canPlay() =>
+        _canPlayEntry(entry, generation) &&
+        (extraCanPlay == null || extraCanPlay());
+    if (!canPlay()) {
       return;
     }
     final claim = _audioArbiter.claim(
@@ -458,12 +579,12 @@ class PostVideoCoordinator {
     await entry.session.setVolume(
       !_readMuted() && claim.isCurrent ? 1 : 0,
     );
-    if (!claim.isCurrent || !_canPlayEntry(entry, generation)) {
+    if (!claim.isCurrent || !canPlay()) {
       await entry.session.setVolume(0);
       return;
     }
     await entry.session.play();
-    if (!claim.isCurrent || !_canPlayEntry(entry, generation)) {
+    if (!claim.isCurrent || !canPlay()) {
       await entry.session.setVolume(0);
       await entry.session.pause();
     }
@@ -505,7 +626,9 @@ class PostVideoCoordinator {
   void _disposeStaleUnprotectedEntries() {
     final staleIds = _entries.entries
         .where((entry) =>
-            !_isPinned(entry.key) && entry.value.attachedViewIds.isEmpty)
+            !_isPinned(entry.key) &&
+            entry.value.attachedViewIds.isEmpty &&
+            !entry.value.cleanupInFlight)
         .map((entry) => entry.key)
         .toList();
     for (final id in staleIds) {
@@ -537,10 +660,87 @@ class PostVideoCoordinator {
       final entry = _entries[id]!;
       if (_isPinned(id)) continue; // safety — pinned tak pernah dieviction.
       if (entry.attachedViewIds.isNotEmpty) continue; // masih dirender.
+      if (entry.cleanupInFlight) continue; // barrier teardown belum selesai.
       _entries.remove(id);
       _registryDirty = true; // sesi mati → registry berubah (KUNCI 1).
       unawaited(entry.session.dispose());
     }
+  }
+}
+
+/// Lease konkret gesture transien. Hidup di library yang sama dengan
+/// [PostVideoCoordinator] sehingga bisa mengakses state privatnya (generation,
+/// activePostId, suspended, userPaused) yang dibutuhkan otoritas resume.
+class _CoordinatorTransientGestureLease implements TransientGestureLease {
+  _CoordinatorTransientGestureLease({
+    required this.coordinator,
+    required this.postId,
+    required this.entry,
+    required this.generation,
+  });
+
+  final PostVideoCoordinator coordinator;
+  final String postId;
+  final _SessionEntry entry;
+  final int generation;
+
+  /// Satu Future dibagi ke SEMUA pemanggil end() — kerja nyata jalan SEKALI.
+  Future<void>? _endFuture;
+
+  /// `allowResume:false` PERMANEN mengalahkan `true`, walau true datang lebih
+  /// dulu & masih diproses. Dicek lease-scoped lewat [extraCanPlay].
+  bool _resumeVetoed = false;
+
+  @override
+  bool get isCurrent =>
+      identical(coordinator._entries[postId], entry) &&
+      entry.cleanupGeneration == generation &&
+      identical(entry.activeLease, this);
+
+  @override
+  Future<void> end({required bool allowResume}) {
+    if (!allowResume) _resumeVetoed = true;
+    // JANGAN bump _playbackGeneration global untuk veto — itu ikut membasikan
+    // generation autoplay video lain (B). Veto murni lease-scoped via
+    // extraCanPlay di _performEnd. end(false) terlambat = no-op terhadap B.
+    return _endFuture ??= _performEnd();
+  }
+
+  Future<void> _performEnd() {
+    // Enqueue di SATU tempat, di sini. Pemanggil (widget / detach) TIDAK BOLEH
+    // membungkus end() dalam _enqueuePlayback lagi (deadlock).
+    return coordinator._enqueuePlayback(() async {
+      try {
+        if (!isCurrent) return; // sudah disusul gesture baru / entry lenyap
+        // Speed SELALU balik ke 1x, TANPA syarat allowResume.
+        await entry.session.setPlaybackSpeed(1.0);
+        // GATE SINKRON LENGKAP sebelum menyentuh generation global. Kalau A
+        // sudah tak eligible (tersusul setActive(B) selagi end di antrean),
+        // return TANPA menulis _playbackGeneration → autoplay B utuh.
+        if (_resumeVetoed ||
+            !isCurrent ||
+            postId != coordinator._activePostId ||
+            coordinator._suspended ||
+            coordinator._userPausedActive) {
+          return;
+        }
+        // Aman: A terbukti masih aktif & eligible secara sinkron. extraCanPlay
+        // lease-scoped tetap dipasang untuk veto yang datang SELAGI await.
+        final freshGeneration = ++coordinator._playbackGeneration;
+        await coordinator._claimAndPlay(
+          entry,
+          freshGeneration,
+          extraCanPlay: () => !_resumeVetoed && isCurrent,
+        );
+      } finally {
+        // Bersihkan activeLease DI AKHIR (bukan awal) dgn identity guard —
+        // supaya beginTransientGesture tak lolos guard `activeLease!=null` dan
+        // melahirkan gesture baru selagi end lama masih await.
+        if (identical(entry.activeLease, this)) {
+          entry.activeLease = null;
+        }
+      }
+    });
   }
 }
 
@@ -550,4 +750,20 @@ class _SessionEntry {
   final PlaybackSession session;
   final Set<String> attachedViewIds = <String>{};
   int lastUsed = 0;
+
+  /// Lease gesture transien yang sedang aktif untuk entry ini (long-press).
+  /// null = tak ada gesture. Dilacak supaya [detach] bisa memaksa `end()`
+  /// lease yang SAMA, bukan membuat mekanisme cleanup terpisah.
+  TransientGestureLease? activeLease;
+
+  /// True selama barrier teardown asinkron akibat [detach]-saat-gesture masih
+  /// berjalan. Entry dgn ini true diperlakukan seperti pinned untuk keperluan
+  /// eviction SAJA (agar tak dibuang di tengah teardown).
+  bool cleanupInFlight = false;
+
+  /// Dinaikkan HANYA di [PostVideoCoordinator.beginTransientGesture] saat lease
+  /// baru dibuat. Identitas "generasi gesture" ini konsisten antara widget yg
+  /// pegang lease dan barrier [detach] yg memaksanya berakhir; guard di finally
+  /// barrier memastikan hanya siklus cleanup PALING BARU yg bersihkan flag.
+  int cleanupGeneration = 0;
 }

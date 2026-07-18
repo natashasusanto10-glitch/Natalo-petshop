@@ -528,6 +528,14 @@ class VideoPlayerSession implements PlaybackSession {
   }
 
   @override
+  Future<void> setPlaybackSpeed(double speed) async {
+    if (_disposed) return;
+    final ctrl = _controller;
+    if (ctrl == null || !_initialized) return;
+    await ctrl.setPlaybackSpeed(speed);
+  }
+
+  @override
   Duration get position =>
       _controller?.value.position ?? _debugPosition?.call() ?? _wantSeek;
 
