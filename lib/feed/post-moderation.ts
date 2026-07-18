@@ -25,3 +25,23 @@ export function resolveInitialPostStatus(input: {
     publishedAt: autoApprove ? new Date() : null,
   };
 }
+
+/**
+ * Apakah edit oleh customer harus mengembalikan post ke antrian review admin?
+ *
+ * Konsisten dengan `resolveInitialPostStatus`: foto/carousel (PHOTO_CAROUSEL)
+ * dipercaya (auto-approve saat create → juga tak re-review saat edit); video
+ * customer (COMMUNITY) yang sudah tayang → re-review saat di-edit.
+ * - Admin edit: TIDAK pernah re-review (return false).
+ * - Hanya post yang sedang ACTIVE yang relevan (non-ACTIVE tidak diubah).
+ * - Foto/carousel (PHOTO_CAROUSEL) → return false; selain itu (video) → true.
+ */
+export function editReTriggersModeration(input: {
+  isAdmin: boolean;
+  status: FeedPostStatus;
+  kind: FeedPostKind;
+}): boolean {
+  if (input.isAdmin) return false;
+  if (input.status !== "ACTIVE") return false;
+  return input.kind !== "PHOTO_CAROUSEL";
+}
