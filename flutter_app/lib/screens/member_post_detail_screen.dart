@@ -97,6 +97,11 @@ class MemberPostDetailScreen extends StatefulWidget {
   /// menu owner-only (edit caption + hapus), supaya tidak ada aksi destructive
   /// yang bocor ke viewer non-owner.
   final bool isOwner;
+
+  /// Cross-account mode. True → identitas author diambil per post dari
+  /// `post.author` (dipakai Postingan Tersimpan yang lintas akun). Default
+  /// false → perilaku single-author lama (Postingan Saya / public profile).
+  final bool authorPerPost;
   final PostVideoWarmHandoff? warmVideoHandoff;
   final String? initialNextCursor;
   final ScopedPostPageLoader? loadMoreScopedPosts;
@@ -111,6 +116,7 @@ class MemberPostDetailScreen extends StatefulWidget {
     this.authorInitial,
     this.authorIsOfficial = false,
     this.isOwner = true,
+    this.authorPerPost = false,
     this.warmVideoHandoff,
     this.initialNextCursor,
     this.loadMoreScopedPosts,
@@ -612,7 +618,23 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     }
   }
 
+  String _authorNameFor(FeedPost post) {
+    final name = post.author.name.trim();
+    return name.isEmpty ? 'Pengguna' : name;
+  }
+
+  String _authorInitialFor(FeedPost post) {
+    final nm = _authorNameFor(post);
+    return nm.isEmpty ? '?' : nm.substring(0, 1).toUpperCase();
+  }
+
+  String? _authorPhotoFor(FeedPost post) {
+    final photo = (post.author.profilePhotoUrl ?? post.author.avatarUrl)?.trim();
+    return photo == null || photo.isEmpty ? null : photo;
+  }
+
   FeedPost _postWithResolvedAuthor(FeedPost post) {
+    if (widget.authorPerPost) return post;
     final source = post.author;
     final ownerProfile = widget.isOwner ? memberStore.profile : null;
     final resolvedPhoto = _memberPhotoUrl;
@@ -781,32 +803,34 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                 height: 1.05,
               ),
             ),
-            const SizedBox(height: 3),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text(
-                    _memberName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      // Official → emas identitas brand (sheet putih).
-                      color: widget.authorIsOfficial
-                          ? NataloColors.officialGoldOnLight
-                          : cs.onSurfaceVariant,
-                      fontSize: 12,
-                      fontWeight: NataloWeight.strong,
-                      height: 1.05,
+            if (!widget.authorPerPost) ...[
+              const SizedBox(height: 3),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      _memberName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        // Official → emas identitas brand (sheet putih).
+                        color: widget.authorIsOfficial
+                            ? NataloColors.officialGoldOnLight
+                            : cs.onSurfaceVariant,
+                        fontSize: 12,
+                        fontWeight: NataloWeight.strong,
+                        height: 1.05,
+                      ),
                     ),
                   ),
-                ),
-                if (widget.authorIsOfficial) ...[
-                  const SizedBox(width: 3),
-                  const OfficialVerifiedBadge(size: 12),
+                  if (widget.authorIsOfficial) ...[
+                    const SizedBox(width: 3),
+                    const OfficialVerifiedBadge(size: 12),
+                  ],
                 ],
-              ],
-            ),
+              ),
+            ],
           ],
         ),
       ),
@@ -845,10 +869,17 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                     coordinator: _videoCoordinator,
                     registerVideoUrl: _registerVideoUrl,
                     handoffSessionId: _handoffSessionId,
-                    memberName: _memberName,
-                    memberInitial: _memberInitial,
-                    memberPhotoUrl: _memberPhotoUrl,
-                    memberIsOfficial: widget.authorIsOfficial,
+                    memberName:
+                        widget.authorPerPost ? _authorNameFor(post) : _memberName,
+                    memberInitial: widget.authorPerPost
+                        ? _authorInitialFor(post)
+                        : _memberInitial,
+                    memberPhotoUrl: widget.authorPerPost
+                        ? _authorPhotoFor(post)
+                        : _memberPhotoUrl,
+                    memberIsOfficial: widget.authorPerPost
+                        ? post.author.isOfficial
+                        : widget.authorIsOfficial,
                     liked: _likedCache[post.id] ?? false,
                     // Hide ... menu ketika viewing post user lain — tidak ada
                     // edit/delete option untuk non-owner. (Bisa ekspansi nanti
