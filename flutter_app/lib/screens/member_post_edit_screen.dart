@@ -78,14 +78,19 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
       // Detail) yang baca caption/status post ini ikut update. Server hanya
       // re-review VIDEO yang tayang; foto/carousel tetap ACTIVE — optimistic
       // status di sini memprediksi keputusan server itu.
-      final existing = feedStore.get(widget.post.id);
-      if (existing != null) {
-        feedStore.applyPostUpdate(existing.copyWith(
-          caption: caption.isEmpty ? null : caption,
-          description: caption.isEmpty ? '' : caption,
-          status: needsReview ? 'PENDING_REVIEW' : existing.status,
-        ));
-      }
+      //
+      // Fallback ke widget.post kalau post ini belum ada di store (mis.
+      // screen dibuka dari rute yang tidak sempat seed FeedStore terlebih
+      // dulu). Tanpa fallback ini, caller re-sync (feedStore.get →
+      // setState) jadi no-op diam-diam dan caption/status baru baru
+      // kelihatan setelah refetch — store TETAP harus ditulis di kedua
+      // kasus, bukan cuma saat sudah ada entry.
+      final base = feedStore.get(widget.post.id) ?? widget.post;
+      feedStore.applyPostUpdate(base.copyWith(
+        caption: caption.isEmpty ? null : caption,
+        description: caption.isEmpty ? '' : caption,
+        status: needsReview ? 'PENDING_REVIEW' : base.status,
+      ));
       AppToast.show(
         context,
         needsReview
