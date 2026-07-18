@@ -16,10 +16,13 @@ import '../features/feed/video/post_video_coordinator.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../features/feed/video/video_player_session.dart';
 import '../models/feed_post.dart';
+import '../services/api_client.dart';
 import '../services/feed_service.dart';
+import '../services/follow_service.dart';
 import '../services/video_quality_service.dart';
 import '../state/feed_local_store.dart';
 import '../state/feed_store.dart';
+import '../state/follow_override_store.dart';
 import '../state/member_store.dart';
 import '../state/post_caption_session_store.dart';
 import '../state/settings_store.dart';
@@ -31,6 +34,7 @@ import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/calm_scroll_physics.dart';
 import '../widgets/feed_comment_sheet.dart';
+import '../widgets/liquid_glass.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/official_brand_avatar.dart';
 import '../widgets/post_likers_sheet.dart';
@@ -753,123 +757,93 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // TIDAK pakai Scaffold.appBar: AppBar bawaan membungkus toolbar-nya
+    // dalam SATU Material/Ink layer yang menyerap tap di SELURUH lebarnya
+    // — termasuk ruang kosong di tengah — walau backgroundColor transparan.
+    // Karena AppBar ini overlay permanen di atas post pertama
+    // (extendBodyBehindAppBar), itu menutupi tap ke _PostAuthorRow /
+    // _VideoPostAuthorOverlay post pertama (regresi ditemukan lewat test).
+    // Fix: Positioned manual TANPA Material pembungkus penuh — celah kosong
+    // meneruskan tap ke konten di bawahnya, cuma back button/judul/chip
+    // Ikuti yang benar-benar menyerap tap.
     return Scaffold(
       backgroundColor: cs.surface,
-      appBar: AppBar(
-        backgroundColor: cs.surface,
-        elevation: 0,
-        scrolledUnderElevation: 0.5,
-        surfaceTintColor: cs.surface,
-        leading: IconButton(
-          onPressed: () => Navigator.maybePop(context),
-          // Back icon size 26 per spec Detail Postingan. Material Icon
-          // (arrow_back_rounded) tidak punya strokeWidth — rendering dari
-          // icon font, weight fixed. Visual thickness sudah mirip stroke
-          // 2.5 di NataloPostActionIcon karena rounded variant Material.
-          icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface, size: 26),
-        ),
-        centerTitle: true,
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Postingan',
-              style: TextStyle(
-                color: cs.onSurface,
-                fontSize: 16,
-                fontWeight: NataloWeight.strong,
-                height: 1.05,
-              ),
-            ),
-            const SizedBox(height: 3),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
+      body: Stack(
+        children: [
+          _posts.isEmpty
+              ? Center(
                   child: Text(
-                    _memberName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    'Belum ada postingan',
                     style: TextStyle(
-                      // Official → emas identitas brand (sheet putih).
-                      color: widget.authorIsOfficial
-                          ? NataloColors.officialGoldOnLight
-                          : cs.onSurfaceVariant,
-                      fontSize: 12,
-                      fontWeight: NataloWeight.strong,
-                      height: 1.05,
+                      color: cs.onSurfaceVariant,
+                      fontSize: 14,
+                      fontWeight: NataloWeight.body,
                     ),
                   ),
-                ),
-                if (widget.authorIsOfficial) ...[
-                  const SizedBox(width: 3),
-                  const OfficialVerifiedBadge(size: 12),
-                ],
-              ],
-            ),
-          ],
-        ),
-      ),
-      body: _posts.isEmpty
-          ? Center(
-              child: Text(
-                'Belum ada postingan',
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontSize: 14,
-                  fontWeight: NataloWeight.body,
-                ),
-              ),
-            )
-          : NataloPawRefreshIndicator(
-              onRefresh: _refreshPosts,
-              child: ListView.separated(
-                controller: _scrollController,
-                cacheExtent: _maximumEstimatedPostExtent(context) * 2,
-                // Bottom padding extra space supaya post terakhir bisa di-
-                // scroll lega ke atas viewport (gak mepet ke home indicator).
-                padding: const EdgeInsets.only(top: 0, bottom: 48),
-                // Fling diredam ala IG — lihat CalmScrollPhysics.
-                physics: const CalmScrollPhysics(),
-                itemCount: _posts.length,
-                // Whitespace pemisah antar post tetap ada, tapi lebih compact
-                // supaya detail terasa seperti feed/post Instagram.
-                separatorBuilder: (_, __) => const SizedBox(height: 24),
-                itemBuilder: (context, index) {
-                  final post = _posts[index];
-                  return _PostFeedItem(
-                    // GlobalKey untuk Scrollable.ensureVisible jump akurat
-                    // ke post target saat initial open dari grid.
-                    key: _postKeys[index],
-                    post: post,
-                    coordinator: _videoCoordinator,
-                    registerVideoUrl: _registerVideoUrl,
-                    handoffSessionId: _handoffSessionId,
-                    memberName: _memberName,
-                    memberInitial: _memberInitial,
-                    memberPhotoUrl: _memberPhotoUrl,
-                    memberIsOfficial: widget.authorIsOfficial,
-                    liked: _likedCache[post.id] ?? false,
-                    // Hide ... menu ketika viewing post user lain — tidak ada
-                    // edit/delete option untuk non-owner. (Bisa ekspansi nanti
-                    // ke Report/Block via tombol terpisah kalau perlu.)
-                    showMenu: widget.isOwner,
-                    // Status badge owner-only (Menunggu review/Ditolak).
-                    showStatusBadge: widget.isOwner,
-                    onLike: () => _toggleLike(index),
-                    onComment: () => _openComments(index),
-                    onShare: () => _shareNative(index),
-                    onMenuTap:
-                        widget.isOwner ? () => _openPostMenu(index) : null,
-                    onOpenScopedFeed: (sessionId, anchorKey) =>
-                        _openScopedVideoFeed(index, sessionId, anchorKey),
-                    onVideoAnchorReady: (postId, anchorKey) {
-                      _videoAnchorKeys[postId] = anchorKey;
+                )
+              : NataloPawRefreshIndicator(
+                  onRefresh: _refreshPosts,
+                  child: ListView.separated(
+                    controller: _scrollController,
+                    cacheExtent: _maximumEstimatedPostExtent(context) * 2,
+                    // Bottom padding extra space supaya post terakhir bisa di-
+                    // scroll lega ke atas viewport (gak mepet ke home indicator).
+                    padding: const EdgeInsets.only(top: 0, bottom: 48),
+                    // Fling diredam ala IG — lihat CalmScrollPhysics.
+                    physics: const CalmScrollPhysics(),
+                    itemCount: _posts.length,
+                    // Whitespace pemisah antar post tetap ada, tapi lebih compact
+                    // supaya detail terasa seperti feed/post Instagram.
+                    separatorBuilder: (_, __) => const SizedBox(height: 24),
+                    itemBuilder: (context, index) {
+                      final post = _posts[index];
+                      return _PostFeedItem(
+                        // GlobalKey untuk Scrollable.ensureVisible jump akurat
+                        // ke post target saat initial open dari grid.
+                        key: _postKeys[index],
+                        post: post,
+                        coordinator: _videoCoordinator,
+                        registerVideoUrl: _registerVideoUrl,
+                        handoffSessionId: _handoffSessionId,
+                        memberName: _memberName,
+                        memberInitial: _memberInitial,
+                        memberPhotoUrl: _memberPhotoUrl,
+                        memberIsOfficial: widget.authorIsOfficial,
+                        liked: _likedCache[post.id] ?? false,
+                        // Hide ... menu ketika viewing post user lain — tidak ada
+                        // edit/delete option untuk non-owner. (Bisa ekspansi nanti
+                        // ke Report/Block via tombol terpisah kalau perlu.)
+                        showMenu: widget.isOwner,
+                        // Status badge owner-only (Menunggu review/Ditolak).
+                        showStatusBadge: widget.isOwner,
+                        onLike: () => _toggleLike(index),
+                        onComment: () => _openComments(index),
+                        onShare: () => _shareNative(index),
+                        onMenuTap:
+                            widget.isOwner ? () => _openPostMenu(index) : null,
+                        onOpenScopedFeed: (sessionId, anchorKey) =>
+                            _openScopedVideoFeed(index, sessionId, anchorKey),
+                        onVideoAnchorReady: (postId, anchorKey) {
+                          _videoAnchorKeys[postId] = anchorKey;
+                        },
+                      );
                     },
-                  );
-                },
-              ),
+                  ),
+                ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _PostDetailTransparentHeaderBar(
+              memberName: _memberName,
+              authorIsOfficial: widget.authorIsOfficial,
+              showFollowChip: !widget.isOwner,
+              authorId: widget.post.author.id,
+              authorInitiallyFollowing: widget.post.author.isFollowing,
             ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1226,9 +1200,13 @@ class _PostFeedItemState extends State<_PostFeedItem>
   // onTap milik _InlineVideoPlayer, supaya single & double tap satu detector).
   GlobalKey? _videoAnchorKey;
 
+  bool _saved = false;
+
   @override
   void initState() {
     super.initState();
+    _saved = feedStore.get(widget.post.id)?.viewerSaved ?? false;
+    feedStore.addListener(_onFeedStoreSavedChanged);
     _heartScaleController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 240),
@@ -1311,11 +1289,43 @@ class _PostFeedItemState extends State<_PostFeedItem>
 
   @override
   void dispose() {
+    feedStore.removeListener(_onFeedStoreSavedChanged);
     _flyingHeartEntry?.remove();
     _flyingHeartEntry = null;
     _heartScaleController.dispose();
     _heartBurstController.dispose();
     super.dispose();
+  }
+
+  void _onFeedStoreSavedChanged() {
+    if (!mounted) return;
+    final fresh = feedStore.get(widget.post.id);
+    if (fresh == null || fresh.viewerSaved == _saved) return;
+    setState(() => _saved = fresh.viewerSaved);
+  }
+
+  Future<void> _onSavePressed() async {
+    AppHaptics.tap();
+    try {
+      await feedStore.toggleSaved(widget.post.id);
+    } on FeedViewerChangedException {
+      // The new viewer owns the rebased saved state.
+    } catch (error) {
+      if (!mounted) return;
+      if (error is ApiException && error.statusCode == 401) {
+        if (memberStore.isLoggedIn) await memberStore.logout();
+        if (!mounted) return;
+        Navigator.pushNamed(context, '/member/login');
+        return;
+      }
+      AppToast.show(
+        context,
+        error is ApiException && error.statusCode == 404
+            ? 'Postingan tidak tersedia.'
+            : 'Postingan belum bisa disimpan. Coba lagi.',
+        kind: ToastKind.warning,
+      );
+    }
   }
 
   void _handleLikeTap() {
@@ -1392,6 +1402,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final post = widget.post;
     final memberName = widget.memberName;
     final memberInitial = widget.memberInitial;
@@ -1512,6 +1523,19 @@ class _PostFeedItemState extends State<_PostFeedItem>
                 semanticLabel: 'Bagikan postingan',
                 onTap: widget.onShare,
               ),
+              const Spacer(),
+              IconButton(
+                onPressed: _onSavePressed,
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  _saved
+                      ? Icons.bookmark_rounded
+                      : Icons.bookmark_border_rounded,
+                  color: cs.onSurface,
+                  size: 26,
+                ),
+                tooltip: _saved ? 'Hapus dari tersimpan' : 'Simpan postingan',
+              ),
             ],
           ),
         ),
@@ -1567,6 +1591,214 @@ void _openPostHeaderProfile(BuildContext context, String? username) {
       builder: (_) => PublicProfileScreen(username: username),
     ),
   );
+}
+
+/// Header transparan permanen halaman Postingan — back button (LiquidGlass),
+/// judul "Postingan/nama" (putih+shadow), chip Ikuti (kalau !isOwner).
+/// SENGAJA bukan `AppBar`: lihat komentar di `_MemberPostDetailScreenState.
+/// build` (AppBar bawaan menyerap tap di seluruh lebar toolbar walau
+/// transparan — regresi tap ke header post pertama). Widget ini TIDAK
+/// membungkus dirinya dalam Material lebar-penuh, jadi celah kosong antar
+/// back/judul/chip meneruskan tap ke konten di baliknya.
+class _PostDetailTransparentHeaderBar extends StatelessWidget {
+  final String memberName;
+  final bool authorIsOfficial;
+  final bool showFollowChip;
+  final String authorId;
+  final bool authorInitiallyFollowing;
+
+  const _PostDetailTransparentHeaderBar({
+    required this.memberName,
+    required this.authorIsOfficial,
+    required this.showFollowChip,
+    required this.authorId,
+    required this.authorInitiallyFollowing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final reducedMotion = MediaQuery.disableAnimationsOf(context);
+    return SafeArea(
+      bottom: false,
+      child: SizedBox(
+        height: kToolbarHeight,
+        child: Row(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 10),
+              child: LiquidGlass(
+                opacity: 1,
+                reducedMotion: reducedMotion,
+                borderRadius: BorderRadius.circular(15),
+                child: SizedBox(
+                  width: 30,
+                  height: 30,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: () => Navigator.maybePop(context),
+                    icon: const Icon(
+                      Icons.arrow_back_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Postingan',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: NataloWeight.strong,
+                        height: 1.05,
+                        shadows: [
+                          Shadow(color: Colors.black54, blurRadius: 8),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            memberName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              // Official → emas identitas brand; shadow
+                              // permanen karena header sekarang overlay
+                              // transparan di atas media (bukan sheet
+                              // putih solid).
+                              color: authorIsOfficial
+                                  ? NataloColors.officialGold
+                                  : Colors.white,
+                              fontSize: 12,
+                              fontWeight: NataloWeight.strong,
+                              height: 1.05,
+                              shadows: const [
+                                Shadow(color: Colors.black54, blurRadius: 8),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (authorIsOfficial) ...[
+                          const SizedBox(width: 3),
+                          const OfficialVerifiedBadge(size: 12),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (showFollowChip)
+              Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: _PostDetailFollowChip(
+                  authorId: authorId,
+                  initialFollowing: authorInitiallyFollowing,
+                ),
+              )
+            else
+              const SizedBox(width: 10),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Chip "Ikuti"/"Mengikuti" di AppBar Postingan — muncul HANYA saat viewer
+/// bukan pemilik post (lihat post user lain/official). State follow sync
+/// lintas-screen lewat `followOverrides` (sama infrastruktur dgn feed),
+/// tanpa replikasi penuh viewer-generation robustness milik
+/// `FeedPostCreatorIdentity` — cukup untuk satu chip per screen ini.
+class _PostDetailFollowChip extends StatefulWidget {
+  final String authorId;
+  final bool initialFollowing;
+
+  const _PostDetailFollowChip({
+    required this.authorId,
+    required this.initialFollowing,
+  });
+
+  @override
+  State<_PostDetailFollowChip> createState() => _PostDetailFollowChipState();
+}
+
+class _PostDetailFollowChipState extends State<_PostDetailFollowChip> {
+  bool _busy = false;
+
+  Future<void> _toggle(bool currentlyFollowing) async {
+    if (_busy) return;
+    if (!memberStore.isLoggedIn) {
+      Navigator.pushNamed(context, '/member/login');
+      return;
+    }
+    AppHaptics.tap();
+    setState(() => _busy = true);
+    final target = !currentlyFollowing;
+    setFollowOverride(widget.authorId, target);
+    try {
+      if (target) {
+        await followService.follow(widget.authorId);
+      } else {
+        await followService.unfollow(widget.authorId);
+      }
+    } catch (_) {
+      if (mounted) {
+        setFollowOverride(widget.authorId, currentlyFollowing);
+        AppToast.show(context, 'Gagal memperbarui. Coba lagi.');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reducedMotion = MediaQuery.disableAnimationsOf(context);
+    return ValueListenableBuilder<Map<String, bool>>(
+      valueListenable: followOverrides,
+      builder: (context, _, __) {
+        final following =
+            resolveFollowState(widget.authorId, widget.initialFollowing);
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _toggle(following),
+          child: LiquidGlass(
+            opacity: 1,
+            reducedMotion: reducedMotion,
+            borderRadius: BorderRadius.circular(999),
+            child: SizedBox(
+              height: 30,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 11),
+                child: Center(
+                  child: Text(
+                    following ? 'Mengikuti' : 'Ikuti',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      shadows: [Shadow(color: Colors.black45, blurRadius: 4)],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _PostAuthorRow extends StatelessWidget {
