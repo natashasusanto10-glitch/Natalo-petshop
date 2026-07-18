@@ -1672,6 +1672,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   late final PageController _photoPageController;
   int _photoIndex = 0;
   bool _liked = false;
+  bool _saved = false;
   int _likeCount = 0;
   int _commentCount = 0;
   int _shareCount = 0;
@@ -1841,6 +1842,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     _liked = fresh.viewerLiked ||
         fresh.isLiked ||
         (storePost == null && feedLocalStore.isLiked(widget.post.id));
+    _saved = fresh.viewerSaved;
     _likeCount = fresh.likeCount;
     _commentCount = fresh.commentCount;
     _shareCount = fresh.shareCount;
@@ -1852,6 +1854,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     if (fresh == null) return;
     final newLiked = fresh.viewerLiked || fresh.isLiked;
     if (newLiked == _liked &&
+        fresh.viewerSaved == _saved &&
         fresh.likeCount == _likeCount &&
         fresh.commentCount == _commentCount &&
         fresh.shareCount == _shareCount) {
@@ -1859,6 +1862,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     }
     setState(() {
       _liked = newLiked;
+      _saved = fresh.viewerSaved;
       _likeCount = fresh.likeCount;
       _commentCount = fresh.commentCount;
       _shareCount = fresh.shareCount;
@@ -1922,6 +1926,30 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
           kind: ToastKind.warning,
         );
       }
+    }
+  }
+
+  Future<void> _onSavePressed() async {
+    AppHaptics.tap();
+    try {
+      await feedStore.toggleSaved(widget.post.id);
+    } on FeedViewerChangedException {
+      // The new viewer owns the rebased saved state.
+    } catch (error) {
+      if (!mounted) return;
+      if (error is ApiException && error.statusCode == 401) {
+        if (memberStore.isLoggedIn) await memberStore.logout();
+        if (!mounted) return;
+        Navigator.pushNamed(context, '/member/login');
+        return;
+      }
+      AppToast.show(
+        context,
+        error is ApiException && error.statusCode == 404
+            ? 'Postingan tidak tersedia.'
+            : 'Postingan belum bisa disimpan. Coba lagi.',
+        kind: ToastKind.warning,
+      );
     }
   }
 
@@ -2285,9 +2313,11 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                     liked: _liked,
                     commentCount: _commentCount,
                     shareCount: _shareCount,
+                    saved: _saved,
                     onLike: _onLikePressed,
                     onComment: _onComment,
                     onShare: _onShare,
+                    onSave: _onSavePressed,
                     onMore: () => _showMoreActionsSheet(),
                   ),
                 ),
