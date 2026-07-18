@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/post_video_coordinator.dart';
 import 'package:natalo_petshop_flutter/screens/feed_screen.dart';
+import 'package:natalo_petshop_flutter/state/feed_local_store.dart';
 import 'package:natalo_petshop_flutter/utils/app_route_observer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -14,11 +15,30 @@ import 'package:visibility_detector/visibility_detector.dart';
 /// wiring lifecycle di LEVEL feed_screen, DI BALIK feature flag DEFAULT OFF.
 /// Nol perubahan user-facing — coordinator belum dipakai widget item.
 
+/// Sesi kosong — Langkah 4 membuat `_bootstrapFromCache` bisa memicu
+/// `attach()` sungguhan saat flag ON (preload window disinkron dari cache),
+/// jadi factory TAK BOLEH throw lagi seperti asumsi Step 3 semula.
+class _NullSession implements PlaybackSession {
+  @override
+  Future<void> play() async {}
+  @override
+  Future<void> pause() async {}
+  @override
+  Future<void> seekTo(Duration position) async {}
+  @override
+  Future<void> setVolume(double volume) async {}
+  @override
+  Future<void> setPlaybackSpeed(double speed) async {}
+  @override
+  Future<void> dispose() async {}
+  @override
+  Duration get position => Duration.zero;
+}
+
 /// Coordinator mata-mata: menghitung pauseAll/resumeAll supaya wiring
 /// lifecycle bisa diverifikasi tanpa sesi hidup.
 class _SpyCoordinator extends PostVideoCoordinator {
-  _SpyCoordinator()
-      : super(sessionFactory: (_) => throw StateError('tak dipakai di Step 3'));
+  _SpyCoordinator() : super(sessionFactory: (_) => _NullSession());
 
   int pauseAllCount = 0;
   int resumeAllCount = 0;
@@ -73,6 +93,10 @@ dynamic _feedState(WidgetTester tester) =>
 void main() {
   setUp(() {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    // feedLocalStore singleton bertahan lintas-file dalam satu proses test —
+    // tanpa reset ini, `_initialized` dari file lain membuat
+    // `setMockInitialValues` di bawah diam-diam terabaikan (Langkah 4).
+    feedLocalStore.debugResetForTest();
     SharedPreferences.setMockInitialValues({
       'feed_offline_cache_v2': jsonEncode([_videoPostJson()]),
     });
@@ -132,11 +156,15 @@ void main() {
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     await tester.pump();
-    expect(spy.pauseAllCount, 1);
+    // >=1, bukan ==1: sejak Langkah 4, item managed (FeedVideoPostView) PUNYA
+    // WidgetsBindingObserver sendiri yang JUGA melapor via onRequestPause →
+    // coordinator.pauseAll() — defense-in-depth yang disengaja (§Titik risiko
+    // #5), bukan bug. pauseAll idempotent, aman dipanggil berkali-kali.
+    expect(spy.pauseAllCount, greaterThanOrEqualTo(1));
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
-    expect(spy.resumeAllCount, 1);
+    expect(spy.resumeAllCount, greaterThanOrEqualTo(1));
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
@@ -156,13 +184,18 @@ void main() {
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
-    expect(spy.pauseAllCount, 1, reason: 'didPushNext → pauseAll');
+    // >=1: screen-level (Langkah 3) DAN item-level onRequestPause (Langkah 4,
+    // RouteAware bawaan FeedVideoPostView) sama-sama mendeteksi push yang SAMA
+    // — defense-in-depth disengaja, lihat komentar di test lifecycle di atas.
+    expect(spy.pauseAllCount, greaterThanOrEqualTo(1),
+        reason: 'didPushNext → pauseAll');
 
     navigator.pop();
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
-    expect(spy.resumeAllCount, 1, reason: 'didPopNext → resumeAll');
+    expect(spy.resumeAllCount, greaterThanOrEqualTo(1),
+        reason: 'didPopNext → resumeAll');
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
