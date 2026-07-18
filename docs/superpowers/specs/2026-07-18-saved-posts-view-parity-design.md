@@ -83,6 +83,11 @@ pushOriginExpansion<void>(
 Efeknya: bisa **swipe atas/bawah** antar post tersimpan, animasi origin-expansion, video
 instan (warm handoff), dan infinite scroll scoped ke daftar tersimpan.
 
+**Fullscreen video otomatis ikut.** `MemberPostDetailScreen` sudah punya fullscreen player
+("Tap video → open fullscreen player", member_post_detail_screen.dart:70) beserta handoff
+playback-nya. Karena viewer di-reuse seutuhnya, tap video di Saved membuka fullscreen
+**sama persis** dengan halaman Postingan — tanpa kode tambahan.
+
 ### 3. Ekstrak `_GalleryPostTile` jadi widget bersama
 
 `_GalleryPostTile` sekarang privat di `member_posts_screen.dart` (1564 baris). Ekstrak ke
