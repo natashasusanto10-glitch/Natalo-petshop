@@ -65,7 +65,8 @@ const _feedTopActionRightInset = 8.0;
 /// internal (via [debugFeedCoordinatorEnabledOverride]) → device-verify →
 /// baru default true. Saat OFF, feed_screen berperilaku 100% seperti legacy —
 /// coordinator tak dibuat, tak ada observer lifecycle didaftarkan.
-const bool _kFeedCoordinatorDefault = false;
+// TEMP — Langkah 5 device-verify build. JANGAN merge ke main dengan true.
+const bool _kFeedCoordinatorDefault = true;
 
 /// Test/dev seam: paksa [feedCoordinatorEnabled] (null = pakai default).
 @visibleForTesting
