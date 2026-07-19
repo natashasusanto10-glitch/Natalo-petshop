@@ -12,10 +12,10 @@ import 'package:natalo_petshop_flutter/state/settings_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
-/// Langkah 4 (migrasi Feed→PostVideoCoordinator, Opsi D): swap instansiasi
-/// `FeedVideoPostView` ke mode managed + urutan attach→setActive→detach
-/// (§Urutan #1) / clearActive→detach (§Urutan #2), SEMUA di balik flag SAMA
-/// dari Langkah 3 (`debugFeedCoordinatorEnabledOverride`).
+/// Migrasi Feed→PostVideoCoordinator (Opsi D, Langkah 7): coordinator adalah
+/// SATU-SATUNYA jalur (flag dihapus). `FeedVideoPostView` selalu mode managed
+/// + urutan attach→setActive→detach (§Urutan #1) / clearActive→detach
+/// (§Urutan #2).
 
 /// Sesi kosong — tak pernah diadopsi widget (bukan `VideoPlayerSession`),
 /// jadi tak butuh plugin video sama sekali; widget cukup render thumbnail.
@@ -112,7 +112,6 @@ Future<_TrackingCoordinator> _pumpFeedWith(
   SharedPreferences.setMockInitialValues({
     'feed_offline_cache_v2': jsonEncode(postsJson),
   });
-  debugFeedCoordinatorEnabledOverride = true;
   final coordinator = _TrackingCoordinator();
   debugFeedCoordinatorFactory = ({required sessionFactory}) => coordinator;
 
@@ -141,7 +140,6 @@ Future<void> _swipeNext(WidgetTester tester) async {
 void main() {
   setUp(() {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
-    debugFeedCoordinatorEnabledOverride = null;
     debugFeedCoordinatorFactory = null;
     // feedLocalStore singleton bertahan lintas-test dalam satu proses — tanpa
     // reset ini, `_initialized` dari test sebelumnya membuat
@@ -150,11 +148,10 @@ void main() {
   });
 
   tearDown(() {
-    debugFeedCoordinatorEnabledOverride = null;
     debugFeedCoordinatorFactory = null;
   });
 
-  testWidgets('flag ON: item video pertama di-attach + setActive (managed)',
+  testWidgets('item video pertama di-attach + setActive (managed)',
       (tester) async {
     tester.view.physicalSize = const Size(400, 1200);
     tester.view.devicePixelRatio = 1.0;
@@ -178,7 +175,7 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('flag ON: swipe video A→video B → attach(B)→setActive(B)→detach(A)',
+  testWidgets('swipe video A→video B → attach(B)→setActive(B)→detach(A)',
       (tester) async {
     tester.view.physicalSize = const Size(400, 1200);
     tester.view.devicePixelRatio = 1.0;
@@ -206,7 +203,7 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('flag ON: swipe video→foto → clearActive→detach TAK BERSYARAT',
+  testWidgets('swipe video→foto → clearActive→detach TAK BERSYARAT',
       (tester) async {
     tester.view.physicalSize = const Size(400, 1200);
     tester.view.devicePixelRatio = 1.0;
@@ -235,7 +232,7 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('flag ON: preload window hanya berisi post video (video-only)',
+  testWidgets('preload window hanya berisi post video (video-only)',
       (tester) async {
     tester.view.physicalSize = const Size(400, 1200);
     tester.view.devicePixelRatio = 1.0;
@@ -255,38 +252,5 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
-  });
-
-  testWidgets('flag OFF (override, rollback): FeedVideoPostView own-controller',
-      (tester) async {
-    tester.view.physicalSize = const Size(400, 1200);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    // Default kini TRUE (Langkah 6) — paksa OFF eksplisit untuk memverifikasi
-    // jalur legacy/rollback masih utuh.
-    debugFeedCoordinatorEnabledOverride = false;
-    SharedPreferences.setMockInitialValues({
-      'feed_offline_cache_v2': jsonEncode([_videoJson('v1')]),
-    });
-    await tester.pumpWidget(
-      MaterialApp(
-        routes: {'/member/login': (_) => const Scaffold(body: Text('Login'))},
-        home: const FeedScreen(),
-      ),
-    );
-    for (var i = 0; i < 12; i++) {
-      await tester.pump(const Duration(milliseconds: 50));
-    }
-
-    final widget =
-        tester.widget<FeedVideoPostView>(find.byType(FeedVideoPostView));
-    expect(widget.ownsController, isTrue);
-    expect(widget.playbackManagedExternally, isFalse);
-    expect(widget.coordinator, isNull);
-
-    await tester.pumpWidget(const SizedBox());
-    await tester.pump(const Duration(milliseconds: 100));
   });
 }
