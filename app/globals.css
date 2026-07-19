@@ -1182,3 +1182,53 @@ html[data-interactive-swipe-back="committing"]::view-transition-group(*) {
 .snap-x {
   -webkit-overflow-scrolling: touch;
 }
+
+/* ── Rak Etalase — lit-shelf pedestal + shelf-line (listing signature) ──
+   Warm/neutral pedestal (amber + faint natalo), uniform across categories.
+   Static so it reads "premium at rest"; shelf-line intensifies on hover. */
+.nat-lit-shelf {
+  position: relative;
+}
+.nat-lit-shelf::before {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 0;
+  height: 44%;
+  border-radius: 999px;
+  background: radial-gradient(
+    62% 100% at 50% 100%,
+    rgba(245, 158, 11, 0.12),
+    rgba(30, 95, 191, 0.05) 55%,
+    transparent 72%
+  );
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.85;
+  transition: opacity 220ms ease;
+}
+.group:hover .nat-lit-shelf::before {
+  opacity: 1;
+}
+.nat-shelf-line::after {
+  content: "";
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    #1e5fbf 22%,
+    #4a90e2 78%,
+    transparent
+  );
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+.group:hover .nat-shelf-line::after {
+  opacity: 1;
+}
