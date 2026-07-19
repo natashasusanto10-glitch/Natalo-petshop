@@ -23,6 +23,7 @@ import {
   likeRowActorFields,
   notificationActorFields,
   OFFICIAL_BRAND_NAME,
+  topLikerAvatars,
 } from "@/lib/social/brand-user";
 import {
   createFeedNotification,
@@ -379,6 +380,14 @@ export async function sendLikeNotification(params: {
     });
 
     if (recentUnread) {
+      const topLikers = await prisma.feedLike.findMany({
+        where: { postId: post.id },
+        orderBy: { createdAt: "desc" },
+        take: 3,
+        select: { user: { select: { role: true, profilePhotoUrl: true } } },
+      });
+      const avatarUrls = topLikerAvatars(topLikers.map((l) => l.user));
+
       await prisma.announcement.update({
         where: { id: recentUnread.id },
         data: {
@@ -388,6 +397,7 @@ export async function sendLikeNotification(params: {
           )} mendapat beberapa like baru.`,
           thumbnailUrl: thumb,
           ...likeRowActorFields(true, actorFields),
+          actorAvatarUrls: avatarUrls,
           publishedAt: new Date(),
         },
       });
@@ -472,6 +482,14 @@ export async function sendCommentLikeNotification(params: {
     });
 
     if (recentUnread) {
+      const topLikers = await prisma.feedCommentLike.findMany({
+        where: { commentId: params.commentId },
+        orderBy: { createdAt: "desc" },
+        take: 3,
+        select: { user: { select: { role: true, profilePhotoUrl: true } } },
+      });
+      const avatarUrls = topLikerAvatars(topLikers.map((l) => l.user));
+
       await prisma.announcement.update({
         where: { id: recentUnread.id },
         data: {
@@ -481,6 +499,7 @@ export async function sendCommentLikeNotification(params: {
           // + body nama satu liker). Selaras dgn jalur post-like.
           body: "Beberapa orang menyukai komentarmu di Feed.",
           ...likeRowActorFields(true, actorFields),
+          actorAvatarUrls: avatarUrls,
           publishedAt: new Date(),
         },
       });
