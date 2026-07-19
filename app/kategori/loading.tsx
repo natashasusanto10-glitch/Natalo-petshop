@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/Skeleton";
 
 export default function KategoriLoading() {
   return (
-    <div className="mx-auto max-w-6xl px-4 py-4 md:py-8">
+    <div className="mx-auto max-w-[var(--nat-container)] px-[var(--nat-gutter)] py-4 md:py-8">
       <Skeleton className="h-7 w-48" />
       <Skeleton className="mt-2 h-3.5 w-64" />
       <div className="mt-6 grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
