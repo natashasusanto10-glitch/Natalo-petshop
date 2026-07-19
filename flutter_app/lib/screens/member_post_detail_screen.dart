@@ -1704,7 +1704,7 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
 
   // Ketebalan frosted — SANGAT tipis (konten tembus, sekadar melembutkan
   // supaya teks gelap kebaca). Satu angka, gampang di-tune saat device-verify.
-  static const double _frostedSigma = 1;
+  static const double _frostedSigma = 0.5;
   // Warna teks/ikon header: GELAP. Saat pertama buka header duduk di atas
   // latar putih (media mulai di bawahnya); saat discroll media lewat di
   // belakang frosted-tipis yang melembutkannya → gelap tetap kebaca di
@@ -1912,7 +1912,7 @@ class _PostDetailFollowChipState extends State<_PostDetailFollowChip> {
                       // Gelap — header kini terang (frosted), samakan dgn
                       // teks judul. Following sedikit lebih redup.
                       color: following
-                          ? const Color(0xFF5A5A5A)
+                          ? const Color(0xFF3A3A3A)
                           : const Color(0xFF1A1A1A),
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
