@@ -11,13 +11,14 @@ import 'package:natalo_petshop_flutter/utils/app_route_observer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
-/// Langkah 3 (migrasi Feed→PostVideoCoordinator, Opsi D): coordinator +
-/// wiring lifecycle di LEVEL feed_screen, DI BALIK feature flag DEFAULT OFF.
-/// Nol perubahan user-facing — coordinator belum dipakai widget item.
+/// Migrasi Feed→PostVideoCoordinator (Opsi D, Langkah 7): coordinator kini
+/// SATU-SATUNYA jalur (feature flag dihapus) — dibuat unconditionally di
+/// initState + wiring lifecycle (app background/foreground, route
+/// push/pop) selalu aktif. Test ini memverifikasi wiring itu memakai
+/// [debugFeedCoordinatorFactory] untuk menyuntik spy.
 
-/// Sesi kosong — Langkah 4 membuat `_bootstrapFromCache` bisa memicu
-/// `attach()` sungguhan saat flag ON (preload window disinkron dari cache),
-/// jadi factory TAK BOLEH throw lagi seperti asumsi Step 3 semula.
+/// Sesi kosong — `_bootstrapFromCache` bisa memicu `attach()` sungguhan
+/// (preload window disinkron dari cache), jadi factory TAK BOLEH throw.
 class _NullSession implements PlaybackSession {
   @override
   Future<void> play() async {}
@@ -95,30 +96,19 @@ void main() {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
     // feedLocalStore singleton bertahan lintas-file dalam satu proses test —
     // tanpa reset ini, `_initialized` dari file lain membuat
-    // `setMockInitialValues` di bawah diam-diam terabaikan (Langkah 4).
+    // `setMockInitialValues` di bawah diam-diam terabaikan.
     feedLocalStore.debugResetForTest();
     SharedPreferences.setMockInitialValues({
       'feed_offline_cache_v2': jsonEncode([_videoPostJson()]),
     });
-    debugFeedCoordinatorEnabledOverride = null;
     debugFeedCoordinatorFactory = null;
   });
 
   tearDown(() {
-    debugFeedCoordinatorEnabledOverride = null;
     debugFeedCoordinatorFactory = null;
   });
 
-  test('feedCoordinatorEnabled default TRUE (Langkah 6); override memaksa', () {
-    expect(feedCoordinatorEnabled(), isTrue);
-    debugFeedCoordinatorEnabledOverride = false;
-    expect(feedCoordinatorEnabled(), isFalse);
-    debugFeedCoordinatorEnabledOverride = true;
-    expect(feedCoordinatorEnabled(), isTrue);
-    debugFeedCoordinatorEnabledOverride = null;
-  });
-
-  testWidgets('default (tanpa override) → coordinator dibuat (Langkah 6)',
+  testWidgets('coordinator selalu dibuat (flag dihapus, Langkah 7)',
       (tester) async {
     await _pumpFeed(tester);
     expect(_feedState(tester).debugVideoCoordinator, isNotNull);
@@ -126,26 +116,7 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('flag OFF (override, jalur rollback) → tak ada coordinator',
-      (tester) async {
-    debugFeedCoordinatorEnabledOverride = false;
-    await _pumpFeed(tester);
-    expect(_feedState(tester).debugVideoCoordinator, isNull);
-    await tester.pumpWidget(const SizedBox());
-    await tester.pump();
-  });
-
-  testWidgets('flag ON → coordinator dibuat', (tester) async {
-    debugFeedCoordinatorEnabledOverride = true;
-    await _pumpFeed(tester);
-    expect(_feedState(tester).debugVideoCoordinator, isNotNull);
-    await tester.pumpWidget(const SizedBox());
-    await tester.pump();
-  });
-
-  testWidgets('flag ON → dispose screen men-dispose coordinator',
-      (tester) async {
-    debugFeedCoordinatorEnabledOverride = true;
+  testWidgets('dispose screen men-dispose coordinator', (tester) async {
     final spy = _SpyCoordinator();
     debugFeedCoordinatorFactory = ({required sessionFactory}) => spy;
     await _pumpFeed(tester);
@@ -157,19 +128,18 @@ void main() {
         reason: 'feed_screen.dispose() → coordinator.dispose() sekali');
   });
 
-  testWidgets('flag ON → app background/foreground → pauseAll/resumeAll',
+  testWidgets('app background/foreground → pauseAll/resumeAll',
       (tester) async {
-    debugFeedCoordinatorEnabledOverride = true;
     final spy = _SpyCoordinator();
     debugFeedCoordinatorFactory = ({required sessionFactory}) => spy;
     await _pumpFeed(tester);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     await tester.pump();
-    // >=1, bukan ==1: sejak Langkah 4, item managed (FeedVideoPostView) PUNYA
+    // >=1, bukan ==1: item managed (FeedVideoPostView) PUNYA
     // WidgetsBindingObserver sendiri yang JUGA melapor via onRequestPause →
-    // coordinator.pauseAll() — defense-in-depth yang disengaja (§Titik risiko
-    // #5), bukan bug. pauseAll idempotent, aman dipanggil berkali-kali.
+    // coordinator.pauseAll() — defense-in-depth yang disengaja, bukan bug.
+    // pauseAll idempotent, aman dipanggil berkali-kali.
     expect(spy.pauseAllCount, greaterThanOrEqualTo(1));
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -180,9 +150,8 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('flag ON → route opaque didorong/ditutup → pauseAll/resumeAll',
+  testWidgets('route opaque didorong/ditutup → pauseAll/resumeAll',
       (tester) async {
-    debugFeedCoordinatorEnabledOverride = true;
     final spy = _SpyCoordinator();
     debugFeedCoordinatorFactory = ({required sessionFactory}) => spy;
     await _pumpFeed(tester, observers: [appRouteObserver]);
@@ -194,9 +163,9 @@ void main() {
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
-    // >=1: screen-level (Langkah 3) DAN item-level onRequestPause (Langkah 4,
-    // RouteAware bawaan FeedVideoPostView) sama-sama mendeteksi push yang SAMA
-    // — defense-in-depth disengaja, lihat komentar di test lifecycle di atas.
+    // >=1: screen-level DAN item-level onRequestPause (RouteAware bawaan
+    // FeedVideoPostView) sama-sama mendeteksi push yang SAMA — defense-in-
+    // depth disengaja, lihat komentar di test lifecycle di atas.
     expect(spy.pauseAllCount, greaterThanOrEqualTo(1),
         reason: 'didPushNext → pauseAll');
 
@@ -207,18 +176,6 @@ void main() {
     expect(spy.resumeAllCount, greaterThanOrEqualTo(1),
         reason: 'didPopNext → resumeAll');
 
-    await tester.pumpWidget(const SizedBox());
-    await tester.pump();
-  });
-
-  testWidgets('flag OFF → app lifecycle TIDAK crash (tak ada coordinator)',
-      (tester) async {
-    await _pumpFeed(tester);
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    await tester.pump();
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pump();
-    // Tak ada assertion selain "tak crash" — flag OFF = wiring lifecycle mati.
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
   });
