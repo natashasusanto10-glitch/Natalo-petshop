@@ -65,6 +65,10 @@
     {
       "path": "/api/cron/chat-order-outbox",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/promo-notify",
+      "schedule": "0 * * * *"
     }
   ]
 }
