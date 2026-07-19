@@ -2,7 +2,7 @@ import { Skeleton, ProductCardSkeleton } from "@/components/Skeleton";
 
 export default function ProductsLoading() {
   return (
-    <div className="mx-auto max-w-6xl px-4 py-4 md:py-10">
+    <div className="mx-auto max-w-[var(--nat-container)] px-[var(--nat-gutter)] py-4 md:py-10">
       <div className="mb-5 md:mb-6">
         <Skeleton className="h-7 w-44" />
         <Skeleton className="mt-2 h-3.5 w-56" />
