@@ -85,6 +85,135 @@ void main() {
       expect(source.restoredIds, containsAll(<String>['a', 'b']));
     });
 
+    test(
+      'latest null preparation clears prepared B and notifies once',
+      () async {
+        final source = FakeTransitionSource();
+        final preparedProxy = TrackingMediaProxy();
+        source.preparations['b'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('b', proxy: preparedProxy));
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: source,
+        );
+        session.reportActivePost(fakePost('b'));
+        await session.prepareActiveTarget();
+        var notifications = 0;
+        session.addListener(() => notifications++);
+
+        source.preparations['b'] = Completer<PostPageSourceTarget?>()
+          ..complete(null);
+        await session.prepareActiveTarget();
+
+        expect(session.preparedTarget, isNull);
+        expect(notifications, 1);
+        expect(preparedProxy.ownedDisposeCount, 1);
+        session.dispose();
+      },
+    );
+
+    test(
+      'latest wrong-post preparation clears prepared B and notifies once',
+      () async {
+        final source = FakeTransitionSource();
+        final preparedProxy = TrackingMediaProxy();
+        source.preparations['b'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('b', proxy: preparedProxy));
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: source,
+        );
+        session.reportActivePost(fakePost('b'));
+        await session.prepareActiveTarget();
+        var notifications = 0;
+        session.addListener(() => notifications++);
+
+        source.preparations['b'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        await session.prepareActiveTarget();
+
+        expect(session.preparedTarget, isNull);
+        expect(notifications, 1);
+        expect(preparedProxy.ownedDisposeCount, 1);
+        session.dispose();
+      },
+    );
+
+    test('stale null preparation cannot clear a newer prepared B', () async {
+      final source = FakeTransitionSource();
+      final staleFailure = Completer<PostPageSourceTarget?>();
+      final newerProxy = TrackingMediaProxy();
+      source.prepareTargetOverride = (post, generation) {
+        if (generation == 2) return staleFailure.future;
+        return Future<PostPageSourceTarget?>.value(
+          fakeTarget('b', proxy: newerProxy),
+        );
+      };
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: source,
+      );
+      session.reportActivePost(fakePost('b'));
+      var notifications = 0;
+      session.addListener(() => notifications++);
+
+      final stalePreparation = session.prepareActiveTarget();
+      await session.prepareActiveTarget();
+      staleFailure.complete(null);
+      await stalePreparation;
+
+      expect(session.preparedTarget?.postId, 'b');
+      expect(notifications, 1);
+      expect(newerProxy.ownedDisposeCount, 0);
+      session.dispose();
+      expect(newerProxy.ownedDisposeCount, 1);
+    });
+
+    test(
+      'source-unmounted preparation clears prepared B and notifies once',
+      () async {
+        final source = FakeTransitionSource();
+        final preparedProxy = TrackingMediaProxy();
+        source.preparations['b'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('b', proxy: preparedProxy));
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: source,
+        );
+        session.reportActivePost(fakePost('b'));
+        await session.prepareActiveTarget();
+        var notifications = 0;
+        session.addListener(() => notifications++);
+
+        source.mounted = false;
+        await session.prepareActiveTarget();
+
+        expect(session.preparedTarget, isNull);
+        expect(notifications, 1);
+        expect(preparedProxy.ownedDisposeCount, 1);
+        session.dispose();
+      },
+    );
+
+    test(
+      'source-unmounted preparation does not notify without a target',
+      () async {
+        final source = FakeTransitionSource()..mounted = false;
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: source,
+        );
+        var notifications = 0;
+        session.addListener(() => notifications++);
+
+        await session.prepareActiveTarget();
+
+        expect(session.preparedTarget, isNull);
+        expect(notifications, 0);
+        session.dispose();
+      },
+    );
+
     test('page forwarding deduplicates locally and keeps loaded extent', () {
       final source = FakeTransitionSource();
       final session = PostDetailTransitionSession(
@@ -101,7 +230,7 @@ void main() {
       session.dispose();
     });
 
-    test('same active post ID refreshes data without notifying listeners', () {
+    test('same active post ID with refreshed data notifies exactly once', () {
       final source = FakeTransitionSource();
       final original = fakePost('a');
       final refreshed = original.copyWith(title: 'refreshed');
@@ -116,6 +245,24 @@ void main() {
 
       expect(session.activePost, same(refreshed));
       expect(session.loadedPosts.single, same(refreshed));
+      expect(notifications, 1);
+      session.dispose();
+    });
+
+    test('reporting the identical active post object remains a no-op', () {
+      final source = FakeTransitionSource();
+      final original = fakePost('a');
+      final session = PostDetailTransitionSession(
+        initialPost: original,
+        source: source,
+      );
+      var notifications = 0;
+      session.addListener(() => notifications++);
+
+      session.reportActivePost(original);
+
+      expect(session.activePost, same(original));
+      expect(session.loadedPosts.single, same(original));
       expect(notifications, 0);
       session.dispose();
     });
@@ -284,6 +431,53 @@ void main() {
       },
     );
 
+    test(
+      'freeze after dispose throws without resolving or cloning a new proxy',
+      () {
+        final source = FakeTransitionSource();
+        final openingProxy = TrackingMediaProxy();
+        source.targets['a'] = fakeTarget('a', proxy: openingProxy);
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: source,
+        );
+        final clonesBeforeDispose = openingProxy.cloneCount;
+        final sourceCallsBeforeDispose = source.resolveProxyCalls;
+
+        session.dispose();
+
+        expect(session.freeze, throwsStateError);
+        expect(openingProxy.cloneCount, clonesBeforeDispose);
+        expect(source.resolveProxyCalls, sourceCallsBeforeDispose);
+        expect(source.fallbackProxies, isEmpty);
+        expect(openingProxy.ownedDisposeCount, clonesBeforeDispose);
+      },
+    );
+
+    test(
+      'freeze after disposing a frozen proxy throws instead of returning it',
+      () {
+        final source = FakeTransitionSource();
+        final fallbackProxy = TrackingMediaProxy();
+        source.fallbackProxies['a'] = fallbackProxy;
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: source,
+        );
+        session.freeze();
+        final clonesBeforeDispose = fallbackProxy.cloneCount;
+        final sourceCallsBeforeDispose = source.resolveProxyCalls;
+
+        session.dispose();
+
+        expect(fallbackProxy.ownedDisposeCount, clonesBeforeDispose);
+        expect(session.freeze, throwsStateError);
+        expect(fallbackProxy.cloneCount, clonesBeforeDispose);
+        expect(source.resolveProxyCalls, sourceCallsBeforeDispose);
+        expect(fallbackProxy.ownedDisposeCount, clonesBeforeDispose);
+      },
+    );
+
     test('invalidating opening post releases its retained fallback proxy', () {
       final source = FakeTransitionSource();
       final fallbackProxy = TrackingMediaProxy();
@@ -360,7 +554,10 @@ class FakeTransitionSource implements PostDetailTransitionSourceAdapter {
   final List<String> restoredIds = [];
   final List<(String, bool)> suppressionCalls = [];
   final Map<String, TrackingMediaProxy> fallbackProxies = {};
+  Future<PostPageSourceTarget?> Function(FeedPost post, int generation)?
+  prepareTargetOverride;
   String? pendingReturnPostId;
+  int resolveProxyCalls = 0;
 
   @override
   void mergePage(FeedPage page) => pages.add(page);
@@ -369,14 +566,19 @@ class FakeTransitionSource implements PostDetailTransitionSourceAdapter {
   Future<PostPageSourceTarget?> prepareTarget(
     FeedPost post, {
     required int generation,
-  }) async => preparations[post.id]?.future ?? targets[post.id];
+  }) async =>
+      prepareTargetOverride?.call(post, generation) ??
+      preparations[post.id]?.future ??
+      targets[post.id];
 
   @override
   PostPageSourceTarget? resolveTarget(FeedPost post) => targets[post.id];
 
   @override
-  PostPageMediaProxy resolveProxy(FeedPost post) =>
-      fallbackProxies.putIfAbsent(post.id, TrackingMediaProxy.new);
+  PostPageMediaProxy resolveProxy(FeedPost post) {
+    resolveProxyCalls++;
+    return fallbackProxies.putIfAbsent(post.id, TrackingMediaProxy.new);
+  }
 
   @override
   void setPendingReturnPostId(String? postId) {
@@ -401,10 +603,13 @@ class TrackingMediaProxy extends PostPageMediaProxy {
 
   int get sourceDisposeCount => _tracker.sourceDisposeCount;
   int get ownedDisposeCount => _tracker.ownedDisposeCount;
+  int get cloneCount => _tracker.cloneCount;
 
   @override
-  TrackingMediaProxy clone() =>
-      TrackingMediaProxy(tracker: _tracker, ownedClone: true);
+  TrackingMediaProxy clone() {
+    _tracker.cloneCount++;
+    return TrackingMediaProxy(tracker: _tracker, ownedClone: true);
+  }
 
   @override
   void dispose() {
@@ -419,4 +624,5 @@ class TrackingMediaProxy extends PostPageMediaProxy {
 class ProxyDisposalTracker {
   int sourceDisposeCount = 0;
   int ownedDisposeCount = 0;
+  int cloneCount = 0;
 }

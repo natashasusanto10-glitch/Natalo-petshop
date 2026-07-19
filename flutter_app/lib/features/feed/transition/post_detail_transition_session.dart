@@ -167,15 +167,17 @@ class PostDetailTransitionSession extends ChangeNotifier {
 
   void reportActivePost(FeedPost post) {
     if (_isDisposed || isFrozen) return;
-    final activePostChanged = _activePost.id != post.id;
+    final activePostIdChanged = _activePost.id != post.id;
+    final activePostChanged = !identical(_activePost, post);
+    final loadedPostChanged = !identical(_loadedPostsById[post.id], post);
     _activePost = post;
     _loadedPostsById[post.id] = post;
     _touchedPostIds.add(post.id);
-    if (activePostChanged) {
+    if (activePostIdChanged) {
       _preparationGeneration++;
       _replacePreparedTarget(null);
     }
-    if (activePostChanged) notifyListeners();
+    if (activePostChanged || loadedPostChanged) notifyListeners();
   }
 
   void reportLoadedPage(FeedPage page) {
@@ -225,7 +227,7 @@ class PostDetailTransitionSession extends ChangeNotifier {
     final post = _activePost;
     final generation = ++_preparationGeneration;
     if (!_source.mounted) {
-      _replacePreparedTarget(null);
+      if (_replacePreparedTarget(null)) notifyListeners();
       return null;
     }
 
@@ -235,9 +237,13 @@ class PostDetailTransitionSession extends ChangeNotifier {
     );
     if (_isDisposed ||
         generation != _preparationGeneration ||
-        _activePost.id != post.id ||
+        _activePost.id != post.id) {
+      return null;
+    }
+    if (!_source.mounted ||
         sourceTarget == null ||
         sourceTarget.postId != post.id) {
+      if (_replacePreparedTarget(null)) notifyListeners();
       return null;
     }
 
@@ -250,6 +256,9 @@ class PostDetailTransitionSession extends ChangeNotifier {
   }
 
   PostPageFrozenTarget freeze() {
+    if (_isDisposed) {
+      throw StateError('Cannot freeze a disposed transition session.');
+    }
     final existingFrozenTarget = _frozenTarget;
     if (existingFrozenTarget != null) return existingFrozenTarget;
 
@@ -338,11 +347,12 @@ class PostDetailTransitionSession extends ChangeNotifier {
     );
   }
 
-  void _replacePreparedTarget(PostPageSourceTarget? target) {
+  bool _replacePreparedTarget(PostPageSourceTarget? target) {
     final oldTarget = _preparedTarget;
-    if (identical(oldTarget, target)) return;
+    if (identical(oldTarget, target)) return false;
     _preparedTarget = target;
     if (oldTarget != null) _releaseProxyUnlessFrozen(oldTarget.proxy);
+    return true;
   }
 
   void _releaseProxyUnlessFrozen(PostPageMediaProxy proxy) {
