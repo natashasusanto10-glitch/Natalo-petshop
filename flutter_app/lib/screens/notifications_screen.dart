@@ -1117,6 +1117,72 @@ String _notificationHaystack(AppNotification item) {
   ].whereType<String>().join(' ').toLowerCase();
 }
 
+/// 4 tab redesign (Semua/Aktivitas/Transaksi/Promo). Aktivitas = gabungan
+/// filter lama Disebut + Feed + Pengumuman; Transaksi = Pesanan lama; Promo
+/// tetap. Publik + @visibleForTesting supaya pemetaan bisa diuji unit.
+@visibleForTesting
+enum NotificationTab {
+  all('Semua'),
+  activity('Aktivitas'),
+  transaction('Transaksi'),
+  promo('Promo');
+
+  final String label;
+  const NotificationTab(this.label);
+
+  bool matches(AppNotification item) {
+    return switch (this) {
+      NotificationTab.all => true,
+      NotificationTab.activity => _isMentionNotification(item) ||
+          _NotificationFilter.feed.matches(item) ||
+          _isAnnouncementNotification(item),
+      NotificationTab.transaction => _NotificationFilter.order.matches(item),
+      NotificationTab.promo => _NotificationFilter.promo.matches(item),
+    };
+  }
+}
+
+/// Bucket waktu untuk header grup daftar notifikasi (berbasis HARI KALENDER
+/// lokal, bukan selisih 24 jam — "kemarin 23:59" tetap KEMARIN walau baru
+/// 31 menit berlalu).
+@visibleForTesting
+enum NotificationTimeBucket {
+  today('HARI INI'),
+  yesterday('KEMARIN'),
+  thisWeek('MINGGU INI'),
+  earlier('SEBELUMNYA');
+
+  final String label;
+  const NotificationTimeBucket(this.label);
+}
+
+@visibleForTesting
+NotificationTimeBucket notificationTimeBucket(
+    DateTime now, DateTime createdAt) {
+  final today = DateTime(now.year, now.month, now.day);
+  final thatDay = DateTime(createdAt.year, createdAt.month, createdAt.day);
+  final dayDiff = today.difference(thatDay).inDays;
+  if (dayDiff <= 0) return NotificationTimeBucket.today;
+  if (dayDiff == 1) return NotificationTimeBucket.yesterday;
+  if (dayDiff <= 7) return NotificationTimeBucket.thisWeek;
+  return NotificationTimeBucket.earlier;
+}
+
+/// Waktu relatif SINGKAT ("20 jam", "3 hari") — satu-satunya timestamp baris
+/// redesign. Beda dari formatRelativeTime (formatters.dart) yang berakhiran
+/// "lalu"; di daftar padat, akhiran itu berulang & memanjangkan baris.
+@visibleForTesting
+String shortRelativeTime(DateTime now, DateTime past) {
+  final diff = now.difference(past);
+  if (diff.inMinutes < 1) return 'baru saja';
+  if (diff.inMinutes < 60) return '${diff.inMinutes} menit';
+  if (diff.inHours < 24) return '${diff.inHours} jam';
+  if (diff.inDays < 7) return '${diff.inDays} hari';
+  if (diff.inDays < 30) return '${(diff.inDays / 7).floor()} minggu';
+  if (diff.inDays < 365) return '${(diff.inDays / 30).floor()} bulan';
+  return '${(diff.inDays / 365).floor()} tahun';
+}
+
 String? _notificationCtaLabel(AppNotification item) {
   if (_isShopPromoNotification(item)) return 'Belanja Sekarang';
   if (_isPromoDetailNotification(item)) return 'Lihat Detail';
