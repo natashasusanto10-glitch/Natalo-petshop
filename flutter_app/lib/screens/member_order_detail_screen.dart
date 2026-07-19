@@ -17,6 +17,7 @@ import '../state/cart_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../utils/order_chat_context.dart';
+import '../utils/payment_url_policy.dart';
 import '../widgets/app_chat_button.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
@@ -652,8 +653,9 @@ class _PaymentActionCard extends StatelessWidget {
     if (paymentUrl == null || paymentUrl.isEmpty) return;
 
     final uri = Uri.tryParse(paymentUrl);
-    if (uri == null) {
-      _showSnack(context, 'Link pembayaran tidak valid.');
+    if (uri == null ||
+        !PaymentUrlPolicy.isValidMidtransPaymentUrl(paymentUrl)) {
+      _showSnack(context, 'Link pembayaran tidak valid atau tidak tepercaya.');
       return;
     }
 
@@ -924,9 +926,8 @@ class _ManualPaymentBannerState extends State<_ManualPaymentBanner> {
                     color: accent,
                     fontWeight: FontWeight.w900,
                     fontSize: mono ? 17 : 14.5,
-                    fontFeatures: mono
-                        ? const [FontFeature.tabularFigures()]
-                        : null,
+                    fontFeatures:
+                        mono ? const [FontFeature.tabularFigures()] : null,
                     letterSpacing: mono ? 0.5 : 0,
                   ),
                 ),
@@ -1150,8 +1151,7 @@ class _ProofThumbnail extends StatelessWidget {
               right: 8,
               bottom: 8,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.55),
                   borderRadius: BorderRadius.circular(999),
@@ -2066,8 +2066,8 @@ class _OrderHeader extends StatelessWidget {
                                 )
                               : _paymentLabel(
                                   order.paymentStatus,
-                                  hasProof: (order.paymentProofUrl ?? '')
-                                      .isNotEmpty,
+                                  hasProof:
+                                      (order.paymentProofUrl ?? '').isNotEmpty,
                                 ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -2415,118 +2415,120 @@ class _OrderProductTileState extends State<_OrderProductTile> {
             ),
           ),
           child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: AppProductImage(
-                  imageUrl: item.imageUrl,
-                  height: 68,
-                  width: 68,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: cs.onSurface,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w900,
-                      ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: AppProductImage(
+                      imageUrl: item.imageUrl,
+                      height: 68,
+                      width: 68,
                     ),
-                    const SizedBox(height: 5),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _MiniChip(
-                          label: item.variantLabel ?? item.categoryName ?? '',
-                          icon: Icons.sell_outlined,
-                        ),
-                        _MiniChip(
-                          label: 'Qty ${item.quantity}',
-                          icon: Icons.close_rounded,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${formatRupiah(item.price)} / item',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: cs.onSurfaceVariant,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
                         Text(
-                          formatRupiah(subtotal),
-                          style: const TextStyle(
-                            color: _brandBlue,
+                          item.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: cs.onSurface,
+                            fontSize: 13.5,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
+                        const SizedBox(height: 5),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _MiniChip(
+                              label:
+                                  item.variantLabel ?? item.categoryName ?? '',
+                              icon: Icons.sell_outlined,
+                            ),
+                            _MiniChip(
+                              label: 'Qty ${item.quantity}',
+                              icon: Icons.close_rounded,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${formatRupiah(item.price)} / item',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: cs.onSurfaceVariant,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              formatRupiah(subtotal),
+                              style: const TextStyle(
+                                color: _brandBlue,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          if (canReviewOrder) ...[
-            const SizedBox(height: 11),
-            Container(
-              padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
-              decoration: BoxDecoration(
-                color: cs.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cs.outlineVariant),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: AppStatusPill(
-                      label:
-                          item.reviewed ? 'Sudah direview' : 'Menunggu review',
-                      color: item.reviewed
-                          ? const Color(0xFF16A34A)
-                          : const Color(0xFFF59E0B),
-                      icon: item.reviewed
-                          ? Icons.check_circle_outline_rounded
-                          : Icons.rate_review_outlined,
-                    ),
                   ),
-                  if (canReview)
-                    TextButton.icon(
-                      // Pass orderItemId — member_reviews_screen akan
-                      // auto-open submit sheet untuk item ini langsung.
-                      onPressed: () => Navigator.pushNamed(
-                        context,
-                        '/member/reviews',
-                        arguments: {'orderItemId': item.id},
-                      ),
-                      icon: const Icon(Icons.edit_note_rounded),
-                      label: const Text('Ulas'),
-                    ),
                 ],
               ),
-            ),
-          ],
-        ],
+              if (canReviewOrder) ...[
+                const SizedBox(height: 11),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
+                  decoration: BoxDecoration(
+                    color: cs.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: cs.outlineVariant),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: AppStatusPill(
+                          label: item.reviewed
+                              ? 'Sudah direview'
+                              : 'Menunggu review',
+                          color: item.reviewed
+                              ? const Color(0xFF16A34A)
+                              : const Color(0xFFF59E0B),
+                          icon: item.reviewed
+                              ? Icons.check_circle_outline_rounded
+                              : Icons.rate_review_outlined,
+                        ),
+                      ),
+                      if (canReview)
+                        TextButton.icon(
+                          // Pass orderItemId — member_reviews_screen akan
+                          // auto-open submit sheet untuk item ini langsung.
+                          onPressed: () => Navigator.pushNamed(
+                            context,
+                            '/member/reviews',
+                            arguments: {'orderItemId': item.id},
+                          ),
+                          icon: const Icon(Icons.edit_note_rounded),
+                          label: const Text('Ulas'),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),
@@ -3239,12 +3241,11 @@ class _ShippingInfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasResi = order.trackingNumber != null &&
-        order.trackingNumber!.trim().isNotEmpty;
+    final hasResi =
+        order.trackingNumber != null && order.trackingNumber!.trim().isNotEmpty;
     final hasDriver = order.shippingDriverInfo != null &&
         order.shippingDriverInfo!.trim().isNotEmpty;
-    final courierLabel =
-        order.courierService ?? order.courierCode ?? 'Kurir';
+    final courierLabel = order.courierService ?? order.courierCode ?? 'Kurir';
     final cs = Theme.of(context).colorScheme;
 
     return Container(
@@ -3410,8 +3411,18 @@ class _ConfirmDeliveredCard extends StatelessWidget {
 
   String _formatAutoConfirm(DateTime dt) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-      'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mei',
+      'Jun',
+      'Jul',
+      'Agt',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Des',
     ];
     return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
   }
@@ -3546,8 +3557,18 @@ class _CancellationPendingBanner extends StatelessWidget {
 
   String _formatTime(DateTime dt) {
     final months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-      'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mei',
+      'Jun',
+      'Jul',
+      'Agt',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Des',
     ];
     return '${dt.day} ${months[dt.month - 1]} ${dt.year}, '
         '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
@@ -3662,8 +3683,18 @@ class _CancellationRejectedBanner extends StatelessWidget {
 
   String _formatTime(DateTime dt) {
     final months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-      'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mei',
+      'Jun',
+      'Jul',
+      'Agt',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Des',
     ];
     return '${dt.day} ${months[dt.month - 1]} ${dt.year}, '
         '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';

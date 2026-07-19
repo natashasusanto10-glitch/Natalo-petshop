@@ -884,6 +884,21 @@ model PasswordResetToken {
   @@index([expiresAt])
 }
 
+/// Daftar token sesi yang sudah di-revoke saat logout. Menyimpan HANYA
+/// SHA-256 fingerprint JWT (bukan JWT mentah) — kalau tabel bocor, token asli
+/// tidak ikut bocor. getSession menolak token yang fingerprint-nya ada di
+/// sini walau signature + tokenVersion masih valid, jadi bearer JWT klien
+/// mobile ikut mati saat logout (bukan cuma cookie yang dihapus).
+/// `expiresAt` = umur maksimum token; row bisa di-purge cron setelah lewat.
+model RevokedToken {
+  id          String   @id @default(cuid())
+  fingerprint String   @unique
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
 model RegistrationOtp {
   id           String    @id @default(cuid())
   name         String

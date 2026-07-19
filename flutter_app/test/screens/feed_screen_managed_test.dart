@@ -110,7 +110,7 @@ Future<_TrackingCoordinator> _pumpFeedWith(
   List<Map<String, dynamic>> postsJson,
 ) async {
   SharedPreferences.setMockInitialValues({
-    'feed_offline_cache_v2': jsonEncode(postsJson),
+    'feed_offline_cache_v2::guest': jsonEncode(postsJson),
   });
   final coordinator = _TrackingCoordinator();
   debugFeedCoordinatorFactory = ({required sessionFactory}) => coordinator;

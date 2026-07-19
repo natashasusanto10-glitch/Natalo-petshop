@@ -14,9 +14,11 @@ import '../models/product.dart';
 import '../models/home_category.dart';
 import '../models/brand.dart';
 import '../services/product_service.dart';
+import '../state/account_scope.dart';
 import '../state/recently_viewed_store.dart';
 import '../state/search_history_store.dart';
 import '../utils/formatters.dart';
+import '../utils/owner_scope.dart';
 import '../utils/search_synonyms.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/app_product_image.dart';
@@ -86,7 +88,11 @@ class ProductsScreen extends StatefulWidget {
 }
 
 class _ProductsScreenState extends State<ProductsScreen> {
-  static const _historyKey = 'natalo_search_history';
+  // Owner-scoped so account A's recent searches don't surface for account B
+  // (or guest) on a shared device. Legacy global `natalo_search_history` is
+  // intentionally not read.
+  String get _historyKey =>
+      OwnerScope.key('natalo_search_history', accountOwnerId());
 
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
@@ -1180,41 +1186,42 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           color: _catalogGridSurfaceTint(context),
                         ),
                         sliver: SliverPadding(
-                        padding: EdgeInsets.fromLTRB(12, 12, 12, bottomPadding),
-                        // Skeleton pakai grid AUTO-HEIGHT row-based (sama dengan
-                        // grid asli & Beranda Fase 1) — BUKAN SliverGrid aspect
-                        // tetap: kartu foto persegi 1:1 tingginya ikut lebar,
-                        // jadi childAspectRatio tetap overflow di layar sempit
-                        // (mis. 360dp). Row auto-height kebal lebar layar.
-                        sliver: SliverList(
-                          delegate: SliverChildBuilderDelegate(
-                            (context, rowIndex) => Padding(
-                              padding: EdgeInsets.only(
-                                bottom: rowIndex == 3 ? 0 : 6,
-                              ),
-                              child: const Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: SkeletonProductCard(
-                                      showAddToCart: false,
-                                      squareImage: true,
+                          padding:
+                              EdgeInsets.fromLTRB(12, 12, 12, bottomPadding),
+                          // Skeleton pakai grid AUTO-HEIGHT row-based (sama dengan
+                          // grid asli & Beranda Fase 1) — BUKAN SliverGrid aspect
+                          // tetap: kartu foto persegi 1:1 tingginya ikut lebar,
+                          // jadi childAspectRatio tetap overflow di layar sempit
+                          // (mis. 360dp). Row auto-height kebal lebar layar.
+                          sliver: SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, rowIndex) => Padding(
+                                padding: EdgeInsets.only(
+                                  bottom: rowIndex == 3 ? 0 : 6,
+                                ),
+                                child: const Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: SkeletonProductCard(
+                                        showAddToCart: false,
+                                        squareImage: true,
+                                      ),
                                     ),
-                                  ),
-                                  SizedBox(width: 6),
-                                  Expanded(
-                                    child: SkeletonProductCard(
-                                      showAddToCart: false,
-                                      squareImage: true,
+                                    SizedBox(width: 6),
+                                    Expanded(
+                                      child: SkeletonProductCard(
+                                        showAddToCart: false,
+                                        squareImage: true,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
+                              childCount: 4,
                             ),
-                            childCount: 4,
                           ),
                         ),
-                      ),
                       )
                     else if (products.isEmpty)
                       SliverFillRemaining(
@@ -1235,62 +1242,64 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           color: _catalogGridSurfaceTint(context),
                         ),
                         sliver: SliverPadding(
-                        padding: EdgeInsets.fromLTRB(12, 12, 12, bottomPadding),
-                        // Grid 2-kolom auto-height (bukan SliverGrid dengan
-                        // childAspectRatio tetap). Tiap baris = 1 Row berisi 2
-                        // kartu; tinggi BARIS ikut konten terpanjang di baris itu —
-                        // jadi produk tanpa badge/rating/terjual tidak menyisakan
-                        // ruang kosong gede seperti waktu tinggi dipaku 0.58.
-                        //
-                        // WAJIB CrossAxisAlignment.start — JANGAN .stretch. Kartu
-                        // berisi CachedNetworkImage(width: double.infinity); .stretch
-                        // memaksa Row menghitung intrinsic-height sebaris, yang tak
-                        // bisa disediakan oleh CachedNetworkImage → throw layout
-                        // exception yang DITELAN FlutterError.onError (app_crashlytics
-                        // tanpa presentError) → seluruh grid blank tanpa jejak.
-                        // Sama persis bug yang dulu bikin Beranda blank.
-                        sliver: SliverList(
-                          delegate: SliverChildBuilderDelegate(
-                            (context, rowIndex) {
-                              final leftIndex = rowIndex * 2;
-                              final rightIndex = leftIndex + 1;
-                              final left = products[leftIndex];
-                              final hasRight = rightIndex < products.length;
-                              final rowCount = (products.length + 1) ~/ 2;
-                              final isLastRow = rowIndex == rowCount - 1;
-                              return Padding(
-                                padding:
-                                    EdgeInsets.only(bottom: isLastRow ? 0 : 6),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      child: _ProductsPageProductCard(
-                                        product: left,
-                                        onTap: () => _openProduct(left),
+                          padding:
+                              EdgeInsets.fromLTRB(12, 12, 12, bottomPadding),
+                          // Grid 2-kolom auto-height (bukan SliverGrid dengan
+                          // childAspectRatio tetap). Tiap baris = 1 Row berisi 2
+                          // kartu; tinggi BARIS ikut konten terpanjang di baris itu —
+                          // jadi produk tanpa badge/rating/terjual tidak menyisakan
+                          // ruang kosong gede seperti waktu tinggi dipaku 0.58.
+                          //
+                          // WAJIB CrossAxisAlignment.start — JANGAN .stretch. Kartu
+                          // berisi CachedNetworkImage(width: double.infinity); .stretch
+                          // memaksa Row menghitung intrinsic-height sebaris, yang tak
+                          // bisa disediakan oleh CachedNetworkImage → throw layout
+                          // exception yang DITELAN FlutterError.onError (app_crashlytics
+                          // tanpa presentError) → seluruh grid blank tanpa jejak.
+                          // Sama persis bug yang dulu bikin Beranda blank.
+                          sliver: SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, rowIndex) {
+                                final leftIndex = rowIndex * 2;
+                                final rightIndex = leftIndex + 1;
+                                final left = products[leftIndex];
+                                final hasRight = rightIndex < products.length;
+                                final rowCount = (products.length + 1) ~/ 2;
+                                final isLastRow = rowIndex == rowCount - 1;
+                                return Padding(
+                                  padding: EdgeInsets.only(
+                                      bottom: isLastRow ? 0 : 6),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: _ProductsPageProductCard(
+                                          product: left,
+                                          onTap: () => _openProduct(left),
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: hasRight
-                                          ? _ProductsPageProductCard(
-                                              product: products[rightIndex],
-                                              onTap: () => _openProduct(
-                                                  products[rightIndex]),
-                                            )
-                                          // Slot kanan kosong (jumlah produk ganjil)
-                                          // — jaga kartu kiri tetap selebar 1 kolom,
-                                          // tidak melar full-width.
-                                          : const SizedBox.shrink(),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                            childCount: (products.length + 1) ~/ 2,
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: hasRight
+                                            ? _ProductsPageProductCard(
+                                                product: products[rightIndex],
+                                                onTap: () => _openProduct(
+                                                    products[rightIndex]),
+                                              )
+                                            // Slot kanan kosong (jumlah produk ganjil)
+                                            // — jaga kartu kiri tetap selebar 1 kolom,
+                                            // tidak melar full-width.
+                                            : const SizedBox.shrink(),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                              childCount: (products.length + 1) ~/ 2,
+                            ),
                           ),
                         ),
-                      ),
                       ),
                     if (_loadingMore)
                       const SliverToBoxAdapter(

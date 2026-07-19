@@ -32,7 +32,7 @@ void main() {
   setUp(() {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
     SharedPreferences.setMockInitialValues({
-      'feed_offline_cache_v2': jsonEncode([_photoPost().toJson()]),
+      'feed_offline_cache_v2::guest': jsonEncode([_photoPost().toJson()]),
     });
   });
 

@@ -10,8 +10,35 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../firebase_options.dart';
+import '../state/account_scope.dart';
+import '../utils/owner_scope.dart';
 import 'api_client.dart';
 import 'deep_link_service.dart';
+
+/// Lifecycle state of [PushNotificationService.initialize]. Replaces the old
+/// single `_initialized` bool that latched `true` even on failure — a
+/// transient error (mis. Firebase belum boot) used to kill push sampai proses
+/// restart. Sekarang gagal → kembali ke [idle] supaya bisa retry.
+enum PushInitState { idle, initializing, ready, permissionDenied }
+
+/// Top-level background message handler. WAJIB top-level + `vm:entry-point`
+/// karena FCM memanggilnya di isolate terpisah saat app di background/
+/// terminated — closure/instance method tidak bisa di-dispatch ke sana.
+///
+/// Sengaja TIDAK menampilkan ulang notifikasi: pesan dengan payload
+/// `notification` sudah dirender OS di tray. Menampilkan lokal lagi =
+/// duplikat. Handler ini hanya untuk kerja data-only (kalau ada nanti).
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (_) {
+    // Firebase belum bisa boot di background isolate — no-op aman.
+  }
+}
 
 class PushSubscriptionStatus {
   final bool authenticated;
@@ -66,13 +93,41 @@ class PushNotificationService {
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
-  bool _initialized = false;
+  PushInitState _initState = PushInitState.idle;
+  PushInitState get initState => _initState;
+
   String? _currentToken;
   GlobalKey<NavigatorState>? _navigatorKey;
   bool _registrationInFlight = false;
   bool _registrationQueued = false;
   Timer? _registrationRetryTimer;
   int _registrationRetryAttempt = 0;
+
+  // Init-retry (bounded) — transient failure kembali ke idle lalu dicoba lagi.
+  Timer? _initRetryTimer;
+  int _initRetryAttempt = 0;
+  static const _maxInitRetries = 3;
+
+  // Stream subscriptions disimpan supaya retry init tidak menumpuk listener
+  // ganda (yang bikin notif ter-handle N kali).
+  StreamSubscription<String>? _tokenRefreshSub;
+  StreamSubscription<RemoteMessage>? _foregroundSub;
+  StreamSubscription<RemoteMessage>? _openedAppSub;
+
+  /// Pure decision: apakah pesan ini harus ditampilkan lokal via
+  /// flutter_local_notifications. OS sudah auto-render pesan berpayload
+  /// `notification` saat app di background — jadi hanya path foreground yang
+  /// perlu render sendiri, dan hanya kalau kategori-nya enabled.
+  @visibleForTesting
+  static bool shouldDisplayLocally({
+    required bool isForeground,
+    required bool hasNotificationPayload,
+    required bool categoryEnabled,
+  }) {
+    if (!categoryEnabled) return false;
+    if (!isForeground) return false; // OS already displayed it — jangan dobel
+    return hasNotificationPayload;
+  }
 
   /// True bila app cold-start dipicu tap notifikasi (app tadinya terminated).
   /// Dibaca LaunchPromoGate untuk skip popup agar tidak menutupi tujuan notif.
@@ -91,12 +146,24 @@ class PushNotificationService {
     GlobalKey<NavigatorState> navigatorKey, {
     bool Function()? isLoggedIn,
   }) async {
-    if (_initialized) return;
+    // Single-flight: kalau lagi initializing atau sudah ready, no-op.
+    if (_initState == PushInitState.initializing ||
+        _initState == PushInitState.ready) {
+      return;
+    }
     _navigatorKey = navigatorKey;
+    _initState = PushInitState.initializing;
     try {
-      // 1) Initialize Firebase. Akan auto-load google-services.json di
-      //    Android, GoogleService-Info.plist di iOS. Throw kalau missing.
-      await Firebase.initializeApp();
+      // 1) Initialize Firebase pakai DefaultFirebaseOptions (konsisten dengan
+      //    main.dart). Idempotent kalau app sudah di-init di main().
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+
+      // Daftarkan background handler (top-level + vm:entry-point) untuk pesan
+      // saat app background/terminated. OS render notif di tray; handler tidak
+      // menampilkan ulang supaya tidak dobel.
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
       // 2) Request notification permission (iOS + Android 13+).
       final messaging = FirebaseMessaging.instance;
@@ -109,7 +176,7 @@ class PushNotificationService {
         if (kDebugMode) {
           debugPrint('[push] Notification permission denied.');
         }
-        _initialized = true;
+        _initState = PushInitState.permissionDenied;
         return;
       }
 
@@ -185,14 +252,9 @@ class PushNotificationService {
       if (kDebugMode && _currentToken != null) {
         debugPrint('[push] FCM token: ${_currentToken!.substring(0, 20)}...');
       }
-      messaging.onTokenRefresh.listen(_onTokenRefresh);
 
-      // 5) Foreground handler — saat app terbuka, FCM tidak auto-display.
-      //    Kita render lewat flutter_local_notifications.
-      FirebaseMessaging.onMessage.listen(_onForegroundMessage);
-
-      // 6) Notification tap saat app background → terminated/swiped-away.
-      //    Cold start: getInitialMessage. Warm: onMessageOpenedApp.
+      // Cold start: notification tap saat app terminated. Warm handling
+      // dipasang bareng listener lain di _attachListeners.
       final initial = await messaging.getInitialMessage();
       if (initial != null) {
         launchedFromColdPush = true;
@@ -201,9 +263,14 @@ class PushNotificationService {
           _handleMessage(initial);
         });
       }
-      FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
 
-      _initialized = true;
+      // Pasang SEMUA stream listener SETELAH semua operasi fallible di atas
+      // selesai — supaya kalau init gagal sebelum titik ini, tidak ada
+      // listener setengah-pasang, dan retry tidak menumpuk listener ganda.
+      _attachListeners(messaging);
+
+      _initState = PushInitState.ready;
+      _initRetryAttempt = 0;
 
       // Cold start auto-registration. Saat user reinstall app dengan
       // session persist (auto-login dari saved cookie), gak ada explicit
@@ -239,9 +306,38 @@ class PushNotificationService {
         // AppCrashlytics.initialize() AFTER pushNotificationService, jadi
         // mungkin race condition di first launch.
       }
-      _initialized = true;
-      // Silent fail — push notif tidak available, tapi app tetap jalan.
+      // Kembali ke idle (BUKAN latch ready) — kegagalan transient bisa
+      // di-retry tanpa perlu restart proses.
+      _initState = PushInitState.idle;
+      _scheduleInitRetry(navigatorKey, isLoggedIn: isLoggedIn);
     }
+  }
+
+  void _attachListeners(FirebaseMessaging messaging) {
+    // Cancel dulu supaya idempotent — retry init tidak menumpuk listener.
+    _tokenRefreshSub?.cancel();
+    _tokenRefreshSub = messaging.onTokenRefresh.listen(_onTokenRefresh);
+    _foregroundSub?.cancel();
+    _foregroundSub = FirebaseMessaging.onMessage.listen(_onForegroundMessage);
+    _openedAppSub?.cancel();
+    _openedAppSub = FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
+  }
+
+  void _scheduleInitRetry(
+    GlobalKey<NavigatorState> navigatorKey, {
+    bool Function()? isLoggedIn,
+  }) {
+    if (_initRetryAttempt >= _maxInitRetries) return;
+    _initRetryTimer?.cancel();
+    final delay = Duration(seconds: 5 << _initRetryAttempt); // 5s,10s,20s
+    _initRetryAttempt++;
+    if (kDebugMode) {
+      debugPrint('[push] Schedule init retry in ${delay.inSeconds}s');
+    }
+    _initRetryTimer = Timer(
+      delay,
+      () => initialize(navigatorKey, isLoggedIn: isLoggedIn),
+    );
   }
 
   /// Register FCM token ke server (PWA `/api/push/subscribe-fcm`).
@@ -482,13 +578,22 @@ class PushNotificationService {
 
   Future<void> _onForegroundMessage(RemoteMessage message) async {
     final notif = message.notification;
-    if (notif == null) return;
+    if (notif == null) return; // no payload → tidak ada yang dirender lokal
     // Filter berdasar user notification preferences. Backend bisa kirim
     // `data.category` (order|promo|voucher|newsletter) — kalau category
     // off di settings, skip display. Notif keamanan account selalu lewat.
     final category = message.data['category']?.toString();
-    if (category != null && !await _isCategoryEnabled(category)) {
-      if (kDebugMode) {
+    final categoryEnabled =
+        category == null ? true : await _isCategoryEnabled(category);
+    // Foreground: FCM tidak auto-display, jadi kita render sendiri (kalau
+    // kategori enabled). Background TIDAK lewat sini — OS sudah render, tidak
+    // dobel.
+    if (!shouldDisplayLocally(
+      isForeground: true,
+      hasNotificationPayload: true,
+      categoryEnabled: categoryEnabled,
+    )) {
+      if (kDebugMode && category != null && !categoryEnabled) {
         debugPrint('[push] Notif skipped (category $category disabled)');
       }
       return;
@@ -605,7 +710,10 @@ class PushNotificationService {
   Future<bool> _isCategoryEnabled(String category) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getBool('natalo_notif_pref_$category') ??
+      // Owner-scoped key — must match NotificationPreferencesScreen._prefKey so
+      // account A's toggles don't gate account B's notifications.
+      return prefs.getBool(OwnerScope.key(
+              'natalo_notif_pref_$category', accountOwnerId())) ??
           (category != 'newsletter');
     } catch (_) {
       return true;

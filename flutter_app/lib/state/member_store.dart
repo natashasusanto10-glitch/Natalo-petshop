@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/member_profile.dart';
 import '../services/api_client.dart';
+import '../services/auth_service.dart';
 import '../services/follow_service.dart';
 import '../services/member_service.dart';
 import 'cart_store.dart';
@@ -190,23 +191,49 @@ class MemberStore extends ChangeNotifier {
     }
   }
 
+  /// Server logout seam. Default memanggil authService.logout() (yang hit
+  /// endpoint /api/auth/logout untuk revoke token lalu clear apiClient).
+  /// Ditutup di closure supaya akses authService ditunda ke call-time (aman
+  /// dari import cycle) dan bisa di-override di test.
+  Future<void> Function() _serverLogout = () => authService.logout();
+
+  @visibleForTesting
+  set debugServerLogout(Future<void> Function() fn) => _serverLogout = fn;
+
+  @visibleForTesting
+  void debugResetServerLogout() => _serverLogout = () => authService.logout();
+
+  @visibleForTesting
+  void debugSetSessionToken(String? token) => _sessionToken = token;
+
   Future<void> logout() async {
-    _viewerGeneration++;
-    _profile = null;
-    _sessionToken = null;
-    _addresses = const [];
-    _orders = const [];
-    cartStore.resetLoginMergeGuard();
-    clearFollowOverrides();
-    followService.clearSessionState();
-    feedCommentSyncCoordinator.clear();
-    feedCommentSessionStore.clear();
-    notifyListeners();
+    // Best-effort server logout SELAGI token lama masih ada — apiClient baca
+    // memberStore.sessionToken, jadi request logout membawa token itu dan
+    // server bisa me-revoke bearer JWT (bukan cuma menghapus cookie). State
+    // lokal SELALU dibersihkan di finally, apa pun hasil server call.
+    final hadToken = _sessionToken != null && _sessionToken!.isNotEmpty;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_profileKey);
-      await prefs.remove(_tokenKey);
-    } catch (_) {}
+      if (hadToken) await _serverLogout();
+    } catch (_) {
+      // Abaikan — logout lokal wajib tetap jalan.
+    } finally {
+      _viewerGeneration++;
+      _profile = null;
+      _sessionToken = null;
+      _addresses = const [];
+      _orders = const [];
+      cartStore.resetLoginMergeGuard();
+      clearFollowOverrides();
+      followService.clearSessionState();
+      feedCommentSyncCoordinator.clear();
+      feedCommentSessionStore.clear();
+      notifyListeners();
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_profileKey);
+        await prefs.remove(_tokenKey);
+      } catch (_) {}
+    }
   }
 }
 

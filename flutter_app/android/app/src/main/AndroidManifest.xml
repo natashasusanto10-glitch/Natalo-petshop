@@ -65,6 +65,13 @@
                 <data android:scheme="https" android:host="www.natalopetshop.com"/>
             </intent-filter>
         </activity>
+        <!-- Default FCM channel — pesan background/terminated yang di-render OS
+             pakai channel ini (harus cocok dengan _channelId 'natalo_default'
+             yang dibuat PushNotificationService). Tanpa ini, FCM Android
+             bikin channel "Miscellaneous" default. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="natalo_default" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

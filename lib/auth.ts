@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
@@ -56,6 +57,69 @@ function cookieNameForRole(role: SessionPayload["role"]) {
   return role === "ADMIN" ? ADMIN_SESSION_COOKIE : MEMBER_SESSION_COOKIE;
 }
 
+/**
+ * SHA-256 fingerprint (hex) of a JWT. Revocation menyimpan HANYA fingerprint
+ * ini — bukan JWT mentah — supaya kalau tabel bocor, token asli tidak ikut
+ * bocor. Deterministik: JWT yang sama → fingerprint sama.
+ */
+export function tokenFingerprint(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+/**
+ * Ambil bearer token dari header Authorization (case-insensitive). Return null
+ * kalau tidak ada / bukan skema Bearer / kosong.
+ */
+export function extractBearerToken(
+  headerValue: string | null | undefined
+): string | null {
+  if (!headerValue) return null;
+  const match = /^bearer\s+(.+)$/i.exec(headerValue.trim());
+  if (!match) return null;
+  const token = match[1].trim();
+  return token.length > 0 ? token : null;
+}
+
+/**
+ * True kalau [token] sudah di-revoke (fingerprint ada di RevokedToken).
+ * Fail-closed: kalau lookup DB gagal, anggap revoked (tolak) — keamanan lebih
+ * diutamakan daripada availability untuk validasi sesi.
+ */
+async function isTokenRevoked(token: string): Promise<boolean> {
+  try {
+    const row = await prisma.revokedToken.findUnique({
+      where: { fingerprint: tokenFingerprint(token) },
+      select: { id: true },
+    });
+    return row != null;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Revoke sebuah token valid: simpan fingerprint + expiry supaya bearer JWT
+ * yang masih hidup ikut mati (bukan cuma cookie yang dihapus). Idempotent
+ * (upsert). Token yang tidak valid diabaikan. Return true kalau berhasil
+ * menandai token valid sebagai revoked.
+ */
+export async function revokeToken(token: string): Promise<boolean> {
+  const session = await verifySessionToken(token);
+  if (!session) return false;
+  const fingerprint = tokenFingerprint(token);
+  // Revocation row cukup hidup selama sisa umur maksimum token (7d). Setelah
+  // token kadaluarsa, verifySessionToken sudah menolaknya sendiri.
+  const expiresAt = new Date(
+    Date.now() + SESSION_COOKIE_OPTIONS.maxAge * 1000
+  );
+  await prisma.revokedToken.upsert({
+    where: { fingerprint },
+    create: { fingerprint, expiresAt },
+    update: { expiresAt },
+  });
+  return true;
+}
+
 export async function getSession(
   expectedRole?: SessionPayload["role"]
 ): Promise<SessionPayload | null> {
@@ -91,6 +155,9 @@ export async function getSession(
       }
     }
     if (!(await isTokenVersionCurrent(session))) continue;
+    // Bearer JWT yang sudah di-logout/revoke ditolak walau signature + tv
+    // masih valid (cookie clearing saja tidak cukup untuk klien bearer).
+    if (await isTokenRevoked(token)) continue;
     return session;
   }
 
@@ -124,8 +191,10 @@ async function isTokenVersionCurrent(
     if (user.role !== session.role) return false;
     return isTokenVersionFresh(session, user.tokenVersion);
   } catch {
-    /* Kalau DB unreachable, fail-open supaya storefront tidak total down. */
-    return true;
+    /* Fail-closed: kalau DB unreachable, tolak sesi. Sebelumnya fail-open
+       (return true) berarti token yang sudah di-"logout dari semua perangkat"
+       tetap diterima selama DB blip — celah keamanan. */
+    return false;
   }
 }
 

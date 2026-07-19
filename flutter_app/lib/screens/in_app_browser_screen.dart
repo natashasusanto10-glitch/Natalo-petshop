@@ -4,7 +4,9 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config/api_config.dart';
 import '../utils/haptics.dart';
+import '../utils/payment_url_policy.dart';
 
 const _brandBlue = NataloColors.primary;
 
@@ -85,14 +87,27 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
     _controller?.reload();
   }
 
+  /// Configured Natalo hosts (prod + any dart-define override for local dev)
+  /// treated as first-party for embedded navigation.
+  Set<String> _firstPartyHosts() {
+    final hosts = <String>{};
+    for (final raw in const [
+      ApiConfig.publicSiteUrl,
+      ApiConfig.apiBaseUrl,
+    ]) {
+      final host = Uri.tryParse(raw)?.host;
+      if (host != null && host.isNotEmpty) hosts.add(host);
+    }
+    return hosts;
+  }
+
   @override
   Widget build(BuildContext context) {
     final displayTitle = _currentTitle?.trim().isNotEmpty == true
         ? _currentTitle!
         : (widget.title ?? 'Natalo Petshop');
-    final urlHost = _currentUrl != null
-        ? Uri.tryParse(_currentUrl!)?.host ?? ''
-        : '';
+    final urlHost =
+        _currentUrl != null ? Uri.tryParse(_currentUrl!)?.host ?? '' : '';
     final isSecure = (_currentUrl ?? '').startsWith('https://');
 
     return PopScope(
@@ -137,7 +152,9 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
               Row(
                 children: [
                   Icon(
-                    isSecure ? Icons.lock_outline_rounded : Icons.public_rounded,
+                    isSecure
+                        ? Icons.lock_outline_rounded
+                        : Icons.public_rounded,
                     size: 11,
                     color: isSecure
                         ? const Color(0xFF16A34A)
@@ -215,7 +232,8 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
               if (!mounted) return;
               setState(() {
                 _currentUrl = url?.toString();
-                _currentTitle = title?.isNotEmpty == true ? title : displayTitle;
+                _currentTitle =
+                    title?.isNotEmpty == true ? title : displayTitle;
                 _canGoBack = canBack;
                 _canGoForward = canForward;
                 _progress = 1;
@@ -223,17 +241,25 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
             },
             shouldOverrideUrlLoading: (controller, action) async {
               final url = action.request.url?.toString() ?? '';
-              // External / non-http: open di browser system.
-              if (!url.startsWith('http')) {
+              // Only first-party Natalo origins may render inside the embedded
+              // WebView. Everything else is either handed to the OS browser
+              // (safe TLS/mailto/tel) or dropped entirely (http, javascript:,
+              // data:, file:, intent:, foreign schemes).
+              if (PaymentUrlPolicy.isAllowedEmbeddedNavigation(
+                url,
+                extraHosts: _firstPartyHosts(),
+              )) {
+                return NavigationActionPolicy.ALLOW;
+              }
+              if (PaymentUrlPolicy.shouldOpenExternally(url)) {
                 try {
                   await launchUrl(
                     Uri.parse(url),
                     mode: LaunchMode.externalApplication,
                   );
                 } catch (_) {}
-                return NavigationActionPolicy.CANCEL;
               }
-              return NavigationActionPolicy.ALLOW;
+              return NavigationActionPolicy.CANCEL;
             },
           ),
         ),

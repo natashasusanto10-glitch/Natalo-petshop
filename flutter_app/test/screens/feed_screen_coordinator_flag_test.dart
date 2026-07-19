@@ -99,7 +99,7 @@ void main() {
     // `setMockInitialValues` di bawah diam-diam terabaikan.
     feedLocalStore.debugResetForTest();
     SharedPreferences.setMockInitialValues({
-      'feed_offline_cache_v2': jsonEncode([_videoPostJson()]),
+      'feed_offline_cache_v2::guest': jsonEncode([_videoPostJson()]),
     });
     debugFeedCoordinatorFactory = null;
   });

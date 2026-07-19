@@ -41,7 +41,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     SharedPreferences.setMockInitialValues({
-      'feed_offline_cache_v2': jsonEncode([_photoPostJson()]),
+      'feed_offline_cache_v2::guest': jsonEncode([_photoPostJson()]),
     });
 
     await tester.pumpWidget(

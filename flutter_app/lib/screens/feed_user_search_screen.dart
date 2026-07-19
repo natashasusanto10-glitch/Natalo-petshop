@@ -8,8 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_client.dart';
 import '../services/follow_service.dart';
+import '../state/account_scope.dart';
 import '../state/follow_override_store.dart';
 import '../utils/haptics.dart';
+import '../utils/owner_scope.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/profile_avatar.dart';
 
@@ -19,7 +21,11 @@ const _divider = Color(0xFF141A22);
 const _muted = Color(0xFF8D96A3);
 const _text = Color(0xFFF8FAFC);
 const _brandBlue = NataloColors.primary;
-const _recentStorageKey = 'feed_user_search_recent_v1';
+// Owner-scoped so recent-searched accounts don't leak across accounts/guest
+// on a shared device. Legacy global `feed_user_search_recent_v1` unused.
+const _recentStorageBaseKey = 'feed_user_search_recent_v1';
+String get _recentStorageKey =>
+    OwnerScope.key(_recentStorageBaseKey, accountOwnerId());
 const _maxRecentUsers = 12;
 
 class FeedUserSearchScreen extends StatefulWidget {

@@ -7,8 +7,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/notification_service.dart';
 import '../services/push_notification_service.dart';
+import '../state/account_scope.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
+import '../utils/owner_scope.dart';
 
 /// Preferensi Notifikasi — toggle push notification per kategori.
 /// Key lokal sengaja sama dengan `push_notification_service` agar filter push
@@ -81,7 +83,10 @@ class _NotificationPreferencesScreenState
     }
   }
 
-  String _prefKey(String category) => '$_kPrefix$category';
+  // Owner-scoped: preferensi notif akun A tidak boleh mengatur notif akun B
+  // di device yang sama. Push service membaca key yang sama (owner-scoped).
+  String _prefKey(String category) =>
+      OwnerScope.key('$_kPrefix$category', accountOwnerId());
 
   Map<String, bool> _currentPreferences() {
     return {
@@ -213,7 +218,8 @@ class _NotificationPreferencesScreenState
                     icon: Icons.local_offer_outlined,
                     iconColor: const Color(0xFFEC4899),
                     title: 'Voucher Baru',
-                    subtitle: 'Notif kalau ada voucher diskon atau gratis ongkir.',
+                    subtitle:
+                        'Notif kalau ada voucher diskon atau gratis ongkir.',
                     value: _promoVoucher,
                     onChanged: (v) {
                       setState(() => _promoVoucher = v);
@@ -350,7 +356,8 @@ class _PushDiagnosticPanelState extends State<_PushDiagnosticPanel> {
           perm = 'Diizinkan';
           break;
         case AuthorizationStatus.denied:
-          perm = 'Ditolak — buka Pengaturan HP → Aplikasi → Natalo → Notifikasi → izinkan';
+          perm =
+              'Ditolak — buka Pengaturan HP → Aplikasi → Natalo → Notifikasi → izinkan';
           break;
         case AuthorizationStatus.notDetermined:
           perm = 'Belum diminta';
@@ -622,9 +629,7 @@ class _MasterSwitchCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: (enabled
-                    ? const Color(0xFF0B7FEA)
-                    : const Color(0xFF64748B))
+            color: (enabled ? const Color(0xFF0B7FEA) : const Color(0xFF64748B))
                 .withValues(alpha: 0.20),
             blurRadius: 18,
             offset: const Offset(0, 8),

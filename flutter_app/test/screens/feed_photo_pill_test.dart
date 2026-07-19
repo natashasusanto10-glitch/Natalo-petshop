@@ -48,7 +48,13 @@ Map<String, dynamic> _photoPostWithProductsJson() => {
           'discountPrice': 44500,
           'stock': 10,
         },
-        {'id': '2', 'slug': 'b', 'name': 'Produk B', 'price': 30000, 'stock': 5},
+        {
+          'id': '2',
+          'slug': 'b',
+          'name': 'Produk B',
+          'price': 30000,
+          'stock': 5
+        },
       ],
     };
 
@@ -61,7 +67,8 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     SharedPreferences.setMockInitialValues({
-      'feed_offline_cache_v2': jsonEncode([_photoPostWithProductsJson()]),
+      'feed_offline_cache_v2::guest':
+          jsonEncode([_photoPostWithProductsJson()]),
     });
 
     await tester.pumpWidget(

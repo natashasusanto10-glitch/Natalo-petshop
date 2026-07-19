@@ -4,6 +4,10 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../state/account_scope.dart';
+import '../state/member_store.dart';
+import '../utils/owner_scope.dart';
+
 /// Local block list — match Google Play UGC policy syarat "user can
 /// block other users".
 ///
@@ -23,40 +27,66 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///   duanya). Workaround sementara sampai backend kirim userId untuk
 ///   review.
 class BlockService extends ChangeNotifier {
-  BlockService._();
+  BlockService._() {
+    _ownerTag = OwnerScope.ownerTag(accountOwnerId());
+    memberStore.addListener(_onMemberStoreChanged);
+  }
 
-  static const _prefsKey = 'natalo.moderation.blocked_v1';
+  static const _baseKey = 'natalo.moderation.blocked_v1';
   static const _maxEntries = 500;
 
   Set<String> _blockedIds = <String>{};
   Set<String> _blockedNames = <String>{};
   bool _loaded = false;
+  late String _ownerTag;
 
   Set<String> get blockedIds => Set.unmodifiable(_blockedIds);
   Set<String> get blockedNames => Set.unmodifiable(_blockedNames);
   bool get isLoaded => _loaded;
   int get count => _blockedIds.length + _blockedNames.length;
 
+  String _diskKey(String ownerTag) => '$_baseKey::$ownerTag';
+
   Future<void> load() async {
     if (_loaded) return;
+    await _loadForOwner();
+  }
+
+  void _onMemberStoreChanged() {
+    _syncOwner();
+  }
+
+  Future<void> _syncOwner() async {
+    final next = OwnerScope.ownerTag(accountOwnerId());
+    if (next == _ownerTag) return;
+    _ownerTag = next;
+    // Synchronous isolation: block list is per-account, drop it immediately.
+    _blockedIds = <String>{};
+    _blockedNames = <String>{};
+    notifyListeners();
+    await _loadForOwner();
+  }
+
+  Future<void> _loadForOwner() async {
+    final owner = _ownerTag;
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_prefsKey);
-      if (raw == null || raw.isEmpty) {
-        _loaded = true;
-        return;
-      }
-      final decoded = jsonDecode(raw);
-      if (decoded is Map<String, dynamic>) {
-        final ids = decoded['ids'];
-        final names = decoded['names'];
-        if (ids is List) {
-          _blockedIds = ids.whereType<String>().toSet();
-        }
-        if (names is List) {
-          _blockedNames = names.whereType<String>().toSet();
+      if (owner != _ownerTag) return;
+      final raw = prefs.getString(_diskKey(owner));
+      var ids = <String>{};
+      var names = <String>{};
+      if (raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) {
+          final rawIds = decoded['ids'];
+          final rawNames = decoded['names'];
+          if (rawIds is List) ids = rawIds.whereType<String>().toSet();
+          if (rawNames is List) names = rawNames.whereType<String>().toSet();
         }
       }
+      if (owner != _ownerTag) return;
+      _blockedIds = ids;
+      _blockedNames = names;
     } catch (e) {
       if (kDebugMode) debugPrint('[blockService.load] $e');
       // Corrupt → reset, jangan crash app.
@@ -120,17 +150,23 @@ class BlockService extends ChangeNotifier {
   }
 
   Future<void> _persist() async {
+    final owner = _ownerTag;
     try {
       final prefs = await SharedPreferences.getInstance();
       final encoded = jsonEncode({
         'ids': _blockedIds.toList(),
         'names': _blockedNames.toList(),
       });
-      await prefs.setString(_prefsKey, encoded);
+      await prefs.setString(_diskKey(owner), encoded);
     } catch (e) {
       if (kDebugMode) debugPrint('[blockService._persist] $e');
     }
   }
+
+  /// Test seam mirroring the MemberStore listener after overriding
+  /// [accountOwnerId].
+  @visibleForTesting
+  Future<void> debugSyncOwner() => _syncOwner();
 }
 
 final BlockService blockService = BlockService._();

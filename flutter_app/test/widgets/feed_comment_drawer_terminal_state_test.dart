@@ -142,8 +142,8 @@ void main() {
       // MID-GESTURE, sudah di bawah 104px: shell stabil = element handle
       // TIDAK berganti identity (pin eksplisit — outcome "tertutup" saja
       // bisa dipenuhi mekanisme pertahanan lain, dibuktikan via mutation).
-      expect(identical(tester.element(handleFinder), handleElementBefore),
-          isTrue,
+      expect(
+          identical(tester.element(handleFinder), handleElementBefore), isTrue,
           reason: 'element drag handle wajib selamat melintasi batas 104px');
       // Recognizer masih hidup: sheet masih mengikuti jari setelah melintasi
       // batas (drag mati = top membeku walau jari terus bergerak).
@@ -331,7 +331,7 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
 
       SharedPreferences.setMockInitialValues({
-        'feed_offline_cache_v2': jsonEncode([_photoPost().toJson()]),
+        'feed_offline_cache_v2::guest': jsonEncode([_photoPost().toJson()]),
       });
 
       await tester.pumpWidget(

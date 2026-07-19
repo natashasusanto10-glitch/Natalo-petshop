@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/member_profile.dart';
 import '../models/product.dart';
@@ -10,7 +11,7 @@ import '../state/cart_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
-import '../utils/in_app_browser.dart';
+import '../utils/payment_url_policy.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/compact_commerce_product_card.dart';
 import '../widgets/skeleton_product_card.dart';
@@ -154,12 +155,23 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
       _showSnack('Link pembayaran belum tersedia. Buka detail pesanan.');
       return;
     }
-    await AppInAppBrowser.open(
-      context,
-      url: paymentUrl,
-      title: 'Pembayaran Midtrans',
+    // Payment links only ever load in the OS browser after exact validation —
+    // never inside the embedded WebView, so a spoofed/foreign URL from the
+    // order payload can't render inside the app session.
+    if (!PaymentUrlPolicy.isValidMidtransPaymentUrl(paymentUrl)) {
+      _showSnack('Link pembayaran tidak valid atau tidak tepercaya.');
+      return;
+    }
+    final opened = await launchUrl(
+      Uri.parse(paymentUrl),
+      mode: LaunchMode.externalApplication,
     );
-    if (mounted) await _refreshOrder();
+    if (!mounted) return;
+    if (!opened) {
+      _showSnack('Tidak bisa membuka pembayaran.');
+      return;
+    }
+    await _refreshOrder();
   }
 
   void _openDetail() {

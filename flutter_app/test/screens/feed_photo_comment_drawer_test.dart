@@ -46,7 +46,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     SharedPreferences.setMockInitialValues({
-      'feed_offline_cache_v2': jsonEncode([_photoPost().toJson()]),
+      'feed_offline_cache_v2::guest': jsonEncode([_photoPost().toJson()]),
     });
 
     await tester.pumpWidget(
@@ -287,7 +287,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     SharedPreferences.setMockInitialValues({
-      'feed_offline_cache_v2': jsonEncode([_photoPost().toJson()]),
+      'feed_offline_cache_v2::guest': jsonEncode([_photoPost().toJson()]),
     });
 
     await tester.pumpWidget(
@@ -394,7 +394,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     SharedPreferences.setMockInitialValues({
-      'feed_offline_cache_v2': jsonEncode([_photoPost().toJson()]),
+      'feed_offline_cache_v2::guest': jsonEncode([_photoPost().toJson()]),
     });
 
     await tester.pumpWidget(

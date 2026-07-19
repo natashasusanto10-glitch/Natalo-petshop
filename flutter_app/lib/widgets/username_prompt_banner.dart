@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../state/account_scope.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
+import '../utils/owner_scope.dart';
 
 const _bannerBg = Color(0xFFF5F3FF); // soft purple-blue
 const _bannerBorder = Color(0xFFE0E7FF);
@@ -11,7 +13,10 @@ const _bannerText = Color(0xFF1E1B4B);
 
 /// Key SharedPreferences untuk snooze banner. Value = unix millis
 /// kapan banner boleh muncul lagi. User dismiss → set to now + 7 days.
-const _snoozeKey = 'username_banner_snooze_until_ms';
+/// Owner-scoped: snooze akun A tidak boleh membungkam banner untuk akun B
+/// di device yang sama. Legacy global key lama sengaja tidak dibaca.
+const _snoozeBaseKey = 'username_banner_snooze_until_ms';
+String get _snoozeKey => OwnerScope.key(_snoozeBaseKey, accountOwnerId());
 
 /// Banner reminder buat user yang belum set @username. Tampil di
 /// Member/Akun screen header (paling atas). Dismissible — snooze 7

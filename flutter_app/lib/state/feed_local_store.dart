@@ -4,6 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/feed_post.dart';
+import '../utils/owner_scope.dart';
+import 'account_scope.dart';
+import 'member_store.dart';
 
 /// Local persistence untuk feed module — dipakai untuk:
 ///
@@ -20,18 +23,24 @@ import '../models/feed_post.dart';
 ///    debounce trackView per-session (avoid double-count saat user
 ///    swipe back-and-forth ke post sama).
 ///
-/// Storage: SharedPreferences keyed:
-///   - `feed_liked_v1` — JSON list of post IDs (string set)
-///   - `feed_offline_cache_v1` — JSON list of FeedPost.toJson
+/// Semua state di atas owner-scoped: saat viewer berganti akun (atau logout
+/// ke guest) liked/cache/viewed langsung di-reset supaya like & riwayat feed
+/// akun A tidak bocor ke akun B. Storage keyed per owner:
+///   - `feed_liked_v1::<owner>` — JSON list of post IDs
+///   - `feed_offline_cache_v2::<owner>` — JSON list of FeedPost.toJson
+/// Legacy global key lama sengaja tidak dibaca (tidak punya pemilik jelas).
 class FeedLocalStore extends ChangeNotifier {
-  FeedLocalStore._();
+  FeedLocalStore._() {
+    _ownerTag = OwnerScope.ownerTag(accountOwnerId());
+    memberStore.addListener(_onMemberStoreChanged);
+  }
 
-  static const _likedKey = 'feed_liked_v1';
+  static const _likedBaseKey = 'feed_liked_v1';
   // v2: schema FeedPost berubah (rename media→mediaItems, tambah status,
   // rejectionReason, approvedAt, recentLikers). Bump key supaya client
   // lama drop cache v1 dan re-fetch dari backend. Tanpa bump, FeedPost.
   // fromJson tetap parse cache lama tapi field baru kosong → grid degraded.
-  static const _cacheKey = 'feed_offline_cache_v2';
+  static const _cacheBaseKey = 'feed_offline_cache_v2';
   // Old key tetap di-reference untuk one-time cleanup (lihat initialize).
   static const _legacyCacheKey = 'feed_offline_cache_v1';
   static const _maxLikedEntries = 500;
@@ -49,35 +58,62 @@ class FeedLocalStore extends ChangeNotifier {
   // ── In-memory viewed (session-scoped, no persistence) ──
   final Set<String> _viewedThisSession = <String>{};
 
+  late String _ownerTag;
+
+  String _likedDiskKey(String ownerTag) => '$_likedBaseKey::$ownerTag';
+  String _cacheDiskKey(String ownerTag) => '$_cacheBaseKey::$ownerTag';
+
   /// Initialize — call di main() atau saat feed first open.
   Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
+    // One-time cleanup: hapus key cache lama (v1, global) — schema migrate ke
+    // v2 owner-scoped. Idempotent; gagal pun OK.
     try {
       final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_legacyCacheKey);
+    } catch (_) {}
+    await _loadForOwner();
+  }
 
-      // Load liked.
-      final rawLiked = prefs.getString(_likedKey);
+  void _onMemberStoreChanged() {
+    _syncOwner();
+  }
+
+  Future<void> _syncOwner() async {
+    final next = OwnerScope.ownerTag(accountOwnerId());
+    if (next == _ownerTag) return;
+    _ownerTag = next;
+    // Synchronous isolation: the instant the viewer changes, drop the previous
+    // account's liked set, offline cache, and viewed-this-session dedupe.
+    _likedIds.clear();
+    _cachedPosts = const [];
+    _viewedThisSession.clear();
+    notifyListeners();
+    await _loadForOwner();
+  }
+
+  Future<void> _loadForOwner() async {
+    final owner = _ownerTag;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (owner != _ownerTag) return;
+
+      final loadedLiked = <String>{};
+      final rawLiked = prefs.getString(_likedDiskKey(owner));
       if (rawLiked != null) {
         final decoded = jsonDecode(rawLiked);
         if (decoded is List) {
-          _likedIds.addAll(
-            decoded.whereType<String>(),
-          );
+          loadedLiked.addAll(decoded.whereType<String>());
         }
       }
 
-      // One-time cleanup: hapus key cache lama (v1) — schema migrate ke v2.
-      // Idempotent: kalau key tidak ada, NoOp. Fire-and-forget, gagal pun OK.
-      // ignore: unawaited_futures
-      prefs.remove(_legacyCacheKey);
-
-      // Load offline cache.
-      final rawCache = prefs.getString(_cacheKey);
+      List<FeedPost> loadedCache = const [];
+      final rawCache = prefs.getString(_cacheDiskKey(owner));
       if (rawCache != null) {
         final decoded = jsonDecode(rawCache);
         if (decoded is List) {
-          _cachedPosts = decoded
+          loadedCache = decoded
               .whereType<Map<String, dynamic>>()
               .map((json) {
                 try {
@@ -91,9 +127,14 @@ class FeedLocalStore extends ChangeNotifier {
         }
       }
 
+      if (owner != _ownerTag) return; // owner switched mid-load → discard
+      _likedIds
+        ..clear()
+        ..addAll(loadedLiked);
+      _cachedPosts = loadedCache;
       notifyListeners();
     } catch (e) {
-      if (kDebugMode) debugPrint('[feedLocalStore.init] $e');
+      if (kDebugMode) debugPrint('[feedLocalStore.load] $e');
     }
   }
 
@@ -154,9 +195,11 @@ class FeedLocalStore extends ChangeNotifier {
   }
 
   Future<void> _persistLiked() async {
+    final owner = _ownerTag;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_likedKey, jsonEncode(_likedIds.toList()));
+      await prefs.setString(
+          _likedDiskKey(owner), jsonEncode(_likedIds.toList()));
     } catch (e) {
       if (kDebugMode) debugPrint('[feedLocalStore.persistLiked] $e');
     }
@@ -169,6 +212,7 @@ class FeedLocalStore extends ChangeNotifier {
   /// Persist last successful fetch — keep top N posts as JSON.
   Future<void> cachePosts(List<FeedPost> posts) async {
     if (posts.isEmpty) return;
+    final owner = _ownerTag;
     final capped = posts.take(_maxCacheEntries).toList(growable: false);
     _cachedPosts = capped;
     notifyListeners();
@@ -179,7 +223,7 @@ class FeedLocalStore extends ChangeNotifier {
       // helper yang manual dan ketinggalan field (mediaItems, status,
       // recentLikers, dll) → cache lama load jadi partial.
       final list = capped.map((p) => p.toJson()).toList();
-      await prefs.setString(_cacheKey, jsonEncode(list));
+      await prefs.setString(_cacheDiskKey(owner), jsonEncode(list));
     } catch (e) {
       if (kDebugMode) debugPrint('[feedLocalStore.cachePosts] $e');
     }
@@ -191,7 +235,7 @@ class FeedLocalStore extends ChangeNotifier {
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_cacheKey);
+      await prefs.remove(_cacheDiskKey(_ownerTag));
       // Juga clear legacy key supaya storage clean.
       await prefs.remove(_legacyCacheKey);
     } catch (_) {}
@@ -224,7 +268,13 @@ class FeedLocalStore extends ChangeNotifier {
     _cachedPosts = const [];
     _likedIds.clear();
     _viewedThisSession.clear();
+    _ownerTag = OwnerScope.ownerTag(accountOwnerId());
   }
+
+  /// Test seam mirroring the MemberStore listener after overriding
+  /// [accountOwnerId].
+  @visibleForTesting
+  Future<void> debugSyncOwner() => _syncOwner();
 }
 
 final FeedLocalStore feedLocalStore = FeedLocalStore._();
