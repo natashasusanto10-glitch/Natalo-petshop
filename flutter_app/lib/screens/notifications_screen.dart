@@ -834,6 +834,9 @@ class NotificationRow extends StatelessWidget {
     final visual = _NotificationVisual.from(notification);
     final ctaLabel = _notificationCtaLabel(notification);
     final imageUrl = notification.imageUrl;
+    final isFollow =
+        notification.eventType?.toLowerCase() == 'user_followed';
+    final actorAvatarUrl = isFollow ? imageUrl : null;
 
     return InkWell(
       onTap: onTap,
@@ -862,6 +865,7 @@ class NotificationRow extends StatelessWidget {
                 _IdentityAvatar(
                   visual: visual,
                   brandIdentity: _isBrandIdentity,
+                  avatarUrl: actorAvatarUrl,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -929,7 +933,9 @@ class NotificationRow extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (imageUrl != null && imageUrl.trim().isNotEmpty) ...[
+                if (imageUrl != null &&
+                    imageUrl.trim().isNotEmpty &&
+                    !isFollow) ...[
                   const SizedBox(width: 12),
                   Container(
                     key: const ValueKey('notification-thumb'),
@@ -966,11 +972,35 @@ class NotificationRow extends StatelessWidget {
 class _IdentityAvatar extends StatelessWidget {
   final _NotificationVisual visual;
   final bool brandIdentity;
+  final String? avatarUrl;
 
-  const _IdentityAvatar({required this.visual, required this.brandIdentity});
+  const _IdentityAvatar({
+    required this.visual,
+    required this.brandIdentity,
+    this.avatarUrl,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final url = avatarUrl;
+    if (url != null && url.trim().isNotEmpty) {
+      return Container(
+        key: const ValueKey('notification-actor-avatar'),
+        height: 42,
+        width: 42,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: visual.color.withValues(alpha: 0.12),
+        ),
+        child: Image.network(
+          url,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) =>
+              Icon(visual.icon, color: visual.color, size: 20),
+        ),
+      );
+    }
     final core = brandIdentity
         ? Container(
             height: 42,

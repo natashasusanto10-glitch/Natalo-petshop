@@ -127,4 +127,31 @@ void main() {
       expect(find.text('Pakai Voucher'), findsOneWidget);
     });
   });
+
+  group('NotificationRow follow avatar', () {
+    AppNotification followNotif() => AppNotification.fromApiJson({
+          'id': 'f1',
+          'title': 'Andi mulai mengikuti kamu',
+          'body': '',
+          'type': 'info',
+          'eventType': 'user_followed',
+          'imageUrl': 'https://cdn/andi.jpg',
+          'createdAt':
+              DateTime.now().subtract(const Duration(hours: 1)).toIso8601String(),
+          'read': false,
+        });
+
+    testWidgets('follow → avatar aktor di KIRI, thumbnail kanan disembunyikan',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(notification: followNotif(), onTap: () {}),
+        ),
+      ));
+      expect(find.byKey(const ValueKey('notification-actor-avatar')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('notification-thumb')), findsNothing,
+          reason: 'foto follower tampil di kiri, bukan slot thumbnail kanan');
+    });
+  });
 }
