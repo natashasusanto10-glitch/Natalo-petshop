@@ -14,6 +14,7 @@ class GalleryPostTile extends StatelessWidget {
   final VoidCallback? onTapDown;
   final VoidCallback? onTapCancel;
   final bool showStatusBadge;
+  final bool enableFeedback;
 
   const GalleryPostTile({
     required Key key,
@@ -22,6 +23,7 @@ class GalleryPostTile extends StatelessWidget {
     this.onTapDown,
     this.onTapCancel,
     this.showStatusBadge = true,
+    this.enableFeedback = true,
   }) : super(key: key);
 
   @override
@@ -35,6 +37,8 @@ class GalleryPostTile extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
+          key: ValueKey('gallery-post-${post.id}'),
+          enableFeedback: enableFeedback,
           onTap: onTap,
           onTapDown: (_) => onTapDown?.call(),
           onTapCancel: onTapCancel,

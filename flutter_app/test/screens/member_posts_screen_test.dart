@@ -1,12 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/models/feed_post.dart';
+import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
 import 'package:natalo_petshop_flutter/screens/member_posts_screen.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_expanded_header.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const hapticChannel = MethodChannel('haptic_feedback');
+  final hapticCalls = <MethodCall>[];
+
   setUp(() {
+    hapticCalls.clear();
     SharedPreferences.setMockInitialValues(const {});
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(hapticChannel, (call) async {
+      hapticCalls.add(call);
+      return null;
+    });
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(hapticChannel, null);
   });
 
   Future<void> pumpScreen(WidgetTester tester) async {
@@ -64,5 +82,40 @@ void main() {
           .first,
     );
     expect(videoSemantics.properties.selected, isTrue);
+  });
+
+  testWidgets('opens Postingan without entry haptic', (tester) async {
+    final post = FeedPost.fromJson({
+      'id': 'legacy-a',
+      'slug': 'legacy-a',
+      'kind': 'USER_PHOTO',
+      'mediaUrl': 'https://example.com/legacy-a.jpg',
+      'thumbnailUrl': 'https://example.com/legacy-a.jpg',
+      'author': {'id': 'owner-1', 'name': 'Owner'},
+      'createdAt': DateTime(2026, 7, 18).toIso8601String(),
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MemberPostsScreen(
+          debugPostsPageLoader: (_) async => FeedPage(items: [post]),
+        ),
+      ),
+    );
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find
+          .byKey(const ValueKey('gallery-post-legacy-a'))
+          .evaluate()
+          .isNotEmpty) {
+        break;
+      }
+    }
+
+    await tester.tap(find.byKey(const ValueKey('gallery-post-legacy-a')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+
+    expect(find.byType(MemberPostDetailScreen), findsOneWidget);
+    expect(hapticCalls.where((call) => call.method == 'light'), isEmpty);
   });
 }

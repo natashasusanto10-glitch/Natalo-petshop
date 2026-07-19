@@ -47,7 +47,13 @@ const _brandBlue = NataloColors.primary;
 // via Theme.of(context).colorScheme di tiap build supaya adaptif gelap.
 
 class MemberScreen extends StatefulWidget {
-  const MemberScreen({super.key});
+  @visibleForTesting
+  final Future<FeedPage> Function(String? cursor)? debugPostsPageLoader;
+
+  const MemberScreen({
+    super.key,
+    this.debugPostsPageLoader,
+  });
 
   @override
   State<MemberScreen> createState() => _MemberScreenState();
@@ -87,7 +93,9 @@ class _MemberScreenState extends State<MemberScreen> {
         if (!memberStore.isLoggedIn) {
           return const _LoadingShell();
         }
-        return const _ProfilePage();
+        return _ProfilePage(
+          debugPostsPageLoader: widget.debugPostsPageLoader,
+        );
       },
     );
   }
@@ -113,7 +121,9 @@ class _LoadingShell extends StatelessWidget {
 // ─── Main profile page ─────────────────────────────────────────────
 
 class _ProfilePage extends StatefulWidget {
-  const _ProfilePage();
+  final Future<FeedPage> Function(String? cursor)? debugPostsPageLoader;
+
+  const _ProfilePage({this.debugPostsPageLoader});
 
   @override
   State<_ProfilePage> createState() => _ProfilePageState();
@@ -199,7 +209,10 @@ class _ProfilePageState extends State<_ProfilePage>
       // summary di Akun (stat post count), kita pakai page pertama saja —
       // tidak perlu fetch all pages. Stats Pengikut/Mengikuti diambil dari
       // memberStore.profile (di-hydrate dari /api/auth/me), bukan di sini.
-      final page = await feedService.fetchMyPosts(filter: 'all');
+      final loader = widget.debugPostsPageLoader;
+      final page = loader == null
+          ? await feedService.fetchMyPosts(filter: 'all')
+          : await loader(null);
       if (!mounted) return;
       // Seed FeedStore — cross-screen sync (Reels/Detail toggle ke-reflect
       // di Postingan Saya preview kalau di masa depan tile tampil count).
@@ -323,7 +336,6 @@ class _ProfilePageState extends State<_ProfilePage>
   ) async {
     if (posts.isEmpty || _openingPost) return;
     _openingPost = true;
-    AppHaptics.tap();
     final post = posts[initialIndex];
     final handoff = _takePreparedPost(post) ?? _createWarmHandoff(post);
     try {
@@ -337,8 +349,12 @@ class _ProfilePageState extends State<_ProfilePage>
           authorIsOfficial: memberStore.profile?.isAdmin ?? false,
           warmVideoHandoff: handoff,
           initialNextCursor: _postsNextCursor,
-          loadMoreScopedPosts: (cursor) =>
-              feedService.fetchMyPosts(filter: 'all', cursor: cursor),
+          loadMoreScopedPosts: (cursor) {
+            final loader = widget.debugPostsPageLoader;
+            return loader == null
+                ? feedService.fetchMyPosts(filter: 'all', cursor: cursor)
+                : loader(cursor);
+          },
         ),
       );
     } finally {
@@ -822,6 +838,8 @@ class _PostThumbnail extends StatelessWidget {
       key: originKey,
       child: OriginSnapshotSource(
         child: InkWell(
+          key: ValueKey('profile-post-${post.id}'),
+          enableFeedback: false,
           onTap: onTap,
           onTapDown: (_) => onTapDown?.call(),
           onTapCancel: onTapCancel,

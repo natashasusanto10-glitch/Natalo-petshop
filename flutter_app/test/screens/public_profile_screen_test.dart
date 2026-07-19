@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/post_video_warm_handoff.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/video_player_session.dart';
@@ -13,11 +14,23 @@ import 'package:natalo_petshop_flutter/widgets/public_profile_chrome_overlay.dar
 import 'package:visibility_detector/visibility_detector.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const hapticChannel = MethodChannel('haptic_feedback');
+  final hapticCalls = <MethodCall>[];
+
   setUp(() {
+    hapticCalls.clear();
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(hapticChannel, (call) async {
+      hapticCalls.add(call);
+      return null;
+    });
     addTearDown(() {
       VisibilityDetectorController.instance.updateInterval =
           const Duration(milliseconds: 500);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(hapticChannel, null);
     });
   });
 
@@ -132,6 +145,44 @@ void main() {
     await tester.pump(const Duration(milliseconds: 220));
     expect(find.byType(MemberPostDetailScreen), findsNothing);
     expect(find.byKey(const ValueKey('profile-post-video-1')), findsOneWidget);
+  });
+
+  testWidgets('opens Postingan without entry haptic', (tester) async {
+    final post = FeedPost.fromJson({
+      'id': 'public-a',
+      'slug': 'public-a',
+      'kind': 'USER_PHOTO',
+      'mediaUrl': 'https://example.com/public-a.jpg',
+      'thumbnailUrl': 'https://example.com/public-a.jpg',
+      'author': {'id': 'creator-1', 'name': 'Creator'},
+      'createdAt': DateTime(2026, 7, 18).toIso8601String(),
+    });
+    final result = PublicProfileResult(
+      profile: const PublicProfile(
+        id: 'creator-1',
+        name: 'Creator',
+        username: 'creator',
+      ),
+      posts: [post],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PublicProfileScreen(
+          username: 'creator',
+          initialResult: result,
+          fetchChatConfig: _noOpFetch,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('profile-post-public-a')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+
+    expect(find.byType(MemberPostDetailScreen), findsOneWidget);
+    expect(hapticCalls.where((call) => call.method == 'light'), isEmpty);
   });
 
   testWidgets(

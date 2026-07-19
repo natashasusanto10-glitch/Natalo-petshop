@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/models/member_profile.dart';
 import 'package:natalo_petshop_flutter/screens/member_screen.dart';
 import 'package:natalo_petshop_flutter/state/member_store.dart';
@@ -12,7 +13,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// tersimpan, notifikasi, pengaturan) TIDAK berubah bentuk/logika — hanya
 /// direcolor gelap + username ditambahkan di tengah bar.
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const hapticChannel = MethodChannel('haptic_feedback');
+  final hapticCalls = <MethodCall>[];
+
   setUp(() {
+    hapticCalls.clear();
     SharedPreferences.setMockInitialValues(const {});
     memberStore.setProfile(
       const MemberProfile(
@@ -25,9 +31,16 @@ void main() {
         followingCount: 31,
       ),
     );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(hapticChannel, (call) async {
+      hapticCalls.add(call);
+      return null;
+    });
   });
 
   tearDown(() async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(hapticChannel, null);
     await memberStore.logout();
   });
 
@@ -96,5 +109,43 @@ void main() {
     expect(find.byKey(const Key('public_tab_posts_pill')), findsOneWidget);
     expect(find.byKey(const Key('public_tab_video_pill')), findsOneWidget);
     expect(find.byKey(const Key('public_tab_shop_pill')), findsOneWidget);
+  });
+
+  testWidgets('opens Postingan without entry haptic', (tester) async {
+    final post = FeedPost.fromJson({
+      'id': 'own-a',
+      'slug': 'own-a',
+      'kind': 'USER_PHOTO',
+      'mediaUrl': 'https://example.com/own-a.jpg',
+      'thumbnailUrl': 'https://example.com/own-a.jpg',
+      'author': {'id': 'owner-1', 'name': 'Owner'},
+      'createdAt': DateTime(2026, 7, 18).toIso8601String(),
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        routes: {
+          '/member/login': (_) => const Scaffold(body: Text('Login')),
+        },
+        home: MemberScreen(
+          debugPostsPageLoader: (_) async => FeedPage(items: [post]),
+        ),
+      ),
+    );
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.byKey(const ValueKey('profile-post-own-a')).evaluate().isNotEmpty) {
+        break;
+      }
+    }
+
+    await tester.tap(find.byKey(const ValueKey('profile-post-own-a')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+
+    expect(
+      find.byKey(const ValueKey('origin-expansion-snapshot')),
+      findsOneWidget,
+    );
+    expect(hapticCalls.where((call) => call.method == 'light'), isEmpty);
   });
 }

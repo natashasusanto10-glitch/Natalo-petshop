@@ -580,7 +580,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     final profile = _profile;
     final post = posts[index];
     final handoff = _videoPrewarmer.take(post) ?? _createWarmHandoff(post);
-    AppHaptics.tap();
     try {
       await pushOriginExpansion<void>(
         context,

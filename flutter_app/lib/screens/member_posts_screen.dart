@@ -37,7 +37,13 @@ import 'public_profile_follow_list_screen.dart';
 const _brandBlue = NataloColors.primary;
 
 class MemberPostsScreen extends StatefulWidget {
-  const MemberPostsScreen({super.key});
+  @visibleForTesting
+  final Future<FeedPage> Function(String? cursor)? debugPostsPageLoader;
+
+  const MemberPostsScreen({
+    super.key,
+    this.debugPostsPageLoader,
+  });
 
   @override
   State<MemberPostsScreen> createState() => _MemberPostsScreenState();
@@ -170,7 +176,10 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     });
     final fetchedAt = DateTime.now();
     try {
-      final page = await feedService.fetchMyPosts(filter: 'all');
+      final loader = widget.debugPostsPageLoader;
+      final page = loader == null
+          ? await feedService.fetchMyPosts(filter: 'all')
+          : await loader(null);
       if (!mounted) return;
       // Seed FeedStore — supaya cross-screen sync (Reels → grid count
       // refresh, Detail → grid count refresh) kalau di masa depan grid
@@ -213,10 +222,13 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     setState(() => _loadingMore = true);
     final fetchedAt = DateTime.now();
     try {
-      final page = await feedService.fetchMyPosts(
-        filter: 'all',
-        cursor: _nextCursor,
-      );
+      final loader = widget.debugPostsPageLoader;
+      final page = loader == null
+          ? await feedService.fetchMyPosts(
+              filter: 'all',
+              cursor: _nextCursor,
+            )
+          : await loader(_nextCursor);
       if (!mounted) return;
       feedStore.mergeFromServer(
         page.items,
@@ -446,7 +458,6 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
   ) async {
     if (_openingPost) return;
     _openingPost = true;
-    AppHaptics.tap();
     final post = posts[initialIndex];
     final handoff = _takePreparedPost(post) ?? _createWarmHandoff(post);
     try {
@@ -460,10 +471,12 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
           authorIsOfficial: memberStore.profile?.isAdmin ?? false,
           warmVideoHandoff: handoff,
           initialNextCursor: _nextCursor,
-          loadMoreScopedPosts: (cursor) => feedService.fetchMyPosts(
-            filter: 'all',
-            cursor: cursor,
-          ),
+          loadMoreScopedPosts: (cursor) {
+            final loader = widget.debugPostsPageLoader;
+            return loader == null
+                ? feedService.fetchMyPosts(filter: 'all', cursor: cursor)
+                : loader(cursor);
+          },
         ),
       );
     } finally {
@@ -613,6 +626,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
                       onTapDown: () => _preparePostVideo(post),
                       onTapCancel: () => _cancelPreparedPost(post.id),
                       showStatusBadge: true,
+                      enableFeedback: false,
                     );
                   },
                 ),
