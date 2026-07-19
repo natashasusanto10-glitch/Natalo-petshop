@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/app_notification.dart';
 import 'package:natalo_petshop_flutter/screens/notifications_screen.dart';
+import 'package:natalo_petshop_flutter/widgets/official_brand_avatar.dart';
 
 AppNotification _notif({
   String title = 'Feed kamu sudah tayang',
@@ -55,6 +56,35 @@ Future<void> _pumpHeader(
 }
 
 void main() {
+  testWidgets('brand notif → OfficialBrandAvatar (bukan teks NL)',
+      (tester) async {
+    final n = AppNotification.fromApiJson({
+      'id': 'b1', 'title': 'Feed kamu sudah tayang', 'body': 'disetujui',
+      'type': 'feed', 'eventType': 'feed_published',
+      'createdAt': DateTime.now().toIso8601String(), 'read': false,
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+    ));
+    expect(find.text('NL'), findsNothing);
+    expect(find.byType(OfficialBrandAvatar), findsOneWidget);
+  });
+
+  testWidgets('like agregat (actorAvatarUrls ≥2) → avatar bertumpuk',
+      (tester) async {
+    final n = AppNotification.fromApiJson({
+      'id': 'agg1', 'title': '3 orang menyukai Feed kamu', 'body': '',
+      'type': 'feed', 'eventType': 'feed_new_like',
+      'actorAvatarUrls': ['https://cdn/1.jpg', 'https://cdn/2.jpg'],
+      'createdAt': DateTime.now().toIso8601String(), 'read': false,
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+    ));
+    expect(find.byKey(const ValueKey('notification-stacked-avatars')),
+        findsOneWidget);
+  });
+
   testWidgets('header: judul, counter "N baru", Tandai dibaca, 4 pill',
       (tester) async {
     await _pumpHeader(tester);

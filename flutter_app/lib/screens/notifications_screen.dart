@@ -17,6 +17,7 @@ import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_login_gate.dart';
 import '../widgets/app_ui.dart';
+import '../widgets/official_brand_avatar.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import 'announcement_detail_screen.dart';
 import 'in_app_browser_screen.dart';
@@ -912,11 +913,17 @@ class NotificationRow extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                _IdentityAvatar(
-                  visual: visual,
-                  brandIdentity: _isBrandIdentity,
-                  avatarUrl: actorAvatarUrl,
-                ),
+                if (notification.actorAvatarUrls.length >= 2)
+                  StackedActorAvatars(
+                    urls: notification.actorAvatarUrls,
+                    visual: visual,
+                  )
+                else
+                  _IdentityAvatar(
+                    visual: visual,
+                    brandIdentity: _isBrandIdentity,
+                    avatarUrl: actorAvatarUrl,
+                  ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -994,15 +1001,14 @@ class NotificationRow extends StatelessWidget {
                     clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
-                      color: cs.surfaceContainerHighest,
-                      border: Border.all(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        width: 0.5,
-                      ),
                     ),
                     child: Image.network(
                       imageUrl,
                       fit: BoxFit.cover,
+                      loadingBuilder: (context, child, progress) =>
+                          progress == null
+                              ? child
+                              : Container(color: cs.surfaceContainerHighest),
                       errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                     ),
                   ),
@@ -1010,6 +1016,50 @@ class NotificationRow extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Avatar bertumpuk ala IG untuk notif like agregat (2 foto liker teratas
+/// saling tumpang-tindih). Ukuran total 42 supaya sejajar avatar lain.
+class StackedActorAvatars extends StatelessWidget {
+  final List<String> urls;
+  final _NotificationVisual visual;
+  const StackedActorAvatars(
+      {super.key, required this.urls, required this.visual});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final shown = urls.take(2).toList();
+    Widget circle(String url, double size) => Container(
+          height: size,
+          width: size,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: visual.color.withValues(alpha: 0.12),
+            border: Border.all(color: cs.surface, width: 2),
+          ),
+          child: Image.network(
+            url,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) =>
+                Icon(visual.icon, color: visual.color, size: 16),
+          ),
+        );
+    return SizedBox(
+      key: const ValueKey('notification-stacked-avatars'),
+      height: 42,
+      width: 42,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          if (shown.length > 1)
+            Positioned(left: 0, top: 0, child: circle(shown[1], 30)),
+          Positioned(right: 0, bottom: 0, child: circle(shown[0], 30)),
         ],
       ),
     );
@@ -1052,23 +1102,7 @@ class _IdentityAvatar extends StatelessWidget {
       );
     }
     final core = brandIdentity
-        ? Container(
-            height: 42,
-            width: 42,
-            decoration: const BoxDecoration(
-              color: NataloColors.primary,
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: const Text(
-              'NL',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          )
+        ? const OfficialBrandAvatar(size: 42)
         : Container(
             height: 42,
             width: 42,

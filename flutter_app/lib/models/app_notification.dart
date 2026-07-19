@@ -18,6 +18,7 @@ class AppNotification {
   final String? imageUrl;
   final String? actorAvatarUrl;
   final String? actorName;
+  final List<String> actorAvatarUrls;
   final DateTime createdAt;
   final bool read;
 
@@ -41,6 +42,7 @@ class AppNotification {
     this.imageUrl,
     this.actorAvatarUrl,
     this.actorName,
+    this.actorAvatarUrls = const [],
     required this.createdAt,
     required this.read,
   });
@@ -78,6 +80,11 @@ class AppNotification {
       actorAvatarUrl:
           (json['actorAvatarUrl'] ?? json['actor_avatar_url'])?.toString(),
       actorName: (json['actorName'] ?? json['actor_name'])?.toString(),
+      actorAvatarUrls: ((json['actorAvatarUrls'] ?? json['actor_avatar_urls'])
+                  as List?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
       createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString()) ??
           DateTime.now(),
       read: json['read'] == true,
@@ -107,6 +114,7 @@ class AppNotification {
       imageUrl: imageUrl,
       actorAvatarUrl: actorAvatarUrl,
       actorName: actorName,
+      actorAvatarUrls: actorAvatarUrls,
       createdAt: createdAt,
       read: read ?? this.read,
     );
