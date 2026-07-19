@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { ProductCatalogStickyHeader } from "@/components/products/ProductCatalogStickyHeader";
 import { ProductsInfiniteGrid } from "@/components/products/ProductsInfiniteGrid";
+import { PageContainer } from "@/components/ui/PageContainer";
 import type { NewProductFilter, PopularFilter } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
 
@@ -78,12 +79,12 @@ export default async function ProductsPage({
   const categoriesForHeader = categories.map((c) => ({ slug: c.slug, name: c.name }));
 
   return (
-    <div
-      className={`mx-auto max-w-6xl px-4 ${
+    <PageContainer
+      className={
         isSearchResult
           ? "pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:py-8"
           : "pb-[calc(6rem+env(safe-area-inset-bottom))] md:py-10"
-      }`}
+      }
     >
       <ProductCatalogStickyHeader
         brandName={process.env.NEXT_PUBLIC_BRAND_NAME || "Pet Shop"}
@@ -99,6 +100,6 @@ export default async function ProductsPage({
       <Suspense fallback={null}>
         <ProductsInfiniteGrid />
       </Suspense>
-    </div>
+    </PageContainer>
   );
 }

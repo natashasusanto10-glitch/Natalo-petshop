@@ -144,7 +144,7 @@ export function ProductCard({
       <Link href={`/products/${product.slug}`} className="flex flex-1 flex-col">
         {/* Image area */}
         <div
-          className="relative aspect-square rounded-2xl bg-white"
+          className="nat-lit-shelf nat-shelf-line relative aspect-square rounded-2xl bg-white"
           style={{ viewTransitionName: `nat-prod-${product.slug}` }}
         >
           {gridVideoMp4 ? (
@@ -164,13 +164,18 @@ export function ProductCard({
               placeholder="blur"
               blurDataURL={IMAGE_BLUR_GRAY}
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-              className="object-contain p-2 transition duration-200 group-hover:scale-[1.03]"
+              className="relative z-[1] object-contain p-2 transition duration-200 group-hover:scale-[1.03]"
             />
           ) : (
-            <div className="flex h-full items-center justify-center text-5xl text-gray-300">🐾</div>
+            <div className="relative z-[1] flex h-full items-center justify-center text-5xl text-gray-300">🐾</div>
+          )}
+          {discountPercent > 0 && (
+            <span className="absolute right-1.5 top-1.5 z-10 rounded-bl-xl rounded-tr-2xl bg-[#E11D48] px-1.5 py-0.5 text-[11px] font-black text-white shadow-sm">
+              -{discountPercent}%
+            </span>
           )}
           {memberPrice !== null && (
-            <span className="absolute left-1.5 top-1.5 rounded-full border border-white/80 bg-blue-500 px-2 py-0.5 text-xs font-bold text-white shadow-sm">
+            <span className="absolute left-1.5 top-1.5 z-10 rounded-full border border-white/80 bg-blue-500 px-2 py-0.5 text-xs font-bold text-white shadow-sm">
               Member
             </span>
           )}
@@ -183,7 +188,9 @@ export function ProductCard({
             </span>
           )}
           {badge && (
-            <span className="absolute right-1.5 top-1.5 rounded-full border border-white/80 bg-white/95 px-2 py-0.5 text-[10px] font-black text-natalo-500 shadow-[var(--shadow-card)]">
+            <span
+              className={`absolute right-1.5 ${discountPercent > 0 ? "top-9" : "top-1.5"} z-10 rounded-full border border-white/80 bg-white/95 px-2 py-0.5 text-[10px] font-black text-natalo-500 shadow-[var(--shadow-card)]`}
+            >
               {badge}
             </span>
           )}
@@ -208,8 +215,9 @@ export function ProductCard({
           </div>
 
           {showRating && (product.avgRating > 0 || product.reviewCount > 0) && (
-            <p className="mt-1.5 truncate text-[11px] font-semibold text-zinc-500">
-              {product.avgRating > 0 ? `Rating ${product.avgRating.toFixed(1)}` : "Baru"}
+            <p className="mt-1.5 flex items-center gap-1 truncate text-[11px] font-semibold text-zinc-500">
+              <span className="text-[#FACC15]" aria-hidden="true">★</span>
+              {product.avgRating > 0 ? product.avgRating.toFixed(1) : "Baru"}
               {product.reviewCount > 0 ? ` · ${product.reviewCount} ulasan` : ""}
             </p>
           )}

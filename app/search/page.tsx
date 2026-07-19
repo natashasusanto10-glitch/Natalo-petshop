@@ -15,6 +15,7 @@ import {
 } from "@/components/SearchFilters";
 import { formatRupiah } from "@/lib/format";
 import { buildKeywordOnlySearchHref, buildKeywordOnlySearchParams } from "@/lib/search-url";
+import { FilterChip } from "@/components/products/FilterChip";
 
 type SearchItem = {
   id: string;
@@ -84,10 +85,11 @@ const EMPTY_FACETS: Facets = {
 
 const SORT_OPTIONS: { value: Sort; label: string }[] = [
   { value: "relevance", label: "Relevansi" },
+  { value: "best_seller", label: "Terlaris" },
+  { value: "newest", label: "Terbaru" },
+  { value: "rating_desc", label: "Rating tertinggi" },
   { value: "price_asc", label: "Harga terendah" },
   { value: "price_desc", label: "Harga tertinggi" },
-  { value: "newest", label: "Terbaru" },
-  { value: "best_seller", label: "Terlaris" },
 ];
 
 const NON_SELECTABLE_TOUCH_STYLE = {
@@ -254,7 +256,7 @@ function SearchPageContent() {
       />
       <SearchResultHeader query={q} />
 
-      <div className="mx-auto max-w-6xl px-3 py-4 md:px-4 md:py-6">
+      <div className="mx-auto max-w-[var(--nat-container)] px-3 py-4 md:px-4 md:py-6">
         <div className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm md:border-0 md:p-0 md:shadow-none">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -535,7 +537,7 @@ function SearchResultHeader({ query }: { query: string }) {
         paddingTop: "calc(env(safe-area-inset-top) + 10px)",
       }}
     >
-      <div ref={wrapperRef} className="relative mx-auto flex max-w-6xl items-center gap-2">
+      <div ref={wrapperRef} className="relative mx-auto flex max-w-[var(--nat-container)] items-center gap-2">
         <button
           type="button"
           onClick={() => router.back()}
@@ -845,19 +847,6 @@ function SearchEmptyState({
   );
 }
 
-function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onRemove}
-      className="inline-flex h-7 max-w-full items-center gap-1 rounded-full bg-natalo-50 px-2.5 text-xs font-extrabold text-natalo-700 active:bg-natalo-100"
-    >
-      <span className="truncate">{label}</span>
-      <XIcon className="h-3.5 w-3.5 shrink-0" />
-    </button>
-  );
-}
-
 function Pagination({
   page,
   totalPages,
@@ -948,7 +937,7 @@ export default function SearchPage() {
   return (
     <Suspense
       fallback={
-        <div className="mx-auto max-w-6xl px-3 py-4 md:px-4">
+        <div className="mx-auto max-w-[var(--nat-container)] px-3 py-4 md:px-4">
           <SearchGridSkeleton />
         </div>
       }

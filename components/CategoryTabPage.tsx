@@ -9,6 +9,7 @@ import {
   writeCategoryCache,
 } from "@/lib/client-performance";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
+import { EtalaseBand } from "@/components/products/EtalaseBand";
 
 export type CategorySummary = {
   id: string;
@@ -73,19 +74,29 @@ export function CategoryTabPage({ initialCategories }: Props) {
   }, []);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-4 md:py-10">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 md:text-3xl">Kategori</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Pilih kebutuhan hewan peliharaanmu tanpa menunggu halaman kosong.
-          </p>
+    <div className="mx-auto max-w-[var(--nat-container)] px-[var(--nat-gutter)] py-4 md:py-10">
+      <div className="md:hidden">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-black text-gray-900">Kategori</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Pilih kebutuhan hewan peliharaanmu tanpa menunggu halaman kosong.
+            </p>
+          </div>
+          {refreshing && (
+            <span className="mt-1 shrink-0 rounded-full bg-natalo-50 px-3 py-1 text-xs font-bold text-natalo-700">
+              Memperbarui...
+            </span>
+          )}
         </div>
-        {refreshing && (
-          <span className="mt-1 shrink-0 rounded-full bg-natalo-50 px-3 py-1 text-xs font-bold text-natalo-700">
-            Memperbarui...
-          </span>
-        )}
+      </div>
+
+      <div className="hidden md:block">
+        <EtalaseBand
+          heading="Kategori — Jelajahi rak Natalo"
+          tagline="Telusuri semua kebutuhan hewan & aquarium per kategori, langsung dari rak toko kami di Medan."
+          breadcrumb={[{ label: "Beranda", href: "/" }, { label: "Kategori" }]}
+        />
       </div>
 
       {error && categories.length > 0 && (
@@ -124,9 +135,9 @@ export function CategoryTabPage({ initialCategories }: Props) {
                 key={category.id}
                 href={`/products?kategori=${category.slug}`}
                 prefetch
-                className="group overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition active:opacity-90 sm:hover:border-natalo-200 sm:hover:shadow-md"
+                className="nat-shelf-line group relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition active:opacity-90 sm:hover:border-natalo-200 sm:hover:shadow-md"
               >
-                <div className="relative aspect-[4/3] bg-natalo-50">
+                <div className="nat-lit-shelf relative aspect-[4/3] bg-natalo-50">
                   {category.imageUrl ? (
                     <Image
                       src={category.imageUrl}
