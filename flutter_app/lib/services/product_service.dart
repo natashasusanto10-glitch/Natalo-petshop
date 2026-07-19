@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../config/api_config.dart';
 import '../models/brand.dart';
 import '../models/home_banner.dart';
@@ -407,16 +409,68 @@ class ProductService {
     }
   }
 
-  Future<List<HomeBanner>> fetchBanners() async {
+  /// GET /api/products?limit=N — JSON item MENTAH untuk HomeSnapshotStore.
+  /// null = gagal (timeout/network/server/shape tak dikenal); [] = sukses
+  /// tapi kosong. Raw ini dipersist apa adanya ke snapshot disk SWR supaya
+  /// replay lewat Product.fromApiJson identik dengan fetch live.
+  Future<List<Map<String, dynamic>>?> fetchHomeProductsRaw({
+    int limit = 48,
+  }) async {
+    try {
+      final data = await apiClient.getJson(
+        '/api/products',
+        timeout: const Duration(seconds: 15),
+        query: {'limit': '$limit'},
+      );
+      return extractRawList(data, const ['items', 'data', 'products']);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Varian raw fetchBrands — lihat kontrak null-vs-[] di fetchHomeProductsRaw.
+  Future<List<Map<String, dynamic>>?> fetchBrandsRaw({
+    String? category,
+  }) async {
+    try {
+      final data = await apiClient.getJson(
+        '/api/brands',
+        query: {
+          if (category != null && category.trim().isNotEmpty)
+            'category': category.trim(),
+        },
+      );
+      return extractRawList(data, const ['brands', 'items']);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Varian raw fetchCategories — lihat kontrak null-vs-[] di fetchHomeProductsRaw.
+  Future<List<Map<String, dynamic>>?> fetchCategoriesRaw() async {
+    try {
+      final data = await apiClient.getJson('/api/categories');
+      return extractRawList(data, const ['categories', 'items']);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Varian raw fetchBanners — lihat kontrak null-vs-[] di fetchHomeProductsRaw.
+  Future<List<Map<String, dynamic>>?> fetchBannersRaw() async {
     try {
       final data = await apiClient.getJson('/api/banners');
-      final map = _asMap(data);
-      final raw = map == null ? data : (map['banners'] ?? map['items']);
-      if (raw is! List) return const [];
-      return raw
-          .whereType<Map<String, dynamic>>()
-          .map(HomeBanner.fromApiJson)
-          .toList();
+      return extractRawList(data, const ['banners', 'items']);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<List<HomeBanner>> fetchBanners() async {
+    final raw = await fetchBannersRaw();
+    if (raw == null) return const [];
+    try {
+      return raw.map(HomeBanner.fromApiJson).toList();
     } catch (_) {
       return const [];
     }
@@ -442,36 +496,20 @@ class ProductService {
   /// aktif). Tanpa `category`, return daftar brand global (perilaku
   /// lama, dipakai all_brands_screen.dart & home "Brand Favorit").
   Future<List<PetBrand>> fetchBrands({String? category}) async {
+    final raw = await fetchBrandsRaw(category: category);
+    if (raw == null) return const [];
     try {
-      final data = await apiClient.getJson(
-        '/api/brands',
-        query: {
-          if (category != null && category.trim().isNotEmpty)
-            'category': category.trim(),
-        },
-      );
-      final map = _asMap(data);
-      final raw = map == null ? data : (map['brands'] ?? map['items']);
-      if (raw is! List) return const [];
-      return raw
-          .whereType<Map<String, dynamic>>()
-          .map(PetBrand.fromApiJson)
-          .toList();
+      return raw.map(PetBrand.fromApiJson).toList();
     } catch (_) {
       return const [];
     }
   }
 
   Future<List<HomeCategory>> fetchCategories() async {
+    final raw = await fetchCategoriesRaw();
+    if (raw == null) return const [];
     try {
-      final data = await apiClient.getJson('/api/categories');
-      final map = _asMap(data);
-      final raw = map == null ? data : (map['categories'] ?? map['items']);
-      if (raw is! List) return const [];
-      return raw
-          .whereType<Map<String, dynamic>>()
-          .map(HomeCategory.fromApiJson)
-          .toList();
+      return raw.map(HomeCategory.fromApiJson).toList();
     } catch (_) {
       return const [];
     }
@@ -596,6 +634,27 @@ List<Product> _extractProducts(Object? data) {
       .whereType<Map<String, dynamic>>()
       .map(Product.fromApiJson)
       .toList();
+}
+
+/// Ekstrak list JSON MENTAH dari berbagai bentuk respons API: data berupa
+/// List langsung, atau Map dengan salah satu [keys] (dicoba berurutan)
+/// berisi List. Return null kalau shape tak dikenal — caller (snapshot
+/// store) membedakan "gagal" (null) dari "sukses tapi kosong" ([]).
+@visibleForTesting
+List<Map<String, dynamic>>? extractRawList(Object? data, List<String> keys) {
+  Object? raw = data is List ? data : null;
+  final map = _asMap(data);
+  if (raw == null && map != null) {
+    for (final key in keys) {
+      final value = map[key];
+      if (value is List) {
+        raw = value;
+        break;
+      }
+    }
+  }
+  if (raw is! List) return null;
+  return raw.whereType<Map<String, dynamic>>().toList();
 }
 
 int? _asInt(Object? value) {

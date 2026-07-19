@@ -52,6 +52,7 @@ import 'screens/static_info_screen.dart';
 import 'state/bottom_nav_scroll.dart';
 import 'state/cart_store.dart';
 import 'state/feed_local_store.dart';
+import 'state/home_snapshot_store.dart';
 import 'state/member_store.dart';
 import 'state/recently_viewed_store.dart';
 import 'state/search_history_store.dart';
@@ -162,6 +163,11 @@ Future<void> main() async {
   // Recently viewed — load history dari disk supaya Home carousel
   // langsung populated saat user buka app.
   recentlyViewedStore.loadFromDisk();
+  // Home snapshot — hydrate data Beranda sesi terakhir dari disk (SWR)
+  // supaya cold start langsung render konten, bukan skeleton + banner.
+  // Fire-and-forget (tidak blocking first frame); guard internal mencegah
+  // snapshot lama menimpa data segar yang datang duluan.
+  homeSnapshotStore.loadFromDisk();
   // Search history — load query history dari disk supaya Home
   // "Rekomendasi Untukmu" bisa langsung pakai keyword behavior user.
   searchHistoryStore.initialize();
