@@ -1,6 +1,34 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildFeedPushPayload } from "../lib/feed/publish-push-payload";
+import { buildFeedPublishAnnouncementData } from "../lib/feed/publish-push";
+
+test("buildFeedPublishAnnouncementData: menyertakan feedPostId + thumbnailUrl", () => {
+  const data = buildFeedPublishAnnouncementData({
+    post: { id: "post-1", thumbnailUrl: "https://cdn/thumb.jpg" },
+    title: "Judul",
+    body: "Isi",
+    url: "/feed/post-1",
+    segment: "members",
+  });
+  assert.equal(data.feedPostId, "post-1");
+  assert.equal(data.thumbnailUrl, "https://cdn/thumb.jpg");
+  assert.equal(data.type, "announcement");
+  assert.equal(data.ctaLabel, "Lihat Post");
+  assert.equal(data.url, "/feed/post-1");
+});
+
+test("buildFeedPublishAnnouncementData: thumbnailUrl null tetap valid", () => {
+  const data = buildFeedPublishAnnouncementData({
+    post: { id: "p2", thumbnailUrl: null },
+    title: "J",
+    body: "B",
+    url: "/feed/p2",
+    segment: "members",
+  });
+  assert.equal(data.feedPostId, "p2");
+  assert.equal(data.thumbnailUrl, null);
+});
 
 test("buildFeedPushPayload: title dipotong 60 char", () => {
   const longTitle = "A".repeat(80);
