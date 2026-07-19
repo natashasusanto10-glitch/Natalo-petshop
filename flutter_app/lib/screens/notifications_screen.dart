@@ -5,11 +5,13 @@ import '../theme/natalo_colors.dart';
 import '../config/api_config.dart';
 import '../models/app_notification.dart';
 import '../models/feed_post.dart';
+import '../models/member_profile.dart' show OrderSummary;
 import '../models/product.dart';
 import '../services/api_client.dart';
 import '../services/deep_link_service.dart' show openFeedPostSmart;
 import '../services/feed_service.dart';
 import '../services/notification_service.dart';
+import '../services/order_service.dart';
 import '../services/product_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
@@ -249,6 +251,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return;
     }
 
+    // Pesanan spesifik: url `/pesanan/{orderNumber}` → buka detail pesanan itu
+    // (bukan daftar). Fallback ke daftar di dalam _openOrderInApp bila fetch gagal.
+    final orderNumber = extractOrderNumber(url);
+    if (orderNumber != null) {
+      await _openOrderInApp(orderNumber, extractOrderTrackingToken(url));
+      return;
+    }
+
     if (url.contains('/member/orders') ||
         url.contains('/orders') ||
         haystack.contains('pesanan') ||
@@ -304,6 +314,44 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   /// dari apakah viewer == author (post sendiri → bisa edit/hapus; post
   /// orang → viewer biasa). Spinner saat fetch; fallback ke feed kalau
   /// postingan tidak ada / fetch gagal.
+  /// Fetch pesanan by orderNumber lalu buka detail pesanan itu. Spinner saat
+  /// fetch; fallback ke daftar pesanan kalau gagal (pesanan tidak ada / token
+  /// invalid). Mirror pola _openFeedPostInApp + deep_link _openOrderByNumber.
+  Future<void> _openOrderInApp(String orderNumber, String? trackingToken) async {
+    final rootNav = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: 0.25),
+      builder: (_) => const Center(
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: CircularProgressIndicator(strokeWidth: 2.6),
+        ),
+      ),
+    );
+
+    OrderSummary? order;
+    try {
+      order = await orderService.fetchOrderDetail(
+        orderNumber,
+        trackingToken: trackingToken,
+      );
+    } catch (_) {
+      order = null;
+    }
+
+    rootNav.pop(); // tutup loading dialog
+    if (!mounted) return;
+
+    if (order == null) {
+      await Navigator.pushNamed(context, '/member/orders');
+      return;
+    }
+    await Navigator.pushNamed(context, '/member/order-detail', arguments: order);
+  }
+
   Future<void> _openFeedPostInApp(String postId) async {
     final rootNav = Navigator.of(context, rootNavigator: true);
     showDialog<void>(
