@@ -263,6 +263,9 @@ async function sendBirthdayPush(
     url: "/member/vouchers",
     tag: `birthday-${voucherCode}`,
     category: "voucher",
+    // Voucher hadiah ultah dibundel di toggle "Poin Loyalty" (subtitle:
+    // "Reminder poin earned + voucher hadiah ultah"), bukan "Voucher Baru".
+    prefCategory: "loyalty_points",
   });
 }
 

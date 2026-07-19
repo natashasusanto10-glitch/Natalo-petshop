@@ -130,6 +130,7 @@ export async function POST(request: NextRequest) {
       body: preview,
       url: "/chat",
       tag: `chat-${chatId}`,
+      prefCategory: "chat",
       data: { type: "customer_chat", chatId },
     });
 

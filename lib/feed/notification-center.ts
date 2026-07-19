@@ -52,6 +52,27 @@ function deriveNotificationCategory(
   }
 }
 
+/**
+ * Map event type → kategori PREFERENSI push ("feed" = toggle "Feed Activity"
+ * di NotificationPreferencesScreen: komentar/like/share/mention di postingan
+ * user). Hasil moderasi & status upload (approved/rejected/encoding/review)
+ * TIDAK di-gate — itu status postingan milik user sendiri, selalu dikirim.
+ * Return null = tidak difilter preferensi (always-on).
+ */
+function derivePrefCategory(
+  eventType: FeedNotificationEventType,
+): "feed" | null {
+  switch (eventType) {
+    case "feed_new_comment":
+    case "feed_new_like":
+    case "feed_new_share":
+    case "feed_mention":
+      return "feed";
+    default:
+      return null;
+  }
+}
+
 export function truncateFeedText(input: string | null | undefined, limit = 80) {
   const trimmed = (input ?? "").trim();
   if (trimmed.length <= limit) return trimmed;
@@ -124,6 +145,10 @@ export async function createFeedNotification(params: {
       // hanya event yang butuh action (mis. feed_review_pending untuk
       // admin moderate) yang set.
       category: deriveNotificationCategory(params.eventType),
+      // prefCategory = filter preferensi user (toggle "Feed Activity").
+      // Engagement (komentar/like/share/mention) di-gate; status upload
+      // milik user sendiri tidak.
+      prefCategory: derivePrefCategory(params.eventType),
     };
 
     // 2 channel (web + FCM) — sendApnsToUser dihapus, lihat komentar di

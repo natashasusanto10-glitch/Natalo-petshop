@@ -51,6 +51,7 @@ export async function sendAbandonedCartPush(
     tag: `${ABANDONED_TAG_PREFIX}${userId}`, // replace per user
     imageUrl: topItem.imageUrl ?? null,
     category: "marketing",
+    prefCategory: "promo",
     data: {
       type: "abandoned_cart",
       cartItemCount: String(items.length),
@@ -135,6 +136,7 @@ export async function sendBackInStockPush(
         tag: `${STOCK_TAG_PREFIX}${product.id}`,
         imageUrl: product.imageUrl ?? null,
         category: "marketing",
+        prefCategory: "product",
         data: {
           type: "stock_back",
           productId: product.id,

@@ -107,6 +107,7 @@ export async function GET(request: NextRequest) {
       body,
       url,
       tag: `loyalty-redeem-${b.userId}`,
+      prefCategory: "loyalty_points",
       data: {
         source: "loyalty",
         type: "loyalty_redeem_reminder",

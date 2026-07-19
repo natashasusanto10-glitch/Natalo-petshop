@@ -1,5 +1,9 @@
 import { prisma } from "./prisma";
 import { normalizePemKey } from "./pem-utils";
+import {
+  isPushCategoryEnabled,
+  type NotificationCategory,
+} from "./notification-preferences";
 
 /**
  * FCM (Firebase Cloud Messaging) sender — kirim push ke Android native app
@@ -91,6 +95,10 @@ export type FcmPayload = {
    *  notif iOS), jadi category WAJIB diteruskan di sini supaya tombol aksi
    *  tidak hilang senyap di iOS. */
   category?: string | null;
+  /** Kategori preferensi user — kalau di-set dan user men-disable kategori
+   *  itu (atau master switch OFF), push di-skip di server. JANGAN set untuk
+   *  notif kritikal (keamanan). Lihat lib/notification-preferences.ts. */
+  prefCategory?: NotificationCategory | null;
 };
 
 /**
@@ -104,6 +112,12 @@ export type FcmPayload = {
 export async function sendFcmToUser(userId: string, payload: FcmPayload) {
   const messaging = await getFcmMessaging();
   if (!messaging) return;
+
+  // Hormati preferensi user — skip channel ini kalau kategori di-mute.
+  if (payload.prefCategory) {
+    const enabled = await isPushCategoryEnabled(userId, payload.prefCategory);
+    if (!enabled) return;
+  }
 
   const subs = await prisma.pushSubscription
     .findMany({

@@ -97,20 +97,25 @@ class NotificationService {
   /// Fetch notification preferences user (per kategori on/off).
   /// Match GET /api/member/notification-preferences.
   ///
-  /// Return Map<kategori, enabled>. Defaults dipakai kalau endpoint belum
-  /// implement di backend (graceful fallback).
-  Future<Map<String, bool>> fetchPreferences() async {
+  /// Return Map<kategori, enabled> dari server, atau `null` kalau fetch gagal
+  /// / endpoint belum ada / response bukan map. PENTING: null != default —
+  /// caller HARUS membedakan "server tidak menjawab" dari "server bilang
+  /// semua OFF". Kalau fungsi ini mengembalikan default saat gagal, screen
+  /// akan menimpa pilihan user yang benar (product/feed) balik ke default OFF
+  /// tiap kali halaman dibuka ulang. Lihat _loadPreferences.
+  Future<Map<String, bool>?> fetchPreferences() async {
     try {
       final data =
           await apiClient.getJson('/api/member/notification-preferences');
       final raw = data['preferences'] ?? data;
-      if (raw is! Map<String, dynamic>) return _defaultPreferences;
-      return {
+      if (raw is! Map<String, dynamic>) return null;
+      final parsed = {
         for (final entry in raw.entries)
           if (entry.value is bool) entry.key: entry.value as bool,
       };
+      return parsed.isEmpty ? null : parsed;
     } catch (_) {
-      return _defaultPreferences;
+      return null;
     }
   }
 
@@ -129,16 +134,6 @@ class NotificationService {
     }
   }
 
-  static const _defaultPreferences = {
-    'order': true,
-    'promo': true,
-    'voucher': true,
-    'loyalty_points': true,
-    'chat': true,
-    'product': false,
-    'feed': false,
-    'newsletter': false,
-  };
 }
 
 bool _looksLikeHtml(String value) {

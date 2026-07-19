@@ -2,6 +2,10 @@ import webpush from "web-push";
 import { prisma } from "./prisma";
 import { buildOrderDetailPath } from "./order-detail";
 import { sendFcmToUser } from "./fcm";
+import {
+  isPushCategoryEnabled,
+  type NotificationCategory,
+} from "./notification-preferences";
 
 function getVapidConfig() {
   const publicKey = process.env.VAPID_PUBLIC_KEY;
@@ -28,11 +32,22 @@ export type PushPayload = {
   /** Notification category — APNs only, match dengan UNNotificationCategory
    *  yang di-register di iOS AppDelegate. Trigger action buttons. */
   category?: string | null;
+  /** Kategori preferensi user (order|promo|voucher|product|loyalty_points|
+   *  chat|feed). Kalau di-set dan user men-disable kategori itu (atau master
+   *  switch OFF), push di-skip di server. JANGAN set untuk notif kritikal
+   *  (keamanan) yang harus selalu terkirim. */
+  prefCategory?: NotificationCategory | null;
 };
 
 export async function sendPushToUser(userId: string, payload: PushPayload) {
   const { publicKey, privateKey } = getVapidConfig();
   if (!publicKey || !privateKey) return;
+
+  // Hormati preferensi user — skip channel ini kalau kategori di-mute.
+  if (payload.prefCategory) {
+    const enabled = await isPushCategoryEnabled(userId, payload.prefCategory);
+    if (!enabled) return;
+  }
 
   webpush.setVapidDetails(`mailto:admin@toko.com`, publicKey, privateKey);
 
