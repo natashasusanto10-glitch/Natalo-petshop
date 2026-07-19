@@ -46,6 +46,8 @@ function mapAnnouncement(a: {
   eventType: string | null;
   feedPostId: string | null;
   thumbnailUrl: string | null;
+  actorAvatarUrl: string | null;
+  actorName: string | null;
   feedStatus: string | null;
   ctaLabel: string | null;
   createdAt: Date;
@@ -65,6 +67,8 @@ function mapAnnouncement(a: {
     feedPostId: a.feedPostId,
     videoId: a.feedPostId,
     thumbnailUrl: a.thumbnailUrl,
+    actorAvatarUrl: a.actorAvatarUrl,
+    actorName: a.actorName,
     status: a.feedStatus,
     ctaLabel: a.ctaLabel,
     createdAt: a.createdAt.toISOString(),

@@ -58,3 +58,35 @@ export function brandifyUser<
     profilePhotoUrl: null,
   };
 }
+
+/**
+ * Field aktor terstruktur untuk baris notifikasi (Announcement.actorName/
+ * actorAvatarUrl), brand-safe. Admin → nama brand + avatar null (client render
+ * logo). User biasa → nama & foto asli.
+ */
+export function notificationActorFields(
+  role: string | null | undefined,
+  name: string | null | undefined,
+  profilePhotoUrl: string | null | undefined,
+): { actorName: string | null; actorAvatarUrl: string | null } {
+  return {
+    // name?.trim() || null → nama kosong/whitespace jatuh ke null (bukan
+    // string kosong), supaya `likerName = actorName ?? "Seseorang"` bekerja
+    // dan tak ada pesan berawalan spasi " menyukai ...".
+    actorName: isAdminRole(role) ? OFFICIAL_BRAND_NAME : (name?.trim() || null),
+    actorAvatarUrl: brandPhotoUrl(role, profilePhotoUrl),
+  };
+}
+
+/**
+ * Field aktor untuk baris notif LIKE. Baris agregat (>=2 liker, judul
+ * "N orang menyukai...") kehilangan identitas aktor tunggal → null; like
+ * TUNGGAL membawa aktor. Dipakai di kedua cabang (create + update batch)
+ * supaya keputusan "agregat kehilangan aktor" tunggal & teruji.
+ */
+export function likeRowActorFields(
+  isAggregate: boolean,
+  actor: { actorName: string | null; actorAvatarUrl: string | null },
+): { actorName: string | null; actorAvatarUrl: string | null } {
+  return isAggregate ? { actorName: null, actorAvatarUrl: null } : actor;
+}
