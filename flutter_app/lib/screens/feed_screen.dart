@@ -244,6 +244,10 @@ class _FeedScreenState extends State<FeedScreen>
   int _activeIndex = 0;
   VideoSwipeDirection _swipeDirection = VideoSwipeDirection.forward;
   Duration _activeBufferAhead = Duration.zero;
+  // Kecepatan fling terakhir (px/s, magnitude) dari drag-release PageView.
+  // Diteruskan ke AdaptiveVideoPreloadPolicy untuk melebarkan preload window
+  // saat scroll cepat (wifi-only). 0 = perilaku legacy (window statis).
+  double _lastFlingVelocity = 0;
   int _cartCount = 0;
 
   /// Gap #9: distinguish "no posts" vs "fetch error" — UI bisa show retry.
@@ -666,6 +670,7 @@ class _FeedScreenState extends State<FeedScreen>
       swipeDirection: _swipeDirection,
       activeBufferAhead: _activeBufferAhead,
       interactionLocked: _interactionLocked || _mediaZooming,
+      scrollVelocity: _lastFlingVelocity,
     );
     final targetIds = <String>[];
     for (final offset in offsets) {
@@ -785,7 +790,18 @@ class _FeedScreenState extends State<FeedScreen>
                   // setiap rebuild — cheap karena blockService.isLoaded check
                   // + Set lookup O(1) per post.
                   final visible = _visiblePosts;
-                  return PageView.builder(
+                  return NotificationListener<ScrollEndNotification>(
+                    // Tangkap kecepatan fling saat jari dilepas. dragDetails
+                    // hanya non-null pada scroll-end akibat drag-release (bukan
+                    // settle balistik), jadi ini nilai fling murni. Fire SEBELUM
+                    // page settle → segar saat _onPageChanged memanggil preload.
+                    onNotification: (notification) {
+                      if (notification.depth != 0) return false;
+                      final velocity = notification.dragDetails?.primaryVelocity;
+                      if (velocity != null) _lastFlingVelocity = velocity;
+                      return false;
+                    },
+                    child: PageView.builder(
                     controller: _pageController,
                     scrollDirection: Axis.vertical,
                     physics: (_interactionLocked || _mediaZooming)
@@ -856,6 +872,7 @@ class _FeedScreenState extends State<FeedScreen>
                         onRequestPause: (_) => coordinator.pauseAll(),
                       );
                     },
+                  ),
                   );
                 }),
               ),

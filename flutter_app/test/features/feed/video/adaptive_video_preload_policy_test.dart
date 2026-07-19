@@ -12,6 +12,7 @@ void main() {
     VideoSwipeDirection direction = VideoSwipeDirection.forward,
     bool locked = false,
     Duration bufferAhead = Duration.zero,
+    double velocity = 0,
   }) {
     return policy.offsets(
       qualityPreference: quality,
@@ -20,6 +21,7 @@ void main() {
       swipeDirection: direction,
       activeBufferAhead: bufferAhead,
       interactionLocked: locked,
+      scrollVelocity: velocity,
     );
   }
 
@@ -68,5 +70,77 @@ void main() {
       [-1, -2, 1],
     );
     expect(offsets(tier: NetworkTier.wifi).length, 3);
+  });
+
+  group('velocity-adaptive window (wifi only)', () {
+    test('velocity 0 keeps legacy window (backward compatible)', () {
+      // Default velocity=0 must be byte-for-byte identical to pre-feature.
+      expect(offsets(tier: NetworkTier.wifi, velocity: 0), [1, 2, -1]);
+      expect(
+        offsets(
+          tier: NetworkTier.wifi,
+          direction: VideoSwipeDirection.backward,
+          velocity: 0,
+        ),
+        [-1, -2, 1],
+      );
+    });
+
+    test('slow fling (<800) keeps legacy window', () {
+      expect(offsets(tier: NetworkTier.wifi, velocity: 799), [1, 2, -1]);
+      expect(offsets(tier: NetworkTier.wifi, velocity: -799), [1, 2, -1]);
+    });
+
+    test('medium fling (800-2500) widens one ahead, keeps one behind', () {
+      expect(offsets(tier: NetworkTier.wifi, velocity: 800), [1, 2, 3, -1]);
+      expect(offsets(tier: NetworkTier.wifi, velocity: 2500), [1, 2, 3, -1]);
+      // Magnitude only — negative velocity (physical scroll direction) does
+      // not flip the logical swipeDirection.
+      expect(offsets(tier: NetworkTier.wifi, velocity: -1500), [1, 2, 3, -1]);
+      expect(
+        offsets(
+          tier: NetworkTier.wifi,
+          direction: VideoSwipeDirection.backward,
+          velocity: 1500,
+        ),
+        [-1, -2, -3, 1],
+      );
+    });
+
+    test('fast fling (>2500) widens further and drops the behind slot', () {
+      expect(offsets(tier: NetworkTier.wifi, velocity: 2501), [1, 2, 3, 4]);
+      expect(offsets(tier: NetworkTier.wifi, velocity: 5000), [1, 2, 3, 4]);
+      expect(
+        offsets(
+          tier: NetworkTier.wifi,
+          direction: VideoSwipeDirection.backward,
+          velocity: 5000,
+        ),
+        [-1, -2, -3, -4],
+      );
+    });
+
+    test('velocity never widens cellular window', () {
+      for (final tier in [NetworkTier.cellularFast, NetworkTier.cellularSlow]) {
+        expect(
+          offsets(
+            tier: tier,
+            velocity: 5000,
+            bufferAhead: const Duration(seconds: 3),
+          ),
+          [1],
+        );
+      }
+    });
+
+    test('velocity never widens unknown-tier single preload', () {
+      expect(offsets(tier: NetworkTier.unknown, velocity: 5000), [1]);
+    });
+
+    test('velocity does not resurrect a disabled window', () {
+      expect(offsets(quality: 'data_saver', velocity: 5000), isEmpty);
+      expect(offsets(tier: NetworkTier.offline, velocity: 5000), isEmpty);
+      expect(offsets(locked: true, velocity: 5000), isEmpty);
+    });
   });
 }
