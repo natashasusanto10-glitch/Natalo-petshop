@@ -1,6 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/models/app_notification.dart';
 import 'package:natalo_petshop_flutter/screens/notifications_screen.dart';
+
+AppNotification _notif({
+  String title = 'Feed kamu sudah tayang',
+  String body = 'Postingan disetujui.',
+  bool read = false,
+  String? imageUrl,
+  String? category,
+}) =>
+    AppNotification.fromApiJson({
+      'id': 'n1',
+      'title': title,
+      'body': body,
+      'type': 'info',
+      if (category != null) 'category': category,
+      if (imageUrl != null) 'imageUrl': imageUrl,
+      'createdAt':
+          DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(),
+      'read': read,
+    });
+
+Future<void> _pumpRow(WidgetTester tester, AppNotification n) {
+  return tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: NotificationRow(notification: n, onTap: () {}),
+      ),
+    ),
+  );
+}
 
 Future<void> _pumpHeader(
   WidgetTester tester, {
@@ -56,5 +86,45 @@ void main() {
       expect(w == null || w.index <= FontWeight.w600.index, isTrue,
           reason: 'teks "${t.data}" memakai $w');
     }
+  });
+
+  group('NotificationRow', () {
+    testWidgets('satu timestamp relatif; tanpa tanggal absolut/chevron/pill',
+        (tester) async {
+      await _pumpRow(tester, _notif());
+      expect(find.text('2 jam'), findsOneWidget);
+      expect(find.textContaining('Juli'), findsNothing,
+          reason: 'datetime absolut dihapus');
+      expect(find.byIcon(Icons.chevron_right_rounded), findsNothing);
+      expect(find.text('Feed'), findsNothing,
+          reason: 'pill teks kategori dihapus');
+    });
+
+    testWidgets('unread menampilkan bar aksen; read tidak', (tester) async {
+      await _pumpRow(tester, _notif(read: false));
+      expect(
+          find.byKey(const ValueKey('notification-unread-bar')), findsOneWidget);
+      await _pumpRow(tester, _notif(read: true));
+      expect(
+          find.byKey(const ValueKey('notification-unread-bar')), findsNothing);
+    });
+
+    testWidgets('thumbnail hanya render saat imageUrl ada', (tester) async {
+      await _pumpRow(tester, _notif());
+      expect(find.byKey(const ValueKey('notification-thumb')), findsNothing);
+      await _pumpRow(
+          tester, _notif(imageUrl: 'https://example.com/x.jpg'));
+      expect(find.byKey(const ValueKey('notification-thumb')), findsOneWidget);
+    });
+
+    testWidgets('CTA tonal tampil untuk notif actionable', (tester) async {
+      await _pumpRow(
+          tester,
+          _notif(
+              title: 'Voucher spesial buat kamu',
+              body: 'Pakai sebelum hangus',
+              category: 'voucher'));
+      expect(find.text('Pakai Voucher'), findsOneWidget);
+    });
   });
 }

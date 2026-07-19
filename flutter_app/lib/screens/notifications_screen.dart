@@ -12,7 +12,6 @@ import '../services/feed_service.dart';
 import '../services/notification_service.dart';
 import '../services/product_service.dart';
 import '../state/member_store.dart';
-import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_login_gate.dart';
 import '../widgets/app_ui.dart';
@@ -451,7 +450,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final unread = result?.unreadCount ?? 0;
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? Theme.of(context).colorScheme.surfaceContainerLow
+          : const Color(0xFFEEF1F5),
       // AnnotatedRegion + strip status bar heroTop — pola hero biru Beranda:
       // area notch menyatu dengan header biru, ikon status bar putih.
       body: AnnotatedRegion<SystemUiOverlayStyle>(
@@ -539,21 +540,81 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       );
     }
 
+    // Grup waktu → kartu island per grup (hairline antar baris).
+    final now = DateTime.now();
+    final groups = <NotificationTimeBucket, List<AppNotification>>{};
+    for (final item in items) {
+      groups
+          .putIfAbsent(
+              notificationTimeBucket(now, item.createdAt), () => [])
+          .add(item);
+    }
+    final orderedBuckets = NotificationTimeBucket.values
+        .where((b) => groups.containsKey(b))
+        .toList();
+
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return NataloPawRefreshIndicator(
       onRefresh: _refresh,
-      child: ListView.separated(
+      child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-        itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (context, index) {
-          final item = items[index];
-          return AppAnimatedEntrance(
-            index: index,
-            child: _NotificationTile(
-              notification: item,
-              onTap: () => _openNotification(item),
-            ),
+        padding: const EdgeInsets.fromLTRB(14, 4, 14, 28),
+        itemCount: orderedBuckets.length,
+        itemBuilder: (context, groupIndex) {
+          final bucket = orderedBuckets[groupIndex];
+          final groupItems = groups[bucket]!;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(2, 16, 2, 6),
+                child: Text(
+                  bucket.label,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+              Container(
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 2,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    for (var i = 0; i < groupItems.length; i++) ...[
+                      if (i > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 68),
+                          child: Divider(
+                            height: 0.5,
+                            thickness: 0.5,
+                            color: isDark
+                                ? cs.outlineVariant
+                                : const Color(0xFFECF0F6),
+                          ),
+                        ),
+                      NotificationRow(
+                        notification: groupItems[i],
+                        onTap: () => _openNotification(groupItems[i]),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -702,164 +763,215 @@ class NotificationHeroHeader extends StatelessWidget {
   }
 }
 
-class _NotificationTile extends StatelessWidget {
+/// Baris notifikasi redesign: identitas kiri → kalimat+waktu tengah →
+/// thumbnail kanan (opsional). Unread = bar aksen kiri. Publik untuk test.
+@visibleForTesting
+class NotificationRow extends StatelessWidget {
   final AppNotification notification;
   final VoidCallback onTap;
 
-  const _NotificationTile({
+  const NotificationRow({
+    super.key,
     required this.notification,
     required this.onTap,
   });
 
+  bool get _isBrandIdentity =>
+      _NotificationFilter.feed.matches(notification) ||
+      _isAnnouncementNotification(notification);
+
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final visual = _NotificationVisual.from(notification);
     final ctaLabel = _notificationCtaLabel(notification);
-    final cs = Theme.of(context).colorScheme;
+    final imageUrl = notification.imageUrl;
 
-    return Material(
-      color: cs.surface,
-      borderRadius: BorderRadius.circular(22),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: notification.read
-                  ? (Theme.of(context).brightness == Brightness.dark
-                      ? cs.outlineVariant
-                      : const Color(0xFFE8EEF7))
-                  : _brandBlue.withValues(alpha: 0.25),
+    return InkWell(
+      onTap: onTap,
+      child: Stack(
+        children: [
+          if (!notification.read)
+            Positioned(
+              left: 0,
+              top: 12,
+              bottom: 12,
+              child: Container(
+                key: const ValueKey('notification-unread-bar'),
+                width: 3,
+                decoration: const BoxDecoration(
+                  color: NataloColors.primary,
+                  borderRadius:
+                      BorderRadius.horizontal(right: Radius.circular(3)),
+                ),
+              ),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.035),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    height: 46,
-                    width: 46,
-                    decoration: BoxDecoration(
-                      color: visual.color.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Icon(visual.icon, color: visual.color, size: 24),
-                  ),
-                  if (!notification.read)
-                    Positioned(
-                      top: -2,
-                      right: -2,
-                      child: Container(
-                        height: 10,
-                        width: 10,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE91E63),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: cs.surface, width: 2),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            notification.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: cs.onSurface,
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w900,
-                              height: 1.25,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _IdentityAvatar(
+                  visual: visual,
+                  brandIdentity: _isBrandIdentity,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: notification.title,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w600),
                             ),
-                          ),
+                            if (notification.body.trim().isNotEmpty)
+                              TextSpan(text: ' — ${notification.body.trim()}'),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          formatRelativeTime(notification.createdAt),
-                          style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (notification.body.trim().isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        notification.body,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: cs.onSurfaceVariant,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          height: 1.35,
+                          color: cs.onSurface,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w400,
+                          height: 1.4,
                         ),
                       ),
-                    ],
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        AppStatusPill(
-                          label: visual.label,
-                          color: visual.color,
-                          size: 10.5,
-                        ),
-                        Text(
-                          formatDateTime(notification.createdAt),
-                          style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (ctaLabel != null)
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          if (ctaLabel != null) ...[
+                            InkWell(
+                              onTap: onTap,
+                              borderRadius: BorderRadius.circular(999),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: NataloColors.primarySoft,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  ctaLabel,
+                                  style: const TextStyle(
+                                    color: NataloColors.primary,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                          ],
                           Text(
-                            ctaLabel,
-                            style: const TextStyle(
-                              color: _brandBlue,
+                            shortRelativeTime(
+                                DateTime.now(), notification.createdAt),
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
                               fontSize: 11.5,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.w400,
                             ),
                           ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
+                if (imageUrl != null && imageUrl.trim().isNotEmpty) ...[
+                  const SizedBox(width: 12),
+                  Container(
+                    key: const ValueKey('notification-thumb'),
+                    height: 46,
+                    width: 46,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: cs.surfaceContainerHighest,
+                      border: Border.all(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        width: 0.5,
+                      ),
+                    ),
+                    child: Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Lingkaran identitas kiri: brand "NL" untuk notifikasi feed/pengumuman
+/// (identitas Natalo), tint kategori + ikon untuk lainnya. Badge kategori
+/// mini hanya saat identitas brand (kategori tetap terbaca).
+class _IdentityAvatar extends StatelessWidget {
+  final _NotificationVisual visual;
+  final bool brandIdentity;
+
+  const _IdentityAvatar({required this.visual, required this.brandIdentity});
+
+  @override
+  Widget build(BuildContext context) {
+    final core = brandIdentity
+        ? Container(
+            height: 42,
+            width: 42,
+            decoration: const BoxDecoration(
+              color: NataloColors.primary,
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: const Text(
+              'NL',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
               ),
-              const SizedBox(width: 4),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: cs.onSurfaceVariant,
-              ),
-            ],
+            ),
+          )
+        : Container(
+            height: 42,
+            width: 42,
+            decoration: BoxDecoration(
+              color: visual.color.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(visual.icon, color: visual.color, size: 20),
+          );
+
+    if (!brandIdentity) return core;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        core,
+        Positioned(
+          right: -3,
+          bottom: -3,
+          child: Container(
+            height: 17,
+            width: 17,
+            decoration: BoxDecoration(
+              color: visual.color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                  color: Theme.of(context).colorScheme.surface, width: 2),
+            ),
+            child: Icon(visual.icon, color: Colors.white, size: 9),
           ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -903,7 +1015,7 @@ class _NotificationEmptyState extends StatelessWidget {
           style: TextStyle(
             color: cs.onSurface,
             fontSize: 20,
-            fontWeight: FontWeight.w900,
+            fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 8),
@@ -912,7 +1024,7 @@ class _NotificationEmptyState extends StatelessWidget {
           textAlign: TextAlign.center,
           style: TextStyle(
             color: cs.onSurfaceVariant,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w400,
             height: 1.4,
           ),
         ),
