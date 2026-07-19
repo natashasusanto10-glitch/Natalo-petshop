@@ -157,7 +157,7 @@ export function ProductCard({
             </span>
           )}
           {memberPrice !== null && (
-            <span className="absolute left-1.5 top-1.5 rounded-full border border-white/80 bg-blue-500 px-2 py-0.5 text-xs font-bold text-white shadow-sm">
+            <span className="absolute left-1.5 top-1.5 z-10 rounded-full border border-white/80 bg-blue-500 px-2 py-0.5 text-xs font-bold text-white shadow-sm">
               Member
             </span>
           )}
@@ -171,7 +171,7 @@ export function ProductCard({
           )}
           {badge && (
             <span
-              className={`absolute right-1.5 ${discountPercent > 0 ? "top-9" : "top-1.5"} rounded-full border border-white/80 bg-white/95 px-2 py-0.5 text-[10px] font-black text-natalo-500 shadow-[var(--shadow-card)]`}
+              className={`absolute right-1.5 ${discountPercent > 0 ? "top-9" : "top-1.5"} z-10 rounded-full border border-white/80 bg-white/95 px-2 py-0.5 text-[10px] font-black text-natalo-500 shadow-[var(--shadow-card)]`}
             >
               {badge}
             </span>

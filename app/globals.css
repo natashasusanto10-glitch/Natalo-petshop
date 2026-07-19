@@ -1211,6 +1211,9 @@ html[data-interactive-swipe-back="committing"]::view-transition-group(*) {
 .group:hover .nat-lit-shelf::before {
   opacity: 1;
 }
+.nat-lit-shelf.group:hover::before {
+  opacity: 1;
+}
 .nat-shelf-line::after {
   content: "";
   position: absolute;
@@ -1230,5 +1233,8 @@ html[data-interactive-swipe-back="committing"]::view-transition-group(*) {
   transition: opacity 220ms ease;
 }
 .group:hover .nat-shelf-line::after {
+  opacity: 1;
+}
+.nat-shelf-line.group:hover::after {
   opacity: 1;
 }
