@@ -1283,13 +1283,20 @@ String _notificationHaystack(AppNotification item) {
   ].whereType<String>().join(' ').toLowerCase();
 }
 
-/// Ekstrak nomor pesanan (`ORD-...`) dari url notifikasi pesanan
-/// (`/pesanan/{orderNumber}`, mirror server `extractOrderNumberFromNotification`).
+/// Ekstrak nomor pesanan (`ORD-...`) dari url notifikasi pesanan. Diikat ke
+/// prefix `/pesanan/` atau `orderNumber=` (dua format url pesanan: order-status
+/// pakai `/pesanan/{orderNumber}`, confirm-reminder/cancel pakai
+/// `/member/order-detail?orderNumber=...`). Pengikatan ini mencegah slug produk
+/// case-insensitive seperti `/products/bungee-cord-leash` salah-tangkap sebagai
+/// "ord-leash" lalu misroute ke pesanan.
 @visibleForTesting
 String? extractOrderNumber(String? url) {
   if (url == null || url.isEmpty) return null;
-  final match = RegExp(r'ORD-[A-Z0-9-]+', caseSensitive: false).firstMatch(url);
-  return match?.group(0);
+  final match = RegExp(
+    r'(?:/pesanan/|orderNumber=)(ORD-[A-Z0-9-]+)',
+    caseSensitive: false,
+  ).firstMatch(url);
+  return match?.group(1);
 }
 
 /// Ekstrak trackingToken dari query `?token=` (akses order guest/non-login).

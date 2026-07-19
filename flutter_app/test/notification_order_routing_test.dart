@@ -9,10 +9,21 @@ void main() {
     test('abaikan query & suffix review', () {
       expect(extractOrderNumber('/pesanan/ORD-123?review=1'), 'ORD-123');
     });
+    test('ambil ORD- dari query orderNumber= (confirm-reminder/cancel)', () {
+      expect(
+        extractOrderNumber('/member/order-detail?orderNumber=ORD-9'),
+        'ORD-9',
+      );
+    });
     test('null saat tak ada ORD-', () {
       expect(extractOrderNumber('/member/orders'), isNull);
       expect(extractOrderNumber(null), isNull);
       expect(extractOrderNumber(''), isNull);
+    });
+    test('slug produk case-insensitive TIDAK salah-tangkap sebagai pesanan', () {
+      // Regresi: "cord-" pernah match case-insensitive "ord-" → misroute.
+      expect(extractOrderNumber('/products/bungee-cord-leash'), isNull);
+      expect(extractOrderNumber('/produk/record-player-mainan'), isNull);
     });
   });
 
