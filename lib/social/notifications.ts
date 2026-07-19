@@ -4,6 +4,7 @@ import { sendPushToUser, type PushPayload } from "@/lib/push";
 import {
   brandPhotoUrl,
   isAdminRole,
+  notificationActorFields,
   OFFICIAL_BRAND_NAME,
 } from "@/lib/social/brand-user";
 import { feedNotificationThumbnail } from "@/lib/feed/notification-thumbnail";
@@ -149,6 +150,7 @@ export async function sendNewPostToFollowersNotification(postId: string) {
             name: true,
             username: true,
             role: true,
+            profilePhotoUrl: true,
           },
         },
       },
@@ -193,6 +195,11 @@ export async function sendNewPostToFollowersNotification(postId: string) {
     const title = "Postingan baru";
     const body = `${actorName} posting ${kindLabel} baru`;
     const thumb = feedNotificationThumbnail(post);
+    const actorFields = notificationActorFields(
+      post.author.role,
+      post.author.name,
+      post.author.profilePhotoUrl,
+    );
 
     const payload: PushPayload = {
       title,
@@ -226,6 +233,8 @@ export async function sendNewPostToFollowersNotification(postId: string) {
         ctaLabel: "Lihat Postingan",
         publishedAt: new Date(),
         targetUserId: fid,
+        actorAvatarUrl: actorFields.actorAvatarUrl,
+        actorName: actorFields.actorName,
       })),
     });
 
