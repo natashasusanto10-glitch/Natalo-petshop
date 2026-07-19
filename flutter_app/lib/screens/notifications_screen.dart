@@ -5,11 +5,13 @@ import '../theme/natalo_colors.dart';
 import '../config/api_config.dart';
 import '../models/app_notification.dart';
 import '../models/feed_post.dart';
+import '../models/member_profile.dart' show OrderSummary;
 import '../models/product.dart';
 import '../services/api_client.dart';
 import '../services/deep_link_service.dart' show openFeedPostSmart;
 import '../services/feed_service.dart';
 import '../services/notification_service.dart';
+import '../services/order_service.dart';
 import '../services/product_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
@@ -249,6 +251,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return;
     }
 
+    // Pesanan spesifik: url `/pesanan/{orderNumber}` → buka detail pesanan itu
+    // (bukan daftar). Fallback ke daftar di dalam _openOrderInApp bila fetch gagal.
+    final orderNumber = extractOrderNumber(url);
+    if (orderNumber != null) {
+      await _openOrderInApp(orderNumber, extractOrderTrackingToken(url));
+      return;
+    }
+
     if (url.contains('/member/orders') ||
         url.contains('/orders') ||
         haystack.contains('pesanan') ||
@@ -304,6 +314,44 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   /// dari apakah viewer == author (post sendiri → bisa edit/hapus; post
   /// orang → viewer biasa). Spinner saat fetch; fallback ke feed kalau
   /// postingan tidak ada / fetch gagal.
+  /// Fetch pesanan by orderNumber lalu buka detail pesanan itu. Spinner saat
+  /// fetch; fallback ke daftar pesanan kalau gagal (pesanan tidak ada / token
+  /// invalid). Mirror pola _openFeedPostInApp + deep_link _openOrderByNumber.
+  Future<void> _openOrderInApp(String orderNumber, String? trackingToken) async {
+    final rootNav = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: 0.25),
+      builder: (_) => const Center(
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: CircularProgressIndicator(strokeWidth: 2.6),
+        ),
+      ),
+    );
+
+    OrderSummary? order;
+    try {
+      order = await orderService.fetchOrderDetail(
+        orderNumber,
+        trackingToken: trackingToken,
+      );
+    } catch (_) {
+      order = null;
+    }
+
+    rootNav.pop(); // tutup loading dialog
+    if (!mounted) return;
+
+    if (order == null) {
+      await Navigator.pushNamed(context, '/member/orders');
+      return;
+    }
+    await Navigator.pushNamed(context, '/member/order-detail', arguments: order);
+  }
+
   Future<void> _openFeedPostInApp(String postId) async {
     final rootNav = Navigator.of(context, rootNavigator: true);
     showDialog<void>(
@@ -786,6 +834,9 @@ class NotificationRow extends StatelessWidget {
     final visual = _NotificationVisual.from(notification);
     final ctaLabel = _notificationCtaLabel(notification);
     final imageUrl = notification.imageUrl;
+    final isFollow =
+        notification.eventType?.toLowerCase() == 'user_followed';
+    final actorAvatarUrl = isFollow ? imageUrl : null;
 
     return InkWell(
       onTap: onTap,
@@ -814,6 +865,7 @@ class NotificationRow extends StatelessWidget {
                 _IdentityAvatar(
                   visual: visual,
                   brandIdentity: _isBrandIdentity,
+                  avatarUrl: actorAvatarUrl,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -881,7 +933,9 @@ class NotificationRow extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (imageUrl != null && imageUrl.trim().isNotEmpty) ...[
+                if (imageUrl != null &&
+                    imageUrl.trim().isNotEmpty &&
+                    !isFollow) ...[
                   const SizedBox(width: 12),
                   Container(
                     key: const ValueKey('notification-thumb'),
@@ -918,11 +972,35 @@ class NotificationRow extends StatelessWidget {
 class _IdentityAvatar extends StatelessWidget {
   final _NotificationVisual visual;
   final bool brandIdentity;
+  final String? avatarUrl;
 
-  const _IdentityAvatar({required this.visual, required this.brandIdentity});
+  const _IdentityAvatar({
+    required this.visual,
+    required this.brandIdentity,
+    this.avatarUrl,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final url = avatarUrl;
+    if (url != null && url.trim().isNotEmpty) {
+      return Container(
+        key: const ValueKey('notification-actor-avatar'),
+        height: 42,
+        width: 42,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: visual.color.withValues(alpha: 0.12),
+        ),
+        child: Image.network(
+          url,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) =>
+              Icon(visual.icon, color: visual.color, size: 20),
+        ),
+      );
+    }
     final core = brandIdentity
         ? Container(
             height: 42,
@@ -1203,6 +1281,30 @@ String _notificationHaystack(AppNotification item) {
     item.shortDescription,
     item.ctaLabel,
   ].whereType<String>().join(' ').toLowerCase();
+}
+
+/// Ekstrak nomor pesanan (`ORD-...`) dari url notifikasi pesanan. Diikat ke
+/// prefix `/pesanan/` atau `orderNumber=` (dua format url pesanan: order-status
+/// pakai `/pesanan/{orderNumber}`, confirm-reminder/cancel pakai
+/// `/member/order-detail?orderNumber=...`). Pengikatan ini mencegah slug produk
+/// case-insensitive seperti `/products/bungee-cord-leash` salah-tangkap sebagai
+/// "ord-leash" lalu misroute ke pesanan.
+@visibleForTesting
+String? extractOrderNumber(String? url) {
+  if (url == null || url.isEmpty) return null;
+  final match = RegExp(
+    r'(?:/pesanan/|orderNumber=)(ORD-[A-Z0-9-]+)',
+    caseSensitive: false,
+  ).firstMatch(url);
+  return match?.group(1);
+}
+
+/// Ekstrak trackingToken dari query `?token=` (akses order guest/non-login).
+@visibleForTesting
+String? extractOrderTrackingToken(String? url) {
+  if (url == null || url.isEmpty) return null;
+  final token = Uri.tryParse(url)?.queryParameters['token']?.trim();
+  return (token == null || token.isEmpty) ? null : token;
 }
 
 /// 4 tab redesign (Semua/Aktivitas/Transaksi/Promo). Aktivitas = gabungan
