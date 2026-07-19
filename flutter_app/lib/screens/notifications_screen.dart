@@ -282,6 +282,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return;
     }
 
+    if (url.contains('/produk/') || url.contains('/products/')) {
+      final slug = _extractProductSlug(url);
+      if (slug != null) {
+        await _openProductBySlug(slug);
+        return;
+      }
+    }
     if (url.contains('/products') || url.contains('/produk')) {
       await Navigator.pushNamed(context, '/products');
       return;
@@ -350,6 +357,41 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return;
     }
     await Navigator.pushNamed(context, '/member/order-detail', arguments: order);
+  }
+
+  /// Fetch produk by slug lalu buka detailnya. Spinner saat fetch; fallback
+  /// ke katalog kalau produk tak ada / fetch gagal. Pola sama _openReviewedProduct.
+  Future<void> _openProductBySlug(String slug) async {
+    final rootNav = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: 0.25),
+      builder: (_) => const Center(
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: CircularProgressIndicator(strokeWidth: 2.6),
+        ),
+      ),
+    );
+    Product? product;
+    try {
+      product = await productService.fetchProductBySlug(slug);
+    } catch (_) {
+      product = null;
+    }
+    rootNav.pop();
+    if (!mounted) return;
+    if (product == null) {
+      await Navigator.pushNamed(context, '/products');
+      return;
+    }
+    await Navigator.pushNamed(
+      context,
+      '/product-detail',
+      arguments: ProductDetailArgs(product: product),
+    );
   }
 
   Future<void> _openFeedPostInApp(String postId) async {
@@ -1238,6 +1280,21 @@ class _NotificationVisual {
         icon: Icons.receipt_long_rounded,
         color: _brandBlue,
         label: 'Pesanan',
+      );
+    }
+    final ev = item.eventType?.trim().toLowerCase() ?? '';
+    if (ev == 'voucher_freeship_published') {
+      return const _NotificationVisual(
+        icon: Icons.local_shipping_rounded,
+        color: _brandBlue,
+        label: 'Gratis Ongkir',
+      );
+    }
+    if (ev == 'voucher_discount_published') {
+      return const _NotificationVisual(
+        icon: Icons.sell_rounded,
+        color: Color(0xFF16A34A),
+        label: 'Voucher',
       );
     }
     if (_isVoucherNotification(item)) {
