@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { VoucherType, VoucherUserUsageLimitPeriod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { sendVoucherPromoPush } from "@/lib/push-promo";
 import { AdminPage, Button, SubmitButton } from "@/components/admin/ui";
 import AIVoucherSuggestButton from "./AIVoucherSuggestButton";
 import BrandTargetPicker from "../BrandTargetPicker";
@@ -124,11 +125,12 @@ export default async function AdminVoucherNewPage() {
 
     // Form checkbox — "on" = checked, null/missing = unchecked.
     const isActive = formData.get("isActive") === "on";
+    const notifyCustomers = formData.get("notifyCustomers") === "on";
 
     const existing = await prisma.voucher.findUnique({ where: { code } });
     if (existing) redirect("/admin/vouchers/new?error=exists");
 
-    await prisma.voucher.create({
+    const created = await prisma.voucher.create({
       data: {
         name,
         code,
@@ -153,8 +155,24 @@ export default async function AdminVoucherNewPage() {
         eligibleProductIds,
         eligibleCategoryIds,
         eligibleBrandIds,
+        notifyAtStart: notifyCustomers,
       },
+      select: { id: true, isActive: true, startsAt: true, expiresAt: true },
     });
+
+    // Kirim notif langsung bila dicentang & voucher sudah aktif sekarang.
+    // Voucher terjadwal (startsAt > now) diurus cron promo-notify.
+    // redirect() melempar — panggil push SEBELUMnya (fire-and-forget).
+    if (
+      notifyCustomers &&
+      created.isActive &&
+      created.startsAt <= new Date() &&
+      (created.expiresAt == null || created.expiresAt > new Date())
+    ) {
+      void sendVoucherPromoPush(created.id).catch((e) =>
+        console.warn("[voucher-create] promo push:", e),
+      );
+    }
 
     redirect("/admin/vouchers");
   }
@@ -316,6 +334,19 @@ export default async function AdminVoucherNewPage() {
             className="h-4 w-4 accent-blue-600"
           />
           Aktif di user app
+        </label>
+
+        <label className="flex items-start gap-3 rounded-xl border border-zinc-200 p-3">
+          <input
+            type="checkbox"
+            name="notifyCustomers"
+            className="mt-1 h-4 w-4"
+          />
+          <span className="text-sm text-zinc-700">
+            <span className="font-bold text-zinc-950">Beri tahu pelanggan</span>
+            <br />
+            Kirim notifikasi &amp; push ke semua pelanggan saat voucher aktif.
+          </span>
         </label>
 
         <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
