@@ -59,11 +59,14 @@ ADD COLUMN IF NOT EXISTS "promoNotifiedAt" TIMESTAMP(3);
   - Push batch sama seperti voucher, `tag:"discount-promo-{id}"`.
 - Kedua fungsi fire-and-forget di call-site route admin (`.catch(console.warn)`) — kegagalan push tidak boleh menggagalkan pembuatan promo. Karena flag di-klaim atomik di AWAL, kegagalan setelah klaim = kehilangan 1 push (bukan dobel) — arah guard yang aman.
 
-### Route admin
+### Admin create-path (KOREKSI vs audit: dua jalur berbeda)
 
-- `app/api/admin/vouchers/route.ts` POST: terima `notifyCustomers?: boolean`. Simpan `notifyAtStart`. **Catatan: POST voucher TIDAK membaca `startsAt` dari body** — `Voucher.startsAt` default `now()` (`schema.prisma:801`), jadi voucher yang dibuat via route ini **selalu aktif saat dibuat**. Maka: bila `notifyCustomers && isActive` → panggil `sendVoucherPromoPush` langsung (tak ada cabang "terjadwal" untuk voucher via route ini). Voucher terjadwal bukan use-case route ini (di luar scope); cron tetap menjaga bila ada voucher `notifyAtStart` yang belum ter-notif (mis. dibuat lewat jalur lain).
-- `app/api/admin/discounts/promo-toko/route.ts` POST: menerima `startsAt`/`endsAt` sungguhan di body (Zod `createSchema`). Bila `notifyCustomers && isActive && startsAt <= now <= endsAt` → kirim langsung; bila `startsAt > now` (promo terjadwal) → simpan `notifyAtStart:true`, **cron** yang kirim saat mulai. ProductDiscount = satu-satunya jenis yang benar-benar bisa dijadwalkan → cron terutama melayani ini.
-- PATCH/PUT edit promo: di luar scope (checkbox hanya di create; edit tidak memicu ulang — `promoNotifiedAt` guard + klaim atomik tetap melindungi).
+Verifikasi ke kode: UI admin buat voucher & buat Promo Toko memakai mekanisme berbeda —
+
+- **Voucher = Server Action** `createVoucher` di `app/admin/(protected)/vouchers/new/page.tsx:10-160` (bukan `app/api/admin/vouchers/route.ts` POST; route itu jalur programatik terpisah, TIDAK dipakai form UI). Server action **membaca `startsAt`** (`:54-55`, default `new Date()`) → voucher terjadwal DIDUKUNG. Tambah: baca checkbox `formData.get("notifyCustomers") === "on"`. Setelah `prisma.voucher.create` (`:131`, tambah `notifyAtStart` ke `data`, dan `select id/isActive/startsAt/expiresAt` — saat ini create tak select, jadi tambahkan `select`), lalu (fire-and-forget, sebelum `redirect`): bila `notifyCustomers && isActive && startsAt <= now && (expiresAt null || expiresAt > now)` → `void sendVoucherPromoPush(voucher.id).catch(...)`; bila `startsAt > now` → tak kirim (cron yang urus). `redirect` dari Next.js melempar — panggil push SEBELUM redirect.
+- **Promo Toko = POST route** `app/api/admin/discounts/promo-toko/route.ts:95-214` (dipanggil `components/admin/PromoTokoForm.tsx:250` via `fetch`). Body pakai Zod `createSchema` (`:31-37`) — tambah `notifyCustomers: z.boolean().default(false)` ke schema. Setelah `prisma.productDiscount.create` (`:192`, tambah `notifyAtStart` ke `data`): bila `notifyCustomers && startsAt <= now < endsAt` → `void sendProductDiscountPromoPush(discount.id).catch(...)`; bila `startsAt > now` → cron yang urus. (`isActive` selalu `true` saat create `:197`.)
+- Form JSX: voucher → tambah checkbox `name="notifyCustomers"` di `<form>` (`page.tsx` ~:178+); Promo Toko → tambah state + kirim di body `fetch` (`PromoTokoForm.tsx`). Teks: "Beri tahu pelanggan — kirim notifikasi & push ke semua pelanggan saat promo aktif." Default OFF.
+- Edit/PATCH promo: di luar scope (checkbox hanya di create; klaim atomik `promoNotifiedAt` tetap melindungi dari kirim-ulang).
 
 ### Cron `app/api/cron/promo-notify/route.ts`
 
@@ -77,10 +80,10 @@ ADD COLUMN IF NOT EXISTS "promoNotifiedAt" TIMESTAMP(3);
 
 ### Client Flutter (butuh rilis app)
 
-- Ilustrasi voucher **dibedakan dari `eventType`**, bukan `data` (baris lonceng tak punya `data` map). Sisipkan di helper visual existing `_NotificationVisual.from` / `_isVoucherNotification` (`notifications_screen.dart:1481-1506`) — `NotificationRow` (`:817`) TIDAK punya switch `eventType` besar; ia baca `eventType` sekali untuk follow (`:837-838`) lalu delegasi ke helper. Aturan:
-  - `eventType == 'voucher_freeship_published'` → ikon `local_shipping_rounded`.
-  - `eventType == 'voucher_discount_published'` → ikon `percent_rounded`.
-  - Ilustrasi = widget lokal kecil (token `NataloColors`, latar tint biru, radius sama dgn slot thumbnail), BUKAN `Image.network`. Muncul di slot kanan (voucher tak punya foto konten).
+- Ilustrasi voucher = **ikon di avatar KIRI** (`_NotificationVisual`, lingkaran ber-tint yang sudah jadi mekanisme visual existing), **dibedakan dari `eventType`**, bukan `data` (baris lonceng tak punya `data` map). Voucher tak punya foto konten → slot thumbnail kanan tetap kosong (tak berubah). Sisipkan cabang di `_NotificationVisual.from` (`notifications_screen.dart:1216`) SEBELUM cabang `_isVoucherNotification` generik:
+  - `eventType == 'voucher_freeship_published'` → `icon: Icons.local_shipping_rounded`, warna biru brand, label "Gratis Ongkir".
+  - `eventType == 'voucher_discount_published'` → `icon: Icons.sell_rounded` (tag diskon), warna hijau voucher existing `Color(0xFF16A34A)`, label "Voucher".
+  - Cabang voucher generik existing (`:1243`) tetap sebagai fallback untuk voucher lama tanpa eventType baru.
 - Routing: `url` server presisi (`/member/vouchers`, `/produk/{slug}`, `/products`). `_navigateForNotification`: `/member/vouchers` → `pushNamed('/member/vouchers')` (rute no-arg sudah ada `main.dart:429`). `/produk/{slug}` → **fetch-by-slug dulu** (`fetchProductBySlug` `notifications_screen.dart:420`, pola sama `deep_link_service.dart:253-269`) lalu `pushNamed('/produk'/detail, arguments: Product)` — produk detail butuh objek `Product`, bukan slug mentah (`main.dart:433/439`). Ini kerja BARU, bukan cabang existing. `/products` → rute katalog existing.
 - **App lama (tanpa rilis)**: notif tetap tampil (title/body/ikon kategori promo), tap mengikuti fallback url — degradasi anggun; ilustrasi & routing presisi menyusul saat rilis.
 
