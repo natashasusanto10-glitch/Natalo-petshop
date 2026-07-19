@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   notificationActorFields,
   likeRowActorFields,
+  topLikerAvatars,
   OFFICIAL_BRAND_NAME,
 } from "../lib/social/brand-user";
 
@@ -37,4 +38,26 @@ test("likeRowActorFields: agregat → null (identitas aktor tunggal hilang)", ()
     actorName: null,
     actorAvatarUrl: null,
   });
+});
+
+test("topLikerAvatars: foto non-admin, admin di-drop, maks 3", () => {
+  const r = topLikerAvatars([
+    { role: "USER", profilePhotoUrl: "https://cdn/1.jpg" },
+    { role: "ADMIN", profilePhotoUrl: "https://cdn/owner.jpg" }, // admin → drop
+    { role: "USER", profilePhotoUrl: "https://cdn/2.jpg" },
+    { role: "USER", profilePhotoUrl: "https://cdn/3.jpg" },
+    { role: "USER", profilePhotoUrl: "https://cdn/4.jpg" }, // > 3 → dibuang
+  ]);
+  assert.deepEqual(r, ["https://cdn/1.jpg", "https://cdn/2.jpg", "https://cdn/3.jpg"]);
+});
+
+test("topLikerAvatars: null/empty foto dibuang", () => {
+  assert.deepEqual(
+    topLikerAvatars([
+      { role: "USER", profilePhotoUrl: null },
+      { role: "USER", profilePhotoUrl: "  " },
+      { role: "USER", profilePhotoUrl: "https://cdn/x.jpg" },
+    ]),
+    ["https://cdn/x.jpg"],
+  );
 });

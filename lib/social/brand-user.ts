@@ -90,3 +90,20 @@ export function likeRowActorFields(
 ): { actorName: string | null; actorAvatarUrl: string | null } {
   return isAggregate ? { actorName: null, actorAvatarUrl: null } : actor;
 }
+
+/**
+ * Foto avatar untuk baris notif LIKE agregat (avatar bertumpuk ala IG).
+ * Brand-safe: liker akun ADMIN → foto null (di-DROP dari array, tak bocor;
+ * array cuma berisi foto asli non-admin). Maks 3.
+ */
+export function topLikerAvatars(
+  likers: Array<{ role: string | null | undefined; profilePhotoUrl: string | null | undefined }>,
+): string[] {
+  const out: string[] = [];
+  for (const l of likers) {
+    const photo = brandPhotoUrl(l.role, l.profilePhotoUrl);
+    if (photo && photo.trim()) out.push(photo);
+    if (out.length >= 3) break;
+  }
+  return out;
+}
