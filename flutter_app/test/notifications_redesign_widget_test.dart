@@ -172,4 +172,40 @@ void main() {
     // Komentar tetap punya thumbnail POST di kanan (beda dari follow).
     expect(find.byKey(const ValueKey('notification-thumb')), findsOneWidget);
   });
+
+  testWidgets(
+      'follow pasca-P2 (actorAvatarUrl) → avatar kiri, tanpa thumbnail kanan',
+      (tester) async {
+    final n = AppNotification.fromApiJson({
+      'id': 'f2', 'title': 'Budi mulai mengikuti kamu', 'body': '',
+      'type': 'info', 'eventType': 'user_followed',
+      'actorAvatarUrl': 'https://cdn/budi.jpg',
+      'thumbnailUrl': 'https://cdn/budi.jpg',
+      'createdAt': DateTime.now().toIso8601String(), 'read': false,
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+    ));
+    expect(find.byKey(const ValueKey('notification-actor-avatar')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('notification-thumb')), findsNothing,
+        reason: 'follow tak punya konten post → tak ada thumbnail kanan');
+  });
+
+  testWidgets(
+      'non-follow ber-actorAvatarUrl tanpa thumbnail → avatar kiri saja',
+      (tester) async {
+    final n = AppNotification.fromApiJson({
+      'id': 'l1', 'title': 'Andi menyukai postinganmu', 'body': '',
+      'type': 'info', 'eventType': 'feed_new_like',
+      'actorAvatarUrl': 'https://cdn/andi.jpg',
+      'createdAt': DateTime.now().toIso8601String(), 'read': false,
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+    ));
+    expect(find.byKey(const ValueKey('notification-actor-avatar')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('notification-thumb')), findsNothing);
+  });
 }
