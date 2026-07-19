@@ -20,6 +20,7 @@
 import { prisma } from "@/lib/prisma";
 import {
   isAdminRole,
+  likeRowActorFields,
   notificationActorFields,
   OFFICIAL_BRAND_NAME,
 } from "@/lib/social/brand-user";
@@ -336,6 +337,17 @@ export async function sendLikeNotification(params: {
     if (post.authorRole === "ADMIN") return;
     if (post.authorId === params.actorUserId) return;
 
+    const actor = await prisma.user.findUnique({
+      where: { id: params.actorUserId },
+      select: { name: true, role: true, profilePhotoUrl: true },
+    });
+    const actorFields = notificationActorFields(
+      actor?.role,
+      actor?.name,
+      actor?.profilePhotoUrl,
+    );
+    const likerName = actorFields.actorName ?? "Seseorang";
+
     const since = new Date(Date.now() - LIKE_BATCH_WINDOW_MS);
     const recentUnread = await prisma.announcement.findFirst({
       where: {
@@ -359,6 +371,7 @@ export async function sendLikeNotification(params: {
             post.title
           )} mendapat beberapa like baru.`,
           thumbnailUrl: post.thumbnailUrl,
+          ...likeRowActorFields(true, actorFields),
           publishedAt: new Date(),
         },
       });
@@ -369,15 +382,14 @@ export async function sendLikeNotification(params: {
       userId: post.authorId,
       eventType: "feed_new_like",
       title: "Feed kamu mendapat like baru",
-      message: `Postingan ${quoteFeedTitle(
-        post.title
-      )} disukai oleh pengguna lain.`,
+      message: `${likerName} menyukai postingan ${quoteFeedTitle(post.title)}.`,
       feedPostId: post.id,
       thumbnailUrl: post.thumbnailUrl,
       url: feedPostOwnerUrl(post.id),
       ctaLabel: "Lihat Postingan",
       tag: `feed-like-${post.id}`,
       data: { like_count: String(params.likeCount) },
+      actor: { avatarUrl: actorFields.actorAvatarUrl, name: actorFields.actorName },
       surface: SOCIAL_NOTIFICATION_SOURCE,
     });
   } catch (err) {
@@ -415,6 +427,17 @@ export async function sendCommentLikeNotification(params: {
       select: { thumbnailUrl: true },
     });
 
+    const actor = await prisma.user.findUnique({
+      where: { id: params.actorUserId },
+      select: { name: true, role: true, profilePhotoUrl: true },
+    });
+    const actorFields = notificationActorFields(
+      actor?.role,
+      actor?.name,
+      actor?.profilePhotoUrl,
+    );
+    const likerName = actorFields.actorName ?? "Seseorang";
+
     const since = new Date(Date.now() - LIKE_BATCH_WINDOW_MS);
     const recentUnread = await prisma.announcement.findFirst({
       where: {
@@ -434,6 +457,7 @@ export async function sendCommentLikeNotification(params: {
         where: { id: recentUnread.id },
         data: {
           title: `${params.likeCount} orang menyukai komentarmu`,
+          ...likeRowActorFields(true, actorFields),
           publishedAt: new Date(),
         },
       });
@@ -444,7 +468,7 @@ export async function sendCommentLikeNotification(params: {
       userId: params.commentAuthorId,
       eventType: "feed_new_like",
       title: "Komentarmu mendapat like",
-      message: "Seseorang menyukai komentarmu di Feed.",
+      message: `${likerName} menyukai komentarmu di Feed.`,
       feedPostId: params.postId,
       thumbnailUrl: post?.thumbnailUrl ?? null,
       url: feedPostOwnerUrl(params.postId),
@@ -454,6 +478,7 @@ export async function sendCommentLikeNotification(params: {
         comment_id: params.commentId,
         like_count: String(params.likeCount),
       },
+      actor: { avatarUrl: actorFields.actorAvatarUrl, name: actorFields.actorName },
       surface: SOCIAL_NOTIFICATION_SOURCE,
     });
   } catch (err) {
