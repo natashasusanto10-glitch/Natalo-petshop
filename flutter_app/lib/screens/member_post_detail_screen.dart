@@ -76,9 +76,10 @@ Future<bool> Function(String postId)? debugPostDelete;
 @visibleForTesting
 Duration Function()? debugPostDetailReadinessClock;
 
-Duration _postDetailReadinessNow() =>
-    debugPostDetailReadinessClock?.call() ??
-    WidgetsBinding.instance.currentSystemFrameTimeStamp;
+@visibleForTesting
+Future<void> Function()? debugPostDetailReadinessFrameFuture;
+
+const Duration _postDetailReadinessBudget = Duration(milliseconds: 75);
 
 /// Detail Postingan style Instagram Feed — continuous vertical scroll list
 /// of user's own posts (Postingan Saya).
@@ -179,7 +180,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   bool _lastPlaybackAllowed = true;
   FeedPost? _transitionFallbackPost;
   bool _transitionFallbackVisible = false;
-  bool _settlingTransitionFallback = false;
+  final GlobalKey _transitionFallbackSurfaceKey = GlobalKey();
+  int _transitionReadinessGeneration = 0;
+  int? _settlingTransitionFallbackGeneration;
 
   // ── Playback coordinator (T3a, plan 2026-07-13) ─────────────────────
   // Coordinator memiliki SEMUA controller video di halaman ini + fullscreen
@@ -324,7 +327,11 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       return;
     }
 
+    _transitionReadinessGeneration++;
     oldWidget.transitionSession?.removeListener(_onTransitionSessionChanged);
+    _transitionFallbackPost = null;
+    _transitionFallbackVisible = false;
+    _settlingTransitionFallbackGeneration = null;
     final oldPlaybackAllowed =
         oldWidget.transitionSession?.playbackAllowed ?? true;
     final session = widget.transitionSession;
@@ -341,6 +348,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     }
     if (_lastPlaybackAllowed && _transitionFallbackPost != null) {
       unawaited(_settleTransitionFallback());
+    }
+    if (session != null && _scrollController != null) {
+      _startTransitionReadiness(session);
     }
   }
 
@@ -433,13 +443,112 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     });
   }
 
-  Future<void> _completeTransitionReadiness(int targetIndex) async {
-    final session = widget.transitionSession;
-    final controller = _scrollController;
-    if (session == null || controller == null || targetIndex >= _posts.length) {
+  Duration _readinessElapsed(Stopwatch stopwatch) =>
+      debugPostDetailReadinessClock?.call() ?? stopwatch.elapsed;
+
+  Future<bool> _awaitReadinessFrame(Stopwatch stopwatch) async {
+    final remaining =
+        _postDetailReadinessBudget - _readinessElapsed(stopwatch);
+    if (remaining <= Duration.zero) return false;
+    final frameFuture =
+        debugPostDetailReadinessFrameFuture?.call() ??
+        WidgetsBinding.instance.endOfFrame;
+    try {
+      await frameFuture.timeout(remaining);
+    } on TimeoutException {
+      return false;
+    }
+    return _readinessElapsed(stopwatch) < _postDetailReadinessBudget;
+  }
+
+  bool _ownsTransitionReadiness(
+    PostDetailTransitionSession session,
+    int generation,
+  ) =>
+      mounted &&
+      generation == _transitionReadinessGeneration &&
+      identical(widget.transitionSession, session);
+
+  int _transitionTargetIndex(PostDetailTransitionSession session) {
+    final activeIndex = _posts.indexWhere(
+      (post) => post.id == session.activePost.id,
+    );
+    if (activeIndex >= 0) return activeIndex;
+    return widget.initialIndex.clamp(0, _posts.length - 1);
+  }
+
+  void _startTransitionReadiness(PostDetailTransitionSession session) {
+    final generation = ++_transitionReadinessGeneration;
+    if (session.destinationReadiness !=
+        PostDetailDestinationReadiness.preparing) {
+      session.markDestinationReady(PostDetailDestinationReadiness.preparing);
+    }
+    unawaited(
+      _completeTransitionReadiness(
+        _transitionTargetIndex(session),
+        session,
+        generation,
+      ),
+    );
+  }
+
+  bool _hasRenderableFallbackSurface(String postId) {
+    if (_transitionFallbackPost?.id != postId ||
+        !_transitionFallbackVisible) {
+      return false;
+    }
+    final box = _transitionFallbackSurfaceKey.currentContext?.findRenderObject()
+        as RenderBox?;
+    return box != null &&
+        box.attached &&
+        box.hasSize &&
+        !box.size.isEmpty;
+  }
+
+  bool _hasRenderableDestinationSurface(int targetIndex) {
+    if (_transitionFallbackSurfaceKey.currentContext != null ||
+        targetIndex >= _postKeys.length) {
+      return false;
+    }
+    final box = _postKeys[targetIndex].currentContext?.findRenderObject()
+        as RenderBox?;
+    final viewportBox =
+        _listViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    return box != null &&
+        viewportBox != null &&
+        box.attached &&
+        viewportBox.attached &&
+        box.hasSize &&
+        viewportBox.hasSize &&
+        !box.size.isEmpty &&
+        !viewportBox.size.isEmpty;
+  }
+
+  void _publishTransitionFallback(
+    PostDetailTransitionSession session,
+    int generation,
+  ) {
+    if (!_ownsTransitionReadiness(session, generation)) return;
+    final fallbackPost = _transitionFallbackPost;
+    if (fallbackPost == null ||
+        !_hasRenderableFallbackSurface(fallbackPost.id)) {
       return;
     }
-    final readinessStartedAt = _postDetailReadinessNow();
+    session.markDestinationReady(
+      PostDetailDestinationReadiness.crossfadeFallback,
+    );
+  }
+
+  Future<void> _completeTransitionReadiness(
+    int targetIndex,
+    PostDetailTransitionSession session,
+    int generation,
+  ) async {
+    final stopwatch = Stopwatch()..start();
+    final controller = _scrollController;
+    if (controller == null || targetIndex >= _posts.length) {
+      return;
+    }
 
     // Build the deterministic fallback in the first destination frame. It is
     // still covered by the route proxy while readiness is `preparing`, but is
@@ -450,28 +559,12 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     // Keep the constructor-time state observable as `preparing`. The initial
     // offset is already installed on the controller for the first layout; the
     // bounded exact-correction loop begins on the following frame.
-    await WidgetsBinding.instance.endOfFrame;
-    if (!mounted) return;
-    if (!identical(widget.transitionSession, session)) {
-      _discardStagedTransitionFallback();
+    if (!await _awaitReadinessFrame(stopwatch)) {
+      _publishTransitionFallback(session, generation);
       return;
     }
-    if (_postDetailReadinessNow() - readinessStartedAt >=
-        const Duration(milliseconds: 75)) {
-      session.markDestinationReady(
-        PostDetailDestinationReadiness.crossfadeFallback,
-      );
-      return;
-    }
+    if (!_ownsTransitionReadiness(session, generation)) return;
     for (var pass = 1; pass < 3; pass++) {
-      await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
-      if (!identical(widget.transitionSession, session)) {
-        _discardStagedTransitionFallback();
-        return;
-      }
-      final elapsed = _postDetailReadinessNow() - readinessStartedAt;
-      if (elapsed >= const Duration(milliseconds: 75)) break;
       if (targetIndex >= _postKeys.length) {
         _discardStagedTransitionFallback();
         return;
@@ -479,66 +572,95 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       final itemContext = _postKeys[targetIndex].currentContext;
       if (itemContext == null) {
         _jumpNearPost(targetIndex);
-        continue;
+      } else {
+        final box = itemContext.findRenderObject() as RenderBox?;
+        final viewport = box == null
+            ? null
+            : RenderAbstractViewport.maybeOf(box);
+        final viewportBox =
+            _listViewportKey.currentContext?.findRenderObject() as RenderBox?;
+        if (box != null &&
+            controller.hasClients &&
+            viewport != null &&
+            viewportBox != null &&
+            viewportBox.hasSize &&
+            box.hasSize) {
+          final viewportTop = viewportBox.localToGlobal(Offset.zero).dy;
+          final targetTop = box.localToGlobal(Offset.zero).dy;
+          final requiredTop = targetIndex == 0
+              ? viewportTop + MediaQuery.paddingOf(context).top + kToolbarHeight
+              : viewportTop;
+          if ((targetTop - requiredTop).abs() <= 1) {
+            final fallbackPost = _transitionFallbackPost;
+            if (fallbackPost == null) break;
+            setState(() {
+              _transitionFallbackPost = null;
+              _transitionFallbackVisible = false;
+            });
+            final frameWithinDeadline = await _awaitReadinessFrame(stopwatch);
+            if (!_ownsTransitionReadiness(session, generation)) return;
+            if (_hasRenderableDestinationSurface(targetIndex)) {
+              session.markDestinationReady(
+                PostDetailDestinationReadiness.geometryReady,
+              );
+              _scheduleVisibilityMeasure();
+              return;
+            }
+            setState(() {
+              _transitionFallbackPost = fallbackPost;
+              _transitionFallbackVisible = true;
+            });
+            if (!frameWithinDeadline ||
+                _hasRenderableFallbackSurface(fallbackPost.id)) {
+              _publishTransitionFallback(session, generation);
+            }
+            return;
+          }
+          final revealOffset = viewport.getOffsetToReveal(box, 0).offset;
+          final position = controller.position;
+          final boundedOffset = revealOffset
+              .clamp(position.minScrollExtent, position.maxScrollExtent)
+              .toDouble();
+          if ((boundedOffset - controller.offset).abs() > 1) {
+            controller.jumpTo(boundedOffset);
+          }
+        }
       }
-      final box = itemContext.findRenderObject() as RenderBox?;
-      if (box == null || !controller.hasClients) continue;
-      final viewport = RenderAbstractViewport.maybeOf(box);
-      if (viewport == null) continue;
-      final viewportBox =
-          _listViewportKey.currentContext?.findRenderObject() as RenderBox?;
-      if (viewportBox == null || !viewportBox.hasSize || !box.hasSize) {
-        continue;
-      }
-      final viewportTop = viewportBox.localToGlobal(Offset.zero).dy;
-      final targetTop = box.localToGlobal(Offset.zero).dy;
-      final requiredTop = targetIndex == 0
-          ? viewportTop + MediaQuery.paddingOf(context).top + kToolbarHeight
-          : viewportTop;
-      if ((targetTop - requiredTop).abs() <= 1) {
-        setState(() {
-          _transitionFallbackPost = null;
-          _transitionFallbackVisible = false;
-        });
-        session.markDestinationReady(
-          PostDetailDestinationReadiness.geometryReady,
-        );
-        _scheduleVisibilityMeasure();
+      if (pass >= 2) break;
+      if (!await _awaitReadinessFrame(stopwatch)) {
+        _publishTransitionFallback(session, generation);
         return;
       }
-      final revealOffset = viewport.getOffsetToReveal(box, 0).offset;
-      final position = controller.position;
-      final boundedOffset = revealOffset
-          .clamp(position.minScrollExtent, position.maxScrollExtent)
-          .toDouble();
-      if ((boundedOffset - controller.offset).abs() > 1) {
-        controller.jumpTo(boundedOffset);
-      }
+      if (!_ownsTransitionReadiness(session, generation)) return;
     }
 
-    if (!mounted) return;
+    if (!_ownsTransitionReadiness(session, generation)) return;
     if (targetIndex >= _posts.length) {
       _discardStagedTransitionFallback();
       return;
     }
-    session.markDestinationReady(
-      PostDetailDestinationReadiness.crossfadeFallback,
-    );
+    _publishTransitionFallback(session, generation);
   }
 
   Future<void> _settleTransitionFallback() async {
-    if (_settlingTransitionFallback) return;
+    final generation = _transitionReadinessGeneration;
+    if (_settlingTransitionFallbackGeneration == generation) return;
     final fallbackPost = _transitionFallbackPost;
-    if (fallbackPost == null) return;
-    _settlingTransitionFallback = true;
+    final session = widget.transitionSession;
+    if (fallbackPost == null || session == null) return;
+    _settlingTransitionFallbackGeneration = generation;
+    final stopwatch = Stopwatch()..start();
     try {
       final targetIndex = _posts.indexWhere(
         (post) => post.id == fallbackPost.id,
       );
       if (targetIndex < 0) return;
       _jumpNearPost(targetIndex);
-      await WidgetsBinding.instance.endOfFrame;
-      if (!mounted || targetIndex >= _postKeys.length) return;
+      if (!await _awaitReadinessFrame(stopwatch) ||
+          !_ownsTransitionReadiness(session, generation) ||
+          targetIndex >= _postKeys.length) {
+        return;
+      }
       final itemContext = _postKeys[targetIndex].currentContext;
       final box = itemContext?.findRenderObject() as RenderBox?;
       final viewport =
@@ -560,16 +682,22 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
           .clamp(position.minScrollExtent, position.maxScrollExtent)
           .toDouble();
       controller.jumpTo(offset);
-      await WidgetsBinding.instance.endOfFrame;
-      if (!mounted || !box.attached || !box.hasSize || box.size.isEmpty) return;
-      if (!mounted) return;
+      if (!await _awaitReadinessFrame(stopwatch) ||
+          !_ownsTransitionReadiness(session, generation) ||
+          !box.attached ||
+          !box.hasSize ||
+          box.size.isEmpty) {
+        return;
+      }
       setState(() => _transitionFallbackVisible = false);
       await Future<void>.delayed(const Duration(milliseconds: 160));
-      if (!mounted) return;
+      if (!_ownsTransitionReadiness(session, generation)) return;
       setState(() => _transitionFallbackPost = null);
       _scheduleVisibilityMeasure();
     } finally {
-      _settlingTransitionFallback = false;
+      if (_settlingTransitionFallbackGeneration == generation) {
+        _settlingTransitionFallbackGeneration = null;
+      }
     }
   }
 
@@ -737,7 +865,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       if (widget.transitionSession == null) {
         WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToInitial());
       } else {
-        unawaited(_completeTransitionReadiness(targetIndex));
+        _startTransitionReadiness(widget.transitionSession!);
       }
       _scheduleVisibilityMeasure();
     }
@@ -1200,7 +1328,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                             _transitionFallbackVisible
                         ? 0
                         : 1,
-                    duration: const Duration(milliseconds: 160),
+                    duration: _transitionFallbackPost == null
+                        ? Duration.zero
+                        : const Duration(milliseconds: 160),
                     child: NotificationListener<ScrollNotification>(
                       onNotification: _onPostScroll,
                       child: ListView.separated(
@@ -1308,11 +1438,14 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
           ),
           if (_transitionFallbackPost case final fallbackPost?)
             Positioned.fill(
-              child: IgnorePointer(
-                child: AnimatedOpacity(
-                  opacity: _transitionFallbackVisible ? 1 : 0,
-                  duration: const Duration(milliseconds: 160),
-                  child: _PostTransitionFallback(post: fallbackPost),
+              child: KeyedSubtree(
+                key: _transitionFallbackSurfaceKey,
+                child: IgnorePointer(
+                  child: AnimatedOpacity(
+                    opacity: _transitionFallbackVisible ? 1 : 0,
+                    duration: const Duration(milliseconds: 160),
+                    child: _PostTransitionFallback(post: fallbackPost),
+                  ),
                 ),
               ),
             ),

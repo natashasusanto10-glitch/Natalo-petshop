@@ -145,6 +145,8 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
     SharedPreferences.setMockInitialValues(<String, Object>{});
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    debugPostDetailReadinessClock = () => Duration.zero;
+    debugPostDetailReadinessFrameFuture = null;
     sessions = {};
     debugPostVideoSessionFactory = (id) {
       final s = _FakeSession();
@@ -161,6 +163,8 @@ void main() {
     debugPostVideoSessionFactory = null;
     debugPostVideoSessionUrlObserver = null;
     debugScopedFeedPostFetcher = null;
+    debugPostDetailReadinessClock = null;
+    debugPostDetailReadinessFrameFuture = null;
   });
 
   Future<void> pumpScreen(

@@ -11,7 +11,8 @@ import 'package:visibility_detector/visibility_detector.dart';
 void main() {
   setUp(() {
     debugPostDelete = null;
-    debugPostDetailReadinessClock = null;
+    debugPostDetailReadinessClock = () => Duration.zero;
+    debugPostDetailReadinessFrameFuture = null;
     debugScopedFeedPostFetcher = null;
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
   });
@@ -19,6 +20,7 @@ void main() {
   tearDown(() {
     debugPostDelete = null;
     debugPostDetailReadinessClock = null;
+    debugPostDetailReadinessFrameFuture = null;
     debugScopedFeedPostFetcher = null;
   });
 
@@ -56,6 +58,53 @@ void main() {
     await disposeDetail(tester);
     session.dispose();
   });
+
+  testWidgets(
+    'geometry readiness publishes after fallback removal and list rendering',
+    (tester) async {
+      useDetailViewport(tester);
+      final posts = List.generate(5, (index) => fakePhoto('post-$index'));
+      final session = fakeTransitionSession(posts[3]);
+      var fallbackAbsentAtPublication = false;
+      var targetRenderableAtPublication = false;
+      session.addListener(() {
+        if (session.destinationReadiness !=
+            PostDetailDestinationReadiness.geometryReady) {
+          return;
+        }
+        fallbackAbsentAtPublication = find
+            .byKey(
+              const ValueKey('post-detail-transition-fallback-post-3'),
+            )
+            .evaluate()
+            .isEmpty;
+        final target = find
+            .byKey(const ValueKey('post-detail-item-post-3'))
+            .evaluate()
+            .firstOrNull;
+        final box = target?.findRenderObject() as RenderBox?;
+        targetRenderableAtPublication =
+            box != null && box.attached && box.hasSize && !box.size.isEmpty;
+      });
+
+      await tester.pumpWidget(
+        detailHost(posts: posts, initialIndex: 3, session: session),
+      );
+      for (var i = 0; i < 5; i++) {
+        await tester.pump();
+      }
+
+      expect(
+        session.destinationReadiness,
+        PostDetailDestinationReadiness.geometryReady,
+      );
+      expect(fallbackAbsentAtPublication, isTrue);
+      expect(targetRenderableAtPublication, isTrue);
+
+      await disposeDetail(tester);
+      session.dispose();
+    },
+  );
 
   testWidgets(
     'clamped final post uses fallback instead of geometry readiness',
@@ -100,6 +149,8 @@ void main() {
     tester,
   ) async {
     useDetailViewport(tester);
+    var readinessNow = Duration.zero;
+    debugPostDetailReadinessClock = () => readinessNow;
     final posts = List.generate(5, (index) => fakePhoto('post-$index'));
     final session = fakeTransitionSession(posts[3]);
 
@@ -111,7 +162,8 @@ void main() {
       PostDetailDestinationReadiness.preparing,
     );
 
-    await tester.pump(const Duration(milliseconds: 80));
+    readinessNow = const Duration(milliseconds: 80);
+    await tester.pump();
 
     expect(
       session.destinationReadiness,
@@ -149,6 +201,45 @@ void main() {
       session.dispose();
     },
   );
+
+  testWidgets('a missing readiness frame times out within the same deadline', (
+    tester,
+  ) async {
+    useDetailViewport(tester);
+    var readinessNow = Duration.zero;
+    var frameWaits = 0;
+    debugPostDetailReadinessClock = () => readinessNow;
+    debugPostDetailReadinessFrameFuture = () {
+      frameWaits++;
+      return Completer<void>().future;
+    };
+    final posts = List.generate(5, (index) => fakePhoto('post-$index'));
+    final session = fakeTransitionSession(posts[3]);
+
+    await tester.pumpWidget(
+      detailHost(posts: posts, initialIndex: 3, session: session),
+    );
+    expect(
+      session.destinationReadiness,
+      PostDetailDestinationReadiness.preparing,
+    );
+
+    readinessNow = const Duration(milliseconds: 75);
+    await tester.pump(const Duration(milliseconds: 75));
+
+    expect(frameWaits, 1);
+    expect(
+      session.destinationReadiness,
+      PostDetailDestinationReadiness.crossfadeFallback,
+    );
+    expect(
+      find.byKey(const ValueKey('post-detail-transition-fallback-post-3')),
+      findsOneWidget,
+    );
+
+    await disposeDetail(tester);
+    session.dispose();
+  });
 
   testWidgets('fallback readiness is published after its renderable frame', (
     tester,
@@ -191,6 +282,85 @@ void main() {
     await disposeDetail(tester);
     session.dispose();
   });
+
+  testWidgets(
+    'replacement session discards old readiness and reaches a terminal state',
+    (tester) async {
+      useDetailViewport(tester);
+      final posts = [fakePhoto('a'), fakePhoto('b')];
+      final firstSession = fakeTransitionSession(posts.last);
+      final replacementSession = fakeTransitionSession(posts.first);
+      final frameWaits = <Completer<void>>[];
+      debugPostDetailReadinessFrameFuture = () {
+        final completer = Completer<void>();
+        frameWaits.add(completer);
+        return completer.future;
+      };
+
+      await tester.pumpWidget(
+        detailHost(posts: posts, initialIndex: 1, session: firstSession),
+      );
+      expect(
+        firstSession.destinationReadiness,
+        PostDetailDestinationReadiness.preparing,
+      );
+      expect(frameWaits, hasLength(1));
+      expect(
+        find.byKey(const ValueKey('post-detail-transition-fallback-b')),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(
+        detailHost(posts: posts, initialIndex: 1, session: replacementSession),
+      );
+      expect(frameWaits, hasLength(2));
+      expect(
+        find.byKey(const ValueKey('post-detail-transition-fallback-b')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('post-detail-transition-fallback-a')),
+        findsOneWidget,
+      );
+
+      frameWaits.first.complete();
+      await tester.pump();
+      expect(
+        firstSession.destinationReadiness,
+        PostDetailDestinationReadiness.preparing,
+        reason: 'captured old-session work must stop at identity replacement',
+      );
+      expect(
+        replacementSession.destinationReadiness,
+        PostDetailDestinationReadiness.preparing,
+      );
+
+      var replacementWait = 1;
+      for (var pass = 0;
+          pass < 3 &&
+              replacementSession.destinationReadiness ==
+                  PostDetailDestinationReadiness.preparing;
+          pass++) {
+        expect(replacementWait, lessThan(frameWaits.length));
+        frameWaits[replacementWait++].complete();
+        await tester.pump();
+      }
+
+      expect(
+        replacementSession.destinationReadiness,
+        isNot(PostDetailDestinationReadiness.preparing),
+      );
+      expect(
+        firstSession.destinationReadiness,
+        PostDetailDestinationReadiness.preparing,
+        reason: 'captured old-session work must not publish into replacement',
+      );
+
+      await disposeDetail(tester);
+      firstSession.dispose();
+      replacementSession.dispose();
+    },
+  );
 
   testWidgets('scrolling selects B once and prepares it behind the route', (
     tester,
