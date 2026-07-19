@@ -208,4 +208,30 @@ void main() {
         findsOneWidget);
     expect(find.byKey(const ValueKey('notification-thumb')), findsNothing);
   });
+
+  testWidgets('voucher gratis ongkir → ikon truk di avatar kiri', (tester) async {
+    final n = AppNotification.fromApiJson({
+      'id': 'vf1', 'title': '🚚 Gratis Ongkir dari Natalo!', 'body': 'Klaim sekarang',
+      'type': 'promo', 'eventType': 'voucher_freeship_published',
+      'url': '/member/vouchers',
+      'createdAt': DateTime.now().toIso8601String(), 'read': false,
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+    ));
+    expect(find.byIcon(Icons.local_shipping_rounded), findsOneWidget);
+  });
+
+  testWidgets('voucher diskon → ikon sell/tag di avatar kiri', (tester) async {
+    final n = AppNotification.fromApiJson({
+      'id': 'vd1', 'title': '🎟️ Voucher diskon baru', 'body': 'Diskon 20% pakai HEMAT20',
+      'type': 'promo', 'eventType': 'voucher_discount_published',
+      'url': '/member/vouchers',
+      'createdAt': DateTime.now().toIso8601String(), 'read': false,
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+    ));
+    expect(find.byIcon(Icons.sell_rounded), findsOneWidget);
+  });
 }
