@@ -20,11 +20,29 @@ void main() {
 
   test('six-item loading grid extent includes the exact one-pixel gaps', () {
     const width = 393.0;
-    final tileWidth =
+    const tileWidth =
         (width - 2 * profileGridCrossAxisSpacing) / profileGridCrossAxisCount;
-    final expected = tileWidth / profileGridChildAspectRatio * 2 +
+    const expected =
+        tileWidth / profileGridChildAspectRatio * 2 +
         profileGridMainAxisSpacing;
 
     expect(profileGridExtentForWidth(width, itemCount: 6), expected);
   });
+
+  for (final width in <double>[320, 360, 393, 430]) {
+    test('row offsets remain exact at width $width', () {
+      final tileWidth =
+          (width - 2 * profileGridCrossAxisSpacing) / profileGridCrossAxisCount;
+      final rowExtent =
+          tileWidth / profileGridChildAspectRatio + profileGridMainAxisSpacing;
+
+      for (var index = 0; index < 15; index++) {
+        expect(
+          profileGridMainAxisOffsetForIndex(width, index: index),
+          closeTo(rowExtent * (index ~/ profileGridCrossAxisCount), .001),
+          reason: 'index $index must use the same row geometry as the delegate',
+        );
+      }
+    });
+  }
 }
