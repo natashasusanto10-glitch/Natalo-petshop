@@ -120,6 +120,15 @@ model User {
   /// transaction. Kept denormalized so profile reads stay cheap.
   followersCount         Int                  @default(0)
   followingCount         Int                  @default(0)
+  /// Preferensi push notification per kategori (JSON map<string,bool>).
+  /// Key match dengan Flutter NotificationPreferencesScreen + lib/
+  /// notification-preferences.ts (master, order, promo, voucher, product,
+  /// loyalty_points, chat, feed). Nullable = user belum pernah set →
+  /// pakai default (lihat DEFAULT_NOTIFICATION_PREFS). Server memfilter
+  /// dispatch push sebelum kirim ke device supaya toggle benar-benar
+  /// menghentikan notif (client-side filter tidak jalan untuk tray/
+  /// background notification).
+  notificationPrefs      Json?
   orders                 Order[]
   points                 CustomerPoint[]
   reviews                Review[]

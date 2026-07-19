@@ -55,8 +55,14 @@ class _NotificationPreferencesScreenState
       if (!mounted) return;
       setState(() => _applyPreferencesFromLocal(prefs));
 
+      // Server = source of truth HANYA kalau benar-benar menjawab dengan
+      // data. `null` berarti fetch gagal / endpoint 404 / response kosong —
+      // dalam kasus itu JANGAN sentuh state; pilihan lokal user (yang barusan
+      // dari disk) tetap dipakai. Sebelumnya fungsi ini mengembalikan default
+      // saat gagal, lalu di-persist, sehingga toggle product/feed selalu
+      // ke-reset ke OFF tiap halaman dibuka ulang.
       final serverPrefs = await notificationService.fetchPreferences();
-      if (!mounted || serverPrefs.isEmpty) return;
+      if (!mounted || serverPrefs == null) return;
       setState(() => _applyPreferences(serverPrefs));
       await _persistAll(prefs);
     } catch (_) {

@@ -99,6 +99,8 @@ export async function GET(request: NextRequest) {
       url: "/member/vouchers",
       tag: `birthday-voucher-reminder-${voucher.id}`,
       category: "voucher",
+      // Voucher ultah = toggle "Poin Loyalty" (lihat lib/birthday-voucher.ts).
+      prefCategory: "loyalty_points",
       data: {
         type: "birthday_voucher_reminder",
         voucherCode: voucher.code,
