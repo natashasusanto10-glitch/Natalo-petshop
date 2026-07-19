@@ -27,6 +27,9 @@ class PostTransitionTileRegistry {
 
   void markLayoutChanged() => _layoutGeneration++;
 
+  /// Each successful resolve returns a source-owned disposable snapshot.
+  /// A future adapter must cache accepted snapshots and dispose rejected or
+  /// stale snapshots, including their proxies.
   PostPageSourceTarget? resolve(PostTransitionTileId id) =>
       _tiles[id]?._snapshot();
 
@@ -69,12 +72,13 @@ class _PostTransitionSourceTileState extends State<PostTransitionSourceTile> {
   ImageStream? _imageStream;
   ImageInfo? _resolvedImage;
   bool _suppressed = false;
+  bool _active = false;
 
   @override
   void initState() {
     super.initState();
     _imageListener = ImageStreamListener(_handleImageFrame);
-    widget.registry._attach(widget.id, this);
+    _registerActiveTile();
   }
 
   @override
@@ -87,9 +91,9 @@ class _PostTransitionSourceTileState extends State<PostTransitionSourceTile> {
   void didUpdateWidget(PostTransitionSourceTile oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.registry != widget.registry || oldWidget.id != widget.id) {
-      oldWidget.registry._detach(oldWidget.id, this);
+      if (_active) oldWidget.registry._detach(oldWidget.id, this);
       _suppressed = false;
-      widget.registry._attach(widget.id, this);
+      if (_active) widget.registry._attach(widget.id, this);
     }
     if (oldWidget.imageProvider != widget.imageProvider) {
       _resolveImageProvider();
@@ -125,6 +129,7 @@ class _PostTransitionSourceTileState extends State<PostTransitionSourceTile> {
   }
 
   PostPageSourceTarget? _snapshot() {
+    if (!_active) return null;
     final tileRenderObject = context.findRenderObject();
     final overlayRenderObject = Navigator.of(
       context,
@@ -158,8 +163,32 @@ class _PostTransitionSourceTileState extends State<PostTransitionSourceTile> {
   }
 
   void _setSuppressed(bool suppressed) {
-    if (!mounted || _suppressed == suppressed) return;
+    if (!_active || !mounted || _suppressed == suppressed) return;
     setState(() => _suppressed = suppressed);
+  }
+
+  void _registerActiveTile() {
+    if (_active) return;
+    _active = true;
+    widget.registry._attach(widget.id, this);
+  }
+
+  void _unregisterActiveTile() {
+    if (!_active) return;
+    _active = false;
+    widget.registry._detach(widget.id, this);
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    _registerActiveTile();
+  }
+
+  @override
+  void deactivate() {
+    _unregisterActiveTile();
+    super.deactivate();
   }
 
   @override
@@ -178,7 +207,7 @@ class _PostTransitionSourceTileState extends State<PostTransitionSourceTile> {
 
   @override
   void dispose() {
-    widget.registry._detach(widget.id, this);
+    _unregisterActiveTile();
     _imageStream?.removeListener(_imageListener);
     _resolvedImage?.dispose();
     _resolvedImage = null;

@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/features/feed/transition/post_detail_transition_session.dart';
 import 'package:natalo_petshop_flutter/features/feed/transition/post_transition_source_tile.dart';
 
 void main() {
@@ -109,6 +110,81 @@ void main() {
     expect(registry.resolve(id), isNull);
   });
 
+  testWidgets(
+    'registry is unavailable while a tile reparents and resolves again after activation',
+    (tester) async {
+      final registry = PostTransitionTileRegistry();
+      const id = PostTransitionTileId(scope: 'all', postId: 'reparented');
+      final tileKey = GlobalKey();
+      var didDeactivate = false;
+      Object? resolveError;
+      PostPageSourceTarget? targetWhileInactive;
+
+      Widget host({required bool trailing}) {
+        final tile = SizedBox(
+          width: 120,
+          height: 160,
+          child: PostTransitionSourceTile(
+            key: tileKey,
+            registry: registry,
+            id: id,
+            fallbackColor: Colors.blueGrey,
+            child: _ResolveOnDeactivate(
+              onDeactivate: () {
+                didDeactivate = true;
+                try {
+                  targetWhileInactive = registry.resolve(id);
+                  targetWhileInactive?.proxy.dispose();
+                } catch (error) {
+                  resolveError = error;
+                }
+              },
+              child: const ColoredBox(color: Colors.red),
+            ),
+          ),
+        );
+        return MaterialApp(
+          home: Scaffold(
+            body: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (!trailing) tile,
+                if (trailing) const SizedBox(width: 40),
+                if (trailing) tile,
+              ],
+            ),
+          ),
+        );
+      }
+
+      await tester.pumpWidget(host(trailing: false));
+      registry.setSuppressed(id, true);
+      await tester.pump();
+
+      await tester.pumpWidget(host(trailing: true));
+
+      expect(didDeactivate, isTrue);
+      expect(resolveError, isNull);
+      expect(targetWhileInactive, isNull);
+      expect(
+        tester
+            .widget<Opacity>(
+              find.byKey(
+                const ValueKey('post-transition-tile-opacity-reparented'),
+              ),
+            )
+            .opacity,
+        0,
+      );
+
+      final reactivatedTarget = registry.resolve(id);
+      expect(reactivatedTarget, isNotNull);
+      expect(reactivatedTarget!.rect, const Rect.fromLTWH(40, 0, 120, 160));
+      expect(reactivatedTarget.layoutGeneration, 0);
+      reactivatedTarget.proxy.dispose();
+    },
+  );
+
   testWidgets('resolved proxy owns a retained frame after tile disposal', (
     tester,
   ) async {
@@ -153,6 +229,27 @@ void main() {
     await provider.evict();
     image.dispose();
   });
+}
+
+class _ResolveOnDeactivate extends StatefulWidget {
+  const _ResolveOnDeactivate({required this.onDeactivate, required this.child});
+
+  final VoidCallback onDeactivate;
+  final Widget child;
+
+  @override
+  State<_ResolveOnDeactivate> createState() => _ResolveOnDeactivateState();
+}
+
+class _ResolveOnDeactivateState extends State<_ResolveOnDeactivate> {
+  @override
+  void deactivate() {
+    widget.onDeactivate();
+    super.deactivate();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 Widget _tileHost(
