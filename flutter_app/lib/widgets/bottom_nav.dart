@@ -127,8 +127,8 @@ List<double> _saturationMatrix(double s) {
 ///   melewati kaca, melawan sisa keabu-abuan dari blur.
 ImageFilter _glassFilter({required bool dark}) {
   final blur = ImageFilter.blur(
-    sigmaX: dark ? 14 : 8,
-    sigmaY: dark ? 14 : 8,
+    sigmaX: dark ? 11 : 6,
+    sigmaY: dark ? 11 : 6,
   );
   return ImageFilter.compose(
     outer: blur,
