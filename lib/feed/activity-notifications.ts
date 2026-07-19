@@ -18,7 +18,11 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { isAdminRole, OFFICIAL_BRAND_NAME } from "@/lib/social/brand-user";
+import {
+  isAdminRole,
+  notificationActorFields,
+  OFFICIAL_BRAND_NAME,
+} from "@/lib/social/brand-user";
 import {
   createFeedNotification,
   feedPostOwnerUrl,
@@ -59,12 +63,17 @@ export async function sendCommentNotification(params: {
 
     const actor = await prisma.user.findUnique({
       where: { id: params.actorUserId },
-      select: { name: true, role: true },
+      select: { name: true, role: true, profilePhotoUrl: true },
     });
     // Akun official (admin) → brand name; nama asli pemilik tak boleh bocor.
     const actorName = isAdminRole(actor?.role)
       ? OFFICIAL_BRAND_NAME
       : actor?.name?.trim() || "Seseorang";
+    const actorFields = notificationActorFields(
+      actor?.role,
+      actor?.name,
+      actor?.profilePhotoUrl
+    );
 
     await createFeedNotification({
       userId: post.authorId,
@@ -80,6 +89,10 @@ export async function sendCommentNotification(params: {
       tag: `feed-comment-${post.id}`,
       data: { comment_id: params.commentId },
       surface: SOCIAL_NOTIFICATION_SOURCE,
+      actor: {
+        avatarUrl: actorFields.actorAvatarUrl,
+        name: actorFields.actorName,
+      },
     });
   } catch (err) {
     console.warn("[feed-activity] sendCommentNotification:", err);
@@ -107,11 +120,16 @@ export async function sendReplyNotification(params: {
 
     const actor = await prisma.user.findUnique({
       where: { id: params.actorUserId },
-      select: { name: true, role: true },
+      select: { name: true, role: true, profilePhotoUrl: true },
     });
     const actorName = isAdminRole(actor?.role)
       ? OFFICIAL_BRAND_NAME
       : actor?.name?.trim() || "Seseorang";
+    const actorFields = notificationActorFields(
+      actor?.role,
+      actor?.name,
+      actor?.profilePhotoUrl
+    );
 
     const post = await prisma.feedPost.findUnique({
       where: { id: params.postId },
@@ -133,6 +151,10 @@ export async function sendReplyNotification(params: {
         reply_comment_id: params.replyCommentId,
       },
       surface: SOCIAL_NOTIFICATION_SOURCE,
+      actor: {
+        avatarUrl: actorFields.actorAvatarUrl,
+        name: actorFields.actorName,
+      },
     });
   } catch (err) {
     console.warn("[feed-activity] sendReplyNotification:", err);
@@ -161,7 +183,12 @@ export async function sendMentionNotifications(params: {
     const [actor, post] = await Promise.all([
       prisma.user.findUnique({
         where: { id: params.actorUserId },
-        select: { name: true, username: true, role: true },
+        select: {
+          name: true,
+          username: true,
+          role: true,
+          profilePhotoUrl: true,
+        },
       }),
       prisma.feedPost.findUnique({
         where: { id: params.postId },
@@ -177,6 +204,11 @@ export async function sendMentionNotifications(params: {
       : actor?.username && actor.username.length > 0
         ? actor.username
         : actor?.name?.trim() || "Seseorang";
+    const actorFields = notificationActorFields(
+      actor?.role,
+      actor?.name,
+      actor?.profilePhotoUrl
+    );
 
     const isComment = params.source === "comment";
     const title = isComment
@@ -214,6 +246,10 @@ export async function sendMentionNotifications(params: {
               : {}),
           },
           surface: SOCIAL_NOTIFICATION_SOURCE,
+          actor: {
+            avatarUrl: actorFields.actorAvatarUrl,
+            name: actorFields.actorName,
+          },
         }),
       ),
     );
