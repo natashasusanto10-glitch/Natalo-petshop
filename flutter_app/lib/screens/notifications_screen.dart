@@ -1037,17 +1037,15 @@ enum _NotificationFilter {
   // Mention diletakkan di posisi #2 (priority tinggi) — match IG/TikTok
   // pattern di mana notifikasi mention lebih penting daripada like/comment
   // generic. User cek dulu siapa yang nyebutin sebelum browse lain.
-  all('Semua', Icons.notifications_none_rounded),
-  mention('Disebut', Icons.alternate_email_rounded),
-  order('Pesanan', Icons.receipt_long_rounded),
-  promo('Promo', Icons.confirmation_number_rounded),
-  feed('Feed', Icons.play_circle_outline_rounded),
-  announcement('Pengumuman', Icons.campaign_rounded);
+  all,
+  mention,
+  order,
+  promo,
+  feed,
+  announcement;
 
-  final String label;
-  final IconData icon;
-
-  const _NotificationFilter(this.label, this.icon);
+  // label/icon lama dihapus — sejak redesign, UI tab & empty state pakai
+  // NotificationTab; enum ini tinggal dipakai untuk logika `matches`.
 
   bool matches(AppNotification item) {
     if (this == _NotificationFilter.all) return true;
