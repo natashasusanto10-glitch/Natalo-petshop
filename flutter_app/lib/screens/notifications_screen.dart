@@ -1205,6 +1205,23 @@ String _notificationHaystack(AppNotification item) {
   ].whereType<String>().join(' ').toLowerCase();
 }
 
+/// Ekstrak nomor pesanan (`ORD-...`) dari url notifikasi pesanan
+/// (`/pesanan/{orderNumber}`, mirror server `extractOrderNumberFromNotification`).
+@visibleForTesting
+String? extractOrderNumber(String? url) {
+  if (url == null || url.isEmpty) return null;
+  final match = RegExp(r'ORD-[A-Z0-9-]+', caseSensitive: false).firstMatch(url);
+  return match?.group(0);
+}
+
+/// Ekstrak trackingToken dari query `?token=` (akses order guest/non-login).
+@visibleForTesting
+String? extractOrderTrackingToken(String? url) {
+  if (url == null || url.isEmpty) return null;
+  final token = Uri.tryParse(url)?.queryParameters['token']?.trim();
+  return (token == null || token.isEmpty) ? null : token;
+}
+
 /// 4 tab redesign (Semua/Aktivitas/Transaksi/Promo). Aktivitas = gabungan
 /// filter lama Disebut + Feed + Pengumuman; Transaksi = Pesanan lama; Promo
 /// tetap. Publik + @visibleForTesting supaya pemetaan bisa diuji unit.
