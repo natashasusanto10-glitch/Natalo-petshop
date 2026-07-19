@@ -729,6 +729,8 @@ model ProductDiscount {
   items     ProductDiscountItem[]
   createdAt DateTime              @default(now())
   updatedAt DateTime              @updatedAt
+  notifyAtStart Boolean   @default(false)
+  promoNotifiedAt DateTime?
 
   @@index([startsAt, endsAt])
   @@index([isActive])
@@ -826,6 +828,8 @@ model Voucher {
   usages                            VoucherUsage[]
   createdAt                         DateTime                    @default(now())
   updatedAt                         DateTime                    @updatedAt
+  notifyAtStart                     Boolean                     @default(false)
+  promoNotifiedAt                   DateTime?
 
   @@index([userId])
   @@index([type, visibility])
