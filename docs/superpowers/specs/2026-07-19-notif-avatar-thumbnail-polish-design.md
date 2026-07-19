@@ -35,12 +35,14 @@ Aturan brand WAJIB (`lib/social/brand-user.ts`): aktor akun admin → identitas 
 ### P-A. Backend — thumbnail feed benar (helper bersama + sign saat baca)
 
 - **Helper bersama** `feedNotificationThumbnail(post)` (baru, mis. `lib/feed/notification-thumbnail.ts`): `return post.thumbnailUrl ?? post.media?.[0]?.url ?? null`. Video → `thumbnailUrl` (Bunny mentah). Foto → URL `FeedMedia` pertama (`media` diurut `sortOrder asc`, ambil `.url`; `schema.prisma:1362-1388`).
-- Terapkan di **semua builder notif feed** yang set `thumbnailUrl`: `buildFeedPublishAnnouncementData` (`publish-push.ts`) + builder aktivitas feed (`activity-notifications.ts`: komentar/reply/like/new-post) + `sendLikeNotification`/`sendCommentLikeNotification` (yang set `thumbnailUrl: post.thumbnailUrl`). Setiap query post-nya tambah `media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } }`.
+- Terapkan di **semua builder notif feed** yang set `thumbnailUrl` (enumerasi terverifikasi, `activity-notifications.ts`): `sendCommentNotification` (:87), `sendReplyNotification` (:146), `sendMentionNotifications` (:234), `sendLikeMilestoneNotification` (:308), `sendLikeNotification` (:387 + agregat :374), `sendCommentLikeNotification` (:477), `sendShareNotification` (:517) — TAK SATU PUN query post-nya fetch `media` saat ini; masing-masing tambah `media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } }` ke select.
+- `buildFeedPublishAnnouncementData` (`publish-push.ts:89`): param `post` saat ini `{id, thumbnailUrl}` → **lebarkan tipe param** jadi menerima `media` (atau langsung hasil helper), dan query `sendFeedPublishPush` (:112-125) tambah select `media` yang sama.
 - **Sign saat baca** di `app/api/notifications/me/route.ts` `mapAnnouncement`: `thumbnailUrl: signBunnyUrl(a.thumbnailUrl) ?? null` (import `signBunnyUrl` dari `lib/feed/bunny`). `signBunnyUrl` hanya men-sign URL ber-host `BUNNY_CDN_HOSTNAME` (`bunny.ts:301`) → URL Bunny video di-sign segar (anti-kedaluwarsa; URL bertanda-tangan expiry 6 jam, jadi TIDAK boleh disimpan bertanda-tangan), URL non-Bunny (foto FeedMedia, produk P3) diteruskan apa adanya. Terpusat → semua notif ber-thumbnail Bunny ikut benar sekaligus.
 
 ### P-B. Backend — avatar aktor `followed_user_posted`
 
-- Builder notif "postingan baru dari user yang diikuti" (`followed_user_posted`, di `activity-notifications.ts`/`notification-center.ts` — plan pinpoint): fetch poster `{ role, name, profilePhotoUrl }`, set `actorAvatarUrl`/`actorName` via `notificationActorFields(role, name, profilePhotoUrl)` (brand-safe; poster admin → logo brand). Konsisten dgn builder komentar/like P2.
+- **Lokasi (koreksi review):** builder-nya `sendNewPostToFollowersNotification` di **`lib/social/notifications.ts:135`** (eventType `:160`), BUKAN activity-notifications/notification-center. Bentuk insert-nya **`prisma.announcement.createMany` (:213)** — batch per follower — jadi fix-nya menambah `actorAvatarUrl`/`actorName` ke **tiap objek row** createMany (bukan param `actor:{}` ala `createFeedNotification`).
+- Select author (`:144-151`) saat ini `{ id, name, username, role }` **tanpa `profilePhotoUrl`** → tambahkan. Lalu hitung sekali `notificationActorFields(author.role, author.name, author.profilePhotoUrl)` (brand-safe; poster admin → nama brand + avatar null) dan spread ke tiap row.
 
 ### P-C. Backend — avatar bertumpuk like agregat (migration)
 
@@ -51,10 +53,11 @@ Aturan brand WAJIB (`lib/social/brand-user.ts`): aktor akun admin → identitas 
 
 ### P-D. Client Flutter
 
-- **Avatar brand** (`_IdentityAvatar`, cabang `brandIdentity` `notifications_screen.dart:1055-1071`): ganti lingkaran `Text('NL')` → `OfficialBrandAvatar(size: 42)` (badge kategori mini di-Stack tetap). Notif ber-`actorAvatarUrl` tetap foto aktor (jalur P2 existing, tak berubah).
+- **Avatar brand** (`_IdentityAvatar`, cabang `brandIdentity` — `Text('NL')` di `notifications_screen.dart:1021`, blok :1012-1029): ganti lingkaran `Text('NL')` → `OfficialBrandAvatar(size: 42)` (badge kategori mini di-Stack tetap; aset `assets/native/` sudah terdaftar `pubspec.yaml:184`). Notif ber-`actorAvatarUrl` tetap foto aktor (jalur P2 existing, tak berubah). **Catatan cakupan:** `_isBrandIdentity` (:827-829) = feed **ATAU** pengumuman → notif pengumuman/promo broadcast juga berpindah dari "NL" ke logo (konsisten, memang diinginkan — set yang sama yang hari ini menampilkan "NL").
 - **Avatar bertumpuk** (`AppNotification` + `_IdentityAvatar`): parse `actorAvatarUrls` (List<String>) dari JSON. Bila `actorAvatarUrls.length >= 2` → widget baru `StackedActorAvatars` (2 lingkaran `Image.network` bertumpuk, offset ~ -14px, ring putih tipis, 42px total + badge like kecil). Prioritas render kiri: `actorAvatarUrls≥2` (bertumpuk) → `actorAvatarUrl` (tunggal) → `brandIdentity` (logo) → ikon kategori.
-- **errorBuilder thumbnail** (`:986-1009`): restrukturisasi supaya gambar gagal = slot kosong (tanpa kotak abu). Latar abu permanen dihapus dari `Container` luar; sebagai gantinya latar abu HANYA muncul via `Image.network(..., loadingBuilder: ...)` selama memuat, dan `errorBuilder: (_,__,___) => const SizedBox.shrink()` mengembalikan slot kosong. Karena tak ada lagi warna latar permanen di Container luar, gambar yang gagal load tidak menyisakan kotak abu. (Border/rounding tetap via `ClipRRect` pada `Image` itu sendiri.)
-- `AppNotification.copyWith` + `fromApiJson` mengangkut `actorAvatarUrls` (default `[]`).
+- **Kotak abu thumbnail** (blok thumb `:944-966`): `errorBuilder` SUDAH mengembalikan `SizedBox.shrink()` (:964) — masalahnya `Container` luar punya `color: cs.surfaceContainerHighest` + border **permanen** (:955-959) yang tetap terlihat saat gambar gagal. Fix = **hapus warna/border permanen dari Container luar**; latar abu hanya muncul via `loadingBuilder` selama memuat; rounding via `ClipRRect` pada `Image` sendiri. Hasil: gambar gagal = slot kosong tanpa sisa kotak.
+- `AppNotification.copyWith` + `fromApiJson` mengangkut `actorAvatarUrls` (default `[]`), gaya dual-key konsisten: `(json['actorAvatarUrls'] ?? json['actor_avatar_urls']) as List?)?.map((e) => e.toString()).toList() ?? const []`.
+- Catatan web: halaman notifikasi web TIDAK merender thumbnail/avatar aktor (grep-terverifikasi) → sign-saat-baca cukup di API app; web tak terpengaruh kolom baru.
 
 ## Testing
 
@@ -75,7 +78,7 @@ Aturan brand WAJIB (`lib/social/brand-user.ts`): aktor akun admin → identitas 
 
 ## Acceptance Criteria
 
-1. Notif sistem "Feed kamu…" menampilkan **logo brand asli** (bukan teks "NL").
+1. Notif sistem "Feed kamu…" DAN notif pengumuman/promo broadcast (set brand-identity yang sama) menampilkan **logo brand asli** (bukan teks "NL").
 2. Notif "postingan baru dari {user}" menampilkan **foto user** itu (brand-safe: admin → logo brand).
 3. Notif feed (publish/komentar/like) menampilkan **thumbnail post yang benar**: video (Bunny signed, tak lagi kotak abu) & foto (FeedMedia pertama).
 4. Like agregat (≥2) menampilkan **avatar bertumpuk** (≤3 foto liker teratas, brand-safe); judul tetap "N orang menyukai…".
