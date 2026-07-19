@@ -45,16 +45,16 @@ import '../widgets/natalo_paw_refresh_indicator.dart';
 /// (`chatStore.setUnread(0)` setiap `fetchMessages` sukses — GET
 /// `[chatId]` sudah reset `unreadForCustomer` di server, Plan 2 fix C2).
 ///
-/// **Load-more riwayat LAMA (scroll ke atas) SENGAJA TIDAK diimplementasikan**
-/// — backend `GET /api/chat/[chatId]` cuma paginate MAJU
-/// (`orderBy(createdAt ASC).startAfter(after)`; `after` = cursor → pesan
-/// LEBIH BARU, bukan lebih lama). Tidak ada endpoint/param untuk fetch
-/// pesan yang lebih lama dari halaman pertama, jadi "prepend saat scroll
-/// atas" mustahil dibangun di atas kontrak ini. Sebagai gantinya, initial
-/// load & pull-to-refresh men-drain SEMUA halaman MAJU (`_drainForward`)
-/// sampai `nextCursor == null` — untuk thread support 1:1 yang realistis
-/// kecil, ini efektif memuat seluruh riwayat sekali buka, jadi fitur
-/// load-more tidak dibutuhkan juga secara praktis.
+/// **Loading model (perf):** buka room hanya mengambil SATU halaman TERBARU
+/// (`chatService.fetchLatestMessages`, mode backend `?dir=older` tanpa
+/// `before`), bukan lagi men-drain SELURUH riwayat maju (pola lama
+/// `_drainForward` dari awal thread bikin puluhan round-trip berurutan
+/// sebelum layar tampil). Riwayat lama dimuat BERTAHAP saat user scroll ke
+/// atas ([_loadOlder] → `fetchOlderMessages(before: _oldestCursor)`, prepend
+/// + kompensasi posisi scroll supaya viewport tak melompat). Polling &
+/// pull-to-refresh tetap MAJU (`_drainForward(after: _afterCursor)`) untuk
+/// pesan baru saja. `prevCursor` backend = `createdAt` tertua batch → cursor
+/// halaman lama berikutnya; null = sudah di awal thread.
 class ChatRoomScreen extends StatefulWidget {
   const ChatRoomScreen({super.key, this.chatId, this.productContext});
 
@@ -163,6 +163,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   /// masih null selama `_messages` kosong).
   bool _historySeeded = false;
 
+  /// Cursor MUNDUR (`prevCursor` dari backend) — `createdAt` pesan tertua yang
+  /// sudah dimuat, dipakai [_loadOlder] untuk fetch riwayat lebih lama. null =
+  /// belum ada halaman termuat / sudah di awal thread (lihat [_hasMoreOlder]).
+  String? _oldestCursor;
+
+  /// True kalau MASIH ada riwayat lebih lama untuk dimuat saat scroll ke atas.
+  /// Jadi false begitu backend balas `prevCursor == null` (halaman awal thread
+  /// tercapai) — setelah itu [_loadOlder] no-op, tak lagi menembak endpoint.
+  bool _hasMoreOlder = false;
+
+  /// Guard 1 load-older in-flight — cegah beberapa fetch riwayat tumpang-tindih
+  /// saat user scroll cepat ke atas (tiap notifikasi scroll bisa memicu).
+  bool _loadingOlder = false;
+
   String? _chatId;
   bool _loading = true;
   Object? _loadError;
@@ -240,6 +254,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
         ? null
         : Map<String, dynamic>.from(widget.productContext!);
     WidgetsBinding.instance.addObserver(this);
+    // Load-more riwayat lama saat scroll mendekati atas (lihat [_onScroll]).
+    _scrollController.addListener(_onScroll);
     // Wake FCM (brief §9): push masuk foreground -> tick berubah -> fetch
     // sekali tanpa nunggu polling 4 detik berikutnya. Listener dipasang
     // terlepas dari status login/chatId — `_onFcmWakeTick` sendiri yang
@@ -282,8 +298,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     return (id != null && id.isNotEmpty) ? 'cust_$id' : null;
   }
 
-  /// Initial load (dipanggil dari `initState`) — drain forward PENUH dari
-  /// awal thread, tampilkan spinner selama proses, lalu mulai polling.
+  /// Initial load (dipanggil dari `initState`) — ambil HANYA halaman TERBARU
+  /// (satu round-trip), tampilkan spinner sebentar, set cursor riwayat lama,
+  /// lalu mulai polling. Riwayat lebih lama dimuat bertahap via [_loadOlder]
+  /// saat user scroll ke atas.
   Future<void> _loadMessages() async {
     final chatId = _chatId;
     if (chatId == null) return;
@@ -294,7 +312,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       });
     }
     try {
-      final fetched = await _drainForward();
+      final page = await chatService.fetchLatestMessages(chatId);
+      final fetched = page.messages;
       if (!mounted) return;
       setState(() {
         // Merge (bukan clear+replace mentah) — kalau user sempat kirim
@@ -307,15 +326,18 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
           ..clear()
           ..addAll(merged);
         _suppressForwardedOrderContext(_messages);
+        // Cursor riwayat lama: `prevCursor != null` → masih ada pesan lebih
+        // lama untuk dimuat saat scroll ke atas.
+        _oldestCursor = page.prevCursor;
+        _hasMoreOlder = page.prevCursor != null;
         _loading = false;
       });
-      // Seed dedupe reopen: tandai SEMUA pesan reopen yang sudah ada di
-      // riwayat awal sebagai "sudah dicatat" TANPA fire `chat_reopened`.
-      // Initial load memang tak lewat `_logReopenEvents`, tapi
-      // `_onPullToRefresh` melakukan full-redrain (`after: null`) yang
-      // MELEWATI `_mergeIncoming` → `_logReopenEvents`; tanpa seed ini,
-      // pull-to-refresh PERTAMA di sesi ini akan mem-fire ulang tiap reopen
-      // historis (set masih kosong). Seed = guard replay itu.
+      // Seed dedupe reopen: tandai pesan reopen di halaman terbaru sebagai
+      // "sudah dicatat" TANPA fire `chat_reopened` (pesan reopen historis
+      // bukan reopen BARU yang perlu dihitung). Riwayat lama yang dimuat
+      // belakangan via [_loadOlder] juga di-seed (bukan di-fire) di sana.
+      // Reopen yang benar-benar baru datang live tetap lewat
+      // `_mergeIncoming` → `_logReopenEvents`.
       _seedLoggedReopenIds(_messages);
       // Tandai riwayat sudah di-seed (F6) — jalur RECOVERY di
       // [_mergeIncoming] (initial load ini GAGAL lalu poll/wake pulih
@@ -402,6 +424,92 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
       cursor = page.nextCursor;
     }
     return collected;
+  }
+
+  /// Threshold (px) dari ATAS list untuk memicu load-more riwayat lama.
+  static const double _kLoadOlderThreshold = 320;
+
+  /// Listener scroll — begitu user mendekati ATAS list dan masih ada riwayat
+  /// lebih lama, muat satu halaman lagi. Guarded [_loadingOlder] supaya scroll
+  /// cepat tak menembak banyak fetch sekaligus.
+  ///
+  /// **Gate `_userTouchedScroll`:** ListView mulai di `pixels == 0` (atas)
+  /// SEBELUM `_settleInitialScroll` melompat ke bawah saat buka — tanpa gate
+  /// ini, load-older akan salah ter-trigger seketika saat buka (padahal user
+  /// sebenarnya sedang melihat pesan TERBARU di bawah). Melihat riwayat lama
+  /// inheren butuh drag ke atas dulu, jadi hanya izinkan setelah sentuhan
+  /// user NYATA (jump/animate terprogram menyetel flag ini `false`).
+  void _onScroll() {
+    if (!_userTouchedScroll) return;
+    if (!_hasMoreOlder || _loadingOlder || _loading) return;
+    if (!_scrollController.hasClients) return;
+    if (_scrollController.position.pixels <= _kLoadOlderThreshold) {
+      _loadOlder();
+    }
+  }
+
+  /// Muat SATU halaman pesan lebih lama (`fetchOlderMessages(before:
+  /// _oldestCursor)`) dan prepend ke `_messages`, dengan KOMPENSASI posisi
+  /// scroll: jarak dari BAWAH viewport dipertahankan konstan sebelum & sesudah
+  /// prepend, jadi konten yang sedang dibaca user tidak melompat saat pesan
+  /// lama disisipkan di atas.
+  ///
+  /// Batch lama diperlakukan sbg HISTORY untuk analitik reopen — di-seed ke
+  /// [_loggedReopenMessageIds] TANPA fire `chat_reopened` (persis seperti
+  /// riwayat awal di `_loadMessages`); tanpa ini, tiap pesan reopen di riwayat
+  /// lama akan salah dihitung sbg reopen baru saat di-scroll masuk.
+  Future<void> _loadOlder() async {
+    final chatId = _chatId;
+    final cursor = _oldestCursor;
+    if (chatId == null || cursor == null || _loadingOlder) return;
+    _loadingOlder = true;
+    if (mounted) setState(() {});
+    try {
+      final page = await chatService.fetchOlderMessages(chatId, before: cursor);
+      if (!mounted) return;
+      final older = page.messages;
+      // Seed reopen dari batch lama SEBELUM merge — history, bukan event baru.
+      _seedLoggedReopenIds(older);
+      // Jarak dari bawah = invariant saat prepend di atas; simpan sebelum
+      // mutasi supaya bisa dipulihkan setelah layout.
+      final hadClients = _scrollController.hasClients;
+      final distanceFromBottom = hadClients
+          ? _scrollController.position.maxScrollExtent -
+              _scrollController.position.pixels
+          : 0.0;
+      setState(() {
+        if (older.isNotEmpty) {
+          final merged = mergeChatMessages(_messages, older);
+          _messages
+            ..clear()
+            ..addAll(merged);
+        }
+        _oldestCursor = page.prevCursor;
+        _hasMoreOlder = page.prevCursor != null;
+      });
+      // Kompensasi posisi setelah frame layout baru terhitung — kunci ke
+      // jarak-dari-bawah yang sama supaya viewport tak melompat.
+      if (hadClients) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_scrollController.hasClients) return;
+          final target =
+              _scrollController.position.maxScrollExtent - distanceFromBottom;
+          _scrollController.jumpTo(
+            target.clamp(
+              _scrollController.position.minScrollExtent,
+              _scrollController.position.maxScrollExtent,
+            ),
+          );
+        });
+      }
+    } catch (e) {
+      // Load-more gagal (network flaky) — diam saja, biarkan user coba scroll
+      // lagi. Jangan ubah body jadi error; riwayat yang sudah tampil aman.
+      if (kDebugMode) debugPrint('[ChatRoomScreen] load-older gagal: $e');
+    } finally {
+      _loadingOlder = false;
+      if (mounted) setState(() {});
+    }
   }
 
   /// Terapkan [mergeChatMessages] ke `_messages` + bersihkan
@@ -685,14 +793,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     }
   }
 
-  /// Pull-to-refresh (`NataloPawRefreshIndicator`) → forward-drain PENUH
-  /// dari awal thread (`after: null`), bukan cuma dari [_afterCursor] —
-  /// resync total untuk cover kasus polling/wake sempat miss sesuatu.
+  /// Pull-to-refresh (`NataloPawRefreshIndicator`) → forward-drain pesan BARU
+  /// sejak [_afterCursor] (sama seperti poll tick, tapi manual) — resync
+  /// bagian terbaru untuk cover kasus polling/wake sempat miss sesuatu. TIDAK
+  /// lagi men-drain dari awal thread: riwayat lama dimuat via [_loadOlder]
+  /// saat scroll ke atas, jadi pull-to-refresh cukup mengejar yang baru.
   /// Pakai [_mergeIncoming] (BUKAN clear+replace mentah) supaya bubble
   /// optimistic yang mungkin lagi `sending` (user kirim pesan PAS menarik
-  /// refresh) tidak hilang — untuk kasus normal (tak ada pesan optimistic
-  /// in-flight) hasilnya identik dgn full-replace karena semua baris
-  /// server yang sudah dimiliki di-skip via dedupe by id.
+  /// refresh) tidak hilang.
   ///
   /// Menghormati `_pollInFlight` (sama seperti `_pollTick`) — kalau sebuah
   /// drain (poll tick) sudah jalan, skip: datanya sedang di-fetch toh, jadi
@@ -703,7 +811,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     if (_chatId == null || _pollInFlight || _authError) return;
     _pollInFlight = true;
     try {
-      final fetched = await _drainForward();
+      final fetched = await _drainForward(after: _afterCursor);
       if (!mounted) return;
       _mergeIncoming(fetched);
       _clearLoadErrorIfSet();
@@ -1444,33 +1552,59 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     // pola sama dgn layar lain yang pakai widget ini (mis. wishlist_screen).
     return NataloPawRefreshIndicator(
       onRefresh: _onPullToRefresh,
-      // NotificationListener DALAM NataloPawRefreshIndicator sendiri
-      // (yang juga NotificationListener) — nested listener aman, keduanya
-      // sama-sama return false (tidak menghentikan notification bubble ke
-      // parent). Tandai sentuhan NYATA (`dragDetails != null` — bukan
-      // jumpTo/animateTo terprogram dari _settleInitialScroll/_scrollToBottom)
-      // supaya re-pin ke bawah saat buka pertama berhenti begitu user betul2
-      // mulai scroll manual, lihat docstring `_userTouchedScroll`.
-      child: NotificationListener<ScrollStartNotification>(
-        onNotification: (n) {
-          if (n.dragDetails != null) _userTouchedScroll = true;
-          return false;
-        },
-        child: ListView.builder(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          itemCount: itemCount,
-          itemBuilder: (context, index) {
-            if (showResolvedNote && index == _messages.length) {
-              return const _ResolvedNote();
-            }
-            return Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: _buildMessageItem(_messages[index]),
-            );
-          },
-        ),
+      // Spinner load-more riwayat lama = OVERLAY (Positioned di Stack), BUKAN
+      // item list — supaya munculnya tak mengubah `maxScrollExtent` & merusak
+      // kompensasi posisi scroll di [_loadOlder] (yang mengunci jarak-dari-
+      // bawah saat prepend).
+      child: Stack(
+        children: [
+          // NotificationListener DALAM NataloPawRefreshIndicator sendiri
+          // (yang juga NotificationListener) — nested listener aman, keduanya
+          // sama-sama return false (tidak menghentikan notification bubble ke
+          // parent). Tandai sentuhan NYATA (`dragDetails != null` — bukan
+          // jumpTo/animateTo terprogram) supaya re-pin ke bawah saat buka
+          // pertama berhenti begitu user betul2 scroll manual, lihat
+          // docstring `_userTouchedScroll`.
+          NotificationListener<ScrollStartNotification>(
+            onNotification: (n) {
+              if (n.dragDetails != null) _userTouchedScroll = true;
+              return false;
+            },
+            child: ListView.builder(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              itemCount: itemCount,
+              itemBuilder: (context, index) {
+                if (showResolvedNote && index == _messages.length) {
+                  return const _ResolvedNote();
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                  child: _buildMessageItem(_messages[index]),
+                );
+              },
+            ),
+          ),
+          if (_loadingOlder)
+            const Positioned(
+              top: AppSpacing.sm,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: Center(
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: NataloColors.primary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

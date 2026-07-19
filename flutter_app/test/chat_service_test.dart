@@ -308,6 +308,76 @@ void main() {
     });
   });
 
+  group('ChatService.fetchLatestMessages', () {
+    test('kirim ?dir=older TANPA before & parse prevCursor', () async {
+      final fake = _FakeApiClient(getResponses: {
+        '/api/chat/cust_1': {
+          'messages': [
+            {
+              'id': 'm9',
+              'createdAt': 900,
+              'senderRole': 'customer',
+              'type': 'text',
+              'text': 'terbaru',
+            },
+          ],
+          // Backend balas prevCursor NUMBER (Firestore createdAt) — toleran.
+          'prevCursor': 850,
+          'nextCursor': null,
+        },
+      });
+      final service = ChatService(client: fake);
+
+      final page = await service.fetchLatestMessages('cust_1');
+
+      expect(page.messages.single.id, 'm9');
+      expect(page.prevCursor, '850');
+      // Mode mundur tak memakai nextCursor.
+      expect(page.nextCursor, isNull);
+      expect(fake.getCalls.single['query'], {'dir': 'older'});
+    });
+
+    test('prevCursor null -> awal thread (tak ada riwayat lebih lama)',
+        () async {
+      final fake = _FakeApiClient(getResponses: {
+        '/api/chat/cust_1': {'messages': [], 'prevCursor': null},
+      });
+      final service = ChatService(client: fake);
+
+      final page = await service.fetchLatestMessages('cust_1');
+
+      expect(page.messages, isEmpty);
+      expect(page.prevCursor, isNull);
+    });
+  });
+
+  group('ChatService.fetchOlderMessages', () {
+    test('kirim ?dir=older&before=<cursor> & parse prevCursor', () async {
+      final fake = _FakeApiClient(getResponses: {
+        '/api/chat/cust_1': {
+          'messages': [
+            {
+              'id': 'm1',
+              'createdAt': 100,
+              'senderRole': 'customer',
+              'type': 'text',
+              'text': 'lama',
+            },
+          ],
+          'prevCursor': 90,
+          'nextCursor': null,
+        },
+      });
+      final service = ChatService(client: fake);
+
+      final page = await service.fetchOlderMessages('cust_1', before: 500);
+
+      expect(page.messages.single.id, 'm1');
+      expect(page.prevCursor, '90');
+      expect(fake.getCalls.single['query'], {'dir': 'older', 'before': '500'});
+    });
+  });
+
   group('ChatService.fetchUnread', () {
     test('parse unreadForCustomer angka', () async {
       final fake = _FakeApiClient(getResponses: {

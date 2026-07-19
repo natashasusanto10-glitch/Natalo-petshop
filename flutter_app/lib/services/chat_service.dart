@@ -164,9 +164,21 @@ class ChatSendResult {
 /// expose sbg `String?` supaya caller tak perlu tahu tipe mentahnya.
 class ChatMessagesPage {
   final List<ChatMessage> messages;
+
+  /// Cursor MAJU (mode `?after=`) — pesan lebih BARU dari batch ini. null =
+  /// sudah di ujung terbaru (atau mode mundur, yang tak memakainya).
   final String? nextCursor;
 
-  const ChatMessagesPage({this.messages = const [], this.nextCursor});
+  /// Cursor MUNDUR (mode `?dir=older`) — `createdAt` tertua di batch, dipakai
+  /// memuat pesan lebih LAMA lagi saat scroll ke atas. null = tak ada riwayat
+  /// lebih lama (sudah di awal thread), atau mode maju (yang tak memakainya).
+  final String? prevCursor;
+
+  const ChatMessagesPage({
+    this.messages = const [],
+    this.nextCursor,
+    this.prevCursor,
+  });
 }
 
 /// Config kill-switch + jam operasional (`GET /api/chat/config`, fix B3).
@@ -283,6 +295,48 @@ class ChatService {
     return ChatMessagesPage(
       messages: messages,
       nextCursor: cursorRaw?.toString(),
+    );
+  }
+
+  /// Ambil halaman TERBARU room (mode `?dir=older` tanpa `before`) — dipakai
+  /// saat buka room supaya cuma SATU round-trip (bukan drain seluruh riwayat
+  /// maju). `prevCursor` di hasil menunjuk ke pesan lebih lama untuk
+  /// [fetchOlderMessages] saat scroll ke atas. `before` bermode mundur
+  /// menandai halaman terbaru sudah di-mark-read di server.
+  Future<ChatMessagesPage> fetchLatestMessages(String chatId) {
+    return _fetchBackward(chatId, before: null);
+  }
+
+  /// Ambil satu halaman pesan lebih LAMA dari [before] (mode
+  /// `?dir=older&before=`) — dipanggil saat user scroll ke atas untuk memuat
+  /// riwayat lama secara bertahap. N+`prevCursor` null = sudah mentok di awal
+  /// thread. Halaman lama TIDAK men-trigger mark-read di server.
+  Future<ChatMessagesPage> fetchOlderMessages(
+    String chatId, {
+    required Object before,
+  }) {
+    return _fetchBackward(chatId, before: before);
+  }
+
+  Future<ChatMessagesPage> _fetchBackward(
+    String chatId, {
+    required Object? before,
+  }) async {
+    final data = await _client.getJson(
+      '/api/chat/${Uri.encodeComponent(chatId)}',
+      query: {
+        'dir': 'older',
+        if (before != null) 'before': '$before',
+      },
+    );
+    final map =
+        data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+    final rawMessages = map['messages'];
+    final messages = mapMessages(rawMessages is List ? rawMessages : const []);
+    final prevRaw = map['prevCursor'];
+    return ChatMessagesPage(
+      messages: messages,
+      prevCursor: prevRaw?.toString(),
     );
   }
 
