@@ -5,6 +5,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
@@ -13,6 +14,8 @@ import 'package:visibility_detector/visibility_detector.dart';
 
 import '../config/api_config.dart';
 import '../features/feed/layout/postingan_media_aspect_ratio.dart';
+import '../features/feed/transition/post_detail_transition_session.dart';
+import '../features/feed/transition/post_detail_visibility_tracker.dart';
 import '../features/feed/widgets/double_tap_burst_guard.dart';
 import '../features/feed/widgets/feed_post_shared_widgets.dart';
 import '../features/feed/video/post_video_coordinator.dart';
@@ -63,6 +66,12 @@ PlaybackSessionFactory? debugPostVideoSessionFactory;
 
 @visibleForTesting
 void Function(String sessionId, String url)? debugPostVideoSessionUrlObserver;
+
+/// Seam untuk mengisolasi boundary HTTP delete pada widget regression. Seluruh
+/// dialog, state mutation, key synchronization, dan session invalidation tetap
+/// berjalan lewat jalur production yang sama.
+@visibleForTesting
+Future<bool> Function(String postId)? debugPostDelete;
 
 /// Detail Postingan style Instagram Feed — continuous vertical scroll list
 /// of user's own posts (Postingan Saya).
@@ -122,6 +131,7 @@ class MemberPostDetailScreen extends StatefulWidget {
   final PostVideoWarmHandoff? warmVideoHandoff;
   final String? initialNextCursor;
   final ScopedPostPageLoader? loadMoreScopedPosts;
+  final PostDetailTransitionSession? transitionSession;
 
   const MemberPostDetailScreen({
     super.key,
@@ -139,6 +149,7 @@ class MemberPostDetailScreen extends StatefulWidget {
     this.warmVideoHandoff,
     this.initialNextCursor,
     this.loadMoreScopedPosts,
+    this.transitionSession,
   });
 
   @override
@@ -147,8 +158,21 @@ class MemberPostDetailScreen extends StatefulWidget {
 
 class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     with WidgetsBindingObserver, RouteAware {
-  late final ScrollController _scrollController;
+  ScrollController? _scrollController;
   late List<FeedPost> _posts;
+  late final PostDetailVisibilityTracker _visibilityTracker;
+  late final List<GlobalKey> _postMediaKeys;
+  final GlobalKey _listViewportKey = GlobalKey();
+  String? _nextCursor;
+  bool _loadingMore = false;
+  bool _visibilityMeasureScheduled = false;
+  bool _scrollInProgress = false;
+  bool _routeCovered = false;
+  bool _lastSessionFrozen = false;
+  bool _lastPlaybackAllowed = true;
+  FeedPost? _transitionFallbackPost;
+  bool _transitionFallbackVisible = false;
+  bool _settlingTransitionFallback = false;
 
   // ── Playback coordinator (T3a, plan 2026-07-13) ─────────────────────
   // Coordinator memiliki SEMUA controller video di halaman ini + fullscreen
@@ -210,7 +234,12 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
         ? [widget.post]
         : List<FeedPost>.from(source);
     _postKeys = List.generate(_posts.length, (_) => GlobalKey());
-    _scrollController = ScrollController();
+    _postMediaKeys = List.generate(_posts.length, (_) => GlobalKey());
+    final initialIndex = widget.initialIndex.clamp(0, _posts.length - 1);
+    _visibilityTracker = PostDetailVisibilityTracker(
+      initialPostId: _posts[initialIndex].id,
+    );
+    _nextCursor = widget.initialNextCursor;
     _playbackNetworkTier = videoQualityService.currentTier;
     // Prapopulasi URL video utama tiap post (video item non-carousel).
     for (final post in _posts) {
@@ -250,6 +279,12 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       // until the source route eventually regains control.
       unawaited(warmHandoff.disposeIfUnclaimed());
     }
+    final transitionSession = widget.transitionSession;
+    if (transitionSession != null) {
+      _lastSessionFrozen = transitionSession.isFrozen;
+      _lastPlaybackAllowed = transitionSession.playbackAllowed;
+      transitionSession.addListener(_onTransitionSessionChanged);
+    }
     // Lifecycle app (background/foreground) — pause/resume SEMUA sesi (§2.5),
     // menutup audio hantu #2. Route visibility didaftarkan di
     // didChangeDependencies (butuh context).
@@ -267,10 +302,6 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       _likedCache[post.id] = fresh.viewerLiked || fresh.isLiked;
     }
     feedStore.addListener(_onFeedStoreChanged);
-    // Jump ke post target setelah first frame settled. Pakai
-    // Scrollable.ensureVisible via GlobalKey context — Flutter handle
-    // layout precisely, gak ada drift estimasi.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToInitial());
   }
 
   FeedPost? _postForSession(String sessionId) {
@@ -315,6 +346,199 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     if (anyChanged) setState(() {});
   }
 
+  bool get _playbackAllowed =>
+      widget.transitionSession?.playbackAllowed ?? true;
+
+  bool get _canResumePlayback =>
+      _playbackAllowed &&
+      _lastLifecycle == AppLifecycleState.resumed &&
+      !_routeCovered &&
+      !_handoffInProgress;
+
+  void _onTransitionSessionChanged() {
+    final session = widget.transitionSession;
+    if (session == null || !mounted) return;
+
+    final resumedAfterCancel = _lastSessionFrozen && !session.isFrozen;
+    _lastSessionFrozen = session.isFrozen;
+    if (resumedAfterCancel) {
+      // The session unfreezes before notifying. A new preparation therefore
+      // receives a fresh generation and cannot be replaced by the canceled
+      // gesture's late result.
+      unawaited(session.prepareActiveTarget());
+    }
+
+    final playbackChanged = _lastPlaybackAllowed != session.playbackAllowed;
+    _lastPlaybackAllowed = session.playbackAllowed;
+    if (playbackChanged) {
+      if (_canResumePlayback) {
+        _videoCoordinator.resumeAll();
+      } else {
+        _videoCoordinator.pauseAll();
+      }
+      setState(() {});
+    }
+
+    if (session.playbackAllowed && _transitionFallbackPost != null) {
+      unawaited(_settleTransitionFallback());
+    }
+  }
+
+  Future<void> _completeTransitionReadiness(int targetIndex) async {
+    final session = widget.transitionSession;
+    final controller = _scrollController;
+    if (session == null || controller == null) return;
+
+    // Keep the constructor-time state observable as `preparing`. The initial
+    // offset is already installed on the controller for the first layout; the
+    // bounded exact-correction loop begins on the following frame.
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    final stopwatch = Stopwatch()..start();
+    for (var pass = 0;
+        pass < 3 && stopwatch.elapsed < const Duration(milliseconds: 75);
+        pass++) {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || targetIndex >= _postKeys.length) return;
+      final itemContext = _postKeys[targetIndex].currentContext;
+      if (itemContext == null) {
+        _jumpNearPost(targetIndex);
+        continue;
+      }
+      final box = itemContext.findRenderObject() as RenderBox?;
+      if (box == null || !controller.hasClients) continue;
+      final viewport = RenderAbstractViewport.maybeOf(box);
+      if (viewport == null) continue;
+      final revealOffset = viewport.getOffsetToReveal(box, 0).offset;
+      final position = controller.position;
+      final boundedOffset = revealOffset
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble();
+      if ((boundedOffset - controller.offset).abs() > 1) {
+        controller.jumpTo(boundedOffset);
+        continue;
+      }
+      session.markDestinationReady(
+        PostDetailDestinationReadiness.geometryReady,
+      );
+      _scheduleVisibilityMeasure();
+      return;
+    }
+
+    if (!mounted || targetIndex >= _posts.length) return;
+    setState(() {
+      _transitionFallbackPost = _posts[targetIndex];
+      _transitionFallbackVisible = true;
+    });
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    session.markDestinationReady(
+      PostDetailDestinationReadiness.crossfadeFallback,
+    );
+  }
+
+  Future<void> _settleTransitionFallback() async {
+    if (_settlingTransitionFallback) return;
+    final fallbackPost = _transitionFallbackPost;
+    if (fallbackPost == null) return;
+    _settlingTransitionFallback = true;
+    try {
+      final targetIndex = _posts.indexWhere(
+        (post) => post.id == fallbackPost.id,
+      );
+      if (targetIndex >= 0) {
+        _jumpNearPost(targetIndex);
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
+        final itemContext = _postKeys[targetIndex].currentContext;
+        final box = itemContext?.findRenderObject() as RenderBox?;
+        final viewport =
+            box == null ? null : RenderAbstractViewport.maybeOf(box);
+        final controller = _scrollController;
+        if (viewport != null && controller != null && controller.hasClients) {
+          final position = controller.position;
+          final offset = viewport
+              .getOffsetToReveal(box!, 0)
+              .offset
+              .clamp(position.minScrollExtent, position.maxScrollExtent)
+              .toDouble();
+          controller.jumpTo(offset);
+          await WidgetsBinding.instance.endOfFrame;
+        }
+      }
+      if (!mounted) return;
+      setState(() => _transitionFallbackVisible = false);
+      await Future<void>.delayed(const Duration(milliseconds: 160));
+      if (!mounted) return;
+      setState(() => _transitionFallbackPost = null);
+      _scheduleVisibilityMeasure();
+    } finally {
+      _settlingTransitionFallback = false;
+    }
+  }
+
+  bool _onPostScroll(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+    _scrollInProgress = notification is! ScrollEndNotification;
+    _scheduleVisibilityMeasure();
+    if (notification.metrics.extentAfter < 800) {
+      unawaited(_loadNextPostPage());
+    }
+    return false;
+  }
+
+  void _scheduleVisibilityMeasure() {
+    if (_visibilityMeasureScheduled) return;
+    _visibilityMeasureScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _visibilityMeasureScheduled = false;
+      if (!mounted) return;
+      _measurePostVisibility();
+    });
+  }
+
+  void _measurePostVisibility() {
+    final viewportBox =
+        _listViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null || !viewportBox.hasSize) return;
+    final viewportRect =
+        viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
+    final samples = <PostVisibilitySample>[];
+    for (var index = 0;
+        index < _postMediaKeys.length && index < _posts.length;
+        index++) {
+      final mediaBox = _postMediaKeys[index].currentContext?.findRenderObject()
+          as RenderBox?;
+      if (mediaBox == null || !mediaBox.hasSize) continue;
+      final mediaRect = mediaBox.localToGlobal(Offset.zero) & mediaBox.size;
+      final intersection = mediaRect.intersect(viewportRect);
+      final visibleArea =
+          intersection.isEmpty ? 0.0 : intersection.width * intersection.height;
+      final mediaArea = mediaRect.width * mediaRect.height;
+      samples.add(
+        PostVisibilitySample(
+          postId: _posts[index].id,
+          visibleFraction: mediaArea <= 0 ? 0 : visibleArea / mediaArea,
+          visibleArea: visibleArea,
+          mediaCenterDistance:
+              (mediaRect.center.dy - viewportRect.center.dy).abs(),
+        ),
+      );
+    }
+
+    final activeId = _visibilityTracker.update(
+      samples,
+      scrollInProgress: _scrollInProgress,
+    );
+    if (activeId == null) return;
+    final activeIndex = _posts.indexWhere((post) => post.id == activeId);
+    if (activeIndex < 0) return;
+    final session = widget.transitionSession;
+    if (session == null) return;
+    session.reportActivePost(_posts[activeIndex]);
+    unawaited(session.prepareActiveTarget());
+  }
+
   void _jumpToInitial() {
     final targetIndex = widget.initialIndex;
     if (targetIndex <= 0 || targetIndex >= _posts.length) {
@@ -327,15 +551,17 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   }
 
   void _jumpNearPost(int targetIndex) {
-    if (!_scrollController.hasClients) return;
-    final maxExtent = _scrollController.position.maxScrollExtent;
+    final controller = _scrollController;
+    if (controller == null || !controller.hasClients) return;
+    final maxExtent = controller.position.maxScrollExtent;
     final approxOffset = _estimatedOffsetToPost(context, targetIndex);
     final targetOffset = approxOffset.clamp(0.0, maxExtent).toDouble();
-    _scrollController.jumpTo(targetOffset);
+    controller.jumpTo(targetOffset);
   }
 
   void _ensurePostVisible(int targetIndex, {required int attemptsLeft}) {
-    if (!mounted || !_scrollController.hasClients) return;
+    final controller = _scrollController;
+    if (!mounted || controller == null || !controller.hasClients) return;
     final ctx = _postKeys[targetIndex].currentContext;
     if (ctx != null) {
       Scrollable.ensureVisible(
@@ -348,10 +574,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       // header frosted yang overlay. Geser balik sebesar tinggi header supaya
       // post target mendarat di bawah header (tidak ketutup), konsisten dgn
       // framing post pertama yang dapat top-padding ListView.
-      final headerInset =
-          MediaQuery.paddingOf(context).top + kToolbarHeight;
-      final pos = _scrollController.position;
-      _scrollController.jumpTo(
+      final headerInset = MediaQuery.paddingOf(context).top + kToolbarHeight;
+      final pos = controller.position;
+      controller.jumpTo(
         (pos.pixels - headerInset).clamp(0.0, pos.maxScrollExtent).toDouble(),
       );
       return;
@@ -398,6 +623,19 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (_scrollController == null) {
+      final targetIndex = widget.initialIndex.clamp(0, _posts.length - 1);
+      final offset = widget.transitionSession == null
+          ? 0.0
+          : _estimatedOffsetToPost(context, targetIndex);
+      _scrollController = ScrollController(initialScrollOffset: offset);
+      if (widget.transitionSession == null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToInitial());
+      } else {
+        unawaited(_completeTransitionReadiness(targetIndex));
+      }
+      _scheduleVisibilityMeasure();
+    }
     // RouteAware SEKALI di level halaman (§2.5) — pause deterministik saat
     // route lain (opaque) menutup halaman, resume saat kembali.
     final route = ModalRoute.of(context);
@@ -417,7 +655,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       case AppLifecycleState.resumed:
         // Selama handoff, fullscreen di atas yang mengurus playback; jangan
         // resume video asal di belakang (akan bersuara di balik fullscreen).
-        if (!_handoffInProgress) {
+        if (_canResumePlayback) {
           _videoCoordinator.resumeAll();
         }
       case AppLifecycleState.detached:
@@ -433,6 +671,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     // tanpa men-suspend coordinator, supaya resume saat kembali instan.
     if (_handoffInProgress) return;
     if (lastPushedRouteIsOpaque()) {
+      _routeCovered = true;
       _videoCoordinator.pauseAll();
     }
   }
@@ -443,7 +682,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     // resume. Untuk handoff, resume diurus di `_openScopedVideoFeed` setelah
     // await push selesai (urutan re-attach → setOrigin(null), §2.6).
     if (_handoffInProgress) return;
-    _videoCoordinator.resumeAll();
+    _routeCovered = false;
+    if (_canResumePlayback) _videoCoordinator.resumeAll();
   }
 
   /// Dipanggil inline saat hendak attach — mendaftarkan URL sessionId supaya
@@ -540,10 +780,11 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   @override
   void dispose() {
     feedStore.removeListener(_onFeedStoreChanged);
+    widget.transitionSession?.removeListener(_onTransitionSessionChanged);
     appRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
     _videoCoordinator.dispose();
-    _scrollController.dispose();
+    _scrollController?.dispose();
     super.dispose();
   }
 
@@ -643,7 +884,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     try {
       await showFeedCommentDrawer(context, post: post);
     } finally {
-      if (wasPlaying && mounted) _videoCoordinator.resumeAll();
+      if (wasPlaying && mounted && _canResumePlayback) {
+        _videoCoordinator.resumeAll();
+      }
     }
   }
 
@@ -753,10 +996,17 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     );
     if (confirmed != true || !mounted) return;
     try {
-      final ok = await feedService.deleteMyPost(post.id);
+      final deletePost = debugPostDelete ?? feedService.deleteMyPost;
+      final ok = await deletePost(post.id);
       if (!mounted) return;
       if (ok) {
-        setState(() => _posts.removeAt(index));
+        setState(() {
+          _posts.removeAt(index);
+          _postKeys.removeAt(index);
+          _postMediaKeys.removeAt(index);
+        });
+        widget.transitionSession?.invalidatePost(post.id);
+        _scheduleVisibilityMeasure();
         // Sync ke FeedStore — Reels feed / grid lain ikut hilang.
         feedStore.removePost(post.id);
         AppToast.show(context, 'Postingan dihapus');
@@ -833,66 +1083,90 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                 )
               : NataloPawRefreshIndicator(
                   onRefresh: _refreshPosts,
-                  child: ListView.separated(
-                    controller: _scrollController,
-                    cacheExtent: _maximumEstimatedPostExtent(context) * 2,
-                    // Top: media post pertama mulai TEPAT di bawah header (status
-                    // bar + toolbar), jadi saat pertama buka media tidak "over ke
-                    // atas" / kepotong — framing 9:16 utuh (paritas IG). Saat
-                    // discroll, media lewat di belakang header frosted-tipis.
-                    // Bottom: extra space supaya post terakhir bisa discroll lega
-                    // ke atas viewport (gak mepet ke home indicator).
-                    padding: EdgeInsets.only(
-                      top: MediaQuery.paddingOf(context).top + kToolbarHeight,
-                      bottom: 48,
-                    ),
-                    // Fling diredam ala IG — lihat CalmScrollPhysics.
-                    physics: const CalmScrollPhysics(),
-                    itemCount: _posts.length,
-                    // Whitespace pemisah antar post tetap ada, tapi lebih compact
-                    // supaya detail terasa seperti feed/post Instagram.
-                    separatorBuilder: (_, __) => const SizedBox(height: 24),
-                    itemBuilder: (context, index) {
-                      final post = _posts[index];
-                      return _PostFeedItem(
-                        // GlobalKey untuk Scrollable.ensureVisible jump akurat
-                        // ke post target saat initial open dari grid.
-                        key: _postKeys[index],
-                        post: post,
-                        coordinator: _videoCoordinator,
-                        registerVideoUrl: _registerVideoUrl,
-                        handoffSessionId: _handoffSessionId,
-                        memberName: widget.authorPerPost
-                            ? _authorNameFor(post)
-                            : _memberName,
-                        memberInitial: widget.authorPerPost
-                            ? _authorInitialFor(post)
-                            : _memberInitial,
-                        memberPhotoUrl: widget.authorPerPost
-                            ? _authorPhotoFor(post)
-                            : _memberPhotoUrl,
-                        memberIsOfficial: widget.authorPerPost
-                            ? post.author.isOfficialAccount
-                            : widget.authorIsOfficial,
-                        liked: _likedCache[post.id] ?? false,
-                        // Hide ... menu ketika viewing post user lain — tidak ada
-                        // edit/delete option untuk non-owner. (Bisa ekspansi nanti
-                        // ke Report/Block via tombol terpisah kalau perlu.)
-                        showMenu: widget.isOwner,
-                        // Status badge owner-only (Menunggu review/Ditolak).
-                        showStatusBadge: widget.isOwner,
-                        onLike: () => _toggleLike(index),
-                        onComment: () => _openComments(index),
-                        onShare: () => _shareNative(index),
-                        onMenuTap:
-                            widget.isOwner ? () => _openPostMenu(index) : null,
-                        onOpenScopedFeed: (sessionId, anchorKey) =>
-                            _openScopedVideoFeed(index, sessionId, anchorKey),
-                        onVideoAnchorReady: (postId, anchorKey) {
-                          _videoAnchorKeys[postId] = anchorKey;
+                  child: AnimatedOpacity(
+                    opacity: _transitionFallbackPost != null &&
+                            _transitionFallbackVisible
+                        ? 0
+                        : 1,
+                    duration: const Duration(milliseconds: 160),
+                    child: NotificationListener<ScrollNotification>(
+                      onNotification: _onPostScroll,
+                      child: ListView.separated(
+                        key: _listViewportKey,
+                        controller: _scrollController,
+                        cacheExtent:
+                            _maximumEstimatedPostExtent(context) * 2,
+                        // Top: media post pertama mulai TEPAT di bawah header (status
+                        // bar + toolbar), jadi saat pertama buka media tidak "over ke
+                        // atas" / kepotong — framing 9:16 utuh (paritas IG). Saat
+                        // discroll, media lewat di belakang header frosted-tipis.
+                        // Bottom: extra space supaya post terakhir bisa discroll lega
+                        // ke atas viewport (gak mepet ke home indicator).
+                        padding: EdgeInsets.only(
+                          top: MediaQuery.paddingOf(context).top +
+                              kToolbarHeight,
+                          bottom: 48,
+                        ),
+                        // Fling diredam ala IG — lihat CalmScrollPhysics.
+                        physics: const CalmScrollPhysics(),
+                        itemCount: _posts.length,
+                        // Whitespace pemisah antar post tetap ada, tapi lebih compact
+                        // supaya detail terasa seperti feed/post Instagram.
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(height: 24),
+                        itemBuilder: (context, index) {
+                          final post = _posts[index];
+                          return KeyedSubtree(
+                            key: ValueKey('post-detail-item-${post.id}'),
+                            child: _PostFeedItem(
+                              // GlobalKey untuk Scrollable.ensureVisible jump akurat
+                              // ke post target saat initial open dari grid.
+                              key: _postKeys[index],
+                              mediaKey: _postMediaKeys[index],
+                              post: post,
+                              coordinator: _videoCoordinator,
+                              playbackAllowed: _playbackAllowed,
+                              registerVideoUrl: _registerVideoUrl,
+                              handoffSessionId: _handoffSessionId,
+                              memberName: widget.authorPerPost
+                                  ? _authorNameFor(post)
+                                  : _memberName,
+                              memberInitial: widget.authorPerPost
+                                  ? _authorInitialFor(post)
+                                  : _memberInitial,
+                              memberPhotoUrl: widget.authorPerPost
+                                  ? _authorPhotoFor(post)
+                                  : _memberPhotoUrl,
+                              memberIsOfficial: widget.authorPerPost
+                                  ? post.author.isOfficialAccount
+                                  : widget.authorIsOfficial,
+                              liked: _likedCache[post.id] ?? false,
+                              // Hide ... menu ketika viewing post user lain — tidak ada
+                              // edit/delete option untuk non-owner. (Bisa ekspansi nanti
+                              // ke Report/Block via tombol terpisah kalau perlu.)
+                              showMenu: widget.isOwner,
+                              // Status badge owner-only (Menunggu review/Ditolak).
+                              showStatusBadge: widget.isOwner,
+                              onLike: () => _toggleLike(index),
+                              onComment: () => _openComments(index),
+                              onShare: () => _shareNative(index),
+                              onMenuTap: widget.isOwner
+                                  ? () => _openPostMenu(index)
+                                  : null,
+                              onOpenScopedFeed: (sessionId, anchorKey) =>
+                                  _openScopedVideoFeed(
+                                    index,
+                                    sessionId,
+                                    anchorKey,
+                                  ),
+                              onVideoAnchorReady: (postId, anchorKey) {
+                                _videoAnchorKeys[postId] = anchorKey;
+                              },
+                            ),
+                          );
                         },
-                      );
-                    },
+                      ),
+                    ),
                   ),
                 ),
           Positioned(
@@ -920,6 +1194,16 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                   widget.authorIsFollowing ?? widget.post.author.isFollowing,
             ),
           ),
+          if (_transitionFallbackPost case final fallbackPost?)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: _transitionFallbackVisible ? 1 : 0,
+                  duration: const Duration(milliseconds: 160),
+                  child: _PostTransitionFallback(post: fallbackPost),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1056,30 +1340,48 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   }
 
   Future<FeedPage> _loadMoreScopedPosts(String? cursor) async {
+    return _loadNextPostPage();
+  }
+
+  Future<FeedPage> _loadNextPostPage() async {
     final loader = widget.loadMoreScopedPosts;
-    if (loader == null) return const FeedPage();
-    final page = await loader(cursor);
-    final freshPosts = page.items.where((post) {
-      return !_posts.any((existing) => existing.id == post.id);
-    }).toList(growable: false);
-    for (final post in page.items.where((post) => post.isVideo)) {
-      _videoUrls[post.id] = _resolvePostVideoUrl(post);
+    final cursor = _nextCursor;
+    if (loader == null || cursor == null || _loadingMore) {
+      return const FeedPage();
     }
-    if (freshPosts.isNotEmpty && mounted) {
-      feedStore.mergeFromServer(freshPosts, fetchedAt: DateTime.now());
+    _loadingMore = true;
+    try {
+      final page = await loader(cursor);
+      if (!mounted) return page;
+      final known = _posts.map((post) => post.id).toSet();
+      final freshPosts = page.items
+          .where((post) => known.add(post.id))
+          .toList(growable: false);
+      for (final post in freshPosts.where((post) => post.isVideo)) {
+        _videoUrls[post.id] = _resolvePostVideoUrl(post);
+      }
+      if (freshPosts.isNotEmpty) {
+        feedStore.mergeFromServer(freshPosts, fetchedAt: DateTime.now());
+      }
       setState(() {
-        _posts = [..._posts, ...freshPosts];
+        _posts.addAll(freshPosts);
         _postKeys.addAll(
           List<GlobalKey>.generate(freshPosts.length, (_) => GlobalKey()),
         );
+        _postMediaKeys.addAll(
+          List<GlobalKey>.generate(freshPosts.length, (_) => GlobalKey()),
+        );
+        _nextCursor = page.nextCursor;
       });
+      widget.transitionSession?.reportLoadedPage(page);
+      _scheduleVisibilityMeasure();
+      return page;
+    } finally {
+      _loadingMore = false;
     }
-    return page;
   }
 
-  Future<List<FeedPost>> _hydrateScopedVideoPosts(
-    List<FeedPost> source,
-  ) async {
+  Future<List<FeedPost>> _hydrateScopedVideoPosts(List<FeedPost> source) async {
     final fetchById = debugScopedFeedPostFetcher ?? feedService.fetchPostById;
     return Future.wait(
       source.map((localPost) async {
@@ -1116,9 +1418,13 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     if (index < 0) return;
 
     // Keep the destination inline dormant while the list is repositioned.
-    _scrollController.jumpTo(
-      _estimatedOffsetToPost(context, index)
-          .clamp(0.0, _scrollController.position.maxScrollExtent),
+    final controller = _scrollController;
+    if (controller == null || !controller.hasClients) return;
+    controller.jumpTo(
+      _estimatedOffsetToPost(
+        context,
+        index,
+      ).clamp(0.0, controller.position.maxScrollExtent),
     );
     if (mounted) setState(() => _handoffSessionId = result.postId);
     await WidgetsBinding.instance.endOfFrame;
@@ -1145,7 +1451,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   void _endHandoff({required bool resume}) {
     _handoffInProgress = false;
     final origin = _handoffSessionId;
-    final resumed = _lastLifecycle == AppLifecycleState.resumed;
+    final resumed = _canResumePlayback;
     // BUG FIX (T7-integrasi): saat user swipe menjauh di fullscreen, active
     // coordinator jadi B/C — dan B kini OFFSCREEN. Kalau kita cuma
     // `resumeAll()`, ia memutar active BASI (B) → audio hantu (unmuted) /
@@ -1187,6 +1493,7 @@ bool _sameLikerIds(List<FeedAuthor> a, List<FeedAuthor> b) {
 
 class _PostFeedItem extends StatefulWidget {
   final FeedPost post;
+  final GlobalKey mediaKey;
 
   /// Coordinator playback milik halaman (T3a) — inline video meminjam sesi
   /// darinya alih-alih membuat controller sendiri.
@@ -1199,6 +1506,7 @@ class _PostFeedItem extends StatefulWidget {
   /// SessionId yang sedang di-handoff ke fullscreen → inline dengan id ini
   /// masuk mode dormant (frozen frame). Null = tak ada handoff.
   final String? handoffSessionId;
+  final bool playbackAllowed;
 
   final String memberName;
   final String memberInitial;
@@ -1232,9 +1540,11 @@ class _PostFeedItem extends StatefulWidget {
   const _PostFeedItem({
     super.key,
     required this.post,
+    required this.mediaKey,
     required this.coordinator,
     required this.registerVideoUrl,
     required this.handoffSessionId,
+    required this.playbackAllowed,
     required this.memberName,
     required this.memberInitial,
     required this.memberPhotoUrl,
@@ -1534,33 +1844,40 @@ class _PostFeedItemState extends State<_PostFeedItem>
           behavior: HitTestBehavior.opaque,
           onDoubleTapDown: post.isVideo ? null : _rememberHeartBurstPosition,
           onDoubleTap: post.isVideo ? null : _handleDoubleTap,
-          child: Stack(
-            children: [
-              _PostMediaSurface(
-                post: post,
-                coordinator: widget.coordinator,
-                registerVideoUrl: widget.registerVideoUrl,
-                handoffSessionId: widget.handoffSessionId,
-                onVideoAnchorReady: _rememberVideoAnchor,
-                onVideoMediaSingleTap: _handleVideoSingleTap,
-                onVideoMediaDoubleTapDown: _rememberHeartBurstPosition,
-                onVideoMediaDoubleTap: _handleDoubleTap,
-              ),
-              if (post.isVideo)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: _VideoPostAuthorOverlay(
-                    memberName: memberName,
-                    memberInitial: memberInitial,
-                    memberPhotoUrl: memberPhotoUrl,
-                    isOfficial: widget.memberIsOfficial,
-                    authorUsername: post.author.username,
-                    onMenuTap: widget.onMenuTap,
+          child: KeyedSubtree(
+            key: widget.mediaKey,
+            child: KeyedSubtree(
+              key: ValueKey('post-detail-media-${post.id}'),
+              child: Stack(
+                children: [
+                  _PostMediaSurface(
+                    post: post,
+                    coordinator: widget.coordinator,
+                    registerVideoUrl: widget.registerVideoUrl,
+                    handoffSessionId: widget.handoffSessionId,
+                    playbackAllowed: widget.playbackAllowed,
+                    onVideoAnchorReady: _rememberVideoAnchor,
+                    onVideoMediaSingleTap: _handleVideoSingleTap,
+                    onVideoMediaDoubleTapDown: _rememberHeartBurstPosition,
+                    onVideoMediaDoubleTap: _handleDoubleTap,
                   ),
-                ),
-            ],
+                  if (post.isVideo)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: _VideoPostAuthorOverlay(
+                        memberName: memberName,
+                        memberInitial: memberInitial,
+                        memberPhotoUrl: memberPhotoUrl,
+                        isOfficial: widget.memberIsOfficial,
+                        authorUsername: post.author.username,
+                        onMenuTap: widget.onMenuTap,
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
         // Action row di-padding sedikit dari edge.
@@ -2627,11 +2944,65 @@ class _PostStatusBadge extends StatelessWidget {
 
 // ─── Media surface — switcher per content type ──────────────────────
 
+/// Target-specific stable presentation used only when exact list geometry
+/// misses the bounded opening budget. It never constructs an inline video or
+/// decodes new media on the transition path.
+class _PostTransitionFallback extends StatelessWidget {
+  const _PostTransitionFallback({required this.post});
+
+  final FeedPost post;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final caption = (post.caption ?? '').trim();
+    return ColoredBox(
+      key: ValueKey('post-detail-transition-fallback-${post.id}'),
+      color: colors.surface,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: kToolbarHeight),
+            const Expanded(
+              child: ColoredBox(
+                color: Color(0xFF111827),
+                child: Center(
+                  child: Icon(
+                    Icons.image_outlined,
+                    color: Colors.white24,
+                    size: 72,
+                  ),
+                ),
+              ),
+            ),
+            if (caption.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
+                child: Text(
+                  caption,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colors.onSurface,
+                    fontSize: 13.5,
+                    fontWeight: NataloWeight.body,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _PostMediaSurface extends StatelessWidget {
   final FeedPost post;
   final PostVideoCoordinator coordinator;
   final void Function(String sessionId, String url) registerVideoUrl;
   final String? handoffSessionId;
+  final bool playbackAllowed;
   final void Function(String postId, GlobalKey anchorKey)? onVideoAnchorReady;
   // Gesture area media video — diteruskan ke _InlineVideoPlayer supaya
   // tap/double-tap video di-handle _PostFeedItem (kontrol tetap instan).
@@ -2644,6 +3015,7 @@ class _PostMediaSurface extends StatelessWidget {
     required this.coordinator,
     required this.registerVideoUrl,
     required this.handoffSessionId,
+    required this.playbackAllowed,
     this.onVideoAnchorReady,
     this.onVideoMediaSingleTap,
     this.onVideoMediaDoubleTapDown,
@@ -2669,6 +3041,7 @@ class _PostMediaSurface extends StatelessWidget {
             coordinator: coordinator,
             registerVideoUrl: registerVideoUrl,
             dormant: handoffSessionId == post.id,
+            playbackAllowed: playbackAllowed,
             // videoPlaybackUrl (videoUrl-first), BUKAN previewMediaUrl
             // (yang thumbnail-first → JPG → player gagal initialize).
             mediaUrl: videoQualityService.resolvePlaybackUrl(
@@ -2691,6 +3064,7 @@ class _PostMediaSurface extends StatelessWidget {
               coordinator: coordinator,
               registerVideoUrl: registerVideoUrl,
               handoffSessionId: handoffSessionId,
+              playbackAllowed: playbackAllowed,
             ),
           ),
         FeedContentType.photo => Hero(
@@ -2711,6 +3085,7 @@ class _CarouselSurface extends StatefulWidget {
   final PostVideoCoordinator coordinator;
   final void Function(String sessionId, String url) registerVideoUrl;
   final String? handoffSessionId;
+  final bool playbackAllowed;
 
   const _CarouselSurface({
     required this.post,
@@ -2718,6 +3093,7 @@ class _CarouselSurface extends StatefulWidget {
     required this.coordinator,
     required this.registerVideoUrl,
     required this.handoffSessionId,
+    required this.playbackAllowed,
   });
 
   @override
@@ -2769,6 +3145,7 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
                 coordinator: widget.coordinator,
                 registerVideoUrl: widget.registerVideoUrl,
                 dormant: widget.handoffSessionId == sessionId,
+                playbackAllowed: widget.playbackAllowed,
                 mediaUrl: videoQualityService.resolvePlaybackUrl(
                   item.mediaUrl,
                   dataSaverUrl: item.videoDataSaverUrl,
@@ -3078,6 +3455,7 @@ class _InlineVideoPlayer extends StatefulWidget {
 
   /// Fullscreen sedang terbuka untuk sesi ini → mode dormant (frozen frame).
   final bool dormant;
+  final bool playbackAllowed;
   final String mediaUrl;
   final String? thumbnailUrl;
   final double aspectRatio;
@@ -3101,6 +3479,7 @@ class _InlineVideoPlayer extends StatefulWidget {
     required this.thumbnailUrl,
     required this.aspectRatio,
     this.dormant = false,
+    this.playbackAllowed = true,
     this.onAnchorReady,
     this.onMediaSingleTap,
     this.onMediaDoubleTapDown,
@@ -3146,6 +3525,13 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
       // Keluar dormant (fullscreen tutup) → adopt origin SEGERA.
       // Masuk dormant: cukup berhenti berperan; sesi tetap pinned via origin.
       _adoptOriginAfterDormant();
+    }
+    if (oldWidget.playbackAllowed != widget.playbackAllowed) {
+      if (widget.playbackAllowed) {
+        _applyVisibility();
+      } else {
+        _coordinator.pauseAll();
+      }
     }
   }
 
@@ -3202,7 +3588,7 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
   }
 
   void _applyVisibility() {
-    if (!mounted || widget.dormant) return;
+    if (!mounted || widget.dormant || !widget.playbackAllowed) return;
     final visible = _visibleFraction >= 0.6;
     if (visible) {
       _ensureAttached();
@@ -3279,7 +3665,9 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
   Widget build(BuildContext context) {
     final session = _boundSession;
     final controller = session?.controller;
-    final ready = controller != null && controller.value.isInitialized;
+    final ready = widget.playbackAllowed &&
+        controller != null &&
+        controller.value.isInitialized;
     final hasError = session?.hasError ?? false;
     final hasVisualOutput = session?.hasVisualOutput ?? false;
     final visualLoading = ready &&
@@ -3304,7 +3692,9 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
           GestureDetector(
             key: _anchorKey,
             behavior: HitTestBehavior.opaque,
-            onTap: widget.dormant ? null : widget.onMediaSingleTap,
+            onTap: widget.dormant || !widget.playbackAllowed
+                ? null
+                : widget.onMediaSingleTap,
             onDoubleTapDown: widget.onMediaDoubleTapDown,
             onDoubleTap: widget.onMediaDoubleTap,
             child: Stack(
@@ -3362,7 +3752,7 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
             ),
           ),
           // ── Kontrol: SIBLING di ATAS media detector (bukan child-nya) ──
-          if (hasError && !widget.dormant)
+          if (hasError && !widget.dormant && widget.playbackAllowed)
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -3426,7 +3816,7 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
               ),
             ),
           // Ikon mute pojok kanan bawah — mengikuti feedMuted global.
-          if (ready && !hasError && !widget.dormant)
+          if (ready && !hasError && !widget.dormant && widget.playbackAllowed)
             Positioned(
               right: 10,
               bottom: 10,

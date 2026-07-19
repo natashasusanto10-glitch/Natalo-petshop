@@ -10,6 +10,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/features/feed/transition/post_detail_transition_session.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/post_video_coordinator.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/post_video_warm_handoff.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/video_player_session.dart';
@@ -62,6 +63,34 @@ class _WarmSession extends VideoPlayerSession {
           url: 'https://example.com/post-1.mp4',
           debugInitAttempt: (_) async {},
         );
+}
+
+class _TransitionSource implements PostDetailTransitionSourceAdapter {
+  @override
+  bool mounted = true;
+
+  @override
+  void mergePage(FeedPage page) {}
+
+  @override
+  Future<PostPageSourceTarget?> prepareTarget(
+    FeedPost post, {
+    required int generation,
+  }) async =>
+      null;
+
+  @override
+  PostPageSourceTarget? resolveTarget(FeedPost post) => null;
+
+  @override
+  PostPageMediaProxy resolveProxy(FeedPost post) =>
+      PostPageMediaProxy(placeholderColor: const Color(0xFF123456));
+
+  @override
+  void setPendingReturnPostId(String? postId) {}
+
+  @override
+  void setTileSuppressed(String postId, bool suppressed) {}
 }
 
 FeedPost _fakeVideoPost({String id = 'post-1', String? videoDataSaverUrl}) {
@@ -134,7 +163,11 @@ void main() {
     debugScopedFeedPostFetcher = null;
   });
 
-  Future<void> pumpScreen(WidgetTester tester, {List<FeedPost>? posts}) async {
+  Future<void> pumpScreen(
+    WidgetTester tester, {
+    List<FeedPost>? posts,
+    PostDetailTransitionSession? transitionSession,
+  }) async {
     tester.view.physicalSize = const Size(400, 1200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -142,7 +175,11 @@ void main() {
     final list = posts ?? [_fakeVideoPost()];
     await tester.pumpWidget(
       MaterialApp(
-        home: MemberPostDetailScreen(post: list.first, posts: list),
+        home: MemberPostDetailScreen(
+          post: list.first,
+          posts: list,
+          transitionSession: transitionSession,
+        ),
       ),
     );
     // Bounded pump — biarkan VisibilityDetector fire + coordinator wiring.
@@ -304,6 +341,50 @@ void main() {
         'https://example.com/media-1-480-fresh.mp4',
       );
       await disposeTree(tester);
+    },
+  );
+
+  testWidgets(
+    'transition playback gate keeps poster dormant until the route opens',
+    (tester) async {
+      final post = _fakeVideoPost();
+      final transitionSession = PostDetailTransitionSession(
+        initialPost: post,
+        source: _TransitionSource(),
+      );
+
+      await pumpScreen(
+        tester,
+        posts: [post],
+        transitionSession: transitionSession,
+      );
+
+      expect(
+        sessions,
+        isEmpty,
+        reason: 'a preparing route must not attach or activate inline video',
+      );
+
+      transitionSession.setPlaybackAllowed(true);
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 30));
+      }
+
+      expect(sessions['post-1']?.playing, isTrue);
+      final playCount = sessions['post-1']!.playCount;
+
+      transitionSession.setPlaybackAllowed(false);
+      await tester.pump(const Duration(milliseconds: 30));
+
+      expect(sessions['post-1']!.playing, isFalse);
+      expect(
+        sessions['post-1']!.playCount,
+        playCount,
+        reason: 'visibility callbacks while gated must not reactivate video',
+      );
+
+      await disposeTree(tester);
+      transitionSession.dispose();
     },
   );
 
