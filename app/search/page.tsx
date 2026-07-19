@@ -15,6 +15,7 @@ import {
 } from "@/components/SearchFilters";
 import { formatRupiah } from "@/lib/format";
 import { buildKeywordOnlySearchHref, buildKeywordOnlySearchParams } from "@/lib/search-url";
+import { FilterChip } from "@/components/products/FilterChip";
 
 type SearchItem = {
   id: string;
@@ -842,19 +843,6 @@ function SearchEmptyState({
         )}
       </div>
     </div>
-  );
-}
-
-function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onRemove}
-      className="inline-flex h-7 max-w-full items-center gap-1 rounded-full bg-natalo-50 px-2.5 text-xs font-extrabold text-natalo-700 active:bg-natalo-100"
-    >
-      <span className="truncate">{label}</span>
-      <XIcon className="h-3.5 w-3.5 shrink-0" />
-    </button>
   );
 }
 
