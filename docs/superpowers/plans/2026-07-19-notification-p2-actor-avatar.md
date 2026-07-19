@@ -37,9 +37,11 @@ Buat `prisma/migrations/20260719130000_add_announcement_actor_fields/migration.s
 -- Nullable: baris lama & notif non-aktor (sistem/pesanan/promo) tetap null.
 
 ALTER TABLE "Announcement"
-ADD COLUMN "actorAvatarUrl" TEXT,
-ADD COLUMN "actorName" TEXT;
+ADD COLUMN IF NOT EXISTS "actorAvatarUrl" TEXT,
+ADD COLUMN IF NOT EXISTS "actorName" TEXT;
 ```
+
+(`IF NOT EXISTS` — resilience terhadap DB Neon divergen, mengikuti migration `feed_publish_push`.)
 
 - [ ] **Step 2: Tambah kolom di schema**
 
@@ -105,7 +107,18 @@ test("user tanpa foto/nama → null", () => {
   assert.equal(r.actorName, null);
   assert.equal(r.actorAvatarUrl, null);
 });
+
+test("likeRowActorFields: agregat → null (identitas aktor tunggal hilang)", () => {
+  const single = { actorName: "Andi", actorAvatarUrl: "https://cdn/a.jpg" };
+  assert.deepEqual(likeRowActorFields(false, single), single);
+  assert.deepEqual(likeRowActorFields(true, single), {
+    actorName: null,
+    actorAvatarUrl: null,
+  });
+});
 ```
+
+(Import di test: `import { notificationActorFields, likeRowActorFields, OFFICIAL_BRAND_NAME } from "../lib/social/brand-user";`)
 
 - [ ] **Step 2: Jalankan test, pastikan GAGAL**
 
@@ -131,6 +144,19 @@ export function notificationActorFields(
     actorName: isAdminRole(role) ? OFFICIAL_BRAND_NAME : (name ?? null),
     actorAvatarUrl: brandPhotoUrl(role, profilePhotoUrl),
   };
+}
+
+/**
+ * Field aktor untuk baris notif LIKE. Baris agregat (>=2 liker, judul
+ * "N orang menyukai...") kehilangan identitas aktor tunggal → null; like
+ * TUNGGAL membawa aktor. Dipakai di kedua cabang (create + update batch)
+ * supaya keputusan "agregat kehilangan aktor" tunggal & teruji.
+ */
+export function likeRowActorFields(
+  isAggregate: boolean,
+  actor: { actorName: string | null; actorAvatarUrl: string | null },
+): { actorName: string | null; actorAvatarUrl: string | null } {
+  return isAggregate ? { actorName: null, actorAvatarUrl: null } : actor;
 }
 ```
 
@@ -267,11 +293,21 @@ Ubah create path (`:332-346`): pesan single jadi bernama + kirim actor:
     });
 ```
 
-Di batched update branch (`:317-329`), TAMBAHKAN ke `data`: `actorAvatarUrl: null, actorName: null,` (agregat → aktor ambigu, jangan tampilkan satu wajah).
+(Create SELALU tunggal → pakai `actorFields` langsung.) Di batched update branch (`:317-329`), sebar `likeRowActorFields(true, actorFields)` ke `data` supaya keputusan agregat-null bersumber dari helper teruji. WAJIB: lookup aktor + `actorFields` dihitung SEBELUM cabang update (setelah `post` fetch), agar `actorFields` in-scope di update branch:
+
+```ts
+        data: {
+          title: `${params.likeCount} orang menyukai Feed kamu`,
+          body: `Postingan ${quoteFeedTitle(post.title)} mendapat beberapa like baru.`,
+          thumbnailUrl: post.thumbnailUrl,
+          ...likeRowActorFields(true, actorFields),
+          publishedAt: new Date(),
+        },
+```
 
 - [ ] **Step 2: `sendCommentLikeNotification` — sama**
 
-Tambah lookup aktor (belum ada; ada lookup `author`=recipient di `:370-374`, tambah lookup aktor terpisah). Hitung `actorFields` + `likerName`. Create path (`:407-422`): `message: `${likerName} menyukai komentarmu di Feed.`` + `actor: {...}`. Batched update (`:396-404`) `data`: tambah `actorAvatarUrl: null, actorName: null`.
+Tambah lookup aktor (belum ada; ada lookup `author`=recipient di `:370-374`, tambah lookup aktor terpisah) — tempatkan SEBELUM cabang update `:396-404` agar in-scope. Hitung `actorFields` + `likerName`. Create path (`:407-422`): `message: `${likerName} menyukai komentarmu di Feed.`` + `actor: { avatarUrl: actorFields.actorAvatarUrl, name: actorFields.actorName }`. Batched update (`:396-404`) `data`: sebar `...likeRowActorFields(true, actorFields)`.
 
 - [ ] **Step 3: Typecheck**
 
@@ -493,6 +529,11 @@ Expected: `All tests passed!`; `No issues found!`
 - Aktor ADMIN → `actorAvatarUrl` null + `actorName` "Natalo Petshop Official"; app tampil logo brand "NL" (TIDAK bocor foto/nama pemilik).
 - Batched like ("N orang") → tak ada satu avatar (ikon kategori).
 - Follow → foto follower kiri; app P1 lama tetap jalan (thumbnailUrl dipertahankan).
+
+## Scope omission (disengaja, dicatat)
+
+- **`followed_user_posted`** ("{username} posting foto/video baru", `lib/social/notifications.ts:187`) adalah notif ber-aktor bernama yang P2 ini TIDAK beri avatar (biar scope terkendali; komentar/like/mention/follow dulu). Kalau fase lanjut menambah avatarnya, WAJIB lewat `notificationActorFields`/`brandPhotoUrl` (brand-safe). Hari ini ia hanya di-guard admin-skip.
+- **Mention**: judul notif pakai `username` untuk user biasa (`activity-notifications.ts:175-179`), sedangkan `actorName` yang dipersist = `name`. Tak masalah sekarang (client render teks judul, bukan `actorName` terpisah); catatan bila `actorName` kelak ditampilkan.
 
 ## Catatan
 
