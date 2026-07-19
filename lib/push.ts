@@ -215,6 +215,14 @@ export function buildOrderStatusPushPayload(params: {
  * Tag konsisten per orderNumber → notification baru replace lama
  * (tidak stack 5 notif untuk 1 order yg status-nya berubah-ubah).
  */
+/** Foto produk untuk thumbnail notif pesanan — item baris pertama saja
+ *  (preview, bukan daftar lengkap). null kalau order tanpa item/foto. */
+export function firstOrderItemImageUrl(
+  items: Array<{ product: { imageUrl: string | null } }>,
+): string | null {
+  return items[0]?.product.imageUrl ?? null;
+}
+
 export async function sendOrderStatusPush(
   orderId: string,
   orderNumber: string,
@@ -230,10 +238,15 @@ export async function sendOrderStatusPush(
         courierCode: true,
         courierService: true,
         pickupCode: true,
+        items: {
+          take: 1,
+          select: { product: { select: { imageUrl: true } } },
+        },
       },
     })
     .catch(() => null);
   if (!order?.userId) return;
+  const thumbnailUrl = firstOrderItemImageUrl(order.items);
 
   const detailPath = buildOrderDetailPath(orderNumber, order.trackingToken);
   const url =
@@ -330,6 +343,7 @@ export async function sendOrderStatusPush(
           title,
           body,
           url,
+          thumbnailUrl,
           segment: "all", // tidak relevan saat targetUserId set, default aja
           type: "order",
           ctaLabel: "Lihat Pesanan",

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildOrderStatusPushPayload } from "@/lib/push";
+import { buildOrderStatusPushPayload, firstOrderItemImageUrl } from "@/lib/push";
 import { getPushNavigationTarget } from "@/lib/push-client";
 
 test("order push payload carries order metadata for notification click routing", () => {
@@ -40,4 +40,23 @@ test("push click target accepts internal order URLs and rejects admin URLs", () 
     "/pesanan/ORD-2"
   );
   assert.equal(getPushNavigationTarget({ url: "/admin/orders" }), null);
+});
+
+test("firstOrderItemImageUrl: ambil foto item pertama", () => {
+  const url = firstOrderItemImageUrl([
+    { product: { imageUrl: "https://cdn/first.jpg" } },
+    { product: { imageUrl: "https://cdn/second.jpg" } },
+  ]);
+  assert.equal(url, "https://cdn/first.jpg");
+});
+
+test("firstOrderItemImageUrl: order tanpa item → null", () => {
+  assert.equal(firstOrderItemImageUrl([]), null);
+});
+
+test("firstOrderItemImageUrl: item pertama tanpa foto produk → null", () => {
+  assert.equal(
+    firstOrderItemImageUrl([{ product: { imageUrl: null } }]),
+    null,
+  );
 });
