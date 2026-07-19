@@ -1142,6 +1142,11 @@ model Announcement {
   /// Kalau di-set, override segment — cuma user ini yang lihat di bell.
   /// Dipakai untuk personal notification (order status, dll).
   targetUserId String?
+  /// Identitas aktor notifikasi sosial (follow/komentar/mention/like tunggal).
+  /// Brand-safe: admin → actorName brand + actorAvatarUrl null. Null untuk
+  /// notif non-aktor / agregat.
+  actorAvatarUrl String?
+  actorName      String?
   createdAt    DateTime           @default(now())
   reads        AnnouncementRead[]
 
