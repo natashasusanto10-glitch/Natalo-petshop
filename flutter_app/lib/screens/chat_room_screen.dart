@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/chat_message.dart';
 import '../services/api_client.dart';
 import '../services/app_analytics.dart';
+import '../services/chat_message_cache.dart';
 import '../services/chat_message_merge.dart';
 import '../services/chat_service.dart';
 import '../services/push_notification_service.dart';
@@ -298,28 +299,58 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     return (id != null && id.isNotEmpty) ? 'cust_$id' : null;
   }
 
-  /// Initial load (dipanggil dari `initState`) — ambil HANYA halaman TERBARU
-  /// (satu round-trip), tampilkan spinner sebentar, set cursor riwayat lama,
-  /// lalu mulai polling. Riwayat lebih lama dimuat bertahap via [_loadOlder]
-  /// saat user scroll ke atas.
+  /// Initial load (dipanggil dari `initState`) — dua fase:
+  ///   1. Render INSTAN dari cache lokal (kalau ada) → tanpa spinner.
+  ///   2. Sinkron halaman TERBARU dari server (sumber kebenaran) → merge +
+  ///      set cursor riwayat lama + perbarui cache.
+  /// Riwayat lebih lama dimuat bertahap via [_loadOlder] saat scroll ke atas.
   Future<void> _loadMessages() async {
     final chatId = _chatId;
     if (chatId == null) return;
-    if (mounted) {
+
+    // ── Fase 1: cache lokal → render seketika (hilangkan layar loading) ──
+    var cacheShown = false;
+    try {
+      final cached = await chatMessageCache.loadLatest(chatId);
+      if (mounted && cached.isNotEmpty && _messages.isEmpty) {
+        setState(() {
+          final merged = mergeChatMessages(_messages, cached);
+          _messages
+            ..clear()
+            ..addAll(merged);
+          _suppressForwardedOrderContext(_messages);
+          _loading = false;
+        });
+        // Cache = HISTORY untuk analitik reopen: seed TANPA fire (sama seperti
+        // halaman server). Reopen live yang datang lewat poll tetap terhitung.
+        _seedLoggedReopenIds(_messages);
+        _historySeeded = true;
+        cacheShown = true;
+        _scrollToBottom(animate: false);
+        _settleInitialScroll();
+        // Mulai polling lebih awal supaya kalau fetch server gagal (offline),
+        // room tetap ter-refresh begitu jaringan pulih.
+        _startPolling();
+      }
+    } catch (_) {
+      // Cache gagal dibaca — lanjut ke fetch server dengan spinner biasa.
+    }
+    if (mounted && !cacheShown) {
       setState(() {
         _loading = true;
         _loadError = null;
       });
     }
+
+    // ── Fase 2: fetch halaman terbaru dari server (source of truth) ──────
     try {
       final page = await chatService.fetchLatestMessages(chatId);
       final fetched = page.messages;
       if (!mounted) return;
       setState(() {
-        // Merge (bukan clear+replace mentah) — kalau user sempat kirim
-        // pesan SEBELUM initial load ini selesai (composer tidak
-        // digembok saat `_loading`), bubble optimistic itu tidak boleh
-        // hilang begitu saja.
+        // Merge (bukan clear+replace mentah) — bubble optimistic yang user
+        // sempat kirim SEBELUM fetch selesai tak boleh hilang; cache yang
+        // sudah tampil juga cukup di-dedupe by id.
         final merged =
             fetched.isEmpty ? _messages : mergeChatMessages(_messages, fetched);
         _messages
@@ -331,31 +362,27 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
         _oldestCursor = page.prevCursor;
         _hasMoreOlder = page.prevCursor != null;
         _loading = false;
+        _loadError = null;
       });
-      // Seed dedupe reopen: tandai pesan reopen di halaman terbaru sebagai
-      // "sudah dicatat" TANPA fire `chat_reopened` (pesan reopen historis
-      // bukan reopen BARU yang perlu dihitung). Riwayat lama yang dimuat
-      // belakangan via [_loadOlder] juga di-seed (bukan di-fire) di sana.
-      // Reopen yang benar-benar baru datang live tetap lewat
-      // `_mergeIncoming` → `_logReopenEvents`.
+      // Seed dedupe reopen (idempoten walau cache sudah seed di fase 1).
       _seedLoggedReopenIds(_messages);
-      // Tandai riwayat sudah di-seed (F6) — jalur RECOVERY di
-      // [_mergeIncoming] (initial load ini GAGAL lalu poll/wake pulih
-      // duluan) tidak perlu seed ulang lagi begitu jalur normal ini
-      // akhirnya sukses juga (mis. user tap Retry setelah sempat pulih via
-      // poll) — `_seedLoggedReopenIds` sendiri idempoten (Set), tapi flag
-      // ini yang menentukan apakah [_mergeIncoming] berikutnya masih
-      // menganggap batch sbg history atau pesan baru.
       _historySeeded = true;
       // GET yang barusan sukses sudah reset `unreadForCustomer` di server
       // (fix C2 Plan 2) — sinkronkan badge lokal.
       chatStore.setUnread(0);
-      _scrollToBottom(animate: false);
-      // Re-pin bertahap: kejar tinggi konten yang tumbuh saat gambar (kartu
-      // produk/chip/foto) selesai load supaya buka pertama benar-benar mendarat
-      // di pesan TERAKHIR, bukan di tengah (isu "chat awal bukan yang paling
-      // akhir").
-      _settleInitialScroll();
+      // Perbarui cache dgn halaman terbaru server (fire-and-forget).
+      final rawLatest = page.rawMessages;
+      if (rawLatest != null) {
+        unawaited(chatMessageCache.saveLatest(chatId, rawLatest));
+      }
+      // Re-pin ke bawah HANYA kalau user belum mulai scroll manual — kalau
+      // cache (fase 1) sudah tampil & user keburu scroll baca, jangan disentak
+      // saat data server masuk. (`_settleInitialScroll` sendiri berhenti pada
+      // sentuhan user, tapi `_scrollToBottom` unconditional — gate keduanya.)
+      if (!_userTouchedScroll) {
+        _scrollToBottom(animate: false);
+        _settleInitialScroll();
+      }
       _startPolling();
       _autoForwardEntryOrderContextIfNeeded();
     } catch (e) {
@@ -372,6 +399,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
         });
         return;
       }
+      // Kalau cache SUDAH tampil, JANGAN timpa dengan layar error — biarkan
+      // user baca riwayat cache; polling/pull-to-refresh yang menyusul akan
+      // menyinkronkan begitu jaringan pulih.
+      if (cacheShown) return;
       setState(() {
         _loadError = e;
         _loading = false;

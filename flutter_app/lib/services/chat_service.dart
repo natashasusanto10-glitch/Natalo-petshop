@@ -174,10 +174,18 @@ class ChatMessagesPage {
   /// lebih lama (sudah di awal thread), atau mode maju (yang tak memakainya).
   final String? prevCursor;
 
+  /// JSON MENTAH pesan dari server (belum diparse) — HANYA diisi oleh
+  /// [ChatService.fetchLatestMessages] untuk keperluan cache lokal. Disimpan
+  /// apa adanya (bukan hasil `toJson`) supaya round-trip cache memakai
+  /// `ChatMessage.fromJson` yang SAMA dgn jalur jaringan (fidelity terjamin;
+  /// `ChatMessage` tak punya `toJson`). null di path lain.
+  final List<dynamic>? rawMessages;
+
   const ChatMessagesPage({
     this.messages = const [],
     this.nextCursor,
     this.prevCursor,
+    this.rawMessages,
   });
 }
 
@@ -332,11 +340,14 @@ class ChatService {
     final map =
         data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
     final rawMessages = map['messages'];
-    final messages = mapMessages(rawMessages is List ? rawMessages : const []);
+    final rawList = rawMessages is List ? rawMessages : const [];
+    final messages = mapMessages(rawList);
     final prevRaw = map['prevCursor'];
     return ChatMessagesPage(
       messages: messages,
       prevCursor: prevRaw?.toString(),
+      // Simpan raw untuk cache lokal (dipakai fetchLatestMessages saja).
+      rawMessages: rawList,
     );
   }
 
