@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { sendPushToUser, type PushPayload } from "@/lib/push";
 import { sendFcmToUser } from "@/lib/fcm";
 import { buildFeedPushPayload } from "@/lib/feed/publish-push-payload";
+import { feedNotificationThumbnail } from "@/lib/feed/notification-thumbnail";
 
 export type PushSegment = "all" | "members" | "active30d";
 
@@ -87,7 +88,7 @@ export async function countRecentPublishPush(): Promise<number> {
  * redesign) — selaras dengan notif aktivitas feed lain.
  */
 export function buildFeedPublishAnnouncementData(input: {
-  post: { id: string; thumbnailUrl: string | null };
+  post: { id: string; thumbnailUrl: string | null; media?: Array<{ url: string }> | null };
   title: string;
   body: string;
   url: string;
@@ -100,7 +101,7 @@ export function buildFeedPublishAnnouncementData(input: {
     segment: input.segment,
     type: "announcement" as const,
     feedPostId: input.post.id,
-    thumbnailUrl: input.post.thumbnailUrl,
+    thumbnailUrl: feedNotificationThumbnail(input.post),
     ctaLabel: "Lihat Post",
     publishedAt: new Date(),
     status: "PUBLISHED" as const,
@@ -122,6 +123,7 @@ export async function sendFeedPublishPush(postId: string): Promise<void> {
         notifyOnPublish: true,
         pushSegment: true,
         publishPushSentAt: true,
+        media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
       },
     });
     if (!post) return;
@@ -154,7 +156,7 @@ export async function sendFeedPublishPush(postId: string): Promise<void> {
 
     await prisma.announcement.create({
       data: buildFeedPublishAnnouncementData({
-        post: { id: post.id, thumbnailUrl: post.thumbnailUrl },
+        post: { id: post.id, thumbnailUrl: post.thumbnailUrl, media: post.media },
         title,
         body,
         url,
