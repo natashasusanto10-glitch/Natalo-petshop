@@ -80,6 +80,33 @@ export async function countRecentPublishPush(): Promise<number> {
  *   - Klaim atomik via updateMany(publishPushSentAt: null) — race-safe,
  *     kalau count===0 berarti sudah diklaim proses lain, return diam.
  */
+/**
+ * Bangun `data` untuk baris Announcement notif feed-publish. Fungsi murni
+ * supaya bisa diuji tanpa mem-mock prisma. Menyertakan `feedPostId` (agar tap
+ * → buka post itu, bukan /feed generik) + `thumbnailUrl` (foto post di app
+ * redesign) — selaras dengan notif aktivitas feed lain.
+ */
+export function buildFeedPublishAnnouncementData(input: {
+  post: { id: string; thumbnailUrl: string | null };
+  title: string;
+  body: string;
+  url: string;
+  segment: PushSegment;
+}) {
+  return {
+    title: input.title,
+    body: input.body,
+    url: input.url,
+    segment: input.segment,
+    type: "announcement" as const,
+    feedPostId: input.post.id,
+    thumbnailUrl: input.post.thumbnailUrl,
+    ctaLabel: "Lihat Post",
+    publishedAt: new Date(),
+    status: "PUBLISHED" as const,
+  };
+}
+
 export async function sendFeedPublishPush(postId: string): Promise<void> {
   try {
     const post = await prisma.feedPost.findUnique({
@@ -91,6 +118,7 @@ export async function sendFeedPublishPush(postId: string): Promise<void> {
         encodingStatus: true,
         title: true,
         description: true,
+        thumbnailUrl: true,
         notifyOnPublish: true,
         pushSegment: true,
         publishPushSentAt: true,
@@ -125,16 +153,13 @@ export async function sendFeedPublishPush(postId: string): Promise<void> {
     const segment: PushSegment = (post.pushSegment as PushSegment | null) ?? "members";
 
     await prisma.announcement.create({
-      data: {
+      data: buildFeedPublishAnnouncementData({
+        post: { id: post.id, thumbnailUrl: post.thumbnailUrl },
         title,
         body,
         url,
         segment,
-        type: "announcement",
-        ctaLabel: "Lihat Post",
-        publishedAt: new Date(),
-        status: "PUBLISHED",
-      },
+      }),
     });
 
     const targetUserIds = await resolveSegmentUserIds(segment);
