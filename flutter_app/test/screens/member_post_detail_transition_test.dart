@@ -11,12 +11,14 @@ import 'package:visibility_detector/visibility_detector.dart';
 void main() {
   setUp(() {
     debugPostDelete = null;
+    debugPostDetailReadinessClock = null;
     debugScopedFeedPostFetcher = null;
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
   });
 
   tearDown(() {
     debugPostDelete = null;
+    debugPostDetailReadinessClock = null;
     debugScopedFeedPostFetcher = null;
   });
 
@@ -114,6 +116,76 @@ void main() {
     expect(
       session.destinationReadiness,
       PostDetailDestinationReadiness.crossfadeFallback,
+    );
+
+    await disposeDetail(tester);
+    session.dispose();
+  });
+
+  testWidgets(
+    'expired first awaited frame does not consume another readiness frame',
+    (tester) async {
+      useDetailViewport(tester);
+      var readinessNow = Duration.zero;
+      debugPostDetailReadinessClock = () => readinessNow;
+      final posts = List.generate(5, (index) => fakePhoto('post-$index'));
+      final session = fakeTransitionSession(posts[3]);
+      tester.binding.addPostFrameCallback((_) {
+        readinessNow = const Duration(milliseconds: 80);
+      });
+
+      await tester.pumpWidget(
+        detailHost(posts: posts, initialIndex: 3, session: session),
+      );
+
+      expect(
+        session.destinationReadiness,
+        PostDetailDestinationReadiness.crossfadeFallback,
+        reason:
+            'the expired first frame must be terminal without a second pump',
+      );
+
+      await disposeDetail(tester);
+      session.dispose();
+    },
+  );
+
+  testWidgets('fallback readiness is published after its renderable frame', (
+    tester,
+  ) async {
+    useDetailViewport(tester);
+    final posts = [fakePhoto('a'), fakePhoto('b')];
+    final session = fakeTransitionSession(posts.last);
+    var renderableAtPublication = false;
+    session.addListener(() {
+      if (session.destinationReadiness !=
+          PostDetailDestinationReadiness.crossfadeFallback) {
+        return;
+      }
+      final fallback = find
+          .byKey(const ValueKey('post-detail-transition-fallback-b'))
+          .evaluate()
+          .firstOrNull;
+      final box = fallback?.findRenderObject() as RenderBox?;
+      renderableAtPublication =
+          box != null && box.attached && box.hasSize && !box.size.isEmpty;
+    });
+
+    await tester.pumpWidget(
+      detailHost(posts: posts, initialIndex: 1, session: session),
+    );
+    for (var i = 0; i < 5; i++) {
+      await tester.pump();
+    }
+
+    expect(
+      session.destinationReadiness,
+      PostDetailDestinationReadiness.crossfadeFallback,
+    );
+    expect(
+      renderableAtPublication,
+      isTrue,
+      reason: 'readiness must never expose an absent fallback destination',
     );
 
     await disposeDetail(tester);

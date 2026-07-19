@@ -73,6 +73,13 @@ void Function(String sessionId, String url)? debugPostVideoSessionUrlObserver;
 @visibleForTesting
 Future<bool> Function(String postId)? debugPostDelete;
 
+@visibleForTesting
+Duration Function()? debugPostDetailReadinessClock;
+
+Duration _postDetailReadinessNow() =>
+    debugPostDetailReadinessClock?.call() ??
+    WidgetsBinding.instance.currentSystemFrameTimeStamp;
+
 /// Detail Postingan style Instagram Feed — continuous vertical scroll list
 /// of user's own posts (Postingan Saya).
 ///
@@ -418,26 +425,57 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     }
   }
 
+  void _discardStagedTransitionFallback() {
+    if (_transitionFallbackPost == null && !_transitionFallbackVisible) return;
+    setState(() {
+      _transitionFallbackPost = null;
+      _transitionFallbackVisible = false;
+    });
+  }
+
   Future<void> _completeTransitionReadiness(int targetIndex) async {
     final session = widget.transitionSession;
     final controller = _scrollController;
-    if (session == null || controller == null) return;
-    final readinessStartedAt =
-        WidgetsBinding.instance.currentSystemFrameTimeStamp;
+    if (session == null || controller == null || targetIndex >= _posts.length) {
+      return;
+    }
+    final readinessStartedAt = _postDetailReadinessNow();
+
+    // Build the deterministic fallback in the first destination frame. It is
+    // still covered by the route proxy while readiness is `preparing`, but is
+    // already a mounted surface if the bounded geometry path expires.
+    _transitionFallbackPost = _posts[targetIndex];
+    _transitionFallbackVisible = true;
 
     // Keep the constructor-time state observable as `preparing`. The initial
     // offset is already installed on the controller for the first layout; the
     // bounded exact-correction loop begins on the following frame.
     await WidgetsBinding.instance.endOfFrame;
-    if (!mounted || !identical(widget.transitionSession, session)) return;
+    if (!mounted) return;
+    if (!identical(widget.transitionSession, session)) {
+      _discardStagedTransitionFallback();
+      return;
+    }
+    if (_postDetailReadinessNow() - readinessStartedAt >=
+        const Duration(milliseconds: 75)) {
+      session.markDestinationReady(
+        PostDetailDestinationReadiness.crossfadeFallback,
+      );
+      return;
+    }
     for (var pass = 1; pass < 3; pass++) {
       await WidgetsBinding.instance.endOfFrame;
-      if (!mounted || !identical(widget.transitionSession, session)) return;
-      final elapsed =
-          WidgetsBinding.instance.currentSystemFrameTimeStamp -
-          readinessStartedAt;
+      if (!mounted) return;
+      if (!identical(widget.transitionSession, session)) {
+        _discardStagedTransitionFallback();
+        return;
+      }
+      final elapsed = _postDetailReadinessNow() - readinessStartedAt;
       if (elapsed >= const Duration(milliseconds: 75)) break;
-      if (targetIndex >= _postKeys.length) return;
+      if (targetIndex >= _postKeys.length) {
+        _discardStagedTransitionFallback();
+        return;
+      }
       final itemContext = _postKeys[targetIndex].currentContext;
       if (itemContext == null) {
         _jumpNearPost(targetIndex);
@@ -458,6 +496,10 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
           ? viewportTop + MediaQuery.paddingOf(context).top + kToolbarHeight
           : viewportTop;
       if ((targetTop - requiredTop).abs() <= 1) {
+        setState(() {
+          _transitionFallbackPost = null;
+          _transitionFallbackVisible = false;
+        });
         session.markDestinationReady(
           PostDetailDestinationReadiness.geometryReady,
         );
@@ -474,11 +516,11 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       }
     }
 
-    if (!mounted || targetIndex >= _posts.length) return;
-    setState(() {
-      _transitionFallbackPost = _posts[targetIndex];
-      _transitionFallbackVisible = true;
-    });
+    if (!mounted) return;
+    if (targetIndex >= _posts.length) {
+      _discardStagedTransitionFallback();
+      return;
+    }
     session.markDestinationReady(
       PostDetailDestinationReadiness.crossfadeFallback,
     );
