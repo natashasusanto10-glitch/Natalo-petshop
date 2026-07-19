@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FiArrowLeft, FiSearch } from "react-icons/fi";
 import { CartCount } from "@/components/CartCount";
+import { EtalaseBand } from "@/components/products/EtalaseBand";
 import { brandProductHref, type BrandCatalogItem } from "@/lib/brand-catalog";
 
 function BrandLogo({ brand }: { brand: BrandCatalogItem }) {
@@ -73,7 +74,7 @@ export function BrandDirectoryClient({ brands }: { brands: BrandCatalogItem[] })
   return (
     <main className="min-h-screen bg-slate-50 pb-[calc(7rem+env(safe-area-inset-bottom))]">
       <header className="sticky top-0 z-50 border-b border-slate-100 bg-white/95 pt-[env(safe-area-inset-top)] shadow-[0_8px_22px_rgba(15,23,42,0.06)] backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-2xl items-center gap-3 px-4">
+        <div className="mx-auto flex h-16 max-w-[var(--nat-container)] items-center gap-3 px-4">
           <button
             type="button"
             onClick={goBack}
@@ -91,8 +92,15 @@ export function BrandDirectoryClient({ brands }: { brands: BrandCatalogItem[] })
         </div>
       </header>
 
-      <div className="mx-auto max-w-2xl px-4 pt-4">
-        <label className="relative block">
+      <div className="mx-auto max-w-[var(--nat-container)] px-[var(--nat-gutter)] pt-4">
+        <div className="mb-4 hidden md:block">
+          <EtalaseBand
+            heading="Brand Pilihan"
+            tagline="Merek terpercaya yang kami stok — hasil 7 tahun kurasi toko Natalo di Medan."
+            breadcrumb={[{ label: "Beranda", href: "/" }, { label: "Brand" }]}
+          />
+        </div>
+        <label className="relative block md:max-w-md">
           <FiSearch
             className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
             aria-hidden="true"
@@ -115,12 +123,12 @@ export function BrandDirectoryClient({ brands }: { brands: BrandCatalogItem[] })
               <p className="mt-1 text-sm font-semibold text-slate-500">Coba gunakan kata kunci lain.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
               {filteredBrands.map((brand) => (
                 <Link
                   key={brand.slug}
                   href={brandProductHref(brand)}
-                  className="flex h-[112px] min-w-0 flex-col items-center justify-center rounded-[20px] border border-[#E5EAF3] bg-white px-2.5 py-3 shadow-[0_8px_22px_rgba(15,23,42,0.06)] transition active:scale-[0.97] active:opacity-90"
+                  className="nat-lit-shelf nat-shelf-line group relative flex h-[112px] min-w-0 flex-col items-center justify-center rounded-[20px] border border-[#E5EAF3] bg-white px-2.5 py-3 shadow-[0_8px_22px_rgba(15,23,42,0.06)] transition active:scale-[0.97] active:opacity-90 sm:hover:border-natalo-200"
                   aria-label={`Lihat produk brand ${brand.name}`}
                 >
                   <div className="flex h-[54px] w-full items-center justify-center">
