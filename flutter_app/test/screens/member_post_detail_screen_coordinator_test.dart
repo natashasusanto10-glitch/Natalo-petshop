@@ -389,6 +389,48 @@ void main() {
   );
 
   testWidgets(
+    'closed replacement gate shows poster without spinner and rewires session',
+    (tester) async {
+      final post = _fakeVideoPost();
+      final firstSession = PostDetailTransitionSession(
+        initialPost: post,
+        source: _TransitionSource(),
+      )..setPlaybackAllowed(true);
+      final replacementSession = PostDetailTransitionSession(
+        initialPost: post,
+        source: _TransitionSource(),
+      );
+
+      await pumpScreen(tester, posts: [post], transitionSession: firstSession);
+      expect(sessions['post-1']?.playing, isTrue);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MemberPostDetailScreen(
+            post: post,
+            posts: [post],
+            transitionSession: replacementSession,
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 30));
+
+      expect(sessions['post-1']?.playing, isFalse);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      replacementSession.setPlaybackAllowed(true);
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 30));
+      }
+      expect(sessions['post-1']?.playing, isTrue);
+
+      await disposeTree(tester);
+      firstSession.dispose();
+      replacementSession.dispose();
+    },
+  );
+
+  testWidgets(
     'autoplay ON: inline attach + setActive → sesi dibuat & di-play, muted '
     'mengikuti feedMuted',
     (tester) async {

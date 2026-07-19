@@ -164,7 +164,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   late final List<GlobalKey> _postMediaKeys;
   final GlobalKey _listViewportKey = GlobalKey();
   String? _nextCursor;
-  bool _loadingMore = false;
+  Future<FeedPage>? _pageLoadInFlight;
   bool _visibilityMeasureScheduled = false;
   bool _scrollInProgress = false;
   bool _routeCovered = false;
@@ -191,6 +191,12 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   @visibleForTesting
   Future<String?> debugRefreshVideoUrlForTest(String sessionId) =>
       _refreshVideoUrl(sessionId);
+
+  @visibleForTesting
+  Future<FeedPage> debugLoadNextPostPageForTest() => _loadNextPostPage();
+
+  @visibleForTesting
+  Future<void> debugRefreshPostsForTest() => _refreshPosts();
 
   /// URL video per sessionId (== post.id untuk video utama; compound
   /// `${post.id}-$index` untuk item carousel). Diisi di initState untuk video
@@ -304,6 +310,33 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     feedStore.addListener(_onFeedStoreChanged);
   }
 
+  @override
+  void didUpdateWidget(covariant MemberPostDetailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.transitionSession, widget.transitionSession)) {
+      return;
+    }
+
+    oldWidget.transitionSession?.removeListener(_onTransitionSessionChanged);
+    final oldPlaybackAllowed =
+        oldWidget.transitionSession?.playbackAllowed ?? true;
+    final session = widget.transitionSession;
+    _lastSessionFrozen = session?.isFrozen ?? false;
+    _lastPlaybackAllowed = session?.playbackAllowed ?? true;
+    session?.addListener(_onTransitionSessionChanged);
+
+    if (oldPlaybackAllowed != _lastPlaybackAllowed) {
+      if (_canResumePlayback) {
+        _videoCoordinator.resumeAll();
+      } else {
+        _videoCoordinator.pauseAll();
+      }
+    }
+    if (_lastPlaybackAllowed && _transitionFallbackPost != null) {
+      unawaited(_settleTransitionFallback());
+    }
+  }
+
   FeedPost? _postForSession(String sessionId) {
     for (final post in _posts) {
       if (sessionId == post.id || sessionId.startsWith('${post.id}-')) {
@@ -366,6 +399,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       // receives a fresh generation and cannot be replaced by the canceled
       // gesture's late result.
       unawaited(session.prepareActiveTarget());
+      _scheduleVisibilityMeasure();
     }
 
     final playbackChanged = _lastPlaybackAllowed != session.playbackAllowed;
@@ -388,18 +422,22 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     final session = widget.transitionSession;
     final controller = _scrollController;
     if (session == null || controller == null) return;
+    final readinessStartedAt =
+        WidgetsBinding.instance.currentSystemFrameTimeStamp;
 
     // Keep the constructor-time state observable as `preparing`. The initial
     // offset is already installed on the controller for the first layout; the
     // bounded exact-correction loop begins on the following frame.
     await WidgetsBinding.instance.endOfFrame;
-    if (!mounted) return;
-    final stopwatch = Stopwatch()..start();
-    for (var pass = 0;
-        pass < 3 && stopwatch.elapsed < const Duration(milliseconds: 75);
-        pass++) {
+    if (!mounted || !identical(widget.transitionSession, session)) return;
+    for (var pass = 1; pass < 3; pass++) {
       await WidgetsBinding.instance.endOfFrame;
-      if (!mounted || targetIndex >= _postKeys.length) return;
+      if (!mounted || !identical(widget.transitionSession, session)) return;
+      final elapsed =
+          WidgetsBinding.instance.currentSystemFrameTimeStamp -
+          readinessStartedAt;
+      if (elapsed >= const Duration(milliseconds: 75)) break;
+      if (targetIndex >= _postKeys.length) return;
       final itemContext = _postKeys[targetIndex].currentContext;
       if (itemContext == null) {
         _jumpNearPost(targetIndex);
@@ -409,6 +447,23 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       if (box == null || !controller.hasClients) continue;
       final viewport = RenderAbstractViewport.maybeOf(box);
       if (viewport == null) continue;
+      final viewportBox =
+          _listViewportKey.currentContext?.findRenderObject() as RenderBox?;
+      if (viewportBox == null || !viewportBox.hasSize || !box.hasSize) {
+        continue;
+      }
+      final viewportTop = viewportBox.localToGlobal(Offset.zero).dy;
+      final targetTop = box.localToGlobal(Offset.zero).dy;
+      final requiredTop = targetIndex == 0
+          ? viewportTop + MediaQuery.paddingOf(context).top + kToolbarHeight
+          : viewportTop;
+      if ((targetTop - requiredTop).abs() <= 1) {
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.geometryReady,
+        );
+        _scheduleVisibilityMeasure();
+        return;
+      }
       final revealOffset = viewport.getOffsetToReveal(box, 0).offset;
       final position = controller.position;
       final boundedOffset = revealOffset
@@ -416,13 +471,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
           .toDouble();
       if ((boundedOffset - controller.offset).abs() > 1) {
         controller.jumpTo(boundedOffset);
-        continue;
       }
-      session.markDestinationReady(
-        PostDetailDestinationReadiness.geometryReady,
-      );
-      _scheduleVisibilityMeasure();
-      return;
     }
 
     if (!mounted || targetIndex >= _posts.length) return;
@@ -430,8 +479,6 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       _transitionFallbackPost = _posts[targetIndex];
       _transitionFallbackVisible = true;
     });
-    await WidgetsBinding.instance.endOfFrame;
-    if (!mounted) return;
     session.markDestinationReady(
       PostDetailDestinationReadiness.crossfadeFallback,
     );
@@ -446,26 +493,33 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       final targetIndex = _posts.indexWhere(
         (post) => post.id == fallbackPost.id,
       );
-      if (targetIndex >= 0) {
-        _jumpNearPost(targetIndex);
-        await WidgetsBinding.instance.endOfFrame;
-        if (!mounted) return;
-        final itemContext = _postKeys[targetIndex].currentContext;
-        final box = itemContext?.findRenderObject() as RenderBox?;
-        final viewport =
-            box == null ? null : RenderAbstractViewport.maybeOf(box);
-        final controller = _scrollController;
-        if (viewport != null && controller != null && controller.hasClients) {
-          final position = controller.position;
-          final offset = viewport
-              .getOffsetToReveal(box!, 0)
-              .offset
-              .clamp(position.minScrollExtent, position.maxScrollExtent)
-              .toDouble();
-          controller.jumpTo(offset);
-          await WidgetsBinding.instance.endOfFrame;
-        }
+      if (targetIndex < 0) return;
+      _jumpNearPost(targetIndex);
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || targetIndex >= _postKeys.length) return;
+      final itemContext = _postKeys[targetIndex].currentContext;
+      final box = itemContext?.findRenderObject() as RenderBox?;
+      final viewport =
+          box == null ? null : RenderAbstractViewport.maybeOf(box);
+      final controller = _scrollController;
+      if (viewport == null ||
+          controller == null ||
+          !controller.hasClients ||
+          box == null ||
+          !box.attached ||
+          !box.hasSize ||
+          box.size.isEmpty) {
+        return;
       }
+      final position = controller.position;
+      final offset = viewport
+          .getOffsetToReveal(box, 0)
+          .offset
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble();
+      controller.jumpTo(offset);
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || !box.attached || !box.hasSize || box.size.isEmpty) return;
       if (!mounted) return;
       setState(() => _transitionFallbackVisible = false);
       await Future<void>.delayed(const Duration(milliseconds: 160));
@@ -479,10 +533,18 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
 
   bool _onPostScroll(ScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical) return false;
-    _scrollInProgress = notification is! ScrollEndNotification;
+    if (notification is ScrollEndNotification) {
+      _scrollInProgress = false;
+    } else if (notification is UserScrollNotification) {
+      _scrollInProgress = notification.direction != ScrollDirection.idle;
+    } else if (notification is ScrollStartNotification ||
+        notification is ScrollUpdateNotification ||
+        notification is OverscrollNotification) {
+      _scrollInProgress = true;
+    }
     _scheduleVisibilityMeasure();
     if (notification.metrics.extentAfter < 800) {
-      unawaited(_loadNextPostPage());
+      unawaited(_loadNextPostPageFromScroll());
     }
     return false;
   }
@@ -498,6 +560,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   }
 
   void _measurePostVisibility() {
+    final session = widget.transitionSession;
+    if (session?.isFrozen ?? false) return;
     final viewportBox =
         _listViewportKey.currentContext?.findRenderObject() as RenderBox?;
     if (viewportBox == null || !viewportBox.hasSize) return;
@@ -533,7 +597,6 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     if (activeId == null) return;
     final activeIndex = _posts.indexWhere((post) => post.id == activeId);
     if (activeIndex < 0) return;
-    final session = widget.transitionSession;
     if (session == null) return;
     session.reportActivePost(_posts[activeIndex]);
     unawaited(session.prepareActiveTarget());
@@ -1028,21 +1091,28 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     // Capture before starting HTTP. A like/comment completed while these
     // requests are in flight must remain newer than the returned snapshots.
     final fetchedAt = DateTime.now();
+    final snapshot = List<FeedPost>.of(_posts);
+    final fetchById = debugScopedFeedPostFetcher ?? feedService.fetchPostById;
     final results = await Future.wait(
-      _posts.map(
-        (p) => feedService.fetchPostById(p.id).catchError((_) {
+      snapshot.map(
+        (p) => fetchById(p.id).catchError((_) {
           return null;
         }),
       ),
     );
     if (!mounted) return;
-    final freshPosts = results.whereType<FeedPost>().toList(growable: false);
+    final currentIds = _posts.map((post) => post.id).toSet();
+    final freshPosts = results
+        .whereType<FeedPost>()
+        .where((post) => currentIds.contains(post.id))
+        .toList(growable: false);
     if (freshPosts.isEmpty) return;
     feedStore.mergeFromServer(freshPosts, fetchedAt: fetchedAt);
+    final freshById = {for (final post in freshPosts) post.id: post};
 
     var anyChanged = false;
     for (var i = 0; i < _posts.length; i++) {
-      final fresh = results[i];
+      final fresh = freshById[_posts[i].id];
       if (fresh == null) continue;
       final canonical = feedStore.get(fresh.id) ?? fresh;
       _posts[i] = canonical;
@@ -1343,42 +1413,63 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     return _loadNextPostPage();
   }
 
-  Future<FeedPage> _loadNextPostPage() async {
+  Future<FeedPage> _loadNextPostPage() {
+    final inFlight = _pageLoadInFlight;
+    if (inFlight != null) return inFlight;
     final loader = widget.loadMoreScopedPosts;
     final cursor = _nextCursor;
-    if (loader == null || cursor == null || _loadingMore) {
-      return const FeedPage();
+    if (loader == null || cursor == null) {
+      return Future<FeedPage>.value(const FeedPage());
     }
-    _loadingMore = true;
+
+    late final Future<FeedPage> request;
+    request = _performNextPostPageLoad(loader, cursor).whenComplete(() {
+      if (identical(_pageLoadInFlight, request)) {
+        _pageLoadInFlight = null;
+      }
+    });
+    _pageLoadInFlight = request;
+    return request;
+  }
+
+  Future<void> _loadNextPostPageFromScroll() async {
     try {
-      final page = await loader(cursor);
-      if (!mounted) return page;
-      final known = _posts.map((post) => post.id).toSet();
-      final freshPosts = page.items
-          .where((post) => known.add(post.id))
-          .toList(growable: false);
-      for (final post in freshPosts.where((post) => post.isVideo)) {
-        _videoUrls[post.id] = _resolvePostVideoUrl(post);
-      }
-      if (freshPosts.isNotEmpty) {
-        feedStore.mergeFromServer(freshPosts, fetchedAt: DateTime.now());
-      }
-      setState(() {
-        _posts.addAll(freshPosts);
-        _postKeys.addAll(
-          List<GlobalKey>.generate(freshPosts.length, (_) => GlobalKey()),
-        );
-        _postMediaKeys.addAll(
-          List<GlobalKey>.generate(freshPosts.length, (_) => GlobalKey()),
-        );
-        _nextCursor = page.nextCursor;
-      });
-      widget.transitionSession?.reportLoadedPage(page);
-      _scheduleVisibilityMeasure();
-      return page;
-    } finally {
-      _loadingMore = false;
+      await _loadNextPostPage();
+    } catch (_) {
+      // Scroll loading is fire-and-forget. Explicit list/video consumers join
+      // the same future and still receive the original error.
     }
+  }
+
+  Future<FeedPage> _performNextPostPageLoad(
+    ScopedPostPageLoader loader,
+    String cursor,
+  ) async {
+    final page = await loader(cursor);
+    if (!mounted) return page;
+    final known = _posts.map((post) => post.id).toSet();
+    final freshPosts = page.items
+        .where((post) => known.add(post.id))
+        .toList(growable: false);
+    for (final post in freshPosts.where((post) => post.isVideo)) {
+      _videoUrls[post.id] = _resolvePostVideoUrl(post);
+    }
+    if (freshPosts.isNotEmpty) {
+      feedStore.mergeFromServer(freshPosts, fetchedAt: DateTime.now());
+    }
+    setState(() {
+      _posts.addAll(freshPosts);
+      _postKeys.addAll(
+        List<GlobalKey>.generate(freshPosts.length, (_) => GlobalKey()),
+      );
+      _postMediaKeys.addAll(
+        List<GlobalKey>.generate(freshPosts.length, (_) => GlobalKey()),
+      );
+      _nextCursor = page.nextCursor;
+    });
+    widget.transitionSession?.reportLoadedPage(page);
+    _scheduleVisibilityMeasure();
+    return page;
   }
 
   Future<List<FeedPost>> _hydrateScopedVideoPosts(List<FeedPost> source) async {
@@ -3676,7 +3767,12 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     final muted = appSettingsStore.feedMuted;
     // Spinner hanya saat kita memang sedang memuat (attached, belum ready,
     // tanpa error), atau saat audio ditahan karena frame baru belum terbukti.
-    final loading = _attached && !hasError && (!ready || visualLoading);
+    final loading =
+        widget.playbackAllowed &&
+        !widget.dormant &&
+        _attached &&
+        !hasError &&
+        (!ready || visualLoading);
 
     return VisibilityDetector(
       key: ValueKey('inline-video-${widget.postId}'),
