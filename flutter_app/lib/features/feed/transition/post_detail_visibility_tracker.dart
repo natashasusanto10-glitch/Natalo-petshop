@@ -46,7 +46,7 @@ class PostDetailVisibilityTracker {
     final dominant = ordered.first;
     final canSwitch =
         dominant.postId != _activePostId &&
-        _fraction(dominant) >= _preferredVisibleFraction &&
+        _reachesPreferredVisibleFraction(dominant) &&
         _fraction(dominant) -
                 (current == null ? 0 : _fraction(current)) +
                 _comparisonEpsilon >=
@@ -56,9 +56,7 @@ class PostDetailVisibilityTracker {
     if (canSwitch) {
       candidate = dominant;
     } else if (!scrollInProgress &&
-        ordered.every(
-          (sample) => _fraction(sample) < _preferredVisibleFraction,
-        )) {
+        ordered.every((sample) => !_reachesPreferredVisibleFraction(sample))) {
       final centered = ordered.where(_hasValidCenterDistance).toList()
         ..sort(_compareCentered);
       if (centered.isNotEmpty) candidate = centered.first;
@@ -80,6 +78,9 @@ class PostDetailVisibilityTracker {
 
   double _fraction(PostVisibilitySample sample) =>
       sample.visibleFraction.clamp(0.0, 1.0);
+
+  bool _reachesPreferredVisibleFraction(PostVisibilitySample sample) =>
+      _fraction(sample) >= _preferredVisibleFraction - _comparisonEpsilon;
 
   int _compareDominance(
     PostVisibilitySample first,

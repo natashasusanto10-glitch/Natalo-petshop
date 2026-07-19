@@ -48,6 +48,50 @@ void main() {
       );
     });
 
+    test(
+      'switches while scrolling when visibility is within threshold tolerance',
+      () {
+        final tracker = PostDetailVisibilityTracker(initialPostId: 'a');
+        const nearlyPreferredVisibleFraction = .55 - 5e-13;
+
+        expect(
+          tracker.update([
+            sample('a', fraction: .45, area: 45, distance: 30),
+            sample(
+              'b',
+              fraction: nearlyPreferredVisibleFraction,
+              area: 55,
+              distance: 10,
+            ),
+          ], scrollInProgress: true),
+          'b',
+        );
+        expect(tracker.activePostId, 'b');
+      },
+    );
+
+    test(
+      'does not use the settled center fallback when visibility is within threshold tolerance',
+      () {
+        final tracker = PostDetailVisibilityTracker(initialPostId: 'a');
+        const nearlyPreferredVisibleFraction = .55 - 5e-13;
+
+        expect(
+          tracker.update([
+            sample('a', fraction: .54, area: 54, distance: 100),
+            sample(
+              'b',
+              fraction: nearlyPreferredVisibleFraction,
+              area: 55,
+              distance: 10,
+            ),
+          ], scrollInProgress: false),
+          isNull,
+        );
+        expect(tracker.activePostId, 'a');
+      },
+    );
+
     test('selects the largest visible area before other metrics', () {
       final tracker = PostDetailVisibilityTracker(initialPostId: 'a');
 
