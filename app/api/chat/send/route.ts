@@ -152,28 +152,27 @@ export async function POST(request: NextRequest) {
   const roomRef = firestore.collection(ROOM_COLLECTION).doc(chatId);
   const messagesRef = roomRef.collection(MESSAGE_SUBCOLLECTION);
 
-  // 5. Rate-limit — sliding window dari timestamp pesan CUSTOMER terakhir
-  // di room. Fail-open bila query Firestore error (jangan blokir customer
-  // karena masalah infra).
-  let recentTimestamps: number[] = [];
-  try {
-    const snap = await messagesRef.orderBy("createdAt", "desc").limit(RATE_LIMIT_LOOKBACK).get();
-    recentTimestamps = snap.docs
-      .filter((d) => d.data()?.senderRole === "customer")
-      .map((d) => d.data()?.createdAt)
-      .filter((v): v is number => typeof v === "number");
-  } catch {
-    recentTimestamps = [];
-  }
-  if (!slidingWindowAllow(recentTimestamps, Date.now(), RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)) {
-    return NextResponse.json(
-      { error: "Terlalu banyak pesan. Coba lagi sebentar lagi." },
-      { status: 429 },
-    );
-  }
+  // 5-7. Semua READ yang independen di-firing PARALEL (bukan berurutan) —
+  // sebelumnya rate-limit → snapshot → context → reply → room dijalankan satu
+  // per satu (5 round-trip berantai) walau tak saling bergantung; ini sumber
+  // latensi "lambat kirim". Batch di sini memangkas jadi ~1 round-trip.
+  // Gate (429/400) tetap dicek SETELAH batch & SEBELUM write, jadi urutan
+  // penolakan tak berubah — cuma beberapa read ekstra saat ditolak (abuse
+  // case, dapat diterima). Fail-open rate-limit dipertahankan lewat .catch.
+  const rateLimitRead = messagesRef
+    .orderBy("createdAt", "desc")
+    .limit(RATE_LIMIT_LOOKBACK)
+    .get()
+    .then((snap) =>
+      snap.docs
+        .filter((d) => d.data()?.senderRole === "customer")
+        .map((d) => d.data()?.createdAt)
+        .filter((v): v is number => typeof v === "number"),
+    )
+    .catch(() => [] as number[]);
 
-  // 6. Snapshot Prisma: user + agregat order ringan → buildCustomerSnapshot.
-  const [user, orderAgg, lastOrderRow] = await Promise.all([
+  // Snapshot Prisma: user + agregat order ringan → buildCustomerSnapshot.
+  const snapshotRead = Promise.all([
     prisma.user.findUnique({
       where: { id: session.sub },
       select: { name: true, phone: true },
@@ -194,6 +193,67 @@ export async function POST(request: NextRequest) {
     }),
   ]);
 
+  // Context produk/order opsional — data tampilan diambil ulang dari Prisma
+  // (bukan client) supaya tak bisa dipalsukan; order di-scope ke
+  // `userId: session.sub` (anti-IDOR). Kalau tak ditemukan → di-drop diam2.
+  const productRead =
+    context?.type === "product"
+      ? prisma.product.findUnique({
+          where: { id: context.productId },
+          select: {
+            id: true,
+            slug: true,
+            name: true,
+            imageUrl: true,
+            price: true,
+            discountPrice: true,
+            stock: true,
+          },
+        })
+      : Promise.resolve(null);
+  const orderRead =
+    context?.type === "order"
+      ? prisma.order.findFirst({
+          where: { orderNumber: context.orderNumber, userId: session.sub },
+          select: {
+            orderNumber: true,
+            status: true,
+            paymentStatus: true,
+            paymentProofStatus: true,
+            paymentProofUrl: true,
+            paymentProofVersion: true,
+            total: true,
+            createdAt: true,
+            _count: { select: { items: true } },
+          },
+        })
+      : Promise.resolve(null);
+  // Re-derive kutipan balasan dari pesan asli DI ROOM INI (anti-spoof +
+  // anti-IDOR: `messagesRef.doc(id)` sudah di-scope ke chat customer sendiri).
+  const replyRead = replyToId
+    ? messagesRef.doc(replyToId).get()
+    : Promise.resolve(null);
+  // Doc room SEBELUM write — state "before" dipakai auto-reopen & greeting/away.
+  const roomBeforeRead = roomRef.get();
+
+  const [recentTimestamps, [user, orderAgg, lastOrderRow], product, order, replySnap, roomSnapBefore] =
+    await Promise.all([
+      rateLimitRead,
+      snapshotRead,
+      productRead,
+      orderRead,
+      replyRead,
+      roomBeforeRead,
+    ]);
+
+  // Gate rate-limit (429) — dicek setelah batch, sebelum write.
+  if (!slidingWindowAllow(recentTimestamps, Date.now(), RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)) {
+    return NextResponse.json(
+      { error: "Terlalu banyak pesan. Coba lagi sebentar lagi." },
+      { status: 429 },
+    );
+  }
+
   const orderAggregate: OrderAggregate = {
     totalBelanja: orderAgg._sum.total ?? 0,
     orderCount: orderAgg._count ?? 0,
@@ -203,54 +263,19 @@ export async function POST(request: NextRequest) {
   };
   const snapshot = buildCustomerSnapshot(user ?? {}, orderAggregate);
 
-  // Context produk/order opsional — data tampilan diambil ulang dari
-  // Prisma (bukan dari client) supaya tak bisa dipalsukan; order di-scope
-  // ke `userId: session.sub` supaya customer tak bisa reference order
-  // orang lain (anti-IDOR). Kalau tak ditemukan, context diam-diam
-  // di-drop (bukan 400) — cuma metadata pelengkap, bukan bagian wajib.
   let productContext: ProductContext | undefined;
   let orderContext: OrderContext | undefined;
-  if (context?.type === "product") {
-    const product = await prisma.product.findUnique({
-      where: { id: context.productId },
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        imageUrl: true,
-        price: true,
-        discountPrice: true,
-        stock: true,
-      },
-    });
-    if (product) {
-      productContext = {
-        productId: product.id,
-        slug: product.slug,
-        name: product.name,
-        imageUrl: product.imageUrl ?? undefined,
-        price: product.discountPrice ?? product.price,
-        stock: product.stock,
-      };
-    }
-  } else if (context?.type === "order") {
-    const order = await prisma.order.findFirst({
-      where: { orderNumber: context.orderNumber, userId: session.sub },
-      select: {
-        orderNumber: true,
-        status: true,
-        paymentStatus: true,
-        paymentProofStatus: true,
-        paymentProofUrl: true,
-        paymentProofVersion: true,
-        total: true,
-        createdAt: true,
-        _count: { select: { items: true } },
-      },
-    });
-    if (order) {
-      orderContext = buildOrderContextV1({ ...order, itemCount: order._count.items });
-    }
+  if (product) {
+    productContext = {
+      productId: product.id,
+      slug: product.slug,
+      name: product.name,
+      imageUrl: product.imageUrl ?? undefined,
+      price: product.discountPrice ?? product.price,
+      stock: product.stock,
+    };
+  } else if (order) {
+    orderContext = buildOrderContextV1({ ...order, itemCount: order._count.items });
   }
 
   const contentValidation = validateChatSendContent(
@@ -261,38 +286,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: contentValidation.error }, { status: 400 });
   }
 
-  // 6b. Re-derive kutipan balasan dari pesan asli DI ROOM INI (anti-spoof +
-  // anti-IDOR: baca `messagesRef.doc(id)` yang sudah di-scope ke chat customer
-  // sendiri, jadi ia tak bisa mengutip pesan chat orang lain). senderName &
-  // text preview dihitung server; bila pesan tak ada, kutipan di-drop diam2.
+  // Kutipan balasan — senderName & preview dihitung SERVER dari doc asli;
+  // bila pesan tak ada / staffOnly, kutipan di-drop diam-diam.
   let replyTo: ReplyTo | undefined;
-  if (replyToId) {
-    const refSnap = await messagesRef.doc(replyToId).get();
-    if (refSnap.exists) {
-      const rd = refSnap.data() as Record<string, unknown>;
-      // staffOnly (catatan internal) TAK BOLEH dikutip ke pesan customer.
-      if (rd.staffOnly !== true) {
-        const rtype = typeof rd.type === "string" ? rd.type : "text";
-        const who =
-          rd.senderRole === "staff"
-            ? (typeof rd.senderName === "string" && rd.senderName.trim()
-                ? rd.senderName.trim()
-                : "Admin")
-            : snapshot.customerName || "Kamu";
-        replyTo = {
-          id: replyToId,
-          senderName: who,
-          type: rtype,
-          text: buildReplyPreview(rd),
-        };
-      }
+  if (replyToId && replySnap && replySnap.exists) {
+    const rd = replySnap.data() as Record<string, unknown>;
+    // staffOnly (catatan internal) TAK BOLEH dikutip ke pesan customer.
+    if (rd.staffOnly !== true) {
+      const rtype = typeof rd.type === "string" ? rd.type : "text";
+      const who =
+        rd.senderRole === "staff"
+          ? (typeof rd.senderName === "string" && rd.senderName.trim()
+              ? rd.senderName.trim()
+              : "Admin")
+          : snapshot.customerName || "Kamu";
+      replyTo = {
+        id: replyToId,
+        senderName: who,
+        type: rtype,
+        text: buildReplyPreview(rd),
+      };
     }
   }
 
-  // 7. Baca doc room SEBELUM writeCustomerMessage — state "before" dipakai
-  // step 9 (auto-reopen) & step 10 (auto-greeting/away). writeCustomerMessage
-  // sendiri tak menyentuh status/greetingSentAt (lihat lib/chat/rooms.ts).
-  const roomSnapBefore = await roomRef.get();
   const roomDataBefore = roomSnapBefore.exists ? roomSnapBefore.data() : undefined;
   const wasResolved = roomDataBefore?.status === "resolved";
   const hadGreeting =
