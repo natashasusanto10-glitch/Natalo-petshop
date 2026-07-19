@@ -102,6 +102,7 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
   const [startsAt, setStartsAt] = useState(data.startsAt);
   const [endsAt, setEndsAt] = useState(data.endsAt);
   const [items, setItems] = useState<PromoItem[]>(data.items);
+  const [notifyCustomers, setNotifyCustomers] = useState(false);
 
   // ── Promo ongoing check ─────────────────────────────────────
   // Detect kalau promo yang lagi di-edit sudah ONGOING (start <= now
@@ -242,6 +243,7 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
           discountedPrice: Math.max(0, Math.round(it.discountedPrice)),
           isItemActive: it.isItemActive,
         })),
+        notifyCustomers,
       };
       const url = isEdit
         ? `/api/admin/discounts/promo-toko/${initial!.id}`
@@ -513,6 +515,21 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
           <p className="flex-1 text-sm font-semibold text-red-700">{error}</p>
         </div>
       )}
+
+      {/* ─── Beri tahu pelanggan ─────────────────────────────────────── */}
+      <label className="mt-6 flex items-start gap-3 rounded-xl border border-zinc-200 p-3">
+        <input
+          type="checkbox"
+          checked={notifyCustomers}
+          onChange={(e) => setNotifyCustomers(e.target.checked)}
+          className="mt-1 h-4 w-4"
+        />
+        <span className="text-sm text-zinc-700">
+          <span className="font-bold text-zinc-950">Beri tahu pelanggan</span>
+          <br />
+          Kirim notifikasi &amp; push ke semua pelanggan saat promo aktif.
+        </span>
+      </label>
 
       {/* ─── Submit ────────────────────────────────────────────────── */}
       <div className="mt-6 flex justify-end gap-3">

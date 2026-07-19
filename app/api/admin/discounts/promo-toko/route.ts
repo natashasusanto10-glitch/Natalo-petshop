@@ -20,6 +20,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
+import { sendProductDiscountPromoPush } from "@/lib/push-promo";
 
 const itemSchema = z.object({
   productId: z.string().trim().min(1),
@@ -34,6 +35,7 @@ const createSchema = z
     startsAt: z.string(),
     endsAt: z.string(),
     items: z.array(itemSchema).min(1).max(500),
+    notifyCustomers: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
     const start = new Date(data.startsAt);
@@ -195,6 +197,7 @@ export async function POST(request: NextRequest) {
       startsAt: new Date(body.startsAt),
       endsAt: new Date(body.endsAt),
       isActive: true,
+      notifyAtStart: body.notifyCustomers,
       items: {
         create: body.items.map((item) => ({
           productId: item.productId,
@@ -209,6 +212,18 @@ export async function POST(request: NextRequest) {
 
   // Suppress unused warning untuk productKeys (dipakai utk debug masa depan)
   void productKeys;
+
+  // Kirim notif langsung bila dicentang & promo sudah aktif (startsAt <= now < endsAt).
+  // Promo terjadwal (startsAt > now) diurus cron promo-notify.
+  if (
+    body.notifyCustomers &&
+    discount.startsAt <= now &&
+    discount.endsAt > now
+  ) {
+    void sendProductDiscountPromoPush(discount.id).catch((e) =>
+      console.warn("[promo-toko-create] promo push:", e),
+    );
+  }
 
   return NextResponse.json(discount, { status: 201 });
 }
