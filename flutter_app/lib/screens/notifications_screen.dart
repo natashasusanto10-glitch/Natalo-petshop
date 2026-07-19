@@ -12,7 +12,6 @@ import '../services/feed_service.dart';
 import '../services/notification_service.dart';
 import '../services/product_service.dart';
 import '../state/member_store.dart';
-import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_login_gate.dart';
 import '../widgets/app_ui.dart';
@@ -32,12 +31,12 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   NotificationResult? _result;
   Object? _error;
-  _NotificationFilter _filter = _NotificationFilter.all;
+  NotificationTab _tab = NotificationTab.all;
   bool _loading = true;
   bool _markingAll = false;
 
   // Cache filtered list — avoid O(n) where().toList() di setiap build.
-  // Diinvalidasi (set null) saat _result atau _filter berubah.
+  // Diinvalidasi (set null) saat _result atau _tab berubah.
   List<AppNotification>? _cachedVisibleItems;
 
   @override
@@ -82,7 +81,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final cached = _cachedVisibleItems;
     if (cached != null) return cached;
     final items = _result?.items ?? const <AppNotification>[];
-    final filtered = items.where(_filter.matches).toList();
+    final filtered = items.where(_tab.matches).toList();
     _cachedVisibleItems = filtered;
     return filtered;
   }
@@ -451,7 +450,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final unread = result?.unreadCount ?? 0;
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? Theme.of(context).colorScheme.surfaceContainerLow
+          : const Color(0xFFEEF1F5),
       // AnnotatedRegion + strip status bar heroTop — pola hero biru Beranda:
       // area notch menyatu dengan header biru, ikon status bar putih.
       body: AnnotatedRegion<SystemUiOverlayStyle>(
@@ -468,22 +469,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             SafeArea(
               child: Column(
                 children: [
-                  _NotificationHeader(
+                  NotificationHeroHeader(
                     unreadCount: unread,
                     markingAll: _markingAll,
-                    onBack: () => Navigator.maybePop(context),
-                    onMarkAllRead: _markAllRead,
-                  ),
-                  _NotificationTabs(
-                    selected: _filter,
-                    onChanged: (filter) {
+                    selected: _tab,
+                    onTabChanged: (tab) {
                       AppHaptics.selection();
                       setState(() {
-                        _filter = filter;
-                        _cachedVisibleItems =
-                            null; // invalidate — filter berubah
+                        _tab = tab;
+                        _cachedVisibleItems = null; // invalidate — tab berubah
                       });
                     },
+                    onBack: () => Navigator.maybePop(context),
+                    onMarkAllRead: _markAllRead,
                   ),
                   Expanded(
                     // Cross-fade skeleton → list/error/empty supaya konten tidak
@@ -536,27 +534,87 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(24, 72, 24, 24),
           children: [
-            _NotificationEmptyState(filter: _filter),
+            _NotificationEmptyState(tab: _tab),
           ],
         ),
       );
     }
 
+    // Grup waktu → kartu island per grup (hairline antar baris).
+    final now = DateTime.now();
+    final groups = <NotificationTimeBucket, List<AppNotification>>{};
+    for (final item in items) {
+      groups
+          .putIfAbsent(
+              notificationTimeBucket(now, item.createdAt), () => [])
+          .add(item);
+    }
+    final orderedBuckets = NotificationTimeBucket.values
+        .where((b) => groups.containsKey(b))
+        .toList();
+
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return NataloPawRefreshIndicator(
       onRefresh: _refresh,
-      child: ListView.separated(
+      child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-        itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (context, index) {
-          final item = items[index];
-          return AppAnimatedEntrance(
-            index: index,
-            child: _NotificationTile(
-              notification: item,
-              onTap: () => _openNotification(item),
-            ),
+        padding: const EdgeInsets.fromLTRB(14, 4, 14, 28),
+        itemCount: orderedBuckets.length,
+        itemBuilder: (context, groupIndex) {
+          final bucket = orderedBuckets[groupIndex];
+          final groupItems = groups[bucket]!;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(2, 16, 2, 6),
+                child: Text(
+                  bucket.label,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+              Container(
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 2,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    for (var i = 0; i < groupItems.length; i++) ...[
+                      if (i > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 68),
+                          child: Divider(
+                            height: 0.5,
+                            thickness: 0.5,
+                            color: isDark
+                                ? cs.outlineVariant
+                                : const Color(0xFFECF0F6),
+                          ),
+                        ),
+                      NotificationRow(
+                        notification: groupItems[i],
+                        onTap: () => _openNotification(groupItems[i]),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -564,95 +622,140 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 }
 
-class _NotificationHeader extends StatelessWidget {
+/// Header hero redesign: judul + counter "N baru" + "Tandai dibaca" + 4 tab
+/// pill DI DALAM area gradient biru (menggantikan _NotificationTabs strip
+/// putih). Publik + dipakai langsung oleh widget test.
+@visibleForTesting
+class NotificationHeroHeader extends StatelessWidget {
   final int unreadCount;
   final bool markingAll;
+  final NotificationTab selected;
+  final ValueChanged<NotificationTab> onTabChanged;
   final VoidCallback onBack;
   final VoidCallback onMarkAllRead;
 
-  const _NotificationHeader({
+  const NotificationHeroHeader({
+    super.key,
     required this.unreadCount,
     required this.markingAll,
+    required this.selected,
+    required this.onTabChanged,
     required this.onBack,
     required this.onMarkAllRead,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Hero biru ringkas — gradasi VERTIKAL (heroGradientV) supaya tepi atas
-    // header rata heroTop dan menyatu mulus dengan strip status bar heroTop di
-    // belakang notch. Diagonal heroGradient bikin tepi atas kiri gelap / kanan
-    // terang → seam miring dengan strip flat = "biru tidak menyatu". Sudut
-    // bawah membulat sebagai penutup blok. Warna fixed (bukan theme).
     return Container(
       decoration: const BoxDecoration(
         gradient: NataloColors.heroGradientV,
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
       ),
-      padding: const EdgeInsets.fromLTRB(6, 10, 12, 14),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(6, 6, 12, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          IconButton(
-            onPressed: onBack,
-            icon: const Icon(Icons.arrow_back_rounded),
-            color: Colors.white,
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Flexible(
-                      child: Text(
-                        'Notifikasi',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                          height: 1.05,
-                        ),
-                      ),
-                    ),
-                    if (unreadCount > 0) ...[
-                      const SizedBox(width: 8),
-                      Badge(
-                        label: Text(unreadCount > 99 ? '99+' : '$unreadCount'),
-                        backgroundColor: const Color(0xFFE91E63),
-                      ),
-                    ],
-                  ],
+          Row(
+            children: [
+              IconButton(
+                onPressed: onBack,
+                icon: const Icon(Icons.arrow_back_rounded),
+                color: Colors.white,
+              ),
+              const Text(
+                'Notifikasi',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 21,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.2,
+                  height: 1.1,
                 ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Update pesanan, promo, dan pengumuman dari Natalo Petshop.',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: NataloColors.onHeroBright,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    height: 1.25,
+              ),
+              if (unreadCount > 0) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    unreadCount > 99 ? '99+ baru' : '$unreadCount baru',
+                    style: const TextStyle(
+                      color: NataloColors.onHeroBright,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
-            ),
+              const Spacer(),
+              TextButton(
+                onPressed:
+                    unreadCount == 0 || markingAll ? null : onMarkAllRead,
+                style: TextButton.styleFrom(
+                  foregroundColor: NataloColors.onHeroBright,
+                  disabledForegroundColor: Colors.white38,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 36),
+                ),
+                child: markingAll
+                    ? const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white70),
+                      )
+                    : const Text(
+                        'Tandai dibaca',
+                        style: TextStyle(
+                            fontSize: 12.5, fontWeight: FontWeight.w400),
+                      ),
+              ),
+            ],
           ),
-          IconButton(
-            onPressed: unreadCount == 0 || markingAll ? null : onMarkAllRead,
-            tooltip: 'Tandai semua sudah dibaca',
-            icon: markingAll
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2.4),
-                  )
-                : const Icon(Icons.done_all_rounded),
-            // Di atas hero: putih; saat disabled (tidak ada unread) putih
-            // redup supaya tetap terlihat non-interaktif.
-            color: unreadCount == 0 ? Colors.white54 : Colors.white,
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 34,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              itemCount: NotificationTab.values.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final tab = NotificationTab.values[index];
+                final active = tab == selected;
+                return InkWell(
+                  onTap: () => onTabChanged(tab),
+                  borderRadius: BorderRadius.circular(999),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    curve: Curves.easeOutCubic,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: active
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      tab.label,
+                      style: TextStyle(
+                        color: active
+                            ? NataloColors.heroTop
+                            : NataloColors.onHeroBright.withValues(alpha: 0.8),
+                        fontSize: 12.5,
+                        fontWeight:
+                            active ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -660,243 +763,230 @@ class _NotificationHeader extends StatelessWidget {
   }
 }
 
-class _NotificationTabs extends StatelessWidget {
-  final _NotificationFilter selected;
-  final ValueChanged<_NotificationFilter> onChanged;
+/// Baris notifikasi redesign: identitas kiri → kalimat+waktu tengah →
+/// thumbnail kanan (opsional). Unread = bar aksen kiri. Publik untuk test.
+@visibleForTesting
+class NotificationRow extends StatelessWidget {
+  final AppNotification notification;
+  final VoidCallback onTap;
 
-  const _NotificationTabs({
-    required this.selected,
-    required this.onChanged,
+  const NotificationRow({
+    super.key,
+    required this.notification,
+    required this.onTap,
   });
+
+  bool get _isBrandIdentity =>
+      _NotificationFilter.feed.matches(notification) ||
+      _isAnnouncementNotification(notification);
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? cs.outlineVariant
-                : const Color(0xFFE8EEF7),
-          ),
-        ),
-      ),
-      child: SizedBox(
-        height: 54,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: _NotificationFilter.values.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 18),
-          itemBuilder: (context, index) {
-            final filter = _NotificationFilter.values[index];
-            final active = selected == filter;
-            return InkWell(
-              onTap: () => onChanged(filter),
-              borderRadius: BorderRadius.circular(12),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    child: Text(
-                      filter.label,
-                      style: TextStyle(
-                        color: active ? _brandBlue : cs.onSurfaceVariant,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
+    final visual = _NotificationVisual.from(notification);
+    final ctaLabel = _notificationCtaLabel(notification);
+    final imageUrl = notification.imageUrl;
+
+    return InkWell(
+      onTap: onTap,
+      child: Stack(
+        children: [
+          if (!notification.read)
+            Positioned(
+              left: 0,
+              top: 12,
+              bottom: 12,
+              child: Container(
+                key: const ValueKey('notification-unread-bar'),
+                width: 3,
+                decoration: const BoxDecoration(
+                  color: NataloColors.primary,
+                  borderRadius:
+                      BorderRadius.horizontal(right: Radius.circular(3)),
+                ),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _IdentityAvatar(
+                  visual: visual,
+                  brandIdentity: _isBrandIdentity,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: notification.title,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            if (notification.body.trim().isNotEmpty)
+                              TextSpan(text: ' — ${notification.body.trim()}'),
+                          ],
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w400,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          if (ctaLabel != null) ...[
+                            InkWell(
+                              onTap: onTap,
+                              borderRadius: BorderRadius.circular(999),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: NataloColors.primarySoft,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  ctaLabel,
+                                  style: const TextStyle(
+                                    color: NataloColors.primary,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                          ],
+                          Text(
+                            shortRelativeTime(
+                                DateTime.now(), notification.createdAt),
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (imageUrl != null && imageUrl.trim().isNotEmpty) ...[
+                  const SizedBox(width: 12),
+                  Container(
+                    key: const ValueKey('notification-thumb'),
+                    height: 46,
+                    width: 46,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: cs.surfaceContainerHighest,
+                      border: Border.all(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        width: 0.5,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeOutCubic,
-                    height: 3,
-                    width: active ? 54 : 0,
-                    decoration: BoxDecoration(
-                      color: _brandBlue,
-                      borderRadius: BorderRadius.circular(999),
+                    child: Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                     ),
                   ),
                 ],
-              ),
-            );
-          },
-        ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _NotificationTile extends StatelessWidget {
-  final AppNotification notification;
-  final VoidCallback onTap;
+/// Lingkaran identitas kiri: brand "NL" untuk notifikasi feed/pengumuman
+/// (identitas Natalo), tint kategori + ikon untuk lainnya. Badge kategori
+/// mini hanya saat identitas brand (kategori tetap terbaca).
+class _IdentityAvatar extends StatelessWidget {
+  final _NotificationVisual visual;
+  final bool brandIdentity;
 
-  const _NotificationTile({
-    required this.notification,
-    required this.onTap,
-  });
+  const _IdentityAvatar({required this.visual, required this.brandIdentity});
 
   @override
   Widget build(BuildContext context) {
-    final visual = _NotificationVisual.from(notification);
-    final ctaLabel = _notificationCtaLabel(notification);
-    final cs = Theme.of(context).colorScheme;
-
-    return Material(
-      color: cs.surface,
-      borderRadius: BorderRadius.circular(22),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: notification.read
-                  ? (Theme.of(context).brightness == Brightness.dark
-                      ? cs.outlineVariant
-                      : const Color(0xFFE8EEF7))
-                  : _brandBlue.withValues(alpha: 0.25),
+    final core = brandIdentity
+        ? Container(
+            height: 42,
+            width: 42,
+            decoration: const BoxDecoration(
+              color: NataloColors.primary,
+              shape: BoxShape.circle,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.035),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
+            alignment: Alignment.center,
+            child: const Text(
+              'NL',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
               ),
-            ],
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    height: 46,
-                    width: 46,
-                    decoration: BoxDecoration(
-                      color: visual.color.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Icon(visual.icon, color: visual.color, size: 24),
-                  ),
-                  if (!notification.read)
-                    Positioned(
-                      top: -2,
-                      right: -2,
-                      child: Container(
-                        height: 10,
-                        width: 10,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE91E63),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: cs.surface, width: 2),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            notification.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: cs.onSurface,
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w900,
-                              height: 1.25,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          formatRelativeTime(notification.createdAt),
-                          style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (notification.body.trim().isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        notification.body,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: cs.onSurfaceVariant,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          height: 1.35,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        AppStatusPill(
-                          label: visual.label,
-                          color: visual.color,
-                          size: 10.5,
-                        ),
-                        Text(
-                          formatDateTime(notification.createdAt),
-                          style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (ctaLabel != null)
-                          Text(
-                            ctaLabel,
-                            style: const TextStyle(
-                              color: _brandBlue,
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 4),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: cs.onSurfaceVariant,
-              ),
-            ],
+            ),
+          )
+        : Container(
+            height: 42,
+            width: 42,
+            decoration: BoxDecoration(
+              color: visual.color.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(visual.icon, color: visual.color, size: 20),
+          );
+
+    if (!brandIdentity) return core;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        core,
+        Positioned(
+          right: -3,
+          bottom: -3,
+          child: Container(
+            height: 17,
+            width: 17,
+            decoration: BoxDecoration(
+              color: visual.color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                  color: Theme.of(context).colorScheme.surface, width: 2),
+            ),
+            child: Icon(visual.icon, color: Colors.white, size: 9),
           ),
         ),
-      ),
+      ],
     );
   }
 }
 
 class _NotificationEmptyState extends StatelessWidget {
-  final _NotificationFilter filter;
+  final NotificationTab tab;
 
-  const _NotificationEmptyState({required this.filter});
+  const _NotificationEmptyState({required this.tab});
+
+  IconData get _icon => switch (tab) {
+        NotificationTab.all => Icons.notifications_none_rounded,
+        NotificationTab.activity => Icons.play_circle_outline_rounded,
+        NotificationTab.transaction => Icons.receipt_long_rounded,
+        NotificationTab.promo => Icons.confirmation_number_rounded,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -911,21 +1001,21 @@ class _NotificationEmptyState extends StatelessWidget {
             borderRadius: BorderRadius.circular(30),
           ),
           child: Icon(
-            filter.icon,
+            _icon,
             color: _brandBlue,
             size: 40,
           ),
         ),
         const SizedBox(height: 18),
         Text(
-          filter == _NotificationFilter.all
+          tab == NotificationTab.all
               ? 'Belum ada notifikasi'
-              : 'Belum ada ${filter.label.toLowerCase()}',
+              : 'Belum ada notifikasi ${tab.label}',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: cs.onSurface,
             fontSize: 20,
-            fontWeight: FontWeight.w900,
+            fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 8),
@@ -934,7 +1024,7 @@ class _NotificationEmptyState extends StatelessWidget {
           textAlign: TextAlign.center,
           style: TextStyle(
             color: cs.onSurfaceVariant,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w400,
             height: 1.4,
           ),
         ),
@@ -947,17 +1037,15 @@ enum _NotificationFilter {
   // Mention diletakkan di posisi #2 (priority tinggi) — match IG/TikTok
   // pattern di mana notifikasi mention lebih penting daripada like/comment
   // generic. User cek dulu siapa yang nyebutin sebelum browse lain.
-  all('Semua', Icons.notifications_none_rounded),
-  mention('Disebut', Icons.alternate_email_rounded),
-  order('Pesanan', Icons.receipt_long_rounded),
-  promo('Promo', Icons.confirmation_number_rounded),
-  feed('Feed', Icons.play_circle_outline_rounded),
-  announcement('Pengumuman', Icons.campaign_rounded);
+  all,
+  mention,
+  order,
+  promo,
+  feed,
+  announcement;
 
-  final String label;
-  final IconData icon;
-
-  const _NotificationFilter(this.label, this.icon);
+  // label/icon lama dihapus — sejak redesign, UI tab & empty state pakai
+  // NotificationTab; enum ini tinggal dipakai untuk logika `matches`.
 
   bool matches(AppNotification item) {
     if (this == _NotificationFilter.all) return true;
@@ -1115,6 +1203,72 @@ String _notificationHaystack(AppNotification item) {
     item.shortDescription,
     item.ctaLabel,
   ].whereType<String>().join(' ').toLowerCase();
+}
+
+/// 4 tab redesign (Semua/Aktivitas/Transaksi/Promo). Aktivitas = gabungan
+/// filter lama Disebut + Feed + Pengumuman; Transaksi = Pesanan lama; Promo
+/// tetap. Publik + @visibleForTesting supaya pemetaan bisa diuji unit.
+@visibleForTesting
+enum NotificationTab {
+  all('Semua'),
+  activity('Aktivitas'),
+  transaction('Transaksi'),
+  promo('Promo');
+
+  final String label;
+  const NotificationTab(this.label);
+
+  bool matches(AppNotification item) {
+    return switch (this) {
+      NotificationTab.all => true,
+      NotificationTab.activity => _isMentionNotification(item) ||
+          _NotificationFilter.feed.matches(item) ||
+          _isAnnouncementNotification(item),
+      NotificationTab.transaction => _NotificationFilter.order.matches(item),
+      NotificationTab.promo => _NotificationFilter.promo.matches(item),
+    };
+  }
+}
+
+/// Bucket waktu untuk header grup daftar notifikasi (berbasis HARI KALENDER
+/// lokal, bukan selisih 24 jam — "kemarin 23:59" tetap KEMARIN walau baru
+/// 31 menit berlalu).
+@visibleForTesting
+enum NotificationTimeBucket {
+  today('HARI INI'),
+  yesterday('KEMARIN'),
+  thisWeek('MINGGU INI'),
+  earlier('SEBELUMNYA');
+
+  final String label;
+  const NotificationTimeBucket(this.label);
+}
+
+@visibleForTesting
+NotificationTimeBucket notificationTimeBucket(
+    DateTime now, DateTime createdAt) {
+  final today = DateTime(now.year, now.month, now.day);
+  final thatDay = DateTime(createdAt.year, createdAt.month, createdAt.day);
+  final dayDiff = today.difference(thatDay).inDays;
+  if (dayDiff <= 0) return NotificationTimeBucket.today;
+  if (dayDiff == 1) return NotificationTimeBucket.yesterday;
+  if (dayDiff <= 7) return NotificationTimeBucket.thisWeek;
+  return NotificationTimeBucket.earlier;
+}
+
+/// Waktu relatif SINGKAT ("20 jam", "3 hari") — satu-satunya timestamp baris
+/// redesign. Beda dari formatRelativeTime (formatters.dart) yang berakhiran
+/// "lalu"; di daftar padat, akhiran itu berulang & memanjangkan baris.
+@visibleForTesting
+String shortRelativeTime(DateTime now, DateTime past) {
+  final diff = now.difference(past);
+  if (diff.inMinutes < 1) return 'baru saja';
+  if (diff.inMinutes < 60) return '${diff.inMinutes} menit';
+  if (diff.inHours < 24) return '${diff.inHours} jam';
+  if (diff.inDays < 7) return '${diff.inDays} hari';
+  if (diff.inDays < 30) return '${(diff.inDays / 7).floor()} minggu';
+  if (diff.inDays < 365) return '${(diff.inDays / 30).floor()} bulan';
+  return '${(diff.inDays / 365).floor()} tahun';
 }
 
 String? _notificationCtaLabel(AppNotification item) {
