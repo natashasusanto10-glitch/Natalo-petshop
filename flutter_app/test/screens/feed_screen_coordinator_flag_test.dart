@@ -128,8 +128,7 @@ void main() {
         reason: 'feed_screen.dispose() → coordinator.dispose() sekali');
   });
 
-  testWidgets('app background/foreground → pauseAll/resumeAll',
-      (tester) async {
+  testWidgets('app background/foreground → pauseAll/resumeAll', (tester) async {
     final spy = _SpyCoordinator();
     debugFeedCoordinatorFactory = ({required sessionFactory}) => spy;
     await _pumpFeed(tester);
