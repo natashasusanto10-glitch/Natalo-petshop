@@ -96,6 +96,7 @@ export async function createFeedNotification(params: {
   ctaLabel?: string | null;
   tag?: string | null;
   data?: Record<string, string | null | undefined>;
+  actor?: { avatarUrl?: string | null; name?: string | null };
   dedupeByEvent?: boolean;
   surface?: NotificationSurface;
 }) {
@@ -170,6 +171,8 @@ export async function createFeedNotification(params: {
           thumbnailUrl: params.thumbnailUrl ?? null,
           feedStatus: params.status ?? null,
           ctaLabel: params.ctaLabel ?? "Lihat Postingan",
+          actorAvatarUrl: params.actor?.avatarUrl ?? null,
+          actorName: params.actor?.name ?? null,
           publishedAt: new Date(),
           targetUserId: params.userId,
         },
