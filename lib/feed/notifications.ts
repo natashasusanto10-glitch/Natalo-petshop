@@ -14,6 +14,7 @@ import {
   type FeedNotificationEventType,
   type FeedNotificationStatus,
 } from "@/lib/feed/notification-center";
+import { feedNotificationThumbnail } from "@/lib/feed/notification-thumbnail";
 
 export type FeedModerationAction = "approve" | "reject" | "hide" | "unhide";
 
@@ -69,6 +70,7 @@ export async function sendFeedEncodingFailedNotification(params: {
         authorRole: true,
         title: true,
         thumbnailUrl: true,
+        media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
       },
     });
     if (!post || post.authorRole !== "CUSTOMER") return;
@@ -85,7 +87,7 @@ export async function sendFeedEncodingFailedNotification(params: {
         post.title,
       )} gagal di-encode dan tidak bisa tayang.${reasonSuffix} Silakan upload ulang.`,
       feedPostId: post.id,
-      thumbnailUrl: post.thumbnailUrl,
+      thumbnailUrl: feedNotificationThumbnail(post),
       status: "rejected",
       url: feedPostOwnerUrl(post.id),
       ctaLabel: "Lihat Postingan Saya",
@@ -109,6 +111,7 @@ export async function sendFeedPendingReviewNotification(params: {
         status: true,
         title: true,
         thumbnailUrl: true,
+        media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
       },
     });
     if (!post || post.authorRole !== "CUSTOMER") return;
@@ -122,7 +125,7 @@ export async function sendFeedPendingReviewNotification(params: {
         post.title
       )} sedang menunggu review admin sebelum tampil di Feed.`,
       feedPostId: post.id,
-      thumbnailUrl: post.thumbnailUrl,
+      thumbnailUrl: feedNotificationThumbnail(post),
       status: "pending",
       url: feedPostOwnerUrl(post.id),
       ctaLabel: "Lihat Postingan Saya",
@@ -150,6 +153,7 @@ export async function sendFeedModerationNotification(params: {
         authorRole: true,
         title: true,
         thumbnailUrl: true,
+        media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
       },
     });
     if (!post || post.authorRole !== "CUSTOMER") return;
@@ -181,7 +185,7 @@ export async function sendFeedModerationNotification(params: {
       title: event.title,
       message,
       feedPostId: post.id,
-      thumbnailUrl: post.thumbnailUrl,
+      thumbnailUrl: feedNotificationThumbnail(post),
       status: event.status,
       url: feedPostOwnerUrl(post.id),
       ctaLabel: event.ctaLabel,

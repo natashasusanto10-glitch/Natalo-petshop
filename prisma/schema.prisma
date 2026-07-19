@@ -1151,6 +1151,7 @@ model Announcement {
   /// notif non-aktor / agregat.
   actorAvatarUrl String?
   actorName      String?
+  actorAvatarUrls   String[]  @default([])
   createdAt    DateTime           @default(now())
   reads        AnnouncementRead[]
 

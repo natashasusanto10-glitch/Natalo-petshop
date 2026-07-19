@@ -23,6 +23,7 @@ import {
   likeRowActorFields,
   notificationActorFields,
   OFFICIAL_BRAND_NAME,
+  topLikerAvatars,
 } from "@/lib/social/brand-user";
 import {
   createFeedNotification,
@@ -31,6 +32,7 @@ import {
   SOCIAL_NOTIFICATION_SOURCE,
   truncateFeedText,
 } from "@/lib/feed/notification-center";
+import { feedNotificationThumbnail } from "@/lib/feed/notification-thumbnail";
 
 // Milestone helper remains available for bulk/broadcast-style summaries.
 // Per-like Notification Center entries are batched below.
@@ -56,6 +58,7 @@ export async function sendCommentNotification(params: {
         authorRole: true,
         title: true,
         thumbnailUrl: true,
+        media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
       },
     });
     if (!post || !post.authorId) return;
@@ -84,7 +87,7 @@ export async function sendCommentNotification(params: {
         post.title
       )}: ${truncateFeedText(params.content)}`,
       feedPostId: post.id,
-      thumbnailUrl: post.thumbnailUrl,
+      thumbnailUrl: feedNotificationThumbnail(post),
       url: feedPostOwnerUrl(post.id),
       ctaLabel: "Lihat Komentar",
       tag: `feed-comment-${post.id}`,
@@ -134,7 +137,12 @@ export async function sendReplyNotification(params: {
 
     const post = await prisma.feedPost.findUnique({
       where: { id: params.postId },
-      select: { id: true, title: true, thumbnailUrl: true },
+      select: {
+        id: true,
+        title: true,
+        thumbnailUrl: true,
+        media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
+      },
     });
 
     await createFeedNotification({
@@ -143,7 +151,7 @@ export async function sendReplyNotification(params: {
       title: `${actorName} membalas komentarmu`,
       message: truncateFeedText(params.content),
       feedPostId: params.postId,
-      thumbnailUrl: post?.thumbnailUrl ?? null,
+      thumbnailUrl: post ? feedNotificationThumbnail(post) : null,
       url: feedPostOwnerUrl(params.postId),
       ctaLabel: "Lihat Balasan",
       tag: `feed-reply-${params.parentCommentId}`,
@@ -193,7 +201,12 @@ export async function sendMentionNotifications(params: {
       }),
       prisma.feedPost.findUnique({
         where: { id: params.postId },
-        select: { id: true, title: true, thumbnailUrl: true },
+        select: {
+          id: true,
+          title: true,
+          thumbnailUrl: true,
+          media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
+        },
       }),
     ]);
     if (!post) return;
@@ -231,7 +244,7 @@ export async function sendMentionNotifications(params: {
           title,
           message,
           feedPostId: post.id,
-          thumbnailUrl: post.thumbnailUrl,
+          thumbnailUrl: feedNotificationThumbnail(post),
           url: feedPostOwnerUrl(post.id),
           ctaLabel: isComment ? "Lihat Komentar" : "Lihat Postingan",
           // Tag dedupe — kalau 1 user di-mention 2x di komentar yang
@@ -292,6 +305,7 @@ export async function sendLikeMilestoneNotification(params: {
         authorRole: true,
         title: true,
         thumbnailUrl: true,
+        media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
       },
     });
     if (!post || !post.authorId) return;
@@ -305,7 +319,7 @@ export async function sendLikeMilestoneNotification(params: {
         post.title
       )} mendapat beberapa like baru.`,
       feedPostId: post.id,
-      thumbnailUrl: post.thumbnailUrl,
+      thumbnailUrl: feedNotificationThumbnail(post),
       url: feedPostOwnerUrl(post.id),
       ctaLabel: "Lihat Postingan",
       tag: `feed-milestone-${post.id}-${params.milestone}`,
@@ -331,11 +345,14 @@ export async function sendLikeNotification(params: {
         authorRole: true,
         title: true,
         thumbnailUrl: true,
+        media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
       },
     });
     if (!post || !post.authorId) return;
     if (post.authorRole === "ADMIN") return;
     if (post.authorId === params.actorUserId) return;
+
+    const thumb = feedNotificationThumbnail(post);
 
     const actor = await prisma.user.findUnique({
       where: { id: params.actorUserId },
@@ -363,6 +380,14 @@ export async function sendLikeNotification(params: {
     });
 
     if (recentUnread) {
+      const topLikers = await prisma.feedLike.findMany({
+        where: { postId: post.id },
+        orderBy: { createdAt: "desc" },
+        take: 3,
+        select: { user: { select: { role: true, profilePhotoUrl: true } } },
+      });
+      const avatarUrls = topLikerAvatars(topLikers.map((l) => l.user));
+
       await prisma.announcement.update({
         where: { id: recentUnread.id },
         data: {
@@ -370,8 +395,9 @@ export async function sendLikeNotification(params: {
           body: `Postingan ${quoteFeedTitle(
             post.title
           )} mendapat beberapa like baru.`,
-          thumbnailUrl: post.thumbnailUrl,
+          thumbnailUrl: thumb,
           ...likeRowActorFields(true, actorFields),
+          actorAvatarUrls: avatarUrls,
           publishedAt: new Date(),
         },
       });
@@ -384,7 +410,7 @@ export async function sendLikeNotification(params: {
       title: "Feed kamu mendapat like baru",
       message: `${likerName} menyukai postingan ${quoteFeedTitle(post.title)}.`,
       feedPostId: post.id,
-      thumbnailUrl: post.thumbnailUrl,
+      thumbnailUrl: thumb,
       url: feedPostOwnerUrl(post.id),
       ctaLabel: "Lihat Postingan",
       tag: `feed-like-${post.id}`,
@@ -424,7 +450,10 @@ export async function sendCommentLikeNotification(params: {
 
     const post = await prisma.feedPost.findUnique({
       where: { id: params.postId },
-      select: { thumbnailUrl: true },
+      select: {
+        thumbnailUrl: true,
+        media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
+      },
     });
 
     const actor = await prisma.user.findUnique({
@@ -453,6 +482,14 @@ export async function sendCommentLikeNotification(params: {
     });
 
     if (recentUnread) {
+      const topLikers = await prisma.feedCommentLike.findMany({
+        where: { commentId: params.commentId },
+        orderBy: { createdAt: "desc" },
+        take: 3,
+        select: { user: { select: { role: true, profilePhotoUrl: true } } },
+      });
+      const avatarUrls = topLikerAvatars(topLikers.map((l) => l.user));
+
       await prisma.announcement.update({
         where: { id: recentUnread.id },
         data: {
@@ -462,6 +499,7 @@ export async function sendCommentLikeNotification(params: {
           // + body nama satu liker). Selaras dgn jalur post-like.
           body: "Beberapa orang menyukai komentarmu di Feed.",
           ...likeRowActorFields(true, actorFields),
+          actorAvatarUrls: avatarUrls,
           publishedAt: new Date(),
         },
       });
@@ -474,7 +512,7 @@ export async function sendCommentLikeNotification(params: {
       title: "Komentarmu mendapat like",
       message: `${likerName} menyukai komentarmu di Feed.`,
       feedPostId: params.postId,
-      thumbnailUrl: post?.thumbnailUrl ?? null,
+      thumbnailUrl: post ? feedNotificationThumbnail(post) : null,
       url: feedPostOwnerUrl(params.postId),
       ctaLabel: "Lihat Komentar",
       tag: `feed-comment-like-${params.commentId}`,
@@ -503,6 +541,7 @@ export async function sendShareNotification(params: {
         authorRole: true,
         title: true,
         thumbnailUrl: true,
+        media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
       },
     });
     if (!post || !post.authorId) return;
@@ -514,7 +553,7 @@ export async function sendShareNotification(params: {
       title: "Feed kamu dibagikan",
       message: `Postingan ${quoteFeedTitle(post.title)} baru saja dibagikan.`,
       feedPostId: post.id,
-      thumbnailUrl: post.thumbnailUrl,
+      thumbnailUrl: feedNotificationThumbnail(post),
       url: feedPostOwnerUrl(post.id),
       ctaLabel: "Lihat Postingan",
       tag: `feed-share-${post.id}`,

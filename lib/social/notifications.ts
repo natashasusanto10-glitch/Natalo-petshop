@@ -4,8 +4,10 @@ import { sendPushToUser, type PushPayload } from "@/lib/push";
 import {
   brandPhotoUrl,
   isAdminRole,
+  notificationActorFields,
   OFFICIAL_BRAND_NAME,
 } from "@/lib/social/brand-user";
+import { feedNotificationThumbnail } from "@/lib/feed/notification-thumbnail";
 
 export const SOCIAL_NOTIFICATION_SOURCE = "social";
 
@@ -141,12 +143,14 @@ export async function sendNewPostToFollowersNotification(postId: string) {
         kind: true,
         status: true,
         thumbnailUrl: true,
+        media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
         author: {
           select: {
             id: true,
             name: true,
             username: true,
             role: true,
+            profilePhotoUrl: true,
           },
         },
       },
@@ -190,7 +194,12 @@ export async function sendNewPostToFollowersNotification(postId: string) {
     const kindLabel = post.kind === "PHOTO_CAROUSEL" ? "foto" : "video";
     const title = "Postingan baru";
     const body = `${actorName} posting ${kindLabel} baru`;
-    const thumb = post.thumbnailUrl ?? null;
+    const thumb = feedNotificationThumbnail(post);
+    const actorFields = notificationActorFields(
+      post.author.role,
+      post.author.name,
+      post.author.profilePhotoUrl,
+    );
 
     const payload: PushPayload = {
       title,
@@ -224,6 +233,8 @@ export async function sendNewPostToFollowersNotification(postId: string) {
         ctaLabel: "Lihat Postingan",
         publishedAt: new Date(),
         targetUserId: fid,
+        actorAvatarUrl: actorFields.actorAvatarUrl,
+        actorName: actorFields.actorName,
       })),
     });
 
