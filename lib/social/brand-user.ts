@@ -70,7 +70,10 @@ export function notificationActorFields(
   profilePhotoUrl: string | null | undefined,
 ): { actorName: string | null; actorAvatarUrl: string | null } {
   return {
-    actorName: isAdminRole(role) ? OFFICIAL_BRAND_NAME : (name ?? null),
+    // name?.trim() || null → nama kosong/whitespace jatuh ke null (bukan
+    // string kosong), supaya `likerName = actorName ?? "Seseorang"` bekerja
+    // dan tak ada pesan berawalan spasi " menyukai ...".
+    actorName: isAdminRole(role) ? OFFICIAL_BRAND_NAME : (name?.trim() || null),
     actorAvatarUrl: brandPhotoUrl(role, profilePhotoUrl),
   };
 }

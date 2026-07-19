@@ -24,6 +24,12 @@ test("user tanpa foto/nama → null", () => {
   assert.equal(r.actorAvatarUrl, null);
 });
 
+test("nama kosong/whitespace → null (bukan string kosong)", () => {
+  assert.equal(notificationActorFields("USER", "   ", null).actorName, null);
+  assert.equal(notificationActorFields("USER", "", null).actorName, null);
+  assert.equal(notificationActorFields("USER", "  Andi  ", null).actorName, "Andi");
+});
+
 test("likeRowActorFields: agregat → null (identitas aktor tunggal hilang)", () => {
   const single = { actorName: "Andi", actorAvatarUrl: "https://cdn/a.jpg" };
   assert.deepEqual(likeRowActorFields(false, single), single);

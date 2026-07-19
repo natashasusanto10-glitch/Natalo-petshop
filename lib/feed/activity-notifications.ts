@@ -457,6 +457,10 @@ export async function sendCommentLikeNotification(params: {
         where: { id: recentUnread.id },
         data: {
           title: `${params.likeCount} orang menyukai komentarmu`,
+          // Overwrite body juga — create tunggal kini bernama ("Andi menyukai
+          // komentarmu"); tanpa ini baris agregat kontradiktif (judul "N orang"
+          // + body nama satu liker). Selaras dgn jalur post-like.
+          body: "Beberapa orang menyukai komentarmu di Feed.",
           ...likeRowActorFields(true, actorFields),
           publishedAt: new Date(),
         },
