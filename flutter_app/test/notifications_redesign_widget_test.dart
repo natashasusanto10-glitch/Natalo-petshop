@@ -154,4 +154,22 @@ void main() {
           reason: 'foto follower tampil di kiri, bukan slot thumbnail kanan');
     });
   });
+
+  testWidgets('actorAvatarUrl → avatar aktor di kiri (mis. komentar)',
+      (tester) async {
+    final n = AppNotification.fromApiJson({
+      'id': 'c1', 'title': 'Andi mengomentari postinganmu', 'body': 'keren!',
+      'type': 'info', 'eventType': 'feed_new_comment',
+      'actorAvatarUrl': 'https://cdn/andi.jpg',
+      'thumbnailUrl': 'https://cdn/post.jpg',
+      'createdAt': DateTime.now().toIso8601String(), 'read': false,
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+    ));
+    expect(find.byKey(const ValueKey('notification-actor-avatar')),
+        findsOneWidget);
+    // Komentar tetap punya thumbnail POST di kanan (beda dari follow).
+    expect(find.byKey(const ValueKey('notification-thumb')), findsOneWidget);
+  });
 }

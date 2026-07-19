@@ -16,6 +16,8 @@ class AppNotification {
   final String? importantDescription;
   final String? infoNote;
   final String? imageUrl;
+  final String? actorAvatarUrl;
+  final String? actorName;
   final DateTime createdAt;
   final bool read;
 
@@ -37,6 +39,8 @@ class AppNotification {
     this.importantDescription,
     this.infoNote,
     this.imageUrl,
+    this.actorAvatarUrl,
+    this.actorName,
     required this.createdAt,
     required this.read,
   });
@@ -71,6 +75,9 @@ class AppNotification {
       infoNote: (json['infoNote'] ?? json['info_note'])?.toString(),
       imageUrl: (json['imageUrl'] ?? json['image_url'] ?? json['thumbnailUrl'])
           ?.toString(),
+      actorAvatarUrl:
+          (json['actorAvatarUrl'] ?? json['actor_avatar_url'])?.toString(),
+      actorName: (json['actorName'] ?? json['actor_name'])?.toString(),
       createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString()) ??
           DateTime.now(),
       read: json['read'] == true,
@@ -98,6 +105,8 @@ class AppNotification {
       importantDescription: importantDescription,
       infoNote: infoNote,
       imageUrl: imageUrl,
+      actorAvatarUrl: actorAvatarUrl,
+      actorName: actorName,
       createdAt: createdAt,
       read: read ?? this.read,
     );

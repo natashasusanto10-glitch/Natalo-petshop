@@ -836,7 +836,15 @@ class NotificationRow extends StatelessWidget {
     final imageUrl = notification.imageUrl;
     final isFollow =
         notification.eventType?.toLowerCase() == 'user_followed';
-    final actorAvatarUrl = isFollow ? imageUrl : null;
+    // Avatar kiri dari field terstruktur (semua notif ber-aktor). Follow
+    // tak punya konten post → sembunyikan thumbnail kanan; notif lain (mis.
+    // komentar) tetap tampilkan thumbnail POST di kanan.
+    final structuredActorAvatarUrl = notification.actorAvatarUrl;
+    final actorAvatarUrl =
+        structuredActorAvatarUrl != null &&
+                structuredActorAvatarUrl.trim().isNotEmpty
+            ? structuredActorAvatarUrl
+            : (isFollow ? imageUrl : null);
 
     return InkWell(
       onTap: onTap,
