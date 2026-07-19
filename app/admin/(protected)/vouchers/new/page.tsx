@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { VoucherType, VoucherUserUsageLimitPeriod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sendVoucherPromoPush } from "@/lib/push-promo";
@@ -165,12 +166,15 @@ export default async function AdminVoucherNewPage() {
     // redirect() melempar — panggil push SEBELUMnya (fire-and-forget).
     if (
       notifyCustomers &&
+      visibility === "PUBLIC" &&
       created.isActive &&
       created.startsAt <= new Date() &&
       (created.expiresAt == null || created.expiresAt > new Date())
     ) {
-      void sendVoucherPromoPush(created.id).catch((e) =>
-        console.warn("[voucher-create] promo push:", e),
+      after(() =>
+        sendVoucherPromoPush(created.id).catch((e) =>
+          console.warn("[voucher-create] promo push:", e),
+        ),
       );
     }
 

@@ -15,7 +15,7 @@
  *       { productId, variantId?, discountedPrice, isItemActive }
  *   ] }
  */
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
@@ -220,8 +220,10 @@ export async function POST(request: NextRequest) {
     discount.startsAt <= now &&
     discount.endsAt > now
   ) {
-    void sendProductDiscountPromoPush(discount.id).catch((e) =>
-      console.warn("[promo-toko-create] promo push:", e),
+    after(() =>
+      sendProductDiscountPromoPush(discount.id).catch((e) =>
+        console.warn("[promo-toko-create] promo push:", e),
+      ),
     );
   }
 
