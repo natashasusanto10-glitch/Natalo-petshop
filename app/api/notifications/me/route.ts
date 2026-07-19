@@ -23,6 +23,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { signBunnyUrl } from "@/lib/feed/bunny";
 
 const MAX_ITEMS = 50;
 
@@ -48,6 +49,7 @@ function mapAnnouncement(a: {
   thumbnailUrl: string | null;
   actorAvatarUrl: string | null;
   actorName: string | null;
+  actorAvatarUrls: string[];
   feedStatus: string | null;
   ctaLabel: string | null;
   createdAt: Date;
@@ -66,9 +68,10 @@ function mapAnnouncement(a: {
     eventType: a.eventType,
     feedPostId: a.feedPostId,
     videoId: a.feedPostId,
-    thumbnailUrl: a.thumbnailUrl,
+    thumbnailUrl: signBunnyUrl(a.thumbnailUrl) ?? null,
     actorAvatarUrl: a.actorAvatarUrl,
     actorName: a.actorName,
+    actorAvatarUrls: a.actorAvatarUrls,
     status: a.feedStatus,
     ctaLabel: a.ctaLabel,
     createdAt: a.createdAt.toISOString(),
