@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/features/feed/transition/post_transition_source_tile.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/post_video_warm_handoff.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/video_player_session.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/models/public_profile.dart';
-import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
+import 'package:natalo_petshop_flutter/screens/member_screen.dart'
+    show
+        mergeProfilePostsById,
+        reconcileProfilePosts,
+        resolveProfileTransitionScope,
+        profilePostScopeAll;
 import 'package:natalo_petshop_flutter/screens/public_profile_screen.dart';
 import 'package:natalo_petshop_flutter/services/profile_service.dart';
 import 'package:natalo_petshop_flutter/widgets/liquid_glass.dart';
-import 'package:natalo_petshop_flutter/widgets/origin_expansion_route.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_chrome_overlay.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
@@ -74,13 +79,51 @@ void main() {
     );
   });
 
-  testWidgets('video tile opens Postingan through origin expansion and returns',
+  testWidgets(
+      'grid tiles register as zoom-transition sources scoped to their tab',
       (tester) async {
-    final reverseSnapshotStatuses = <AnimationStatus>[];
-    debugOriginExpansionStatusObserver = (status, hasSnapshot) {
-      if (hasSnapshot) reverseSnapshotStatuses.add(status);
-    };
-    addTearDown(() => debugOriginExpansionStatusObserver = null);
+    final post = FeedPost.fromJson({
+      'id': 'public-a',
+      'slug': 'public-a',
+      'kind': 'USER_PHOTO',
+      'mediaUrl': 'https://example.com/public-a.jpg',
+      'thumbnailUrl': 'https://example.com/public-a.jpg',
+      'author': {'id': 'creator-1', 'name': 'Creator'},
+      'createdAt': DateTime(2026, 7, 18).toIso8601String(),
+    });
+    final result = PublicProfileResult(
+      profile: const PublicProfile(
+        id: 'creator-1',
+        name: 'Creator',
+        username: 'creator',
+      ),
+      posts: [post],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PublicProfileScreen(
+          username: 'creator',
+          initialResult: result,
+          fetchChatConfig: _noOpFetch,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final tile = tester.widget<PostTransitionSourceTile>(
+      find.byType(PostTransitionSourceTile).first,
+    );
+    // The visible tab is `all`, so the tile id is scoped to it.
+    expect(
+      tile.id,
+      const PostTransitionTileId(scope: 'all', postId: 'public-a'),
+    );
+  });
+
+  testWidgets(
+      'tapping a video tile opens the zoom route, not the legacy origin '
+      'expansion, and holds the warm handoff', (tester) async {
     final post = FeedPost.fromJson({
       'id': 'video-1',
       'slug': 'video-1',
@@ -128,26 +171,21 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 1));
 
-    expect(find.byKey(const ValueKey('origin-expansion-snapshot')),
-        findsOneWidget);
-    expect(find.byType(MemberPostDetailScreen), findsOneWidget);
-    final detailState =
-        tester.state(find.byType(MemberPostDetailScreen)) as dynamic;
-    expect(detailState.debugVideoCoordinator.sessionFor(post.id),
-        same(warmSession));
+    // Legacy origin-expansion snapshot must be gone — this path now pushes the
+    // dedicated full-page zoom route (which holds at `preparingOpen`, covering
+    // the screen, until the destination reports readiness — a device-verify
+    // path). The warm handoff must not be disposed while the route holds it.
+    expect(
+      find.byKey(const ValueKey('origin-expansion-snapshot')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
     expect(disposeCount, 0);
-
-    Navigator.of(tester.element(find.byType(MemberPostDetailScreen))).pop();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 110));
-    expect(reverseSnapshotStatuses, contains(AnimationStatus.reverse));
-
-    await tester.pump(const Duration(milliseconds: 220));
-    expect(find.byType(MemberPostDetailScreen), findsNothing);
-    expect(find.byKey(const ValueKey('profile-post-video-1')), findsOneWidget);
+    // The source tile remains present beneath the non-opaque route.
+    expect(find.byType(PostTransitionSourceTile), findsWidgets);
   });
 
-  testWidgets('opens Postingan without entry haptic', (tester) async {
+  testWidgets('opens Postingan without an entry haptic', (tester) async {
     final post = FeedPost.fromJson({
       'id': 'public-a',
       'slug': 'public-a',
@@ -181,8 +219,78 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 1));
 
-    expect(find.byType(MemberPostDetailScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
     expect(hapticCalls.where((call) => call.method == 'light'), isEmpty);
+    expect(
+      hapticCalls.where((call) => call.method == 'selectionClick'),
+      isEmpty,
+    );
+  });
+
+  group('public profile scoped transition helpers', () {
+    FeedPost post(String id) => FeedPost.fromJson({
+          'id': id,
+          'slug': id,
+          'kind': 'USER_PHOTO',
+          'mediaUrl': 'https://example.com/$id.jpg',
+          'author': {'id': 'creator-1', 'name': 'Creator'},
+          'createdAt': DateTime(2026, 7, 18).toIso8601String(),
+        });
+
+    test(
+      'resolveProfileTransitionScope keeps the shoppable tab unless B is '
+      'missing there',
+      () {
+        // B is present in its origin (shoppable) tab → never switch.
+        expect(
+          resolveProfileTransitionScope(
+            originScope: 'shoppable',
+            originScopeContainsPost: true,
+            allScopeContainsPost: true,
+          ),
+          'shoppable',
+        );
+        // B cannot exist in the shoppable tab but exists in Semua → switch.
+        expect(
+          resolveProfileTransitionScope(
+            originScope: 'shoppable',
+            originScopeContainsPost: false,
+            allScopeContainsPost: true,
+          ),
+          profilePostScopeAll,
+        );
+        // B is nowhere yet → stay on the origin tab (no gratuitous switch).
+        expect(
+          resolveProfileTransitionScope(
+            originScope: 'shoppable',
+            originScopeContainsPost: false,
+            allScopeContainsPost: false,
+          ),
+          'shoppable',
+        );
+      },
+    );
+
+    test('reconcileProfilePosts retains a B paginated in beyond page 1', () {
+      final existing = [post('a'), post('b'), post('c'), post('dBeyond')];
+      final refreshedPage1 = [post('a'), post('b')];
+
+      final reconciled = reconcileProfilePosts(refreshedPage1, existing);
+
+      expect(reconciled.map((p) => p.id), ['a', 'b', 'c', 'dBeyond']);
+    });
+
+    test('mergeProfilePostsById dedupes by id and keeps existing instances', () {
+      final existing = [post('a'), post('b')];
+      final incoming = [post('b'), post('c')];
+
+      final merged = mergeProfilePostsById(existing, incoming);
+
+      expect(merged.map((p) => p.id), ['a', 'b', 'c']);
+      expect(identical(merged[1], existing[1]), isTrue);
+      expect(identical(mergeProfilePostsById(existing, [post('a')]), existing),
+          isTrue);
+    });
   });
 
   testWidgets(

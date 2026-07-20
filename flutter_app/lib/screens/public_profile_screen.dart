@@ -10,6 +10,10 @@ import 'package:share_plus/share_plus.dart';
 
 import '../config/api_config.dart';
 import '../models/feed_post.dart';
+import '../features/feed/transition/post_detail_transition_session.dart';
+import '../features/feed/transition/post_page_zoom_route.dart';
+import '../features/feed/transition/post_transition_source_tile.dart';
+import '../features/feed/transition/profile_post_source_adapter.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
@@ -34,6 +38,14 @@ import '../widgets/profile_grid_geometry.dart';
 import '../widgets/public_profile_chrome_overlay.dart';
 import '../widgets/public_profile_identity_tab_header.dart';
 import 'member_post_detail_screen.dart';
+// Reuse the pure, reviewed helpers established for Own Profile (Task 9) — the
+// grid scope decision + loaded-extent reconciliation are identical for the
+// public profile; importing them avoids duplicating that logic here.
+import 'member_screen.dart'
+    show
+        mergeProfilePostsById,
+        reconcileProfilePosts,
+        resolveProfileTransitionScope;
 import 'public_profile_follow_list_screen.dart';
 
 const _brandBlue = NataloColors.primary;
@@ -187,6 +199,21 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   bool _notFound = false;
   late int _viewerGeneration;
   final _tileKeys = ProfilePostOriginKeyCache();
+
+  // ── Full-page zoom transition (Postingan) ───────────────────────────
+  /// One registry shared by every content tab's grid tiles; tile ids are
+  /// scoped by content (`content.name`) so the three tabs never collide.
+  final PostTransitionTileRegistry _transitionRegistry =
+      PostTransitionTileRegistry();
+
+  /// The content tab the running transition resolves tiles in. Normal scoped
+  /// pagination NEVER switches tabs; the `all` (Semua) scope is adopted only
+  /// when the active post cannot exist in the origin tab (legacy mixed-scope
+  /// pagination), and the tab then stays there after pop.
+  PublicProfileContentFilter _activeTransitionContent =
+      PublicProfileContentFilter.all;
+
+  String get _activeTransitionScope => _activeTransitionContent.name;
 
   late final ScrollController _scrollController;
   late final TabController _tabController;
@@ -580,10 +607,24 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     final profile = _profile;
     final post = posts[index];
     final handoff = _videoPrewarmer.take(post) ?? _createWarmHandoff(post);
+    _activeTransitionContent = content;
+    final adapter = ProfilePostSourceAdapter(
+      registry: _transitionRegistry,
+      isMounted: () => mounted,
+      currentScope: () => _activeTransitionScope,
+      ensureVisible: _ensureTileVisible,
+      mergeScopedPage: _mergeScopedPage,
+      fallbackColor: (_) =>
+          Theme.of(context).colorScheme.surfaceContainerHighest,
+    );
+    final session = PostDetailTransitionSession(
+      initialPost: post,
+      source: adapter,
+    );
     try {
-      await pushOriginExpansion<void>(
+      await pushPostPageZoom(
         context,
-        originKey: _tileKeys.forPost(content, post.id),
+        session: session,
         // IG-style: bukan single-post screen, tapi vertical-scroll feed
         // dari SEMUA posts user — initial scrolled ke tile yang di-tap.
         // Author header pakai data dari PublicProfile (bukan memberStore,
@@ -622,11 +663,156 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
               nextCursor: result.nextCursor,
             );
           },
+          transitionSession: session,
         ),
       );
     } finally {
+      // Order matters (mirror Own Profile): the session's dispose still routes
+      // tile restoration through the (live) adapter; consume the pending
+      // return next; only then release the adapter's owned proxies.
+      session.dispose();
+      _consumePendingReturn(adapter);
+      adapter.dispose();
       await handoff?.disposeIfUnclaimed();
       _openingPost = false;
+    }
+    // Reconcile the post-pop refresh into the loaded extent so a B paginated in
+    // beyond page 1 (and the pending-return jump to it) is retained.
+    if (mounted) await _refreshRetainingExtent(_activeTransitionContent);
+  }
+
+  List<FeedPost> _contentPosts(PublicProfileContentFilter content) =>
+      _contentStates[content]!.posts;
+
+  bool _scopeContainsPost(PublicProfileContentFilter content, String postId) =>
+      _contentPosts(content).any((post) => post.id == postId);
+
+  PublicProfileContentFilter _contentForScope(String scope) {
+    for (final content in _profileContentTabs) {
+      if (content.name == scope) return content;
+    }
+    return PublicProfileContentFilter.all;
+  }
+
+  /// Dedupe the loaded page into the ACTIVE content tab's backing list without
+  /// a duplicate network fetch (the detail screen already fetched it).
+  void _mergeScopedPage(FeedPage page) {
+    if (!mounted) return;
+    final contentState = _contentStates[_activeTransitionContent]!;
+    final merged = mergeProfilePostsById(contentState.posts, page.items);
+    if (identical(merged, contentState.posts)) return;
+    setState(() => contentState.posts = merged);
+  }
+
+  /// Best-effort positioning of the active grid so target post B lands visible.
+  /// Scope rule: keep the origin tab when B exists there; only fall back to
+  /// `all` (Semua) when B cannot exist in the origin scope — and select that
+  /// tab silently while the zoom route covers the screen.
+  Future<void> _ensureTileVisible(FeedPost post, int generation) async {
+    if (!mounted) return;
+    final originScope = _activeTransitionScope;
+    final resolvedScope = resolveProfileTransitionScope(
+      originScope: originScope,
+      originScopeContainsPost:
+          _scopeContainsPost(_activeTransitionContent, post.id),
+      allScopeContainsPost:
+          _scopeContainsPost(PublicProfileContentFilter.all, post.id),
+    );
+    if (resolvedScope != originScope) {
+      final target = _contentForScope(resolvedScope);
+      _activeTransitionContent = target;
+      final targetIndex = _profileContentTabs.indexOf(target);
+      setState(() => _selectedContent = target);
+      if (_tabController.index != targetIndex) {
+        _tabController.index = targetIndex;
+      }
+      final targetState = _contentStates[target]!;
+      if (!targetState.loaded && !targetState.loading) {
+        unawaited(_loadSelectedContent(target));
+      }
+      _transitionRegistry.markLayoutChanged();
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+    }
+    final tileContext =
+        _tileKeys.forPost(_activeTransitionContent, post.id).currentContext;
+    if (tileContext == null || !tileContext.mounted) return;
+    // The grid lives in the NestedScrollView's inner scrollable; a small
+    // non-zero alignment leaves a comfortable top margin below the pinned
+    // chrome without pushing the tile down. (Exact pinned-chrome/bottom-nav
+    // pixel bounds are a device-verify item — Task 15.)
+    await Scrollable.ensureVisible(
+      tileContext,
+      alignment: 0.1,
+      duration: Duration.zero,
+    );
+  }
+
+  BuildContext? _firstBuiltTileContext(PublicProfileContentFilter content) {
+    for (final post in _contentPosts(content)) {
+      final context = _tileKeys.forPost(content, post.id).currentContext;
+      if (context != null) return context;
+    }
+    return null;
+  }
+
+  void _consumePendingReturn(ProfilePostSourceAdapter adapter) {
+    if (adapter.pendingReturnPostId == null || !mounted) {
+      adapter.consumePendingReturn(
+        gridWidth: 0,
+        indexOfPostInCurrentScope: (_) => null,
+        jumpToOffset: (_) {},
+      );
+      return;
+    }
+    final gridWidth = MediaQuery.of(context).size.width;
+    adapter.consumePendingReturn(
+      gridWidth: gridWidth,
+      indexOfPostInCurrentScope: (postId) {
+        final index = _contentPosts(_activeTransitionContent)
+            .indexWhere((post) => post.id == postId);
+        return index < 0 ? null : index;
+      },
+      jumpToOffset: (offset) {
+        final tileContext = _firstBuiltTileContext(_activeTransitionContent);
+        if (tileContext == null) return;
+        final position = Scrollable.maybeOf(tileContext)?.position;
+        if (position == null) return;
+        position.jumpTo(
+          offset.clamp(position.minScrollExtent, position.maxScrollExtent),
+        );
+      },
+    );
+  }
+
+  /// Post-pop refresh that reconciles a fresh page-1 load into the currently
+  /// loaded list (instead of replacing it) so posts paginated in beyond page 1
+  /// — e.g. a B scrolled to inside the detail viewer — survive the refresh.
+  Future<void> _refreshRetainingExtent(
+    PublicProfileContentFilter content,
+  ) async {
+    final requestViewerGeneration = memberStore.viewerGeneration;
+    final contentState = _contentStates[content]!;
+    final fetchedAt = DateTime.now();
+    try {
+      final result = await profileService.fetchPublicProfile(
+        username: widget.username,
+        content: content,
+      );
+      if (!mounted ||
+          memberStore.viewerGeneration != requestViewerGeneration) {
+        return;
+      }
+      feedStore.mergeFromServer(result.posts, fetchedAt: fetchedAt);
+      final refreshed = _canonicalPosts(result.posts);
+      setState(() {
+        contentState
+          ..posts = reconcileProfilePosts(refreshed, contentState.posts)
+          ..nextCursor = result.nextCursor
+          ..loaded = true;
+      });
+    } catch (_) {
+      // Best-effort — the existing loaded extent stays usable on failure.
     }
   }
 
@@ -995,6 +1181,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
                   try {
                     return _PostTile(
                       post: posts[index],
+                      registry: _transitionRegistry,
+                      content: content,
                       originKey: _tileKeys.forPost(content, posts[index].id),
                       onTapDown: () => _prepareVideo(posts[index]),
                       onTapCancel: () => _cancelPreparedVideo(posts[index].id),
@@ -1033,6 +1221,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
 
 class _PostTile extends StatelessWidget {
   final FeedPost post;
+  final PostTransitionTileRegistry registry;
+  final PublicProfileContentFilter content;
   final GlobalKey originKey;
   final VoidCallback onTap;
   final VoidCallback? onTapDown;
@@ -1041,6 +1231,8 @@ class _PostTile extends StatelessWidget {
 
   const _PostTile({
     required this.post,
+    required this.registry,
+    required this.content,
     required this.originKey,
     required this.onTap,
     this.onTapDown,
@@ -1048,63 +1240,73 @@ class _PostTile extends StatelessWidget {
     this.showCommerceBadge = false,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    // CRITICAL: wrap entire tile body in Builder + try-catch supaya
-    // build()-time error (CachedNetworkImage assert, Uri parse fail, dll)
-    // ke-catch lokal SEBELUM sampai ke ErrorWidget.builder global yang
-    // jadi banner gede "Terjadi kesalahan".
-    //
-    // Note: per-tile try-catch di SliverChildBuilderDelegate hanya catch
-    // CONSTRUCTOR errors (yang gak pernah throw untuk const widget) —
-    // build()-time errors di child widget langsung intercept oleh
-    // ErrorWidget.builder global. Try-catch di SINI dalam build method
-    // catches semua synchronous errors di tile.
-    return Builder(
-      builder: (innerContext) {
-        try {
-          return _buildSafeTile(innerContext);
-        } catch (_) {
-          // Last-resort fallback — render plain colored box. Catatan: ini
-          // CUMA catch error sync di build path. Async errors (download
-          // image fail) sudah di-handle oleh CachedNetworkImage.errorWidget.
-          return ColoredBox(
-            color: Theme.of(innerContext).colorScheme.surfaceContainerHighest,
-          );
-        }
-      },
-    );
-  }
-
-  Widget _buildSafeTile(BuildContext context) {
-    // Resolve thumb dgn fallback chain — thumbnailUrl post → thumbnailUrl
-    // media pertama → mediaUrl media pertama → mediaUrl post.
+  /// STRICT URL validation shared by the source-tile crossfade proxy and the
+  /// rendered thumbnail — pakai Uri.tryParse + check scheme + host (edge
+  /// cases: "https://" tanpa host, URL dengan space, "javascript:" scheme).
+  static String? _validImageUrl(FeedPost post) {
     // previewMediaUrl getter handles fallback chain: thumbnailUrl →
     // mediaItems.first.thumbnailUrl → mediaItems.first.mediaUrl → videoUrl.
     final thumb = post.previewMediaUrl.trim();
-
-    // STRICT URL validation — pakai Uri.tryParse + check scheme + host.
-    // Defensive untuk edge case: "https://" tanpa host, URL dengan space,
-    // path relative, "javascript:" scheme, dll. Sebelumnya cuma cek
-    // startsWith yang gampang lolos URL malformed.
     final parsedUri = Uri.tryParse(thumb);
-    final isValidImageUrl = parsedUri != null &&
+    final isValid = parsedUri != null &&
         (parsedUri.scheme == 'http' || parsedUri.scheme == 'https') &&
         parsedUri.hasAuthority;
+    return isValid ? thumb : null;
+  }
 
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final imageUrl = _validImageUrl(post);
+    // The registry-fed source tile owns the origin key + RepaintBoundary and
+    // exposes this tile's live geometry + media proxy to the zoom route.
+    // OriginSnapshotSource keeps the grid-side content suppressible while the
+    // static route snapshot performs the Profile -> Postingan morph.
+    return PostTransitionSourceTile(
+      key: originKey,
+      registry: registry,
+      id: PostTransitionTileId(scope: content.name, postId: post.id),
+      fallbackColor: cs.surfaceContainerHighest,
+      imageProvider:
+          imageUrl != null ? CachedNetworkImageProvider(imageUrl) : null,
+      child: OriginSnapshotSource(
+        // CRITICAL: wrap entire tile body in Builder + try-catch supaya
+        // build()-time error (CachedNetworkImage assert, Uri parse fail, dll)
+        // ke-catch lokal SEBELUM sampai ke ErrorWidget.builder global yang
+        // jadi banner gede "Terjadi kesalahan".
+        child: Builder(
+          builder: (innerContext) {
+            try {
+              return _buildSafeTile(innerContext, imageUrl);
+            } catch (_) {
+              // Last-resort fallback — render plain colored box. Catatan: ini
+              // CUMA catch error sync di build path. Async errors (download
+              // image fail) sudah di-handle oleh CachedNetworkImage.errorWidget.
+              return ColoredBox(
+                color:
+                    Theme.of(innerContext).colorScheme.surfaceContainerHighest,
+              );
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSafeTile(BuildContext context, String? imageUrl) {
+    final thumb = imageUrl ?? '';
+    final isValidImageUrl = imageUrl != null;
     final cs = Theme.of(context).colorScheme;
     final productCount = post.products.length;
     final primaryPrice = _lowestProductPrice(post.products);
-    return RepaintBoundary(
-      key: originKey,
-      child: Semantics(
-        button: true,
-        label: showCommerceBadge && productCount > 0
-            ? 'Postingan belanja dengan $productCount produk'
-            : post.isVideo
-                ? 'Postingan video'
-                : 'Postingan foto',
-        child: GestureDetector(
+    return Semantics(
+      button: true,
+      label: showCommerceBadge && productCount > 0
+          ? 'Postingan belanja dengan $productCount produk'
+          : post.isVideo
+              ? 'Postingan video'
+              : 'Postingan foto',
+      child: GestureDetector(
           key: ValueKey('profile-post-${post.id}'),
           onTapDown: (_) => onTapDown?.call(),
           onTapCancel: onTapCancel,
@@ -1207,8 +1409,7 @@ class _PostTile extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 
   int? _lowestProductPrice(List<FeedProductLink> products) {
