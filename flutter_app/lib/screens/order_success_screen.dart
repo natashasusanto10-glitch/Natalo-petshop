@@ -153,13 +153,10 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
   Future<void> _openMidtrans() async {
     final paymentUrl = _order.paymentUrl;
     if (paymentUrl == null || paymentUrl.isEmpty) {
-      // Kind-inference: "belum tersedia" — pola sama dengan pesan
-      // ketersediaan lain di app (mis. "Produk sedang tidak tersedia.") →
-      // warning, bukan error murni.
-      _showSnack(
-        'Link pembayaran belum tersedia. Buka detail pesanan.',
-        kind: ToastKind.warning,
-      );
+      // Kind-inference: tidak ada literal keyword match → info (default
+      // "else" migrasi ini; lihat juga "Produk sudah tidak tersedia." di
+      // member_order_detail_screen.dart yang juga default info tanpa kind).
+      _showSnack('Link pembayaran belum tersedia. Buka detail pesanan.');
       return;
     }
     // Payment links only ever load in the OS browser after exact validation —

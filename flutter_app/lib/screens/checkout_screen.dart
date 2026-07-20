@@ -870,10 +870,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (!mounted) return;
       if (!validation.valid && validation.issues.isNotEmpty) {
         AppHaptics.warning();
+        // Kind-inference: tidak ada literal keyword "gagal"/"tidak bisa" —
+        // per konvensi migrasi ini (else → info, "warning" tak pernah
+        // dipakai kecuali diwajibkan brief), default ke info.
         AppToast.showBanner(
           context,
           'Beberapa item perlu update: ${validation.issues.first.message}',
-          kind: ToastKind.warning,
+          kind: ToastKind.info,
           duration: const Duration(seconds: 5),
         );
         setState(() => _submitting = false);

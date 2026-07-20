@@ -23,11 +23,12 @@ Future<String?> showVoiceSearchModal(BuildContext context) async {
   if (!context.mounted) return null;
 
   if (!ready) {
-    // Tidak ada recognizer / permission denied permanen.
+    // Tidak ada recognizer / permission denied permanen. Kind-inference:
+    // tidak ada literal keyword match → info (default "else" migrasi ini).
     AppToast.showBanner(
       context,
       'Pencarian suara tidak tersedia. Cek izin mikrofon di pengaturan.',
-      kind: ToastKind.warning,
+      kind: ToastKind.info,
     );
     return null;
   }
