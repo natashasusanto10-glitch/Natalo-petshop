@@ -139,10 +139,13 @@ class _PhotoCropPreviewState extends State<PhotoCropPreview>
   double _resetFromScale = 1;
 
   // Physics constants — dinamai untuk device-tuning saat verify.
-  static const double _flingRetentionPerSec = 0.12; // fraksi v tersisa/detik
+  // Crop foto profil butuh presisi (bukan scroll), jadi momentum SENGAJA
+  // kalem: fling di-redam kuat supaya lepas jari tidak "meluncur kencang".
+  static const double _flingGain = 0.3; // skala v saat lepas (0 = mati total)
+  static const double _flingRetentionPerSec = 0.04; // fraksi v tersisa/detik
   static const double _settleRetentionPerSec = 0.0006; // ease balik ke batas
-  static const double _minStopVelocity = 6; // px/s
-  static const double _maxTrackedVelocity = 6000; // px/s clamp
+  static const double _minStopVelocity = 40; // px/s — berhenti lebih cepat
+  static const double _maxTrackedVelocity = 2500; // px/s clamp
 
   @override
   void initState() {
@@ -335,6 +338,8 @@ class _PhotoCropPreviewState extends State<PhotoCropPreview>
       _lastTapMicros = micros;
       _lastTapPos = localPos;
     }
+    // Redam energi fling saat lepas — crop butuh presisi, bukan glide jauh.
+    _velocity = _velocity * _flingGain;
     _startSettle();
   }
 
