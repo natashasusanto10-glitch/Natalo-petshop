@@ -70,6 +70,13 @@ export function isBunnyConfigured(): boolean {
  * Title is required by Bunny but only shown in their dashboard; we use
  * a synthetic name like `feed-{userId}-{timestamp}` so admins can
  * correlate from the Bunny dashboard back to a FeedPost if needed.
+ *
+ * `thumbnailTime: 0` memaksa Bunny generate auto-thumbnail dari frame
+ * PERTAMA video (bukan default ~10% durasi). Tanpa ini, thumbnail beda
+ * frame dari frame pertama yang benar-benar diputar saat play mulai —
+ * terasa seperti "snatch"/glitch pas start walau videonya sendiri sudah
+ * siap (bukan buffering). IG selalu pakai frame pertama sebagai poster,
+ * makanya transisi thumb→play di sana mulus.
  */
 export async function createBunnyVideo(params: {
   title: string;
@@ -88,7 +95,10 @@ export async function createBunnyVideo(params: {
           "Content-Type": "application/json",
           accept: "application/json",
         },
-        body: JSON.stringify({ title: params.title.slice(0, 200) }),
+        body: JSON.stringify({
+          title: params.title.slice(0, 200),
+          thumbnailTime: 0,
+        }),
       },
     );
   } catch (err) {
@@ -247,9 +257,10 @@ export function bunnyMp4ToHls(url: string | null | undefined): string | null {
 }
 
 /**
- * Auto-generated thumbnail URL — Bunny pulls a frame at ~10% of the clip
- * by default. Good enough as a placeholder before the video element
- * finishes its first paint.
+ * Auto-generated thumbnail URL — Bunny pulls the frame at `thumbnailTime`
+ * (set to 0 ms at createBunnyVideo, i.e. the video's first frame) so the
+ * poster matches exactly what plays first. Good enough as a placeholder
+ * before the video element finishes its first paint.
  */
 export function bunnyThumbnailUrl(guid: string): string {
   const cfg = getBunnyConfig();
