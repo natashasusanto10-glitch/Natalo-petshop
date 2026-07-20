@@ -828,3 +828,66 @@ export async function listFeedComments({
     nextCursor: hasMore ? page[page.length - 1].id : null,
   };
 }
+
+export type FeedCommentDetailResult =
+  | { status: "not-found" }
+  | { status: "post-gone" }
+  | { status: "ok"; comment: FeedCommentItem };
+
+/**
+ * Ambil satu komentar (utk composer balas dari notifikasi). Brand-safe via
+ * mapFeedComment (admin → identitas brand, foto null). Bedakan "komentar
+ * hilang" vs "post induk hilang" supaya client bisa pesan yang tepat —
+ * comment routes tak cascade-delete komentar saat post dihapus, jadi guard
+ * post WAJIB (pola sama seperti like-route).
+ */
+export async function getFeedCommentDetail({
+  commentId,
+  viewerUserId,
+  db = prisma,
+}: {
+  commentId: string;
+  viewerUserId?: string | null;
+  db?: Pick<
+    Prisma.TransactionClient,
+    "feedComment" | "feedCommentLike" | "user"
+  >;
+}): Promise<FeedCommentDetailResult> {
+  const comment = await db.feedComment.findUnique({
+    where: { id: commentId },
+    include: {
+      ...FEED_COMMENT_THREAD_INCLUDE,
+      post: { select: { status: true, deletedAt: true } },
+    },
+  });
+  if (!comment || comment.deletedAt !== null || comment.isHidden) {
+    return { status: "not-found" };
+  }
+  if (
+    !comment.post ||
+    comment.post.status !== "ACTIVE" ||
+    comment.post.deletedAt !== null
+  ) {
+    return { status: "post-gone" };
+  }
+
+  let viewerLikedIds = new Set<string>();
+  if (viewerUserId) {
+    const commentIds = [comment.id, ...comment.replies.map((r) => r.id)];
+    const likes = await db.feedCommentLike.findMany({
+      where: { userId: viewerUserId, commentId: { in: commentIds } },
+      select: { commentId: true },
+    });
+    viewerLikedIds = new Set(likes.map((l) => l.commentId));
+  }
+
+  const officialHandles = await resolveOfficialMentionHandles(
+    [comment.content, ...comment.replies.map((r) => r.content)],
+    db,
+  );
+
+  return {
+    status: "ok",
+    comment: mapFeedComment(comment, viewerLikedIds, officialHandles),
+  };
+}
