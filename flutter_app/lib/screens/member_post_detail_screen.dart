@@ -64,6 +64,28 @@ PlaybackSessionFactory? debugPostVideoSessionFactory;
 @visibleForTesting
 void Function(String sessionId, String url)? debugPostVideoSessionUrlObserver;
 
+/// Apakah identitas author di-render sebagai OVERLAY di atas media (teks putih
+/// di dalam video) atau sebagai baris terpisah putih di ATAS media (teks
+/// gelap, seperti post foto).
+///
+/// Paritas Instagram:
+/// - Foto/carousel → SELALU baris terpisah (return false).
+/// - Video PORTRAIT / persegi (tinggi ≥ lebar) → overlay di atas video
+///   (return true) — video mengisi frame tinggi, username menimpa.
+/// - Video LANDSCAPE (lebih lebar dari tinggi) → baris terpisah (return
+///   false) — video tampil pendek-lebar, overlay akan terasa sempit &
+///   berdesakan. IG menaruh username di baris atas untuk landscape.
+///
+/// Video tanpa dimensi (w/h ≤ 0) default portrait → overlay (aman: mayoritas
+/// video customer portrait, dan default aspectRatio model 9/16).
+bool postVideoUsesOverlay(FeedPost post) {
+  if (!post.isVideo) return false;
+  final w = post.aspectWidthInt;
+  final h = post.aspectHeightInt;
+  if (w <= 0 || h <= 0) return true;
+  return w <= h;
+}
+
 /// Detail Postingan style Instagram Feed — continuous vertical scroll list
 /// of user's own posts (Postingan Saya).
 ///
@@ -1563,9 +1585,11 @@ class _PostFeedItemState extends State<_PostFeedItem>
             child: _PostStatusBadge(post: post),
           ),
         ],
-        // Photo/carousel: author row putih di atas media.
-        // Video: author masuk overlay di dalam video (IG video post style).
-        if (!post.isVideo)
+        // Foto/carousel + video LANDSCAPE: author row putih di atas media.
+        // Video PORTRAIT: author masuk overlay di dalam video (IG video post
+        // style). Lihat postVideoUsesOverlay — landscape pakai baris atas
+        // supaya username tidak berdesakan di video pendek-lebar.
+        if (!postVideoUsesOverlay(post))
           _PostAuthorRow(
             memberName: memberName,
             memberInitial: memberInitial,
@@ -1596,7 +1620,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
                 onVideoMediaDoubleTapDown: _rememberHeartBurstPosition,
                 onVideoMediaDoubleTap: _handleDoubleTap,
               ),
-              if (post.isVideo)
+              if (postVideoUsesOverlay(post))
                 Positioned(
                   top: 0,
                   left: 0,
