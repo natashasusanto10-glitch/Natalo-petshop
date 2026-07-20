@@ -26,6 +26,7 @@ import {
   topLikerAvatars,
 } from "@/lib/social/brand-user";
 import {
+  buildCommentNotificationText,
   createFeedNotification,
   feedPostOwnerUrl,
   quoteFeedTitle,
@@ -79,13 +80,13 @@ export async function sendCommentNotification(params: {
       actor?.profilePhotoUrl
     );
 
+    const commentText = buildCommentNotificationText(actorName, params.content);
+
     await createFeedNotification({
       userId: post.authorId,
       eventType: "feed_new_comment",
-      title: "Komentar baru di Feed kamu",
-      message: `${actorName} mengomentari postingan ${quoteFeedTitle(
-        post.title
-      )}: ${truncateFeedText(params.content)}`,
+      title: commentText.title,
+      message: commentText.body,
       feedPostId: post.id,
       thumbnailUrl: feedNotificationThumbnail(post),
       url: feedPostOwnerUrl(post.id),

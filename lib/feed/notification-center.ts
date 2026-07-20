@@ -79,6 +79,22 @@ export function truncateFeedText(input: string | null | undefined, limit = 80) {
   return `${trimmed.slice(0, limit - 1)}…`;
 }
 
+/**
+ * Teks notif komentar ringkas ala IG: nama aktor jadi judul + isi komentar
+ * langsung (tanpa judul generik / judul post — thumbnail kanan sudah
+ * menunjukkan post-nya). "berkomentar" WAJIB memuat "komentar" karena filter
+ * tab Feed di client mencocokkan keyword itu.
+ */
+export function buildCommentNotificationText(
+  actorName: string,
+  content: string,
+): { title: string; body: string } {
+  return {
+    title: `${actorName} berkomentar`,
+    body: truncateFeedText(content),
+  };
+}
+
 export function quoteFeedTitle(title: string | null | undefined) {
   const safeTitle = truncateFeedText(title, 60) || "Postingan kamu";
   return `"${safeTitle}"`;
