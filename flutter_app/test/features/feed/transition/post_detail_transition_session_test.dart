@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/transition/post_detail_transition_session.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
+import 'package:video_player/video_player.dart';
 
 void main() {
   group('PostDetailTransitionSession', () {
@@ -402,6 +403,73 @@ void main() {
       expect(session.playbackAllowed, isTrue);
       expect(notifications, 2);
       session.dispose();
+    });
+
+    test('destination media slot/aspect start null; reporting sets both and '
+        'notifies once; an identical report is a no-op; dispose guards '
+        'further writes and resets both to null', () {
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: FakeTransitionSource(),
+      );
+      expect(session.destinationMediaSlotRect, isNull);
+      expect(session.destinationMediaAspect, isNull);
+
+      var notifications = 0;
+      session.addListener(() => notifications++);
+
+      const rect = Rect.fromLTWH(0, 80, 400, 500);
+      session.reportDestinationMediaSlot(rect: rect, mediaAspect: 4 / 5);
+      expect(session.destinationMediaSlotRect, rect);
+      expect(session.destinationMediaAspect, 4 / 5);
+      expect(notifications, 1);
+
+      // Compare-and-set: an identical report does not notify again.
+      session.reportDestinationMediaSlot(rect: rect, mediaAspect: 4 / 5);
+      expect(notifications, 1);
+
+      const otherRect = Rect.fromLTWH(0, 0, 300, 400);
+      session.reportDestinationMediaSlot(rect: otherRect, mediaAspect: 1);
+      expect(session.destinationMediaSlotRect, otherRect);
+      expect(session.destinationMediaAspect, 1);
+      expect(notifications, 2);
+
+      session.dispose();
+      session.reportDestinationMediaSlot(rect: rect, mediaAspect: 4 / 5);
+      expect(session.destinationMediaSlotRect, isNull);
+      expect(session.destinationMediaAspect, isNull);
+    });
+
+    test('destination video controller starts null; reporting sets it and '
+        'notifies once by identity; dispose guards further writes and resets '
+        'it to null', () {
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: FakeTransitionSource(),
+      );
+      expect(session.destinationVideoController, isNull);
+
+      var notifications = 0;
+      session.addListener(() => notifications++);
+
+      final controller = VideoPlayerController.networkUrl(
+        Uri.parse('https://example.com/a.mp4'),
+      );
+      session.reportDestinationVideoController(controller);
+      expect(session.destinationVideoController, same(controller));
+      expect(notifications, 1);
+
+      // Compare-and-set: reporting the identical controller is a no-op.
+      session.reportDestinationVideoController(controller);
+      expect(notifications, 1);
+
+      session.reportDestinationVideoController(null);
+      expect(session.destinationVideoController, isNull);
+      expect(notifications, 2);
+
+      session.dispose();
+      session.reportDestinationVideoController(controller);
+      expect(session.destinationVideoController, isNull);
     });
 
     test(

@@ -1,3 +1,10 @@
+// ignore_for_file: depend_on_referenced_packages
+//
+// video_player_platform_interface is used directly by the fake platform
+// below (same pattern as member_post_detail_double_tap_test.dart /
+// feed_video_post_view_test.dart) even though it's only a transitive dep of
+// this package via video_player.
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -10,6 +17,8 @@ import 'package:natalo_petshop_flutter/features/feed/transition/post_page_zoom_b
 import 'package:natalo_petshop_flutter/features/feed/transition/post_page_zoom_route.dart';
 import 'package:natalo_petshop_flutter/features/feed/transition/post_page_zoom_transition.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
+import 'package:video_player/video_player.dart';
+import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
 void main() {
   setUp(() {
@@ -282,6 +291,170 @@ void main() {
       }
       expect(route.phase, PostPageZoomPhase.open);
     });
+  });
+
+  group('hero geometry + suppression (Task 4 forward render)', () {
+    final navigatorKey = GlobalKey<NavigatorState>();
+
+    testWidgets(
+      'freezes the destination-reported slot/aspect at the preparingOpen -> '
+      'opening edge, suppresses destination media while the hero is live, '
+      'and clears suppression + fully hands off the hero once open',
+      (tester) async {
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget(
+          'a',
+          rect: const Rect.fromLTWH(40, 120, 150, 200),
+        );
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+
+        await tester.pumpWidget(_app(navigatorKey));
+        final route = _pushDirect(navigatorKey, session);
+        await tester.pump();
+
+        // The hero is live (rendering, even if invisible under chrome
+        // opacity 0) from the very start of `preparingOpen`.
+        expect(session.destinationMediaSuppressed, isTrue);
+
+        const slotRect = Rect.fromLTWH(0, 80, 400, 500);
+        session.reportDestinationMediaSlot(rect: slotRect, mediaAspect: 4 / 5);
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.geometryReady,
+        );
+        await tester.pump();
+        expect(route.phase, PostPageZoomPhase.opening);
+        expect(session.destinationMediaSuppressed, isTrue);
+
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.open);
+        expect(session.destinationMediaSuppressed, isFalse);
+
+        // The hero has fully handed off at rest in `open`: its Opacity is 0.
+        final heroOpacity = tester.widget<Opacity>(
+          find.ancestor(
+            of: find.descendant(
+              of: find.byType(PostPageZoomTransition),
+              matching: find.byType(ClipRRect),
+            ),
+            matching: find.byType(Opacity),
+          ),
+        );
+        expect(heroOpacity.opacity, 0.0);
+      },
+    );
+
+    testWidgets(
+      'a destination that never reports geometry (slot/aspect stay null) '
+      'under geometryReady readiness does not crash and falls back off the '
+      'hero widget instead of rendering it with invented geometry',
+      (tester) async {
+        final fake = FakeTransitionSource();
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+
+        await tester.pumpWidget(_app(navigatorKey));
+        _pushDirect(navigatorKey, session);
+        await tester.pump();
+        // Deliberately never call session.reportDestinationMediaSlot.
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.geometryReady,
+        );
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(PostPageZoomTransition), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'video hero draws through the reported coordinator controller once it '
+      'has visual output, instead of the proxy thumbnail',
+      (tester) async {
+        final platform = _FakeHeroVideoPlayerPlatform();
+        VideoPlayerPlatform.instance = platform;
+        final controller = VideoPlayerController.networkUrl(
+          Uri.parse('https://example.com/a.mp4'),
+        );
+        addTearDown(controller.dispose);
+        // Real async (not a bare `await` in the FakeAsync testWidgets zone):
+        // the fake platform's `initialized` event never arrives otherwise —
+        // same documented gotcha as feed_video_post_view_test.dart.
+        await tester.runAsync(() => controller.initialize());
+        expect(controller.value.isInitialized, isTrue);
+
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        // fakePost defaults to a video post (kind: USER_VIDEO).
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+
+        await tester.pumpWidget(_app(navigatorKey));
+        _pushDirect(navigatorKey, session);
+        await tester.pump();
+        session.reportDestinationMediaSlot(
+          rect: const Rect.fromLTWH(0, 80, 400, 500),
+          mediaAspect: 9 / 16,
+        );
+        session.reportDestinationVideoController(controller);
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.geometryReady,
+        );
+        await tester.pump();
+
+        final heroVideoPlayer = tester.widget<VideoPlayer>(
+          find.descendant(
+            of: find.byType(PostPageZoomTransition),
+            matching: find.byType(VideoPlayer),
+          ),
+        );
+        expect(heroVideoPlayer.controller, same(controller));
+      },
+    );
+
+    testWidgets(
+      'video hero falls back to the proxy thumbnail while no controller has '
+      'been reported yet (not-initialized case)',
+      (tester) async {
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+
+        await tester.pumpWidget(_app(navigatorKey));
+        _pushDirect(navigatorKey, session);
+        await tester.pump();
+        session.reportDestinationMediaSlot(
+          rect: const Rect.fromLTWH(0, 80, 400, 500),
+          mediaAspect: 9 / 16,
+        );
+        // Deliberately never report a video controller.
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.geometryReady,
+        );
+        await tester.pump();
+
+        expect(
+          find.descendant(
+            of: find.byType(PostPageZoomTransition),
+            matching: find.byType(VideoPlayer),
+          ),
+          findsNothing,
+        );
+      },
+    );
   });
 
   group('source semantics/focus lock', () {
@@ -1842,6 +2015,74 @@ class FakeTransitionSource implements PostDetailTransitionSourceAdapter {
 
 class TrackingMediaProxy extends PostPageMediaProxy {
   TrackingMediaProxy() : super(placeholderColor: const Color(0xFF123456));
+}
+
+/// Minimal fake video platform (trimmed from the pattern already used in
+/// `member_post_detail_double_tap_test.dart`): auto-fires an `initialized`
+/// event on `create()` so `VideoPlayerController.initialize()` completes
+/// synchronously-ish with real `value.isInitialized == true`, without
+/// touching a real platform channel.
+class _FakeHeroVideoPlayerPlatform extends VideoPlayerPlatform {
+  final Map<int, StreamController<VideoEvent>> _streams = {};
+  int _nextId = 0;
+
+  @override
+  Future<void> init() async {}
+
+  @override
+  Future<int?> create(DataSource dataSource) => _create();
+
+  @override
+  Future<int?> createWithOptions(VideoCreationOptions options) => _create();
+
+  Future<int?> _create() async {
+    final id = _nextId++;
+    final stream = StreamController<VideoEvent>();
+    _streams[id] = stream;
+    stream.add(
+      VideoEvent(
+        eventType: VideoEventType.initialized,
+        size: const Size(720, 1280),
+        duration: const Duration(seconds: 10),
+      ),
+    );
+    return id;
+  }
+
+  @override
+  Future<void> dispose(int playerId) async {
+    await _streams.remove(playerId)?.close();
+  }
+
+  @override
+  Stream<VideoEvent> videoEventsFor(int playerId) => _streams[playerId]!.stream;
+
+  @override
+  Future<void> play(int playerId) async {}
+
+  @override
+  Future<void> pause(int playerId) async {}
+
+  @override
+  Future<void> setLooping(int playerId, bool looping) async {}
+
+  @override
+  Future<void> setVolume(int playerId, double volume) async {}
+
+  @override
+  Future<void> setPlaybackSpeed(int playerId, double speed) async {}
+
+  @override
+  Future<void> setMixWithOthers(bool mixWithOthers) async {}
+
+  @override
+  Future<void> seekTo(int playerId, Duration position) async {}
+
+  @override
+  Future<Duration> getPosition(int playerId) async => Duration.zero;
+
+  @override
+  Widget buildView(int playerId) => const SizedBox.shrink();
 }
 
 bool _semanticsTreeHasLabel(SemanticsNode? node, String label) {

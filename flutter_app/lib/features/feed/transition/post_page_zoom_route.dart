@@ -2,7 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart' show PredictiveBackEvent, SwipeEdge;
 import 'package:flutter/widgets.dart';
+import 'package:video_player/video_player.dart';
 
+import '../layout/postingan_media_aspect_ratio.dart';
 import 'post_detail_transition_session.dart';
 import 'post_page_zoom_back_gesture.dart';
 import 'post_page_zoom_geometry.dart';
@@ -191,6 +193,18 @@ class PostPageZoomRoute extends PageRoute<void> {
   PostPageMediaProxy? _frozenProxy;
   bool _sessionListenerAttached = false;
   _PostPageZoomLifecycleObserver? _lifecycleObserver;
+
+  /// The destination media-slot rect + intrinsic media aspect ratio, frozen
+  /// for the flight at the `preparingOpen` -> `opening` edge (read from
+  /// `session.destinationMediaSlotRect`/`destinationMediaAspect` — the
+  /// route's only channel into the destination's measured `RenderBox`
+  /// state, since it only holds an opaque `WidgetBuilder`). `null` until
+  /// that edge has been crossed AND the destination had already reported a
+  /// value at that moment; a still-`null` pair after leaving `preparingOpen`
+  /// falls back to the crossfade render (see `_buildPhaseContent`) rather
+  /// than inventing placeholder geometry.
+  Rect? _slotRect;
+  double? _mediaAspect;
 
   // --- Interactive back (iOS edge swipe) state -----------------------------
 
@@ -502,6 +516,16 @@ class PostPageZoomRoute extends PageRoute<void> {
     final readiness = session.destinationReadiness;
     if (readiness == PostDetailDestinationReadiness.preparing) return;
 
+    // Freeze whatever the destination has most recently reported at this
+    // exact edge, for the rest of the flight — a later scroll-driven
+    // remeasure in the destination must not retarget an in-flight hero.
+    // Left null if the destination has not reported yet (should not happen
+    // under `geometryReady`, since readiness itself is destination-driven
+    // and gated on a renderable surface; `_buildPhaseContent` guards this
+    // defensively rather than assuming it).
+    _slotRect ??= session.destinationMediaSlotRect;
+    _mediaAspect ??= session.destinationMediaAspect;
+
     _setPhase(PostPageZoomPhase.opening);
     final duration =
         readiness == PostDetailDestinationReadiness.crossfadeFallback
@@ -795,6 +819,79 @@ class PostPageZoomRoute extends PageRoute<void> {
     return _ResolvedImageInfoProvider(imageInfo);
   }
 
+  /// `slotRect` for `preparingOpen` only, where `progress` is pinned at 0 —
+  /// `resolveHeroFrame` is then mathematically independent of `slotRect`
+  /// (`lerp(_, _, 0)` always resolves to the tile side), so any value here is
+  /// visually inert. Falls back to the tile rect itself (never invents an
+  /// unrelated rect) when the destination has not reported one yet.
+  Rect _resolveSlotRectForHold(BuildContext context) =>
+      _slotRect ?? session.destinationMediaSlotRect ?? _tileRect(context);
+
+  /// `mediaAspect` for `preparingOpen` only. Unlike `slotRect`, this DOES
+  /// affect the progress-0 frame (it sizes the intrinsic media surface
+  /// covering the tile), so — unlike the rect above — the fallback is a
+  /// correct value, not an inert placeholder: computed directly from the
+  /// active post's own data via the same pure resolver the destination uses,
+  /// which needs no layout/measurement pass and therefore is available
+  /// immediately, before the destination has measured anything.
+  double _resolveMediaAspectForHold() =>
+      _mediaAspect ??
+      session.destinationMediaAspect ??
+      _activePostMediaAspect();
+
+  double _activePostMediaAspect() {
+    final post = session.activePost;
+    return resolvePostinganMediaAspectRatio(
+      width: post.aspectWidthInt,
+      height: post.aspectHeightInt,
+      type: post.contentType,
+    );
+  }
+
+  /// The hero media surface content. For a video post whose coordinator
+  /// controller has been reported AND already has visual output (matches
+  /// the destination's own `postDetailShowsVideoSurface`-style gate — see
+  /// `member_post_detail_screen.dart`), draws through that SAME controller
+  /// (`VideoPlayer`, never a separate re-decoded thumbnail) so the surface
+  /// is one continuous texture read across hand-off, never a reinit. Falls
+  /// back to the proxy image (or the deterministic placeholder color) for
+  /// everything else — a non-video post, or a video whose controller is not
+  /// yet live (playback/attach is gated to phase `open`, so this is the
+  /// expected state for the entire forward-open flight).
+  Widget _heroMediaChildFor(PostPageMediaProxy? proxy) {
+    final post = session.activePost;
+    if (post.isVideo) {
+      final controller = session.destinationVideoController;
+      if (controller != null && controller.value.isInitialized) {
+        return VideoPlayer(controller);
+      }
+    }
+    final imageProvider = _proxyImageProviderFor(proxy);
+    if (imageProvider != null) {
+      return Image(image: imageProvider, fit: BoxFit.cover);
+    }
+    return ColoredBox(
+      color: proxy?.placeholderColor ?? const Color(0xFF000000),
+    );
+  }
+
+  /// Syncs `session.destinationMediaSuppressed` to [suppress], deferred to
+  /// just after this frame (`addPostFrameCallback`) so it never fires a
+  /// `notifyListeners()` — which the destination screen's own listener turns
+  /// into a `setState()` — synchronously mid-build. Matches the established
+  /// imperative-call-site discipline every other session setter in this
+  /// route already follows (`setPlaybackAllowed`/`setFrozenTileSuppressed`
+  /// are only ever called from lifecycle/gesture methods, never `build`);
+  /// this is the one signal whose correct value depends on a build-time-only
+  /// decision (reduced motion, readiness), so it is computed here and
+  /// applied through that same safe, established pattern. Idempotent per the
+  /// session's own compare-and-set guard, so redundant scheduling is cheap.
+  void _syncDestinationMediaSuppression(bool suppress) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      session.setDestinationMediaSuppressed(suppress);
+    });
+  }
+
   @override
   Widget buildPage(
     BuildContext context,
@@ -819,42 +916,44 @@ class PostPageZoomRoute extends PageRoute<void> {
     PostPageZoomPhase currentPhase,
   ) {
     if (currentPhase == PostPageZoomPhase.preparingOpen) {
+      // The hero is live (rendering) from the very first frame, even though
+      // it is not yet visible (chrome opacity 0 at progress 0 hides
+      // everything but the hero, which itself sits exactly over the source
+      // tile) — the destination's own media slot must already be suppressed
+      // so the two never double-draw once chrome starts fading in.
+      _syncDestinationMediaSuppression(true);
       final proxy = _activeProxy();
       // The hold state must be VISUALLY IDENTICAL to `opening` at progress 0
-      // (proxy sitting exactly over the source tile, source grid showing
-      // through the rest of the non-opaque route). A full-screen cover here
-      // instead produced the device-verify symptoms: a full-screen flash in
-      // the placeholder color, then a jump as `opening` snapped the surface
-      // down to the tile before zooming.
+      // (hero sitting exactly over the source tile, source grid showing
+      // through the rest of the non-opaque route; chrome opacity 0 hides the
+      // destination underneath). A full-screen cover here instead produced
+      // the device-verify symptoms: a full-screen flash in the placeholder
+      // color, then a jump as `opening` snapped the surface down to the tile
+      // before zooming.
       //
-      // Two stacked layers reconcile the two hard constraints:
+      // Passing the REAL destination as `chromeChild` (rather than a
+      // separate sibling `Opacity(0, destination)` the old one-surface
+      // widget needed) reconciles the two hard constraints in one widget:
       //   1. Readiness: the destination screen is the SOLE driver of
       //      `session.destinationReadiness`, and its bounded readiness stage
       //      measures the target tile against the fullscreen viewport. So the
       //      destination must be mounted AND laid out at the full, UNSCALED
-      //      viewport size — bottom layer, fully transparent (measured, not
-      //      seen). Building only a cover here deadlocked the route forever
-      //      (the shipped iOS blank screen); scaling it (e.g. reusing the zoom
-      //      surface for the real child) would corrupt that measurement and
-      //      force every open into the crossfade fallback.
-      //   2. Seamlessness: the proxy is drawn through the exact same
-      //      one-surface zoom widget at progress 0, so the preparingOpen ->
-      //      opening handoff is byte-identical — top layer, empty child.
-      return Stack(
-        fit: StackFit.expand,
-        textDirection: TextDirection.ltr,
-        children: [
-          Opacity(opacity: 0.0, child: _destination(context)),
-          PostPageZoomTransition(
-            progress: kAlwaysDismissedAnimation,
-            tileRect: _tileRect(context),
-            viewportRect: _viewportRect(context),
-            tileCornerRadius: _tileCornerRadius(),
-            destinationChild: const SizedBox.shrink(),
-            proxyImageProvider: _proxyImageProviderFor(proxy),
-            proxyColor: proxy?.placeholderColor ?? const Color(0xFF000000),
-          ),
-        ],
+      //      viewport size — `chromeChild` is laid out at the full Stack
+      //      size regardless of its `resolveChromeOpacity(0) == 0` opacity
+      //      (Opacity/RepaintBoundary pass constraints through unchanged),
+      //      so it is measured, not seen.
+      //   2. Seamlessness: the hero is drawn through the exact same two-layer
+      //      widget at progress 0, so the preparingOpen -> opening handoff is
+      //      byte-identical.
+      return PostPageZoomTransition(
+        progress: kAlwaysDismissedAnimation,
+        tileRect: _tileRect(context),
+        slotRect: _resolveSlotRectForHold(context),
+        mediaAspect: _resolveMediaAspectForHold(),
+        tileRadius: _tileCornerRadius(),
+        slotRadius: 0,
+        chromeChild: _destination(context),
+        heroMediaChild: _heroMediaChildFor(proxy),
       );
     }
     if (currentPhase == PostPageZoomPhase.interactiveBack ||
@@ -866,6 +965,15 @@ class PostPageZoomRoute extends PageRoute<void> {
       return _buildInteractiveCommit(context);
     }
     if (currentPhase == PostPageZoomPhase.closingFallback) {
+      // Defensive reset: `closingFallback` is directly reachable from
+      // `preparingOpen`/`opening` (never through `open`, where suppression
+      // is already cleared), so without this the destination's real media —
+      // which is what `_FallbackCloseTransition` fades in below, this route
+      // never retrofitted onto the hero+chrome split (Task 5's scope) — could
+      // stay suppressed (transparent) for the entire fade. Only touches the
+      // suppression signal Task 4 introduced; the fallback close itself is
+      // unchanged.
+      _syncDestinationMediaSuppression(false);
       return _FallbackCloseTransition(
         progress: controller!,
         destinationChild: _destination(context),
@@ -880,12 +988,21 @@ class PostPageZoomRoute extends PageRoute<void> {
     //     readiness stage missed its budget, so this opening must "abandon
     //     geometry zoom ... and use a 160 ms crossfade only after the
     //     destination is stable" — it must NOT zoom from the tile rect.
+    //   * Defensive: the destination has not reported usable geometry (should
+    //     only be reachable transiently, since `geometryReady` readiness is
+    //     itself destination-driven and gated on a renderable surface — see
+    //     `_maybeBeginOpening`). Never invents placeholder geometry here.
     // The B-targeting machinery (freeze / prepared target / pending return) is
     // untouched, so an A->B reverse still resolves B and predictive back /
     // commit / cancel behave identically; only the *render* changes.
+    final slotRect = _slotRect;
+    final mediaAspect = _mediaAspect;
     if (_reducedMotion(context) ||
         session.destinationReadiness ==
-            PostDetailDestinationReadiness.crossfadeFallback) {
+            PostDetailDestinationReadiness.crossfadeFallback ||
+        slotRect == null ||
+        mediaAspect == null) {
+      _syncDestinationMediaSuppression(false);
       return _CrossfadeZoomTransition(
         progress: controller!,
         destinationChild: _destination(context),
@@ -893,14 +1010,23 @@ class PostPageZoomRoute extends PageRoute<void> {
         proxyColor: proxy?.placeholderColor ?? const Color(0xFF000000),
       );
     }
+    // Live (not held at progress 0) for the rest of the flight: the hero
+    // suppresses the destination's real media until it has fully handed off
+    // at rest in `open`. This same branch also currently renders the
+    // non-interactive reverse (`closingToTarget` when a commit flight is NOT
+    // active — Task 5's scope, not yet retargeted with `reverseHandoff:
+    // true`/a close-time slot re-freeze); the hero being "live" again during
+    // that phase is the structurally correct interim behavior either way.
+    _syncDestinationMediaSuppression(currentPhase != PostPageZoomPhase.open);
     return PostPageZoomTransition(
       progress: controller!,
       tileRect: _tileRect(context),
-      viewportRect: _viewportRect(context),
-      tileCornerRadius: _tileCornerRadius(),
-      destinationChild: _destination(context),
-      proxyImageProvider: _proxyImageProviderFor(proxy),
-      proxyColor: proxy?.placeholderColor ?? const Color(0xFF000000),
+      slotRect: slotRect,
+      mediaAspect: mediaAspect,
+      tileRadius: _tileCornerRadius(),
+      slotRadius: 0,
+      chromeChild: _destination(context),
+      heroMediaChild: _heroMediaChildFor(proxy),
     );
   }
 

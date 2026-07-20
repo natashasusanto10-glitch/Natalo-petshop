@@ -811,6 +811,12 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     final viewportRect =
         viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
     final samples = <PostVisibilitySample>[];
+    // Kept alongside `samples` (keyed by postId) so the active post's
+    // already-measured rect can be reused below for
+    // `reportDestinationMediaSlot` — the route's ONLY channel into this
+    // measured `RenderBox` state — without measuring `_postMediaKeys` a
+    // second time (see hero-task-4-brief.md).
+    final mediaRectsByPostId = <String, Rect>{};
     for (
       var index = 0;
       index < _postMediaKeys.length && index < _posts.length;
@@ -821,6 +827,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
               as RenderBox?;
       if (mediaBox == null || !mediaBox.hasSize) continue;
       final mediaRect = mediaBox.localToGlobal(Offset.zero) & mediaBox.size;
+      mediaRectsByPostId[_posts[index].id] = mediaRect;
       final intersection = mediaRect.intersect(viewportRect);
       final visibleArea = intersection.isEmpty
           ? 0.0
@@ -841,12 +848,56 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       samples,
       scrollInProgress: _scrollInProgress,
     );
-    if (activeId == null) return;
-    final activeIndex = _posts.indexWhere((post) => post.id == activeId);
-    if (activeIndex < 0) return;
-    if (session == null) return;
-    session.reportActivePost(_posts[activeIndex]);
-    unawaited(session.prepareActiveTarget());
+    if (activeId != null) {
+      final activeIndex = _posts.indexWhere((post) => post.id == activeId);
+      if (activeIndex >= 0 && session != null) {
+        session.reportActivePost(_posts[activeIndex]);
+        unawaited(session.prepareActiveTarget());
+      }
+    }
+
+    // Geometry/video-controller reporting is intentionally decoupled from
+    // the `activeId != null` branch above: `_visibilityTracker.update` only
+    // returns non-null on an actual dominance SWITCH, so it stays null for
+    // every pass where the same post remains active the whole time — the
+    // common case of opening a post that is already index 0 in the
+    // destination's list, with no scroll at all. `activePostId` (below) is
+    // the tracker's always-current settled id, independent of whether THIS
+    // pass changed it, so this block genuinely runs "on every visibility
+    // pass" as intended (see hero-task-4-brief.md) rather than only on
+    // transitions.
+    if (session != null) {
+      final currentActiveIndex = _posts.indexWhere(
+        (post) => post.id == _visibilityTracker.activePostId,
+      );
+      if (currentActiveIndex >= 0) {
+        final currentActivePost = _posts[currentActiveIndex];
+        final currentMediaRect = mediaRectsByPostId[currentActivePost.id];
+        if (currentMediaRect != null) {
+          session.reportDestinationMediaSlot(
+            rect: currentMediaRect,
+            mediaAspect: resolvePostinganMediaAspectRatio(
+              width: currentActivePost.aspectWidthInt,
+              height: currentActivePost.aspectHeightInt,
+              type: currentActivePost.contentType,
+            ),
+          );
+        }
+        session.reportDestinationVideoController(
+          currentActivePost.isVideo
+              ? _videoControllerFor(currentActivePost.id)
+              : null,
+        );
+      }
+    }
+  }
+
+  /// The live controller the coordinator has attached for [postId]'s inline
+  /// player, if any — `null` before attach (e.g. before `playbackAllowed`)
+  /// or if the coordinator's session for it is a non-video fake (test seam).
+  VideoPlayerController? _videoControllerFor(String postId) {
+    final session = _videoCoordinator.sessionFor(postId);
+    return session is VideoPlayerSession ? session.controller : null;
   }
 
   void _jumpToInitial() {

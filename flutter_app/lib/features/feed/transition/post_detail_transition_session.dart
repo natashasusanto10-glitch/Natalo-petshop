@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import 'package:flutter/widgets.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../../models/feed_post.dart';
 
@@ -133,6 +134,9 @@ class PostDetailTransitionSession extends ChangeNotifier {
   bool _playbackAllowed = false;
   bool _routeAttached = false;
   bool _destinationMediaSuppressed = false;
+  Rect? _destinationMediaSlotRect;
+  double? _destinationMediaAspect;
+  VideoPlayerController? _destinationVideoController;
   bool _isDisposed = false;
 
   FeedPost get activePost => _activePost;
@@ -159,6 +163,30 @@ class PostDetailTransitionSession extends ChangeNotifier {
   /// layer and the destination's real media would paint on top of each
   /// other (double-drawn), see Task 3 in hero-task-3-brief.md.
   bool get destinationMediaSuppressed => _destinationMediaSuppressed;
+
+  /// The active post's media slot rect in the destination, as last measured
+  /// by the destination screen's own visibility-measurement pass (in overlay
+  /// coordinates). `null` until the destination has laid out and measured at
+  /// least once. The route (which only holds an opaque `WidgetBuilder` for
+  /// the destination) has no other channel into this measured `RenderBox`
+  /// state — this is that channel. See [reportDestinationMediaSlot].
+  Rect? get destinationMediaSlotRect => _destinationMediaSlotRect;
+
+  /// The active post's intrinsic media aspect ratio (width / height), as
+  /// resolved by the destination via `resolvePostinganMediaAspectRatio`.
+  /// `null` until the destination has reported at least once. Reported
+  /// alongside [destinationMediaSlotRect] by [reportDestinationMediaSlot].
+  double? get destinationMediaAspect => _destinationMediaAspect;
+
+  /// The live [VideoPlayerController] the destination's own inline player is
+  /// currently bound to for the active post, or `null` when the active post
+  /// is not a video or the destination has not attached a controller yet
+  /// (e.g. before `playbackAllowed`). The hero layer draws through this SAME
+  /// controller (never a separate thumbnail/proxy once it has visual
+  /// output) so a video's surface is one continuous texture read across the
+  /// whole flight — see [reportDestinationVideoController].
+  VideoPlayerController? get destinationVideoController =>
+      _destinationVideoController;
 
   bool tryAttachRoute() {
     if (_isDisposed || _routeAttached) return false;
@@ -336,6 +364,37 @@ class PostDetailTransitionSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Reports the active post's current measured media-slot rect + intrinsic
+  /// aspect ratio, as observed by the destination screen's own visibility-
+  /// measurement pass. Called on every such pass (every scroll-driven
+  /// remeasure), so the value stays continuously fresh — the route freezes
+  /// whatever is current at the moment it leaves `preparingOpen`.
+  void reportDestinationMediaSlot({
+    required Rect rect,
+    required double mediaAspect,
+  }) {
+    if (_isDisposed) return;
+    if (_destinationMediaSlotRect == rect &&
+        _destinationMediaAspect == mediaAspect) {
+      return;
+    }
+    _destinationMediaSlotRect = rect;
+    _destinationMediaAspect = mediaAspect;
+    notifyListeners();
+  }
+
+  /// Reports the [VideoPlayerController] the destination's own inline player
+  /// is currently bound to for the active post (or `null` when there isn't
+  /// one — non-video post, or not attached yet). Compared by identity, not
+  /// value, since the controller is a long-lived mutable object whose
+  /// `value` changes as it initializes.
+  void reportDestinationVideoController(VideoPlayerController? controller) {
+    if (_isDisposed) return;
+    if (identical(_destinationVideoController, controller)) return;
+    _destinationVideoController = controller;
+    notifyListeners();
+  }
+
   void assignPendingReturnTarget() {
     if (_isDisposed || !_source.mounted) return;
     _source.setPendingReturnPostId(_frozenTarget?.post.id ?? _activePost.id);
@@ -409,6 +468,9 @@ class PostDetailTransitionSession extends ChangeNotifier {
     _routeAttached = false;
     _playbackAllowed = false;
     _destinationMediaSuppressed = false;
+    _destinationMediaSlotRect = null;
+    _destinationMediaAspect = null;
+    _destinationVideoController = null;
     super.dispose();
   }
 }

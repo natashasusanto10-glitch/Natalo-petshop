@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/features/feed/layout/postingan_media_aspect_ratio.dart';
 import 'package:natalo_petshop_flutter/features/feed/transition/post_detail_transition_session.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
@@ -479,6 +480,55 @@ void main() {
     await disposeDetail(tester);
     session.dispose();
   });
+
+  testWidgets(
+    'visibility measurement reports the active post media rect/aspect to '
+    'the transition session, and re-reports it on scroll (Task 4 route '
+    'geometry channel)',
+    (tester) async {
+      useDetailViewport(tester);
+      final posts = [fakePhoto('a'), fakePhoto('b')];
+      final session = fakeTransitionSession(posts.first);
+
+      await tester.pumpWidget(detailHost(posts: posts, session: session));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump();
+      }
+
+      expect(session.activePost.id, 'a');
+      final boxA = mediaSlotRenderBox(tester, 'a');
+      final expectedRectA = boxA.localToGlobal(Offset.zero) & boxA.size;
+      expect(session.destinationMediaSlotRect, expectedRectA);
+      expect(
+        session.destinationMediaAspect,
+        resolvePostinganMediaAspectRatio(
+          width: posts.first.aspectWidthInt,
+          height: posts.first.aspectHeightInt,
+          type: posts.first.contentType,
+        ),
+      );
+
+      await tester.drag(find.byType(ListView), const Offset(0, -700));
+      await tester.pump();
+      await tester.pump();
+
+      expect(session.activePost.id, 'b');
+      final boxB = mediaSlotRenderBox(tester, 'b');
+      final expectedRectB = boxB.localToGlobal(Offset.zero) & boxB.size;
+      expect(session.destinationMediaSlotRect, expectedRectB);
+      expect(
+        session.destinationMediaAspect,
+        resolvePostinganMediaAspectRatio(
+          width: posts.last.aspectWidthInt,
+          height: posts.last.aspectHeightInt,
+          type: posts.last.contentType,
+        ),
+      );
+
+      await disposeDetail(tester);
+      session.dispose();
+    },
+  );
 
   testWidgets(
     'idle user-scroll after ScrollEnd keeps settled center fallback',
