@@ -27,7 +27,7 @@
 - `flutter_app/lib/features/feed/transition/post_page_zoom_transition.dart` — REWRITE. `PostPageZoomTransition` becomes the two-layer (chrome + hero) widget.
 - `flutter_app/lib/features/feed/transition/post_page_zoom_back_gesture.dart` — MODIFY. Interactive back preview/commit resolve a hero frame + chrome opacity instead of the iOS card-shrink surface.
 - `flutter_app/lib/features/feed/transition/post_page_zoom_route.dart` — MODIFY. All phase render paths (`_buildPhaseContent`, interactive preview/commit, fallback) rebuilt around the two layers; reduced-motion branch preserved.
-- `flutter_app/lib/features/feed/transition/post_detail_transition_session.dart` — MODIFY. Add destination-media-slot suppression signal + expose the resolved slot rect / mediaAspect the route needs (see Task 3 for exact API).
+- `flutter_app/lib/features/feed/transition/post_detail_transition_session.dart` — MODIFY. Task 3 adds the destination-media-slot suppression signal; Task 4 adds the resolved slot rect / mediaAspect getters + reporter the route needs (see each task for its exact API — the route has no other channel into the destination's measured geometry).
 - `flutter_app/lib/screens/member_post_detail_screen.dart` — MODIFY. Publish per-post `slotRect` (via existing `_postMediaKeys`) + `mediaAspect`; render the target media slot transparent while suppressed.
 - Tests: `post_page_zoom_geometry_test.dart`, `post_page_zoom_transition_test.dart`, `post_page_zoom_route_test.dart`, `post_page_zoom_golden_test.dart`, `post_page_zoom_verification_test.dart`, `post_zoom_cross_origin_test.dart`, `member_post_detail_video_surface_test.dart` (all under `flutter_app/test/...`).
 
@@ -337,21 +337,32 @@ git commit -m "feat(postingan): two-layer hero+chrome transition widget"
 ## Task 4: Route forward render (preparingOpen / opening / open)
 
 **Files:**
-- Modify: `flutter_app/lib/features/feed/transition/post_page_zoom_route.dart` (`_buildPhaseContent`, helpers `_tileRect`/`_activeProxy`; add `_slotRect`/`_mediaAspect` resolution frozen per flight)
+- Modify: `flutter_app/lib/features/feed/transition/post_detail_transition_session.dart` — add the missing plumbing that lets the route read the destination's measured media-slot geometry (the route only holds an opaque `WidgetBuilder`; it has no other way to reach the destination's internal `RenderBox` state). Mirror the existing `setPlaybackAllowed`/`setFrozenTileSuppressed` shape (guard on `_isDisposed`, compare-and-set, `notifyListeners()`):
+  - `Rect? get destinationMediaSlotRect`
+  - `double? get destinationMediaAspect`
+  - `void reportDestinationMediaSlot({required Rect rect, required double mediaAspect})`
+  - Reset both to `null` in `dispose()`/wherever `_playbackAllowed` etc. are reset, for symmetry.
+- Modify: `flutter_app/lib/screens/member_post_detail_screen.dart` — call `reportDestinationMediaSlot` from the EXISTING visibility-measurement pipeline, not a new one. In `_measurePostVisibility()` (around line 805-850), the method already computes each post's `mediaRect` in its loop and already resolves `activeIndex`/`activeId` right before the existing `session.reportActivePost(_posts[activeIndex])` call (line 848). Immediately after that line, add: look up that same active post's aspect via `resolvePostinganMediaAspectRatio(width:, height:, type:)` (already imported from `lib/features/feed/layout/postingan_media_aspect_ratio.dart` — check the post model for its width/height/type fields) and its measured rect (either keep the `mediaRect` computed for `activeIndex` during the loop instead of discarding it, or re-fetch `_postMediaKeys[activeIndex]`'s `RenderBox` — prefer keeping the already-computed value, don't measure twice), then call `session.reportDestinationMediaSlot(rect: ..., mediaAspect: ...)`. This makes the value continuously fresh on every visibility pass (every scroll-driven remeasure), which is what Task 5 (reverse) will also rely on for "the currently visible post" without needing its own separate reporting path.
+- Modify: `flutter_app/lib/features/feed/transition/post_page_zoom_route.dart` (`_buildPhaseContent`, helpers `_tileRect`/`_activeProxy`; add `_slotRect`/`_mediaAspect` fields frozen per flight)
 - Test: `flutter_app/test/features/feed/transition/post_page_zoom_route_test.dart` (update existing bootstrap/forward tests, add new)
+- Test: `flutter_app/test/screens/member_post_detail_transition_test.dart` (add a case for the new `reportDestinationMediaSlot` call from `_measurePostVisibility`)
+- Test: `flutter_app/test/features/feed/transition/post_detail_transition_session_test.dart` (add cases for the new session getters/setter, mirroring existing `setPlaybackAllowed`/`setFrozenTileSuppressed` test patterns)
 
 **Interfaces:**
-- Consumes: `PostPageZoomTransition` (Task 2), session suppression (Task 3), `resolveHeroFrame`.
-- The route resolves `slotRect` + `mediaAspect` once when leaving `preparingOpen` (destination laid out + readiness aligned); stores them for the flight. `preparingOpen` renders the transition at `progress 0` (hero over the tile, chrome opacity 0) — visually identical to the grid (preserves the shipped no-flash guarantee). Sets `setDestinationMediaSuppressed(true)` while the hero is live; clears it at the handoff completion (phase `open`).
+- Consumes: `PostPageZoomTransition` (Task 2), session suppression (Task 3), `resolveHeroFrame`, and the new `destinationMediaSlotRect`/`destinationMediaAspect`/`reportDestinationMediaSlot` (this task, added to the session as its first step).
+- The route resolves `slotRect` + `mediaAspect` once when leaving `preparingOpen`, by reading `session.destinationMediaSlotRect`/`destinationMediaAspect` at that moment (destination has laid out + readiness has aligned the scroll by the time `preparingOpen` ends, so a value should be present — if it is somehow still `null` here, that is the crossfadeFallback readiness case, which Task 7 handles as an entirely separate render branch that never calls into this hero path at all; Task 4 does not need to invent fallback behavior for a null value, but must not crash on it — assert/guard defensively and treat it the same as any other pre-Task-7 fallback path already in the route). Store the frozen values for the flight. `preparingOpen` renders the transition at `progress 0` (hero over the tile, chrome opacity 0) — visually identical to the grid (preserves the shipped no-flash guarantee). Sets `setDestinationMediaSuppressed(true)` while the hero is live; clears it at the handoff completion (phase `open`).
 - Video: the hero's `heroMediaChild` for a video is `VideoPlayer(coordinatorController)` (same controller the destination uses), `BoxFit.cover`; playback still gated to `open`.
 
-- [ ] **Step 1: Update/After tests** — adapt the existing "preparingOpen holds…" and "destination bootstrap" tests to the new widget: assert `find.byType(PostPageZoomTransition)` present in `preparingOpen` with controller value 0 and chrome opacity 0; assert destination laid out full-screen (unchanged readiness contract); add: after readiness resolves and animation settles to `open`, `session.destinationMediaSuppressed == false` and the hero opacity has reached 0 (handed off).
+- [ ] **Step 1: Failing tests, in this order** —
+  1. Session tests for `destinationMediaSlotRect`/`destinationMediaAspect`/`reportDestinationMediaSlot` (mirror an existing `setPlaybackAllowed` test: starts null/false, set fires `notifyListeners`, disposed session guards writes).
+  2. `member_post_detail_screen` test: pump a screen with a transition session and 2+ posts, trigger a visibility measurement pass (however existing tests in `member_post_detail_transition_test.dart` already do this for `reportActivePost` — follow that same pattern), assert `session.destinationMediaSlotRect`/`destinationMediaAspect` become non-null and match the active post's measured media rect/aspect.
+  3. Route tests: adapt the existing "preparingOpen holds…" and "destination bootstrap" tests to the new widget — assert `find.byType(PostPageZoomTransition)` present in `preparingOpen` with controller value 0 and chrome opacity 0; assert destination laid out full-screen (unchanged readiness contract); add: after readiness resolves and animation settles to `open`, `session.destinationMediaSuppressed == false` and the hero opacity has reached 0 (handed off). These route tests will need to drive `session.reportDestinationMediaSlot(...)` directly (route tests use `FakeTransitionSource`/manual session driving, not a real `MemberPostDetailScreen` — do not try to pump a real screen inside a route test).
 
-- [ ] **Step 2: Run, confirm RED.**
+- [ ] **Step 2: Run, confirm RED** for all three groups.
 
-- [ ] **Step 3: Implement** the forward render paths in `_buildPhaseContent` using `PostPageZoomTransition`, freeze `slotRect`/`mediaAspect` on the `preparingOpen→opening` edge, drive `setDestinationMediaSuppressed` true during flight / false at `open`.
+- [ ] **Step 3: Implement**, in this order: (a) the session API, (b) the `_measurePostVisibility` hook, (c) the route's forward render using `PostPageZoomTransition`, freezing `slotRect`/`mediaAspect` on the `preparingOpen→opening` edge, driving `setDestinationMediaSuppressed` true during flight / false at `open`.
 
-- [ ] **Step 4: Run, confirm GREEN** (full `post_page_zoom_route_test.dart`).
+- [ ] **Step 4: Run, confirm GREEN** — the session test file, the screen transition test file, and the full `post_page_zoom_route_test.dart`.
 
 - [ ] **Step 5: Analyzer + format + commit** (`"feat(postingan): forward render via hero+chrome layers"`).
 
