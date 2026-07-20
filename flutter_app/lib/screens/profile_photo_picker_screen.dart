@@ -213,7 +213,9 @@ class _ProfilePhotoPickerScreenState extends State<ProfilePhotoPickerScreen> {
 
   Widget _buildBody(BuildContext context) {
     final screenW = MediaQuery.sizeOf(context).width;
-    final previewMax = screenW * 0.72;
+    // Near-full-width (margin 12px kiri/kanan) supaya lingkaran crop sebesar
+    // Instagram — 0.72 lama bikin foto terasa kecil & jauh (zoom-out) vs IG.
+    final previewMax = screenW - 24;
     const vPad = 16.0;
     final maxHeight = previewMax + vPad * 2;
     const minHeight = 56.0 + vPad;
