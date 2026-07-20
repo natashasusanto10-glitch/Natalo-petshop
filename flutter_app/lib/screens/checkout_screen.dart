@@ -869,7 +869,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final validation = await cartService.validate(_checkoutItems);
       if (!mounted) return;
       if (!validation.valid && validation.issues.isNotEmpty) {
-        AppHaptics.warning();
         // Kind-inference: tidak ada literal keyword "gagal"/"tidak bisa" —
         // per konvensi migrasi ini (else → info, "warning" tak pernah
         // dipakai kecuali diwajibkan brief), default ke info.
@@ -976,7 +975,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _openOrderSuccess(result);
     } catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
       AppToast.showBanner(
         context,
         'Checkout gagal: $error',

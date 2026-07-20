@@ -5558,7 +5558,6 @@ class _NotifyWhenAvailableButtonState
         if (!mounted) return;
         if (res.ok) {
           setState(() => _subscribed = true);
-          AppHaptics.success();
           AppToast.showBanner(
             context,
             res.message.isNotEmpty
