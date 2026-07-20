@@ -1,8 +1,10 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../screens/profile_photo_picker_screen.dart';
 import '../services/api_client.dart';
@@ -10,6 +12,7 @@ import '../services/member_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import '../utils/read_only_mode.dart';
+import '../widgets/photo_crop/photo_crop_export.dart';
 import 'app_toast.dart';
 
 const _brandBlue = NataloColors.primary;
@@ -61,7 +64,12 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
     return url != null && url.isNotEmpty;
   }
 
-  /// Kamera — jalur lama, tanpa crop step (native picker 1024×1024).
+  /// Kamera — tanpa crop step (native picker 1024×1024), tapi tetap lewat
+  /// re-encode JPEG bersama (bukan upload file mentah dari OS/OEM kamera).
+  /// Beberapa device balikin format yang tak konsisten dgn MIME yang
+  /// diklaim (mis. HEIC berlabel jpeg) → validasi magic-byte backend
+  /// nolak "File foto tidak valid" secara acak. Re-encode di sini
+  /// menjamin JPEG asli, sama seperti jalur galeri.
   Future<void> _pickFromCamera() async {
     if (_busy) return;
     AppHaptics.tap();
@@ -78,7 +86,24 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
         if (mounted) Navigator.of(context).maybePop();
         return;
       }
-      await _uploadFile(picked.path);
+      final tmpDir = await getTemporaryDirectory();
+      final outPath = await compute(
+        processPhotoInIsolate,
+        PhotoProcessArgs(
+          sourcePath: picked.path,
+          tmpDirPath: tmpDir.path,
+          targetAspect: 1.0,
+          scale: 1.0,
+          offsetFractionX: 0,
+          offsetFractionY: 0,
+          preserveOriginal: true, // skip crop — cuma bake orientation + JPEG.
+          maxLongSide: 1024,
+          jpegQuality: 88,
+          timestampSuffix: 0,
+          pathSeparator: Platform.pathSeparator,
+        ),
+      );
+      await _uploadFile(outPath);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -109,17 +134,23 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
       // sync ke memberStore supaya UI lain (Akun page, feed, comment)
       // refresh otomatis lewat AnimatedBuilder.
       final updated = await memberService.uploadProfilePhoto(path);
-      if (updated != null) {
+      final current = memberStore.profile;
+      if (updated != null && current != null) {
+        // Merge, JANGAN replace total — endpoint upload foto cuma
+        // guarantee profilePhotoUrl segar; kalau backend/versi lama tak
+        // ikut select field lain (username, bio, dst), replace total bikin
+        // field itu kosong sesaat sampai halaman lain fetch ulang profil.
+        await memberStore.persistProfileUpdate(
+          current.copyWith(profilePhotoUrl: updated.profilePhotoUrl),
+        );
+      } else if (updated != null) {
         await memberStore.persistProfileUpdate(updated);
-      } else {
+      } else if (current != null) {
         // Fallback ke local path kalau backend tidak return profile
         // (rare — biasanya backend error → throw exception).
-        final current = memberStore.profile;
-        if (current != null) {
-          await memberStore.persistProfileUpdate(
-            current.copyWith(profilePhotoUrl: path),
-          );
-        }
+        await memberStore.persistProfileUpdate(
+          current.copyWith(profilePhotoUrl: path),
+        );
       }
       if (!mounted) return;
       AppHaptics.success();

@@ -80,17 +80,26 @@ export async function POST(request: NextRequest) {
     // Save URL ke User.profilePhotoUrl. Replace existing (UploadThing
     // file lama akan jadi orphan — bisa di-cleanup via cron job nanti,
     // atau just leave it karena cost storage marginal).
+    // Select LENGKAP (match GET/PATCH /api/auth/me) — kalau kurang field,
+    // client (MemberProfile.fromJson) akan replace state lokal dgn versi
+    // parsial ini dan field yang tak di-select (username, bio, dst) jadi
+    // kosong sampai ada fetch ulang.
     const user = await prisma.user.update({
       where: { id: session.sub },
       data: { profilePhotoUrl: upload.url },
       select: {
         id: true,
+        role: true,
         name: true,
+        username: true,
         email: true,
         phone: true,
         birthDate: true,
         createdAt: true,
         profilePhotoUrl: true,
+        bio: true,
+        followersCount: true,
+        followingCount: true,
       },
     });
 
