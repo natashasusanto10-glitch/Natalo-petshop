@@ -26,7 +26,7 @@ class PostPageZoomTransition extends StatelessWidget {
 
   /// Drives the flight; 0 is source-tile geometry, 1 is fullscreen geometry.
   /// Reverse (interactive back) flights simply animate this from 1 to 0.
-  final Listenable progress;
+  final Animation<double> progress;
 
   /// Source tile rect, in root overlay coordinates.
   final Rect tileRect;
@@ -47,15 +47,6 @@ class PostPageZoomTransition extends StatelessWidget {
   /// Fallback/placeholder color for the proxy layer.
   final Color proxyColor;
 
-  double get _progressValue {
-    final listenable = progress;
-    if (listenable is Animation<double>) return listenable.value;
-    throw ArgumentError(
-      'PostPageZoomTransition.progress must be an Animation<double> so its '
-      'current value can be read on each tick.',
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -65,7 +56,7 @@ class PostPageZoomTransition extends StatelessWidget {
           tileRect: tileRect,
           viewportRect: viewportRect,
           tileCornerRadius: tileCornerRadius,
-          progress: _progressValue,
+          progress: progress.value,
         );
         return ClipRRect(
           clipper: _PostPageZoomClipper(frame.clip),
