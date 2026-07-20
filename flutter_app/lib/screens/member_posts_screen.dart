@@ -14,11 +14,13 @@ import '../constants/official_brand.dart';
 import '../models/feed_create_post_draft.dart';
 import '../models/feed_post.dart';
 import '../models/public_profile.dart';
-import '../features/feed/video/post_video_warm_handoff.dart';
+import '../features/feed/transition/post_detail_transition_session.dart';
+import '../features/feed/transition/post_transition_source_tile.dart';
+import '../features/feed/transition/profile_post_source_adapter.dart';
 import '../features/feed/widgets/gallery_post_tile.dart';
+import '../features/feed/widgets/post_gallery_opener.dart';
 import '../services/feed_service.dart';
 import '../services/profile_service.dart';
-import '../services/video_quality_service.dart';
 import '../state/feed_draft_store.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
@@ -27,11 +29,17 @@ import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import 'feed_media_picker_screen.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
-import '../widgets/origin_expansion_route.dart';
 import '../widgets/profile_grid_geometry.dart';
 import '../widgets/public_profile_expanded_header.dart';
+// Reuse the pure, reviewed helpers established for Own Profile (Task 9): the
+// loaded-extent reconciliation + scoped merge/scope decision are identical for
+// Postingan Saya, so importing them avoids duplicating that logic here.
+import 'member_screen.dart'
+    show
+        mergeProfilePostsById,
+        reconcileProfilePosts,
+        resolveProfileTransitionScope;
 import 'feed_new_post_screen.dart';
-import 'member_post_detail_screen.dart';
 import 'public_profile_follow_list_screen.dart';
 
 const _brandBlue = NataloColors.primary;
@@ -49,13 +57,13 @@ class MemberPostsScreen extends StatefulWidget {
   State<MemberPostsScreen> createState() => _MemberPostsScreenState();
 }
 
-class _MemberPostsScreenState extends State<MemberPostsScreen> {
+class _MemberPostsScreenState extends State<MemberPostsScreen>
+    with PostGalleryOpener<MemberPostsScreen> {
   final _scrollController = ScrollController();
   int _filterIndex = 0;
   List<FeedDraft> _drafts = const [];
   List<FeedPost> _allPosts = const [];
   bool _loading = true;
-  bool _openingPost = false;
   // Pagination state:
   // - _nextCursor: post id terakhir dari fetch sebelumnya. null = end-of-list.
   // - _loadingMore: guard supaya scroll listener tidak fire concurrent fetch.
@@ -63,9 +71,20 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
   String? _nextCursor;
   bool _loadingMore = false;
   bool _initialLoadDone = false;
-  String? _preparedPostId;
-  PostVideoWarmHandoff? _preparedHandoff;
-  final _tileKeys = <String, GlobalKey>{};
+
+  // ── Full-page zoom transition (Postingan) ───────────────────────────
+  /// Single registry feeding every grid tile its live geometry + media proxy
+  /// for the zoom route, keyed by the active filter (scope).
+  final PostTransitionTileRegistry _transitionRegistry =
+      PostTransitionTileRegistry();
+
+  /// Origin keys per (scope, postId) for the transition source tiles. Scope is
+  /// the active filter's name — Postingan Saya's filters are pure client-side
+  /// derivations of `_allPosts`, so scoped pagination never switches tabs.
+  final _scopeTileKeys = <String, GlobalKey>{};
+
+  /// The scope (filter name) the running transition resolves tiles in.
+  String _activeTransitionScope = _PostFilterType.all.name;
 
   static const _filters = [
     _PostsFilter(
@@ -121,58 +140,23 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
 
   @override
   void dispose() {
-    unawaited(_preparedHandoff?.disposeIfUnclaimed());
+    // Release any prepared (but never taken) warm handoff owned by the mixin.
+    cancelPreparedPost();
     _scrollController
       ..removeListener(_handleScrollLoadMore)
       ..dispose();
     super.dispose();
   }
 
-  PostVideoWarmHandoff? _createWarmHandoff(FeedPost post) {
-    return PostVideoWarmHandoff.createIfVideo(
-      isVideo: post.isVideo,
-      postId: post.id,
-      url: videoQualityService.resolvePlaybackUrl(
-        post.videoPlaybackUrl,
-        dataSaverUrl: post.videoDataSaverUrl,
-        userPreference: appSettingsStore.feedVideoQuality,
-      ),
-      hasAudio: post.hasAudio != false,
-    );
-  }
-
-  void _preparePostVideo(FeedPost post) {
-    if (_openingPost || !post.isVideo || _preparedPostId == post.id) return;
-    final stale = _preparedHandoff;
-    _preparedHandoff = _createWarmHandoff(post);
-    _preparedPostId = _preparedHandoff == null ? null : post.id;
-    unawaited(stale?.disposeIfUnclaimed());
-  }
-
-  void _cancelPreparedPost([String? postId]) {
-    if (postId != null && _preparedPostId != postId) return;
-    final stale = _preparedHandoff;
-    _preparedHandoff = null;
-    _preparedPostId = null;
-    unawaited(stale?.disposeIfUnclaimed());
-  }
-
-  PostVideoWarmHandoff? _takePreparedPost(FeedPost post) {
-    if (_preparedPostId != post.id) {
-      _cancelPreparedPost();
-      return null;
-    }
-    final handoff = _preparedHandoff;
-    _preparedHandoff = null;
-    _preparedPostId = null;
-    return handoff;
-  }
-
-  Future<void> _loadPosts() async {
+  /// [retainLoadedExtent] reconciles the fresh page-1 load into the currently
+  /// loaded list instead of replacing it, so posts paginated in beyond page 1
+  /// (e.g. a B scrolled to inside the detail viewer) survive the refresh. Used
+  /// for the post-pop refresh; the initial load / pull-to-refresh replace.
+  Future<void> _loadPosts({bool retainLoadedExtent = false}) async {
     setState(() {
       _loading = true;
       _initialLoadDone = false;
-      _nextCursor = null;
+      if (!retainLoadedExtent) _nextCursor = null;
     });
     final fetchedAt = DateTime.now();
     try {
@@ -190,7 +174,9 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
         fetchedAt: fetchedAt,
       );
       setState(() {
-        _allPosts = page.items;
+        _allPosts = retainLoadedExtent
+            ? reconcileProfilePosts(page.items, _allPosts)
+            : page.items;
         _nextCursor = page.nextCursor;
         _loading = false;
         _initialLoadDone = true;
@@ -261,8 +247,10 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     }
   }
 
-  List<FeedPost> get _visiblePosts {
-    final filter = _filters[_filterIndex].type;
+  List<FeedPost> get _visiblePosts =>
+      _postsForFilter(_filters[_filterIndex].type);
+
+  List<FeedPost> _postsForFilter(_PostFilterType filter) {
     return _allPosts.where((post) {
       return switch (filter) {
         _PostFilterType.all => true,
@@ -271,6 +259,148 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
         _PostFilterType.review => post.statusInfo == FeedPostStatus.pending,
       };
     }).toList();
+  }
+
+  /// The filtered post list for a transition [scope] (the filter's name).
+  List<FeedPost> _scopeList(String scope) {
+    final filter = _PostFilterType.values.firstWhere(
+      (type) => type.name == scope,
+      orElse: () => _PostFilterType.all,
+    );
+    return _postsForFilter(filter);
+  }
+
+  bool _scopeContains(String scope, String postId) =>
+      _scopeList(scope).any((post) => post.id == postId);
+
+  GlobalKey _tileKeyFor(String scope, String postId) =>
+      _scopeTileKeys.putIfAbsent('$scope:$postId', GlobalKey.new);
+
+  /// Thumbnail URL for the source-tile crossfade proxy — matches the fallback
+  /// chain [GalleryPostTile] itself renders (thumbnailUrl → mediaItems → preview).
+  String? _tileThumbnailUrl(FeedPost post) {
+    final thumbnail = post.thumbnailUrl;
+    if (thumbnail != null && thumbnail.trim().isNotEmpty) {
+      return thumbnail.trim();
+    }
+    for (final item in post.mediaItems) {
+      final itemThumb = item.thumbnailUrl;
+      if (itemThumb != null && itemThumb.trim().isNotEmpty) {
+        return itemThumb.trim();
+      }
+      if (item.mediaUrl.trim().isNotEmpty) return item.mediaUrl.trim();
+    }
+    final preview = post.previewMediaUrl;
+    return preview.trim().isNotEmpty ? preview.trim() : null;
+  }
+
+  /// Dedupe a page loaded by the detail screen into `_allPosts` WITHOUT any
+  /// duplicate network fetch (the detail already fetched it). Every filter view
+  /// is derived from `_allPosts`, so appending unseen posts keeps them in sync.
+  void _mergeScopedPage(FeedPage page) {
+    if (!mounted) return;
+    final merged = mergeProfilePostsById(_allPosts, page.items);
+    if (identical(merged, _allPosts)) return;
+    setState(() => _allPosts = merged);
+  }
+
+  /// Best-effort positioning of the active grid so target post B lands visible.
+  /// Scope rule: keep the origin filter when B exists there; only fall back to
+  /// Semua (all) when B cannot exist in the origin scope (legacy mixed-scope
+  /// pagination), selecting that filter silently while the zoom route covers
+  /// the screen.
+  Future<void> _ensureTileVisible(FeedPost post, int generation) async {
+    if (!mounted) return;
+    final resolvedScope = resolveProfileTransitionScope(
+      originScope: _activeTransitionScope,
+      originScopeContainsPost: _scopeContains(_activeTransitionScope, post.id),
+      allScopeContainsPost: _scopeContains(_PostFilterType.all.name, post.id),
+    );
+    if (resolvedScope != _activeTransitionScope) {
+      _activeTransitionScope = resolvedScope;
+      final index =
+          _filters.indexWhere((filter) => filter.type.name == resolvedScope);
+      if (index >= 0 && index != _filterIndex) {
+        setState(() => _filterIndex = index);
+      }
+      _transitionRegistry.markLayoutChanged();
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+    }
+    final tileContext =
+        _scopeTileKeys['$_activeTransitionScope:${post.id}']?.currentContext;
+    if (tileContext == null || !tileContext.mounted) return;
+    // A small non-zero alignment leaves a comfortable top margin below the
+    // pinned chrome without pushing the tile down. (Exact pixel bounds are a
+    // device-verify item — Task 15.)
+    await Scrollable.ensureVisible(
+      tileContext,
+      alignment: 0.1,
+      duration: Duration.zero,
+    );
+  }
+
+  BuildContext? _firstBuiltTileContext(String scope) {
+    for (final post in _scopeList(scope)) {
+      final context = _scopeTileKeys['$scope:${post.id}']?.currentContext;
+      if (context != null) return context;
+    }
+    return null;
+  }
+
+  void _consumePendingReturn(ProfilePostSourceAdapter adapter) {
+    if (adapter.pendingReturnPostId == null || !mounted) {
+      adapter.consumePendingReturn(
+        gridWidth: 0,
+        indexOfPostInCurrentScope: (_) => null,
+        jumpToOffset: (_) {},
+      );
+      return;
+    }
+    final gridWidth = MediaQuery.of(context).size.width;
+    adapter.consumePendingReturn(
+      gridWidth: gridWidth,
+      indexOfPostInCurrentScope: (postId) {
+        final index =
+            _scopeList(_activeTransitionScope).indexWhere((p) => p.id == postId);
+        return index < 0 ? null : index;
+      },
+      jumpToOffset: (offset) {
+        final tileContext = _firstBuiltTileContext(_activeTransitionScope);
+        if (tileContext == null) return;
+        final position = Scrollable.maybeOf(tileContext)?.position;
+        if (position == null) return;
+        position.jumpTo(
+          offset.clamp(position.minScrollExtent, position.maxScrollExtent),
+        );
+      },
+    );
+  }
+
+  /// Builds the zoom session + adapter for a tile tap in [scope]. The adapter is
+  /// released (after the session is disposed) via the returned `onClosed`.
+  PostGalleryZoomSession _createZoomSession(FeedPost post, String scope) {
+    _activeTransitionScope = scope;
+    final adapter = ProfilePostSourceAdapter(
+      registry: _transitionRegistry,
+      isMounted: () => mounted,
+      currentScope: () => _activeTransitionScope,
+      ensureVisible: _ensureTileVisible,
+      mergeScopedPage: _mergeScopedPage,
+      fallbackColor: (_) =>
+          Theme.of(context).colorScheme.surfaceContainerHighest,
+    );
+    final session = PostDetailTransitionSession(
+      initialPost: post,
+      source: adapter,
+    );
+    return PostGalleryZoomSession(
+      session: session,
+      onClosed: () {
+        _consumePendingReturn(adapter);
+        adapter.dispose();
+      },
+    );
   }
 
   Future<void> _openUpload() async {
@@ -448,42 +578,30 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     }
   }
 
-  GlobalKey _tileKeyFor(String postId) =>
-      _tileKeys.putIfAbsent(postId, GlobalKey.new);
-
+  /// Opens Postingan through the shared opener mixin's zoom path (Postingan
+  /// Saya passes a session factory → `pushPostPageZoom`, no entry haptic). After
+  /// pop, the fresh page-1 load is reconciled into the loaded extent so a B
+  /// paginated in beyond page 1 (and the pending-return jump to it) is retained.
   Future<void> _openPostDetail(
     List<FeedPost> posts,
     int initialIndex,
-    GlobalKey originKey,
+    String scope,
   ) async {
-    if (_openingPost) return;
-    _openingPost = true;
-    final post = posts[initialIndex];
-    final handoff = _takePreparedPost(post) ?? _createWarmHandoff(post);
-    try {
-      await pushOriginExpansion<void>(
-        context,
-        originKey: originKey,
-        destinationBuilder: (_) => MemberPostDetailScreen(
-          post: post,
-          posts: posts,
-          initialIndex: initialIndex,
-          authorIsOfficial: memberStore.profile?.isAdmin ?? false,
-          warmVideoHandoff: handoff,
-          initialNextCursor: _nextCursor,
-          loadMoreScopedPosts: (cursor) {
-            final loader = widget.debugPostsPageLoader;
-            return loader == null
-                ? feedService.fetchMyPosts(filter: 'all', cursor: cursor)
-                : loader(cursor);
-          },
-        ),
-      );
-    } finally {
-      await handoff?.disposeIfUnclaimed();
-      _openingPost = false;
-    }
-    if (mounted) await _loadPosts();
+    await openPostGallery(
+      posts: posts,
+      index: initialIndex,
+      loadMore: (cursor) {
+        final loader = widget.debugPostsPageLoader;
+        return loader == null
+            ? feedService.fetchMyPosts(filter: 'all', cursor: cursor)
+            : loader(cursor);
+      },
+      authorIsOfficial: memberStore.profile?.isAdmin ?? false,
+      isOwner: true,
+      initialNextCursor: _nextCursor,
+      transitionSessionFactory: (post) => _createZoomSession(post, scope),
+    );
+    if (mounted) await _loadPosts(retainLoadedExtent: true);
   }
 
   @override
@@ -615,18 +733,28 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
                   gridDelegate: profileGridDelegate(),
                   itemBuilder: (context, index) {
                     final post = visiblePosts[index];
-                    return GalleryPostTile(
-                      key: _tileKeyFor(post.id),
-                      post: post,
-                      onTap: () => _openPostDetail(
-                        visiblePosts,
-                        index,
-                        _tileKeyFor(post.id),
+                    final scope = _filters[_filterIndex].type.name;
+                    final mediaUrl = _tileThumbnailUrl(post);
+                    // The registry-fed source tile owns the origin key +
+                    // RepaintBoundary and exposes this tile's live geometry +
+                    // media proxy to the zoom route.
+                    return PostTransitionSourceTile(
+                      key: _tileKeyFor(scope, post.id),
+                      registry: _transitionRegistry,
+                      id: PostTransitionTileId(scope: scope, postId: post.id),
+                      fallbackColor: cs.surfaceContainerHighest,
+                      imageProvider: mediaUrl != null
+                          ? CachedNetworkImageProvider(mediaUrl)
+                          : null,
+                      child: GalleryPostTile(
+                        key: ValueKey('member-post-tile-$scope-${post.id}'),
+                        post: post,
+                        onTap: () => _openPostDetail(visiblePosts, index, scope),
+                        onTapDown: () => preparePostVideo(post),
+                        onTapCancel: () => cancelPreparedPost(post.id),
+                        showStatusBadge: true,
+                        enableFeedback: false,
                       ),
-                      onTapDown: () => _preparePostVideo(post),
-                      onTapCancel: () => _cancelPreparedPost(post.id),
-                      showStatusBadge: true,
-                      enableFeedback: false,
                     );
                   },
                 ),

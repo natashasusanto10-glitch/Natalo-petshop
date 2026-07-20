@@ -1,10 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/features/feed/transition/post_page_zoom_route.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/gallery_post_tile.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
 import 'package:natalo_petshop_flutter/screens/saved_posts_screen.dart';
 import 'package:natalo_petshop_flutter/state/feed_store.dart';
+
+/// Captures pushed routes so the Saved Posts path can be asserted to STILL use
+/// the legacy origin-expansion route (never the full-page zoom route).
+class _RouteCaptureObserver extends NavigatorObserver {
+  final List<Route<dynamic>> pushed = <Route<dynamic>>[];
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    pushed.add(route);
+    super.didPush(route, previousRoute);
+  }
+}
 
 FeedPost _post(String id, {String author = 'Tester'}) => FeedPost.fromJson({
       'id': id,
@@ -40,11 +53,14 @@ void main() {
     expect(find.byType(GalleryPostTile), findsNWidgets(2));
   });
 
-  testWidgets('tap tile opens MemberPostDetailScreen with full list',
-      (tester) async {
+  testWidgets(
+      'tap tile opens MemberPostDetailScreen via the origin-expansion route '
+      '(never the zoom route)', (tester) async {
     final posts = [_post('p1'), _post('p2')];
+    final observer = _RouteCaptureObserver();
     await tester.pumpWidget(
       MaterialApp(
+        navigatorObservers: [observer],
         home: SavedPostsScreen(
           fetchPosts: ({String? cursor, required int limit}) async =>
               FeedPage(items: posts),
@@ -58,5 +74,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.byType(MemberPostDetailScreen), findsOneWidget);
+    // Saved Posts shares the opener mixin but passes no transition-session
+    // factory, so it must remain on the legacy origin-expansion path — the
+    // full-page zoom route must never be pushed here.
+    expect(observer.pushed.whereType<PostPageZoomRoute>(), isEmpty);
   });
 }

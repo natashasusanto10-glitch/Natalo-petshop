@@ -9,7 +9,27 @@ import '../../../services/video_quality_service.dart';
 import '../../../state/settings_store.dart';
 import '../../../utils/haptics.dart';
 import '../../../widgets/origin_expansion_route.dart';
+import '../transition/post_detail_transition_session.dart';
+import '../transition/post_page_zoom_route.dart';
 import '../video/post_video_warm_handoff.dart';
+
+/// Bundle a caller supplies (via [PostGalleryOpener.openPostGallery]'s optional
+/// `transitionSessionFactory`) to open Postingan through the full-page zoom
+/// route instead of the legacy origin-expansion route. The caller owns the
+/// [PostDetailTransitionSession] it builds; [onClosed] runs AFTER the session
+/// is disposed and is where the caller consumes any pending return + releases
+/// its source adapter (mirrors the Own/Public Profile wiring order).
+class PostGalleryZoomSession {
+  const PostGalleryZoomSession({required this.session, required this.onClosed});
+
+  final PostDetailTransitionSession session;
+  final void Function() onClosed;
+}
+
+/// Builds a fresh [PostGalleryZoomSession] for [post] at tap time.
+typedef PostGalleryZoomSessionFactory = PostGalleryZoomSession Function(
+  FeedPost post,
+);
 
 /// Alur buka post ala halaman Postingan: tile-key untuk origin-expansion,
 /// warm video handoff (buka video instan), dan push `MemberPostDetailScreen`
@@ -64,6 +84,15 @@ mixin PostGalleryOpener<T extends StatefulWidget> on State<T> {
     return handoff;
   }
 
+  /// Opens Postingan for [posts]\[index].
+  ///
+  /// When [transitionSessionFactory] is null the behavior is EXACTLY the legacy
+  /// origin-expansion path (entry haptic + `pushOriginExpansion`) — this is the
+  /// Postingan Tersimpan (Saved Posts) path, unchanged. When a factory is
+  /// supplied (Postingan Saya) the tap opens through [pushPostPageZoom] with the
+  /// caller's [PostDetailTransitionSession] — the SAME route type as Own/Public
+  /// Profile — and emits NO entry haptic. The caller's `onClosed` runs after the
+  /// session is disposed (pending-return + adapter release).
   Future<void> openPostGallery({
     required List<FeedPost> posts,
     required int index,
@@ -72,30 +101,60 @@ mixin PostGalleryOpener<T extends StatefulWidget> on State<T> {
     required bool isOwner,
     bool authorPerPost = false,
     String? initialNextCursor,
+    PostGalleryZoomSessionFactory? transitionSessionFactory,
   }) async {
     if (_openingPost) return;
     _openingPost = true;
-    AppHaptics.tap();
     final post = posts[index];
-    final originKey = tileKeyFor(post.id);
     final handoff = _takePreparedPost(post) ?? _createWarmHandoff(post);
+    final zoom = transitionSessionFactory?.call(post);
     try {
-      await pushOriginExpansion<void>(
-        context,
-        originKey: originKey,
-        destinationBuilder: (_) => MemberPostDetailScreen(
-          post: post,
-          posts: posts,
-          initialIndex: index,
-          authorIsOfficial: authorIsOfficial,
-          isOwner: isOwner,
-          authorPerPost: authorPerPost,
-          warmVideoHandoff: handoff,
-          initialNextCursor: initialNextCursor,
-          loadMoreScopedPosts: loadMore,
-        ),
-      );
+      if (zoom == null) {
+        // Legacy origin-expansion path (Saved Posts) — byte-for-byte unchanged.
+        AppHaptics.tap();
+        final originKey = tileKeyFor(post.id);
+        await pushOriginExpansion<void>(
+          context,
+          originKey: originKey,
+          destinationBuilder: (_) => MemberPostDetailScreen(
+            post: post,
+            posts: posts,
+            initialIndex: index,
+            authorIsOfficial: authorIsOfficial,
+            isOwner: isOwner,
+            authorPerPost: authorPerPost,
+            warmVideoHandoff: handoff,
+            initialNextCursor: initialNextCursor,
+            loadMoreScopedPosts: loadMore,
+          ),
+        );
+      } else {
+        // Full-page zoom path (Postingan Saya) — no entry haptic.
+        await pushPostPageZoom(
+          context,
+          session: zoom.session,
+          destinationBuilder: (_) => MemberPostDetailScreen(
+            post: post,
+            posts: posts,
+            initialIndex: index,
+            authorIsOfficial: authorIsOfficial,
+            isOwner: isOwner,
+            authorPerPost: authorPerPost,
+            warmVideoHandoff: handoff,
+            initialNextCursor: initialNextCursor,
+            loadMoreScopedPosts: loadMore,
+            transitionSession: zoom.session,
+          ),
+        );
+      }
     } finally {
+      if (zoom != null) {
+        // Order mirrors Own/Public Profile: dispose the session first (its
+        // dispose still routes tile restoration through the live adapter), then
+        // let the caller consume the pending return + release the adapter.
+        zoom.session.dispose();
+        zoom.onClosed();
+      }
       await handoff?.disposeIfUnclaimed();
       _openingPost = false;
     }

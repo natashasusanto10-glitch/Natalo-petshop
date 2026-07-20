@@ -1,11 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/features/feed/transition/post_page_zoom_route.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
-import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
 import 'package:natalo_petshop_flutter/screens/member_posts_screen.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_expanded_header.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// Captures every route pushed onto the navigator so tests can assert which
+/// transition route type a tile tap opens.
+class _RouteCaptureObserver extends NavigatorObserver {
+  final List<Route<dynamic>> pushed = <Route<dynamic>>[];
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    pushed.add(route);
+    super.didPush(route, previousRoute);
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -84,7 +96,8 @@ void main() {
     expect(videoSemantics.properties.selected, isTrue);
   });
 
-  testWidgets('opens Postingan without entry haptic', (tester) async {
+  testWidgets('opens Postingan via the zoom route without entry haptic',
+      (tester) async {
     final post = FeedPost.fromJson({
       'id': 'legacy-a',
       'slug': 'legacy-a',
@@ -94,8 +107,10 @@ void main() {
       'author': {'id': 'owner-1', 'name': 'Owner'},
       'createdAt': DateTime(2026, 7, 18).toIso8601String(),
     });
+    final observer = _RouteCaptureObserver();
     await tester.pumpWidget(
       MaterialApp(
+        navigatorObservers: [observer],
         home: MemberPostsScreen(
           debugPostsPageLoader: (_) async => FeedPage(items: [post]),
         ),
@@ -111,11 +126,33 @@ void main() {
       }
     }
 
+    // Feedback disabled so no Material tap haptic fires on entry.
+    final inkWell = tester.widget<InkWell>(
+      find.byKey(const ValueKey('gallery-post-legacy-a')),
+    );
+    expect(inkWell.enableFeedback, isFalse);
+
     await tester.tap(find.byKey(const ValueKey('gallery-post-legacy-a')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 1));
 
-    expect(find.byType(MemberPostDetailScreen), findsOneWidget);
+    // Postingan Saya now opens through the dedicated full-page zoom route —
+    // the SAME route type as Own/Public Profile — never the legacy
+    // origin-expansion snapshot, and with zero entry haptic.
+    expect(observer.pushed.whereType<PostPageZoomRoute>(), isNotEmpty);
+    // The legacy origin-expansion snapshot must be gone — this path now pushes
+    // the dedicated full-page zoom route instead. (The destination mounts once
+    // geometry readiness is reported — a runtime/device-verify concern, so it
+    // is not asserted here; the pushed route type is the authoritative signal,
+    // matching the Own/Public Profile wiring tests.)
+    expect(
+      find.byKey(const ValueKey('origin-expansion-snapshot')),
+      findsNothing,
+    );
     expect(hapticCalls.where((call) => call.method == 'light'), isEmpty);
+    expect(
+      hapticCalls.where((call) => call.method == 'selectionClick'),
+      isEmpty,
+    );
   });
 }
