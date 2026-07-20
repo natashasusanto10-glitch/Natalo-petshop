@@ -174,6 +174,19 @@ class PostPageZoomRoute extends PageRoute<void> {
   @visibleForTesting
   AnimationController? get debugController => controller;
 
+  /// Keeps the destination subtree's Element/State alive when the render path
+  /// changes between phases (preparingOpen Stack -> zoom/crossfade ->
+  /// interactive preview/commit -> fallback). Without it, each phase's
+  /// different wrapper structure would dispose and recreate the destination
+  /// screen mid-transition — resetting its readiness machinery and tearing
+  /// down the adopted warm video session.
+  final GlobalKey _destinationSubtreeKey = GlobalKey();
+
+  Widget _destination(BuildContext context) => KeyedSubtree(
+    key: _destinationSubtreeKey,
+    child: destinationBuilder(context),
+  );
+
   PostPageSourceTarget? _frozenTarget;
   PostPageMediaProxy? _frozenProxy;
   bool _sessionListenerAttached = false;
@@ -332,9 +345,7 @@ class PostPageZoomRoute extends PageRoute<void> {
   /// dedicated observer while in `interactiveBack`.
   @override
   void onPopInvokedWithResult(bool didPop, void result) {
-    if (!didPop &&
-        !_systemBackInProgress &&
-        phase == PostPageZoomPhase.open) {
+    if (!didPop && !_systemBackInProgress && phase == PostPageZoomPhase.open) {
       _systemBackInProgress = true;
       requestClose();
     }
@@ -533,7 +544,8 @@ class PostPageZoomRoute extends PageRoute<void> {
     // surface overlaps it).
     if (_interactiveCommitActive &&
         !_commitTileSuppressed &&
-        (_commitController?.value ?? 0) >= kPostPageBackCommitSuppressThreshold) {
+        (_commitController?.value ?? 0) >=
+            kPostPageBackCommitSuppressThreshold) {
       _commitTileSuppressed = true;
       session.setFrozenTileSuppressed(true);
     }
@@ -808,8 +820,21 @@ class PostPageZoomRoute extends PageRoute<void> {
   ) {
     if (currentPhase == PostPageZoomPhase.preparingOpen) {
       final proxy = _activeProxy();
-      return ColoredBox(
-        color: proxy?.placeholderColor ?? const Color(0xFF000000),
+      // The destination MUST be mounted beneath the proxy cover: the
+      // destination screen is the sole driver of
+      // `session.destinationReadiness` (its bounded readiness stage runs from
+      // its own first frames), so building only the cover here would deadlock
+      // the route at `preparingOpen` forever — the shipped iOS symptom was a
+      // permanent blank screen in the proxy placeholder color. The opaque
+      // cover on top keeps the user-visible contract unchanged (proxy
+      // covering the screen until readiness resolves).
+      return Stack(
+        fit: StackFit.expand,
+        textDirection: TextDirection.ltr,
+        children: [
+          RepaintBoundary(child: _destination(context)),
+          ColoredBox(color: proxy?.placeholderColor ?? const Color(0xFF000000)),
+        ],
       );
     }
     if (currentPhase == PostPageZoomPhase.interactiveBack ||
@@ -823,7 +848,7 @@ class PostPageZoomRoute extends PageRoute<void> {
     if (currentPhase == PostPageZoomPhase.closingFallback) {
       return _FallbackCloseTransition(
         progress: controller!,
-        destinationChild: destinationBuilder(context),
+        destinationChild: _destination(context),
       );
     }
     final proxy = _activeProxy();
@@ -843,7 +868,7 @@ class PostPageZoomRoute extends PageRoute<void> {
             PostDetailDestinationReadiness.crossfadeFallback) {
       return _CrossfadeZoomTransition(
         progress: controller!,
-        destinationChild: destinationBuilder(context),
+        destinationChild: _destination(context),
         proxyImageProvider: _proxyImageProviderFor(proxy),
         proxyColor: proxy?.placeholderColor ?? const Color(0xFF000000),
       );
@@ -853,7 +878,7 @@ class PostPageZoomRoute extends PageRoute<void> {
       tileRect: _tileRect(context),
       viewportRect: _viewportRect(context),
       tileCornerRadius: _tileCornerRadius(),
-      destinationChild: destinationBuilder(context),
+      destinationChild: _destination(context),
       proxyImageProvider: _proxyImageProviderFor(proxy),
       proxyColor: proxy?.placeholderColor ?? const Color(0xFF000000),
     );
@@ -885,7 +910,7 @@ class PostPageZoomRoute extends PageRoute<void> {
           child: child!,
         );
       },
-      child: RepaintBoundary(child: destinationBuilder(context)),
+      child: RepaintBoundary(child: _destination(context)),
     );
   }
 
@@ -909,7 +934,7 @@ class PostPageZoomRoute extends PageRoute<void> {
           child: child!,
         );
       },
-      child: RepaintBoundary(child: destinationBuilder(context)),
+      child: RepaintBoundary(child: _destination(context)),
     );
   }
 
@@ -937,16 +962,15 @@ class PostPageZoomRoute extends PageRoute<void> {
               HorizontalDragGestureRecognizer:
                   GestureRecognizerFactoryWithHandlers<
                     HorizontalDragGestureRecognizer
-                  >(
-                    () => HorizontalDragGestureRecognizer(debugOwner: this),
-                    (recognizer) {
-                      recognizer
-                        ..onStart = _onEdgeDragStart
-                        ..onUpdate = _onEdgeDragUpdate
-                        ..onEnd = _onEdgeDragEnd
-                        ..onCancel = _onEdgeDragCancel;
-                    },
-                  ),
+                  >(() => HorizontalDragGestureRecognizer(debugOwner: this), (
+                    recognizer,
+                  ) {
+                    recognizer
+                      ..onStart = _onEdgeDragStart
+                      ..onUpdate = _onEdgeDragUpdate
+                      ..onEnd = _onEdgeDragEnd
+                      ..onCancel = _onEdgeDragCancel;
+                  }),
             },
           ),
         ),
@@ -966,8 +990,8 @@ class PostPageZoomRoute extends PageRoute<void> {
     final extent = (viewport?.width ?? 0);
     if (extent <= 0) return;
     final isLtr = _frozenTarget?.textDirection != TextDirection.rtl;
-    final delta = (details.globalPosition.dx - _dragStartGlobalDx) *
-        (isLtr ? 1 : -1);
+    final delta =
+        (details.globalPosition.dx - _dragStartGlobalDx) * (isLtr ? 1 : -1);
     updateInteractiveBack((delta / extent).clamp(0.0, 1.0));
     _lastGestureVelocity = 0;
   }
@@ -1165,8 +1189,10 @@ class _CrossfadeZoomTransition extends StatelessWidget {
         // the first portion of the flight so it never competes with a later
         // destination fade.
         final scale = 0.96 + (0.04 * t);
-        final crossfadeT =
-            (t / postPageZoomCrossfadeProgressThreshold).clamp(0.0, 1.0);
+        final crossfadeT = (t / postPageZoomCrossfadeProgressThreshold).clamp(
+          0.0,
+          1.0,
+        );
         return Transform.scale(
           scale: scale,
           child: Stack(

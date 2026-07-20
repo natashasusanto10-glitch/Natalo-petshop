@@ -174,6 +174,65 @@ void main() {
     });
   });
 
+  group('destination bootstrap during preparingOpen', () {
+    final navigatorKey = GlobalKey<NavigatorState>();
+
+    testWidgets(
+      'destination subtree is mounted (beneath the proxy cover) while the '
+      'route holds at preparingOpen, so it can drive readiness',
+      (tester) async {
+        final fake = FakeTransitionSource();
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+
+        await tester.pumpWidget(_app(navigatorKey));
+        final route = _pushDirect(navigatorKey, session);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(route.phase, PostPageZoomPhase.preparingOpen);
+        // Regression (iOS blank-white screen): during `preparingOpen` the
+        // route used to render ONLY the proxy ColoredBox and never build
+        // `destinationBuilder`. But the destination screen is the sole
+        // driver of `session.destinationReadiness`, so nothing could ever
+        // leave `preparing` — a permanent deadlock on the proxy color.
+        expect(find.text('destination'), findsOneWidget);
+      },
+    );
+
+    testWidgets('a destination that reports readiness on mount opens the route '
+        'end-to-end with no external markDestinationReady', (tester) async {
+      final fake = FakeTransitionSource();
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: fake,
+      );
+      addTearDown(session.dispose);
+
+      await tester.pumpWidget(_app(navigatorKey));
+      expect(session.tryAttachRoute(), isTrue);
+      final route = PostPageZoomRoute(
+        session: session,
+        destinationBuilder: (context) =>
+            _SelfReportingDestination(session: session),
+      );
+      navigatorKey.currentState!.push(route);
+      await tester.pump();
+
+      // Bounded settle: the destination mounts under the proxy, reports
+      // geometry readiness on its first frame, and the route must proceed
+      // preparingOpen -> opening -> open on its own.
+      for (var i = 0; i < 20; i++) {
+        if (route.phase == PostPageZoomPhase.open) break;
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(route.phase, PostPageZoomPhase.open);
+    });
+  });
+
   group('source semantics/focus lock', () {
     final navigatorKey = GlobalKey<NavigatorState>();
 
@@ -566,26 +625,20 @@ void main() {
     // default flutter-test platform is Android and the route's public gesture
     // entry points bypass the leading-edge recognizer entirely.
 
-    testWidgets(
-      'leading-edge recognizer is absent on Android',
-      (tester) async {
-        debugDefaultTargetPlatformOverride = TargetPlatform.android;
-        final route = await _openInteractive(tester, navigatorKey);
-        expect(find.byKey(postPageBackGestureEdgeKey), findsNothing);
-        expect(route.phase, PostPageZoomPhase.open);
-        debugDefaultTargetPlatformOverride = null;
-      },
-    );
+    testWidgets('leading-edge recognizer is absent on Android', (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final route = await _openInteractive(tester, navigatorKey);
+      expect(find.byKey(postPageBackGestureEdgeKey), findsNothing);
+      expect(route.phase, PostPageZoomPhase.open);
+      debugDefaultTargetPlatformOverride = null;
+    });
 
-    testWidgets(
-      'leading-edge recognizer is installed on iOS',
-      (tester) async {
-        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-        await _openInteractive(tester, navigatorKey);
-        expect(find.byKey(postPageBackGestureEdgeKey), findsOneWidget);
-        debugDefaultTargetPlatformOverride = null;
-      },
-    );
+    testWidgets('leading-edge recognizer is installed on iOS', (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      await _openInteractive(tester, navigatorKey);
+      expect(find.byKey(postPageBackGestureEdgeKey), findsOneWidget);
+      debugDefaultTargetPlatformOverride = null;
+    });
 
     testWidgets(
       'gesture is accepted only from phase open (freeze once at first '
@@ -734,28 +787,30 @@ void main() {
       },
     );
 
-    testWidgets('a fling >= 800 px/s commits even below the progress threshold',
-        (tester) async {
-      final fake = FakeTransitionSource();
-      fake.targets['a'] = fakeTarget('a');
-      fake.preparations['a'] = Completer<PostPageSourceTarget?>()
-        ..complete(fakeTarget('a'));
-      final session = PostDetailTransitionSession(
-        initialPost: fakePost('a'),
-        source: fake,
-      );
-      addTearDown(session.dispose);
-      await session.prepareActiveTarget();
+    testWidgets(
+      'a fling >= 800 px/s commits even below the progress threshold',
+      (tester) async {
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
 
-      final route = await _openInteractiveWith(tester, navigatorKey, session);
-      route.beginInteractiveBack();
-      route.updateInteractiveBack(0.1); // below progress threshold
-      final future = route.endInteractiveBack(900); // fling -> commit
-      expect(route.phase, PostPageZoomPhase.closingToTarget);
-      await tester.pumpAndSettle();
-      await future;
-      expect(route.phase, PostPageZoomPhase.closed);
-    });
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+        route.beginInteractiveBack();
+        route.updateInteractiveBack(0.1); // below progress threshold
+        final future = route.endInteractiveBack(900); // fling -> commit
+        expect(route.phase, PostPageZoomPhase.closingToTarget);
+        await tester.pumpAndSettle();
+        await future;
+        expect(route.phase, PostPageZoomPhase.closed);
+      },
+    );
 
     testWidgets(
       'B tile is NOT suppressed during preview and only suppressed in the '
@@ -862,8 +917,9 @@ void main() {
       },
     );
 
-    testWidgets('a real leading-edge drag on iOS drives an interactive back',
-        (tester) async {
+    testWidgets('a real leading-edge drag on iOS drives an interactive back', (
+      tester,
+    ) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
       final session = PostDetailTransitionSession(
         initialPost: fakePost('a'),
@@ -1006,8 +1062,7 @@ void main() {
 
         // Real lifecycle dispatch through the WidgetsBinding observer chain.
         // Backgrounding immediately begins the cancel and pauses media.
-        tester.binding
-            .handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
         expect(route.phase, PostPageZoomPhase.settlingOpenAfterCancel);
         expect(session.playbackAllowed, isFalse);
 
@@ -1015,8 +1070,9 @@ void main() {
         // app returns to the foreground. It settles to a terminal `open`
         // (never auto-closed), and media stays paused (no ghost audio) because
         // the cancel was caused by an interruption, not a user release.
-        tester.binding
-            .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
         await tester.pumpAndSettle();
         expect(route.phase, PostPageZoomPhase.open);
         expect(session.playbackAllowed, isFalse);
@@ -1091,166 +1147,173 @@ void main() {
       },
     );
 
-    testWidgets(
-      'reduced motion still cancels an interactive back to open',
-      (tester) async {
-        tester.binding.platformDispatcher.accessibilityFeaturesTestValue =
-            const FakeAccessibilityFeatures(accessibleNavigation: true);
-        addTearDown(
-          tester.binding.platformDispatcher.clearAccessibilityFeaturesTestValue,
-        );
-        final session = PostDetailTransitionSession(
-          initialPost: fakePost('a'),
-          source: FakeTransitionSource(),
-        );
-        addTearDown(session.dispose);
-        final route = await _openInteractiveWith(tester, navigatorKey, session);
-
-        route.beginInteractiveBack();
-        route.updateInteractiveBack(0.1);
-        route.endInteractiveBack(0); // cancel
-        await tester.pumpAndSettle();
-        expect(route.phase, PostPageZoomPhase.open);
-      },
-    );
-  });
-
-  group('Task 14: fallback matrix (never targets A, restores, assigns pending)',
-      () {
-    final navigatorKey = GlobalKey<NavigatorState>();
-
-    Future<void> expectFallbackClose(
-      WidgetTester tester,
-      FakeTransitionSource fake,
-      PostDetailTransitionSession session, {
-      bool expectPendingReturn = true,
-    }) async {
-      await tester.pumpWidget(_app(navigatorKey));
-      final route = _pushDirect(navigatorKey, session);
-      await tester.pump();
-      session.markDestinationReady(
-        PostDetailDestinationReadiness.crossfadeFallback,
+    testWidgets('reduced motion still cancels an interactive back to open', (
+      tester,
+    ) async {
+      tester.binding.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(accessibleNavigation: true);
+      addTearDown(
+        tester.binding.platformDispatcher.clearAccessibilityFeaturesTestValue,
       );
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: FakeTransitionSource(),
+      );
+      addTearDown(session.dispose);
+      final route = await _openInteractiveWith(tester, navigatorKey, session);
+
+      route.beginInteractiveBack();
+      route.updateInteractiveBack(0.1);
+      route.endInteractiveBack(0); // cancel
       await tester.pumpAndSettle();
       expect(route.phase, PostPageZoomPhase.open);
-
-      final future = route.requestClose();
-      // Every fallback path enters closingFallback and assigns a pending
-      // return target BEFORE closing (owned by the source, not the session).
-      expect(route.phase, PostPageZoomPhase.closingFallback);
-      // Pending return is assigned to the source (best-effort, source-owned)
-      // whenever the source is still mounted; a disposed/unmounted source
-      // cannot receive it, which is itself correct.
-      if (expectPendingReturn) {
-        expect(fake.pendingReturnPostId, isNotNull);
-      }
-      await tester.pump();
-      // Structurally incapable of animating toward any tile rect (A or stale):
-      // the geometry surface is never built for a fallback close.
-      expect(find.byType(PostPageZoomTransition), findsNothing);
-      expect(_findsFallbackCloseTransition(), findsOneWidget);
-
-      await tester.pumpAndSettle();
-      await future;
-      expect(route.phase, PostPageZoomPhase.closed);
-      // Nothing left net-suppressed on the source.
-      final net = <String, int>{};
-      for (final (id, suppressed) in fake.suppressionCalls) {
-        net[id] = (net[id] ?? 0) + (suppressed ? 1 : -1);
-      }
-      expect(net.values.every((v) => v <= 0), isTrue);
-    }
-
-    testWidgets('B deleted/removed (invalidatePost) falls back', (tester) async {
-      final fake = FakeTransitionSource();
-      final session = PostDetailTransitionSession(
-        initialPost: fakePost('a'),
-        source: fake,
-      );
-      addTearDown(session.dispose);
-      session.invalidatePost('a');
-      await expectFallbackClose(tester, fake, session);
-    });
-
-    testWidgets('source disposed (adapter mounted=false) falls back',
-        (tester) async {
-      final fake = FakeTransitionSource()..mounted = false;
-      final session = PostDetailTransitionSession(
-        initialPost: fakePost('a'),
-        source: fake,
-      );
-      addTearDown(session.dispose);
-      await expectFallbackClose(
-        tester,
-        fake,
-        session,
-        expectPendingReturn: false,
-      );
-    });
-
-    testWidgets('unpreparable tab (prepareTarget returns null) falls back',
-        (tester) async {
-      final fake = FakeTransitionSource(); // no target registered for 'a'
-      final session = PostDetailTransitionSession(
-        initialPost: fakePost('a'),
-        source: fake,
-      );
-      addTearDown(session.dispose);
-      await session.prepareActiveTarget();
-      await expectFallbackClose(tester, fake, session);
-    });
-
-    testWidgets('unmergeable paginated B (active post with no target) falls '
-        'back', (tester) async {
-      final fake = FakeTransitionSource();
-      fake.targets['a'] = fakeTarget('a');
-      final session = PostDetailTransitionSession(
-        initialPost: fakePost('a'),
-        source: fake,
-      );
-      addTearDown(session.dispose);
-      // Navigate to a paginated post 'b' that the source cannot prepare/merge.
-      session.reportActivePost(fakePost('b'));
-      await session.prepareActiveTarget();
-      await expectFallbackClose(tester, fake, session);
-    });
-
-    testWidgets('empty/off-viewport rect (hasUsableGeometry false) falls back',
-        (tester) async {
-      final fake = FakeTransitionSource();
-      final offscreen = fakeTarget(
-        'a',
-        rect: const Rect.fromLTWH(-5000, -5000, 100, 120),
-      );
-      fake.targets['a'] = offscreen;
-      fake.preparations['a'] = Completer<PostPageSourceTarget?>()
-        ..complete(offscreen);
-      final session = PostDetailTransitionSession(
-        initialPost: fakePost('a'),
-        source: fake,
-      );
-      addTearDown(session.dispose);
-      await session.prepareActiveTarget();
-      await expectFallbackClose(tester, fake, session);
-    });
-
-    testWidgets('stale layout generation (invalidated after prepare) falls '
-        'back', (tester) async {
-      final fake = FakeTransitionSource();
-      fake.targets['a'] = fakeTarget('a');
-      fake.preparations['a'] = Completer<PostPageSourceTarget?>()
-        ..complete(fakeTarget('a'));
-      final session = PostDetailTransitionSession(
-        initialPost: fakePost('a'),
-        source: fake,
-      );
-      addTearDown(session.dispose);
-      await session.prepareActiveTarget();
-      // Generation bumped + post invalidated between prepare and freeze.
-      session.invalidatePost('a');
-      await expectFallbackClose(tester, fake, session);
     });
   });
+
+  group(
+    'Task 14: fallback matrix (never targets A, restores, assigns pending)',
+    () {
+      final navigatorKey = GlobalKey<NavigatorState>();
+
+      Future<void> expectFallbackClose(
+        WidgetTester tester,
+        FakeTransitionSource fake,
+        PostDetailTransitionSession session, {
+        bool expectPendingReturn = true,
+      }) async {
+        await tester.pumpWidget(_app(navigatorKey));
+        final route = _pushDirect(navigatorKey, session);
+        await tester.pump();
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.crossfadeFallback,
+        );
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.open);
+
+        final future = route.requestClose();
+        // Every fallback path enters closingFallback and assigns a pending
+        // return target BEFORE closing (owned by the source, not the session).
+        expect(route.phase, PostPageZoomPhase.closingFallback);
+        // Pending return is assigned to the source (best-effort, source-owned)
+        // whenever the source is still mounted; a disposed/unmounted source
+        // cannot receive it, which is itself correct.
+        if (expectPendingReturn) {
+          expect(fake.pendingReturnPostId, isNotNull);
+        }
+        await tester.pump();
+        // Structurally incapable of animating toward any tile rect (A or stale):
+        // the geometry surface is never built for a fallback close.
+        expect(find.byType(PostPageZoomTransition), findsNothing);
+        expect(_findsFallbackCloseTransition(), findsOneWidget);
+
+        await tester.pumpAndSettle();
+        await future;
+        expect(route.phase, PostPageZoomPhase.closed);
+        // Nothing left net-suppressed on the source.
+        final net = <String, int>{};
+        for (final (id, suppressed) in fake.suppressionCalls) {
+          net[id] = (net[id] ?? 0) + (suppressed ? 1 : -1);
+        }
+        expect(net.values.every((v) => v <= 0), isTrue);
+      }
+
+      testWidgets('B deleted/removed (invalidatePost) falls back', (
+        tester,
+      ) async {
+        final fake = FakeTransitionSource();
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        session.invalidatePost('a');
+        await expectFallbackClose(tester, fake, session);
+      });
+
+      testWidgets('source disposed (adapter mounted=false) falls back', (
+        tester,
+      ) async {
+        final fake = FakeTransitionSource()..mounted = false;
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await expectFallbackClose(
+          tester,
+          fake,
+          session,
+          expectPendingReturn: false,
+        );
+      });
+
+      testWidgets('unpreparable tab (prepareTarget returns null) falls back', (
+        tester,
+      ) async {
+        final fake = FakeTransitionSource(); // no target registered for 'a'
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+        await expectFallbackClose(tester, fake, session);
+      });
+
+      testWidgets('unmergeable paginated B (active post with no target) falls '
+          'back', (tester) async {
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        // Navigate to a paginated post 'b' that the source cannot prepare/merge.
+        session.reportActivePost(fakePost('b'));
+        await session.prepareActiveTarget();
+        await expectFallbackClose(tester, fake, session);
+      });
+
+      testWidgets(
+        'empty/off-viewport rect (hasUsableGeometry false) falls back',
+        (tester) async {
+          final fake = FakeTransitionSource();
+          final offscreen = fakeTarget(
+            'a',
+            rect: const Rect.fromLTWH(-5000, -5000, 100, 120),
+          );
+          fake.targets['a'] = offscreen;
+          fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+            ..complete(offscreen);
+          final session = PostDetailTransitionSession(
+            initialPost: fakePost('a'),
+            source: fake,
+          );
+          addTearDown(session.dispose);
+          await session.prepareActiveTarget();
+          await expectFallbackClose(tester, fake, session);
+        },
+      );
+
+      testWidgets('stale layout generation (invalidated after prepare) falls '
+          'back', (tester) async {
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+        // Generation bumped + post invalidated between prepare and freeze.
+        session.invalidatePost('a');
+        await expectFallbackClose(tester, fake, session);
+      });
+    },
+  );
 
   group('Android Predictive Back', () {
     final navigatorKey = GlobalKey<NavigatorState>();
@@ -1406,37 +1469,36 @@ void main() {
       },
     );
 
-    testWidgets(
-      'predictive-unavailable system back (3-button) runs the Task-8 '
-      'NON-INTERACTIVE reverse, never the interactive preview',
-      (tester) async {
-        // No predictive seam armed: on Android the route installs the real
-        // predictive observer, but a plain system back arrives via maybePop
-        // (not a predictive gesture) and must run the non-interactive reverse.
-        final fake = FakeTransitionSource();
-        fake.targets['a'] = fakeTarget('a');
-        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
-          ..complete(fakeTarget('a'));
-        final session = PostDetailTransitionSession(
-          initialPost: fakePost('a'),
-          source: fake,
-        );
-        addTearDown(session.dispose);
-        await session.prepareActiveTarget();
+    testWidgets('predictive-unavailable system back (3-button) runs the Task-8 '
+        'NON-INTERACTIVE reverse, never the interactive preview', (
+      tester,
+    ) async {
+      // No predictive seam armed: on Android the route installs the real
+      // predictive observer, but a plain system back arrives via maybePop
+      // (not a predictive gesture) and must run the non-interactive reverse.
+      final fake = FakeTransitionSource();
+      fake.targets['a'] = fakeTarget('a');
+      fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+        ..complete(fakeTarget('a'));
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: fake,
+      );
+      addTearDown(session.dispose);
+      await session.prepareActiveTarget();
 
-        final route = await _openInteractiveWith(tester, navigatorKey, session);
-        expect(route.phase, PostPageZoomPhase.open);
+      final route = await _openInteractiveWith(tester, navigatorKey, session);
+      expect(route.phase, PostPageZoomPhase.open);
 
-        await tester.binding.handlePopRoute();
-        await tester.pump();
-        // Non-interactive reverse (closingToTarget), NOT interactiveBack.
-        expect(route.phase, PostPageZoomPhase.closingToTarget);
-        expect(route.debugBackPreviewProgress, isNull);
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      // Non-interactive reverse (closingToTarget), NOT interactiveBack.
+      expect(route.phase, PostPageZoomPhase.closingToTarget);
+      expect(route.debugBackPreviewProgress, isNull);
 
-        await tester.pumpAndSettle();
-        expect(route.phase, PostPageZoomPhase.closed);
-      },
-    );
+      await tester.pumpAndSettle();
+      expect(route.phase, PostPageZoomPhase.closed);
+    });
 
     testWidgets(
       'a modal route above Postingan owns the first back; the zoom route '
@@ -1569,6 +1631,37 @@ PostPageZoomRoute _standaloneRoute() => PostPageZoomRoute(
   ),
   destinationBuilder: (context) => const SizedBox.shrink(),
 );
+
+/// Mimics the real destination screen's readiness contract: it reports
+/// geometry readiness from its own first post-mount frame, exactly like
+/// `MemberPostDetailScreen._startTransitionReadiness`.
+class _SelfReportingDestination extends StatefulWidget {
+  const _SelfReportingDestination({required this.session});
+
+  final PostDetailTransitionSession session;
+
+  @override
+  State<_SelfReportingDestination> createState() =>
+      _SelfReportingDestinationState();
+}
+
+class _SelfReportingDestinationState extends State<_SelfReportingDestination> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.session.markDestinationReady(
+        PostDetailDestinationReadiness.geometryReady,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const Text(
+    'self-reporting-destination',
+    textDirection: TextDirection.ltr,
+  );
+}
 
 class _SourceScreen extends StatelessWidget {
   const _SourceScreen();
