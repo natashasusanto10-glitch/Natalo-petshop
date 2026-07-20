@@ -132,6 +132,7 @@ class ProductReview {
   final int helpfulCount;
   final DateTime createdAt;
   final String userName;
+  final String? userAvatarUrl;
   final List<String> images;
   final List<ProductReviewMedia> media;
   final ReviewReply? reply;
@@ -151,6 +152,7 @@ class ProductReview {
     required this.helpfulCount,
     required this.createdAt,
     required this.userName,
+    this.userAvatarUrl,
     required this.images,
     this.media = const [],
     this.reply,
@@ -167,6 +169,7 @@ class ProductReview {
       helpfulCount: helpfulCount ?? this.helpfulCount,
       createdAt: createdAt,
       userName: userName,
+      userAvatarUrl: userAvatarUrl,
       images: images,
       media: media,
       reply: reply,
@@ -206,6 +209,9 @@ class ProductReview {
       createdAt: DateTime.tryParse(_string(json['createdAt'])) ??
           DateTime.fromMillisecondsSinceEpoch(0),
       userName: _string(json['userName'], fallback: 'Pembeli Natalo'),
+      userAvatarUrl: _nullableString(json['userAvatarUrl']) == null
+          ? null
+          : _absoluteUrl(_nullableString(json['userAvatarUrl'])!),
       images: imageUrls.isNotEmpty ? imageUrls : legacyImages,
       media: media,
       reply: rawReply is Map<String, dynamic>

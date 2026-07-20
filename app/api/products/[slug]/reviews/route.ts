@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { maskName } from "@/lib/reviews";
+import { brandPhotoUrl } from "@/lib/social/brand-user";
 import type { Prisma } from "@prisma/client";
 
 const PAGE_SIZE = 10;
@@ -63,7 +64,7 @@ export async function GET(
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       include: {
-        user: { select: { name: true } },
+        user: { select: { name: true, role: true, profilePhotoUrl: true } },
         images: { orderBy: { position: "asc" } },
         reply: true,
       },
@@ -91,6 +92,9 @@ export async function GET(
           helpfulCount: r.helpfulCount,
           createdAt: r.createdAt,
           userName: maskName(r.user.name),
+          // Brand-safe: kalau reviewer adalah akun ADMIN, foto pribadi
+          // pemilik tidak boleh bocor — lihat lib/social/brand-user.ts.
+          userAvatarUrl: brandPhotoUrl(r.user.role, r.user.profilePhotoUrl),
           images: reviewImages
             .filter((i) => i.mediaType !== "video")
             .map((i) => i.imageUrl),

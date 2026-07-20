@@ -38,6 +38,7 @@ import '../utils/voucher_promo.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/app_chat_button.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
+import '../widgets/soft_toggle_chip.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/added_to_cart_sheet.dart';
 import '../widgets/app_toast.dart';
@@ -3758,7 +3759,7 @@ class _ReviewFilterBar extends StatelessWidget {
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
-          _ReviewFilterChip(
+          SoftToggleChip(
             label: 'Semua',
             selected: selectedRating == null && !mediaOnly,
             onTap: () {
@@ -3767,7 +3768,7 @@ class _ReviewFilterBar extends StatelessWidget {
             },
           ),
           const SizedBox(width: 8),
-          _ReviewFilterChip(
+          SoftToggleChip(
             label: 'Foto & Video',
             icon: Icons.photo_library_outlined,
             selected: mediaOnly,
@@ -3775,58 +3776,19 @@ class _ReviewFilterBar extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           for (var rating = 5; rating >= 1; rating--) ...[
-            _ReviewFilterChip(
+            SoftToggleChip(
               label: '$rating',
               icon: Icons.star_rounded,
               selected: selectedRating == rating,
-              onTap: () => onRatingChanged(rating),
+              // Tap chip rating yang sudah aktif → nonaktifkan lagi (balik ke
+              // "Semua"), bukan cuma bisa direset lewat chip "Semua".
+              onTap: () =>
+                  onRatingChanged(selectedRating == rating ? null : rating),
             ),
             const SizedBox(width: 8),
           ],
         ],
       ),
-    );
-  }
-}
-
-class _ReviewFilterChip extends StatelessWidget {
-  final String label;
-  final IconData? icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _ReviewFilterChip({
-    required this.label,
-    this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return ChoiceChip(
-      selected: selected,
-      onSelected: (_) => onTap(),
-      avatar: icon == null
-          ? null
-          : Icon(
-              icon,
-              size: 16,
-              color: selected ? Colors.white : _brandBlue,
-            ),
-      label: Text(label),
-      selectedColor: _brandBlue,
-      backgroundColor: cs.surface,
-      labelStyle: TextStyle(
-        color: selected ? Colors.white : cs.onSurfaceVariant,
-        fontSize: 13,
-        fontWeight: FontWeight.w800,
-      ),
-      side: BorderSide(
-        color: selected ? _brandBlue : cs.outlineVariant,
-      ),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
     );
   }
 }
@@ -3856,13 +3818,18 @@ class _FullReviewTile extends StatelessWidget {
           CircleAvatar(
             radius: 21,
             backgroundColor: cs.surfaceContainerHighest,
-            child: Text(
-              name.isEmpty ? 'N' : name.substring(0, 1).toUpperCase(),
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
+            backgroundImage: (review.userAvatarUrl?.isNotEmpty ?? false)
+                ? NetworkImage(review.userAvatarUrl!)
+                : null,
+            child: (review.userAvatarUrl?.isNotEmpty ?? false)
+                ? null
+                : Text(
+                    name.isEmpty ? 'N' : name.substring(0, 1).toUpperCase(),
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -4314,13 +4281,18 @@ class _ReviewPreviewTile extends StatelessWidget {
         CircleAvatar(
           radius: 19,
           backgroundColor: cs.surfaceContainerHighest,
-          child: Text(
-            name.isEmpty ? 'N' : name.substring(0, 1).toUpperCase(),
-            style: TextStyle(
-              color: cs.onSurfaceVariant,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
+          backgroundImage: (review.userAvatarUrl?.isNotEmpty ?? false)
+              ? NetworkImage(review.userAvatarUrl!)
+              : null,
+          child: (review.userAvatarUrl?.isNotEmpty ?? false)
+              ? null
+              : Text(
+                  name.isEmpty ? 'N' : name.substring(0, 1).toUpperCase(),
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
         ),
         const SizedBox(width: 12),
         Expanded(
