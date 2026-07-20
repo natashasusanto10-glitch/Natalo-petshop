@@ -85,26 +85,47 @@ patching around it a second time.
 `resolvePostPageZoomFrame` (one frame for the whole page) with two independent
 pure functions:
 
-- `resolveHeroFrame({fromRect, toRect, fromRadius, toRadius, progress})` —
-  tweens offset/size/corner-radius of the MEDIA rect only, linear in
-  `progress` (0 = source tile, 1 = destination media slot). No viewport-scale
-  term; the hero's target is the destination's actual media slot rect, not
-  the fullscreen rect.
+- `resolveHeroFrame({tileRect, slotRect, mediaAspect, tileRadius, slotRadius,
+  progress})` — the true shared-element resolver (see "Aspect-ratio handling"
+  below). Returns a `PostPageHeroFrame` value type: `contentScale` (uniform),
+  `contentOffset` (top-left of the media surface), and `clip` (an `RRect`
+  window). `progress` 0 = source tile state, 1 = destination slot state.
 - `resolveChromeOpacity(progress)` — linear 0→1 (per user decision: chrome
   fade tracks flight progress directly, no separate curve/delay).
 
-**Aspect-ratio handling (important — this is what makes it read as IG, not a
-stretch).** The source tile is 1:1 (square grid cell showing a center-crop);
-the destination media slot is a different aspect (video is clamped ~4:5, photos
-vary). The hero rect therefore changes aspect over the flight. The media inside
-the hero is painted `BoxFit.cover` so it is never stretched — as the rect's
-aspect tweens 1:1 → slot, the visible crop re-frames smoothly (the same image,
-progressively revealing more of its true framing). This matches IG's
-"crop opens up as it grows" feel closely enough without an explicit crop-window
-tween. Pixel-exact preservation of the grid's center-crop as an independent
-animated crop window is deliberately OUT of scope (materially more work for a
-subtle difference); if the cover-fit re-framing is judged wrong on-device we
-revisit it as a follow-up, not a blocker.
+**Aspect-ratio handling (the core of the IG feel — chosen approach: true
+shared element, NOT a naive cover re-fit).** The source tile is 1:1 (square
+grid cell showing a center-crop of the media); the destination media slot is a
+different aspect (video clamped ~4:5, photos vary). A naive approach — paint
+the media `BoxFit.cover` into a rect whose aspect tweens 1:1 → slot — was
+rejected: because cover-fit recomputes the content scale from whichever
+dimension is tighter, the media's on-screen *content* scale changes
+non-uniformly as the box aspect changes, so a portrait subject visibly
+drifts/rescales even though the box only grows. That reads as "not IG".
+
+Instead the media is treated as a single fixed-aspect surface with ONE uniform
+content scale that grows monotonically, and it is the CLIP WINDOW that
+animates open:
+
+- The media surface is painted at [mediaAspect] with a uniform
+  `contentScale`; `contentOffset` positions it. Nothing about the media is
+  ever stretched — width and height always scale by the same factor.
+- `clip` is an `RRect` window that tweens from `tileRect` (square, radius
+  `tileRadius`) to `slotRect` (radius `slotRadius`).
+- Endpoint guarantee at `progress == 0`: the surface's scale+offset are chosen
+  so that the square region visible through the tile-shaped clip is EXACTLY
+  the grid thumbnail's center-crop (same pixels, same scale) — the hero starts
+  visually identical to the grid cell.
+- Endpoint guarantee at `progress == 1`: the surface exactly fills `slotRect`
+  (the destination's `BoxFit.cover` framing) with the clip equal to the slot.
+- Between the endpoints, `contentScale` and `contentOffset` are interpolated
+  uniformly (monotonic scale) while the clip opens — so the visible subject
+  stays locked and the frame "reveals" outward, the IG look.
+
+This handles portrait, landscape, and square media with the same math (the
+per-post `mediaAspect` is the only input that varies). The resolver is a pure
+function — the entire added complexity lives here, where it is cheapest to
+test exhaustively.
 
 Both are pure functions with the same "no notion of direction" property the
 current resolver has, so a reverse flight is just `progress` animating 1→0.
@@ -121,28 +142,33 @@ two independently-positioned layers instead of one transformed surface:
    media slot is transparent anyway, fading the whole subtree needs no
    "everything-except-the-media" carve-out (transparent × opacity is still
    transparent). This is simpler and cheaper than isolating the chrome.
-2. **Hero layer** — a `Transform`/`ClipRRect`-positioned box drawing the
-   clean media proxy (photo / carousel-first-frame / paused-video controller)
-   with `BoxFit.cover`, positioned via `resolveHeroFrame`. Stacked ABOVE the
-   chrome layer.
+2. **Hero layer** — the media surface (photo / carousel-first-frame /
+   paused-video controller) painted at its own `mediaAspect` under a uniform
+   `Transform.scale(contentScale)` + `Transform.translate(contentOffset)`,
+   wrapped in a `ClipRRect(clip)` whose window animates open — all three
+   values from `resolveHeroFrame`. Stacked ABOVE the chrome layer. The media
+   is never non-uniformly scaled, so it never stretches.
 
-**Hero `toRect` resolution timing.** The hero's `toRect` (destination media
-slot rect) is resolved ONCE per flight and frozen for that flight, not
-re-measured per tick: for a forward open, it is measured from the target
-post's media key after the destination has laid out and readiness has aligned
-the scroll (the list is static during `opening`, so the rect is stable); for a
-reverse close, the roles swap (`fromRect` = the current media slot, `toRect` =
-the frozen target tile). Freezing the endpoints mirrors the existing
-freeze-before-flight contract and avoids jitter from any incidental relayout.
+**Endpoint (`slotRect` + `mediaAspect`) resolution timing.** The destination
+`slotRect` and the post's `mediaAspect` are resolved ONCE per flight and
+frozen for that flight, not re-measured per tick: for a forward open they are
+measured from the target post's media key after the destination has laid out
+and readiness has aligned the scroll (the list is static during `opening`, so
+the rect is stable); for a reverse close the endpoints swap (the flight
+shrinks from the current slot back to the frozen target tile). `mediaAspect`
+comes from the post model (the same aspect the detail slot renders at).
+Freezing the endpoints mirrors the existing freeze-before-flight contract and
+avoids jitter from any incidental relayout.
 
 **Handoff (hero → real destination media).** Over the final ~15% of the
 flight (reusing the existing `postPageZoomCrossfadeProgressThreshold`-style
 threshold, mirrored to trigger near the END instead of the start), the hero
 layer's opacity ramps 1→0 while the destination's real media slot — until now
-transparent — ramps 0→1 at the exact same rect (by construction, since the
-hero's `toRect` IS that slot's rect). This is a crossfade between two already
-pixel-aligned surfaces, not a resize, so there is no visible pop even if the
-proxy and the final decoded asset differ slightly.
+transparent — ramps 0→1. At `progress == 1` the hero's surface is, by
+construction, at the exact scale/offset/clip of the destination's own slot
+framing, so this is a crossfade between two pixel-aligned surfaces, not a
+resize — no visible pop even if the proxy and the final decoded asset differ
+slightly.
 
 **Video.** The hero draws the video through the coordinator's single live
 controller (`VideoPlayer(controller)` with `BoxFit.cover`), NOT a thumbnail
@@ -162,7 +188,7 @@ from `playbackAllowed`).
 **Interactive back (both iOS and Android Predictive Back).** The existing
 `resolvePostPageBackPreview`/`PostPageBackSurface` machinery in
 `post_page_zoom_back_gesture.dart` is retargeted: instead of resolving one
-whole-surface frame, it resolves a `PostPageBackFrame` for the hero rect via
+whole-surface frame, it resolves a hero frame (scale/offset/clip) via
 `resolveHeroFrame` (progress 1→0 as the finger drags toward the tile) and a
 chrome opacity via `resolveChromeOpacity`. Commit/cancel continue from the
 "exact current transform" exactly as today (`lerpPostPageBackFrame`,
@@ -178,11 +204,13 @@ transition to reconcile.
 
 ### Destination screen changes
 
-`member_post_detail_screen.dart` needs to expose, per post, the laid-out rect
-of its primary media widget — the target for the hero's `toRect`. It already
-tracks a per-post key on the media element (`_postMediaKeys`, used today for
-readiness/positioning); this spec reuses that same key rather than adding a
-new one. The screen also needs a route-driven flag (via the existing
+`member_post_detail_screen.dart` needs to expose, per post, (a) the laid-out
+rect of its primary media widget — the hero's `slotRect` — and (b) that post's
+`mediaAspect`. It already tracks a per-post key on the media element
+(`_postMediaKeys`, used today for readiness/positioning); this spec reuses that
+same key for the rect rather than adding a new one, and reads `mediaAspect`
+from the post model (the same value the slot already uses to size itself). The
+screen also needs a route-driven flag (via the existing
 `PostDetailTransitionSession` phase/generation plumbing) to render that one
 media slot as transparent while a hero is actively covering it, and opaque
 otherwise — this is the only new piece of state the destination screen needs.
@@ -245,8 +273,14 @@ test.
 ## Testing
 
 - `post_page_zoom_geometry_test.dart` (rewritten): pure-function tests for
-  `resolveHeroFrame` (endpoints, monotonicity, corner-radius tween) and
-  `resolveChromeOpacity` (0 at progress 0, 1 at progress 1, linear).
+  `resolveHeroFrame` and `resolveChromeOpacity`. For `resolveHeroFrame`, the
+  critical cases are the two endpoint guarantees across media aspects —
+  portrait (~4:5), landscape (~1.91:1), and square (1:1): at `progress == 0`
+  the visible crop through the tile clip equals the grid center-crop (same
+  content scale as a `BoxFit.cover` into the tile); at `progress == 1` the
+  surface exactly fills `slotRect`. Plus: `contentScale` is monotonic and
+  uniform (no non-uniform stretch) between endpoints, and the clip tweens
+  tile→slot. `resolveChromeOpacity`: 0 at 0, 1 at 1, linear.
 - `post_page_zoom_transition_test.dart` (new/rewritten): widget tests
   asserting the two-layer structure — hero positioned/sized per progress,
   chrome opacity per progress, media-slot transparency before/after the
