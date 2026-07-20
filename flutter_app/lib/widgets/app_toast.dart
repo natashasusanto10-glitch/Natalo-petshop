@@ -584,8 +584,7 @@ class _BannerToastViewState extends State<_BannerToastView>
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           child: Text(
                             widget.actionLabel!,
-                            // ignore: prefer_const_constructors
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: NataloColors.primary,
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
