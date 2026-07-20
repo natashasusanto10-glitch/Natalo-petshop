@@ -327,6 +327,16 @@ class PostPageZoomRoute extends PageRoute<void> {
       session.setFrozenTileSuppressed(false);
     }
 
+    // The route may have been force-disposed (e.g. an app-level teardown
+    // interrupting a normal back navigation) while the `await` above was
+    // pending. `dispose()` already forced `phase` to `closed` in that case;
+    // treat that as this close having already finished rather than trying
+    // to replay a `closed -> closed` transition (which isn't in the
+    // legality map and would otherwise throw from this unawaited-by-caller
+    // async continuation) or popping a route that no longer owns a
+    // navigator entry.
+    if (phase == PostPageZoomPhase.closed) return;
+
     _setPhase(PostPageZoomPhase.closed);
     final nav = navigator;
     if (nav != null && nav.mounted && nav.canPop()) {
@@ -408,6 +418,16 @@ class PostPageZoomRoute extends PageRoute<void> {
       session.removeListener(_onSessionChanged);
       _sessionListenerAttached = false;
     }
+    // Stop any in-flight animation (e.g. a pending `_performClose` reverse
+    // flight) BEFORE the phase is force-closed and the controller disposed.
+    // `canceled: false` is required here: `AnimationController.stop()`
+    // defaults to `canceled: true`, which resolves the *ticker's* future via
+    // `TickerFuture.cancel()` — a plain `await` on that future then never
+    // completes (only `.orCancel` would reject). `canceled: false` completes
+    // it normally, so `_performClose`'s pending `await
+    // controller!.animateTo(...)` actually resumes instead of hanging
+    // forever when the controller is disposed out from under it below.
+    controller?.stop(canceled: false);
     // No partially-dragged state may persist past disposal: force the
     // terminal `closed` state directly (bypassing legality checks, which is
     // safe here because the route is being torn down regardless).

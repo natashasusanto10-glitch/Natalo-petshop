@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/transition/post_detail_transition_session.dart';
 import 'package:natalo_petshop_flutter/features/feed/transition/post_page_zoom_route.dart';
+import 'package:natalo_petshop_flutter/features/feed/transition/post_page_zoom_transition.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 
 void main() {
@@ -261,6 +262,54 @@ void main() {
         fake.targets['a'] = fakeTarget('a');
         fake.preparations['a'] = Completer<PostPageSourceTarget?>()
           ..complete(fakeTarget('a'));
+        final order = <String>[];
+        final session = _OrderRecordingSession(
+          initialPost: fakePost('a'),
+          source: fake,
+          order: order,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+
+        await tester.pumpWidget(_app(navigatorKey));
+        final route = _pushDirect(navigatorKey, session);
+        await tester.pump();
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.geometryReady,
+        );
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.open);
+
+        fake.onSuppress = (id, suppressed) =>
+            order.add('suppress:$id:$suppressed');
+
+        final future = route.requestClose();
+        // Freeze happens BEFORE the reverse animation's suppress/restore
+        // events — asserted here as actual recorded ordering, not merely by
+        // reading the source.
+        expect(order, ['freeze', 'suppress:a:true']);
+        expect(route.phase, PostPageZoomPhase.closingToTarget);
+
+        await tester.pumpAndSettle();
+        await future;
+
+        expect(order, ['freeze', 'suppress:a:true', 'suppress:a:false']);
+        expect(route.phase, PostPageZoomPhase.closed);
+      },
+    );
+  });
+
+  group('dispose race during a pending close', () {
+    final navigatorKey = GlobalKey<NavigatorState>();
+
+    testWidgets(
+      'route disposal while _performClose is still awaiting its reverse '
+      'animation does not surface an exception, and ends closed',
+      (tester) async {
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
         final session = PostDetailTransitionSession(
           initialPost: fakePost('a'),
           source: fake,
@@ -277,18 +326,40 @@ void main() {
         await tester.pumpAndSettle();
         expect(route.phase, PostPageZoomPhase.open);
 
-        final order = <String>[];
-        fake.onSuppress = (id, suppressed) =>
-            order.add('suppress:$id:$suppressed');
-
-        final future = route.requestClose();
-        expect(order, ['suppress:a:true']);
+        // Start the non-interactive close, but don't let its reverse
+        // animation finish before disposing the route out from under it.
+        var closeCompleted = false;
+        final future = route.requestClose()..then((_) => closeCompleted = true);
         expect(route.phase, PostPageZoomPhase.closingToTarget);
+        // The first pump after `animateTo` starts is only the ticker's
+        // anchor tick (elapsed == 0); a second pump is needed to observe
+        // real mid-flight progress.
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 30));
+        expect(route.debugController!.value, greaterThan(0.0));
+        expect(route.debugController!.value, lessThan(1.0));
 
-        await tester.pumpAndSettle();
+        // Force-remove (and thus dispose) the route while its reverse
+        // animation is still in flight, exactly like an app-level teardown
+        // interrupting a normal back navigation.
+        navigatorKey.currentState!.removeRoute(route);
+        await tester.pump();
+        expect(route.phase, PostPageZoomPhase.closed);
+
+        // Let the still-pending `_performClose` continuation run its course.
+        // Bounded pump loop (not `pumpAndSettle`, and no real-time
+        // `Future.timeout` — timers inside the FakeAsync test zone only
+        // fire on a `pump`, so a real-time timeout would never trigger here
+        // either): if the continuation is truly hung, this loop ends
+        // without `closeCompleted` ever flipping, and the assertion below
+        // fails cleanly instead of the whole suite hanging.
+        for (var i = 0; i < 20 && !closeCompleted; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        expect(closeCompleted, isTrue);
         await future;
 
-        expect(order, ['suppress:a:true', 'suppress:a:false']);
+        expect(tester.takeException(), isNull);
         expect(route.phase, PostPageZoomPhase.closed);
       },
     );
@@ -321,9 +392,13 @@ void main() {
         final future = route.requestClose();
         expect(route.phase, PostPageZoomPhase.closingFallback);
         expect(fake.pendingReturnPostId, 'a');
-        // Never targets the opening A rect: fallback close renders the
-        // dedicated fade+scale widget, not the geometry-based transition.
-        expect(find.byType(_FallbackMarker), findsNothing);
+        await tester.pump();
+        // Never targets the opening A rect: fallback close never builds the
+        // geometry-based transition surface at all (structurally incapable
+        // of animating toward any tile rect, opening or otherwise) and
+        // instead renders the dedicated fade+scale fallback widget.
+        expect(find.byType(PostPageZoomTransition), findsNothing);
+        expect(_findsFallbackCloseTransition(), findsOneWidget);
 
         await tester.pumpAndSettle();
         await future;
@@ -365,11 +440,57 @@ void main() {
         );
         await tester.pump();
 
+        // Ladder case (c) — "nothing": the registered target's proxy has no
+        // `imageInfo` (no retained frame, no memory-cached provider), so no
+        // `Image` widget is built at all and the deterministic placeholder
+        // color is painted via a plain `ColoredBox`.
+        expect(find.byType(Image), findsNothing);
         final coloredBoxes = tester.widgetList<ColoredBox>(
           find.byType(ColoredBox),
         );
         expect(
           coloredBoxes.any((box) => box.color == const Color(0xFF123456)),
+          isTrue,
+        );
+      },
+    );
+
+    testWidgets(
+      'no opening target at all still paints a deterministic placeholder, '
+      'never blocking on the missing-target edge',
+      (tester) async {
+        // No target registered for 'a' at all (deferred item — see
+        // task-8-report.md "no-opening-target proxy source" note:
+        // `PostDetailTransitionSession` has no public accessor for its
+        // private `_openingFallbackProxy`/`_resolveFallbackProxy`, so this
+        // route cannot reach the session's own resolved fallback color for
+        // this specific edge; it uses its own hardcoded placeholder
+        // instead). This test only proves the route stays synchronous and
+        // still paints a deterministic color rather than throwing/hanging.
+        debugPostPageZoomOnSnapshotAttempt = () {
+          fail('route attempted a snapshot/toImage capture');
+        };
+        final fake = FakeTransitionSource();
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+
+        await tester.pumpWidget(_app(navigatorKey));
+        _pushDirect(navigatorKey, session);
+        await tester.pump();
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.geometryReady,
+        );
+        await tester.pump();
+
+        expect(find.byType(Image), findsNothing);
+        final coloredBoxes = tester.widgetList<ColoredBox>(
+          find.byType(ColoredBox),
+        );
+        expect(
+          coloredBoxes.any((box) => box.color == const Color(0xFF000000)),
           isTrue,
         );
       },
@@ -388,12 +509,13 @@ class _CountingObserver extends NavigatorObserver {
   }
 }
 
-class _FallbackMarker extends StatelessWidget {
-  const _FallbackMarker();
-
-  @override
-  Widget build(BuildContext context) => const SizedBox.shrink();
-}
+/// `_FallbackCloseTransition` is private to `post_page_zoom_route.dart` (a
+/// different library), so it cannot be referenced by type here. Match on its
+/// `runtimeType` string instead, which still proves the fallback-specific
+/// widget (not [PostPageZoomTransition]) is what actually got built.
+Finder _findsFallbackCloseTransition() => find.byWidgetPredicate(
+  (widget) => widget.runtimeType.toString() == '_FallbackCloseTransition',
+);
 
 Widget _app(GlobalKey<NavigatorState> navigatorKey) {
   return WidgetsApp(
@@ -447,6 +569,22 @@ class _SourceScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _OrderRecordingSession extends PostDetailTransitionSession {
+  _OrderRecordingSession({
+    required super.initialPost,
+    required super.source,
+    required this.order,
+  });
+
+  final List<String> order;
+
+  @override
+  PostPageFrozenTarget freeze() {
+    order.add('freeze');
+    return super.freeze();
   }
 }
 
