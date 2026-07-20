@@ -101,7 +101,7 @@ export async function GET(
       likeCount: true,
       commentCount: true,
       createdAt: true,
-      author: { select: { id: true, name: true, role: true } },
+      author: { select: { id: true, name: true, role: true, username: true } },
       media: {
         orderBy: { sortOrder: "asc" },
         take: 1,
@@ -174,6 +174,11 @@ export async function GET(
           // membetulkan app rilis lama yang membaca `name` mentah.
           name: brandDisplayName(p.author.role, p.author.name),
           role: p.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
+          // Tanpa username, tap nama/avatar post di sini (mis. "Postingan
+          // Terkait" produk) tidak bisa buka profil sama sekali — username
+          // admin sudah brand-safe ('natalopetshop', lihat brand-user.ts),
+          // jadi aman diteruskan apa adanya.
+          username: p.author.username,
         },
       };
     }),

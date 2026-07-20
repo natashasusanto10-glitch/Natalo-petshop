@@ -3553,16 +3553,20 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
 /// Fit lapisan media untuk framing "feed" (mainFeed / fullscreenFeed).
 ///
-/// Viewer fullscreen + media LANDSCAPE → [BoxFit.contain] (letterbox, bar
-/// hitam atas-bawah) supaya video tampil UTUH — `cover` akan memotong sisi
-/// kiri-kanan memaksa jadi 9:16 (keluhan user: landscape jadi ke-crop).
-/// Portrait/persegi tetap [BoxFit.cover] (isi penuh, paritas IG). mainFeed
-/// TIDAK diubah (tetap cover) supaya feed utama tak berubah.
+/// Media LANDSCAPE (mainFeed maupun fullscreenFeed) → [BoxFit.contain]
+/// (letterbox, bar hitam atas-bawah) supaya video tampil UTUH — `cover`
+/// akan memotong sisi kiri-kanan memaksa jadi 9:16 (keluhan user: landscape
+/// jadi ke-crop). Portrait/persegi tetap [BoxFit.cover] (isi penuh, paritas
+/// IG). Berlaku sama di tab Feed utama supaya konsisten dengan viewer
+/// fullscreen Postingan — tak ada lagi beda tampilan landscape antar
+/// kedua tempat.
 BoxFit resolveFeedCoverFit({
   required FeedVideoFraming framing,
   required bool isLandscape,
 }) {
-  if (framing == FeedVideoFraming.fullscreenFeed && isLandscape) {
+  if (isLandscape &&
+      (framing == FeedVideoFraming.mainFeed ||
+          framing == FeedVideoFraming.fullscreenFeed)) {
     return BoxFit.contain;
   }
   return BoxFit.cover;
