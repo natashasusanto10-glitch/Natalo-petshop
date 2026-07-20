@@ -322,6 +322,19 @@ export async function GET(
         shareCount: p.shareCount,
         viewerLiked: viewerLikedIds.has(p.id),
         viewerSaved: viewerSavedIds.has(p.id),
+        // Author = pemilik profil (semua post di sini miliknya). WAJIB
+        // dikirim supaya tap nama/avatar di header & caption bisa buka
+        // profil (Flutter butuh author.username). Official → brand-safe
+        // (nama+foto pemilik tak bocor, username brand tetap terkirim).
+        author: {
+          id: target.id,
+          name: isOfficial ? OFFICIAL_BRAND_NAME : target.name,
+          username: target.username,
+          role: isOfficial ? "ADMIN" : "CUSTOMER",
+          profilePhotoUrl: isOfficial ? null : target.profilePhotoUrl,
+          avatarUrl: isOfficial ? null : target.profilePhotoUrl,
+          isOfficial,
+        },
         recentLikers: p.likes.map((like) => ({
           id: like.user.id,
           name: brandDisplayName(like.user.role, like.user.name),

@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 import '../config/api_config.dart';
 import '../models/feed_post.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
+import '../features/feed/widgets/gallery_post_tile.dart' show gridShowsLetterbox;
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
 import '../services/follow_service.dart';
@@ -1122,7 +1123,13 @@ class _PostTile extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 if (isValidImageUrl)
-                  _SafeNetworkImage(url: thumb)
+                  // Video LANDSCAPE → letterbox (contain + latar hitam,
+                  // video utuh) paritas IG & GalleryPostTile. Foto/carousel
+                  // + video portrait/persegi tetap cover-crop.
+                  _SafeNetworkImage(
+                    url: thumb,
+                    letterbox: gridShowsLetterbox(post),
+                  )
                 else
                   ColoredBox(color: cs.surfaceContainerHighest),
                 if (post.isVideo)
@@ -1231,15 +1238,18 @@ class _PostTile extends StatelessWidget {
 /// startsWith check). Fallback ke plain ColoredBox kalau throw.
 class _SafeNetworkImage extends StatelessWidget {
   final String url;
-  const _SafeNetworkImage({required this.url});
+
+  /// Video landscape → contain (letterbox, latar hitam). Default cover.
+  final bool letterbox;
+  const _SafeNetworkImage({required this.url, this.letterbox = false});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     try {
-      return CachedNetworkImage(
+      final image = CachedNetworkImage(
         imageUrl: url,
-        fit: BoxFit.cover,
+        fit: letterbox ? BoxFit.contain : BoxFit.cover,
         placeholder: (_, __) => ColoredBox(color: cs.surfaceContainerHighest),
         // Error → ikon broken-image (BUKAN kotak polos yang tak bisa
         // dibedakan dari placeholder loading) + log debug. Investigasi
@@ -1259,6 +1269,9 @@ class _SafeNetworkImage extends StatelessWidget {
           );
         },
       );
+      // Letterbox: sisa ruang bar hitam (video utuh di tengah), konsisten
+      // dgn GalleryPostTile. Cover-crop tak butuh latar karena penuhi tile.
+      return letterbox ? ColoredBox(color: Colors.black, child: image) : image;
     } catch (_) {
       return ColoredBox(color: cs.surfaceContainerHighest);
     }

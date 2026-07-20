@@ -9,6 +9,7 @@ import '../theme/natalo_text.dart';
 import '../constants/official_brand.dart';
 import '../models/feed_post.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
+import '../features/feed/widgets/gallery_post_tile.dart' show gridShowsLetterbox;
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
@@ -828,7 +829,13 @@ class _PostThumbnail extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Container(color: cs.surfaceContainerHighest),
+              // Video LANDSCAPE → latar hitam (bar letterbox). Selain itu
+              // latar netral biasa. gridShowsLetterbox: video landscape saja.
+              Container(
+                color: gridShowsLetterbox(post)
+                    ? Colors.black
+                    : cs.surfaceContainerHighest,
+              ),
               if (mediaUrl != null)
                 // Keep the tag for the detail screen's later fullscreen flow.
                 // OriginSnapshotSource suppresses this grid-side Hero while the
@@ -837,7 +844,11 @@ class _PostThumbnail extends StatelessWidget {
                   tag: 'post-thumb-${post.id}',
                   child: CachedNetworkImage(
                     imageUrl: mediaUrl,
-                    fit: BoxFit.cover,
+                    // Video landscape → contain (letterbox, utuh); sisanya
+                    // cover-crop penuh (foto/carousel/portrait, tak berubah).
+                    fit: gridShowsLetterbox(post)
+                        ? BoxFit.contain
+                        : BoxFit.cover,
                     fadeInDuration: const Duration(milliseconds: 180),
                     placeholder: (_, __) =>
                         Container(color: cs.surfaceContainerHigh),
