@@ -68,7 +68,6 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     }
     await appSettingsStore.setAppLockEnabled(enable);
     if (!mounted) return;
-    AppHaptics.success();
     // Kind-inference: "aktif"/"dinonaktifkan" tidak literally match keyword
     // "berhasil"/"tersimpan"/"ditambahkan"/"disalin" → default info per rule,
     // walau semantiknya konfirmasi sukses.
@@ -129,7 +128,6 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     try {
       await authService.forgotPassword(email);
       if (!mounted) return;
-      AppHaptics.success();
       // Kind-inference: "terkirim" tidak literally match keyword
       // ("berhasil"/"tersimpan"/"ditambahkan"/"disalin") → default info per
       // rule, walau semantiknya konfirmasi sukses.
@@ -188,7 +186,6 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     try {
       await authService.revokeOtherSessions();
       if (!mounted) return;
-      AppHaptics.success();
       AppToast.showBanner(
         context,
         'Sesi di device lain berhasil di-logout.',
@@ -196,7 +193,6 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
       AppToast.showBanner(context, 'Gagal: $error', kind: ToastKind.error);
     } finally {
       if (mounted) setState(() => _revokingOthers = false);

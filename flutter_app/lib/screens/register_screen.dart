@@ -186,7 +186,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         otp: null, // null = step 1, kirim OTP baru
       );
       if (!mounted) return;
-      AppHaptics.success();
       _startResendCooldown();
       // Kind-inference: tidak match keyword literal → default info per rule.
       AppToast.showBanner(
@@ -196,7 +195,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
       // Kind-inference: dynamic message dari catch-block resend OTP gagal —
       // context selalu kegagalan → kind: error.
       AppToast.showBanner(
@@ -254,7 +252,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         // Step 1 sukses — OTP terkirim. Start 60s cooldown supaya user
         // tidak bisa spam resend langsung; button "Kirim Ulang Kode" baru
         // bisa di-tap setelah countdown selesai.
-        AppHaptics.success();
         setState(() => _otpSent = true);
         _startResendCooldown();
         // Kind-inference: tidak match keyword literal → default info per rule.
@@ -296,7 +293,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       Navigator.pushReplacementNamed(context, '/member/login');
     } catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
       final message = _friendlyRegisterError(error);
       // Kind-inference: dynamic message dari catch-block register gagal —
       // context selalu kegagalan → kind: error.

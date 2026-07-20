@@ -124,7 +124,6 @@ class _FavoriteButtonState extends State<FavoriteButton>
       );
     } on ApiException catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
       AppToast.showBanner(
         context,
         'Gagal simpan wishlist: ${error.message}',
@@ -132,7 +131,6 @@ class _FavoriteButtonState extends State<FavoriteButton>
       );
     } catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
       AppToast.showBanner(
         context,
         'Gagal simpan wishlist: $error',

@@ -90,7 +90,6 @@ class _LoginOtpScreenState extends State<LoginOtpScreen> {
   Future<void> _requestOtp({bool isResend = false}) async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 8) {
-      AppHaptics.warning();
       // Kind-inference: tidak match keyword literal → default info per rule.
       AppToast.showBanner(
         context,
@@ -126,7 +125,6 @@ class _LoginOtpScreenState extends State<LoginOtpScreen> {
       }
     } catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
       // Kind-inference: dynamic message dari catch-block request OTP gagal —
       // context selalu kegagalan request OTP → kind: error.
       AppToast.showBanner(
@@ -143,7 +141,6 @@ class _LoginOtpScreenState extends State<LoginOtpScreen> {
     final otp = _otpController.text.trim();
     final phone = _normalizedPhone ?? _phoneController.text.trim();
     if (otp.length != 6) {
-      AppHaptics.warning();
       // Kind-inference: tidak match keyword literal → default info per rule.
       AppToast.showBanner(
         context,
@@ -190,7 +187,6 @@ class _LoginOtpScreenState extends State<LoginOtpScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
       // Kind-inference: dynamic message dari catch-block verify OTP gagal —
       // context selalu kegagalan verifikasi → kind: error.
       AppToast.showBanner(

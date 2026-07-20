@@ -64,7 +64,6 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!ok) return;
     final cred = await biometricService.readCredential();
     if (cred == null) {
-      AppHaptics.warning();
       if (!mounted) return;
       // Kind-inference: pesan tidak literally match keyword "gagal"/"tidak
       // bisa"/"error" → default info per rule, walau semantiknya kegagalan
@@ -134,7 +133,6 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
       // Friendly error message — translate technical errors ke user-readable.
       // ApiException punya statusCode kalau dari server response.
       final message = _humanizeLoginError(error);
@@ -252,7 +250,6 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       if (!mounted) return;
       if (ok) {
-        AppHaptics.success();
         // Kind-inference: "aktif" tidak literally match keyword
         // "berhasil"/"tersimpan"/"ditambahkan"/"disalin" → default info
         // per rule, walau semantiknya konfirmasi sukses.

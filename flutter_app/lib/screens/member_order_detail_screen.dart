@@ -226,7 +226,6 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
       AppToast.showBanner(context, message, kind: ToastKind.success);
     } catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
       final message = error.toString().replaceFirst('Exception: ', '');
       AppToast.showBanner(
         context,
@@ -342,7 +341,6 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
       final message = error.toString().replaceFirst('Exception: ', '');
       AppToast.showBanner(
         context,
@@ -1693,7 +1691,6 @@ class _PickupCodeBox extends StatelessWidget {
     return InkWell(
       onTap: hasCode
           ? () {
-              AppHaptics.tap();
               Clipboard.setData(ClipboardData(text: code));
               AppToast.showBanner(
                 context,
