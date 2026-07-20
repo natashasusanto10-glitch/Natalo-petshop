@@ -1290,6 +1290,7 @@ class _NotificationVisual {
   });
 
   factory _NotificationVisual.from(AppNotification item) {
+    final ev = item.eventType?.trim().toLowerCase() ?? '';
     // Mention visual diutamakan — dedicated icon @ supaya user tau
     // visual cepat ini notif sosial. Match brand violet.
     if (_isMentionNotification(item)) {
@@ -1297,6 +1298,15 @@ class _NotificationVisual {
         icon: Icons.alternate_email_rounded,
         color: Color(0xFF5B5BD6),
         label: 'Disebut',
+      );
+    }
+    // Balasan ulasan toko — satu keluarga warna dgn mention ("personal
+    // ke kamu"), ikon beda (bintang, bukan @) supaya tak nambah hue baru.
+    if (ev == 'review_reply' || item.source?.toLowerCase() == 'review') {
+      return const _NotificationVisual(
+        icon: Icons.rate_review_rounded,
+        color: Color(0xFF5B5BD6),
+        label: 'Ulasan',
       );
     }
     // Refund notif — URL pakai `/member/refund-detail` atau title
@@ -1316,7 +1326,6 @@ class _NotificationVisual {
         label: 'Pesanan',
       );
     }
-    final ev = item.eventType?.trim().toLowerCase() ?? '';
     if (ev == 'voucher_freeship_published') {
       return const _NotificationVisual(
         icon: Icons.local_shipping_rounded,
@@ -1331,11 +1340,32 @@ class _NotificationVisual {
         label: 'Voucher',
       );
     }
+    // Pengingat tukar poin — dicek SEBELUM voucher/promo generik karena
+    // body-nya sering menyebut kata "voucher" (hadiah tukar poin), yang
+    // kalau tak diprioritaskan akan salah ke-tangkap sebagai promo biasa.
+    if (ev == 'loyalty_redeem_reminder' ||
+        (item.url?.toLowerCase().contains('/member/loyalty') ?? false)) {
+      return const _NotificationVisual(
+        icon: Icons.card_giftcard_rounded,
+        color: Color(0xFFD97706),
+        label: 'Poin',
+      );
+    }
     if (_isVoucherNotification(item)) {
       return const _NotificationVisual(
         icon: Icons.confirmation_number_rounded,
         color: Color(0xFF16A34A),
         label: 'Voucher',
+      );
+    }
+    // Flash Sale — dicek SEBELUM promo generik (helper sebelumnya cuma
+    // dipakai utk CTA, tak pernah menentukan ikon) supaya tak numpang
+    // tampilan voucher biasa. Warna merah = urgensi/waktu terbatas.
+    if (_isFlashSaleNotification(item)) {
+      return const _NotificationVisual(
+        icon: Icons.bolt_rounded,
+        color: Color(0xFFDC2626),
+        label: 'Flash Sale',
       );
     }
     if (_isPromoDetailNotification(item)) {
@@ -1350,6 +1380,60 @@ class _NotificationVisual {
         icon: Icons.confirmation_number_rounded,
         color: Color(0xFFE91E63),
         label: 'Promo',
+      );
+    }
+    // Sub-tipe Feed — dicek SEBELUM branch Feed generik supaya komentar/
+    // like/share/status postingan masing-masing dapat ikon berbeda
+    // (badge kecil di avatar), bukan satu play-circle utk semuanya.
+    // Status negatif/urgent (ditolak, gagal encode) → merah; menunggu →
+    // abu netral; selain itu tetap keluarga ungu Feed (beda ikon saja).
+    if (ev == 'feed_post_rejected') {
+      return const _NotificationVisual(
+        icon: Icons.cancel_rounded,
+        color: Color(0xFFDC2626),
+        label: 'Feed',
+      );
+    }
+    if (ev == 'feed_encoding_failed') {
+      return const _NotificationVisual(
+        icon: Icons.error_outline_rounded,
+        color: Color(0xFFDC2626),
+        label: 'Feed',
+      );
+    }
+    if (ev == 'feed_review_pending') {
+      return const _NotificationVisual(
+        icon: Icons.hourglass_empty_rounded,
+        color: Color(0xFF6B7280),
+        label: 'Feed',
+      );
+    }
+    if (ev == 'feed_post_approved') {
+      return const _NotificationVisual(
+        icon: Icons.check_circle_rounded,
+        color: Color(0xFF7C3AED),
+        label: 'Feed',
+      );
+    }
+    if (ev == 'feed_new_comment') {
+      return const _NotificationVisual(
+        icon: Icons.chat_bubble_outline_rounded,
+        color: Color(0xFF7C3AED),
+        label: 'Feed',
+      );
+    }
+    if (ev == 'feed_new_like') {
+      return const _NotificationVisual(
+        icon: Icons.favorite_rounded,
+        color: Color(0xFFE11D48),
+        label: 'Feed',
+      );
+    }
+    if (ev == 'feed_new_share') {
+      return const _NotificationVisual(
+        icon: Icons.share_rounded,
+        color: Color(0xFF7C3AED),
+        label: 'Feed',
       );
     }
     if (_NotificationFilter.feed.matches(item)) {
