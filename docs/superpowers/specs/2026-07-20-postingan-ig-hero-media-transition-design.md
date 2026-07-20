@@ -31,9 +31,13 @@ patching around it a second time.
 - Chrome (header, caption, action row) is laid out at its FINAL position for
   the entire flight and only fades in/out (opacity), never scales or moves.
 - Video shows a paused frame throughout the flight; real playback starts only
-  once the surface has landed (`open` phase), and the paused frame is drawn
-  through the SAME live controller surface across preparingOpen → opening →
-  open — never swapped for a thumbnail — so a close cannot glitch it.
+  once the surface has landed (`open` phase). The frame is drawn through the
+  coordinator's SINGLE controller (one texture id) at every phase and in both
+  the hero and chrome media layers — so the hero→chrome handoff is a crossfade
+  between two views of the SAME texture, never a controller reinit and never a
+  thumbnail (once the controller has visual output). This is the invariant
+  that prevents the close-glitch, NOT literal widget-instance identity (the
+  hero and chrome layers are necessarily different tree positions).
 - Interactive back (iOS edge swipe, Android Predictive Back) mirrors forward:
   linear finger-progress drives the hero shrinking back to the tile AND the
   chrome fading out simultaneously.
@@ -89,6 +93,19 @@ pure functions:
 - `resolveChromeOpacity(progress)` — linear 0→1 (per user decision: chrome
   fade tracks flight progress directly, no separate curve/delay).
 
+**Aspect-ratio handling (important — this is what makes it read as IG, not a
+stretch).** The source tile is 1:1 (square grid cell showing a center-crop);
+the destination media slot is a different aspect (video is clamped ~4:5, photos
+vary). The hero rect therefore changes aspect over the flight. The media inside
+the hero is painted `BoxFit.cover` so it is never stretched — as the rect's
+aspect tweens 1:1 → slot, the visible crop re-frames smoothly (the same image,
+progressively revealing more of its true framing). This matches IG's
+"crop opens up as it grows" feel closely enough without an explicit crop-window
+tween. Pixel-exact preservation of the grid's center-crop as an independent
+animated crop window is deliberately OUT of scope (materially more work for a
+subtle difference); if the cover-fit re-framing is judged wrong on-device we
+revisit it as a follow-up, not a blocker.
+
 Both are pure functions with the same "no notion of direction" property the
 current resolver has, so a reverse flight is just `progress` animating 1→0.
 
@@ -96,16 +113,27 @@ current resolver has, so a reverse flight is just `progress` animating 1→0.
 two independently-positioned layers instead of one transformed surface:
 
 1. **Chrome layer** — the destination screen laid out at its natural
-   fullscreen size from the first frame, wrapped so its primary-media slot
-   renders fully transparent (the destination screen already knows which
+   fullscreen size from the first frame, with its primary-media slot rendered
+   transparent while a hero covers it (the destination already knows which
    element is the primary media via its existing per-post media key — see
-   "Destination screen changes" below). `Opacity` driven by
-   `resolveChromeOpacity(progress)` wraps the chrome content only — the
-   transparent media slot is unaffected by this opacity (it has no visible
-   content to fade).
+   "Destination screen changes"). The ENTIRE destination is wrapped in a
+   single `Opacity` driven by `resolveChromeOpacity(progress)`; because the
+   media slot is transparent anyway, fading the whole subtree needs no
+   "everything-except-the-media" carve-out (transparent × opacity is still
+   transparent). This is simpler and cheaper than isolating the chrome.
 2. **Hero layer** — a `Transform`/`ClipRRect`-positioned box drawing the
-   clean media proxy (photo/carousel-first-frame/paused-video-frame),
-   positioned via `resolveHeroFrame`. Stacked ABOVE the chrome layer.
+   clean media proxy (photo / carousel-first-frame / paused-video controller)
+   with `BoxFit.cover`, positioned via `resolveHeroFrame`. Stacked ABOVE the
+   chrome layer.
+
+**Hero `toRect` resolution timing.** The hero's `toRect` (destination media
+slot rect) is resolved ONCE per flight and frozen for that flight, not
+re-measured per tick: for a forward open, it is measured from the target
+post's media key after the destination has laid out and readiness has aligned
+the scroll (the list is static during `opening`, so the rect is stable); for a
+reverse close, the roles swap (`fromRect` = the current media slot, `toRect` =
+the frozen target tile). Freezing the endpoints mirrors the existing
+freeze-before-flight contract and avoids jitter from any incidental relayout.
 
 **Handoff (hero → real destination media).** Over the final ~15% of the
 flight (reusing the existing `postPageZoomCrossfadeProgressThreshold`-style
@@ -116,17 +144,20 @@ hero's `toRect` IS that slot's rect). This is a crossfade between two already
 pixel-aligned surfaces, not a resize, so there is no visible pop even if the
 proxy and the final decoded asset differ slightly.
 
-**Video.** The hero's video frame is not a separate "paused thumbnail" asset —
-it is the SAME `VideoPlayer` widget bound to the SAME controller that will
-keep playing after landing, positioned by the hero transform. There is no
-widget-identity change across `preparingOpen` → `opening` → `open`: only its
-enclosing transform changes size, exactly the property this spec's "Video"
-goal requires. Playback start is gated on phase reaching `open` (already how
-`session.setPlaybackAllowed` timing works); the frame drawn during the flight
-is whatever the controller currently holds (its last decoded frame if paused,
-consistent with the existing close-time fix). This structurally removes the
-"video swapped for reloading thumbnail" bug class rather than special-casing
-around it again.
+**Video.** The hero draws the video through the coordinator's single live
+controller (`VideoPlayer(controller)` with `BoxFit.cover`), NOT a thumbnail
+asset. After landing, the chrome's real media slot draws that same controller.
+Because both bind one controller (one texture id, coordinator-owned), the
+hero→chrome handoff crossfade is between two views of the SAME texture — there
+is no reinit and no thumbnail at any phase once the controller has visual
+output. This is the structural guarantee the video-close-glitch requires; it
+does NOT depend on the hero and chrome sharing a literal `VideoPlayer` Element
+(they can't — different tree positions), only on sharing the controller.
+Playback start stays gated on phase reaching `open` (existing
+`session.setPlaybackAllowed` timing); during the flight the frame drawn is
+whatever the paused controller holds (its last decoded frame), consistent with
+the existing close-time fix (`postDetailShowsVideoSurface`, which is decoupled
+from `playbackAllowed`).
 
 **Interactive back (both iOS and Android Predictive Back).** The existing
 `resolvePostPageBackPreview`/`PostPageBackSurface` machinery in
@@ -181,12 +212,29 @@ interactive path), shrinking the hero to the current target tile's rect while
 chrome fades to 0, ending with the tile visible in the grid beneath the
 now-transparent, then popped, route.
 
+## Reduced motion / accessibility
+
+The shipped route already routes `MediaQuery.disableAnimations ||
+accessibleNavigation` away from the geometry zoom into a short crossfade
+(`_reducedMotion` / `_CrossfadeZoomTransition`). This is PRESERVED: under
+reduced motion there is no hero geometry tween — the media slot and chrome
+both simply crossfade in place at their final rects (hero opacity 0→1 at the
+destination slot, chrome opacity 0→1), and the reverse is the mirror. The
+`resolveHeroFrame` geometry path is skipped entirely in this mode. This must
+be an explicit render branch, not an emergent side effect, and gets its own
+test.
+
 ## Error handling
 
 - Readiness timeout / no usable destination surface: falls back to a media-
   only crossfade at the hero's current rect (media slot never resolved, so
   the hero simply fades in place); chrome renders at its resting opacity
   immediately since it was never part of the geometry animation.
+- Close when the target (visible post B) tile is off-screen or unresolved in
+  the grid (B paginated in but grid not scrolled to it): the hero has no valid
+  `toRect` to shrink to, so this takes the existing fallback-close path (fade
+  + mild scale, never targeting a bogus rect), same as today. The
+  pending-return machinery still repositions the grid after the pop.
 - Freeze failure (no usable source geometry, e.g. tile scrolled far
   off-screen or reparented): existing fallback-close path is unchanged; it
   already never references source-tile geometry.
@@ -208,13 +256,19 @@ now-transparent, then popped, route.
   `_findsCrossfade`/`_findsFallbackCloseTransition` helpers, which get updated
   to the new widget names); add new assertions that the hero and chrome
   layers both exist during `opening`/`interactiveBack`/`closingToTarget`.
-- New regression: a video's `VideoPlayer` widget instance (by key/identity)
-  is the SAME instance across `preparingOpen` → `opening` → `open` →
-  `interactiveBack` → `closingToTarget` — the structural guarantee that
-  prevents the close-glitch bug class from recurring.
-- New regression: interactive back progress at various drag values produces
-  a hero rect and chrome opacity that are the exact mirror of the forward
-  animation at the same progress value (symmetry check).
+- New regression (video-close-glitch, the user's explicit priority): across
+  `preparingOpen` → `opening` → `open` → `interactiveBack` → `closingToTarget`,
+  a video post NEVER renders the thumbnail surface once the controller has
+  visual output, and the controller is never reinitialized (assert on
+  controller/texture identity via the coordinator, and on
+  `postDetailShowsVideoSurface`-style state — NOT on `VideoPlayer` widget
+  identity, which legitimately differs between the hero and chrome layers).
+- New regression: interactive-back progress at various drag values produces a
+  hero rect and chrome opacity that mirror the forward animation at the same
+  progress — asserted on the GEOMETRY (hero rect) and CHROME OPACITY only. The
+  media-slot↔hero crossfade is mirrored in timing (final ~15% forward = first
+  ~15% reverse), so it is checked separately, not as part of the same-progress
+  equality.
 - Goldens (`post_page_zoom_golden_test.dart`): regenerated for the two-layer
   look at representative progress values (0, 0.5, 1) for photo/carousel/video,
   light/dark, plus the iOS interactive-preview and reverse-terminal frames.
