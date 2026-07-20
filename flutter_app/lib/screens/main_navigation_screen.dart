@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/android_back_overlays.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/bottom_nav.dart';
 import 'feed_screen.dart';
 import 'home_screen.dart';
@@ -110,15 +111,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     }
     _lastBackTap = now;
     if (!mounted) return;
-    // Hide snackbar lama supaya gak stack kalau user spam tap.
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text('Tekan sekali lagi untuk keluar'),
-        duration: _doubleBackWindow,
-        behavior: SnackBarBehavior.floating,
-      ),
+    // Overlay toast (bukan ScaffoldMessenger) — auto-hide sendiri, jadi
+    // tidak perlu hideCurrentSnackBar() untuk cegah stacking saat spam tap.
+    AppToast.showBanner(
+      context,
+      'Tekan sekali lagi untuk keluar',
+      kind: ToastKind.info,
+      duration: _doubleBackWindow,
     );
   }
 

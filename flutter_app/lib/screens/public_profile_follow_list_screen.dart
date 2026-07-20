@@ -8,6 +8,7 @@ import '../services/follow_service.dart';
 import '../state/member_store.dart';
 import '../state/follow_override_store.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/official_brand_avatar.dart';
 import '../widgets/profile_avatar.dart';
@@ -371,13 +372,10 @@ class _FollowListPaneState extends State<_FollowListPane>
 
   int _nonNegative(int value) => value < 0 ? 0 : value;
 
+  // Kedua caller (ApiException.message + fallback catch) sama-sama jalur
+  // kegagalan follow/unfollow → kind error tetap untuk semua pesan.
   void _showSnack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    AppToast.showBanner(context, message, kind: ToastKind.error);
   }
 
   @override

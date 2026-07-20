@@ -18,6 +18,7 @@ import '../services/profile_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_login_gate.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/official_brand_avatar.dart';
 import '../widgets/profile_avatar.dart';
@@ -100,20 +101,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       await notificationService.markAllRead();
       await _load(silent: true);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Semua notifikasi ditandai sudah dibaca.'),
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(milliseconds: 1400),
-        ),
+      // Kind-inference: tidak match keyword literal → default info per rule.
+      AppToast.showBanner(
+        context,
+        'Semua notifikasi ditandai sudah dibaca.',
+        duration: const Duration(milliseconds: 1400),
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_errorMessage(error)),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: catch block dari operasi gagal → error, terlepas
+      // dari literal isi _errorMessage (pesan dinamis dari server/koneksi).
+      AppToast.showBanner(
+        context,
+        _errorMessage(error),
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _markingAll = false);

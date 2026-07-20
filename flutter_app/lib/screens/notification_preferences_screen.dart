@@ -11,6 +11,7 @@ import '../state/account_scope.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
 import '../utils/owner_scope.dart';
+import '../widgets/app_toast.dart';
 
 /// Preferensi Notifikasi — toggle push notification per kategori.
 /// Key lokal sengaja sama dengan `push_notification_service` agar filter push
@@ -141,11 +142,10 @@ class _NotificationPreferencesScreenState
       await notificationService.updatePreferences(_currentPreferences());
     } catch (_) {}
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Preferensi notifikasi dikembalikan ke default.'),
-        behavior: SnackBarBehavior.floating,
-      ),
+    // Kind-inference: tidak match keyword literal → default info per rule.
+    AppToast.showBanner(
+      context,
+      'Preferensi notifikasi dikembalikan ke default.',
     );
   }
 
@@ -395,15 +395,14 @@ class _PushDiagnosticPanelState extends State<_PushDiagnosticPanel> {
     );
     if (!mounted) return;
     setState(() => _sending = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          ok
-              ? 'Test terkirim. Tunggu beberapa detik di tray notifikasi.'
-              : 'Gagal kirim test push. Cek status di atas.',
-        ),
-        behavior: SnackBarBehavior.floating,
-      ),
+    // Kind-inference: branch sukses ("terkirim") tidak literally match
+    // keyword → info; branch gagal match literal "Gagal" → error.
+    AppToast.showBanner(
+      context,
+      ok
+          ? 'Test terkirim. Tunggu beberapa detik di tray notifikasi.'
+          : 'Gagal kirim test push. Cek status di atas.',
+      kind: ok ? ToastKind.info : ToastKind.error,
     );
   }
 
@@ -417,12 +416,8 @@ class _PushDiagnosticPanelState extends State<_PushDiagnosticPanel> {
     setState(() => _reRegistering = false);
     await _refresh();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Token diminta ulang ke server.'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    // Kind-inference: tidak match keyword literal → default info per rule.
+    AppToast.showBanner(context, 'Token diminta ulang ke server.');
   }
 
   @override

@@ -14,6 +14,7 @@ import '../utils/formatters.dart';
 import '../utils/fade_route.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_product_image.dart';
+import '../widgets/app_toast.dart';
 import 'feed_caption_edit_screen.dart';
 import 'feed_post/feed_cover_picker_screen.dart';
 import 'feed_post/feed_post_preview_screen.dart'
@@ -383,11 +384,10 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
     if (feedUploadStore.isUploading) {
       // Double-submit guard — kalau ada upload sebelumnya yang masih
       // jalan, kasih tau user lewat snackbar (jangan stack 2 upload).
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ada postingan yang masih dikirim. Tunggu sebentar.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Ada postingan yang masih dikirim. Tunggu sebentar.',
+        kind: ToastKind.info,
       );
       return;
     }

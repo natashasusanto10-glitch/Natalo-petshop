@@ -137,10 +137,8 @@ class _MemberOrdersScreenState extends State<MemberOrdersScreen> {
       // "Selesai" cuma match DELIVERED → order COMPLETED hilang dari tab-nya
       // (cuma muncul di "Semua"). Sertakan COMPLETED. Sama, CANCELED (1 L)
       // alias diterima _isCancelled/_statusLabel jadi ikut di tab Dibatalkan.
-      _OrderFilter.delivered =>
-        status == 'DELIVERED' || status == 'COMPLETED',
-      _OrderFilter.cancelled =>
-        status == 'CANCELLED' || status == 'CANCELED',
+      _OrderFilter.delivered => status == 'DELIVERED' || status == 'COMPLETED',
+      _OrderFilter.cancelled => status == 'CANCELLED' || status == 'CANCELED',
     };
   }
 
@@ -366,13 +364,18 @@ class _OrderCardState extends State<_OrderCard> {
 
     final uri = Uri.tryParse(paymentUrl);
     if (uri == null) {
-      _showSnack(context, 'Link pembayaran tidak valid.');
+      // Kind-inference: "tidak valid" → error (link diblokir/gagal parse).
+      _showSnack(context, 'Link pembayaran tidak valid.',
+          kind: ToastKind.error);
       return;
     }
 
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!context.mounted) return;
-    if (!opened) _showSnack(context, 'Tidak bisa membuka pembayaran.');
+    if (!opened) {
+      _showSnack(context, 'Tidak bisa membuka pembayaran.',
+          kind: ToastKind.error);
+    }
   }
 
   /// Beli Lagi handler — unified pakai backend reorder endpoint.
@@ -405,7 +408,10 @@ class _OrderCardState extends State<_OrderCard> {
             : reasons.length == 1
                 ? reasons.first
                 : '${reasons.length} produk tidak bisa dibeli lagi (stok habis / tidak tersedia).';
-        _showSnack(context, message);
+        // Kind-inference: reasons dinamis dari backend, tapi cabang literal
+        // di sini selalu mengandung "tidak bisa" atau server reason
+        // kegagalan reorder → error.
+        _showSnack(context, message, kind: ToastKind.error);
         return;
       }
 
@@ -426,7 +432,7 @@ class _OrderCardState extends State<_OrderCard> {
     } catch (error) {
       if (!context.mounted) return;
       final message = error.toString().replaceFirst('Exception: ', '');
-      _showSnack(context, 'Beli lagi gagal: $message');
+      _showSnack(context, 'Beli lagi gagal: $message', kind: ToastKind.error);
     }
   }
 
@@ -551,17 +557,19 @@ class _OrderCardState extends State<_OrderCard> {
       // dan card pindah dari tab "Dikirim" ke tab "Selesai".
       await widget.onRefresh();
       if (!context.mounted) return;
+      // Kind-inference: dynamic message dari try-block konfirmasi diterima
+      // berhasil — context-nya selalu sukses → kind: success.
       _showSnack(
         context,
         result.alreadyConfirmed
             ? 'Pesanan sudah ditandai selesai.'
             : result.message,
+        kind: ToastKind.success,
       );
     } catch (error) {
       if (!context.mounted) return;
-      AppHaptics.warning();
       final message = error.toString().replaceFirst('Exception: ', '');
-      _showSnack(context, 'Konfirmasi gagal: $message');
+      _showSnack(context, 'Konfirmasi gagal: $message', kind: ToastKind.error);
     } finally {
       if (mounted) setState(() => _confirming = false);
     }
@@ -765,12 +773,13 @@ class _OrderCardState extends State<_OrderCard> {
               : credited > 0
                   ? 'Pesanan dibatalkan. Saldo refund ${formatRupiah(credited.toDouble())} masuk.'
                   : 'Pesanan dibatalkan.');
-      _showSnack(context, message);
+      // Kind-inference: dynamic message dari try-block pembatalan berhasil —
+      // context-nya selalu sukses → kind: success.
+      _showSnack(context, message, kind: ToastKind.success);
     } catch (error) {
       if (!context.mounted) return;
-      AppHaptics.warning();
       final message = error.toString().replaceFirst('Exception: ', '');
-      _showSnack(context, 'Pembatalan gagal: $message');
+      _showSnack(context, 'Pembatalan gagal: $message', kind: ToastKind.error);
     } finally {
       if (mounted) setState(() => _cancelling = false);
     }
@@ -1748,10 +1757,12 @@ Color _statusColor(String status) {
   };
 }
 
-void _showSnack(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-  );
+void _showSnack(
+  BuildContext context,
+  String message, {
+  ToastKind kind = ToastKind.info,
+}) {
+  AppToast.showBanner(context, message, kind: kind);
 }
 
 BoxDecoration _cardDecoration() {

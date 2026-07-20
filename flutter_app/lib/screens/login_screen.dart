@@ -12,6 +12,7 @@ import '../state/cart_store.dart';
 import '../state/favorite_store.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/loading_button.dart';
 
 const _brandBlue = NataloColors.primary;
@@ -63,13 +64,14 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!ok) return;
     final cred = await biometricService.readCredential();
     if (cred == null) {
-      AppHaptics.warning();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Credential biometric hilang. Silakan login manual.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: pesan tidak literally match keyword "gagal"/"tidak
+      // bisa"/"error" → default info per rule, walau semantiknya kegagalan
+      // baca credential biometric.
+      AppToast.showBanner(
+        context,
+        'Credential biometric hilang. Silakan login manual.',
+        kind: ToastKind.info,
       );
       await biometricService.disable();
       setState(() => _biometricEnabled = false);
@@ -131,16 +133,18 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
       // Friendly error message — translate technical errors ke user-readable.
       // ApiException punya statusCode kalau dari server response.
       final message = _humanizeLoginError(error);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 4),
-        ),
+      // Kind-inference: dynamic message dari catch-block login gagal — bukan
+      // literal SnackBar(content: Text(m)) jadi tidak semua cabang mengandung
+      // keyword "gagal" secara literal, tapi context-nya selalu kegagalan
+      // login → kind: error.
+      AppToast.showBanner(
+        context,
+        message,
+        kind: ToastKind.error,
+        duration: const Duration(seconds: 4),
       );
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -246,12 +250,13 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       if (!mounted) return;
       if (ok) {
-        AppHaptics.success();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Biometric login aktif!'),
-            behavior: SnackBarBehavior.floating,
-          ),
+        // Kind-inference: "aktif" tidak literally match keyword
+        // "berhasil"/"tersimpan"/"ditambahkan"/"disalin" → default info
+        // per rule, walau semantiknya konfirmasi sukses.
+        AppToast.showBanner(
+          context,
+          'Biometric login aktif!',
+          kind: ToastKind.info,
         );
       }
     }

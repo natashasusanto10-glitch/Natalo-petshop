@@ -5542,12 +5542,11 @@ class _NotifyWhenAvailableButtonState
         if (res.ok) {
           setState(() => _subscribed = false);
           if (res.message.isNotEmpty) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(res.message),
-                behavior: SnackBarBehavior.floating,
-                duration: const Duration(seconds: 2),
-              ),
+            AppToast.showBanner(
+              context,
+              res.message,
+              kind: ToastKind.success,
+              duration: const Duration(seconds: 2),
             );
           }
         }
@@ -5559,29 +5558,22 @@ class _NotifyWhenAvailableButtonState
         if (!mounted) return;
         if (res.ok) {
           setState(() => _subscribed = true);
-          AppHaptics.success();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                res.message.isNotEmpty
-                    ? res.message
-                    : 'Kamu akan dapat notifikasi saat produk tersedia.',
-              ),
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 3),
-            ),
+          AppToast.showBanner(
+            context,
+            res.message.isNotEmpty
+                ? res.message
+                : 'Kamu akan dapat notifikasi saat produk tersedia.',
+            kind: ToastKind.success,
+            duration: const Duration(seconds: 3),
           );
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                res.message.isNotEmpty
-                    ? res.message
-                    : 'Gagal subscribe notifikasi.',
-              ),
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 2),
-            ),
+          AppToast.showBanner(
+            context,
+            res.message.isNotEmpty
+                ? res.message
+                : 'Gagal subscribe notifikasi.',
+            kind: ToastKind.error,
+            duration: const Duration(seconds: 2),
           );
         }
       }

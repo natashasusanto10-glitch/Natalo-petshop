@@ -5,6 +5,7 @@ import '../services/api_client.dart';
 import '../state/favorite_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
+import 'app_toast.dart';
 
 /// Heart toggle untuk wishlist / favorites.
 ///
@@ -114,33 +115,26 @@ class _FavoriteButtonState extends State<FavoriteButton>
       await favoriteStore.toggle(product);
     } on FavoriteAuthRequiredException {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Login member untuk menyimpan ke wishlist.'),
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: 'Masuk',
-            onPressed: () => Navigator.pushNamed(context, '/member/login'),
-          ),
-        ),
+      AppToast.showBanner(
+        context,
+        'Login member untuk menyimpan ke wishlist.',
+        kind: ToastKind.info,
+        actionLabel: 'Masuk',
+        onAction: () => Navigator.pushNamed(context, '/member/login'),
       );
     } on ApiException catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal simpan wishlist: ${error.message}'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Gagal simpan wishlist: ${error.message}',
+        kind: ToastKind.error,
       );
     } catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal simpan wishlist: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Gagal simpan wishlist: $error',
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _saving = false);

@@ -12,6 +12,7 @@ import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../utils/payment_url_policy.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/compact_commerce_product_card.dart';
 import '../widgets/skeleton_product_card.dart';
@@ -152,6 +153,9 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
   Future<void> _openMidtrans() async {
     final paymentUrl = _order.paymentUrl;
     if (paymentUrl == null || paymentUrl.isEmpty) {
+      // Kind-inference: tidak ada literal keyword match → info (default
+      // "else" migrasi ini; lihat juga "Produk sudah tidak tersedia." di
+      // member_order_detail_screen.dart yang juga default info tanpa kind).
       _showSnack('Link pembayaran belum tersedia. Buka detail pesanan.');
       return;
     }
@@ -159,7 +163,10 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
     // never inside the embedded WebView, so a spoofed/foreign URL from the
     // order payload can't render inside the app session.
     if (!PaymentUrlPolicy.isValidMidtransPaymentUrl(paymentUrl)) {
-      _showSnack('Link pembayaran tidak valid atau tidak tepercaya.');
+      _showSnack(
+        'Link pembayaran tidak valid atau tidak tepercaya.',
+        kind: ToastKind.error,
+      );
       return;
     }
     final opened = await launchUrl(
@@ -168,7 +175,7 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
     );
     if (!mounted) return;
     if (!opened) {
-      _showSnack('Tidak bisa membuka pembayaran.');
+      _showSnack('Tidak bisa membuka pembayaran.', kind: ToastKind.error);
       return;
     }
     await _refreshOrder();
@@ -190,10 +197,8 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
     );
   }
 
-  void _showSnack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-    );
+  void _showSnack(String message, {ToastKind kind = ToastKind.info}) {
+    AppToast.showBanner(context, message, kind: kind);
   }
 
   @override
@@ -469,11 +474,10 @@ class _OrderStatusCard extends StatelessWidget {
                         ClipboardData(text: order.orderNumber),
                       );
                       if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Nomor pesanan tersalin.'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
+                      AppToast.showBanner(
+                        context,
+                        'Nomor pesanan tersalin.',
+                        kind: ToastKind.success,
                       );
                     },
                     icon: const Icon(Icons.copy_all_outlined),
@@ -872,14 +876,12 @@ class _ProductCard extends StatelessWidget {
       },
       onAddToCart: () async {
         if (product.hasVariants) {
-          AppHaptics.tap();
           Navigator.pushNamed(context, '/product-detail', arguments: product);
           _showProductSnack(context, 'Pilih varian produk dulu.');
           return;
         }
         final added = await cartStore.addProduct(product);
         if (!context.mounted || !added) return;
-        AppHaptics.success();
         _showProductSnack(context, '${product.title} masuk keranjang.');
       },
     );
@@ -887,7 +889,5 @@ class _ProductCard extends StatelessWidget {
 }
 
 void _showProductSnack(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-  );
+  AppToast.showBanner(context, message, kind: ToastKind.info);
 }

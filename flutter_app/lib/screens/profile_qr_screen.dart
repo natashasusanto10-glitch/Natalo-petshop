@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import '../config/api_config.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_toast.dart';
 
 /// Layar "Bagikan Profil" ala IG — kartu QR biru brand (Desain C).
 ///
@@ -57,15 +58,12 @@ class ProfileQrScreen extends StatelessWidget {
     AppHaptics.tap();
     await Clipboard.setData(ClipboardData(text: _profileUrl));
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        const SnackBar(
-          content: Text('Link profil disalin'),
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 2),
-        ),
-      );
+    AppToast.showBanner(
+      context,
+      'Link profil disalin',
+      kind: ToastKind.success,
+      duration: const Duration(seconds: 2),
+    );
   }
 
   @override

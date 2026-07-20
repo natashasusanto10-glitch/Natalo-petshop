@@ -1829,11 +1829,10 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     final product = await productService.fetchProductBySlug(link.slug);
     if (!mounted) return;
     if (product == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Produk tidak ditemukan.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Produk tidak ditemukan.',
+        kind: ToastKind.info,
       );
       return;
     }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../services/places_service.dart';
+import 'app_toast.dart';
 
 /// Inline address autocomplete field — user ngetik di sini, suggestion
 /// dropdown muncul real-time di bawah field (pattern Tokopedia/Shopee/Gojek).
@@ -145,11 +146,10 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
         widget.onSelected(details);
         _focus.unfocus();
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Gagal ambil detail alamat. Coba lagi.'),
-            behavior: SnackBarBehavior.floating,
-          ),
+        AppToast.showBanner(
+          context,
+          'Gagal ambil detail alamat. Coba lagi.',
+          kind: ToastKind.error,
         );
       }
     } finally {

@@ -5,6 +5,7 @@ import '../screens/public_profile_screen.dart';
 import '../services/api_client.dart';
 import '../services/follow_service.dart';
 import '../state/follow_override_store.dart';
+import 'app_toast.dart';
 import 'official_brand_avatar.dart';
 import '../services/post_likers_service.dart';
 import '../utils/haptics.dart';
@@ -173,9 +174,8 @@ class _PostLikersSheetState extends State<PostLikersSheet> {
         Navigator.pop(context);
         Navigator.pushNamed(context, '/member/login');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        // ApiException dari follow/unfollow gagal → error.
+        AppToast.showBanner(context, e.message, kind: ToastKind.error);
       }
     } catch (_) {
       if (!mounted) return;

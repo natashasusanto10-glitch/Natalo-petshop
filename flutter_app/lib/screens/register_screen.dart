@@ -10,6 +10,7 @@ import '../services/auth_service.dart';
 import '../utils/action_throttle.dart';
 import '../utils/haptics.dart';
 import '../utils/phone_formatter.dart';
+import '../widgets/app_toast.dart';
 
 /// SharedPreferences key untuk store deadline cooldown OTP resend.
 /// Value = `DateTime.millisecondsSinceEpoch` saat cooldown habis. Dipakai
@@ -185,22 +186,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
         otp: null, // null = step 1, kirim OTP baru
       );
       if (!mounted) return;
-      AppHaptics.success();
       _startResendCooldown();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Kode OTP baru sudah dikirim ke email & WhatsApp.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: tidak match keyword literal → default info per rule.
+      AppToast.showBanner(
+        context,
+        'Kode OTP baru sudah dikirim ke email & WhatsApp.',
+        kind: ToastKind.info,
       );
     } catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_friendlyRegisterError(error)),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: dynamic message dari catch-block resend OTP gagal —
+      // context selalu kegagalan → kind: error.
+      AppToast.showBanner(
+        context,
+        _friendlyRegisterError(error),
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _resendingOtp = false);
@@ -252,16 +252,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
         // Step 1 sukses — OTP terkirim. Start 60s cooldown supaya user
         // tidak bisa spam resend langsung; button "Kirim Ulang Kode" baru
         // bisa di-tap setelah countdown selesai.
-        AppHaptics.success();
         setState(() => _otpSent = true);
         _startResendCooldown();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Kode OTP dikirim ke email dan WhatsApp kamu. Masukkan satu kode yang sama.',
-            ),
-            behavior: SnackBarBehavior.floating,
-          ),
+        // Kind-inference: tidak match keyword literal → default info per rule.
+        AppToast.showBanner(
+          context,
+          'Kode OTP dikirim ke email dan WhatsApp kamu. Masukkan satu kode yang sama.',
+          kind: ToastKind.info,
         );
         return;
       }
@@ -286,24 +283,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
           builder: (_) => _WelcomeVoucherDialog(voucher: voucher),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Akun berhasil dibuat. Silakan login.'),
-            behavior: SnackBarBehavior.floating,
-          ),
+        AppToast.showBanner(
+          context,
+          'Akun berhasil dibuat. Silakan login.',
+          kind: ToastKind.success,
         );
       }
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/member/login');
     } catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
       final message = _friendlyRegisterError(error);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: dynamic message dari catch-block register gagal —
+      // context selalu kegagalan → kind: error.
+      AppToast.showBanner(
+        context,
+        message,
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _loading = false);
