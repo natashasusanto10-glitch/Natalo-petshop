@@ -1053,7 +1053,8 @@ class PostPageZoomRoute extends PageRoute<void> {
       final proxy = _activeProxy();
       final slotRect = _closeSlotRect;
       final mediaAspect = _closeMediaAspect;
-      if (_reducedMotion(context) ||
+      final reducedMotion = _reducedMotion(context);
+      if (reducedMotion ||
           session.destinationReadiness ==
               PostDetailDestinationReadiness.crossfadeFallback ||
           slotRect == null ||
@@ -1064,6 +1065,7 @@ class PostPageZoomRoute extends PageRoute<void> {
           destinationChild: _destination(context),
           proxyImageProvider: _proxyImageProviderFor(proxy),
           proxyColor: proxy?.placeholderColor ?? const Color(0xFF000000),
+          disableScale: reducedMotion,
         );
       }
       _syncDestinationMediaSuppression(true);
@@ -1112,7 +1114,8 @@ class PostPageZoomRoute extends PageRoute<void> {
     // commit / cancel behave identically; only the *render* changes.
     final slotRect = _slotRect;
     final mediaAspect = _mediaAspect;
-    if (_reducedMotion(context) ||
+    final reducedMotion = _reducedMotion(context);
+    if (reducedMotion ||
         session.destinationReadiness ==
             PostDetailDestinationReadiness.crossfadeFallback ||
         slotRect == null ||
@@ -1123,6 +1126,7 @@ class PostPageZoomRoute extends PageRoute<void> {
         destinationChild: _destination(context),
         proxyImageProvider: _proxyImageProviderFor(proxy),
         proxyColor: proxy?.placeholderColor ?? const Color(0xFF000000),
+        disableScale: reducedMotion,
       );
     }
     // Only `opening`/`open` reach here: `closingToTarget` (both the
@@ -1459,6 +1463,7 @@ class _CrossfadeZoomTransition extends StatelessWidget {
     required this.destinationChild,
     this.proxyImageProvider,
     this.proxyColor = const Color(0x00000000),
+    this.disableScale = false,
   });
 
   final Animation<double> progress;
@@ -1466,35 +1471,44 @@ class _CrossfadeZoomTransition extends StatelessWidget {
   final ImageProvider<Object>? proxyImageProvider;
   final Color proxyColor;
 
+  /// When true, renders a PURE opacity cross-dissolve — no scale/motion at
+  /// all. Reserved for the reduced-motion opening/close (spec `Performance
+  /// and Accessibility -> Reduced motion` §: "the media slot and chrome both
+  /// simply crossfade in place at their final rects ... only opacities
+  /// change"). The `crossfadeFallback` readiness case (a bounded-readiness
+  /// timeout, not an accessibility request) keeps the mild centered scale by
+  /// leaving this false.
+  final bool disableScale;
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: progress,
       builder: (context, child) {
         final t = progress.value.clamp(0.0, 1.0);
-        // Mild centered scale (0.96 -> 1.0), and a crossfade that completes in
-        // the first portion of the flight so it never competes with a later
-        // destination fade.
-        final scale = 0.96 + (0.04 * t);
+        // Crossfade completes in the first portion of the flight so it never
+        // competes with a later destination fade.
         final crossfadeT = (t / postPageZoomCrossfadeProgressThreshold).clamp(
           0.0,
           1.0,
         );
-        return Transform.scale(
-          scale: scale,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Opacity(
-                opacity: 1.0 - crossfadeT,
-                child: proxyImageProvider != null
-                    ? Image(image: proxyImageProvider!, fit: BoxFit.cover)
-                    : ColoredBox(color: proxyColor),
-              ),
-              Opacity(opacity: crossfadeT, child: child),
-            ],
-          ),
+        final stack = Stack(
+          fit: StackFit.expand,
+          children: [
+            Opacity(
+              opacity: 1.0 - crossfadeT,
+              child: proxyImageProvider != null
+                  ? Image(image: proxyImageProvider!, fit: BoxFit.cover)
+                  : ColoredBox(color: proxyColor),
+            ),
+            Opacity(opacity: crossfadeT, child: child),
+          ],
         );
+        if (disableScale) return stack;
+        // Mild centered scale (0.96 -> 1.0) for the crossfadeFallback/
+        // null-geometry cases only.
+        final scale = 0.96 + (0.04 * t);
+        return Transform.scale(scale: scale, child: stack);
       },
       child: RepaintBoundary(child: destinationChild),
     );

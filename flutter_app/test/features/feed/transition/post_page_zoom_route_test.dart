@@ -930,6 +930,45 @@ void main() {
         expect(route.phase, PostPageZoomPhase.closed);
       },
     );
+
+    testWidgets(
+      'crossfadeFallback opening (NOT reduced motion) still applies the '
+      'mild centered scale mid-flight — the accessibility split must not '
+      'remove it from this non-accessibility trigger',
+      (tester) async {
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+
+        await tester.pumpWidget(_app(navigatorKey));
+        _pushDirect(navigatorKey, session);
+        await tester.pump();
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.crossfadeFallback,
+        );
+        await tester.pump();
+        // Mid-flight, well before the 300 ms forward duration completes.
+        await tester.pump(const Duration(milliseconds: 30));
+
+        expect(_findsCrossfade(), findsOneWidget);
+        expect(
+          find.descendant(
+            of: _findsCrossfade(),
+            matching: find.byType(Transform),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.pumpAndSettle();
+      },
+    );
   });
 
   group('proxy selection ladder', () {
@@ -1718,6 +1757,99 @@ void main() {
       await tester.pumpAndSettle();
       expect(route.phase, PostPageZoomPhase.open);
     });
+
+    testWidgets(
+      'opening under reduced motion is a PURE opacity cross-dissolve — no '
+      'scale transform mid-flight (accessibility contract: only opacities '
+      'change, per spec `Performance and Accessibility -> Reduced motion`)',
+      (tester) async {
+        // `accessibleNavigation` (not `disableAnimations`) so the controller
+        // still runs its full duration — Flutter's `AnimationController`
+        // auto-collapses to instant under `disableAnimations`, which would
+        // make a mid-flight scale check meaningless either way. `_reducedMotion`
+        // treats both flags identically, so this still exercises the same
+        // branch.
+        tester.binding.platformDispatcher.accessibilityFeaturesTestValue =
+            const FakeAccessibilityFeatures(accessibleNavigation: true);
+        addTearDown(
+          tester.binding.platformDispatcher.clearAccessibilityFeaturesTestValue,
+        );
+
+        final fake = FakeTransitionSource();
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+
+        await tester.pumpWidget(_app(navigatorKey));
+        _pushDirect(navigatorKey, session);
+        await tester.pump();
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.geometryReady,
+        );
+        await tester.pump();
+        // Mid-flight, well before the 300 ms forward duration completes.
+        await tester.pump(const Duration(milliseconds: 30));
+
+        expect(_findsCrossfade(), findsOneWidget);
+        expect(
+          find.descendant(
+            of: _findsCrossfade(),
+            matching: find.byType(Transform),
+          ),
+          findsNothing,
+        );
+
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'non-interactive close under reduced motion is a PURE opacity cross-'
+      'dissolve — no scale transform mid-flight',
+      (tester) async {
+        // See the opening test above: `accessibleNavigation` keeps the
+        // controller running its full duration so the mid-flight check is
+        // meaningful (`disableAnimations` collapses it to instant).
+        tester.binding.platformDispatcher.accessibilityFeaturesTestValue =
+            const FakeAccessibilityFeatures(accessibleNavigation: true);
+        addTearDown(
+          tester.binding.platformDispatcher.clearAccessibilityFeaturesTestValue,
+        );
+
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+
+        final future = route.requestClose();
+        expect(route.phase, PostPageZoomPhase.closingToTarget);
+        await tester.pump();
+        // Mid-flight, well before the 260 ms reverse duration completes.
+        await tester.pump(const Duration(milliseconds: 30));
+
+        expect(_findsCrossfade(), findsOneWidget);
+        expect(
+          find.descendant(
+            of: _findsCrossfade(),
+            matching: find.byType(Transform),
+          ),
+          findsNothing,
+        );
+
+        await tester.pumpAndSettle();
+        await future;
+      },
+    );
   });
 
   group(
