@@ -107,28 +107,7 @@ class PostPageZoomTransition extends StatelessWidget {
             ),
             Opacity(
               opacity: _heroOpacity(t),
-              child: ClipRRect(
-                clipper: _PostPageHeroClipper(frame.clip),
-                child: Transform.translate(
-                  offset: frame.contentOffset,
-                  child: Transform.scale(
-                    scale: frame.contentScale,
-                    alignment: Alignment.topLeft,
-                    child: OverflowBox(
-                      minWidth: 0,
-                      maxWidth: double.infinity,
-                      minHeight: 0,
-                      maxHeight: double.infinity,
-                      alignment: Alignment.topLeft,
-                      child: SizedBox(
-                        width: mediaAspect,
-                        height: 1,
-                        child: child,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+              child: paintPostPageHero(frame, mediaAspect, child!),
             ),
           ],
         );
@@ -136,6 +115,40 @@ class PostPageZoomTransition extends StatelessWidget {
       child: heroMediaChild,
     );
   }
+}
+
+/// Paints the hero-media layer for [frame]: clip -> translate -> scale ->
+/// sized -> [child]. Shared by [PostPageZoomTransition] (forward/close
+/// renders) and `PostPageHeroSurface` (interactive-back renders) so there is
+/// exactly one hero-paint implementation.
+///
+/// The [OverflowBox] is load-bearing: without it, an ancestor
+/// `Stack(fit: expand)` clamps the inner [SizedBox] to the viewport size
+/// instead of its intrinsic `mediaAspect x 1` size, corrupting the scale
+/// math.
+Widget paintPostPageHero(
+  PostPageHeroFrame frame,
+  double mediaAspect,
+  Widget child,
+) {
+  return ClipRRect(
+    clipper: _PostPageHeroClipper(frame.clip),
+    child: Transform.translate(
+      offset: frame.contentOffset,
+      child: Transform.scale(
+        scale: frame.contentScale,
+        alignment: Alignment.topLeft,
+        child: OverflowBox(
+          minWidth: 0,
+          maxWidth: double.infinity,
+          minHeight: 0,
+          maxHeight: double.infinity,
+          alignment: Alignment.topLeft,
+          child: SizedBox(width: mediaAspect, height: 1, child: child),
+        ),
+      ),
+    ),
+  );
 }
 
 class _PostPageHeroClipper extends CustomClipper<RRect> {

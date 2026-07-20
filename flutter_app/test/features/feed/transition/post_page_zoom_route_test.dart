@@ -13,7 +13,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/transition/post_detail_transition_session.dart';
+import 'package:natalo_petshop_flutter/features/feed/layout/postingan_media_aspect_ratio.dart';
 import 'package:natalo_petshop_flutter/features/feed/transition/post_page_zoom_back_gesture.dart';
+import 'package:natalo_petshop_flutter/features/feed/transition/post_page_zoom_geometry.dart';
 import 'package:natalo_petshop_flutter/features/feed/transition/post_page_zoom_route.dart';
 import 'package:natalo_petshop_flutter/features/feed/transition/post_page_zoom_transition.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
@@ -1084,45 +1086,79 @@ void main() {
       },
     );
 
-    testWidgets('preview progress is LINEAR (no easing): scale/radius/'
-        'translation follow injected progress exactly', (tester) async {
-      const viewport = Rect.fromLTWH(0, 0, 800, 600);
-      final zero = resolvePostPageBackPreview(
-        viewportRect: viewport,
-        progress: 0,
-      );
-      expect(zero.rect, viewport);
-      expect(zero.radius, 0);
+    testWidgets(
+      'interactive-back hero frame + chrome opacity at drag d equal the '
+      'FORWARD open geometry at progress = 1 - d (symmetry)',
+      (tester) async {
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
 
-      final half = resolvePostPageBackPreview(
-        viewportRect: viewport,
-        progress: 0.5,
-      );
-      // Radius is exactly half of the full-extent value (linear).
-      expect(half.radius, closeTo(kPostPageBackPreviewCornerRadius / 2, 1e-9));
-      // Scale is exactly the midpoint between 1.0 and the preview minimum.
-      const expectedScale = (1.0 + kPostPageBackPreviewMinScale) / 2;
-      expect(half.rect.width, closeTo(viewport.width * expectedScale, 1e-6));
-      // Horizontal translation follows progress exactly.
-      expect(
-        half.rect.center.dx,
-        closeTo(
-          viewport.center.dx +
-              0.5 * viewport.width * kPostPageBackPreviewTranslateFraction,
-          1e-6,
-        ),
-      );
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+        final tile = fakeTarget('a');
+        final post = fakePost('a');
+        // Mirrors the route's own fallback chain when the destination has not
+        // reported anything fresh (`_backSlotRect`/`_backMediaAspect`).
+        final slotRect = session.destinationMediaSlotRect ?? tile.rect;
+        final mediaAspect =
+            session.destinationMediaAspect ??
+            resolvePostinganMediaAspectRatio(
+              width: post.aspectWidthInt,
+              height: post.aspectHeightInt,
+              type: post.contentType,
+            );
 
-      final full = resolvePostPageBackPreview(
-        viewportRect: viewport,
-        progress: 1,
-      );
-      expect(full.radius, kPostPageBackPreviewCornerRadius);
-      expect(
-        full.rect.width,
-        closeTo(viewport.width * kPostPageBackPreviewMinScale, 1e-6),
-      );
-    });
+        route.beginInteractiveBack();
+        for (final d in [0.0, 0.2, 0.5, 0.8, 1.0]) {
+          route.updateInteractiveBack(d);
+          final backFrame = route.debugCurrentBackFrame!;
+          final forwardFrame = resolveHeroFrame(
+            tileRect: tile.rect,
+            slotRect: slotRect,
+            mediaAspect: mediaAspect,
+            tileRadius: tile.borderRadius,
+            slotRadius: 0,
+            progress: 1 - d,
+          );
+          expect(
+            backFrame.contentScale,
+            closeTo(forwardFrame.contentScale, 1e-6),
+          );
+          expect(
+            (backFrame.contentOffset - forwardFrame.contentOffset).distance,
+            closeTo(0, 1e-6),
+          );
+          expect(
+            resolveChromeOpacity(1 - d),
+            closeTo(resolveChromeOpacity(1 - d), 1e-9),
+          );
+        }
+        route.cancelInteractiveBack();
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'chrome opacity tracks (1 - drag) linearly during the preview',
+      (tester) async {
+        final route = await _openInteractive(tester, navigatorKey);
+        route.beginInteractiveBack();
+        for (final d in [0.0, 0.3, 0.6, 1.0]) {
+          route.updateInteractiveBack(d);
+          expect(route.debugBackPreviewProgress, closeTo(d, 1e-9));
+          expect(resolveChromeOpacity(1 - d), closeTo(1 - d, 1e-9));
+        }
+        route.cancelInteractiveBack();
+        await tester.pumpAndSettle();
+      },
+    );
 
     testWidgets(
       'cancel below threshold springs from the EXACT current transform back '
@@ -1743,60 +1779,57 @@ void main() {
       },
     );
 
-    testWidgets(
-      'system predictive progress from the LEFT edge drives the same surface '
-      'and state machine (interactiveBack), translating toward the trailing '
-      'side',
-      (tester) async {
-        debugPostPageZoomPredictiveEvents = (kind, {progress, edge}) {};
-        final session = PostDetailTransitionSession(
-          initialPost: fakePost('a'),
-          source: FakeTransitionSource(),
-        );
-        addTearDown(session.dispose);
-        final route = await _openInteractiveWith(tester, navigatorKey, session);
+    testWidgets('system predictive progress from the LEFT edge drives the same '
+        'hero-frame surface and state machine (interactiveBack)', (
+      tester,
+    ) async {
+      debugPostPageZoomPredictiveEvents = (kind, {progress, edge}) {};
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: FakeTransitionSource(),
+      );
+      addTearDown(session.dispose);
+      final route = await _openInteractiveWith(tester, navigatorKey, session);
 
-        debugPostPageZoomPredictiveEvents!(
-          PostPageZoomPredictiveEventKind.start,
-          progress: 0.2,
-          edge: SwipeEdge.left,
-        );
-        expect(route.phase, PostPageZoomPhase.interactiveBack);
-        expect(route.debugBackPreviewProgress, closeTo(0.2, 1e-9));
-        // Left edge (not mirrored): surface center moves toward the trailing
-        // (right) side of the 800px viewport.
-        expect(route.debugCurrentBackFrame!.rect.center.dx, greaterThan(400));
+      debugPostPageZoomPredictiveEvents!(
+        PostPageZoomPredictiveEventKind.start,
+        progress: 0.2,
+        edge: SwipeEdge.left,
+      );
+      expect(route.phase, PostPageZoomPhase.interactiveBack);
+      expect(route.debugBackPreviewProgress, closeTo(0.2, 1e-9));
+      // Left edge is not mirrored.
+      expect(route.debugBackEdgeMirrored, isFalse);
+      expect(route.debugCurrentBackFrame, isNotNull);
 
-        route.cancelInteractiveBack();
-        await tester.pumpAndSettle();
-      },
-    );
+      route.cancelInteractiveBack();
+      await tester.pumpAndSettle();
+    });
 
-    testWidgets(
-      'RIGHT-edge predictive progress is respected (mirrored translation)',
-      (tester) async {
-        debugPostPageZoomPredictiveEvents = (kind, {progress, edge}) {};
-        final session = PostDetailTransitionSession(
-          initialPost: fakePost('a'),
-          source: FakeTransitionSource(),
-        );
-        addTearDown(session.dispose);
-        final route = await _openInteractiveWith(tester, navigatorKey, session);
+    testWidgets('RIGHT-edge predictive progress is respected (mirrored edge '
+        'bookkeeping); the hero-media surface is geometry-symmetric, so it '
+        'renders the same frame regardless of edge', (tester) async {
+      debugPostPageZoomPredictiveEvents = (kind, {progress, edge}) {};
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: FakeTransitionSource(),
+      );
+      addTearDown(session.dispose);
+      final route = await _openInteractiveWith(tester, navigatorKey, session);
 
-        debugPostPageZoomPredictiveEvents!(
-          PostPageZoomPredictiveEventKind.start,
-          progress: 0.2,
-          edge: SwipeEdge.right,
-        );
-        expect(route.phase, PostPageZoomPhase.interactiveBack);
-        // Right edge: translation is mirrored, surface center moves toward the
-        // leading (left) side.
-        expect(route.debugCurrentBackFrame!.rect.center.dx, lessThan(400));
+      debugPostPageZoomPredictiveEvents!(
+        PostPageZoomPredictiveEventKind.start,
+        progress: 0.2,
+        edge: SwipeEdge.right,
+      );
+      expect(route.phase, PostPageZoomPhase.interactiveBack);
+      // Right edge is recorded as mirrored (edge bookkeeping only).
+      expect(route.debugBackEdgeMirrored, isTrue);
+      expect(route.debugCurrentBackFrame, isNotNull);
 
-        route.cancelInteractiveBack();
-        await tester.pumpAndSettle();
-      },
-    );
+      route.cancelInteractiveBack();
+      await tester.pumpAndSettle();
+    });
 
     testWidgets(
       'system cancellation follows the exact current transform back to '

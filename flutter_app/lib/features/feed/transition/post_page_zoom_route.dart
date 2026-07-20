@@ -1,3 +1,5 @@
+import 'dart:ui' show lerpDouble;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart' show PredictiveBackEvent, SwipeEdge;
@@ -230,9 +232,23 @@ class PostPageZoomRoute extends PageRoute<void> {
   /// transform to the frozen B tile.
   AnimationController? _commitController;
 
-  /// The exact surface frame captured at gesture release; the commit flight
+  /// The exact hero frame captured at gesture release; the commit flight
   /// starts from it so there is no visual restart.
-  PostPageBackFrame? _commitFromFrame;
+  PostPageHeroFrame? _commitFromFrame;
+
+  /// The chrome opacity captured at gesture release, alongside
+  /// [_commitFromFrame]; the commit flight fades it to 0 with no restart.
+  double _commitFromChromeOpacity = 0;
+
+  /// The destination media-slot rect + intrinsic media aspect, frozen once at
+  /// the `open` -> `interactiveBack` edge (mirrors how [_frozenTarget] is
+  /// frozen there too), so a scroll during the drag can't retarget an
+  /// in-flight interactive back. Re-read from
+  /// `session.destinationMediaSlotRect`/`destinationMediaAspect` (the same
+  /// close-time sources `_performClose` uses), falling back to whatever the
+  /// close/forward flights last froze.
+  Rect? _backSlotRect;
+  double? _backMediaAspect;
 
   /// True while a commit flight (interactive close toward B) is animating,
   /// selecting the interactive commit render path in [buildPage] instead of
@@ -277,31 +293,22 @@ class PostPageZoomRoute extends PageRoute<void> {
   /// playback. Cleared at the start of every fresh interactive back.
   bool _interruptedDuringBack = false;
 
-  /// Test-only view of the current interactive-back surface frame, so gesture
+  /// Test-only view of the current interactive-back hero frame, so gesture
   /// tests can assert first-frame continuity (cancel/commit start from the
   /// exact released transform) without reaching into private render state.
+  /// Mirrors the forward hero geometry: `progress == 1 - drag`.
   @visibleForTesting
-  PostPageBackFrame? get debugCurrentBackFrame {
-    final viewport = _lastViewportRect;
-    if (viewport == null) return null;
+  PostPageHeroFrame? get debugCurrentBackFrame {
     if (_interactiveCommitActive) {
       final from = _commitFromFrame;
       final tile = _frozenTarget;
       if (from == null || tile == null) return null;
-      return lerpPostPageBackFrame(
-        from,
-        tile.rect,
-        tile.borderRadius,
-        _commitController?.value ?? 0,
-      );
+      final to = _backHeroFrame(0.0);
+      return lerpPostPageHeroFrame(from, to, _commitController?.value ?? 0);
     }
     final preview = _previewController;
     if (preview == null) return null;
-    return resolvePostPageBackPreview(
-      viewportRect: viewport,
-      progress: preview.value,
-      mirror: _backEdgeMirrored,
-    );
+    return _backHeroFrame(1 - preview.value);
   }
 
   /// Test-only view of the current linear preview progress.
@@ -313,6 +320,14 @@ class PostPageZoomRoute extends PageRoute<void> {
   /// false on iOS, where the leading-edge recognizer is used instead).
   @visibleForTesting
   bool get debugPredictiveBackParticipating => _predictiveParticipating;
+
+  /// Test-only view of whether the active interactive back was armed as a
+  /// mirrored (Android RIGHT-edge) gesture. Retained from Task 12/13; the
+  /// hero-media render is geometry-symmetric (there is no lateral surface
+  /// slide left to mirror), so this no longer affects rendering, only the
+  /// edge bookkeeping the entry points still carry.
+  @visibleForTesting
+  bool get debugBackEdgeMirrored => _backEdgeMirrored;
 
   Rect? _lastViewportRect;
 
@@ -608,6 +623,15 @@ class PostPageZoomRoute extends PageRoute<void> {
     final frozen = session.freeze();
     _frozenTarget = frozen.target;
     _frozenProxy = frozen.proxy;
+    // Freeze the hero's destination-side endpoint at gesture start (mirrors
+    // `_performClose`'s close-time re-freeze) so mid-drag scroll can't
+    // retarget an in-flight interactive back. Falls back to whatever the
+    // last close/forward flight froze if the destination has not reported
+    // anything fresh.
+    _backSlotRect =
+        session.destinationMediaSlotRect ?? _closeSlotRect ?? _slotRect;
+    _backMediaAspect =
+        session.destinationMediaAspect ?? _closeMediaAspect ?? _mediaAspect;
     _ensurePreviewController().value = 0;
     _setPhase(PostPageZoomPhase.interactiveBack);
   }
@@ -661,6 +685,8 @@ class PostPageZoomRoute extends PageRoute<void> {
           if (phase == PostPageZoomPhase.settlingOpenAfterCancel) {
             _frozenTarget = null;
             _frozenProxy = null;
+            _backSlotRect = null;
+            _backMediaAspect = null;
             _setPhase(PostPageZoomPhase.open);
             // Unfreeze only after the page has settled back to fullscreen.
             session.resumeTrackingAfterCanceledBack();
@@ -689,17 +715,11 @@ class PostPageZoomRoute extends PageRoute<void> {
   }
 
   Future<void> _performInteractiveCommit() async {
-    final viewport = _lastViewportRect;
-    _commitFromFrame = viewport == null
-        ? PostPageBackFrame(
-            rect: _frozenTarget!.rect,
-            radius: _frozenTarget!.borderRadius,
-          )
-        : resolvePostPageBackPreview(
-            viewportRect: viewport,
-            progress: _previewController?.value ?? 0,
-            mirror: _backEdgeMirrored,
-          );
+    // Capture the EXACT current hero frame (and chrome opacity) at release,
+    // so the commit flight continues from it with no restart.
+    final dragAtRelease = _previewController?.value ?? 0;
+    _commitFromFrame = _backHeroFrame(1 - dragAtRelease);
+    _commitFromChromeOpacity = resolveChromeOpacity(1 - dragAtRelease);
     _interactiveCommitActive = true;
     _commitTileSuppressed = false;
     final commit = _ensureCommitController()..value = 0;
@@ -832,6 +852,40 @@ class PostPageZoomRoute extends PageRoute<void> {
 
   double _tileCornerRadius() =>
       (_frozenTarget ?? session.openingTarget)?.borderRadius ?? 0;
+
+  /// Degenerate tile-rect fallback for interactive-back hero resolution,
+  /// which (unlike [_tileRect]) has no [BuildContext] available at every call
+  /// site (`debugCurrentBackFrame` is a getter; `_performInteractiveCommit`
+  /// captures the release frame outside a build). Mirrors [_tileRect]'s own
+  /// collapse-to-a-point fallback, from the last viewport `buildPage` saw.
+  Rect _backTileRectFallback() {
+    final viewport = _lastViewportRect;
+    if (viewport == null) return Rect.zero;
+    return Rect.fromCenter(center: viewport.center, width: 1, height: 1);
+  }
+
+  /// Resolves the interactive-back hero frame at [heroProgress] (0 == over
+  /// the frozen source tile, 1 == over the destination media slot — the
+  /// mirror of the forward flight's `progress`), from the frozen tile
+  /// ([_frozenTarget]) and the slot/aspect frozen at gesture start
+  /// ([_backSlotRect]/[_backMediaAspect]). Used by every interactive-back
+  /// render/debug/continuity site so there is exactly one hero-resolution
+  /// call for the whole gesture.
+  PostPageHeroFrame _backHeroFrame(double heroProgress) {
+    final tile = _frozenTarget;
+    final tileRect = tile?.rect ?? _backTileRectFallback();
+    final tileRadius = tile?.borderRadius ?? 0.0;
+    final slotRect = _backSlotRect ?? tileRect;
+    final mediaAspect = _backMediaAspect ?? _activePostMediaAspect();
+    return resolveHeroFrame(
+      tileRect: tileRect,
+      slotRect: slotRect,
+      mediaAspect: mediaAspect,
+      tileRadius: tileRadius,
+      slotRadius: 0,
+      progress: heroProgress,
+    );
+  }
 
   PostPageMediaProxy? _activeProxy() =>
       _frozenProxy ?? session.openingTarget?.proxy;
@@ -1099,48 +1153,75 @@ class PostPageZoomRoute extends PageRoute<void> {
     return media.disableAnimations || media.accessibleNavigation;
   }
 
+  /// Interactive-back preview + cancel-settle render (spec: mirrors the
+  /// forward hero+chrome flight, driven by finger drag instead of the
+  /// controller). The destination's active media stays suppressed for the
+  /// same reason the forward/close renders suppress it: the hero layer
+  /// covers it. `heroMediaChild` uses the same live-controller-or-proxy
+  /// resolution as the forward/close renders, so a video keeps showing its
+  /// live playing frame (not a thumbnail) throughout the gesture.
   Widget _buildInteractivePreview(BuildContext context) {
-    final viewport = _viewportRect(context);
     final preview = _ensurePreviewController();
+    final proxy = _activeProxy();
+    _syncDestinationMediaSuppression(true);
+    final chrome = RepaintBoundary(child: _destination(context));
+    final heroMedia = _heroMediaChildFor(proxy);
+    final mediaAspect = _backMediaAspect ?? _activePostMediaAspect();
     return AnimatedBuilder(
       animation: preview,
-      builder: (context, child) {
-        final frame = resolvePostPageBackPreview(
-          viewportRect: viewport,
-          progress: preview.value,
-          mirror: _backEdgeMirrored,
-        );
-        return PostPageBackSurface(
-          frame: frame,
-          viewportRect: viewport,
-          child: child!,
+      builder: (context, _) {
+        final d = preview.value;
+        final frame = _backHeroFrame(1 - d);
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Opacity(opacity: resolveChromeOpacity(1 - d), child: chrome),
+            PostPageHeroSurface(
+              frame: frame,
+              mediaAspect: mediaAspect,
+              child: heroMedia,
+            ),
+          ],
         );
       },
-      child: RepaintBoundary(child: _destination(context)),
     );
   }
 
+  /// Interactive-back commit render: continues the EXACT hero frame + chrome
+  /// opacity captured at release ([_commitFromFrame]/
+  /// [_commitFromChromeOpacity]) toward the frozen tile (hero progress 0)
+  /// and chrome opacity 0, with no restart.
   Widget _buildInteractiveCommit(BuildContext context) {
-    final viewport = _viewportRect(context);
     final commit = _ensureCommitController();
     final from = _commitFromFrame!;
-    final tile = _frozenTarget!;
+    final to = _backHeroFrame(0.0);
+    final fromChromeOpacity = _commitFromChromeOpacity;
+    final proxy = _activeProxy();
+    _syncDestinationMediaSuppression(true);
+    final chrome = RepaintBoundary(child: _destination(context));
+    final heroMedia = _heroMediaChildFor(proxy);
+    final mediaAspect = _backMediaAspect ?? _activePostMediaAspect();
     return AnimatedBuilder(
       animation: commit,
-      builder: (context, child) {
-        final frame = lerpPostPageBackFrame(
-          from,
-          tile.rect,
-          tile.borderRadius,
-          commit.value,
-        );
-        return PostPageBackSurface(
-          frame: frame,
-          viewportRect: viewport,
-          child: child!,
+      builder: (context, _) {
+        final frame = lerpPostPageHeroFrame(from, to, commit.value);
+        final chromeOpacity = lerpDouble(
+          fromChromeOpacity,
+          0.0,
+          commit.value.clamp(0.0, 1.0),
+        )!;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Opacity(opacity: chromeOpacity, child: chrome),
+            PostPageHeroSurface(
+              frame: frame,
+              mediaAspect: mediaAspect,
+              child: heroMedia,
+            ),
+          ],
         );
       },
-      child: RepaintBoundary(child: _destination(context)),
     );
   }
 
