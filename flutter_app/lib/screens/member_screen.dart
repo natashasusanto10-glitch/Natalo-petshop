@@ -50,6 +50,58 @@ const _brandBlue = NataloColors.primary;
 // Catatan dark mode: warna page bg / text TIDAK lagi const — di-resolve
 // via Theme.of(context).colorScheme di tiap build supaya adaptif gelap.
 
+/// Grid scope identifiers for the profile transition tiles + adapter.
+const String profilePostScopeAll = 'all';
+const String profilePostScopeVideo = 'video';
+const String profilePostScopeTagged = 'tagged';
+
+/// Pure: appends [incoming] posts whose ids are not already present in
+/// [existing], preserving order and the loaded extent. Performs NO network
+/// fetch — the caller supplies an already-loaded page — and returns the SAME
+/// [existing] instance unchanged when there is nothing new (so callers can skip
+/// a needless rebuild). Duplicate ids keep the existing post, never a second
+/// copy.
+List<FeedPost> mergeProfilePostsById(
+  List<FeedPost> existing,
+  List<FeedPost> incoming,
+) {
+  final ids = existing.map((post) => post.id).toSet();
+  final additions =
+      incoming.where((post) => !ids.contains(post.id)).toList();
+  if (additions.isEmpty) return existing;
+  return [...existing, ...additions];
+}
+
+/// Pure: reconciles a fresh page-1 [refreshed] load into the previously loaded
+/// [existing] list. Page-1 ids take the refreshed data/order, and any post that
+/// was paginated in beyond page 1 (present in [existing] but absent from
+/// [refreshed]) is RETAINED at the tail — so a B that the detail screen scrolled
+/// to beyond page 1 is not dropped by the post-pop refresh.
+List<FeedPost> reconcileProfilePosts(
+  List<FeedPost> refreshed,
+  List<FeedPost> existing,
+) {
+  final refreshedIds = refreshed.map((post) => post.id).toSet();
+  final retainedTail =
+      existing.where((post) => !refreshedIds.contains(post.id));
+  return [...refreshed, ...retainedTail];
+}
+
+/// Pure scope rule: normal scoped pagination NEVER switches tabs, so the origin
+/// scope is kept whenever it still contains the active post. [profilePostScopeAll]
+/// (Semua) is adopted ONLY when the post cannot exist in the origin scope but
+/// does exist in the Semua list (legacy mixed-scope pagination).
+String resolveProfileTransitionScope({
+  required String originScope,
+  required bool originScopeContainsPost,
+  required bool allScopeContainsPost,
+}) {
+  if (!originScopeContainsPost && allScopeContainsPost) {
+    return profilePostScopeAll;
+  }
+  return originScope;
+}
+
 class MemberScreen extends StatefulWidget {
   @visibleForTesting
   final Future<FeedPage> Function(String? cursor)? debugPostsPageLoader;
@@ -157,11 +209,7 @@ class _ProfilePageState extends State<_ProfilePage>
   /// scoped pagination NEVER switches tabs; `'all'` (Semua) is only adopted
   /// when the active post cannot exist in the origin tab (legacy mixed-scope
   /// pagination), and the tab then stays on Semua after pop.
-  String _activeTransitionScope = _scopeAll;
-
-  static const String _scopeAll = 'all';
-  static const String _scopeVideo = 'video';
-  static const String _scopeTagged = 'tagged';
+  String _activeTransitionScope = profilePostScopeAll;
 
   @override
   void initState() {
@@ -217,7 +265,11 @@ class _ProfilePageState extends State<_ProfilePage>
     return handoff;
   }
 
-  Future<void> _loadAll() async {
+  /// [retainLoadedExtent] reconciles the fresh page-1 load into the currently
+  /// loaded list instead of replacing it, so posts paginated in beyond page 1
+  /// (e.g. a B scrolled to inside the detail viewer) survive the refresh. Used
+  /// for the post-pop refresh; the initial load / pull-to-refresh replace.
+  Future<void> _loadAll({bool retainLoadedExtent = false}) async {
     if (!memberStore.isLoggedIn) return;
     setState(() {
       _loadingPosts = true;
@@ -238,7 +290,9 @@ class _ProfilePageState extends State<_ProfilePage>
       // di Postingan Saya preview kalau di masa depan tile tampil count).
       feedStore.mergeFromServer(page.items, fetchedAt: fetchedAt);
       setState(() {
-        _allPosts = page.items;
+        _allPosts = retainLoadedExtent
+            ? reconcileProfilePosts(page.items, _allPosts)
+            : page.items;
         _postsNextCursor = page.nextCursor;
         _loadingPosts = false;
       });
@@ -351,9 +405,9 @@ class _ProfilePageState extends State<_ProfilePage>
 
   List<FeedPost> _scopeList(String scope) {
     switch (scope) {
-      case _scopeVideo:
+      case profilePostScopeVideo:
         return _videoPosts;
-      case _scopeTagged:
+      case profilePostScopeTagged:
         return _taggedPosts;
       default:
         return _allPosts;
@@ -369,12 +423,10 @@ class _ProfilePageState extends State<_ProfilePage>
   /// unseen posts here keeps every scope in sync.
   void _mergeScopedPage(FeedPage page) {
     if (!mounted) return;
-    final existing = _allPosts.map((post) => post.id).toSet();
-    final additions =
-        page.items.where((post) => !existing.contains(post.id)).toList();
-    if (additions.isEmpty) return;
+    final merged = mergeProfilePostsById(_allPosts, page.items);
+    if (identical(merged, _allPosts)) return;
     setState(() {
-      _allPosts = [..._allPosts, ...additions];
+      _allPosts = merged;
     });
   }
 
@@ -384,9 +436,13 @@ class _ProfilePageState extends State<_ProfilePage>
     if (!mounted) return;
     // Scope rule: keep the origin tab when B exists there; only fall back to
     // Semua (all) when B cannot exist in the origin scope.
-    if (!_scopeContains(_activeTransitionScope, post.id) &&
-        _scopeContains(_scopeAll, post.id)) {
-      _activeTransitionScope = _scopeAll;
+    final resolvedScope = resolveProfileTransitionScope(
+      originScope: _activeTransitionScope,
+      originScopeContainsPost: _scopeContains(_activeTransitionScope, post.id),
+      allScopeContainsPost: _scopeContains(profilePostScopeAll, post.id),
+    );
+    if (resolvedScope != _activeTransitionScope) {
+      _activeTransitionScope = resolvedScope;
       if (_tabController.index != 0) {
         _tabController.index = 0;
       }
@@ -397,11 +453,18 @@ class _ProfilePageState extends State<_ProfilePage>
     final tileContext =
         _tileKeys['$_activeTransitionScope:${post.id}']?.currentContext;
     if (tileContext == null || !tileContext.mounted) return;
-    // Align the tile just below the pinned tab header so its rect clears the
-    // pinned chrome; tiles are short, so this keeps the whole tile in-band.
+    // The grid lives in the NestedScrollView's INNER scrollable, whose viewport
+    // already begins below the pinned chrome (top bar + pinned tab header live
+    // in the OUTER header slivers) and stops above the floating bottom nav
+    // (grid bottom padding = 100). So any alignment in [0,1) lands the tile with
+    // `rect.top >= pinnedChromeBottom`, and the short tile height keeps
+    // `rect.bottom <= viewportHeight - bottomNavHeight`. A small non-zero
+    // alignment leaves a comfortable top margin without pushing the tile down.
+    // (Exact pinned-chrome/bottom-nav pixel bounds are a device-verify item —
+    // see Task 15 checklist.)
     await Scrollable.ensureVisible(
       tileContext,
-      alignment: 0.15,
+      alignment: 0.1,
       duration: Duration.zero,
     );
   }
@@ -496,7 +559,9 @@ class _ProfilePageState extends State<_ProfilePage>
       await handoff?.disposeIfUnclaimed();
       _openingPost = false;
     }
-    if (mounted) await _loadAll();
+    // Reconcile the post-pop refresh into the loaded extent so a B paginated in
+    // beyond page 1 (and the pending-return jump to it) is retained.
+    if (mounted) await _loadAll(retainLoadedExtent: true);
   }
 
   List<FeedPost> get _videoPosts => _allPosts.where((p) => p.isVideo).toList();
@@ -582,7 +647,7 @@ class _ProfilePageState extends State<_ProfilePage>
                             _PostGrid(
                               posts: _allPosts,
                               registry: _transitionRegistry,
-                              scope: _scopeAll,
+                              scope: profilePostScopeAll,
                               loading: _loadingPosts,
                               errorText: _postsError,
                               emptyText: 'Belum ada postingan',
@@ -592,9 +657,9 @@ class _ProfilePageState extends State<_ProfilePage>
                               onCreateCta: _openCreatePost,
                               onRetry: _loadAll,
                               onTapPost: (idx) =>
-                                  _openPostDetail(_allPosts, idx, _scopeAll),
+                                  _openPostDetail(_allPosts, idx, profilePostScopeAll),
                               originKeyForPost: (post) =>
-                                  _tileKeyFor(_scopeAll, post.id),
+                                  _tileKeyFor(profilePostScopeAll, post.id),
                               onTapDown: (idx) =>
                                   _preparePostVideo(_allPosts[idx]),
                               onTapCancel: (idx) =>
@@ -603,7 +668,7 @@ class _ProfilePageState extends State<_ProfilePage>
                             _PostGrid(
                               posts: _videoPosts,
                               registry: _transitionRegistry,
-                              scope: _scopeVideo,
+                              scope: profilePostScopeVideo,
                               loading: _loadingPosts,
                               errorText: _postsError,
                               emptyText: 'Belum ada video',
@@ -613,9 +678,9 @@ class _ProfilePageState extends State<_ProfilePage>
                               onCreateCta: _openCreatePost,
                               onRetry: _loadAll,
                               onTapPost: (idx) =>
-                                  _openPostDetail(_videoPosts, idx, _scopeVideo),
+                                  _openPostDetail(_videoPosts, idx, profilePostScopeVideo),
                               originKeyForPost: (post) =>
-                                  _tileKeyFor(_scopeVideo, post.id),
+                                  _tileKeyFor(profilePostScopeVideo, post.id),
                               onTapDown: (idx) =>
                                   _preparePostVideo(_videoPosts[idx]),
                               onTapCancel: (idx) =>
@@ -624,7 +689,7 @@ class _ProfilePageState extends State<_ProfilePage>
                             _PostGrid(
                               posts: _taggedPosts,
                               registry: _transitionRegistry,
-                              scope: _scopeTagged,
+                              scope: profilePostScopeTagged,
                               loading: _loadingPosts,
                               errorText: _postsError,
                               emptyText: 'Belum ada postingan belanja',
@@ -636,10 +701,10 @@ class _ProfilePageState extends State<_ProfilePage>
                               onTapPost: (idx) => _openPostDetail(
                                 _taggedPosts,
                                 idx,
-                                _scopeTagged,
+                                profilePostScopeTagged,
                               ),
                               originKeyForPost: (post) =>
-                                  _tileKeyFor(_scopeTagged, post.id),
+                                  _tileKeyFor(profilePostScopeTagged, post.id),
                               onTapDown: (idx) =>
                                   _preparePostVideo(_taggedPosts[idx]),
                               onTapCancel: (idx) =>
