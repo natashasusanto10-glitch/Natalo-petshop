@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/app_notification.dart';
 import 'package:natalo_petshop_flutter/screens/notifications_screen.dart';
 import 'package:natalo_petshop_flutter/widgets/official_brand_avatar.dart';
+import 'package:natalo_petshop_flutter/widgets/profile_avatar.dart';
 
 AppNotification _notif({
   String title = 'Feed kamu sudah tayang',
@@ -450,6 +451,53 @@ void main() {
       ));
       expect(find.byKey(const ValueKey('notification-like-badge')),
           findsNothing);
+    });
+  });
+
+  group('avatar netral user biasa tanpa foto (bugfix vs logo brand)', () {
+    testWidgets('komentar user biasa TANPA foto → avatar inisial netral, bukan logo brand',
+        (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'na1', 'title': 'Andi berkomentar', 'body': 'keren!',
+        'type': 'feed', 'eventType': 'feed_new_comment',
+        'actorName': 'Andi',
+        'createdAt': DateTime.now().toIso8601String(), 'read': false,
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+      ));
+      expect(find.byType(ProfileAvatar), findsOneWidget);
+      expect(find.byType(OfficialBrandAvatar), findsNothing);
+      expect(find.text('A'), findsOneWidget);
+    });
+
+    testWidgets('komentar akun official TANPA foto → tetap logo brand (tak berubah)',
+        (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'na2', 'title': 'Natalo Petshop Official berkomentar',
+        'body': 'terima kasih!', 'type': 'feed', 'eventType': 'feed_new_comment',
+        'actorName': 'Natalo Petshop Official',
+        'createdAt': DateTime.now().toIso8601String(), 'read': false,
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+      ));
+      expect(find.byType(OfficialBrandAvatar), findsOneWidget);
+      expect(find.byType(ProfileAvatar), findsNothing);
+    });
+
+    testWidgets('notif sistem tanpa aktor (mis. Feed kamu sudah tayang) → tetap logo brand',
+        (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'na3', 'title': 'Feed kamu sudah tayang', 'body': 'disetujui',
+        'type': 'feed', 'eventType': 'feed_published',
+        'createdAt': DateTime.now().toIso8601String(), 'read': false,
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+      ));
+      expect(find.byType(OfficialBrandAvatar), findsOneWidget);
+      expect(find.byType(ProfileAvatar), findsNothing);
     });
   });
 }
