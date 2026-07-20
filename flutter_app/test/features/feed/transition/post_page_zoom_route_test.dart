@@ -412,6 +412,63 @@ void main() {
     );
   });
 
+  group('crossfade-fallback opening', () {
+    final navigatorKey = GlobalKey<NavigatorState>();
+
+    testWidgets(
+      'crossfadeFallback opening renders the crossfade variant (never a '
+      'geometry zoom), still reaches open, and a reverse still targets B',
+      (tester) async {
+        // A perfectly usable prepared target for B exists; only the *readiness*
+        // is the crossfade fallback (bounded readiness stage missed its
+        // budget). Per the `Destination readiness` spec the opening must
+        // abandon the geometry zoom for a crossfade, yet the close is
+        // unaffected and still targets B (closingToTarget, not the fallback
+        // close).
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        final order = <String>[];
+        final session = _OrderRecordingSession(
+          initialPost: fakePost('a'),
+          source: fake,
+          order: order,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+
+        await tester.pumpWidget(_app(navigatorKey));
+        final route = _pushDirect(navigatorKey, session);
+        await tester.pump();
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.crossfadeFallback,
+        );
+        await tester.pumpAndSettle();
+
+        // The opening/open render is the crossfade variant, NOT the geometry
+        // zoom surface.
+        expect(route.phase, PostPageZoomPhase.open);
+        expect(_findsCrossfade(), findsOneWidget);
+        expect(find.byType(PostPageZoomTransition), findsNothing);
+
+        // Reverse behaviour is unchanged: freeze targets B, then the normal
+        // targeted close runs (never the fallback close), landing closed.
+        fake.onSuppress = (id, suppressed) =>
+            order.add('suppress:$id:$suppressed');
+        final future = route.requestClose();
+        expect(route.phase, PostPageZoomPhase.closingToTarget);
+        expect(order, ['freeze', 'suppress:a:true']);
+        expect(_findsFallbackCloseTransition(), findsNothing);
+
+        await tester.pumpAndSettle();
+        await future;
+        expect(order, ['freeze', 'suppress:a:true', 'suppress:a:false']);
+        expect(route.phase, PostPageZoomPhase.closed);
+      },
+    );
+  });
+
   group('proxy selection ladder', () {
     final navigatorKey = GlobalKey<NavigatorState>();
 
@@ -1019,7 +1076,7 @@ void main() {
 
         final route = await _openInteractiveWith(tester, navigatorKey, session);
         // Reduced-motion render path: crossfade variant, not the geometry zoom.
-        expect(_findsReducedMotion(), findsOneWidget);
+        expect(_findsCrossfade(), findsOneWidget);
         expect(find.byType(PostPageZoomTransition), findsNothing);
 
         // B targeting still resolves: an interactive commit lands on B and the
@@ -1472,10 +1529,11 @@ Finder _findsFallbackCloseTransition() => find.byWidgetPredicate(
   (widget) => widget.runtimeType.toString() == '_FallbackCloseTransition',
 );
 
-/// `_ReducedMotionZoomTransition` is private to `post_page_zoom_route.dart`;
-/// match on its `runtimeType` string (same idiom as the fallback finder).
-Finder _findsReducedMotion() => find.byWidgetPredicate(
-  (widget) => widget.runtimeType.toString() == '_ReducedMotionZoomTransition',
+/// `_CrossfadeZoomTransition` is private to `post_page_zoom_route.dart`;
+/// match on its `runtimeType` string (same idiom as the fallback finder). It
+/// renders both the reduced-motion and the crossfade-fallback openings.
+Finder _findsCrossfade() => find.byWidgetPredicate(
+  (widget) => widget.runtimeType.toString() == '_CrossfadeZoomTransition',
 );
 
 Widget _app(GlobalKey<NavigatorState> navigatorKey) {

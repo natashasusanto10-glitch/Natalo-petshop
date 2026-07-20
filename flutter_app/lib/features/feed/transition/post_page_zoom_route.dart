@@ -827,13 +827,21 @@ class PostPageZoomRoute extends PageRoute<void> {
       );
     }
     final proxy = _activeProxy();
-    // Reduced motion (spec `Performance and Accessibility -> Reduced motion` §):
-    // replace the geometry zoom with a short crossfade + mild centered scale.
+    // Two openings the spec routes away from the geometry zoom, into a short
+    // crossfade + mild centered scale:
+    //   * Reduced motion (spec `Performance and Accessibility -> Reduced
+    //     motion` §).
+    //   * Crossfade fallback (spec `Destination readiness` §): the bounded
+    //     readiness stage missed its budget, so this opening must "abandon
+    //     geometry zoom ... and use a 160 ms crossfade only after the
+    //     destination is stable" — it must NOT zoom from the tile rect.
     // The B-targeting machinery (freeze / prepared target / pending return) is
     // untouched, so an A->B reverse still resolves B and predictive back /
     // commit / cancel behave identically; only the *render* changes.
-    if (_reducedMotion(context)) {
-      return _ReducedMotionZoomTransition(
+    if (_reducedMotion(context) ||
+        session.destinationReadiness ==
+            PostDetailDestinationReadiness.crossfadeFallback) {
+      return _CrossfadeZoomTransition(
         progress: controller!,
         destinationChild: destinationBuilder(context),
         proxyImageProvider: _proxyImageProviderFor(proxy),
@@ -1123,13 +1131,19 @@ class _FallbackCloseTransition extends StatelessWidget {
   }
 }
 
-/// Reduced-motion opening / non-interactive-close render: a short crossfade
+/// Crossfade opening / non-interactive-close render: a short crossfade
 /// (clean proxy -> complete destination) under a mild centered scale, driven by
 /// the same forward/reverse [progress] the geometry zoom would use. It never
 /// references source-tile geometry, so it structurally cannot perform the full
 /// zoom; the route's freeze / target machinery still resolves B independently.
-class _ReducedMotionZoomTransition extends StatelessWidget {
-  const _ReducedMotionZoomTransition({
+///
+/// Serves two openings the spec routes away from a geometry zoom: reduced
+/// motion (`Performance and Accessibility -> Reduced motion` §) AND the
+/// `Destination readiness` crossfade fallback (bounded readiness stage missed
+/// its budget, so the opening abandons the geometry zoom for a 160 ms crossfade
+/// only after the destination is stable).
+class _CrossfadeZoomTransition extends StatelessWidget {
+  const _CrossfadeZoomTransition({
     required this.progress,
     required this.destinationChild,
     this.proxyImageProvider,
