@@ -264,4 +264,131 @@ void main() {
     ));
     expect(find.byIcon(Icons.sell_rounded), findsOneWidget);
   });
+
+  group('ikon kategori baru', () {
+    testWidgets('balasan ulasan → ikon rate_review (keluarga ungu mention)',
+        (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'rr1', 'title': 'Toko membalas ulasanmu', 'body': 'Terima kasih!',
+        'type': 'review', 'eventType': 'review_reply',
+        'url': '/products/produk-a', 'createdAt': DateTime.now().toIso8601String(),
+        'read': false,
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+      ));
+      expect(find.byIcon(Icons.rate_review_rounded), findsOneWidget);
+    });
+
+    testWidgets('pengingat tukar poin → ikon gift, bukan tiket promo',
+        (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'lr1', 'title': 'Poin kamu siap ditukar',
+        'body': '1.250 poin bisa jadi voucher belanja.',
+        'type': 'loyalty', 'eventType': 'loyalty_redeem_reminder',
+        'url': '/member/loyalty', 'createdAt': DateTime.now().toIso8601String(),
+        'read': false,
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+      ));
+      expect(find.byIcon(Icons.card_giftcard_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.confirmation_number_rounded), findsNothing);
+    });
+
+    testWidgets('flash sale → ikon petir, bukan tiket voucher biasa',
+        (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'fs1', 'title': 'Flash Sale sudah dimulai',
+        'body': 'Diskon s/d 50% terbatas.',
+        'type': 'promo', 'url': '/products?flashSale=1',
+        'createdAt': DateTime.now().toIso8601String(), 'read': false,
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+      ));
+      expect(find.byIcon(Icons.bolt_rounded), findsOneWidget);
+    });
+
+    testWidgets('feed like tanpa foto aktor → badge ikon hati, bukan play-circle',
+        (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'fl1', 'title': 'Andi menyukai postinganmu', 'body': '',
+        'type': 'feed', 'eventType': 'feed_new_like',
+        'createdAt': DateTime.now().toIso8601String(), 'read': false,
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+      ));
+      expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.play_circle_outline_rounded), findsNothing);
+    });
+
+    testWidgets('feed comment tanpa foto aktor → badge ikon chat bubble',
+        (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'fc1', 'title': 'Andi mengomentari postinganmu', 'body': 'keren!',
+        'type': 'feed', 'eventType': 'feed_new_comment',
+        'createdAt': DateTime.now().toIso8601String(), 'read': false,
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+      ));
+      expect(find.byIcon(Icons.chat_bubble_outline_rounded), findsOneWidget);
+    });
+
+    testWidgets('feed share tanpa foto aktor → badge ikon share', (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'fsh1', 'title': 'Postinganmu dibagikan', 'body': '',
+        'type': 'feed', 'eventType': 'feed_new_share',
+        'createdAt': DateTime.now().toIso8601String(), 'read': false,
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+      ));
+      expect(find.byIcon(Icons.share_rounded), findsOneWidget);
+    });
+
+    testWidgets('postingan disetujui → ikon centang, bukan play-circle',
+        (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'fap1', 'title': 'Postinganmu sudah disetujui', 'body': '',
+        'type': 'feed', 'eventType': 'feed_post_approved',
+        'createdAt': DateTime.now().toIso8601String(), 'read': false,
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+      ));
+      expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.play_circle_outline_rounded), findsNothing);
+    });
+
+    testWidgets('postingan ditolak → ikon silang merah, bukan play-circle',
+        (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'frj1', 'title': 'Postinganmu belum bisa ditayangkan',
+        'body': 'Cek alasannya.', 'type': 'feed',
+        'eventType': 'feed_post_rejected',
+        'createdAt': DateTime.now().toIso8601String(), 'read': false,
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+      ));
+      expect(find.byIcon(Icons.cancel_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.play_circle_outline_rounded), findsNothing);
+    });
+
+    testWidgets('postingan menunggu review → ikon jam pasir abu netral',
+        (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'fpend1', 'title': 'Feed kamu sedang menunggu review',
+        'body': '', 'type': 'feed', 'eventType': 'feed_review_pending',
+        'createdAt': DateTime.now().toIso8601String(), 'read': false,
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+      ));
+      expect(find.byIcon(Icons.hourglass_empty_rounded), findsOneWidget);
+    });
+  });
 }
