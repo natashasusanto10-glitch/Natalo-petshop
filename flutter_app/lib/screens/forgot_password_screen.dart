@@ -3,6 +3,7 @@ import '../theme/natalo_colors.dart';
 
 import '../services/auth_service.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/loading_button.dart';
 
 // ── Design tokens (match login_screen.dart Natalo visual family) ──
@@ -54,11 +55,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     final email = _emailController.text.trim();
     if (email.isEmpty || !email.contains('@') || !email.contains('.')) {
       AppHaptics.warning();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Masukkan email yang valid.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: tidak match keyword literal → default info per rule.
+      AppToast.showBanner(
+        context,
+        'Masukkan email yang valid.',
+        kind: ToastKind.info,
       );
       return;
     }
@@ -76,11 +77,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     } catch (error) {
       if (!mounted) return;
       AppHaptics.warning();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal kirim link reset: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: contains "Gagal" → error.
+      AppToast.showBanner(
+        context,
+        'Gagal kirim link reset: $error',
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _loading = false);

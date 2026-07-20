@@ -13,6 +13,7 @@ import '../state/cart_store.dart';
 import '../state/favorite_store.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/loading_button.dart';
 
 // ── Design tokens — match login_screen.dart Natalo visual family ──
@@ -90,11 +91,11 @@ class _LoginOtpScreenState extends State<LoginOtpScreen> {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 8) {
       AppHaptics.warning();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Masukkan nomor WhatsApp yang valid.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: tidak match keyword literal → default info per rule.
+      AppToast.showBanner(
+        context,
+        'Masukkan nomor WhatsApp yang valid.',
+        kind: ToastKind.info,
       );
       return;
     }
@@ -116,21 +117,22 @@ class _LoginOtpScreenState extends State<LoginOtpScreen> {
         _otpFocus.requestFocus();
       });
       if (isResend) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Kode OTP baru dikirim ke WhatsApp kamu.'),
-            behavior: SnackBarBehavior.floating,
-          ),
+        // Kind-inference: tidak match keyword literal → default info.
+        AppToast.showBanner(
+          context,
+          'Kode OTP baru dikirim ke WhatsApp kamu.',
+          kind: ToastKind.info,
         );
       }
     } catch (error) {
       if (!mounted) return;
       AppHaptics.warning();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_humanizeError(error)),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: dynamic message dari catch-block request OTP gagal —
+      // context selalu kegagalan request OTP → kind: error.
+      AppToast.showBanner(
+        context,
+        _humanizeError(error),
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -142,11 +144,11 @@ class _LoginOtpScreenState extends State<LoginOtpScreen> {
     final phone = _normalizedPhone ?? _phoneController.text.trim();
     if (otp.length != 6) {
       AppHaptics.warning();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Kode OTP harus 6 digit.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: tidak match keyword literal → default info per rule.
+      AppToast.showBanner(
+        context,
+        'Kode OTP harus 6 digit.',
+        kind: ToastKind.info,
       );
       return;
     }
@@ -189,11 +191,12 @@ class _LoginOtpScreenState extends State<LoginOtpScreen> {
     } catch (error) {
       if (!mounted) return;
       AppHaptics.warning();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_humanizeError(error)),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: dynamic message dari catch-block verify OTP gagal —
+      // context selalu kegagalan verifikasi → kind: error.
+      AppToast.showBanner(
+        context,
+        _humanizeError(error),
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _loading = false);

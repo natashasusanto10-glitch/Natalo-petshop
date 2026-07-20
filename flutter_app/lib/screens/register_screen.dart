@@ -188,20 +188,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
       AppHaptics.success();
       _startResendCooldown();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Kode OTP baru sudah dikirim ke email & WhatsApp.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: tidak match keyword literal → default info per rule.
+      AppToast.showBanner(
+        context,
+        'Kode OTP baru sudah dikirim ke email & WhatsApp.',
+        kind: ToastKind.info,
       );
     } catch (error) {
       if (!mounted) return;
       AppHaptics.warning();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_friendlyRegisterError(error)),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: dynamic message dari catch-block resend OTP gagal —
+      // context selalu kegagalan → kind: error.
+      AppToast.showBanner(
+        context,
+        _friendlyRegisterError(error),
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _resendingOtp = false);
@@ -256,13 +257,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         AppHaptics.success();
         setState(() => _otpSent = true);
         _startResendCooldown();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Kode OTP dikirim ke email dan WhatsApp kamu. Masukkan satu kode yang sama.',
-            ),
-            behavior: SnackBarBehavior.floating,
-          ),
+        // Kind-inference: tidak match keyword literal → default info per rule.
+        AppToast.showBanner(
+          context,
+          'Kode OTP dikirim ke email dan WhatsApp kamu. Masukkan satu kode yang sama.',
+          kind: ToastKind.info,
         );
         return;
       }
@@ -299,11 +298,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
       AppHaptics.warning();
       final message = _friendlyRegisterError(error);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: dynamic message dari catch-block register gagal —
+      // context selalu kegagalan → kind: error.
+      AppToast.showBanner(
+        context,
+        message,
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _loading = false);
