@@ -1118,6 +1118,7 @@ void main() {
         route.beginInteractiveBack();
         for (final d in [0.0, 0.2, 0.5, 0.8, 1.0]) {
           route.updateInteractiveBack(d);
+          await tester.pump();
           final backFrame = route.debugCurrentBackFrame!;
           final forwardFrame = resolveHeroFrame(
             tileRect: tile.rect,
@@ -1135,11 +1136,122 @@ void main() {
             (backFrame.contentOffset - forwardFrame.contentOffset).distance,
             closeTo(0, 1e-6),
           );
+          // clip: compare the RRect's outer rect + a corner radius (same
+          // idiom as the geometry-level clip comparisons in
+          // post_page_zoom_geometry_test.dart) rather than requiring
+          // bit-exact RRect equality.
           expect(
-            resolveChromeOpacity(1 - d),
-            closeTo(resolveChromeOpacity(1 - d), 1e-9),
+            backFrame.clip.outerRect.left,
+            closeTo(forwardFrame.clip.outerRect.left, 1e-6),
           );
+          expect(
+            backFrame.clip.outerRect.top,
+            closeTo(forwardFrame.clip.outerRect.top, 1e-6),
+          );
+          expect(
+            backFrame.clip.outerRect.right,
+            closeTo(forwardFrame.clip.outerRect.right, 1e-6),
+          );
+          expect(
+            backFrame.clip.outerRect.bottom,
+            closeTo(forwardFrame.clip.outerRect.bottom, 1e-6),
+          );
+          expect(
+            backFrame.clip.tlRadiusX,
+            closeTo(forwardFrame.clip.tlRadiusX, 1e-6),
+          );
+
+          // Read the ACTUAL chrome opacity the route renders during this
+          // interactive drag (not a formula compared to itself): the chrome
+          // layer is the single `Opacity` ancestor of the destination
+          // widget in `_buildInteractivePreview`'s render (`Opacity(
+          // opacity: resolveChromeOpacity(1 - d), child: chrome)` wrapping
+          // `RepaintBoundary(child: _destination(context))`). An ambiguous
+          // finder throws rather than silently picking the wrong Opacity.
+          final actualChromeOpacity = tester
+              .widget<Opacity>(
+                find.ancestor(
+                  of: find.text('destination'),
+                  matching: find.byType(Opacity),
+                ),
+              )
+              .opacity;
+          final forwardChromeOpacity = resolveChromeOpacity(1 - d);
+          expect(actualChromeOpacity, closeTo(forwardChromeOpacity, 1e-9));
         }
+        route.cancelInteractiveBack();
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'video hero draws through the LIVE coordinator controller (not a '
+      'thumbnail) during an interactive-back drag',
+      (tester) async {
+        final platform = _FakeHeroVideoPlayerPlatform();
+        VideoPlayerPlatform.instance = platform;
+        final controller = VideoPlayerController.networkUrl(
+          Uri.parse('https://example.com/a.mp4'),
+        );
+        addTearDown(controller.dispose);
+        // Real async (not a bare `await` in the FakeAsync testWidgets zone):
+        // the fake platform's `initialized` event never arrives otherwise —
+        // same documented gotcha as feed_video_post_view_test.dart /
+        // the Task 5 close-path video test above.
+        await tester.runAsync(() => controller.initialize());
+        expect(controller.value.isInitialized, isTrue);
+
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        // fakePost defaults to a video post (kind: USER_VIDEO).
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+
+        await tester.pumpWidget(_app(navigatorKey));
+        final route = _pushDirect(navigatorKey, session);
+        await tester.pump();
+        session.reportDestinationMediaSlot(
+          rect: const Rect.fromLTWH(0, 80, 400, 500),
+          mediaAspect: 9 / 16,
+        );
+        session.reportDestinationVideoController(controller);
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.geometryReady,
+        );
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.open);
+
+        route.beginInteractiveBack();
+        route.updateInteractiveBack(0.4);
+        await tester.pump();
+        expect(route.phase, PostPageZoomPhase.interactiveBack);
+
+        final heroVideoPlayer = tester.widget<VideoPlayer>(
+          find.descendant(
+            of: find.byType(PostPageHeroSurface),
+            matching: find.byType(VideoPlayer),
+          ),
+        );
+        expect(heroVideoPlayer.controller, same(controller));
+
+        // Advance the drag further: still the SAME controller instance, not
+        // a thumbnail/proxy swap.
+        route.updateInteractiveBack(0.7);
+        await tester.pump();
+        final heroVideoPlayerAgain = tester.widget<VideoPlayer>(
+          find.descendant(
+            of: find.byType(PostPageHeroSurface),
+            matching: find.byType(VideoPlayer),
+          ),
+        );
+        expect(heroVideoPlayerAgain.controller, same(controller));
+
         route.cancelInteractiveBack();
         await tester.pumpAndSettle();
       },
