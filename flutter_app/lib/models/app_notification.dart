@@ -9,6 +9,7 @@ class AppNotification {
   final String? source;
   final String? eventType;
   final String? feedPostId;
+  final String? commentId;
   final String? status;
   final String? ctaLabel;
   final String? importantTitle;
@@ -33,6 +34,7 @@ class AppNotification {
     this.source,
     this.eventType,
     this.feedPostId,
+    this.commentId,
     this.status,
     this.ctaLabel,
     this.importantTitle,
@@ -65,6 +67,7 @@ class AppNotification {
       source: json['source']?.toString(),
       eventType: json['eventType']?.toString(),
       feedPostId: (json['feedPostId'] ?? json['videoId'])?.toString(),
+      commentId: (json['commentId'] ?? json['comment_id'])?.toString(),
       status: json['status']?.toString(),
       ctaLabel: (json['ctaLabel'] ?? json['cta_label'])?.toString(),
       importantTitle:
@@ -105,6 +108,7 @@ class AppNotification {
       source: source,
       eventType: eventType,
       feedPostId: feedPostId,
+      commentId: commentId,
       status: status,
       ctaLabel: ctaLabel,
       importantTitle: importantTitle,

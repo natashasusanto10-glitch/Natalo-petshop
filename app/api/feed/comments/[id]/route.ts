@@ -13,6 +13,41 @@ import {
   countedFeedCommentWhere,
   readDatabaseClock,
 } from "@/lib/feed/comment-sync";
+import { getFeedCommentDetail } from "@/lib/feed/queries";
+
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: commentId } = await params;
+  if (!commentId) {
+    return NextResponse.json({ error: "Comment ID kosong." }, { status: 400 });
+  }
+
+  const session = await getSession();
+  const result = await getFeedCommentDetail({
+    commentId,
+    viewerUserId: session?.sub ?? null,
+  });
+
+  if (result.status === "not-found") {
+    return NextResponse.json(
+      { error: "Komentar tidak ditemukan", reason: "comment_deleted" },
+      { status: 404 }
+    );
+  }
+  if (result.status === "post-gone") {
+    return NextResponse.json(
+      { error: "Postingan sudah dihapus", reason: "post_deleted" },
+      { status: 404 }
+    );
+  }
+  return NextResponse.json({
+    ok: true,
+    comment: result.comment,
+    postId: result.comment.postId,
+  });
+}
 
 export async function DELETE(
   request: NextRequest,

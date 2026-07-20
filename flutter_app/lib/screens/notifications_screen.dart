@@ -4,6 +4,7 @@ import '../theme/natalo_colors.dart';
 
 import '../config/api_config.dart';
 import '../models/app_notification.dart';
+import '../models/feed_comment.dart';
 import '../models/feed_post.dart';
 import '../models/member_profile.dart' show OrderSummary;
 import '../models/product.dart';
@@ -23,6 +24,7 @@ import '../widgets/app_ui.dart';
 import '../widgets/official_brand_avatar.dart';
 import '../widgets/profile_avatar.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
+import '../widgets/notification_reply_composer.dart';
 import 'announcement_detail_screen.dart';
 import 'in_app_browser_screen.dart';
 
@@ -865,6 +867,13 @@ String? extractProfileUsername(String? url) {
 typedef PublicProfileFetcher = Future<PublicProfileResult> Function(
     String username);
 
+/// Seam test aksi komentar. Default produksi memakai feedService.
+typedef CommentLikeSetter = Future<int> Function(
+  String commentId, {
+  required bool liked,
+});
+typedef CommentByIdFetcher = Future<FeedComment> Function(String commentId);
+
 /// Baris notifikasi redesign: identitas kiri → kalimat+waktu tengah →
 /// thumbnail kanan (opsional). Unread = bar aksen kiri. Publik untuk test.
 @visibleForTesting
@@ -873,6 +882,9 @@ class NotificationRow extends StatelessWidget {
   final VoidCallback onTap;
   final FollowService? followService;
   final PublicProfileFetcher? profileFetcher;
+  final CommentLikeSetter? commentLikeSetter;
+  final CommentByIdFetcher? commentByIdFetcher;
+  final CommentReplyPoster? commentReplyPoster;
 
   const NotificationRow({
     super.key,
@@ -880,6 +892,9 @@ class NotificationRow extends StatelessWidget {
     required this.onTap,
     this.followService,
     this.profileFetcher,
+    this.commentLikeSetter,
+    this.commentByIdFetcher,
+    this.commentReplyPoster,
   });
 
   bool get _isBrandIdentity =>
@@ -909,6 +924,12 @@ class NotificationRow extends StatelessWidget {
         notification.eventType?.toLowerCase() == 'user_followed'
             ? extractProfileUsername(notification.url)
             : null;
+    final feedPostIdTrim = notification.feedPostId?.trim() ?? '';
+    final commentIdTrim = notification.commentId?.trim() ?? '';
+    final showCommentActions =
+        notification.eventType?.trim().toLowerCase() == 'feed_new_comment' &&
+            commentIdTrim.isNotEmpty &&
+            feedPostIdTrim.isNotEmpty;
 
     return InkWell(
       onTap: onTap,
@@ -984,6 +1005,15 @@ class NotificationRow extends StatelessWidget {
                               profileFetcher: profileFetcher,
                             ),
                             const SizedBox(width: 10),
+                          ] else if (showCommentActions) ...[
+                            _NotificationCommentActions(
+                              commentId: commentIdTrim,
+                              feedPostId: feedPostIdTrim,
+                              likeSetter: commentLikeSetter,
+                              fetcher: commentByIdFetcher,
+                              poster: commentReplyPoster,
+                            ),
+                            const SizedBox(width: 8),
                           ] else if (ctaLabel != null) ...[
                             InkWell(
                               onTap: onTap,
@@ -1149,6 +1179,154 @@ class _NotificationFollowBackPillState
                 ),
               ),
       ),
+    );
+  }
+}
+
+/// Baris aksi ♡ + Balas utk notif komentar (gate: feed_new_comment +
+/// commentId + feedPostId). ♡ optimistik idempotent (setCommentLiked);
+/// Balas → fetchCommentById → composer ringan. Nested InkWell: tap aksi
+/// TIDAK memicu navigasi baris.
+class _NotificationCommentActions extends StatefulWidget {
+  final String commentId;
+  final String feedPostId;
+  final CommentLikeSetter? likeSetter;
+  final CommentByIdFetcher? fetcher;
+  final CommentReplyPoster? poster;
+
+  const _NotificationCommentActions({
+    required this.commentId,
+    required this.feedPostId,
+    this.likeSetter,
+    this.fetcher,
+    this.poster,
+  });
+
+  @override
+  State<_NotificationCommentActions> createState() =>
+      _NotificationCommentActionsState();
+}
+
+class _NotificationCommentActionsState
+    extends State<_NotificationCommentActions> {
+  bool _liked = false;
+  bool _likeBusy = false;
+  bool _replyLoading = false;
+
+  Future<void> _toggleLike() async {
+    if (_likeBusy) return;
+    AppHaptics.tap();
+    final next = !_liked;
+    setState(() {
+      _liked = next;
+      _likeBusy = true;
+    });
+    final setLike = widget.likeSetter ??
+        (String id, {required bool liked}) =>
+            feedService.setCommentLiked(id, liked: liked);
+    try {
+      await setLike(widget.commentId, liked: next);
+      if (!mounted) return;
+      setState(() => _likeBusy = false);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _liked = !next; // rollback
+        _likeBusy = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gagal menyukai komentar.')),
+      );
+    }
+  }
+
+  Future<void> _openReply() async {
+    if (_replyLoading) return;
+    AppHaptics.tap();
+    setState(() => _replyLoading = true);
+    final fetch =
+        widget.fetcher ?? (String id) => feedService.fetchCommentById(id);
+    try {
+      final comment = await fetch(widget.commentId);
+      if (!mounted) return;
+      setState(() => _replyLoading = false);
+      await showNotificationReplyComposer(
+        context,
+        comment: comment,
+        feedPostId: widget.feedPostId,
+        poster: widget.poster,
+      );
+    } on FeedCommentUnavailableException catch (e) {
+      if (!mounted) return;
+      setState(() => _replyLoading = false);
+      final msg = e.reason == FeedCommentUnavailableReason.postDeleted
+          ? 'Postingan sudah dihapus.'
+          : 'Komentar sudah dihapus.';
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(msg)));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _replyLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gagal memuat komentar. Coba lagi.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InkWell(
+          key: const ValueKey('notification-comment-like'),
+          onTap: _toggleLike,
+          borderRadius: BorderRadius.circular(999),
+          child: SizedBox(
+            height: 40,
+            width: 44,
+            child: Icon(
+              _liked
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
+              size: 18,
+              color: _liked
+                  ? const Color(0xFFE11D48)
+                  : cs.onSurfaceVariant,
+            ),
+          ),
+        ),
+        InkWell(
+          key: const ValueKey('notification-comment-reply'),
+          onTap: _replyLoading ? null : _openReply,
+          borderRadius: BorderRadius.circular(999),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: NataloColors.primarySoft,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: _replyLoading
+                ? const SizedBox(
+                    height: 14,
+                    width: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: NataloColors.primary,
+                    ),
+                  )
+                : const Text(
+                    'Balas',
+                    style: TextStyle(
+                      color: NataloColors.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+          ),
+        ),
+      ],
     );
   }
 }

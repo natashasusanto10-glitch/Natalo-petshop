@@ -92,6 +92,7 @@ export async function sendCommentNotification(params: {
       url: feedPostOwnerUrl(post.id),
       ctaLabel: "Lihat Komentar",
       tag: `feed-comment-${post.id}`,
+      commentId: params.commentId,
       data: { comment_id: params.commentId },
       surface: SOCIAL_NOTIFICATION_SOURCE,
       actor: {
@@ -156,6 +157,7 @@ export async function sendReplyNotification(params: {
       url: feedPostOwnerUrl(params.postId),
       ctaLabel: "Lihat Balasan",
       tag: `feed-reply-${params.parentCommentId}`,
+      commentId: params.replyCommentId,
       data: {
         parent_comment_id: params.parentCommentId,
         reply_comment_id: params.replyCommentId,
@@ -517,6 +519,7 @@ export async function sendCommentLikeNotification(params: {
       url: feedPostOwnerUrl(params.postId),
       ctaLabel: "Lihat Komentar",
       tag: `feed-comment-like-${params.commentId}`,
+      commentId: params.commentId,
       data: {
         comment_id: params.commentId,
         like_count: String(params.likeCount),

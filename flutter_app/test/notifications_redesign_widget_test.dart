@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/app_notification.dart';
+import 'package:natalo_petshop_flutter/models/feed_comment.dart';
+import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/models/public_profile.dart';
 import 'package:natalo_petshop_flutter/screens/notifications_screen.dart';
+import 'package:natalo_petshop_flutter/services/feed_service.dart';
 import 'package:natalo_petshop_flutter/services/follow_service.dart';
 import 'package:natalo_petshop_flutter/services/profile_service.dart';
 import 'package:natalo_petshop_flutter/services/api_client.dart';
@@ -618,6 +621,157 @@ void main() {
       expect(find.text('Lihat Profil'), findsOneWidget);
       expect(find.byKey(const ValueKey('notification-follow-back-pill')),
           findsNothing);
+    });
+  });
+
+  group('aksi komentar (♡ + Balas)', () {
+    AppNotification commentNotif({
+      String? commentId = 'c1',
+      String? feedPostId = 'p1',
+      String eventType = 'feed_new_comment',
+      String ctaLabel = 'Lihat Komentar',
+    }) =>
+        AppNotification.fromApiJson({
+          'id': 'cm1', 'title': 'Asiong berkomentar', 'body': 'mantap',
+          'type': 'feed', 'eventType': eventType,
+          if (feedPostId != null) 'feedPostId': feedPostId,
+          if (commentId != null) 'commentId': commentId,
+          'ctaLabel': ctaLabel,
+          'createdAt': DateTime.now().toIso8601String(), 'read': true,
+        });
+
+    FeedComment fakeComment() => FeedComment(
+          id: 'c1', postId: 'p1', content: 'mantap',
+          isAdminOfficial: false, isHidden: false, likeCount: 1,
+          createdAt: DateTime.now(), viewerLiked: false,
+          author: const FeedAuthor(id: 'u1', name: 'Asiong', username: 'asiong'),
+        );
+
+    testWidgets('notif komentar baru → aksi ♡ + Balas (bukan pill lama)',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(
+            notification: commentNotif(),
+            onTap: () {},
+          ),
+        ),
+      ));
+      expect(find.byKey(const ValueKey('notification-comment-like')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('notification-comment-reply')),
+          findsOneWidget);
+      expect(find.text('Lihat Komentar'), findsNothing);
+    });
+
+    testWidgets('notif komentar lama (tanpa commentId) → pill Lihat Komentar',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(
+            notification: commentNotif(commentId: null),
+            onTap: () {},
+          ),
+        ),
+      ));
+      expect(find.text('Lihat Komentar'), findsOneWidget);
+      expect(find.byKey(const ValueKey('notification-comment-reply')),
+          findsNothing);
+    });
+
+    testWidgets('♡ optimistik → merah + panggil setter; tap TIDAK navigasi baris',
+        (tester) async {
+      var rowTapped = false;
+      String? likedId;
+      bool? likedState;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(
+            notification: commentNotif(),
+            onTap: () => rowTapped = true,
+            commentLikeSetter: (id, {required liked}) async {
+              likedId = id;
+              likedState = liked;
+              return 2;
+            },
+          ),
+        ),
+      ));
+      await tester.tap(find.byKey(const ValueKey('notification-comment-like')));
+      await tester.pumpAndSettle();
+      expect(rowTapped, isFalse);
+      expect(likedId, 'c1');
+      expect(likedState, true);
+      final icon = tester.widget<Icon>(find.descendant(
+        of: find.byKey(const ValueKey('notification-comment-like')),
+        matching: find.byType(Icon),
+      ));
+      expect(icon.icon, Icons.favorite_rounded);
+    });
+
+    testWidgets('♡ gagal → rollback ke outline + snackbar', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(
+            notification: commentNotif(),
+            onTap: () {},
+            commentLikeSetter: (id, {required liked}) async =>
+                throw const ApiException('boom'),
+          ),
+        ),
+      ));
+      await tester.tap(find.byKey(const ValueKey('notification-comment-like')));
+      await tester.pumpAndSettle();
+      final icon = tester.widget<Icon>(find.descendant(
+        of: find.byKey(const ValueKey('notification-comment-like')),
+        matching: find.byType(Icon),
+      ));
+      expect(icon.icon, Icons.favorite_border_rounded);
+      expect(find.text('Gagal menyukai komentar.'), findsOneWidget);
+    });
+
+    testWidgets('Balas → 404 komentar dihapus → snackbar tanpa composer',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(
+            notification: commentNotif(),
+            onTap: () {},
+            commentByIdFetcher: (_) async => throw
+                const FeedCommentUnavailableException(
+                    FeedCommentUnavailableReason.commentDeleted),
+          ),
+        ),
+      ));
+      await tester.tap(find.byKey(const ValueKey('notification-comment-reply')));
+      await tester.pumpAndSettle();
+      expect(find.text('Komentar sudah dihapus.'), findsOneWidget);
+      expect(find.byType(TextField), findsNothing); // composer tak dibuka
+    });
+
+    testWidgets('Balas → sukses buka composer → kirim panggil poster',
+        (tester) async {
+      String? gotParent;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(
+            notification: commentNotif(),
+            onTap: () {},
+            commentByIdFetcher: (_) async => fakeComment(),
+            commentReplyPoster: (postId, {required content, parentCommentId}) async {
+              gotParent = parentCommentId;
+            },
+          ),
+        ),
+      ));
+      await tester.tap(find.byKey(const ValueKey('notification-comment-reply')));
+      await tester.pumpAndSettle();
+      expect(find.text('Membalas @asiong'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), '@asiong keren');
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('composer-send')));
+      await tester.pumpAndSettle();
+      expect(gotParent, 'c1');
     });
   });
 }
