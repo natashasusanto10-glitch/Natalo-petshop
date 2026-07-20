@@ -8,6 +8,10 @@ import '../theme/natalo_text.dart';
 
 import '../constants/official_brand.dart';
 import '../models/feed_post.dart';
+import '../features/feed/transition/post_detail_transition_session.dart';
+import '../features/feed/transition/post_page_zoom_route.dart';
+import '../features/feed/transition/post_transition_source_tile.dart';
+import '../features/feed/transition/profile_post_source_adapter.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
@@ -142,6 +146,22 @@ class _ProfilePageState extends State<_ProfilePage>
   PostVideoWarmHandoff? _preparedHandoff;
   final _tileKeys = <String, GlobalKey>{};
   final GlobalKey _createPostOriginKey = GlobalKey();
+
+  // ── Full-page zoom transition (Postingan) ───────────────────────────
+  /// Single registry feeding every scoped grid tile its live geometry +
+  /// media proxy for the zoom route.
+  final PostTransitionTileRegistry _transitionRegistry =
+      PostTransitionTileRegistry();
+
+  /// The scope the running transition currently resolves tiles in. Normal
+  /// scoped pagination NEVER switches tabs; `'all'` (Semua) is only adopted
+  /// when the active post cannot exist in the origin tab (legacy mixed-scope
+  /// pagination), and the tab then stays on Semua after pop.
+  String _activeTransitionScope = _scopeAll;
+
+  static const String _scopeAll = 'all';
+  static const String _scopeVideo = 'video';
+  static const String _scopeTagged = 'tagged';
 
   @override
   void initState() {
@@ -329,19 +349,127 @@ class _ProfilePageState extends State<_ProfilePage>
   GlobalKey _tileKeyFor(String scope, String postId) =>
       _tileKeys.putIfAbsent('$scope:$postId', GlobalKey.new);
 
+  List<FeedPost> _scopeList(String scope) {
+    switch (scope) {
+      case _scopeVideo:
+        return _videoPosts;
+      case _scopeTagged:
+        return _taggedPosts;
+      default:
+        return _allPosts;
+    }
+  }
+
+  bool _scopeContains(String scope, String postId) =>
+      _scopeList(scope).any((post) => post.id == postId);
+
+  /// Dedupe the loaded page into the CURRENT scope's backing list WITHOUT any
+  /// duplicate network fetch (the detail screen already fetched it). Since the
+  /// scoped views (`video`/`tagged`) are derived from `_allPosts`, appending
+  /// unseen posts here keeps every scope in sync.
+  void _mergeScopedPage(FeedPage page) {
+    if (!mounted) return;
+    final existing = _allPosts.map((post) => post.id).toSet();
+    final additions =
+        page.items.where((post) => !existing.contains(post.id)).toList();
+    if (additions.isEmpty) return;
+    setState(() {
+      _allPosts = [..._allPosts, ...additions];
+    });
+  }
+
+  /// Best-effort positioning of the active grid so the target post B lands
+  /// fully visible below the pinned tab bar and above the bottom nav.
+  Future<void> _ensureTileVisible(FeedPost post, int generation) async {
+    if (!mounted) return;
+    // Scope rule: keep the origin tab when B exists there; only fall back to
+    // Semua (all) when B cannot exist in the origin scope.
+    if (!_scopeContains(_activeTransitionScope, post.id) &&
+        _scopeContains(_scopeAll, post.id)) {
+      _activeTransitionScope = _scopeAll;
+      if (_tabController.index != 0) {
+        _tabController.index = 0;
+      }
+      _transitionRegistry.markLayoutChanged();
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+    }
+    final tileContext =
+        _tileKeys['$_activeTransitionScope:${post.id}']?.currentContext;
+    if (tileContext == null || !tileContext.mounted) return;
+    // Align the tile just below the pinned tab header so its rect clears the
+    // pinned chrome; tiles are short, so this keeps the whole tile in-band.
+    await Scrollable.ensureVisible(
+      tileContext,
+      alignment: 0.15,
+      duration: Duration.zero,
+    );
+  }
+
+  BuildContext? _firstBuiltTileContext(String scope) {
+    for (final post in _scopeList(scope)) {
+      final context = _tileKeys['$scope:${post.id}']?.currentContext;
+      if (context != null) return context;
+    }
+    return null;
+  }
+
+  void _consumePendingReturn(ProfilePostSourceAdapter adapter) {
+    if (adapter.pendingReturnPostId == null || !mounted) {
+      adapter.consumePendingReturn(
+        gridWidth: 0,
+        indexOfPostInCurrentScope: (_) => null,
+        jumpToOffset: (_) {},
+      );
+      return;
+    }
+    final gridWidth = MediaQuery.of(context).size.width;
+    adapter.consumePendingReturn(
+      gridWidth: gridWidth,
+      indexOfPostInCurrentScope: (postId) {
+        final index =
+            _scopeList(_activeTransitionScope).indexWhere((p) => p.id == postId);
+        return index < 0 ? null : index;
+      },
+      jumpToOffset: (offset) {
+        final tileContext = _firstBuiltTileContext(_activeTransitionScope);
+        if (tileContext == null) return;
+        final position = Scrollable.maybeOf(tileContext)?.position;
+        if (position == null) return;
+        position.jumpTo(
+          offset.clamp(position.minScrollExtent, position.maxScrollExtent),
+        );
+      },
+    );
+  }
+
   Future<void> _openPostDetail(
     List<FeedPost> posts,
     int initialIndex,
-    GlobalKey originKey,
+    String scope,
   ) async {
     if (posts.isEmpty || _openingPost) return;
     _openingPost = true;
     final post = posts[initialIndex];
     final handoff = _takePreparedPost(post) ?? _createWarmHandoff(post);
+    _activeTransitionScope = scope;
+    final adapter = ProfilePostSourceAdapter(
+      registry: _transitionRegistry,
+      isMounted: () => mounted,
+      currentScope: () => _activeTransitionScope,
+      ensureVisible: _ensureTileVisible,
+      mergeScopedPage: _mergeScopedPage,
+      fallbackColor: (_) =>
+          Theme.of(context).colorScheme.surfaceContainerHighest,
+    );
+    final session = PostDetailTransitionSession(
+      initialPost: post,
+      source: adapter,
+    );
     try {
-      await pushOriginExpansion<void>(
+      await pushPostPageZoom(
         context,
-        originKey: originKey,
+        session: session,
         destinationBuilder: (_) => MemberPostDetailScreen(
           post: post,
           posts: posts,
@@ -355,9 +483,16 @@ class _ProfilePageState extends State<_ProfilePage>
                 ? feedService.fetchMyPosts(filter: 'all', cursor: cursor)
                 : loader(cursor);
           },
+          transitionSession: session,
         ),
       );
     } finally {
+      // Order matters: the session's dispose still routes tile restoration
+      // through the (live) adapter; consume the pending return next; only
+      // then release the adapter's owned proxies.
+      session.dispose();
+      _consumePendingReturn(adapter);
+      adapter.dispose();
       await handoff?.disposeIfUnclaimed();
       _openingPost = false;
     }
@@ -446,6 +581,8 @@ class _ProfilePageState extends State<_ProfilePage>
                           children: [
                             _PostGrid(
                               posts: _allPosts,
+                              registry: _transitionRegistry,
+                              scope: _scopeAll,
                               loading: _loadingPosts,
                               errorText: _postsError,
                               emptyText: 'Belum ada postingan',
@@ -454,13 +591,10 @@ class _ProfilePageState extends State<_ProfilePage>
                               showCreateCta: true,
                               onCreateCta: _openCreatePost,
                               onRetry: _loadAll,
-                              onTapPost: (idx) => _openPostDetail(
-                                _allPosts,
-                                idx,
-                                _tileKeyFor('all', _allPosts[idx].id),
-                              ),
+                              onTapPost: (idx) =>
+                                  _openPostDetail(_allPosts, idx, _scopeAll),
                               originKeyForPost: (post) =>
-                                  _tileKeyFor('all', post.id),
+                                  _tileKeyFor(_scopeAll, post.id),
                               onTapDown: (idx) =>
                                   _preparePostVideo(_allPosts[idx]),
                               onTapCancel: (idx) =>
@@ -468,6 +602,8 @@ class _ProfilePageState extends State<_ProfilePage>
                             ),
                             _PostGrid(
                               posts: _videoPosts,
+                              registry: _transitionRegistry,
+                              scope: _scopeVideo,
                               loading: _loadingPosts,
                               errorText: _postsError,
                               emptyText: 'Belum ada video',
@@ -476,13 +612,10 @@ class _ProfilePageState extends State<_ProfilePage>
                               showCreateCta: false,
                               onCreateCta: _openCreatePost,
                               onRetry: _loadAll,
-                              onTapPost: (idx) => _openPostDetail(
-                                _videoPosts,
-                                idx,
-                                _tileKeyFor('video', _videoPosts[idx].id),
-                              ),
+                              onTapPost: (idx) =>
+                                  _openPostDetail(_videoPosts, idx, _scopeVideo),
                               originKeyForPost: (post) =>
-                                  _tileKeyFor('video', post.id),
+                                  _tileKeyFor(_scopeVideo, post.id),
                               onTapDown: (idx) =>
                                   _preparePostVideo(_videoPosts[idx]),
                               onTapCancel: (idx) =>
@@ -490,6 +623,8 @@ class _ProfilePageState extends State<_ProfilePage>
                             ),
                             _PostGrid(
                               posts: _taggedPosts,
+                              registry: _transitionRegistry,
+                              scope: _scopeTagged,
                               loading: _loadingPosts,
                               errorText: _postsError,
                               emptyText: 'Belum ada postingan belanja',
@@ -501,10 +636,10 @@ class _ProfilePageState extends State<_ProfilePage>
                               onTapPost: (idx) => _openPostDetail(
                                 _taggedPosts,
                                 idx,
-                                _tileKeyFor('tagged', _taggedPosts[idx].id),
+                                _scopeTagged,
                               ),
                               originKeyForPost: (post) =>
-                                  _tileKeyFor('tagged', post.id),
+                                  _tileKeyFor(_scopeTagged, post.id),
                               onTapDown: (idx) =>
                                   _preparePostVideo(_taggedPosts[idx]),
                               onTapCancel: (idx) =>
@@ -670,6 +805,8 @@ class _AccountTabHeaderDelegate extends SliverPersistentHeaderDelegate {
 
 class _PostGrid extends StatelessWidget {
   final List<FeedPost> posts;
+  final PostTransitionTileRegistry registry;
+  final String scope;
   final bool loading;
   final String? errorText;
   final String emptyText;
@@ -684,6 +821,8 @@ class _PostGrid extends StatelessWidget {
 
   const _PostGrid({
     required this.posts,
+    required this.registry,
+    required this.scope,
     required this.loading,
     required this.errorText,
     required this.emptyText,
@@ -735,6 +874,8 @@ class _PostGrid extends StatelessWidget {
         itemBuilder: (context, index) {
           return _PostThumbnail(
             post: posts[index],
+            registry: registry,
+            scope: scope,
             originKey: originKeyForPost(posts[index]),
             onTap: () => onTapPost(index),
             onTapDown: () => onTapDown?.call(index),
@@ -814,6 +955,8 @@ class _ErrorState extends StatelessWidget {
 
 class _PostThumbnail extends StatelessWidget {
   final FeedPost post;
+  final PostTransitionTileRegistry registry;
+  final String scope;
   final GlobalKey originKey;
   final VoidCallback onTap;
   final VoidCallback? onTapDown;
@@ -821,6 +964,8 @@ class _PostThumbnail extends StatelessWidget {
 
   const _PostThumbnail({
     required this.post,
+    required this.registry,
+    required this.scope,
     required this.originKey,
     required this.onTap,
     this.onTapDown,
@@ -834,8 +979,13 @@ class _PostThumbnail extends StatelessWidget {
             : null) ??
         (post.previewMediaUrl.trim().isNotEmpty ? post.previewMediaUrl : null);
     final cs = Theme.of(context).colorScheme;
-    return RepaintBoundary(
+    return PostTransitionSourceTile(
       key: originKey,
+      registry: registry,
+      id: PostTransitionTileId(scope: scope, postId: post.id),
+      fallbackColor: cs.surfaceContainerHighest,
+      imageProvider:
+          mediaUrl != null ? CachedNetworkImageProvider(mediaUrl) : null,
       child: OriginSnapshotSource(
         child: InkWell(
           key: ValueKey('profile-post-${post.id}'),

@@ -111,7 +111,9 @@ void main() {
     expect(find.byKey(const Key('public_tab_shop_pill')), findsOneWidget);
   });
 
-  testWidgets('opens Postingan without entry haptic', (tester) async {
+  testWidgets(
+      'tapping a Postingan tile uses no entry haptic and disables feedback',
+      (tester) async {
     final post = FeedPost.fromJson({
       'id': 'own-a',
       'slug': 'own-a',
@@ -133,19 +135,35 @@ void main() {
     );
     for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 50));
-      if (find.byKey(const ValueKey('profile-post-own-a')).evaluate().isNotEmpty) {
+      if (find
+          .byKey(const ValueKey('profile-post-own-a'))
+          .evaluate()
+          .isNotEmpty) {
         break;
       }
     }
+
+    // The tile's InkWell must disable Material tap feedback so no haptic is
+    // emitted on entry into the zoom transition.
+    final inkWell = tester.widget<InkWell>(
+      find.byKey(const ValueKey('profile-post-own-a')),
+    );
+    expect(inkWell.enableFeedback, isFalse);
 
     await tester.tap(find.byKey(const ValueKey('profile-post-own-a')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 1));
 
+    // The legacy origin-expansion snapshot must be gone — this path now pushes
+    // the dedicated full-page zoom route instead.
     expect(
       find.byKey(const ValueKey('origin-expansion-snapshot')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(hapticCalls.where((call) => call.method == 'light'), isEmpty);
+    expect(
+      hapticCalls.where((call) => call.method == 'selectionClick'),
+      isEmpty,
+    );
   });
 }
