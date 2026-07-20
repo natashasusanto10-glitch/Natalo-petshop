@@ -689,6 +689,19 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     return photo == null || photo.isEmpty ? null : photo;
   }
 
+  /// Username utk tap nama/avatar di header post → buka profil. Mode owner
+  /// ("Postingan Saya") prioritas `memberStore.profile.username` — endpoint
+  /// list post sendiri tak selalu ikut kirim `author.username` (data diri
+  /// sendiri). Non-owner tetap pakai `post.author.username` (data publik,
+  /// sudah reliable dari server).
+  String? _memberUsernameFor(FeedPost post) {
+    if (widget.isOwner) {
+      final own = memberStore.profile?.username?.trim();
+      if (own != null && own.isNotEmpty) return own;
+    }
+    return post.author.username;
+  }
+
   FeedPost _postWithResolvedAuthor(FeedPost post) {
     if (widget.authorPerPost) return post;
     final source = post.author;
@@ -895,6 +908,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                         memberPhotoUrl: widget.authorPerPost
                             ? _authorPhotoFor(post)
                             : _memberPhotoUrl,
+                        memberUsername: widget.authorPerPost
+                            ? post.author.username
+                            : _memberUsernameFor(post),
                         memberIsOfficial: widget.authorPerPost
                             ? post.author.isOfficialAccount
                             : widget.authorIsOfficial,
@@ -1228,6 +1244,15 @@ class _PostFeedItem extends StatefulWidget {
   final String memberInitial;
   final String? memberPhotoUrl;
 
+  /// Username utk tap nama/avatar → buka profil. Sama seperti memberName/
+  /// memberPhotoUrl: parent SUDAH resolve fallback ke memberStore.profile
+  /// untuk mode owner ("Postingan Saya") — endpoint list post sendiri tidak
+  /// selalu ikut kirim `author.username` (data diri sendiri, dianggap
+  /// client sudah tahu). Kalau _PostFeedItem pakai `post.author.username`
+  /// mentah, tap nama diam-diam no-op (null) khusus di mode owner — regresi
+  /// yang dilaporkan user.
+  final String? memberUsername;
+
   /// Author = akun official → logo NL + nama emas + rosette di author row.
   final bool memberIsOfficial;
   final bool liked;
@@ -1262,6 +1287,7 @@ class _PostFeedItem extends StatefulWidget {
     required this.memberName,
     required this.memberInitial,
     required this.memberPhotoUrl,
+    this.memberUsername,
     this.memberIsOfficial = false,
     required this.liked,
     this.showMenu = true,
@@ -1545,7 +1571,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
             memberInitial: memberInitial,
             memberPhotoUrl: memberPhotoUrl,
             isOfficial: widget.memberIsOfficial,
-            authorUsername: post.author.username,
+            authorUsername: widget.memberUsername,
             onMenuTap: widget.onMenuTap,
           ),
         // Double-tap detector membungkus media — HANYA untuk FOTO/carousel.
@@ -1580,7 +1606,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
                     memberInitial: memberInitial,
                     memberPhotoUrl: memberPhotoUrl,
                     isOfficial: widget.memberIsOfficial,
-                    authorUsername: post.author.username,
+                    authorUsername: widget.memberUsername,
                     onMenuTap: widget.onMenuTap,
                   ),
                 ),
