@@ -18,6 +18,7 @@ import '../utils/haptics.dart';
 import '../widgets/app_login_gate.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/official_brand_avatar.dart';
+import '../widgets/profile_avatar.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import 'announcement_detail_screen.dart';
 import 'in_app_browser_screen.dart';
@@ -927,6 +928,7 @@ class NotificationRow extends StatelessWidget {
                     brandIdentity: _isBrandIdentity,
                     avatarUrl: actorAvatarUrl,
                     likeBadge: showLikeBadge,
+                    actorName: notification.actorName,
                   ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1104,12 +1106,14 @@ class _IdentityAvatar extends StatelessWidget {
   final bool brandIdentity;
   final String? avatarUrl;
   final bool likeBadge;
+  final String? actorName;
 
   const _IdentityAvatar({
     required this.visual,
     required this.brandIdentity,
     this.avatarUrl,
     this.likeBadge = false,
+    this.actorName,
   });
 
   @override
@@ -1138,17 +1142,40 @@ class _IdentityAvatar extends StatelessWidget {
         children: [photo, _likeBadge(context)],
       );
     }
-    final core = brandIdentity
-        ? const OfficialBrandAvatar(size: 42)
-        : Container(
-            height: 42,
-            width: 42,
-            decoration: BoxDecoration(
-              color: visual.color.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(visual.icon, color: visual.color, size: 20),
-          );
+    // Bug lama (sejak P2): notif ber-aktor (mis. komentar/like) tanpa foto
+    // salah menampilkan logo brand Natalo — padahal aktornya user BIASA yang
+    // sekadar belum pasang foto profil, bukan akun official. Server SUDAH
+    // brand-safe (admin → actorName "Natalo Petshop Official", user biasa →
+    // nama asli), tapi client dulu abai pada actorName dan cuma lihat
+    // `brandIdentity` (kategori feed/pengumuman) — akibatnya SEMUA notif feed
+    // tanpa foto (termasuk milik user biasa) dianggap identitas brand.
+    // Fix: bila ada actorName NYATA (bukan brand) → avatar inisial netral
+    // (ProfileAvatar, pola sama dgn avatar user di seluruh app), BUKAN logo
+    // brand. Badge kategori kanan-bawah tetap ikut aturan `brandIdentity`
+    // yang sudah ada (tak berubah) — jadi notif komentar/like tetap dapat
+    // badge kecilnya, cuma identitas utamanya kini benar (inisial, bukan NL).
+    final trimmedActorName = actorName?.trim();
+    final isBrandActor = trimmedActorName == 'Natalo Petshop Official';
+    final hasRealActor =
+        trimmedActorName != null && trimmedActorName.isNotEmpty && !isBrandActor;
+    final core = hasRealActor
+        ? ProfileAvatar(
+            size: 42,
+            fontSize: 16,
+            initial: trimmedActorName.substring(0, 1).toUpperCase(),
+            plain: true,
+          )
+        : brandIdentity
+            ? const OfficialBrandAvatar(size: 42)
+            : Container(
+                height: 42,
+                width: 42,
+                decoration: BoxDecoration(
+                  color: visual.color.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(visual.icon, color: visual.color, size: 20),
+              );
 
     if (!brandIdentity) return core;
     return Stack(
