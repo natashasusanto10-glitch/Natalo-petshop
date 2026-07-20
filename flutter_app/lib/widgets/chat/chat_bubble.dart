@@ -44,6 +44,25 @@ class ChatBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isCustomer = _isCustomer;
     final hasContext = message.product != null || message.order != null;
+    final hasText = (message.text ?? '').trim().isNotEmpty;
+
+    // Pesan "menanyakan produk" (caption + tag produk) dirender SATU kartu
+    // menyatu (foto+judul+harga lalu teks caption di bawahnya), paritas
+    // dengan tampilan NLCATTER — BUKAN bubble teks terpisah + kartu konteks
+    // terpisah seperti sebelumnya.
+    if (message.product != null && hasText) {
+      return Column(
+        crossAxisAlignment:
+            isCustomer ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          _ProductQuestionCard(
+            message: message,
+            isCustomer: isCustomer,
+            onRetry: onRetry,
+          ),
+        ],
+      );
+    }
 
     return Column(
       crossAxisAlignment:
@@ -61,6 +80,206 @@ class ChatBubble extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Kartu gabungan untuk pesan yang menandai produk DAN membawa teks caption
+/// (mis. "Mantap ene" saat menanyakan produk X) — satu kartu: info produk di
+/// atas, teks caption + meta (jam/centang) di bawah, dipisah garis tipis.
+/// Lihat catatan paritas NLCATTER di [ChatBubble].
+class _ProductQuestionCard extends StatefulWidget {
+  final ChatMessage message;
+  final bool isCustomer;
+  final VoidCallback? onRetry;
+
+  const _ProductQuestionCard({
+    required this.message,
+    required this.isCustomer,
+    required this.onRetry,
+  });
+
+  @override
+  State<_ProductQuestionCard> createState() => _ProductQuestionCardState();
+}
+
+class _ProductQuestionCardState extends State<_ProductQuestionCard> {
+  bool _loading = false;
+
+  Future<void> _onTap() async {
+    final product = widget.message.product;
+    if (product == null || _loading) return;
+    setState(() => _loading = true);
+    try {
+      await openChatProductDetail(
+        context,
+        slug: product.slug,
+        productId: product.productId,
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final product = widget.message.product!;
+    final text = widget.message.text ?? '';
+    final meta = _MetaRow(
+      message: widget.message,
+      isCustomer: widget.isCustomer,
+      onRetry: widget.onRetry,
+    );
+
+    return GestureDetector(
+      onTap: _onTap,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: NataloColors.surface,
+            borderRadius: AppRadius.large,
+            border: Border.all(color: NataloColors.border),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.sm + 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    if (product.imageUrl != null)
+                      Padding(
+                        padding: const EdgeInsets.only(right: AppSpacing.md),
+                        child: AppProductImage(
+                          imageUrl: product.imageUrl,
+                          width: 56,
+                          height: 56,
+                          fit: BoxFit.cover,
+                          borderRadius: BorderRadius.circular(AppRadius.md),
+                        ),
+                      )
+                    else
+                      Padding(
+                        padding: const EdgeInsets.only(right: AppSpacing.md),
+                        child: Container(
+                          width: 56,
+                          height: 56,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: NataloColors.surfaceVariant,
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                          ),
+                          child: const Icon(
+                            Icons.shopping_bag_outlined,
+                            size: 26,
+                            color: NataloColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    Flexible(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Menanyakan produk',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: NataloColors.textTertiary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            product.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              height: 1.25,
+                              fontWeight: FontWeight.w800,
+                              color: NataloColors.textPrimary,
+                            ),
+                          ),
+                          if (product.price != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              formatRupiah(product.price!),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: NataloColors.primary,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.xs),
+                    _loading
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child:
+                                CircularProgressIndicator(strokeWidth: 1.8),
+                          )
+                        : const Icon(
+                            Icons.chevron_right_rounded,
+                            size: 20,
+                            color: NataloColors.textTertiary,
+                          ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: NataloColors.border),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.sm + 2,
+                  AppSpacing.sm,
+                  AppSpacing.sm + 2,
+                  AppSpacing.sm,
+                ),
+                child: Stack(
+                  children: [
+                    Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: text,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              height: 1.35,
+                              color: NataloColors.textPrimary,
+                            ),
+                          ),
+                          WidgetSpan(
+                            alignment: PlaceholderAlignment.bottom,
+                            child: Opacity(
+                              opacity: 0,
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 14),
+                                child: meta,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Positioned(right: 0, bottom: 0, child: meta),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
