@@ -858,9 +858,15 @@ export async function getFeedCommentDetail({
     include: {
       ...FEED_COMMENT_THREAD_INCLUDE,
       post: { select: { status: true, deletedAt: true } },
+      parent: { select: { isHidden: true } },
     },
   });
-  if (!comment || comment.deletedAt !== null || comment.isHidden) {
+  if (
+    !comment ||
+    comment.deletedAt !== null ||
+    comment.isHidden ||
+    comment.parent?.isHidden
+  ) {
     return { status: "not-found" };
   }
   if (

@@ -104,6 +104,32 @@ test("not-found: komentar hidden (moderasi)", async () => {
   assert.equal(res.status, "not-found");
 });
 
+test("not-found: reply whose parent (root comment) has been hidden by moderation", async () => {
+  const res = await getFeedCommentDetail({
+    commentId: "c1",
+    db: makeDb(
+      baseComment({
+        parentCommentId: "root1",
+        parent: { isHidden: true },
+      }),
+    ),
+  });
+  assert.equal(res.status, "not-found");
+});
+
+test("ok: reply whose parent (root comment) is merely deleted-not-hidden stays visible", async () => {
+  const res = await getFeedCommentDetail({
+    commentId: "c1",
+    db: makeDb(
+      baseComment({
+        parentCommentId: "root1",
+        parent: { isHidden: false, deletedAt: new Date() },
+      }),
+    ),
+  });
+  assert.equal(res.status, "ok");
+});
+
 test("post-gone: post induk deletedAt", async () => {
   const res = await getFeedCommentDetail({
     commentId: "c1",
