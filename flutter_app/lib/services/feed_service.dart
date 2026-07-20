@@ -26,6 +26,16 @@ enum FeedDesiredStateVerb { put, delete }
 FeedDesiredStateVerb feedDesiredStateVerb(bool desiredActive) =>
     desiredActive ? FeedDesiredStateVerb.put : FeedDesiredStateVerb.delete;
 
+/// Alasan komentar tak bisa diambil (utk composer balas dari notifikasi).
+enum FeedCommentUnavailableReason { commentDeleted, postDeleted }
+
+class FeedCommentUnavailableException implements Exception {
+  final FeedCommentUnavailableReason reason;
+  const FeedCommentUnavailableException(this.reason);
+  @override
+  String toString() => 'FeedCommentUnavailableException($reason)';
+}
+
 Map<String, dynamic> buildFeedCommentsQuery({
   String? cursor,
   int limit = 30,
@@ -283,6 +293,49 @@ class FeedService {
       if (kDebugMode) debugPrint('[feedService.fetchComments] $e');
       if (e is ApiException) rethrow;
       throw ApiException('fetch comments failed', cause: e);
+    }
+  }
+
+  /// Ambil satu komentar by id (utk composer balas dari notifikasi).
+  /// 404 → [FeedCommentUnavailableException] dgn reason (komentar vs post
+  /// dihapus) supaya caller bisa tampilkan pesan yang tepat.
+  Future<FeedComment> fetchCommentById(String commentId) async {
+    final uri = ApiConfig.uri(
+      '/api/feed/comments/${Uri.encodeComponent(commentId)}',
+    );
+    try {
+      final res = await http
+          .get(uri, headers: _headers)
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode == 404) {
+        String? reason;
+        try {
+          final body = jsonDecode(res.body);
+          if (body is Map<String, dynamic>) {
+            reason = body['reason']?.toString();
+          }
+        } catch (_) {}
+        throw FeedCommentUnavailableException(
+          reason == 'post_deleted'
+              ? FeedCommentUnavailableReason.postDeleted
+              : FeedCommentUnavailableReason.commentDeleted,
+        );
+      }
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        throw ApiException('fetch comment failed', statusCode: res.statusCode);
+      }
+      final body = jsonDecode(res.body);
+      if (body is Map<String, dynamic>) {
+        final commentJson = body['comment'] is Map<String, dynamic>
+            ? body['comment'] as Map<String, dynamic>
+            : body;
+        return FeedComment.fromApiJson(commentJson);
+      }
+      throw const ApiException('invalid response');
+    } catch (e) {
+      if (e is FeedCommentUnavailableException) rethrow;
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString(), cause: e);
     }
   }
 
