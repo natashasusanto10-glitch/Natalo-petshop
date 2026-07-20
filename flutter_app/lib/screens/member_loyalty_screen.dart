@@ -165,7 +165,6 @@ class _MemberLoyaltyScreenState extends State<MemberLoyaltyScreen> {
           profile.copyWith(points: profile.points - tier.points),
         );
       }
-      AppHaptics.success();
       AppToast.showBanner(
         context,
         'Voucher ${result.code} berhasil ditukar!',
@@ -176,7 +175,6 @@ class _MemberLoyaltyScreenState extends State<MemberLoyaltyScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
       AppToast.showBanner(context, 'Gagal menukar poin. Coba lagi.',
           kind: ToastKind.error);
     } finally {

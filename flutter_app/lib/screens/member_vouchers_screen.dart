@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import '../models/member_profile.dart';
 import '../services/member_service.dart';
 import '../state/member_store.dart';
-import '../utils/haptics.dart';
 import '../widgets/app_login_gate.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
@@ -422,7 +421,6 @@ class _VoucherCard extends StatelessWidget {
                     child: ElevatedButton(
                       onPressed: voucher.applicable
                           ? () async {
-                              AppHaptics.success();
                               await Clipboard.setData(
                                 ClipboardData(text: voucher.code),
                               );

@@ -876,14 +876,12 @@ class _ProductCard extends StatelessWidget {
       },
       onAddToCart: () async {
         if (product.hasVariants) {
-          AppHaptics.tap();
           Navigator.pushNamed(context, '/product-detail', arguments: product);
           _showProductSnack(context, 'Pilih varian produk dulu.');
           return;
         }
         final added = await cartStore.addProduct(product);
         if (!context.mounted || !added) return;
-        AppHaptics.success();
         _showProductSnack(context, '${product.title} masuk keranjang.');
       },
     );

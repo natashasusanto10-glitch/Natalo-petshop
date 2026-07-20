@@ -54,7 +54,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Future<void> _submit() async {
     final email = _emailController.text.trim();
     if (email.isEmpty || !email.contains('@') || !email.contains('.')) {
-      AppHaptics.warning();
       // Kind-inference: tidak match keyword literal → default info per rule.
       AppToast.showBanner(
         context,
@@ -76,7 +75,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       });
     } catch (error) {
       if (!mounted) return;
-      AppHaptics.warning();
       // Kind-inference: contains "Gagal" → error.
       AppToast.showBanner(
         context,

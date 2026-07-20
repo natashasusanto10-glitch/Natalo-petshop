@@ -568,7 +568,6 @@ class _OrderCardState extends State<_OrderCard> {
       );
     } catch (error) {
       if (!context.mounted) return;
-      AppHaptics.warning();
       final message = error.toString().replaceFirst('Exception: ', '');
       _showSnack(context, 'Konfirmasi gagal: $message', kind: ToastKind.error);
     } finally {
@@ -779,7 +778,6 @@ class _OrderCardState extends State<_OrderCard> {
       _showSnack(context, message, kind: ToastKind.success);
     } catch (error) {
       if (!context.mounted) return;
-      AppHaptics.warning();
       final message = error.toString().replaceFirst('Exception: ', '');
       _showSnack(context, 'Pembatalan gagal: $message', kind: ToastKind.error);
     } finally {
