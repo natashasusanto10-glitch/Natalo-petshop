@@ -114,10 +114,17 @@ class PostPageZoomTransition extends StatelessWidget {
                   child: Transform.scale(
                     scale: frame.contentScale,
                     alignment: Alignment.topLeft,
-                    child: SizedBox(
-                      width: mediaAspect,
-                      height: 1,
-                      child: child,
+                    child: OverflowBox(
+                      minWidth: 0,
+                      maxWidth: double.infinity,
+                      minHeight: 0,
+                      maxHeight: double.infinity,
+                      alignment: Alignment.topLeft,
+                      child: SizedBox(
+                        width: mediaAspect,
+                        height: 1,
+                        child: child,
+                      ),
                     ),
                   ),
                 ),
