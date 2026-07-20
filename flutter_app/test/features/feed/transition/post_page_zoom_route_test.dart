@@ -1,9 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart' show SemanticsNode;
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/transition/post_detail_transition_session.dart';
+import 'package:natalo_petshop_flutter/features/feed/transition/post_page_zoom_back_gesture.dart';
 import 'package:natalo_petshop_flutter/features/feed/transition/post_page_zoom_route.dart';
 import 'package:natalo_petshop_flutter/features/feed/transition/post_page_zoom_transition.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
@@ -496,6 +499,361 @@ void main() {
       },
     );
   });
+
+  group('iOS interactive edge back', () {
+    final navigatorKey = GlobalKey<NavigatorState>();
+
+    // The foundation-debug-var invariant check runs at the END of the test
+    // body (before any tearDown/addTearDown callback), so a platform override
+    // must be reset in-body. Method-driven tests don't need it at all: the
+    // default flutter-test platform is Android and the route's public gesture
+    // entry points bypass the leading-edge recognizer entirely.
+
+    testWidgets(
+      'leading-edge recognizer is absent on Android',
+      (tester) async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.android;
+        final route = await _openInteractive(tester, navigatorKey);
+        expect(find.byKey(postPageBackGestureEdgeKey), findsNothing);
+        expect(route.phase, PostPageZoomPhase.open);
+        debugDefaultTargetPlatformOverride = null;
+      },
+    );
+
+    testWidgets(
+      'leading-edge recognizer is installed on iOS',
+      (tester) async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        await _openInteractive(tester, navigatorKey);
+        expect(find.byKey(postPageBackGestureEdgeKey), findsOneWidget);
+        debugDefaultTargetPlatformOverride = null;
+      },
+    );
+
+    testWidgets(
+      'gesture is accepted only from phase open (freeze once at first '
+      'progress; later reportActivePost/reportLoadedPage do not retarget)',
+      (tester) async {
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+
+        // Cannot begin from a non-open phase.
+        route.beginInteractiveBack();
+        expect(route.phase, PostPageZoomPhase.interactiveBack);
+        expect(session.isFrozen, isTrue);
+        expect(route.beginInteractiveBack, throwsStateError);
+
+        route.updateInteractiveBack(0.2);
+        final frameBefore = route.debugCurrentBackFrame;
+        expect(frameBefore, isNotNull);
+
+        final before = session.loadedPosts.length;
+        // Pages still merge while frozen, but must not retarget.
+        session.reportLoadedPage(
+          FeedPage(items: [fakePost('a'), fakePost('b'), fakePost('c')]),
+        );
+        session.reportActivePost(fakePost('b'));
+        expect(session.loadedPosts.length, greaterThan(before));
+        expect(session.isFrozen, isTrue);
+        expect(route.debugCurrentBackFrame, frameBefore);
+
+        route.cancelInteractiveBack();
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets('preview progress is LINEAR (no easing): scale/radius/'
+        'translation follow injected progress exactly', (tester) async {
+      const viewport = Rect.fromLTWH(0, 0, 800, 600);
+      final zero = resolvePostPageBackPreview(
+        viewportRect: viewport,
+        progress: 0,
+      );
+      expect(zero.rect, viewport);
+      expect(zero.radius, 0);
+
+      final half = resolvePostPageBackPreview(
+        viewportRect: viewport,
+        progress: 0.5,
+      );
+      // Radius is exactly half of the full-extent value (linear).
+      expect(half.radius, closeTo(kPostPageBackPreviewCornerRadius / 2, 1e-9));
+      // Scale is exactly the midpoint between 1.0 and the preview minimum.
+      const expectedScale = (1.0 + kPostPageBackPreviewMinScale) / 2;
+      expect(half.rect.width, closeTo(viewport.width * expectedScale, 1e-6));
+      // Horizontal translation follows progress exactly.
+      expect(
+        half.rect.center.dx,
+        closeTo(
+          viewport.center.dx +
+              0.5 * viewport.width * kPostPageBackPreviewTranslateFraction,
+          1e-6,
+        ),
+      );
+
+      final full = resolvePostPageBackPreview(
+        viewportRect: viewport,
+        progress: 1,
+      );
+      expect(full.radius, kPostPageBackPreviewCornerRadius);
+      expect(
+        full.rect.width,
+        closeTo(viewport.width * kPostPageBackPreviewMinScale, 1e-6),
+      );
+    });
+
+    testWidgets(
+      'cancel below threshold springs from the EXACT current transform back '
+      'to fullscreen (no restart), settlingOpenAfterCancel -> open, then '
+      'resumes tracking',
+      (tester) async {
+        final session = _RecordingSession(
+          initialPost: fakePost('a'),
+          source: FakeTransitionSource(),
+        );
+        addTearDown(session.dispose);
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+
+        route.beginInteractiveBack();
+        route.updateInteractiveBack(0.2);
+        final atRelease = route.debugCurrentBackFrame;
+
+        expect(session.resumeCalls, 0);
+        route.endInteractiveBack(0); // progress .2 < .25, velocity 0 -> cancel
+        expect(route.phase, PostPageZoomPhase.settlingOpenAfterCancel);
+        // First frame of the settle equals the released transform (no restart).
+        expect(route.debugCurrentBackFrame, atRelease);
+        expect(session.resumeCalls, 0);
+
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.open);
+        expect(route.debugBackPreviewProgress, 0);
+        expect(session.resumeCalls, 1);
+      },
+    );
+
+    testWidgets(
+      'commit at >= .25 continues from the EXACT current transform to B over '
+      '180-240 ms; phase closingToTarget',
+      (tester) async {
+        expect(
+          kPostPageBackCommitDuration.inMilliseconds,
+          inInclusiveRange(180, 240),
+        );
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+        route.beginInteractiveBack();
+        route.updateInteractiveBack(0.3);
+        final atRelease = route.debugCurrentBackFrame;
+
+        final future = route.endInteractiveBack(0); // .3 >= .25 -> commit
+        expect(route.phase, PostPageZoomPhase.closingToTarget);
+        // First frame equals the released transform (no restart).
+        expect(route.debugCurrentBackFrame, atRelease);
+
+        await tester.pumpAndSettle();
+        await future;
+        expect(route.phase, PostPageZoomPhase.closed);
+      },
+    );
+
+    testWidgets('a fling >= 800 px/s commits even below the progress threshold',
+        (tester) async {
+      final fake = FakeTransitionSource();
+      fake.targets['a'] = fakeTarget('a');
+      fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+        ..complete(fakeTarget('a'));
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: fake,
+      );
+      addTearDown(session.dispose);
+      await session.prepareActiveTarget();
+
+      final route = await _openInteractiveWith(tester, navigatorKey, session);
+      route.beginInteractiveBack();
+      route.updateInteractiveBack(0.1); // below progress threshold
+      final future = route.endInteractiveBack(900); // fling -> commit
+      expect(route.phase, PostPageZoomPhase.closingToTarget);
+      await tester.pumpAndSettle();
+      await future;
+      expect(route.phase, PostPageZoomPhase.closed);
+    });
+
+    testWidgets(
+      'B tile is NOT suppressed during preview and only suppressed in the '
+      'terminal portion of the commit, restored at completion',
+      (tester) async {
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        final order = <String>[];
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+        fake.onSuppress = (id, s) => order.add('suppress:$id:$s');
+
+        route.beginInteractiveBack();
+        route.updateInteractiveBack(0.3);
+        // No suppression during the preview.
+        expect(order, isEmpty);
+
+        final future = route.endInteractiveBack(0);
+        await tester.pumpAndSettle();
+        await future;
+        // Suppress then restore, in that order, during the terminal portion.
+        expect(order, ['suppress:a:true', 'suppress:a:false']);
+      },
+    );
+
+    testWidgets('no haptic channel call across a full drag+commit and '
+        'drag+cancel', (tester) async {
+      final haptics = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method.startsWith('HapticFeedback')) {
+            haptics.add(call.method);
+          }
+          return null;
+        },
+      );
+      addTearDown(() {
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        );
+      });
+
+      final fake = FakeTransitionSource();
+      fake.targets['a'] = fakeTarget('a');
+      fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+        ..complete(fakeTarget('a'));
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: fake,
+      );
+      addTearDown(session.dispose);
+      await session.prepareActiveTarget();
+
+      final route = await _openInteractiveWith(tester, navigatorKey, session);
+      // Drag + cancel.
+      route.beginInteractiveBack();
+      route.updateInteractiveBack(0.1);
+      route.endInteractiveBack(0);
+      await tester.pumpAndSettle();
+      expect(route.phase, PostPageZoomPhase.open);
+      // Drag + commit.
+      route.beginInteractiveBack();
+      route.updateInteractiveBack(0.4);
+      final future = route.endInteractiveBack(0);
+      await tester.pumpAndSettle();
+      await future;
+      expect(haptics, isEmpty);
+    });
+
+    testWidgets(
+      'seam-driven progress begins the gesture and updates the preview; '
+      'lifecycle interruption cancels back to open',
+      (tester) async {
+        // Arm the gesture-progress seam so the route publishes its driver.
+        debugPostPageZoomGestureProgress = (_, __) {};
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: FakeTransitionSource(),
+        );
+        addTearDown(session.dispose);
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+
+        // A single seam call at `open` begins the gesture and updates.
+        debugPostPageZoomGestureProgress!(0.15, 0);
+        expect(route.phase, PostPageZoomPhase.interactiveBack);
+        expect(route.debugBackPreviewProgress, closeTo(0.15, 1e-9));
+
+        // Backgrounding mid-gesture cancels back to fullscreen open.
+        route.debugHandleInterruption();
+        expect(route.phase, PostPageZoomPhase.settlingOpenAfterCancel);
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.open);
+        expect(session.playbackAllowed, isFalse);
+      },
+    );
+
+    testWidgets('a real leading-edge drag on iOS drives an interactive back',
+        (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: FakeTransitionSource(),
+      );
+      addTearDown(session.dispose);
+      final route = await _openInteractiveWith(tester, navigatorKey, session);
+
+      final gesture = await tester.startGesture(const Offset(5, 300));
+      await gesture.moveBy(const Offset(60, 0));
+      await tester.pump();
+      expect(route.phase, PostPageZoomPhase.interactiveBack);
+      expect(route.debugBackPreviewProgress, greaterThan(0));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      // 60px drag on an 800px viewport is well below the 25% threshold -> cancel.
+      expect(route.phase, PostPageZoomPhase.open);
+      debugDefaultTargetPlatformOverride = null;
+    });
+  });
+}
+
+/// Opens the route and settles to `open` using the ambient platform override.
+Future<PostPageZoomRoute> _openInteractive(
+  WidgetTester tester,
+  GlobalKey<NavigatorState> navigatorKey,
+) async {
+  final session = PostDetailTransitionSession(
+    initialPost: fakePost('a'),
+    source: FakeTransitionSource(),
+  );
+  addTearDown(session.dispose);
+  return _openInteractiveWith(tester, navigatorKey, session);
+}
+
+Future<PostPageZoomRoute> _openInteractiveWith(
+  WidgetTester tester,
+  GlobalKey<NavigatorState> navigatorKey,
+  PostDetailTransitionSession session,
+) async {
+  await tester.pumpWidget(_app(navigatorKey));
+  final route = _pushDirect(navigatorKey, session);
+  await tester.pump();
+  session.markDestinationReady(PostDetailDestinationReadiness.geometryReady);
+  await tester.pumpAndSettle();
+  expect(route.phase, PostPageZoomPhase.open);
+  return route;
 }
 
 final _observer = _CountingObserver();
