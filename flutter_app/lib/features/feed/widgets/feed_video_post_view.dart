@@ -3551,6 +3551,23 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 /// feed_screen.dart karena terikat langsung ke model FeedAuthor & service
 /// layer, bukan bagian widget presentasional yang di-share.
 
+/// Fit lapisan media untuk framing "feed" (mainFeed / fullscreenFeed).
+///
+/// Viewer fullscreen + media LANDSCAPE → [BoxFit.contain] (letterbox, bar
+/// hitam atas-bawah) supaya video tampil UTUH — `cover` akan memotong sisi
+/// kiri-kanan memaksa jadi 9:16 (keluhan user: landscape jadi ke-crop).
+/// Portrait/persegi tetap [BoxFit.cover] (isi penuh, paritas IG). mainFeed
+/// TIDAK diubah (tetap cover) supaya feed utama tak berubah.
+BoxFit resolveFeedCoverFit({
+  required FeedVideoFraming framing,
+  required bool isLandscape,
+}) {
+  if (framing == FeedVideoFraming.fullscreenFeed && isLandscape) {
+    return BoxFit.contain;
+  }
+  return BoxFit.cover;
+}
+
 class _MediaBackground extends StatelessWidget {
   final FeedPost post;
   final VideoPlayerController? videoController;
@@ -3630,7 +3647,19 @@ class _MediaBackground extends StatelessWidget {
           );
       if (framing == FeedVideoFraming.mainFeed ||
           framing == FeedVideoFraming.fullscreenFeed) {
-        return _mediaStack(videoLayer(BoxFit.cover));
+        final fit = resolveFeedCoverFit(
+          framing: framing,
+          isLandscape: size.width > size.height,
+        );
+        // Contain (landscape fullscreen) rata tengah supaya bar hitam terbagi
+        // atas-bawah; cover tetap rata atas (ala IG).
+        return _mediaStack(
+          videoLayer(
+            fit,
+            alignment:
+                fit == BoxFit.contain ? Alignment.center : _foregroundAlign,
+          ),
+        );
       }
       return _mediaStack(
         videoLayer(_foregroundFit),
@@ -3654,11 +3683,19 @@ class _MediaBackground extends StatelessWidget {
       }
       if (framing == FeedVideoFraming.mainFeed ||
           framing == FeedVideoFraming.fullscreenFeed) {
+        // Samakan fit dgn video (pakai aspect post — thumbnail tampil sebelum
+        // controller siap) supaya tak ada lompatan cover→contain saat player
+        // ready untuk video landscape.
+        final fit = resolveFeedCoverFit(
+          framing: framing,
+          isLandscape: post.aspectWidthInt > post.aspectHeightInt,
+        );
         return _mediaStack(
           CachedNetworkImage(
             imageUrl: thumb,
-            fit: BoxFit.cover,
-            alignment: Alignment.topCenter,
+            fit: fit,
+            alignment:
+                fit == BoxFit.contain ? Alignment.center : Alignment.topCenter,
             placeholder: (_, __) => const SizedBox.shrink(),
             errorWidget: (_, __, ___) => const SizedBox.shrink(),
           ),
