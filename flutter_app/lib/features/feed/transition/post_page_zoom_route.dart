@@ -206,6 +206,19 @@ class PostPageZoomRoute extends PageRoute<void> {
   Rect? _slotRect;
   double? _mediaAspect;
 
+  /// The destination media-slot rect + intrinsic media aspect, re-frozen at
+  /// the moment a non-interactive close starts (`_performClose`). Unlike
+  /// [_slotRect]/[_mediaAspect] (frozen once at the forward `preparingOpen`
+  /// -> `opening` edge and held for the whole flight), these are re-read
+  /// from `session.destinationMediaSlotRect`/`destinationMediaAspect` at
+  /// EVERY close so the reverse hero targets wherever the user has actually
+  /// scrolled to (the currently visible post) rather than replaying the
+  /// stale geometry from the original forward open. Falls back to the
+  /// forward-flight values (then stays `null`, routing to the crossfade
+  /// close) if the destination has not reported anything fresh.
+  Rect? _closeSlotRect;
+  double? _closeMediaAspect;
+
   // --- Interactive back (iOS edge swipe) state -----------------------------
 
   /// Drives the finger-down linear preview (0..1) and the cancel spring. Its
@@ -744,6 +757,16 @@ class PostPageZoomRoute extends PageRoute<void> {
     session.setPlaybackAllowed(false);
     _frozenTarget = frozen.target;
     _frozenProxy = frozen.proxy;
+    // Re-freeze the hero's destination-side endpoint AT CLOSE TIME (not the
+    // forward flight's `_slotRect`/`_mediaAspect`) so the reverse targets
+    // wherever the user has actually scrolled to — the CURRENTLY VISIBLE
+    // post — rather than replaying stale geometry from the original open.
+    // Falls back to the forward-flight values only if the destination has
+    // not reported anything fresh (should not normally happen from a
+    // resting `open`, since the same visibility pipeline that produced
+    // `_slotRect`/`_mediaAspect` keeps reporting on every remeasure).
+    _closeSlotRect = session.destinationMediaSlotRect ?? _slotRect;
+    _closeMediaAspect = session.destinationMediaAspect ?? _mediaAspect;
     _setPhase(PostPageZoomPhase.closingToTarget);
     session.setFrozenTileSuppressed(true);
     await controller!.animateTo(
@@ -964,6 +987,44 @@ class PostPageZoomRoute extends PageRoute<void> {
         _interactiveCommitActive) {
       return _buildInteractiveCommit(context);
     }
+    if (currentPhase == PostPageZoomPhase.closingToTarget) {
+      // Non-interactive reverse (header back / system back / predictive
+      // fallback — never a commit flight, that's the branch above). Mirrors
+      // the forward hero+chrome render with the endpoints swapped: the hero
+      // shrinks FROM the current active media slot (close-time re-frozen,
+      // see `_performClose`) TO the frozen target tile, while the fake hero
+      // reappears immediately (`reverseHandoff: true`) instead of lingering
+      // until the end, since it must already be covering the real
+      // destination media the instant the close starts.
+      final proxy = _activeProxy();
+      final slotRect = _closeSlotRect;
+      final mediaAspect = _closeMediaAspect;
+      if (_reducedMotion(context) ||
+          session.destinationReadiness ==
+              PostDetailDestinationReadiness.crossfadeFallback ||
+          slotRect == null ||
+          mediaAspect == null) {
+        _syncDestinationMediaSuppression(false);
+        return _CrossfadeZoomTransition(
+          progress: controller!,
+          destinationChild: _destination(context),
+          proxyImageProvider: _proxyImageProviderFor(proxy),
+          proxyColor: proxy?.placeholderColor ?? const Color(0xFF000000),
+        );
+      }
+      _syncDestinationMediaSuppression(true);
+      return PostPageZoomTransition(
+        progress: controller!,
+        tileRect: _tileRect(context),
+        slotRect: slotRect,
+        mediaAspect: mediaAspect,
+        tileRadius: _tileCornerRadius(),
+        slotRadius: 0,
+        chromeChild: _destination(context),
+        heroMediaChild: _heroMediaChildFor(proxy),
+        reverseHandoff: true,
+      );
+    }
     if (currentPhase == PostPageZoomPhase.closingFallback) {
       // Defensive reset: `closingFallback` is directly reachable from
       // `preparingOpen`/`opening` (never through `open`, where suppression
@@ -1010,13 +1071,12 @@ class PostPageZoomRoute extends PageRoute<void> {
         proxyColor: proxy?.placeholderColor ?? const Color(0xFF000000),
       );
     }
-    // Live (not held at progress 0) for the rest of the flight: the hero
-    // suppresses the destination's real media until it has fully handed off
-    // at rest in `open`. This same branch also currently renders the
-    // non-interactive reverse (`closingToTarget` when a commit flight is NOT
-    // active — Task 5's scope, not yet retargeted with `reverseHandoff:
-    // true`/a close-time slot re-freeze); the hero being "live" again during
-    // that phase is the structurally correct interim behavior either way.
+    // Only `opening`/`open` reach here: `closingToTarget` (both the
+    // interactive-commit and non-interactive variants) and `closingFallback`
+    // are fully handled by the dedicated branches above. Live (not held at
+    // progress 0) for the rest of the forward flight: the hero suppresses
+    // the destination's real media until it has fully handed off at rest in
+    // `open`.
     _syncDestinationMediaSuppression(currentPhase != PostPageZoomPhase.open);
     return PostPageZoomTransition(
       progress: controller!,

@@ -585,6 +585,184 @@ void main() {
     );
   });
 
+  group('hero geometry reverse (Task 5 non-interactive close render)', () {
+    final navigatorKey = GlobalKey<NavigatorState>();
+
+    testWidgets('requestClose from open renders PostPageZoomTransition with '
+        'reverseHandoff true, endpoints swapped (slotRect = close-time active '
+        'slot, tileRect = frozen target tile), controller animating 1 -> 0, '
+        'and pops closed at completion', (tester) async {
+      final fake = FakeTransitionSource();
+      fake.targets['a'] = fakeTarget(
+        'a',
+        rect: const Rect.fromLTWH(40, 120, 150, 200),
+      );
+      fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+        ..complete(
+          fakeTarget('a', rect: const Rect.fromLTWH(40, 120, 150, 200)),
+        );
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: fake,
+      );
+      addTearDown(session.dispose);
+      await session.prepareActiveTarget();
+
+      await tester.pumpWidget(_app(navigatorKey));
+      final route = _pushDirect(navigatorKey, session);
+      await tester.pump();
+      const slotRect = Rect.fromLTWH(0, 80, 400, 500);
+      session.reportDestinationMediaSlot(rect: slotRect, mediaAspect: 4 / 5);
+      session.markDestinationReady(
+        PostDetailDestinationReadiness.geometryReady,
+      );
+      await tester.pumpAndSettle();
+      expect(route.phase, PostPageZoomPhase.open);
+
+      // Simulate the user having scrolled to a DIFFERENT visible post's
+      // slot before closing — the reverse must target this fresh value,
+      // not the stale forward-flight geometry.
+      const freshSlotRect = Rect.fromLTWH(10, 200, 380, 480);
+      session.reportDestinationMediaSlot(
+        rect: freshSlotRect,
+        mediaAspect: 3 / 4,
+      );
+      await tester.pump();
+
+      final future = route.requestClose();
+      expect(route.phase, PostPageZoomPhase.closingToTarget);
+      await tester.pump();
+
+      final transition = tester.widget<PostPageZoomTransition>(
+        find.byType(PostPageZoomTransition),
+      );
+      expect(transition.reverseHandoff, isTrue);
+      expect(transition.progress, same(route.debugController));
+      expect(transition.slotRect, freshSlotRect);
+      expect(transition.mediaAspect, 3 / 4);
+      expect(transition.tileRect, const Rect.fromLTWH(40, 120, 150, 200));
+      // The first pump after `animateTo` starts is only the ticker's
+      // anchor tick (elapsed == 0); a second pump observes real mid-flight
+      // progress.
+      await tester.pump(const Duration(milliseconds: 30));
+      expect(route.debugController!.value, lessThan(1.0));
+
+      await tester.pumpAndSettle();
+      await future;
+
+      expect(route.debugController!.value, 0.0);
+      expect(route.phase, PostPageZoomPhase.closed);
+    });
+
+    testWidgets(
+      'falls back to close-time forward geometry when the destination has '
+      'not reported anything fresh since open',
+      (tester) async {
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+
+        await tester.pumpWidget(_app(navigatorKey));
+        final route = _pushDirect(navigatorKey, session);
+        await tester.pump();
+        const slotRect = Rect.fromLTWH(0, 80, 400, 500);
+        session.reportDestinationMediaSlot(rect: slotRect, mediaAspect: 4 / 5);
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.geometryReady,
+        );
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.open);
+
+        route.requestClose();
+        await tester.pump();
+
+        final transition = tester.widget<PostPageZoomTransition>(
+          find.byType(PostPageZoomTransition),
+        );
+        expect(transition.slotRect, slotRect);
+        expect(transition.mediaAspect, 4 / 5);
+
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'video hero draws through the LIVE coordinator controller (last '
+      'painted frame, not a swapped-in thumbnail) during the close, without '
+      'rebuilding the hero child per tick',
+      (tester) async {
+        final platform = _FakeHeroVideoPlayerPlatform();
+        VideoPlayerPlatform.instance = platform;
+        final controller = VideoPlayerController.networkUrl(
+          Uri.parse('https://example.com/a.mp4'),
+        );
+        addTearDown(controller.dispose);
+        await tester.runAsync(() => controller.initialize());
+        expect(controller.value.isInitialized, isTrue);
+
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        // fakePost defaults to a video post (kind: USER_VIDEO).
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+
+        await tester.pumpWidget(_app(navigatorKey));
+        final route = _pushDirect(navigatorKey, session);
+        await tester.pump();
+        session.reportDestinationMediaSlot(
+          rect: const Rect.fromLTWH(0, 80, 400, 500),
+          mediaAspect: 9 / 16,
+        );
+        session.reportDestinationVideoController(controller);
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.geometryReady,
+        );
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.open);
+
+        route.requestClose();
+        await tester.pump();
+        expect(route.phase, PostPageZoomPhase.closingToTarget);
+
+        final heroVideoPlayerElement = tester.element(
+          find.descendant(
+            of: find.byType(PostPageZoomTransition),
+            matching: find.byType(VideoPlayer),
+          ),
+        );
+        final heroVideoPlayer = heroVideoPlayerElement.widget as VideoPlayer;
+        expect(heroVideoPlayer.controller, same(controller));
+
+        // Advance the reverse mid-flight: the SAME VideoPlayer element must
+        // still be mounted (no rebuild-per-tick swap to a thumbnail/proxy).
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(heroVideoPlayerElement.mounted, isTrue);
+        final heroVideoPlayerAgain = tester.widget<VideoPlayer>(
+          find.descendant(
+            of: find.byType(PostPageZoomTransition),
+            matching: find.byType(VideoPlayer),
+          ),
+        );
+        expect(heroVideoPlayerAgain.controller, same(controller));
+
+        await tester.pumpAndSettle();
+      },
+    );
+  });
+
   group('dispose race during a pending close', () {
     final navigatorKey = GlobalKey<NavigatorState>();
 
