@@ -1,12 +1,10 @@
 // ignore_for_file: use_build_context_synchronously
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:video_player/video_player.dart';
@@ -17,6 +15,9 @@ import '../services/app_analytics.dart';
 import '../utils/fade_route.dart';
 import '../utils/haptics.dart';
 import '../widgets/origin_expansion_route.dart';
+import '../widgets/photo_crop/photo_crop_export.dart';
+import '../widgets/photo_crop/photo_crop_preview.dart';
+import '../widgets/photo_crop/photo_crop_transform.dart';
 import 'feed_new_post_screen.dart';
 import 'feed_post/feed_video_edit_screen.dart';
 
@@ -76,168 +77,6 @@ class SelectedMediaItem {
         durationSeconds: durationSeconds,
         orderIndex: newIndex,
       );
-}
-
-/// Args bundle untuk worker isolate `_processPhotoInIsolate`. Harus
-/// `@immutable` + plain types supaya bisa di-serialize cross-isolate
-/// boundary lewat `compute()`. File path di-pass sebagai string;
-/// worker baca file dari sana, decode, crop/resize, encode JPEG, dan
-/// tulis output ke `tmpDirPath` lalu return path output.
-@immutable
-class _PhotoProcessArgs {
-  final String sourcePath;
-  final String tmpDirPath;
-  final double targetAspect;
-  final double scale;
-  final double offsetFractionX;
-  final double offsetFractionY;
-  final bool preserveOriginal;
-  final int maxLongSide;
-  final int jpegQuality;
-  final int timestampSuffix;
-  final String pathSeparator;
-
-  const _PhotoProcessArgs({
-    required this.sourcePath,
-    required this.tmpDirPath,
-    required this.targetAspect,
-    required this.scale,
-    required this.offsetFractionX,
-    required this.offsetFractionY,
-    required this.preserveOriginal,
-    required this.maxLongSide,
-    required this.jpegQuality,
-    required this.timestampSuffix,
-    required this.pathSeparator,
-  });
-}
-
-/// Top-level (BUKAN method) supaya bisa dipanggil dari `compute()` —
-/// closures di method punya `this` reference yang tidak bisa di-serialize.
-/// Heavy work decode + bakeOrientation + crop + resize + encode JPEG
-/// semua jalan di background isolate; main thread tetap responsif.
-/// Return path file output JPEG di tmpDir.
-String _processPhotoInIsolate(_PhotoProcessArgs args) {
-  final source = File(args.sourcePath);
-  final bytes = source.readAsBytesSync();
-  final decoded = img.decodeImage(bytes);
-  if (decoded == null) {
-    // Fallback: tidak bisa decode → return source path apa adanya.
-    // Caller akan upload file original; backend tolak format kalau
-    // beneran corrupt.
-    return args.sourcePath;
-  }
-  final oriented = img.bakeOrientation(decoded);
-
-  img.Image processed;
-  if (args.preserveOriginal) {
-    processed = oriented;
-  } else {
-    final srcW = oriented.width;
-    final srcH = oriented.height;
-    final frameW = args.targetAspect;
-    const frameH = 1.0;
-    final coverScale = math.max(frameW / srcW, frameH / srcH);
-    final baseW = srcW * coverScale;
-    final baseH = srcH * coverScale;
-    final visualScale = args.scale.clamp(1.0, 4.0).toDouble();
-    final scaledW = baseW * visualScale;
-    final scaledH = baseH * visualScale;
-    final offsetX = args.offsetFractionX * frameW;
-    final offsetY = args.offsetFractionY * frameH;
-
-    final imageLeft = (frameW - scaledW) / 2 + offsetX;
-    final imageTop = (frameH - scaledH) / 2 + offsetY;
-    final cropX = (-imageLeft / scaledW) * srcW;
-    final cropY = (-imageTop / scaledH) * srcH;
-    final cropW = (frameW / scaledW) * srcW;
-    final cropH = (frameH / scaledH) * srcH;
-
-    final cropWInt = cropW.round().clamp(1, srcW).toInt();
-    final cropHInt = cropH.round().clamp(1, srcH).toInt();
-    final cropXInt =
-        cropX.round().clamp(0, math.max(0, srcW - cropWInt)).toInt();
-    final cropYInt =
-        cropY.round().clamp(0, math.max(0, srcH - cropHInt)).toInt();
-
-    processed = img.copyCrop(
-      oriented,
-      x: cropXInt,
-      y: cropYInt,
-      width: cropWInt,
-      height: cropHInt,
-    );
-  }
-
-  // Resize ke max long-side kalau perlu (output upload friendly).
-  final longSide = processed.width > processed.height
-      ? processed.width
-      : processed.height;
-  if (longSide > args.maxLongSide) {
-    if (processed.height >= processed.width) {
-      processed = img.copyResize(
-        processed,
-        height: args.maxLongSide,
-        interpolation: img.Interpolation.linear,
-      );
-    } else {
-      processed = img.copyResize(
-        processed,
-        width: args.maxLongSide,
-        interpolation: img.Interpolation.linear,
-      );
-    }
-  }
-
-  final jpegBytes = img.encodeJpg(processed, quality: args.jpegQuality);
-  final ts = DateTime.now().microsecondsSinceEpoch + args.timestampSuffix;
-  final outPath =
-      '${args.tmpDirPath}${args.pathSeparator}natalo_crop_$ts.jpg';
-  File(outPath).writeAsBytesSync(jpegBytes, flush: true);
-  return outPath;
-}
-
-/// Mutable transform state untuk pan/zoom crop preview. Extend
-/// `ChangeNotifier` supaya `ListenableBuilder` di `_PhotoCropPreview`
-/// bisa rebuild HANYA layer Transform saat user pinch — bukan whole
-/// LayoutBuilder subtree (Image widget, ClipRect, dst). Big win untuk
-/// smoothness gesture di lower-end devices.
-class _PhotoCropTransform extends ChangeNotifier {
-  double _scale = 1;
-  Offset _offsetFraction = Offset.zero;
-
-  double get scale => _scale;
-  set scale(double value) {
-    if (_scale == value) return;
-    _scale = value;
-    notifyListeners();
-  }
-
-  Offset get offsetFraction => _offsetFraction;
-  set offsetFraction(Offset value) {
-    if (_offsetFraction == value) return;
-    _offsetFraction = value;
-    notifyListeners();
-  }
-
-  /// Batch update — single notify untuk dua-duanya. Hindari double
-  /// rebuild per gesture frame.
-  void update({required double scale, required Offset offsetFraction}) {
-    var changed = false;
-    if (_scale != scale) {
-      _scale = scale;
-      changed = true;
-    }
-    if (_offsetFraction != offsetFraction) {
-      _offsetFraction = offsetFraction;
-      changed = true;
-    }
-    if (changed) notifyListeners();
-  }
-
-  void reset() {
-    update(scale: 1, offsetFraction: Offset.zero);
-  }
 }
 
 /// Inline gallery picker — Instagram-style.
@@ -328,7 +167,7 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   // 2. Pass ke _PhotoCropPreview supaya tidak load ulang.
   Size? _previewImageSize;
   String? _previewImageSizeAssetId; // track asset yg size-nya sudah loaded.
-  final Map<String, _PhotoCropTransform> _photoCropTransforms = {};
+  final Map<String, PhotoCropTransform> _photoCropTransforms = {};
   // Lookup asset by id — dipakai strip re-crop (Task 5B) untuk resolve
   // AssetEntity dari id foto terpilih tanpa scan ulang _assets.
   final Map<String, AssetEntity> _assetById = {};
@@ -625,8 +464,8 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
       final index = entry.key;
       final item = entry.value;
       final transform =
-          _photoCropTransforms[item.id] ?? _PhotoCropTransform();
-      final args = _PhotoProcessArgs(
+          _photoCropTransforms[item.id] ?? PhotoCropTransform();
+      final args = PhotoProcessArgs(
         sourcePath: item.localPath,
         tmpDirPath: tmpDirPath,
         targetAspect: aspect,
@@ -639,7 +478,7 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         timestampSuffix: index,
         pathSeparator: Platform.pathSeparator,
       );
-      return compute(_processPhotoInIsolate, args);
+      return compute(processPhotoInIsolate, args);
     }).toList();
 
     final paths = await Future.wait(futures);
@@ -1149,8 +988,8 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     setState(() => _previewFitOriginal = !_previewFitOriginal);
   }
 
-  _PhotoCropTransform _getPhotoCropTransform(String assetId) {
-    return _photoCropTransforms.putIfAbsent(assetId, _PhotoCropTransform.new);
+  PhotoCropTransform _getPhotoCropTransform(String assetId) {
+    return _photoCropTransforms.putIfAbsent(assetId, PhotoCropTransform.new);
   }
 
   Widget _buildPreviewContent() {
@@ -1264,7 +1103,7 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         duration: const Duration(milliseconds: 180),
         switchInCurve: Curves.easeOutCubic,
         switchOutCurve: Curves.easeInCubic,
-        child: _PhotoCropPreview(
+        child: PhotoCropPreview(
           key: ValueKey(
             '${asset.id}-${_previewFitOriginal ? 'fit' : 'fill'}',
           ),
@@ -1818,237 +1657,6 @@ class _PickerToast extends StatelessWidget {
   }
 }
 
-class _PhotoCropPreview extends StatefulWidget {
-  final File file;
-  final bool fitOriginal;
-  final _PhotoCropTransform cropTransform;
-  /// Optional pre-loaded image dimensions dari parent. Kalau di-set,
-  /// widget skip internal load (instant interactive). Kalau null,
-  /// fallback ke internal load via ui.instantiateImageCodec (fast).
-  final Size? preloadedImageSize;
-
-  const _PhotoCropPreview({
-    super.key,
-    required this.file,
-    required this.fitOriginal,
-    required this.cropTransform,
-    this.preloadedImageSize,
-  });
-
-  @override
-  State<_PhotoCropPreview> createState() => _PhotoCropPreviewState();
-}
-
-class _PhotoCropPreviewState extends State<_PhotoCropPreview> {
-  Size? _imageSize;
-  double _startScale = 1;
-  Offset _startOffsetFraction = Offset.zero;
-
-  @override
-  void initState() {
-    super.initState();
-    // Prioritas: pakai preloaded dari parent kalau ada (instant), fallback
-    // ke internal load. Hindari decode 2x supaya tidak waste CPU.
-    if (widget.preloadedImageSize != null) {
-      _imageSize = widget.preloadedImageSize;
-    } else {
-      _loadImageSize();
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _PhotoCropPreview oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.file.path != widget.file.path) {
-      _imageSize = widget.preloadedImageSize;
-      if (_imageSize == null) _loadImageSize();
-    } else if (oldWidget.preloadedImageSize != widget.preloadedImageSize &&
-        widget.preloadedImageSize != null) {
-      // Parent just loaded → sync ke internal state.
-      _imageSize = widget.preloadedImageSize;
-    }
-  }
-
-  /// Fast image dimensions load via Flutter native `ui.instantiateImageCodec`
-  /// — ~50ms vs ~500-1500ms via `image` package decode. Cukup ambil
-  /// metadata width/height, tidak butuh full pixel decode.
-  ///
-  /// Fallback path kalau parent tidak preload size. Normal-nya parent
-  /// preload via _loadPreviewImageSize() → widget ini langsung dapet
-  /// imageSize dari prop.
-  Future<void> _loadImageSize() async {
-    try {
-      final bytes = await widget.file.readAsBytes();
-      final codec = await ui.instantiateImageCodec(bytes);
-      final frame = await codec.getNextFrame();
-      final size = Size(
-        frame.image.width.toDouble(),
-        frame.image.height.toDouble(),
-      );
-      frame.image.dispose();
-      if (!mounted) return;
-      setState(() => _imageSize = size);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _imageSize = null);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: _bgBlack,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final frameSize = Size(
-            constraints.maxWidth,
-            constraints.maxHeight,
-          );
-
-          if (widget.fitOriginal) {
-            return Image.file(
-              widget.file,
-              fit: BoxFit.contain,
-              alignment: Alignment.center,
-            );
-          }
-
-          final imageSize = _imageSize;
-          if (imageSize == null ||
-              frameSize.width <= 0 ||
-              frameSize.height <= 0) {
-            return Image.file(
-              widget.file,
-              fit: BoxFit.cover,
-              alignment: Alignment.center,
-            );
-          }
-
-          final coverScale = math.max(
-            frameSize.width / imageSize.width,
-            frameSize.height / imageSize.height,
-          );
-          final baseSize = Size(
-            imageSize.width * coverScale,
-            imageSize.height * coverScale,
-          );
-
-          // PERF: decode image at sane resolution instead of full sensor
-          // (iPhone 12MP = 4032×3024). Target = frame px @ max zoom 4× ×
-          // device pixel ratio, capped 1920. Tanpa ini, GPU sampling
-          // dari 12MP texture tiap gesture frame → laggy pinch. Capped
-          // texture jauh lebih ringan & tetap sharp di max zoom.
-          final dpr = MediaQuery.devicePixelRatioOf(context);
-          final targetDecodeWidth = (frameSize.width * 4 * dpr)
-              .clamp(512.0, 1920.0)
-              .toInt();
-          final aspectImage = imageSize.width / imageSize.height;
-          final targetDecodeHeight =
-              (targetDecodeWidth / aspectImage).round();
-
-          return RepaintBoundary(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onScaleStart: (_) {
-                _startScale = widget.cropTransform.scale;
-                _startOffsetFraction = widget.cropTransform.offsetFraction;
-              },
-              onScaleUpdate: (details) {
-                final nextScale =
-                    (_startScale * details.scale).clamp(1.0, 4.0).toDouble();
-                final startOffsetPx = Offset(
-                  _startOffsetFraction.dx * frameSize.width,
-                  _startOffsetFraction.dy * frameSize.height,
-                );
-                final nextOffsetPx = _clampOffsetPx(
-                  startOffsetPx + details.focalPointDelta,
-                  frameSize,
-                  baseSize,
-                  nextScale,
-                );
-                // NOTE: pakai .update tanpa setState — notify ke
-                // ListenableBuilder only → rebuild HANYA Transform layer,
-                // bukan LayoutBuilder + Image + ClipRect. Big perf win.
-                widget.cropTransform.update(
-                  scale: nextScale,
-                  offsetFraction: Offset(
-                    nextOffsetPx.dx / frameSize.width,
-                    nextOffsetPx.dy / frameSize.height,
-                  ),
-                );
-              },
-              onDoubleTap: widget.cropTransform.reset,
-              child: ClipRect(
-                child: ListenableBuilder(
-                  listenable: widget.cropTransform,
-                  builder: (context, _) {
-                    final scale =
-                        widget.cropTransform.scale.clamp(1.0, 4.0).toDouble();
-                    final offsetPx = Offset(
-                      widget.cropTransform.offsetFraction.dx * frameSize.width,
-                      widget.cropTransform.offsetFraction.dy * frameSize.height,
-                    );
-                    final renderOffset = _clampOffsetPx(
-                      offsetPx,
-                      frameSize,
-                      baseSize,
-                      scale,
-                    );
-                    // PERF: single Transform dengan combined Matrix4
-                    // (translate + scale dalam 1 layer composition).
-                    // Sebelumnya dua nested Transform widget = dua
-                    // separate compositing layer.
-                    final matrix = Matrix4.identity()
-                      ..translateByDouble(
-                          renderOffset.dx, renderOffset.dy, 0, 1)
-                      ..scaleByDouble(scale, scale, 1, 1);
-                    return Center(
-                      child: Transform(
-                        transform: matrix,
-                        alignment: Alignment.center,
-                        child: SizedBox(
-                          width: baseSize.width,
-                          height: baseSize.height,
-                          child: Image.file(
-                            widget.file,
-                            fit: BoxFit.fill,
-                            alignment: Alignment.center,
-                            cacheWidth: targetDecodeWidth,
-                            cacheHeight: targetDecodeHeight,
-                            // FilterQuality.low — bilinear cukup untuk
-                            // preview. Default `low` sebenarnya, set
-                            // explicit supaya jelas + future-proof.
-                            filterQuality: FilterQuality.low,
-                            gaplessPlayback: true,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Offset _clampOffsetPx(
-    Offset offset,
-    Size frameSize,
-    Size baseSize,
-    double scale,
-  ) {
-    final maxDx = math.max(0.0, (baseSize.width * scale - frameSize.width) / 2);
-    final maxDy =
-        math.max(0.0, (baseSize.height * scale - frameSize.height) / 2);
-    return Offset(
-      offset.dx.clamp(-maxDx, maxDx).toDouble(),
-      offset.dy.clamp(-maxDy, maxDy).toDouble(),
-    );
-  }
-}
 
 /// Strip thumbnail foto terpilih (carousel) — tap untuk membawa foto ke
 /// preview besar & atur crop-nya lagi. Presentasional murni.

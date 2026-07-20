@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../screens/profile_photo_picker_screen.dart';
 import '../services/api_client.dart';
 import '../services/member_service.dart';
 import '../state/member_store.dart';
@@ -58,13 +61,14 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
     return url != null && url.isNotEmpty;
   }
 
-  Future<void> _pickFromSource(ImageSource source) async {
+  /// Kamera — jalur lama, tanpa crop step (native picker 1024×1024).
+  Future<void> _pickFromCamera() async {
     if (_busy) return;
     AppHaptics.tap();
     setState(() => _busy = true);
     try {
       final XFile? picked = await _picker.pickImage(
-        source: source,
+        source: ImageSource.camera,
         maxWidth: 1024,
         maxHeight: 1024,
         imageQuality: 88,
@@ -74,11 +78,37 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
         if (mounted) Navigator.of(context).maybePop();
         return;
       }
+      await _uploadFile(picked.path);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Galeri — buka full-screen picker Instagram-style (grid + crop lingkaran).
+  /// User batal (pop null) → biarkan sheet terbuka. Dapat File → upload lewat
+  /// jalur yang sama dengan kamera.
+  Future<void> _pickFromGallery() async {
+    if (_busy) return;
+    AppHaptics.tap();
+    final File? cropped = await ProfilePhotoPickerScreen.open(context);
+    if (cropped == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await _uploadFile(cropped.path);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Upload + persist + toast/error — dipakai bersama jalur kamera & galeri
+  /// supaya perilaku (sukses, ApiException, read-only, error umum) identik.
+  Future<void> _uploadFile(String path) async {
+    try {
       // Upload ke backend (UploadThing CDN) + auto-save URL ke
       // User.profilePhotoUrl. Backend return updated profile, langsung
       // sync ke memberStore supaya UI lain (Akun page, feed, comment)
       // refresh otomatis lewat AnimatedBuilder.
-      final updated = await memberService.uploadProfilePhoto(picked.path);
+      final updated = await memberService.uploadProfilePhoto(path);
       if (updated != null) {
         await memberStore.persistProfileUpdate(updated);
       } else {
@@ -87,7 +117,7 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
         final current = memberStore.profile;
         if (current != null) {
           await memberStore.persistProfileUpdate(
-            current.copyWith(profilePhotoUrl: picked.path),
+            current.copyWith(profilePhotoUrl: path),
           );
         }
       }
@@ -123,8 +153,6 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
         'Gagal upload foto: $error',
         kind: ToastKind.error,
       );
-    } finally {
-      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -216,7 +244,7 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
                 : const Color(0xFFEAF5FF),
             title: 'Ambil Foto',
             subtitle: 'Buka kamera dan ambil foto baru',
-            onTap: _busy ? null : () => _pickFromSource(ImageSource.camera),
+            onTap: _busy ? null : _pickFromCamera,
           ),
           const SizedBox(height: 8),
           _PhotoActionTile(
@@ -224,8 +252,8 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
             iconColor: const Color(0xFF22C55E),
             iconBg: const Color(0xFFE8F8EC),
             title: 'Pilih dari Galeri',
-            subtitle: 'Ambil foto dari galeri perangkat',
-            onTap: _busy ? null : () => _pickFromSource(ImageSource.gallery),
+            subtitle: 'Atur & potong foto sebelum dipakai',
+            onTap: _busy ? null : _pickFromGallery,
           ),
           if (_hasExistingPhoto) ...[
             const SizedBox(height: 8),
