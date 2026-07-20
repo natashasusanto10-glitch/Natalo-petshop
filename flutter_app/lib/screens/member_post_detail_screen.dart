@@ -168,6 +168,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   Future<String?> debugRefreshVideoUrlForTest(String sessionId) =>
       _refreshVideoUrl(sessionId);
 
+  @visibleForTesting
+  List<GlobalKey> get debugPostKeys => _postKeys;
+
   /// URL video per sessionId (== post.id untuk video utama; compound
   /// `${post.id}-$index` untuk item carousel). Diisi di initState untuk video
   /// utama + di-register on-demand oleh inline (carousel). Factory sesi baca
@@ -201,6 +204,11 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   // dulu sering "lari" (mendarat di posisi salah karena chrome/separator
   // calculation drift dengan layout sesungguhnya).
   late final List<GlobalKey> _postKeys;
+
+  /// Re-check koreksi posisi header (§_ensurePostVisible) tertunda — di-cancel
+  /// di dispose supaya tidak nyangkut kalau user keluar halaman sebelum timer
+  /// menyala.
+  Timer? _postAlignRecheckTimer;
 
   @override
   void initState() {
@@ -338,22 +346,17 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     if (!mounted || !_scrollController.hasClients) return;
     final ctx = _postKeys[targetIndex].currentContext;
     if (ctx != null) {
-      Scrollable.ensureVisible(
-        ctx,
-        duration: Duration.zero,
-        alignment: 0.0,
-        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-      );
-      // ensureVisible menaruh post di y=0 (tepi atas viewport) — itu DI BAWAH
-      // header frosted yang overlay. Geser balik sebesar tinggi header supaya
-      // post target mendarat di bawah header (tidak ketutup), konsisten dgn
-      // framing post pertama yang dapat top-padding ListView.
-      final headerInset =
-          MediaQuery.paddingOf(context).top + kToolbarHeight;
-      final pos = _scrollController.position;
-      _scrollController.jumpTo(
-        (pos.pixels - headerInset).clamp(0.0, pos.maxScrollExtent).toDouble(),
-      );
+      _alignPostUnderHeader(ctx);
+      // Post di atas target (belum tentu selesai decode network image saat
+      // frame ini) bisa relayout sesaat setelah gambar asli masuk, menggeser
+      // target keluar dari bawah header (bug device: post ke-2/3 "nembus"
+      // header). Re-cek + koreksi sekali lagi setelah decode wajar selesai.
+      _postAlignRecheckTimer?.cancel();
+      _postAlignRecheckTimer = Timer(const Duration(milliseconds: 260), () {
+        if (!mounted) return;
+        final freshCtx = _postKeys[targetIndex].currentContext;
+        if (freshCtx != null) _alignPostUnderHeader(freshCtx);
+      });
       return;
     }
     if (attemptsLeft <= 0) return;
@@ -361,6 +364,26 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensurePostVisible(targetIndex, attemptsLeft: attemptsLeft - 1);
     });
+  }
+
+  /// Daratkan [ctx] pas di bawah header (bukan y=0 mentah, yang tertutup
+  /// header frosted) — dipakai dari [_ensurePostVisible] + re-check tunda.
+  void _alignPostUnderHeader(BuildContext ctx) {
+    Scrollable.ensureVisible(
+      ctx,
+      duration: Duration.zero,
+      alignment: 0.0,
+      alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+    );
+    // ensureVisible menaruh post di y=0 (tepi atas viewport) — itu DI BAWAH
+    // header frosted yang overlay. Geser balik sebesar tinggi header supaya
+    // post target mendarat di bawah header (tidak ketutup), konsisten dgn
+    // framing post pertama yang dapat top-padding ListView.
+    final headerInset = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    final pos = _scrollController.position;
+    _scrollController.jumpTo(
+      (pos.pixels - headerInset).clamp(0.0, pos.maxScrollExtent).toDouble(),
+    );
   }
 
   double _estimatedPostExtent(BuildContext context, FeedPost post) {
@@ -539,6 +562,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
 
   @override
   void dispose() {
+    _postAlignRecheckTimer?.cancel();
     feedStore.removeListener(_onFeedStoreChanged);
     appRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
