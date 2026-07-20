@@ -7,6 +7,7 @@ import '../widgets/address_autocomplete_field.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../state/member_store.dart';
 import '../widgets/app_login_gate.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 
 const _brandBlue = NataloColors.primary;
@@ -68,19 +69,19 @@ class _MemberAddressesScreenState extends State<MemberAddressesScreen> {
       await memberService.setPrimaryAddress(address.id);
       await _refresh();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Alamat utama diperbarui.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: tidak ada literal keyword sukses, tapi try-block
+      // sukses set alamat utama → kind: success.
+      AppToast.showBanner(
+        context,
+        'Alamat utama diperbarui.',
+        kind: ToastKind.success,
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal set utama: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Gagal set utama: $error',
+        kind: ToastKind.error,
       );
     }
   }
@@ -116,19 +117,17 @@ class _MemberAddressesScreenState extends State<MemberAddressesScreen> {
       await memberService.deleteAddress(address.id);
       await _refresh();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Alamat berhasil dihapus.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Alamat berhasil dihapus.',
+        kind: ToastKind.success,
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Alamat gagal dihapus: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Alamat gagal dihapus: $error',
+        kind: ToastKind.error,
       );
     }
   }
@@ -713,11 +712,10 @@ class _AddressFormSheetState extends State<_AddressFormSheet> {
       Navigator.pop(context, saved);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Alamat gagal disimpan: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Alamat gagal disimpan: $error',
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _saving = false);

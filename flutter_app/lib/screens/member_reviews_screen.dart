@@ -15,6 +15,7 @@ import '../state/member_store.dart';
 import '../utils/formatters.dart';
 import '../utils/read_only_mode.dart';
 import '../widgets/app_product_image.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
@@ -68,9 +69,8 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
       _deepLinkedSelfPickup = args is Map && args['isSelfPickup'] is bool
           ? args['isSelfPickup'] as bool
           : null;
-      _deepLinkedOrderNumber = args is Map
-          ? args['orderNumber']?.toString().trim()
-          : null;
+      _deepLinkedOrderNumber =
+          args is Map ? args['orderNumber']?.toString().trim() : null;
       if (targetItemId == null || targetItemId.isEmpty) return;
       try {
         final items = await _itemsFuture;
@@ -139,17 +139,13 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
     //   - >0 (review LENGKAP) → celebration "Selamat! +5 poin loyal"
     //   - 0 (review minimal) → nudge "Tambah foto+deskripsi untuk +5 poin"
     final earnedBonus = submitted.pointsAwarded > 0;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          earnedBonus
-              ? '🎁 Review terkirim. +${submitted.pointsAwarded} poin loyal masuk akunmu!'
-              : 'Review terkirim. Tambah foto + deskripsi (min 10 huruf) untuk dapat 5 poin loyal.',
-        ),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: earnedBonus ? const Color(0xFF059669) : null,
-        duration: const Duration(seconds: 4),
-      ),
+    AppToast.showBanner(
+      context,
+      earnedBonus
+          ? '🎁 Review terkirim. +${submitted.pointsAwarded} poin loyal masuk akunmu!'
+          : 'Review terkirim. Tambah foto + deskripsi (min 10 huruf) untuk dapat 5 poin loyal.',
+      kind: ToastKind.success,
+      duration: const Duration(seconds: 4),
     );
   }
 
@@ -158,7 +154,8 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
         _localReviews.map((review) => review.item.orderItemId).toSet();
     return items
         .where(
-          (item) => !item.hasReviewed &&
+          (item) =>
+              !item.hasReviewed &&
               !localIds.contains(item.orderItemId) &&
               (_deepLinkedOrderNumber == null ||
                   _deepLinkedOrderNumber!.isEmpty ||
@@ -903,8 +900,8 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
                 if (_mediaItems.where((item) => item.isVideo).length >=
                     _maxVideos)
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Text(
                       'Maksimal 1 video per review.',
                       style: TextStyle(
@@ -951,22 +948,16 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
           () => _mediaItems.add(ProductReviewMedia.image(url: result.url)));
     } on ApiException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.message),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      AppToast.showBanner(context, error.message, kind: ToastKind.error);
     } on ReadOnlyModeException catch (error) {
       if (!mounted) return;
       showReadOnlySnackbar(context, error);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Upload foto gagal: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Upload foto gagal: $error',
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _uploadingMedia = false);
@@ -1026,22 +1017,16 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
       });
     } on ApiException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.message),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      AppToast.showBanner(context, error.message, kind: ToastKind.error);
     } on ReadOnlyModeException catch (error) {
       if (!mounted) return;
       showReadOnlySnackbar(context, error);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Upload video gagal: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Upload video gagal: $error',
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _uploadingMedia = false);
@@ -1117,22 +1102,16 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
       );
     } on ApiException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.message),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      AppToast.showBanner(context, error.message, kind: ToastKind.error);
     } on ReadOnlyModeException catch (error) {
       if (!mounted) return;
       showReadOnlySnackbar(context, error);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal kirim review: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Gagal kirim review: $error',
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -1198,9 +1177,8 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
                       ),
                     ),
                     IconButton(
-                      onPressed: _submitting
-                          ? null
-                          : () => Navigator.pop(context),
+                      onPressed:
+                          _submitting ? null : () => Navigator.pop(context),
                       icon: const Icon(Icons.close_rounded),
                       tooltip: 'Tutup',
                     ),
@@ -1553,7 +1531,9 @@ class _ReviewMediaPicker extends StatelessWidget {
                         height: 84,
                         width: 84,
                         color: Theme.of(context).brightness == Brightness.dark
-                            ? Theme.of(context).colorScheme.surfaceContainerHighest
+                            ? Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest
                             : const Color(0xFFEFF4FA),
                         child: const Icon(Icons.image_not_supported_outlined),
                       ),

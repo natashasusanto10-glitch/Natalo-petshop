@@ -219,21 +219,19 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
             ? 'Pesanan dibatalkan. Saldo Refund +${_formatRupiahShort(credited)}.'
             : 'Pesanan berhasil dibatalkan.';
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      // Kind-inference: dynamic message dari try-block pembatalan berhasil —
+      // tidak semua cabang mengandung literal "berhasil", tapi context-nya
+      // selalu hasil pembatalan sukses (order dibatalkan / permintaan
+      // terkirim) → kind: success.
+      AppToast.showBanner(context, message, kind: ToastKind.success);
     } catch (error) {
       if (!mounted) return;
       AppHaptics.warning();
       final message = error.toString().replaceFirst('Exception: ', '');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Pembatalan gagal: $message'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Pembatalan gagal: $message',
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _cancelling = false);
@@ -333,25 +331,23 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
       AppHaptics.success();
       await _refreshOrder();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            result.alreadyConfirmed
-                ? 'Pesanan sudah ditandai selesai.'
-                : result.message,
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: dynamic message dari try-block konfirmasi diterima
+      // berhasil — context-nya selalu sukses → kind: success.
+      AppToast.showBanner(
+        context,
+        result.alreadyConfirmed
+            ? 'Pesanan sudah ditandai selesai.'
+            : result.message,
+        kind: ToastKind.success,
       );
     } catch (error) {
       if (!mounted) return;
       AppHaptics.warning();
       final message = error.toString().replaceFirst('Exception: ', '');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Konfirmasi gagal: $message'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Konfirmasi gagal: $message',
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _confirmingDelivered = false);
@@ -397,11 +393,10 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
     } catch (error) {
       if (!context.mounted) return;
       final message = error.toString().replaceFirst('Exception: ', '');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Beli lagi gagal: $message'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Beli lagi gagal: $message',
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _reordering = false);
@@ -655,19 +650,29 @@ class _PaymentActionCard extends StatelessWidget {
     final uri = Uri.tryParse(paymentUrl);
     if (uri == null ||
         !PaymentUrlPolicy.isValidMidtransPaymentUrl(paymentUrl)) {
-      _showSnack(context, 'Link pembayaran tidak valid atau tidak tepercaya.');
+      // Kind-inference: "tidak valid" tidak literal match keyword "tidak
+      // bisa", tapi context-nya link diblokir/gagal terbuka → error.
+      _showSnack(
+        context,
+        'Link pembayaran tidak valid atau tidak tepercaya.',
+        kind: ToastKind.error,
+      );
       return;
     }
 
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!context.mounted) return;
-    if (!opened) _showSnack(context, 'Tidak bisa membuka pembayaran.');
+    if (!opened) {
+      _showSnack(context, 'Tidak bisa membuka pembayaran.',
+          kind: ToastKind.error);
+    }
   }
 
   Future<void> _copy(BuildContext context, String value, String message) async {
     await Clipboard.setData(ClipboardData(text: value));
     if (!context.mounted) return;
-    _showSnack(context, message);
+    // Semua caller _copy mengirim pesan "... tersalin." → success.
+    _showSnack(context, message, kind: ToastKind.success);
   }
 
   @override
@@ -1225,21 +1230,19 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
       setState(() => _proofUrl = url);
       await widget.onUploaded();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Bukti transfer berhasil dikirim.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Bukti transfer berhasil dikirim.',
+        kind: ToastKind.success,
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Bukti belum berhasil diunggah. Periksa koneksi lalu coba lagi.',
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: literal substring "berhasil" muncul di "belum
+      // berhasil" (negasi), tapi ini catch-block kegagalan upload → error.
+      AppToast.showBanner(
+        context,
+        'Bukti belum berhasil diunggah. Periksa koneksi lalu coba lagi.',
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _uploading = false);
@@ -1544,12 +1547,15 @@ class _PickupGoogleMapsButton extends StatelessWidget {
                 : 'https://www.google.com/maps/search/?api=1&query=$fallbackQuery');
     final uri = Uri.tryParse(url);
     if (uri == null) {
-      _showSnack(context, 'Link Google Maps tidak valid.');
+      // Kind-inference: "tidak valid" → error (link diblokir/gagal parse).
+      _showSnack(context, 'Link Google Maps tidak valid.',
+          kind: ToastKind.error);
       return;
     }
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!context.mounted || opened) return;
-    _showSnack(context, 'Tidak bisa membuka Google Maps.');
+    _showSnack(context, 'Tidak bisa membuka Google Maps.',
+        kind: ToastKind.error);
   }
 
   @override
@@ -1689,12 +1695,11 @@ class _PickupCodeBox extends StatelessWidget {
           ? () {
               AppHaptics.tap();
               Clipboard.setData(ClipboardData(text: code));
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Kode "$code" disalin ke clipboard.'),
-                  behavior: SnackBarBehavior.floating,
-                  duration: const Duration(seconds: 2),
-                ),
+              AppToast.showBanner(
+                context,
+                'Kode "$code" disalin ke clipboard.',
+                kind: ToastKind.success,
+                duration: const Duration(seconds: 2),
               );
             }
           : null,
@@ -2117,7 +2122,11 @@ class _OrderHeader extends StatelessWidget {
                         ClipboardData(text: order.orderNumber),
                       );
                       if (context.mounted) {
-                        _showSnack(context, 'Nomor pesanan tersalin.');
+                        _showSnack(
+                          context,
+                          'Nomor pesanan tersalin.',
+                          kind: ToastKind.success,
+                        );
                       }
                     },
                     icon: const Icon(Icons.copy_rounded),
@@ -2361,12 +2370,7 @@ class _OrderProductTileState extends State<_OrderProductTile> {
 
       if (!mounted) return;
       if (product == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Produk sudah tidak tersedia.'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        AppToast.showBanner(context, 'Produk sudah tidak tersedia.');
         return;
       }
       await Navigator.pushNamed(
@@ -2376,11 +2380,10 @@ class _OrderProductTileState extends State<_OrderProductTile> {
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Gagal buka detail produk. Coba lagi.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Gagal buka detail produk. Coba lagi.',
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _navigating = false);
@@ -3793,8 +3796,10 @@ class _CancellationRejectedBanner extends StatelessWidget {
   }
 }
 
-void _showSnack(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-  );
+void _showSnack(
+  BuildContext context,
+  String message, {
+  ToastKind kind = ToastKind.info,
+}) {
+  AppToast.showBanner(context, message, kind: kind);
 }
