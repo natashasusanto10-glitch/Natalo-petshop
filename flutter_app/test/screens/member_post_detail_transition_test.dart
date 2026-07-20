@@ -1,12 +1,22 @@
+// ignore_for_file: depend_on_referenced_packages
+//
+// video_player_platform_interface is used directly by the fake platform
+// below (same pattern as post_page_zoom_route_test.dart /
+// member_post_detail_double_tap_test.dart) even though it's only a
+// transitive dep of this package via video_player.
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/layout/postingan_media_aspect_ratio.dart';
 import 'package:natalo_petshop_flutter/features/feed/transition/post_detail_transition_session.dart';
+import 'package:natalo_petshop_flutter/features/feed/video/frame_output_heartbeat_service.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
+import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 void main() {
@@ -531,6 +541,84 @@ void main() {
   );
 
   testWidgets(
+    'destination clears the reported video controller on its own dispose, '
+    'before the coordinator disposes the underlying controller — closing '
+    'the window where session.destinationVideoController could still point '
+    'at an already-disposed VideoPlayerController (Task 4 hardening)',
+    (tester) async {
+      final platform = _FakeHeroVideoPlayerPlatform();
+      VideoPlayerPlatform.instance = platform;
+      // The real VideoPlayerSession registers a frame-output heartbeat over
+      // a platform EventChannel that has no test implementation — stub it to
+      // a no-op "listen" so it doesn't throw a MissingPluginException (which
+      // would otherwise fail this test independently of the assertions
+      // below; we don't need real frame heartbeats here).
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel(frameOutputHeartbeatChannelName),
+        (call) async => null,
+      );
+      addTearDown(() {
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          const MethodChannel(frameOutputHeartbeatChannelName),
+          null,
+        );
+      });
+      useDetailViewport(tester);
+      final post = fakeHlsVideo('a');
+      final session = fakeTransitionSession(post);
+
+      await tester.pumpWidget(detailHost(posts: [post], session: session));
+      // Mirrors what PostPageZoomRoute does on the `opening` -> `open` edge —
+      // gates the inline player's attach/autoplay (see `_applyVisibility`).
+      session.setPlaybackAllowed(true);
+      await tester.pump();
+      // Real async: the fake platform's `initialized` event needs a real
+      // microtask turn to reach `VideoPlayerController.initialize()` —
+      // same documented gotcha as post_page_zoom_route_test.dart.
+      await tester.runAsync(() async {
+        for (var i = 0; i < 10; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+
+      final reportedController = session.destinationVideoController;
+      expect(
+        reportedController,
+        isNotNull,
+        reason:
+            'the coordinator must have attached + initialized a real '
+            'controller for the active video post by now',
+      );
+      expect(reportedController!.value.isInitialized, isTrue);
+
+      // Tear the destination down WITHOUT disposing the session first (the
+      // session is source-owned and normally outlives the destination — see
+      // PostDetailTransitionSession's ownership contract). This is exactly
+      // the window the reviewer flagged: if the destination's dispose() does
+      // not clear the channel before the coordinator disposes its
+      // controllers, `session.destinationVideoController` would keep
+      // pointing at a controller that is now disposed underneath it.
+      await disposeDetail(tester);
+
+      expect(
+        session.destinationVideoController,
+        isNull,
+        reason:
+            'the destination must clear the reported controller on its '
+            'own dispose, before the coordinator disposes it — otherwise a '
+            'later read of session.destinationVideoController (e.g. by the '
+            'route rebuilding during Task 5/6 teardown) would touch an '
+            'already-disposed VideoPlayerController and throw',
+      );
+
+      session.dispose();
+    },
+  );
+
+  testWidgets(
     'idle user-scroll after ScrollEnd keeps settled center fallback',
     (tester) async {
       useDetailViewport(tester);
@@ -1008,6 +1096,92 @@ FeedPost fakeVideo(String id) => FeedPost.fromJson({
   'shareCount': 0,
   'createdAt': '2026-07-18T00:00:00.000Z',
 });
+
+/// HLS URL so `VideoPlayerSession` takes the `VideoPlayerController.networkUrl`
+/// branch directly (no `CachedVideoPlayerPlus` wrapper — segments aren't
+/// cacheable), matching the fake platform below.
+FeedPost fakeHlsVideo(String id) => FeedPost.fromJson({
+  'id': id,
+  'slug': id,
+  'kind': 'USER_VIDEO',
+  'videoUrl': 'https://example.com/$id/playlist.m3u8',
+  'thumbnailUrl': '',
+  'caption': '$id-caption',
+  'aspectWidth': 9,
+  'aspectHeight': 16,
+  'author': const {'id': 'author', 'name': 'Author'},
+  'likeCount': 0,
+  'commentCount': 0,
+  'shareCount': 0,
+  'createdAt': '2026-07-18T00:00:00.000Z',
+});
+
+/// Minimal fake video platform (trimmed from the same pattern used in
+/// `post_page_zoom_route_test.dart`): auto-fires an `initialized` event on
+/// `create()` so `VideoPlayerController.initialize()` completes with real
+/// `value.isInitialized == true`, without touching a real platform channel.
+class _FakeHeroVideoPlayerPlatform extends VideoPlayerPlatform {
+  final Map<int, StreamController<VideoEvent>> _streams = {};
+  int _nextId = 0;
+
+  @override
+  Future<void> init() async {}
+
+  @override
+  Future<int?> create(DataSource dataSource) => _create();
+
+  @override
+  Future<int?> createWithOptions(VideoCreationOptions options) => _create();
+
+  Future<int?> _create() async {
+    final id = _nextId++;
+    final stream = StreamController<VideoEvent>();
+    _streams[id] = stream;
+    stream.add(
+      VideoEvent(
+        eventType: VideoEventType.initialized,
+        size: const Size(720, 1280),
+        duration: const Duration(seconds: 10),
+      ),
+    );
+    return id;
+  }
+
+  @override
+  Future<void> dispose(int playerId) async {
+    await _streams.remove(playerId)?.close();
+  }
+
+  @override
+  Stream<VideoEvent> videoEventsFor(int playerId) => _streams[playerId]!.stream;
+
+  @override
+  Future<void> play(int playerId) async {}
+
+  @override
+  Future<void> pause(int playerId) async {}
+
+  @override
+  Future<void> setLooping(int playerId, bool looping) async {}
+
+  @override
+  Future<void> setVolume(int playerId, double volume) async {}
+
+  @override
+  Future<void> setPlaybackSpeed(int playerId, double speed) async {}
+
+  @override
+  Future<void> setMixWithOthers(bool mixWithOthers) async {}
+
+  @override
+  Future<void> seekTo(int playerId, Duration position) async {}
+
+  @override
+  Future<Duration> getPosition(int playerId) async => Duration.zero;
+
+  @override
+  Widget buildView(int playerId) => const SizedBox.shrink();
+}
 
 PostDetailTransitionSession fakeTransitionSession(
   FeedPost initialPost, {

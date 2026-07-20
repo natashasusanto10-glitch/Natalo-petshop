@@ -1141,6 +1141,14 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   @override
   void dispose() {
     feedStore.removeListener(_onFeedStoreChanged);
+    // Clear the reported video-controller channel BEFORE the coordinator
+    // disposes its underlying controllers below. The session is source-owned
+    // and typically outlives this screen (see PostDetailTransitionSession's
+    // ownership contract), so without this, `session.destinationVideoController`
+    // would keep pointing at a controller that is about to be disposed —
+    // a later read (e.g. the route rebuilding during Task 5/6 teardown)
+    // would touch a disposed `VideoPlayerController` and throw.
+    widget.transitionSession?.reportDestinationVideoController(null);
     widget.transitionSession?.removeListener(_onTransitionSessionChanged);
     appRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
