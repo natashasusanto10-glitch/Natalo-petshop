@@ -51,7 +51,11 @@ Future<void> addFeedLinkToCart(
     // Tutup sheet Links yang masih terbuka di baliknya → kembali ke video,
     // onClosed sheet Links memicu resume video (jalur existing).
     Navigator.of(context).pop();
-    AppToast.showCartAdded(context, '${result.product.title} masuk keranjang');
+    AppToast.showCartAdded(
+      context,
+      '${result.product.title} masuk keranjang',
+      imageUrl: result.product.imageUrl,
+    );
     return;
   }
 
@@ -63,5 +67,6 @@ Future<void> addFeedLinkToCart(
     quantity > 1
         ? '$quantity x ${link.name} masuk keranjang'
         : '${link.name} masuk keranjang',
+    imageUrl: link.imageUrl,
   );
 }

@@ -62,6 +62,7 @@ class AppToast {
     Duration duration = const Duration(milliseconds: 1700),
     VoidCallback? onTap,
     String actionLabel = 'Lihat',
+    String? imageUrl,
   }) {
     final overlay = Overlay.of(context, rootOverlay: true);
     final entry = OverlayEntry(
@@ -70,6 +71,8 @@ class AppToast {
         duration: duration,
         onTap: onTap,
         actionLabel: actionLabel,
+        imageUrl: imageUrl,
+        fallbackIcon: Icons.shopping_bag_rounded,
       ),
     );
     overlay.insert(entry);
@@ -86,14 +89,26 @@ class AppToast {
     String message, {
     Duration duration = const Duration(milliseconds: 1700),
     required VoidCallback onUndo,
+    String? imageUrl,
   }) {
-    showCartAdded(
-      context,
-      message,
-      duration: duration,
-      onTap: onUndo,
-      actionLabel: 'Urungkan',
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final entry = OverlayEntry(
+      builder: (ctx) => _CartToastView(
+        message: message,
+        duration: duration,
+        onTap: onUndo,
+        actionLabel: 'Urungkan',
+        imageUrl: imageUrl,
+        fallbackIcon: Icons.delete_outline_rounded,
+      ),
     );
+    overlay.insert(entry);
+    AppHaptics.warning();
+    Future.delayed(duration + const Duration(milliseconds: 300), () {
+      try {
+        entry.remove();
+      } catch (_) {}
+    });
   }
 
   /// Premium bottom banner — content-hug glass card dengan ikon berwarna,
@@ -155,16 +170,36 @@ class _CartToastView extends StatefulWidget {
   final Duration duration;
   final VoidCallback? onTap;
   final String actionLabel;
+  final String? imageUrl;
+  final IconData fallbackIcon;
 
   const _CartToastView({
     required this.message,
     required this.duration,
     required this.onTap,
     required this.actionLabel,
+    required this.imageUrl,
+    required this.fallbackIcon,
   });
 
   @override
   State<_CartToastView> createState() => _CartToastViewState();
+}
+
+class _CartToastIcon extends StatelessWidget {
+  final IconData icon;
+
+  const _CartToastIcon({required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 34,
+      height: 34,
+      color: Colors.white.withValues(alpha: 0.12),
+      child: Icon(icon, color: Colors.white, size: 17),
+    );
+  }
 }
 
 class _CartToastViewState extends State<_CartToastView>
@@ -227,19 +262,19 @@ class _CartToastViewState extends State<_CartToastView>
                       color: Colors.transparent,
                       child: InkWell(
                         onTap: widget.onTap,
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius: BorderRadius.circular(16),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(999),
+                          borderRadius: BorderRadius.circular(16),
                           child: BackdropFilter(
                             filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 10,
+                                horizontal: 9,
+                                vertical: 9,
                               ),
                               decoration: BoxDecoration(
                                 color: Colors.black.withValues(alpha: 0.72),
-                                borderRadius: BorderRadius.circular(999),
+                                borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
                                   color: Colors.white.withValues(alpha: 0.14),
                                 ),
@@ -254,46 +289,74 @@ class _CartToastViewState extends State<_CartToastView>
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Container(
-                                    width: 24,
-                                    height: 24,
-                                    decoration: BoxDecoration(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.16),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(
-                                      Icons.shopping_bag_rounded,
-                                      color: Colors.white,
-                                      size: 15,
-                                    ),
+                                  // Thumbnail produk asli kalau tersedia —
+                                  // jauh lebih informatif dari ikon generik.
+                                  // Fallback ke ikon bulat (bag/trash) kalau
+                                  // tidak ada satu produk yang representatif
+                                  // (mis. hapus banyak item sekaligus).
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(9),
+                                    child: widget.imageUrl != null
+                                        ? Image.network(
+                                            widget.imageUrl!,
+                                            width: 34,
+                                            height: 34,
+                                            fit: BoxFit.cover,
+                                            errorBuilder:
+                                                (_, __, ___) => _CartToastIcon(
+                                              icon: widget.fallbackIcon,
+                                            ),
+                                          )
+                                        : _CartToastIcon(
+                                            icon: widget.fallbackIcon,
+                                          ),
                                   ),
-                                  const SizedBox(width: 9),
+                                  const SizedBox(width: 10),
                                   Flexible(
-                                    child: Text(
-                                      widget.message,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w800,
-                                        height: 1.2,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 2,
+                                      ),
+                                      child: Text(
+                                        widget.message,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w700,
+                                          height: 1.25,
+                                        ),
                                       ),
                                     ),
                                   ),
                                   if (widget.onTap != null) ...[
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      widget.actionLabel,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w900,
-                                        height: 1.2,
+                                    Container(
+                                      width: 1,
+                                      height: 22,
+                                      margin: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                      ),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.14,
                                       ),
                                     ),
-                                  ],
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                        right: 4,
+                                      ),
+                                      child: Text(
+                                        widget.actionLabel,
+                                        style: const TextStyle(
+                                          color: Color(0xFF5AA2F0),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          height: 1.2,
+                                        ),
+                                      ),
+                                    ),
+                                  ] else
+                                    const SizedBox(width: 5),
                                 ],
                               ),
                             ),

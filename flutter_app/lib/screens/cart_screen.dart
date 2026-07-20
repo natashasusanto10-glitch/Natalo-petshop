@@ -1431,6 +1431,7 @@ class _CartItemCard extends StatelessWidget {
       context,
       message: 'Produk telah dihapus',
       onUndo: () => cartStore.restore(item, index: index),
+      imageUrl: item.product.imageUrl,
     );
   }
 
@@ -2015,12 +2016,14 @@ void _showCartDeleteSnackBar(
   BuildContext context, {
   required String message,
   required VoidCallback onUndo,
+  String? imageUrl,
 }) {
   AppToast.showCartDeleted(
     context,
     message,
     duration: const Duration(milliseconds: 1400),
     onUndo: onUndo,
+    imageUrl: imageUrl,
   );
 }
 
@@ -3014,6 +3017,7 @@ class _CartRecommendationsSection extends StatelessWidget {
         AppToast.showCartAdded(
           context,
           '${product.title} masuk keranjang',
+          imageUrl: product.imageUrl,
         );
       },
     );
@@ -3205,6 +3209,7 @@ class _EmptyCartState extends StatelessWidget {
                 '${product.title} masuk keranjang',
                 actionLabel: 'Lihat Keranjang',
                 onTap: () => Navigator.pushNamed(context, '/cart'),
+                imageUrl: product.imageUrl,
               );
             },
           ),
@@ -3244,6 +3249,7 @@ class _EmptyCartState extends StatelessWidget {
                 '${product.title} masuk keranjang',
                 actionLabel: 'Lihat Keranjang',
                 onTap: () => Navigator.pushNamed(context, '/cart'),
+                imageUrl: product.imageUrl,
               );
             },
           ),

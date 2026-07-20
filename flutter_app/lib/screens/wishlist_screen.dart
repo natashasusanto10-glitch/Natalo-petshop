@@ -279,6 +279,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
     AppToast.showCartAdded(
       context,
       '${product.title} masuk keranjang',
+      imageUrl: product.imageUrl,
     );
   }
 

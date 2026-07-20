@@ -69,6 +69,7 @@ class ProductCard extends StatelessWidget {
             AppToast.showCartAdded(
               context,
               '${product.title} masuk keranjang',
+              imageUrl: product.imageUrl,
             );
           },
         );
@@ -815,6 +816,7 @@ class _GridCartButton extends StatelessWidget {
                   AppToast.showCartAdded(
                     context,
                     '${product.title} masuk keranjang',
+                    imageUrl: product.imageUrl,
                   );
                 },
           borderRadius: AppRadius.medium,
@@ -858,6 +860,7 @@ class _AddToCartPill extends StatelessWidget {
                   AppToast.showCartAdded(
                     context,
                     '${product.title} masuk keranjang',
+                    imageUrl: product.imageUrl,
                   );
                 },
           borderRadius: AppRadius.pill,
