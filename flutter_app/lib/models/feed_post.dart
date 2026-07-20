@@ -628,12 +628,18 @@ class FeedPost {
                     : 'USER_VIDEO');
 
     // aspectRatio: prefer explicit aspectRatio double; else derive dari
-    // aspectWidth/aspectHeight pair (my-posts shape).
+    // aspectWidth/aspectHeight pair (my-posts shape); else fallback ke
+    // width/height media item pertama — beberapa shape (mis. my-posts lama)
+    // taruh dimensi video di mediaItems, bukan di post-level. Tanpa fallback
+    // ini video landscape jatuh ke default 9/16 (portrait) → grid gagal
+    // letterbox (lihat gridShowsLetterbox di gallery_post_tile.dart).
+    final firstMedia = mediaItems.isNotEmpty ? mediaItems.first : null;
     final aspectRatio = (json['aspectRatio'] as num?)?.toDouble() ??
         _aspectFromIntPair(
           (json['aspectWidth'] as num?)?.toInt(),
           (json['aspectHeight'] as num?)?.toInt(),
         ) ??
+        _aspectFromIntPair(firstMedia?.width, firstMedia?.height) ??
         (9 / 16);
 
     // duration: accept `durationSec` ATAU `videoDurationSec`.

@@ -34,6 +34,25 @@ void main() {
           isFalse);
     });
 
+    test('video landscape tanpa aspect post-level (fallback mediaItems) → letterbox', () {
+      final post = FeedPost.fromJson({
+        'id': 'p3',
+        'slug': 'p3',
+        'kind': 'VIDEO_ONLY',
+        'author': {'id': 'a', 'name': 'X', 'role': 'CUSTOMER'},
+        'mediaItems': [
+          {
+            'mediaUrl': 'https://example.com/m.mp4',
+            'mediaType': 'video',
+            'width': 1920,
+            'height': 1080,
+          },
+        ],
+        'createdAt': '2026-07-15T00:00:00.000Z',
+      });
+      expect(gridShowsLetterbox(post), isTrue);
+    });
+
     test('foto → tak pernah letterbox', () {
       expect(
         gridShowsLetterbox(FeedPost.fromJson({

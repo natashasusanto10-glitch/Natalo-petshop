@@ -2512,7 +2512,14 @@ class _PostCaptionState extends State<PostCaption>
     with SingleTickerProviderStateMixin {
   late final TapGestureRecognizer _expandRecognizer = TapGestureRecognizer()
     ..onTap = _expand;
-  TapGestureRecognizer? _nameRecognizer;
+  // WAJIB stabil (dibuat sekali, sama seperti _expandRecognizer) — bukan
+  // dibuat ulang tiap build(). Dispose+recreate per build (pola lama)
+  // membuang recognizer yang lagi "dipegang" gesture arena kalau widget
+  // rebuild persis di antara jari turun & lepas (LayoutBuilder + listener
+  // postCaptionSessionStore bikin ini sering terjadi) → tap nama nyaris
+  // selalu gagal walau username valid.
+  late final TapGestureRecognizer _nameRecognizer = TapGestureRecognizer()
+    ..onTap = _openAuthorProfile;
 
   @override
   void initState() {
@@ -2544,7 +2551,7 @@ class _PostCaptionState extends State<PostCaption>
   void dispose() {
     postCaptionSessionStore.removeListener(_onSessionChanged);
     _expandRecognizer.dispose();
-    _nameRecognizer?.dispose();
+    _nameRecognizer.dispose();
     super.dispose();
   }
 
@@ -2609,16 +2616,11 @@ class _PostCaptionState extends State<PostCaption>
       // short caption containing this literal phrase remains plain text.
       final suffixIndex =
           truncated == null ? -1 : text.lastIndexOf('... selengkapnya');
-      _nameRecognizer?.dispose();
-      _nameRecognizer = null;
       final canTapName = widget.author?.hasUsername ?? false;
-      if (canTapName) {
-        _nameRecognizer = TapGestureRecognizer()..onTap = _openAuthorProfile;
-      }
       final span = TextSpan(children: [
         TextSpan(
             text: '${widget.memberName} ',
-            recognizer: _nameRecognizer,
+            recognizer: canTapName ? _nameRecognizer : null,
             style: TextStyle(
                 fontWeight: NataloWeight.strong,
                 color: widget.isOfficial

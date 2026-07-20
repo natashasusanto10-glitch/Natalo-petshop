@@ -74,11 +74,21 @@ void main() {
       );
     });
 
-    test('mainFeed + landscape → tetap cover (feed utama tak diubah)', () {
+    test('mainFeed + landscape → contain (letterbox, paritas fullscreen)', () {
       expect(
         resolveFeedCoverFit(
           framing: FeedVideoFraming.mainFeed,
           isLandscape: true,
+        ),
+        BoxFit.contain,
+      );
+    });
+
+    test('mainFeed + portrait → cover (isi penuh, tak berubah)', () {
+      expect(
+        resolveFeedCoverFit(
+          framing: FeedVideoFraming.mainFeed,
+          isLandscape: false,
         ),
         BoxFit.cover,
       );

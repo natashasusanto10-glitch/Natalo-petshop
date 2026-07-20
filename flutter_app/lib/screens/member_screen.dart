@@ -593,8 +593,8 @@ class _ProfileTopBar extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: ink,
-                    fontSize: 15,
-                    fontWeight: NataloWeight.strong,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
