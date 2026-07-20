@@ -24,6 +24,7 @@ import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/calm_scroll_physics.dart';
 import '../widgets/collapsing_header_delegate.dart';
@@ -739,13 +740,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     }
   }
 
+  // Kedua caller (ApiException.message + fallback catch) sama-sama jalur
+  // kegagalan follow/unfollow → kind error tetap untuk semua pesan.
   void _showSnack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    AppToast.showBanner(context, message, kind: ToastKind.error);
   }
 
   /// Share link profil publik `/u/{username}` via native share sheet.

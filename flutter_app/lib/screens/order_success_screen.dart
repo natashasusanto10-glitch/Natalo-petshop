@@ -153,14 +153,23 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
   Future<void> _openMidtrans() async {
     final paymentUrl = _order.paymentUrl;
     if (paymentUrl == null || paymentUrl.isEmpty) {
-      _showSnack('Link pembayaran belum tersedia. Buka detail pesanan.');
+      // Kind-inference: "belum tersedia" — pola sama dengan pesan
+      // ketersediaan lain di app (mis. "Produk sedang tidak tersedia.") →
+      // warning, bukan error murni.
+      _showSnack(
+        'Link pembayaran belum tersedia. Buka detail pesanan.',
+        kind: ToastKind.warning,
+      );
       return;
     }
     // Payment links only ever load in the OS browser after exact validation —
     // never inside the embedded WebView, so a spoofed/foreign URL from the
     // order payload can't render inside the app session.
     if (!PaymentUrlPolicy.isValidMidtransPaymentUrl(paymentUrl)) {
-      _showSnack('Link pembayaran tidak valid atau tidak tepercaya.');
+      _showSnack(
+        'Link pembayaran tidak valid atau tidak tepercaya.',
+        kind: ToastKind.error,
+      );
       return;
     }
     final opened = await launchUrl(
@@ -169,7 +178,7 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
     );
     if (!mounted) return;
     if (!opened) {
-      _showSnack('Tidak bisa membuka pembayaran.');
+      _showSnack('Tidak bisa membuka pembayaran.', kind: ToastKind.error);
       return;
     }
     await _refreshOrder();
@@ -191,10 +200,8 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
     );
   }
 
-  void _showSnack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-    );
+  void _showSnack(String message, {ToastKind kind = ToastKind.info}) {
+    AppToast.showBanner(context, message, kind: kind);
   }
 
   @override
@@ -470,11 +477,10 @@ class _OrderStatusCard extends StatelessWidget {
                         ClipboardData(text: order.orderNumber),
                       );
                       if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Nomor pesanan tersalin.'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
+                      AppToast.showBanner(
+                        context,
+                        'Nomor pesanan tersalin.',
+                        kind: ToastKind.success,
                       );
                     },
                     icon: const Icon(Icons.copy_all_outlined),

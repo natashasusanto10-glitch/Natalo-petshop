@@ -18,6 +18,7 @@ import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_product_image.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import 'order_success_screen.dart';
 
@@ -400,8 +401,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _loadingRates = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Alamat gagal diperbarui: $error')),
+      AppToast.showBanner(
+        context,
+        'Alamat gagal diperbarui: $error',
+        kind: ToastKind.error,
       );
     }
   }
@@ -604,12 +607,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final voucherError =
           recalc.manualVoucherError ?? recalc.customerVoucherError;
       if (voucherError != null && voucherError.isNotEmpty && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(voucherError),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        // Kind-inference: field ini datang dari manualVoucherError /
+        // customerVoucherError — namanya sendiri sudah "Error" → error.
+        AppToast.showBanner(context, voucherError, kind: ToastKind.error);
       }
     } catch (error) {
       if (!mounted) return;
@@ -827,11 +827,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final uri = Uri.parse(PickupStoreInfo.mapsUrl);
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!mounted || opened) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Tidak bisa membuka Google Maps.'),
-        behavior: SnackBarBehavior.floating,
-      ),
+    AppToast.showBanner(
+      context,
+      'Tidak bisa membuka Google Maps.',
+      kind: ToastKind.error,
     );
   }
 
@@ -871,14 +870,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (!mounted) return;
       if (!validation.valid && validation.issues.isNotEmpty) {
         AppHaptics.warning();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Beberapa item perlu update: ${validation.issues.first.message}',
-            ),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 5),
-          ),
+        AppToast.showBanner(
+          context,
+          'Beberapa item perlu update: ${validation.issues.first.message}',
+          kind: ToastKind.warning,
+          duration: const Duration(seconds: 5),
         );
         setState(() => _submitting = false);
         return;
@@ -978,11 +974,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } catch (error) {
       if (!mounted) return;
       AppHaptics.warning();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Checkout gagal: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Checkout gagal: $error',
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _submitting = false);

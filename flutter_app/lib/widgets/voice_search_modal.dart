@@ -6,6 +6,7 @@ import '../theme/natalo_colors.dart';
 
 import '../services/voice_search_service.dart';
 import '../utils/haptics.dart';
+import 'app_toast.dart';
 
 const _brandBlue = NataloColors.primary;
 
@@ -23,13 +24,10 @@ Future<String?> showVoiceSearchModal(BuildContext context) async {
 
   if (!ready) {
     // Tidak ada recognizer / permission denied permanen.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        behavior: SnackBarBehavior.floating,
-        content: Text(
-          'Pencarian suara tidak tersedia. Cek izin mikrofon di pengaturan.',
-        ),
-      ),
+    AppToast.showBanner(
+      context,
+      'Pencarian suara tidak tersedia. Cek izin mikrofon di pengaturan.',
+      kind: ToastKind.warning,
     );
     return null;
   }

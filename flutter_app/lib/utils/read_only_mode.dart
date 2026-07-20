@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../widgets/app_toast.dart';
+
 /// Read-only mode — flag global yang membungkus semua endpoint mutation
 /// dan throw [ReadOnlyModeException] supaya Capacitor production database
 /// tidak tersentuh dari Flutter testing.
@@ -83,17 +85,13 @@ class ReadOnlyModeException implements Exception {
 }
 
 void showReadOnlySnackbar(BuildContext context, ReadOnlyModeException error) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: const Text(
-        'Mode aman aktif. Aksi ini tidak mengubah data server.',
-      ),
-      behavior: SnackBarBehavior.floating,
-      action: SnackBarAction(
-        label: 'OK',
-        onPressed: () {},
-      ),
-    ),
+  // Action lama "OK" cuma no-op (onPressed: () {}) — cuma sekedar tombol
+  // dismiss bawaan Material. Overlay toast auto-hide sendiri, jadi tombol
+  // yang tak melakukan apa pun tidak dibawa (mencegah tap-target palsu).
+  AppToast.showBanner(
+    context,
+    'Mode aman aktif. Aksi ini tidak mengubah data server.',
+    kind: ToastKind.warning,
   );
 }
 
