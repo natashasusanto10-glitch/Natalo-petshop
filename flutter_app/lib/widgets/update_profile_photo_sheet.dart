@@ -87,10 +87,16 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
         return;
       }
       final tmpDir = await getTemporaryDirectory();
+      // HEIC-safe: sama seperti jalur galeri (profile_photo_picker_screen).
+      final normalizedPath = await normalizePhotoSourceToJpeg(
+        picked.path,
+        tmpDir.path,
+        pathSeparator: Platform.pathSeparator,
+      );
       final outPath = await compute(
         processPhotoInIsolate,
         PhotoProcessArgs(
-          sourcePath: picked.path,
+          sourcePath: normalizedPath,
           tmpDirPath: tmpDir.path,
           targetAspect: 1.0,
           scale: 1.0,
