@@ -81,6 +81,24 @@ Future<void> Function()? debugPostDetailReadinessFrameFuture;
 
 const Duration _postDetailReadinessBudget = Duration(milliseconds: 75);
 
+/// Whether the inline post-detail video should draw the LIVE player surface
+/// (its last decoded frame) rather than the static thumbnail.
+///
+/// This is exactly the pre-existing "ready" condition MINUS its
+/// `playbackAllowed` term — that term is the only change. A reverse/close
+/// transition (and app backgrounding) pauses playback BEFORE the surface
+/// moves, but a paused controller still holds its last frame. Gating the
+/// drawn surface on `playbackAllowed` swapped the live frame for the thumbnail
+/// the instant a close began, and the thumbnail reloads (shimmer/black)
+/// mid-zoom — the "closing a posted video glitches" bug. `playbackAllowed`
+/// still governs play/pause and the loading spinner; it must NOT govern what
+/// is drawn. The surface shows as soon as the controller is initialized (a
+/// separate overlay hides the pre-first-frame black), matching the original
+/// behavior for every non-transition case.
+@visibleForTesting
+bool postDetailShowsVideoSurface({required bool controllerInitialized}) =>
+    controllerInitialized;
+
 /// Detail Postingan style Instagram Feed — continuous vertical scroll list
 /// of user's own posts (Postingan Saya).
 ///
@@ -447,8 +465,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       debugPostDetailReadinessClock?.call() ?? stopwatch.elapsed;
 
   Future<bool> _awaitReadinessFrame(Stopwatch stopwatch) async {
-    final remaining =
-        _postDetailReadinessBudget - _readinessElapsed(stopwatch);
+    final remaining = _postDetailReadinessBudget - _readinessElapsed(stopwatch);
     if (remaining <= Duration.zero) return false;
     final frameFuture =
         debugPostDetailReadinessFrameFuture?.call() ??
@@ -493,16 +510,13 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   }
 
   bool _hasRenderableFallbackSurface(String postId) {
-    if (_transitionFallbackPost?.id != postId ||
-        !_transitionFallbackVisible) {
+    if (_transitionFallbackPost?.id != postId || !_transitionFallbackVisible) {
       return false;
     }
-    final box = _transitionFallbackSurfaceKey.currentContext?.findRenderObject()
-        as RenderBox?;
-    return box != null &&
-        box.attached &&
-        box.hasSize &&
-        !box.size.isEmpty;
+    final box =
+        _transitionFallbackSurfaceKey.currentContext?.findRenderObject()
+            as RenderBox?;
+    return box != null && box.attached && box.hasSize && !box.size.isEmpty;
   }
 
   bool _hasRenderableDestinationSurface(int targetIndex) {
@@ -510,8 +524,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
         targetIndex >= _postKeys.length) {
       return false;
     }
-    final box = _postKeys[targetIndex].currentContext?.findRenderObject()
-        as RenderBox?;
+    final box =
+        _postKeys[targetIndex].currentContext?.findRenderObject() as RenderBox?;
     final viewportBox =
         _listViewportKey.currentContext?.findRenderObject() as RenderBox?;
     return box != null &&
@@ -708,8 +722,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       }
       final itemContext = _postKeys[targetIndex].currentContext;
       final box = itemContext?.findRenderObject() as RenderBox?;
-      final viewport =
-          box == null ? null : RenderAbstractViewport.maybeOf(box);
+      final viewport = box == null ? null : RenderAbstractViewport.maybeOf(box);
       final controller = _scrollController;
       if (viewport == null ||
           controller == null ||
@@ -783,24 +796,28 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     final viewportRect =
         viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
     final samples = <PostVisibilitySample>[];
-    for (var index = 0;
-        index < _postMediaKeys.length && index < _posts.length;
-        index++) {
-      final mediaBox = _postMediaKeys[index].currentContext?.findRenderObject()
-          as RenderBox?;
+    for (
+      var index = 0;
+      index < _postMediaKeys.length && index < _posts.length;
+      index++
+    ) {
+      final mediaBox =
+          _postMediaKeys[index].currentContext?.findRenderObject()
+              as RenderBox?;
       if (mediaBox == null || !mediaBox.hasSize) continue;
       final mediaRect = mediaBox.localToGlobal(Offset.zero) & mediaBox.size;
       final intersection = mediaRect.intersect(viewportRect);
-      final visibleArea =
-          intersection.isEmpty ? 0.0 : intersection.width * intersection.height;
+      final visibleArea = intersection.isEmpty
+          ? 0.0
+          : intersection.width * intersection.height;
       final mediaArea = mediaRect.width * mediaRect.height;
       samples.add(
         PostVisibilitySample(
           postId: _posts[index].id,
           visibleFraction: mediaArea <= 0 ? 0 : visibleArea / mediaArea,
           visibleArea: visibleArea,
-          mediaCenterDistance:
-              (mediaRect.center.dy - viewportRect.center.dy).abs(),
+          mediaCenterDistance: (mediaRect.center.dy - viewportRect.center.dy)
+              .abs(),
         ),
       );
     }
@@ -1129,14 +1146,16 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     AppHaptics.tap();
     final url = '${ApiConfig.publicSiteUrl}/feed/${post.slug}';
     final captionSnippet = (post.caption ?? '').trim();
-    final text =
-        captionSnippet.isEmpty ? url : '${truncate(captionSnippet, 120)}\n$url';
+    final text = captionSnippet.isEmpty
+        ? url
+        : '${truncate(captionSnippet, 120)}\n$url';
     try {
       final box = context.findRenderObject() as RenderBox?;
       final result = await Share.share(
         text,
-        sharePositionOrigin:
-            box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+        sharePositionOrigin: box != null
+            ? box.localToGlobal(Offset.zero) & box.size
+            : null,
       );
       if (result.status != ShareResultStatus.success || !mounted) return;
       feedStore.incrementShareCount(post.id);
@@ -1181,8 +1200,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   }
 
   String? _authorPhotoFor(FeedPost post) {
-    final photo =
-        (post.author.profilePhotoUrl ?? post.author.avatarUrl)?.trim();
+    final photo = (post.author.profilePhotoUrl ?? post.author.avatarUrl)
+        ?.trim();
     return photo == null || photo.isEmpty ? null : photo;
   }
 
@@ -1200,7 +1219,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
         avatarUrl: resolvedPhoto ?? source.avatarUrl,
         profilePhotoUrl: resolvedPhoto ?? source.profilePhotoUrl,
         role: ownerProfile?.role ?? source.role,
-        isAdmin: widget.authorIsOfficial ||
+        isAdmin:
+            widget.authorIsOfficial ||
             ownerProfile?.isAdmin == true ||
             source.isAdmin,
         isOfficial: widget.authorIsOfficial || source.isOfficial,
@@ -1369,7 +1389,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
               : NataloPawRefreshIndicator(
                   onRefresh: _refreshPosts,
                   child: AnimatedOpacity(
-                    opacity: _transitionFallbackPost != null &&
+                    opacity:
+                        _transitionFallbackPost != null &&
                             _transitionFallbackVisible
                         ? 0
                         : 1,
@@ -1381,8 +1402,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                       child: ListView.separated(
                         key: _listViewportKey,
                         controller: _scrollController,
-                        cacheExtent:
-                            _maximumEstimatedPostExtent(context) * 2,
+                        cacheExtent: _maximumEstimatedPostExtent(context) * 2,
                         // Top: media post pertama mulai TEPAT di bawah header (status
                         // bar + toolbar), jadi saat pertama buka media tidak "over ke
                         // atas" / kepotong — framing 9:16 utuh (paritas IG). Saat
@@ -1390,7 +1410,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                         // Bottom: extra space supaya post terakhir bisa discroll lega
                         // ke atas viewport (gak mepet ke home indicator).
                         padding: EdgeInsets.only(
-                          top: MediaQuery.paddingOf(context).top +
+                          top:
+                              MediaQuery.paddingOf(context).top +
                               kToolbarHeight,
                           bottom: 48,
                         ),
@@ -1399,8 +1420,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                         itemCount: _posts.length,
                         // Whitespace pemisah antar post tetap ada, tapi lebih compact
                         // supaya detail terasa seperti feed/post Instagram.
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(height: 24),
+                        separatorBuilder: (_, __) => const SizedBox(height: 24),
                         itemBuilder: (context, index) {
                           final post = _posts[index];
                           return KeyedSubtree(
@@ -1468,12 +1488,14 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
               // yang disembunyikan di mode ini), sisakan cuma judul +
               // tombol back.
               memberName: widget.authorPerPost ? '' : _memberName,
-              authorIsOfficial:
-                  widget.authorPerPost ? false : widget.authorIsOfficial,
+              authorIsOfficial: widget.authorPerPost
+                  ? false
+                  : widget.authorIsOfficial,
               // authorId kosong (data profil tak lengkap) → chip
               // disembunyikan: follow('') pasti gagal + override tak pernah
               // nyambung, lebih baik tak tampil daripada selalu "Ikuti".
-              showFollowChip: !widget.isOwner &&
+              showFollowChip:
+                  !widget.isOwner &&
                   !widget.authorPerPost &&
                   (widget.authorId ?? widget.post.author.id).isNotEmpty,
               authorId: widget.authorId ?? widget.post.author.id,
@@ -1578,8 +1600,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
           posts: videoPosts,
           hydration: hydration,
           initialNextCursor: widget.initialNextCursor,
-          loadMorePosts:
-              widget.loadMoreScopedPosts == null ? null : _loadMoreScopedPosts,
+          loadMorePosts: widget.loadMoreScopedPosts == null
+              ? null
+              : _loadMoreScopedPosts,
           initialIndex: tappedIndex >= 0 ? tappedIndex : 0,
           // Handoff §2.6: item ASAL pinjam controller coordinator (instan).
           coordinator: _videoCoordinator,
@@ -1601,9 +1624,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
             final box =
                 targetKey?.currentContext?.findRenderObject() as RenderBox?;
             final targetPost = _posts.cast<FeedPost?>().firstWhere(
-                  (post) => post?.id == result.postId,
-                  orElse: () => null,
-                );
+              (post) => post?.id == result.postId,
+              orElse: () => null,
+            );
             if (box == null || !box.hasSize || targetPost == null) return;
             reverseTarget.value = ScaledVideoFeedReverseTarget(
               rect: box.localToGlobal(Offset.zero) & box.size,
@@ -1701,7 +1724,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
           if (fresh == null) return localPost;
           final freshHasProducts =
               fresh.taggedProducts.isNotEmpty || fresh.products.isNotEmpty;
-          final localHasProducts = localPost.taggedProducts.isNotEmpty ||
+          final localHasProducts =
+              localPost.taggedProducts.isNotEmpty ||
               localPost.products.isNotEmpty;
           if (!freshHasProducts && localHasProducts) {
             return fresh.copyWith(
@@ -2302,9 +2326,7 @@ void _openPostHeaderProfile(BuildContext context, String? username) {
   AppHaptics.tap();
   Navigator.push(
     context,
-    MaterialPageRoute(
-      builder: (_) => PublicProfileScreen(username: username),
-    ),
+    MaterialPageRoute(builder: (_) => PublicProfileScreen(username: username)),
   );
 }
 
@@ -2520,8 +2542,10 @@ class _PostDetailFollowChipState extends State<_PostDetailFollowChip> {
     return ValueListenableBuilder<Map<String, bool>>(
       valueListenable: followOverrides,
       builder: (context, _, __) {
-        final following =
-            resolveFollowState(widget.authorId, widget.initialFollowing);
+        final following = resolveFollowState(
+          widget.authorId,
+          widget.initialFollowing,
+        );
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => _toggle(following),
@@ -2818,13 +2842,14 @@ class _LikedByLineState extends State<_LikedByLine> {
     final primaryName = primary == null
         ? 'beberapa orang'
         : primaryIsSelf
-            ? 'Anda'
-            : primary.displayName;
+        ? 'Anda'
+        : primary.displayName;
     // Primary tappable kalau ada primary + bukan official admin + punya
     // username yang valid (atau adalah viewer = "Anda"; tap "Anda" buka
     // profile sendiri). "Anda" tetap tappable supaya consistent dengan
     // tap @mention di feed.
-    final canTapPrimary = primary != null &&
+    final canTapPrimary =
+        primary != null &&
         !primary.isOfficialAccount &&
         ((primary.username?.isNotEmpty ?? false) || primaryIsSelf);
     final othersCount = widget.post.likeCount - 1;
@@ -2947,7 +2972,8 @@ class _LikedAvatarStack extends StatelessWidget {
             child: visible.isNotEmpty
                 ? _MiniAvatar.member(
                     initial: visible.first.initial,
-                    photoUrl: visible.first.profilePhotoUrl ??
+                    photoUrl:
+                        visible.first.profilePhotoUrl ??
                         visible.first.avatarUrl,
                     isOfficial: visible.first.isOfficialAccount,
                     size: size,
@@ -2980,19 +3006,18 @@ class _MiniAvatar extends StatelessWidget {
     required String? photoUrl,
     required bool isOfficial,
     required double size,
-  }) =>
-      _MiniAvatar(
-        size: size,
-        photoUrl: photoUrl,
-        initial: initial,
-        isOfficial: isOfficial,
-      );
+  }) => _MiniAvatar(
+    size: size,
+    photoUrl: photoUrl,
+    initial: initial,
+    isOfficial: isOfficial,
+  );
 
   factory _MiniAvatar.placeholder({required double size}) => _MiniAvatar(
-        size: size,
-        backgroundColor: const Color(0xFFD1D5DB),
-        initial: '+',
-      );
+    size: size,
+    backgroundColor: const Color(0xFFD1D5DB),
+    initial: '+',
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -3103,35 +3128,41 @@ class _PostCaptionState extends State<PostCaption>
   }
 
   TextStyle _style(BuildContext context) => TextStyle(
-        color: Theme.of(context).colorScheme.onSurface,
-        fontSize: 13.5,
-        fontWeight: NataloWeight.body,
-        height: 1.35,
-      );
+    color: Theme.of(context).colorScheme.onSurface,
+    fontSize: 13.5,
+    fontWeight: NataloWeight.body,
+    height: 1.35,
+  );
 
   String? _truncatedCaption(
-      BuildContext context, double width, TextStyle style) {
+    BuildContext context,
+    double width,
+    TextStyle style,
+  ) {
     final full = widget.caption.trim();
     final codePoints = full.runes.toList();
     const suffix = '... selengkapnya';
-    TextSpan span(String text) => TextSpan(children: [
-          TextSpan(
-              text: '${widget.memberName} ',
-              style: TextStyle(
-                  fontWeight: NataloWeight.strong,
-                  color: widget.isOfficial
-                      ? NataloColors.officialGoldOnLight
-                      : null)),
-          TextSpan(text: text),
-        ]);
+    TextSpan span(String text) => TextSpan(
+      children: [
+        TextSpan(
+          text: '${widget.memberName} ',
+          style: TextStyle(
+            fontWeight: NataloWeight.strong,
+            color: widget.isOfficial ? NataloColors.officialGoldOnLight : null,
+          ),
+        ),
+        TextSpan(text: text),
+      ],
+    );
     bool fits(String text) {
       final p = TextPainter(
-          text: TextSpan(style: style, children: span(text).children),
-          textAlign: TextAlign.start,
-          textDirection: TextDirection.ltr,
-          maxLines: 2,
-          textScaler: MediaQuery.textScalerOf(context),
-          strutStyle: StrutStyle.fromTextStyle(style));
+        text: TextSpan(style: style, children: span(text).children),
+        textAlign: TextAlign.start,
+        textDirection: TextDirection.ltr,
+        maxLines: 2,
+        textScaler: MediaQuery.textScalerOf(context),
+        strutStyle: StrutStyle.fromTextStyle(style),
+      );
       p.layout(maxWidth: width);
       return !p.didExceedMaxLines;
     }
@@ -3154,44 +3185,53 @@ class _PostCaptionState extends State<PostCaption>
   Widget build(BuildContext context) {
     final expanded = postCaptionSessionStore.isExpanded(widget.postId);
     final style = _style(context);
-    return LayoutBuilder(builder: (context, constraints) {
-      final truncated = expanded
-          ? null
-          : _truncatedCaption(context, constraints.maxWidth, style);
-      final text = truncated ?? widget.caption.trim();
-      // Only generated truncation may activate the affordance. A naturally
-      // short caption containing this literal phrase remains plain text.
-      final suffixIndex =
-          truncated == null ? -1 : text.lastIndexOf('... selengkapnya');
-      _nameRecognizer?.dispose();
-      _nameRecognizer = null;
-      final canTapName = widget.author?.hasUsername ?? false;
-      if (canTapName) {
-        _nameRecognizer = TapGestureRecognizer()..onTap = _openAuthorProfile;
-      }
-      final span = TextSpan(children: [
-        TextSpan(
-            text: '${widget.memberName} ',
-            recognizer: _nameRecognizer,
-            style: TextStyle(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final truncated = expanded
+            ? null
+            : _truncatedCaption(context, constraints.maxWidth, style);
+        final text = truncated ?? widget.caption.trim();
+        // Only generated truncation may activate the affordance. A naturally
+        // short caption containing this literal phrase remains plain text.
+        final suffixIndex = truncated == null
+            ? -1
+            : text.lastIndexOf('... selengkapnya');
+        _nameRecognizer?.dispose();
+        _nameRecognizer = null;
+        final canTapName = widget.author?.hasUsername ?? false;
+        if (canTapName) {
+          _nameRecognizer = TapGestureRecognizer()..onTap = _openAuthorProfile;
+        }
+        final span = TextSpan(
+          children: [
+            TextSpan(
+              text: '${widget.memberName} ',
+              recognizer: _nameRecognizer,
+              style: TextStyle(
                 fontWeight: NataloWeight.strong,
                 color: widget.isOfficial
                     ? NataloColors.officialGoldOnLight
-                    : null)),
-        if (suffixIndex >= 0 && !expanded) ...[
-          TextSpan(text: text.substring(0, suffixIndex + 4)),
-          TextSpan(
-              text: 'selengkapnya',
-              recognizer: _expandRecognizer,
-              style: const TextStyle(fontWeight: NataloWeight.strong)),
-        ] else
-          TextSpan(text: text),
-      ]);
-      return AnimatedSize(
+                    : null,
+              ),
+            ),
+            if (suffixIndex >= 0 && !expanded) ...[
+              TextSpan(text: text.substring(0, suffixIndex + 4)),
+              TextSpan(
+                text: 'selengkapnya',
+                recognizer: _expandRecognizer,
+                style: const TextStyle(fontWeight: NataloWeight.strong),
+              ),
+            ] else
+              TextSpan(text: text),
+          ],
+        );
+        return AnimatedSize(
           duration: const Duration(milliseconds: 280),
           curve: Curves.easeOutCubic,
-          child: Text.rich(span, style: style));
-    });
+          child: Text.rich(span, style: style),
+        );
+      },
+    );
   }
 }
 
@@ -3208,8 +3248,8 @@ class _PostStatusBadge extends StatelessWidget {
     final label = rejected ? 'Ditolak' : 'Menunggu review';
     final text = rejected
         ? (post.rejectionReason?.trim().isNotEmpty == true
-            ? 'Postingan ditolak: ${post.rejectionReason}'
-            : 'Postingan ditolak oleh admin.')
+              ? 'Postingan ditolak: ${post.rejectionReason}'
+              : 'Postingan ditolak oleh admin.')
         : 'Postingan sedang diperiksa admin sebelum tayang publik.';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -3348,43 +3388,43 @@ class _PostMediaSurface extends StatelessWidget {
       aspectRatio: aspectRatio,
       child: switch (post.contentType) {
         FeedContentType.video => _InlineVideoPlayer(
-            postId: post.id,
+          postId: post.id,
+          coordinator: coordinator,
+          registerVideoUrl: registerVideoUrl,
+          dormant: handoffSessionId == post.id,
+          playbackAllowed: playbackAllowed,
+          // videoPlaybackUrl (videoUrl-first), BUKAN previewMediaUrl
+          // (yang thumbnail-first → JPG → player gagal initialize).
+          mediaUrl: videoQualityService.resolvePlaybackUrl(
+            post.videoPlaybackUrl,
+            dataSaverUrl: post.videoDataSaverUrl,
+            userPreference: appSettingsStore.feedVideoQuality,
+          ),
+          thumbnailUrl: post.thumbnailUrl,
+          aspectRatio: aspectRatio,
+          onAnchorReady: onVideoAnchorReady,
+          onMediaSingleTap: onVideoMediaSingleTap,
+          onMediaDoubleTapDown: onVideoMediaDoubleTapDown,
+          onMediaDoubleTap: onVideoMediaDoubleTap,
+        ),
+        FeedContentType.carousel => Hero(
+          tag: 'post-thumb-${post.id}',
+          child: _CarouselSurface(
+            post: post,
+            aspectRatio: aspectRatio,
             coordinator: coordinator,
             registerVideoUrl: registerVideoUrl,
-            dormant: handoffSessionId == post.id,
+            handoffSessionId: handoffSessionId,
             playbackAllowed: playbackAllowed,
-            // videoPlaybackUrl (videoUrl-first), BUKAN previewMediaUrl
-            // (yang thumbnail-first → JPG → player gagal initialize).
-            mediaUrl: videoQualityService.resolvePlaybackUrl(
-              post.videoPlaybackUrl,
-              dataSaverUrl: post.videoDataSaverUrl,
-              userPreference: appSettingsStore.feedVideoQuality,
-            ),
-            thumbnailUrl: post.thumbnailUrl,
-            aspectRatio: aspectRatio,
-            onAnchorReady: onVideoAnchorReady,
-            onMediaSingleTap: onVideoMediaSingleTap,
-            onMediaDoubleTapDown: onVideoMediaDoubleTapDown,
-            onMediaDoubleTap: onVideoMediaDoubleTap,
           ),
-        FeedContentType.carousel => Hero(
-            tag: 'post-thumb-${post.id}',
-            child: _CarouselSurface(
-              post: post,
-              aspectRatio: aspectRatio,
-              coordinator: coordinator,
-              registerVideoUrl: registerVideoUrl,
-              handoffSessionId: handoffSessionId,
-              playbackAllowed: playbackAllowed,
-            ),
-          ),
+        ),
         FeedContentType.photo => Hero(
-            tag: 'post-thumb-${post.id}',
-            child: _ImageSurface(
-              imageUrl: post.previewMediaUrl,
-              placeholderIcon: Icons.image_outlined,
-            ),
+          tag: 'post-thumb-${post.id}',
+          child: _ImageSurface(
+            imageUrl: post.previewMediaUrl,
+            placeholderIcon: Icons.image_outlined,
           ),
+        ),
       },
     );
   }
@@ -3420,8 +3460,9 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
     // source), untuk photo pakai previewMediaUrl (thumbnail/image). Jangan
     // kasih thumbnail JPG ke item video → player gagal.
     final isVideo = widget.post.isVideo;
-    final fallbackUrl =
-        isVideo ? widget.post.videoPlaybackUrl : widget.post.previewMediaUrl;
+    final fallbackUrl = isVideo
+        ? widget.post.videoPlaybackUrl
+        : widget.post.previewMediaUrl;
     if (fallbackUrl.trim().isEmpty) return const [];
     return [
       FeedMedia(
@@ -3549,12 +3590,13 @@ class _ImageSurfaceState extends State<_ImageSurface>
   void initState() {
     super.initState();
     _transformationController = TransformationController();
-    _snapBackController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 180),
-    )
-      ..addListener(_handleSnapBackTick)
-      ..addStatusListener(_handleSnapBackStatus);
+    _snapBackController =
+        AnimationController(
+            vsync: this,
+            duration: const Duration(milliseconds: 180),
+          )
+          ..addListener(_handleSnapBackTick)
+          ..addStatusListener(_handleSnapBackStatus);
   }
 
   @override
@@ -3584,15 +3626,16 @@ class _ImageSurfaceState extends State<_ImageSurface>
       return;
     }
 
-    _snapBackAnimation = Matrix4Tween(
-      begin: Matrix4.copy(_overlayMatrix),
-      end: Matrix4.identity(),
-    ).animate(
-      CurvedAnimation(
-        parent: _snapBackController,
-        curve: Curves.easeOutCubic,
-      ),
-    );
+    _snapBackAnimation =
+        Matrix4Tween(
+          begin: Matrix4.copy(_overlayMatrix),
+          end: Matrix4.identity(),
+        ).animate(
+          CurvedAnimation(
+            parent: _snapBackController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
     _snapBackController.forward(from: 0);
   }
 
@@ -3976,12 +4019,19 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
   Widget build(BuildContext context) {
     final session = _boundSession;
     final controller = session?.controller;
-    final ready = widget.playbackAllowed &&
-        controller != null &&
-        controller.value.isInitialized;
+    final controllerInitialized =
+        controller != null && controller.value.isInitialized;
+    final ready = widget.playbackAllowed && controllerInitialized;
     final hasError = session?.hasError ?? false;
     final hasVisualOutput = session?.hasVisualOutput ?? false;
-    final visualLoading = ready &&
+    // What is DRAWN is decoupled from playbackAllowed so a paused controller
+    // (during a close/back transition or backgrounding) keeps its last frame
+    // instead of flashing back to the thumbnail mid-zoom.
+    final showVideoSurface = postDetailShowsVideoSurface(
+      controllerInitialized: controllerInitialized,
+    );
+    final visualLoading =
+        ready &&
         session != null &&
         (!hasVisualOutput || session.isRecoveringVisualOutput);
     final muted = appSettingsStore.feedMuted;
@@ -4017,7 +4067,7 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
               fit: StackFit.expand,
               children: [
                 Container(color: Colors.black),
-                if (ready)
+                if (showVideoSurface && controller != null)
                   ClipRect(
                     child: FittedBox(
                       fit: BoxFit.cover,
@@ -4040,7 +4090,8 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
                   )
                 else
                   const _MediaPlaceholder(
-                      icon: Icons.video_collection_outlined),
+                    icon: Icons.video_collection_outlined,
+                  ),
                 // Saat controller sudah initialized tetapi frame pertamanya
                 // belum terbukti keluar, pertahankan thumbnail. Ini mencegah
                 // surface beku/black terlihat sementara audio gate dan
