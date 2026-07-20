@@ -423,6 +423,122 @@ void main() {
       },
     );
 
+    testWidgets('T8 regression: across preparingOpen -> opening -> open -> '
+        'interactiveBack -> closingToTarget, a video post never falls back to '
+        'the thumbnail once the controller has visual output, and the SAME '
+        'controller instance draws the hero throughout (never reinitialized)', (
+      tester,
+    ) async {
+      final platform = _FakeHeroVideoPlayerPlatform();
+      VideoPlayerPlatform.instance = platform;
+      final controller = VideoPlayerController.networkUrl(
+        Uri.parse('https://example.com/a.mp4'),
+      );
+      addTearDown(controller.dispose);
+      // Real async (not a bare `await` in the FakeAsync testWidgets zone):
+      // the fake platform's `initialized` event never arrives otherwise —
+      // same documented gotcha as feed_video_post_view_test.dart /
+      // the sibling video-hero tests above.
+      await tester.runAsync(() => controller.initialize());
+      expect(controller.value.isInitialized, isTrue);
+
+      final fake = FakeTransitionSource();
+      fake.targets['a'] = fakeTarget('a');
+      fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+        ..complete(fakeTarget('a'));
+      // fakePost defaults to a video post (kind: USER_VIDEO).
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: fake,
+      );
+      addTearDown(session.dispose);
+      await session.prepareActiveTarget();
+
+      await tester.pumpWidget(_app(navigatorKey));
+      final route = _pushDirect(navigatorKey, session);
+      // Report the controller (and its media slot) as soon as it exists,
+      // on the very first frame — matches a real coordinator that already
+      // has a live, initialized controller (e.g. from a Postingan Saya
+      // hand-off) by the time the route mounts. `preparingOpen`'s hold
+      // render is built exactly once (it uses `kAlwaysDismissedAnimation`,
+      // which never ticks), so the controller must be visible from that
+      // very first build for the assertion below to be meaningful — a
+      // controller reported only AFTER that first frame would not be
+      // picked up until the next phase-driven rebuild, which is a distinct,
+      // already-covered scenario (`opening` ticks every frame).
+      session.reportDestinationMediaSlot(
+        rect: const Rect.fromLTWH(0, 80, 400, 500),
+        mediaAspect: 9 / 16,
+      );
+      session.reportDestinationVideoController(controller);
+      await tester.pump();
+
+      // Asserts: identical `VideoPlayerController` instance drawn (never a
+      // second/reinitialized controller), and no `Image`/thumbnail widget
+      // anywhere in the hero subtree — the thumbnail-swap this regression
+      // guards against.
+      void expectHeroIsLiveController(Finder heroSurface) {
+        expect(
+          tester
+              .widget<VideoPlayer>(
+                find.descendant(
+                  of: heroSurface,
+                  matching: find.byType(VideoPlayer),
+                ),
+              )
+              .controller,
+          same(controller),
+        );
+        expect(
+          find.descendant(of: heroSurface, matching: find.byType(Image)),
+          findsNothing,
+        );
+      }
+
+      // preparingOpen: hero already renders through the live controller.
+      expect(route.phase, PostPageZoomPhase.preparingOpen);
+      expectHeroIsLiveController(find.byType(PostPageZoomTransition));
+
+      // opening.
+      session.markDestinationReady(
+        PostDetailDestinationReadiness.geometryReady,
+      );
+      await tester.pump();
+      expect(route.phase, PostPageZoomPhase.opening);
+      expectHeroIsLiveController(find.byType(PostPageZoomTransition));
+      await tester.pump(const Duration(milliseconds: 50));
+      expectHeroIsLiveController(find.byType(PostPageZoomTransition));
+
+      // open.
+      await tester.pumpAndSettle();
+      expect(route.phase, PostPageZoomPhase.open);
+      expectHeroIsLiveController(find.byType(PostPageZoomTransition));
+
+      // interactiveBack.
+      route.beginInteractiveBack();
+      route.updateInteractiveBack(0.4);
+      await tester.pump();
+      expect(route.phase, PostPageZoomPhase.interactiveBack);
+      expectHeroIsLiveController(find.byType(PostPageHeroSurface));
+      route.cancelInteractiveBack();
+      await tester.pumpAndSettle();
+      expect(route.phase, PostPageZoomPhase.open);
+
+      // closingToTarget (non-interactive close, e.g. header back button).
+      final closeFuture = route.requestClose();
+      expect(route.phase, PostPageZoomPhase.closingToTarget);
+      await tester.pump();
+      expectHeroIsLiveController(find.byType(PostPageZoomTransition));
+
+      await tester.pumpAndSettle();
+      await closeFuture;
+      expect(route.phase, PostPageZoomPhase.closed);
+
+      // The controller instance was never swapped/recreated across the
+      // whole flight: still the same one we constructed at the top.
+      expect(controller.value.isInitialized, isTrue);
+    });
+
     testWidgets(
       'video hero falls back to the proxy thumbnail while no controller has '
       'been reported yet (not-initialized case)',
