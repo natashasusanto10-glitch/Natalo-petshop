@@ -4,6 +4,17 @@ import 'package:flutter/material.dart';
 import '../../../models/feed_post.dart';
 import '../../../theme/natalo_text.dart';
 
+/// Video LANDSCAPE (lebih lebar dari tinggi) → letterbox di grid (video utuh,
+/// bar hitam atas-bawah di dalam kotak 1:1) — paritas IG (lihat screenshot
+/// device: grid IG letterbox video landscape, bukan cover-crop). Foto/
+/// carousel dan video portrait/persegi tetap cover-crop penuh (tak berubah).
+bool gridShowsLetterbox(FeedPost post) {
+  if (!post.isVideo) return false;
+  final w = post.aspectWidthInt;
+  final h = post.aspectHeightInt;
+  return w > h;
+}
+
 /// Tile grid foto/video 1:1 full-bleed — dipakai bersama halaman Postingan
 /// Saya, profil, dan Postingan Tersimpan. Badge tipe media (video/carousel)
 /// selalu tampil; badge status (Menunggu/Ditolak) hanya untuk pemilik post
@@ -79,13 +90,17 @@ class _PostThumbnail extends StatelessWidget {
     final imageUrl = _thumbnailUrlForPost(post);
     if (imageUrl == null) return const _PostThumbnailFallback();
 
-    return CachedNetworkImage(
+    final letterbox = gridShowsLetterbox(post);
+    final image = CachedNetworkImage(
       imageUrl: imageUrl,
-      fit: BoxFit.cover,
+      fit: letterbox ? BoxFit.contain : BoxFit.cover,
       fadeInDuration: const Duration(milliseconds: 180),
       placeholder: (_, __) => const _PostThumbnailFallback(),
       errorWidget: (_, __, ___) => const _PostThumbnailFallback(),
     );
+    // Latar hitam cuma kelihatan di sisa ruang letterbox — cover-crop
+    // (non-letterbox) selalu penuhi seluruh tile, jadi aman dibungkus sama.
+    return ColoredBox(color: Colors.black, child: image);
   }
 }
 
