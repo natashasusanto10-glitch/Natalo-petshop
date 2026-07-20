@@ -18,10 +18,10 @@ Fitur inline lain (tombol Follow-back, reply komentar dari notif) DIDESCOPE — 
 
 **Berlaku HANYA untuk like** (`eventType == 'feed_new_like'`; mencakup like-post & like-komentar yang keduanya pakai eventType ini). Komentar/share/follow/mention TIDAK dapat lencana (sesuai IG).
 
-**Aturan tampil (kunci kerapian): lencana hanya menempel di atas WAJAH asli.**
-- Foto aktor (like tunggal berfoto) → foto + ❤️ badge.
-- Avatar bertumpuk (like agregat, `actorAvatarUrls.length >= 2`) → tumpukan + ❤️ badge (satu badge di stack).
-- Tanpa foto (fallback) → tetap ikon hati sebagai avatar penuh (perilaku #201), **tanpa** badge — cegah hati-di-atas-hati.
+**Aturan tampil (kunci kerapian): lencana hanya kita tambahkan di atas WAJAH asli.**
+- Foto aktor (like tunggal berfoto) → foto + ❤️ badge (BARU).
+- Avatar bertumpuk (like agregat, `actorAvatarUrls.length >= 2`) → tumpukan + ❤️ badge (BARU, satu badge di stack).
+- **Tanpa foto → JANGAN sentuh.** KOREKSI (review): like tanpa foto TIDAK menampilkan "ikon hati penuh". Karena `_isBrandIdentity` = `_NotificationFilter.feed.matches || _isAnnouncement` dan judul like ("Feed kamu mendapat like baru"/"N orang menyukai…") mengandung kata feed/like → `brandIdentity == true`. Jadi hari ini like tanpa foto SUDAH merender **`OfficialBrandAvatar` (logo brand) + badge kategori ❤️** (dari `_NotificationVisual.from` feed_new_like → `favorite_rounded` `Color(0xFFE11D48)`, `_IdentityAvatar` cabang brandIdentity `:1104-1137`). Cukup — sudah ada hati kecilnya. Kita HANYA menambah badge di cabang foto + stacked; cabang brandIdentity dibiarkan apa adanya → tak ada risiko hati-dobel.
 
 **Bentuk lencana:** lingkaran merah `Color(0xFFE11D48)` diameter 17, ikon `Icons.favorite_rounded` putih size 9, border putih (`colorScheme.surface`) width 2, `Positioned(right: -3, bottom: -3)` — identik struktur badge yang SUDAH ada di `_IdentityAvatar` (`notifications_screen.dart:1121-1135`, saat ini hanya untuk `brandIdentity`). Beri `key: ValueKey('notification-like-badge')` untuk test.
 
@@ -37,8 +37,8 @@ Fitur inline lain (tombol Follow-back, reply komentar dari notif) DIDESCOPE — 
 
 **Ubah `sendCommentNotification`** (`lib/feed/activity-notifications.ts:82-100`):
 - Ekstrak helper murni teruji `buildCommentNotificationText(actorName: string, content: string): { title: string; body: string }`:
-  - `title = \`${actorName} berkomentar\``
-  - `body = truncateFeedText(content)` (pakai util existing `truncateFeedText`).
+  - `title = \`${actorName} berkomentar\`` — **WAJIB** memuat substring "komentar" (load-bearing, review #5): filter tab Feed (`_NotificationFilter.feed.matches`, `notifications_screen.dart:1243`) mencocokkan keyword `komentar`. "ber**komentar**" mengandung "komentar" → notif komentar tetap masuk tab Aktivitas/Feed. Jangan ganti "berkomentar" ke bentuk tanpa "komentar".
+  - `body = truncateFeedText(content)` (util existing `notification-center.ts:76`, limit 80). Catatan (review #6, PRE-EXISTING, bukan regresi): `truncateFeedText` memotong per UTF-16 code-unit → bisa membelah emoji di batas 80 char. Perilaku ini sudah ada di kode komentar sekarang; helper mewarisinya, tak memperburuk. Di luar scope untuk difix di sini.
 - Ganti `title: "Komentar baru di Feed kamu"` + `message: "${actorName} mengomentari postingan ...: ..."` menjadi hasil helper (`title`/`message` dari `buildCommentNotificationText(actorName, params.content)`).
 - Baris notif jadi: **"Andi berkomentar** — Done ✅" (nama tebal jadi judul, isi komentar langsung; judul post dibuang karena thumbnail kanan sudah menunjukkan post-nya).
 
@@ -53,7 +53,7 @@ Fitur inline lain (tombol Follow-back, reply komentar dari notif) DIDESCOPE — 
 - **A (Flutter widget):**
   - like berfoto (`eventType:feed_new_like` + `actorAvatarUrl`) → `find.byKey(ValueKey('notification-like-badge'))` findsOneWidget.
   - like agregat (`actorAvatarUrls>=2`) → badge findsOneWidget (di atas stacked).
-  - like tanpa foto → badge findsNothing (ikon hati penuh tetap, tak dobel).
+  - like tanpa foto → `notification-like-badge` findsNothing (cabang brandIdentity tak disentuh; logo brand + badge kategori existing tetap, tak dobel). Cukup verifikasi key baru tak muncul; JANGAN uji "ikon hati penuh" (tak pernah ada untuk like).
   - komentar (`eventType:feed_new_comment` + foto) → badge findsNothing (gate: bukan like).
 - **B (backend unit `tsx --test`):** `buildCommentNotificationText('Andi', 'Done ✅')` → `title:'Andi berkomentar'`, `body:'Done ✅'`; isi panjang → body ter-truncate (`truncateFeedText`); nama brand admin diteruskan apa adanya (helper tak mengubah nama — brand-safety di call-site).
 
@@ -65,7 +65,7 @@ Fitur inline lain (tombol Follow-back, reply komentar dari notif) DIDESCOPE — 
 
 ## Acceptance Criteria
 
-1. Notif like berfoto/agregat menampilkan lencana ❤️ merah di sudut avatar; like tanpa foto tetap ikon hati penuh tanpa badge dobel.
+1. Notif like berfoto/agregat menampilkan lencana ❤️ merah (`notification-like-badge`) di sudut avatar; like tanpa foto tetap seperti sekarang (logo brand + badge kategori existing, tanpa badge kedua).
 2. Komentar/share/follow/mention TIDAK mendapat lencana.
 3. Notif komentar baru tampil ringkas: nama aktor (tebal) + isi komentar langsung, tanpa judul generik/judul-post; isi komentar tak lagi terpotong duluan.
 4. Brand-safety terjaga: aktor admin → "Natalo Petshop Official" (tak bocor nama pemilik).
