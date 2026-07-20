@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/app_notification.dart';
+import 'package:natalo_petshop_flutter/models/public_profile.dart';
 import 'package:natalo_petshop_flutter/screens/notifications_screen.dart';
+import 'package:natalo_petshop_flutter/services/follow_service.dart';
+import 'package:natalo_petshop_flutter/services/profile_service.dart';
+import 'package:natalo_petshop_flutter/services/api_client.dart';
 import 'package:natalo_petshop_flutter/widgets/official_brand_avatar.dart';
 import 'package:natalo_petshop_flutter/widgets/profile_avatar.dart';
 
@@ -498,6 +502,122 @@ void main() {
       ));
       expect(find.byType(OfficialBrandAvatar), findsOneWidget);
       expect(find.byType(ProfileAvatar), findsNothing);
+    });
+  });
+
+  group('pill follow-back', () {
+    AppNotification followNotif({String url = '/u/andi'}) =>
+        AppNotification.fromApiJson({
+          'id': 'fb1', 'title': 'andi mulai mengikuti kamu', 'body': '',
+          'type': 'info', 'eventType': 'user_followed', 'url': url,
+          'ctaLabel': 'Lihat Profil',
+          'createdAt': DateTime.now().toIso8601String(), 'read': false,
+        });
+
+    PublicProfileResult profileResult({
+      bool isFollowing = false,
+      bool isOwner = false,
+    }) =>
+        PublicProfileResult(
+          profile: PublicProfile.fromJson(
+            {'id': 'u-andi', 'name': 'Andi', 'username': 'andi'},
+            isOwner: isOwner,
+          ).copyWith(isFollowing: isFollowing),
+          posts: const [],
+        );
+
+    testWidgets('notif follow ber-username → pill Ikuti; tap TIDAK navigasi baris',
+        (tester) async {
+      var rowTapped = false;
+      var followCalls = 0;
+      final fakeFollow = FollowService.forTesting(
+        mutationRequest: (userId, following) async {
+          followCalls++;
+          return {'isFollowing': true, 'followersCount': 1, 'followingCount': 0};
+        },
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(
+            notification: followNotif(),
+            onTap: () => rowTapped = true,
+            followService: fakeFollow,
+            profileFetcher: (_) async => profileResult(),
+          ),
+        ),
+      ));
+      expect(find.text('Ikuti'), findsOneWidget);
+      expect(find.text('Lihat Profil'), findsNothing);
+
+      await tester.tap(
+          find.byKey(const ValueKey('notification-follow-back-pill')));
+      await tester.pumpAndSettle();
+      expect(rowTapped, isFalse);
+      expect(followCalls, 1);
+      expect(find.text('Mengikuti'), findsOneWidget);
+    });
+
+    testWidgets('sudah follow duluan → langsung Mengikuti tanpa panggil follow',
+        (tester) async {
+      var followCalls = 0;
+      final fakeFollow = FollowService.forTesting(
+        mutationRequest: (userId, following) async {
+          followCalls++;
+          return {'isFollowing': true};
+        },
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(
+            notification: followNotif(),
+            onTap: () {},
+            followService: fakeFollow,
+            profileFetcher: (_) async => profileResult(isFollowing: true),
+          ),
+        ),
+      ));
+      await tester.tap(
+          find.byKey(const ValueKey('notification-follow-back-pill')));
+      await tester.pumpAndSettle();
+      expect(followCalls, 0);
+      expect(find.text('Mengikuti'), findsOneWidget);
+    });
+
+    testWidgets('gagal follow → balik Ikuti + snackbar', (tester) async {
+      final fakeFollow = FollowService.forTesting(
+        mutationRequest: (userId, following) async =>
+            throw const ApiException('boom'),
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(
+            notification: followNotif(),
+            onTap: () {},
+            followService: fakeFollow,
+            profileFetcher: (_) async => profileResult(),
+          ),
+        ),
+      ));
+      await tester.tap(
+          find.byKey(const ValueKey('notification-follow-back-pill')));
+      await tester.pumpAndSettle();
+      expect(find.text('Ikuti'), findsOneWidget);
+      expect(find.text('Gagal mengikuti. Coba lagi.'), findsOneWidget);
+    });
+
+    testWidgets('follower TANPA username (url /notifications) → fallback pill generik',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(
+            notification: followNotif(url: '/notifications'),
+            onTap: () {},
+          ),
+        ),
+      ));
+      expect(find.text('Lihat Profil'), findsOneWidget);
+      expect(find.byKey(const ValueKey('notification-follow-back-pill')),
+          findsNothing);
     });
   });
 }
