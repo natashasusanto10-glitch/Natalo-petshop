@@ -2,96 +2,137 @@ import 'package:flutter/widgets.dart';
 
 import 'post_page_zoom_geometry.dart';
 
-/// Renders the ONE-surface Postingan full-page zoom flight: a single
-/// destination subtree that is transformed and clipped from the source tile
-/// geometry to the fullscreen viewport geometry, with a clean media proxy
-/// crossfaded underneath during the first portion of the flight.
+/// Renders the two-layer Postingan hero+chrome flight.
 ///
-/// [destinationChild] is built exactly once (passed as the `child` of an
-/// internal `AnimatedBuilder`, so animation ticks never rebuild it) and is
-/// wrapped in a [RepaintBoundary]. Geometry is applied purely via [Transform]
-/// and [ClipRRect] so ticks stay compositor-friendly; the proxy is painted
-/// with [BoxFit.cover] inside that same animated clip.
+/// The destination [chromeChild] (header/caption/buttons, with its own
+/// media slot left visually transparent) fades in at its final position via
+/// [resolveChromeOpacity], while a separate hero layer carries the actual
+/// photo/video surface ([heroMediaChild]) from the source grid tile
+/// ([tileRect]) to the destination media slot ([slotRect]) via
+/// [resolveHeroFrame]. The hero layer sits on top of the chrome layer and
+/// fades out near the end of the flight (or near the start, when
+/// [reverseHandoff] is true) so the real destination media — already
+/// rendered inside [chromeChild] at its final position — can take over
+/// seamlessly once the fake hero surface is gone.
+///
+/// [heroMediaChild] is built exactly once (passed as the `child` of an
+/// internal `AnimatedBuilder`, so animation ticks never rebuild it).
+/// [chromeChild] is wrapped in a [RepaintBoundary] since only its opacity
+/// changes per tick, never its content.
 class PostPageZoomTransition extends StatelessWidget {
   const PostPageZoomTransition({
     super.key,
     required this.progress,
     required this.tileRect,
-    required this.viewportRect,
-    required this.tileCornerRadius,
-    required this.destinationChild,
-    this.proxyImageProvider,
-    this.proxyColor = const Color(0x00000000),
+    required this.slotRect,
+    required this.mediaAspect,
+    required this.tileRadius,
+    required this.slotRadius,
+    required this.chromeChild,
+    required this.heroMediaChild,
+    this.reverseHandoff = false,
   });
 
-  /// Drives the flight; 0 is source-tile geometry, 1 is fullscreen geometry.
-  /// Reverse (interactive back) flights simply animate this from 1 to 0.
+  /// Drives the flight; 0 is source-tile geometry (hero over the grid tile,
+  /// chrome invisible), 1 is destination geometry (hero over the media
+  /// slot, chrome fully visible). The widget has no notion of direction:
+  /// callers drive [progress] forward (0 -> 1) or backward (1 -> 0) as
+  /// needed.
   final Animation<double> progress;
 
-  /// Source tile rect, in root overlay coordinates.
+  /// Source grid-tile rect, in overlay coordinates.
   final Rect tileRect;
 
-  /// Fullscreen application surface rect, in root overlay coordinates.
-  final Rect viewportRect;
+  /// Destination media-slot rect, in overlay coordinates.
+  final Rect slotRect;
+
+  /// Intrinsic aspect ratio (width / height) of the media surface.
+  final double mediaAspect;
 
   /// Corner radius of the source tile at progress 0.
-  final double tileCornerRadius;
+  final double tileRadius;
 
-  /// The complete destination content. Built exactly once.
-  final Widget destinationChild;
+  /// Corner radius of the destination media slot at progress 1.
+  final double slotRadius;
 
-  /// Clean media proxy image, painted with [BoxFit.cover]. When null, only
-  /// [proxyColor] is shown for the proxy layer (deterministic placeholder).
-  final ImageProvider<Object>? proxyImageProvider;
+  /// The destination chrome (header/caption/buttons). Its own media slot
+  /// must already be visually transparent so the hero layer painted above
+  /// it reads as one continuous surface. Fades in via
+  /// [resolveChromeOpacity].
+  final Widget chromeChild;
 
-  /// Fallback/placeholder color for the proxy layer.
-  final Color proxyColor;
+  /// The media surface content (image/carousel-frame/video player), painted
+  /// with [BoxFit.cover] by the transform below. Built exactly once.
+  final Widget heroMediaChild;
+
+  /// When true, mirrors the hero/chrome crossfade window to the first
+  /// fraction of the flight instead of the last. Used for reverse (closing)
+  /// flights, where the fake hero must reappear immediately rather than
+  /// linger until the end.
+  final bool reverseHandoff;
+
+  /// Hero opacity for the handoff crossfade: ramps 1 -> 0 over the final
+  /// [postPageZoomCrossfadeProgressThreshold] fraction of the flight (or,
+  /// when [reverseHandoff] is true, the mirrored 0 -> 1 ramp over the first
+  /// fraction).
+  double _heroOpacity(double t) {
+    final effective = reverseHandoff ? 1 - t : t;
+    const rampStart = 1 - postPageZoomCrossfadeProgressThreshold;
+    final fraction =
+        ((effective - rampStart) / postPageZoomCrossfadeProgressThreshold)
+            .clamp(0.0, 1.0);
+    return 1 - fraction;
+  }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: progress,
       builder: (context, child) {
-        final frame = resolvePostPageZoomFrame(
+        final t = progress.value;
+        final frame = resolveHeroFrame(
           tileRect: tileRect,
-          viewportRect: viewportRect,
-          tileCornerRadius: tileCornerRadius,
-          progress: progress.value,
+          slotRect: slotRect,
+          mediaAspect: mediaAspect,
+          tileRadius: tileRadius,
+          slotRadius: slotRadius,
+          progress: t,
         );
-        return ClipRRect(
-          clipper: _PostPageZoomClipper(frame.clip),
-          child: Transform.translate(
-            offset: frame.offset,
-            child: Transform.scale(
-              scale: frame.scale,
-              alignment: Alignment.topLeft,
-              child: SizedBox(
-                width: viewportRect.width,
-                height: viewportRect.height,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Opacity(
-                      opacity: frame.proxyOpacity,
-                      child: proxyImageProvider != null
-                          ? Image(image: proxyImageProvider!, fit: BoxFit.cover)
-                          : ColoredBox(color: proxyColor),
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Opacity(
+              opacity: resolveChromeOpacity(t),
+              child: RepaintBoundary(child: chromeChild),
+            ),
+            Opacity(
+              opacity: _heroOpacity(t),
+              child: ClipRRect(
+                clipper: _PostPageHeroClipper(frame.clip),
+                child: Transform.translate(
+                  offset: frame.contentOffset,
+                  child: Transform.scale(
+                    scale: frame.contentScale,
+                    alignment: Alignment.topLeft,
+                    child: SizedBox(
+                      width: mediaAspect,
+                      height: 1,
+                      child: child,
                     ),
-                    Opacity(opacity: frame.destinationOpacity, child: child),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         );
       },
-      child: RepaintBoundary(child: destinationChild),
+      child: heroMediaChild,
     );
   }
 }
 
-class _PostPageZoomClipper extends CustomClipper<RRect> {
-  const _PostPageZoomClipper(this.rrect);
+class _PostPageHeroClipper extends CustomClipper<RRect> {
+  const _PostPageHeroClipper(this.rrect);
 
   final RRect rrect;
 
@@ -99,6 +140,6 @@ class _PostPageZoomClipper extends CustomClipper<RRect> {
   RRect getClip(Size size) => rrect;
 
   @override
-  bool shouldReclip(covariant _PostPageZoomClipper oldClipper) =>
+  bool shouldReclip(covariant _PostPageHeroClipper oldClipper) =>
       oldClipper.rrect != rrect;
 }
