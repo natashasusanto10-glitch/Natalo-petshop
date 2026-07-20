@@ -8,6 +8,7 @@ import '../state/favorite_store.dart';
 import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/loading_button.dart';
 
 const _brandBlue = NataloColors.primary;
@@ -59,38 +60,33 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
       );
       if (!ok) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Aktivasi dibatalkan.'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        // Kind-inference: tidak match keyword literal → default info per
+        // rule.
+        AppToast.showBanner(context, 'Aktivasi dibatalkan.');
         return;
       }
     }
     await appSettingsStore.setAppLockEnabled(enable);
     if (!mounted) return;
     AppHaptics.success();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          enable
-              ? 'Kunci app aktif. Buka app berikutnya akan minta Face ID / Touch ID.'
-              : 'Kunci app dinonaktifkan.',
-        ),
-        behavior: SnackBarBehavior.floating,
-      ),
+    // Kind-inference: "aktif"/"dinonaktifkan" tidak literally match keyword
+    // "berhasil"/"tersimpan"/"ditambahkan"/"disalin" → default info per rule,
+    // walau semantiknya konfirmasi sukses.
+    AppToast.showBanner(
+      context,
+      enable
+          ? 'Kunci app aktif. Buka app berikutnya akan minta Face ID / Touch ID.'
+          : 'Kunci app dinonaktifkan.',
     );
   }
 
   Future<void> _sendPasswordResetEmail() async {
     final email = memberStore.profile?.email ?? '';
     if (email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Email akun tidak terbaca. Login ulang lalu coba lagi.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: tidak match keyword literal → default info per rule.
+      AppToast.showBanner(
+        context,
+        'Email akun tidak terbaca. Login ulang lalu coba lagi.',
       );
       return;
     }
@@ -130,24 +126,23 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await authService.forgotPassword(email);
       if (!mounted) return;
       AppHaptics.success();
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('Link reset terkirim ke $email. Cek inbox / spam.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Kind-inference: "terkirim" tidak literally match keyword
+      // ("berhasil"/"tersimpan"/"ditambahkan"/"disalin") → default info per
+      // rule, walau semantiknya konfirmasi sukses.
+      AppToast.showBanner(
+        context,
+        'Link reset terkirim ke $email. Cek inbox / spam.',
       );
     } catch (error) {
       if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('Gagal kirim email: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Gagal kirim email: $error',
+        kind: ToastKind.error,
       );
     }
   }
@@ -190,26 +185,19 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     );
     if (confirmed != true || !mounted) return;
     setState(() => _revokingOthers = true);
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await authService.revokeOtherSessions();
       if (!mounted) return;
       AppHaptics.success();
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Sesi di device lain berhasil di-logout.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Sesi di device lain berhasil di-logout.',
+        kind: ToastKind.success,
       );
     } catch (error) {
       if (!mounted) return;
       AppHaptics.warning();
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('Gagal: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      AppToast.showBanner(context, 'Gagal: $error', kind: ToastKind.error);
     } finally {
       if (mounted) setState(() => _revokingOthers = false);
     }
