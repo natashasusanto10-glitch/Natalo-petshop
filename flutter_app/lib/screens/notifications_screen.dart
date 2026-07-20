@@ -23,6 +23,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/official_brand_avatar.dart';
 import '../widgets/profile_avatar.dart';
+import '../widgets/heart_pump_button.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/notification_reply_composer.dart';
 import 'announcement_detail_screen.dart';
@@ -1215,7 +1216,8 @@ class _NotificationCommentActionsState
 
   Future<void> _toggleLike() async {
     if (_likeBusy) return;
-    AppHaptics.tap();
+    // Haptic tap sudah di-fire oleh HeartPumpButton sendiri — jangan
+    // duplikat di sini (pola double-haptic yang sama kita fix di toast).
     final next = !_liked;
     setState(() {
       _liked = next;
@@ -1279,21 +1281,17 @@ class _NotificationCommentActionsState
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        InkWell(
-          key: const ValueKey('notification-comment-like'),
-          onTap: _toggleLike,
-          borderRadius: BorderRadius.circular(999),
-          child: SizedBox(
-            height: 40,
-            width: 44,
-            child: Icon(
-              _liked
-                  ? Icons.favorite_rounded
-                  : Icons.favorite_border_rounded,
+        SizedBox(
+          height: 40,
+          width: 44,
+          child: Center(
+            child: HeartPumpButton(
+              key: const ValueKey('notification-comment-like'),
+              liked: _liked,
+              onTap: _toggleLike,
               size: 18,
-              color: _liked
-                  ? const Color(0xFFE11D48)
-                  : cs.onSurfaceVariant,
+              likedColor: const Color(0xFFE11D48),
+              unlikedColor: cs.onSurfaceVariant,
             ),
           ),
         ),

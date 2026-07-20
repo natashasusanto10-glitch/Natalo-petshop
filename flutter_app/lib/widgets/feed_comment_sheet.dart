@@ -1977,13 +1977,12 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
 
       final requested = _visibleReplyCounts[thread.parent.id] ?? 0;
       final visibleCount = requested.clamp(0, replies.length);
-      for (final reply in latestVisibleFeedReplies(replies, visibleCount)) {
-        items.add(_CommentDisplayItem.comment(reply, isReply: true));
-      }
-      items.add(_CommentDisplayItem.repliesControl(
+      items.add(_CommentDisplayItem.repliesSection(
         parentId: thread.parent.id,
         totalReplies: replies.length,
         visibleReplies: visibleCount,
+        visibleReplyList:
+            latestVisibleFeedReplies(replies, visibleCount).toList(),
       ));
     }
     return items;
@@ -2244,10 +2243,17 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
           );
         }
         final item = items[adjustedIndex];
-        if (item.kind == _CommentDisplayItemKind.repliesControl) {
-          return _RepliesControl(
+        if (item.kind == _CommentDisplayItemKind.repliesSection) {
+          return _RepliesSection(
+            // Key stabil per-thread (bukan per-visibleCount) — supaya
+            // AnimatedSize di dalamnya mempertahankan identity/state
+            // saat replies bertambah/berkurang, alih-alih dianggap
+            // widget baru (yang akan snap tanpa animasi).
+            key: ValueKey('replies-section-${item.parentId}'),
+            replies: item.visibleReplyList!,
             totalReplies: item.totalReplies,
             visibleReplies: item.visibleReplies,
+            buildTile: (reply) => _buildCommentTile(reply, isReply: true),
             onShowMore: () => _showMoreReplies(
               item.parentId!,
               item.totalReplies,
@@ -2257,24 +2263,29 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
                 : null,
           );
         }
-        final comment = _withGlobalCommentLikeState(item.comment!);
-        // canDelete = current user adalah author komentar. Drives
-        // tampilan "Hapus" di moderation sheet (vs Laporkan/Blokir
-        // untuk komentar orang lain).
-        final currentUserId = memberStore.profile?.id;
-        final isOwn =
-            currentUserId != null && currentUserId == comment.author.id;
-        return _CommentTile(
-          comment: comment,
-          isReply: item.isReply,
-          onLike: () => _toggleLike(comment),
-          onReply: () => _setReplyTarget(comment),
-          onAuthorTap: _openAuthorProfile,
-          onMentionTap: _openMentionProfile,
-          canDelete: isOwn,
-          onDelete: isOwn ? () => _deleteComment(comment) : null,
-        );
+        return _buildCommentTile(item.comment!, isReply: item.isReply);
       },
+    );
+  }
+
+  /// Satu baris komentar/balasan — dipakai baik oleh item top-level
+  /// (itemBuilder) maupun baris di dalam _RepliesSection (grup animasi).
+  Widget _buildCommentTile(FeedComment rawComment, {required bool isReply}) {
+    final comment = _withGlobalCommentLikeState(rawComment);
+    // canDelete = current user adalah author komentar. Drives
+    // tampilan "Hapus" di moderation sheet (vs Laporkan/Blokir
+    // untuk komentar orang lain).
+    final currentUserId = memberStore.profile?.id;
+    final isOwn = currentUserId != null && currentUserId == comment.author.id;
+    return _CommentTile(
+      comment: comment,
+      isReply: isReply,
+      onLike: () => _toggleLike(comment),
+      onReply: () => _setReplyTarget(comment),
+      onAuthorTap: _openAuthorProfile,
+      onMentionTap: _openMentionProfile,
+      canDelete: isOwn,
+      onDelete: isOwn ? () => _deleteComment(comment) : null,
     );
   }
 
@@ -2472,9 +2483,10 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   }
 }
 
-enum _CommentDisplayItemKind { comment, repliesControl }
+enum _CommentDisplayItemKind { comment, repliesSection }
 
-/// Item wrapper untuk comment row atau kontrol thread ringkas.
+/// Item wrapper untuk comment row atau grup balasan ringkas (satu blok
+/// animasi per thread — lihat _RepliesSection).
 class _CommentDisplayItem {
   final _CommentDisplayItemKind kind;
   final FeedComment? comment;
@@ -2482,6 +2494,7 @@ class _CommentDisplayItem {
   final String? parentId;
   final int totalReplies;
   final int visibleReplies;
+  final List<FeedComment>? visibleReplyList;
 
   const _CommentDisplayItem._({
     required this.kind,
@@ -2490,6 +2503,7 @@ class _CommentDisplayItem {
     this.parentId,
     this.totalReplies = 0,
     this.visibleReplies = 0,
+    this.visibleReplyList,
   });
 
   factory _CommentDisplayItem.comment(
@@ -2502,17 +2516,68 @@ class _CommentDisplayItem {
         isReply: isReply,
       );
 
-  factory _CommentDisplayItem.repliesControl({
+  factory _CommentDisplayItem.repliesSection({
     required String parentId,
     required int totalReplies,
     required int visibleReplies,
+    required List<FeedComment> visibleReplyList,
   }) =>
       _CommentDisplayItem._(
-        kind: _CommentDisplayItemKind.repliesControl,
+        kind: _CommentDisplayItemKind.repliesSection,
         parentId: parentId,
         totalReplies: totalReplies,
         visibleReplies: visibleReplies,
+        visibleReplyList: visibleReplyList,
       );
+}
+
+/// Blok balasan satu thread — replies + kontrol "Lihat/Sembunyikan" jadi
+/// SATU unit animasi (AnimatedSize) supaya buka/tutup meluncur halus
+/// (tinggi tumbuh/menyusut), bukan snap seperti sebelumnya saat item
+/// individual disisipkan langsung ke ListView.builder.
+class _RepliesSection extends StatelessWidget {
+  final List<FeedComment> replies;
+  final int totalReplies;
+  final int visibleReplies;
+  final Widget Function(FeedComment comment) buildTile;
+  final VoidCallback onShowMore;
+  final VoidCallback? onHide;
+
+  const _RepliesSection({
+    super.key,
+    required this.replies,
+    required this.totalReplies,
+    required this.visibleReplies,
+    required this.buildTile,
+    required this.onShowMore,
+    this.onHide,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRect(
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [for (final reply in replies) buildTile(reply)],
+            ),
+          ),
+        ),
+        _RepliesControl(
+          totalReplies: totalReplies,
+          visibleReplies: visibleReplies,
+          onShowMore: onShowMore,
+          onHide: onHide,
+        ),
+      ],
+    );
+  }
 }
 
 class _RepliesControl extends StatelessWidget {
