@@ -460,13 +460,19 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     final aspect = _previewAspect;
     final preserveOriginal = _previewFitOriginal;
 
-    final futures = items.asMap().entries.map((entry) {
+    final futures = items.asMap().entries.map((entry) async {
       final index = entry.key;
       final item = entry.value;
       final transform =
           _photoCropTransforms[item.id] ?? PhotoCropTransform();
+      // HEIC-safe: sama seperti jalur profil (profile_photo_picker_screen).
+      final normalizedPath = await normalizePhotoSourceToJpeg(
+        item.localPath,
+        tmpDirPath,
+        pathSeparator: Platform.pathSeparator,
+      );
       final args = PhotoProcessArgs(
-        sourcePath: item.localPath,
+        sourcePath: normalizedPath,
         tmpDirPath: tmpDirPath,
         targetAspect: aspect,
         scale: transform.scale,
