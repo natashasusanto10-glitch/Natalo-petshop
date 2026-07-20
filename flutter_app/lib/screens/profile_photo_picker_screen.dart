@@ -156,9 +156,17 @@ class _ProfilePhotoPickerScreenState extends State<ProfilePhotoPickerScreen> {
     setState(() => _busy = true);
     try {
       final tmpDir = await getTemporaryDirectory();
+      // HEIC-safe: normalisasi ke JPEG asli sebelum isolate crop (package
+      // `image` di isolate tak bisa decode HEIC — lihat dokumentasi di
+      // normalizePhotoSourceToJpeg).
+      final normalizedPath = await normalizePhotoSourceToJpeg(
+        path,
+        tmpDir.path,
+        pathSeparator: Platform.pathSeparator,
+      );
       final transform = _transformFor(asset.id);
       final args = PhotoProcessArgs(
-        sourcePath: path,
+        sourcePath: normalizedPath,
         tmpDirPath: tmpDir.path,
         targetAspect: 1.0, // square avatar.
         scale: transform.scale,
