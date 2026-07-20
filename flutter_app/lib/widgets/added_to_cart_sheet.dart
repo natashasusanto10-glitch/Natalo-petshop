@@ -124,6 +124,7 @@ class _AddedToCartSheetState extends State<_AddedToCartSheet> {
     AppToast.showCartAdded(
       context,
       '${product.title} masuk keranjang',
+      imageUrl: product.imageUrl,
     );
     setState(() => _related.removeWhere((p) => p.id == product.id));
   }

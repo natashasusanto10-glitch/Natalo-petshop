@@ -1861,6 +1861,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
       quantity > 1
           ? '$quantity x ${link.name} masuk keranjang'
           : '${link.name} masuk keranjang',
+      imageUrl: product.imageUrl,
     );
   }
 
