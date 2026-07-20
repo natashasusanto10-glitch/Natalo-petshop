@@ -2,7 +2,45 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image/image.dart' as img;
+
+/// Normalisasi source foto ke JPEG asli via encoder NATIF
+/// (`flutter_image_compress`) SEBELUM masuk [processPhotoInIsolate].
+///
+/// Package `image` (dipakai isolate crop) TIDAK support decode HEIC/HEIF —
+/// format default galeri iPhone untuk foto yang bukan hasil kamera in-app.
+/// Preview crop tetap render mulus (pakai Skia via `ui.instantiateImageCodec`,
+/// beda decoder), tapi `img.decodeImage` di isolate diam-diam gagal →
+/// fallback balikin bytes HEIC mentah → upload ditolak backend
+/// "File foto tidak valid" (gagal acak, tergantung format sumber).
+///
+/// WAJIB dipanggil di MAIN thread (platform channel) SEBELUM `compute()` —
+/// isolate background tidak punya akses platform channel.
+Future<String> normalizePhotoSourceToJpeg(
+  String sourcePath,
+  String tmpDirPath, {
+  String pathSeparator = '/',
+}) async {
+  try {
+    final outPath =
+        '$tmpDirPath$pathSeparator'
+        'natalo_src_${DateTime.now().microsecondsSinceEpoch}.jpg';
+    final result = await FlutterImageCompress.compressAndGetFile(
+      sourcePath,
+      outPath,
+      quality: 95,
+      format: CompressFormat.jpeg,
+      keepExif: true,
+    );
+    return result?.path ?? sourcePath;
+  } catch (_) {
+    // Gagal normalisasi (mis. plugin tak dukung device) — fallback ke source
+    // asli; processPhotoInIsolate punya fallback-nya sendiri kalau tetap
+    // tak terbaca.
+    return sourcePath;
+  }
+}
 
 /// Args bundle untuk worker isolate [processPhotoInIsolate]. Harus
 /// `@immutable` + plain types supaya bisa di-serialize cross-isolate boundary
