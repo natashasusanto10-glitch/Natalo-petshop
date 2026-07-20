@@ -888,6 +888,8 @@ class NotificationRow extends StatelessWidget {
                 structuredActorAvatarUrl.trim().isNotEmpty
             ? structuredActorAvatarUrl
             : (isFollow ? imageUrl : null);
+    final showLikeBadge =
+        notification.eventType?.trim().toLowerCase() == 'feed_new_like';
 
     return InkWell(
       onTap: onTap,
@@ -917,12 +919,14 @@ class NotificationRow extends StatelessWidget {
                   StackedActorAvatars(
                     urls: notification.actorAvatarUrls,
                     visual: visual,
+                    likeBadge: showLikeBadge,
                   )
                 else
                   _IdentityAvatar(
                     visual: visual,
                     brandIdentity: _isBrandIdentity,
                     avatarUrl: actorAvatarUrl,
+                    likeBadge: showLikeBadge,
                   ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1022,13 +1026,38 @@ class NotificationRow extends StatelessWidget {
   }
 }
 
+/// Lencana ❤️ kecil utk notif LIKE — ditempel di sudut kanan-bawah avatar
+/// BERFOTO (persis pola badge kategori brand). Hanya utk feed_new_like.
+/// Return Positioned → WAJIB dipakai sebagai child langsung sebuah Stack.
+Positioned _likeBadge(BuildContext context) => Positioned(
+      right: -3,
+      bottom: -3,
+      child: Container(
+        key: const ValueKey('notification-like-badge'),
+        height: 17,
+        width: 17,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE11D48),
+          shape: BoxShape.circle,
+          border: Border.all(
+              color: Theme.of(context).colorScheme.surface, width: 2),
+        ),
+        child: const Icon(Icons.favorite_rounded,
+            color: Colors.white, size: 9),
+      ),
+    );
+
 /// Avatar bertumpuk ala IG untuk notif like agregat (2 foto liker teratas
 /// saling tumpang-tindih). Ukuran total 42 supaya sejajar avatar lain.
 class StackedActorAvatars extends StatelessWidget {
   final List<String> urls;
   final _NotificationVisual visual;
+  final bool likeBadge;
   const StackedActorAvatars(
-      {super.key, required this.urls, required this.visual});
+      {super.key,
+      required this.urls,
+      required this.visual,
+      this.likeBadge = false});
 
   @override
   Widget build(BuildContext context) {
@@ -1060,6 +1089,7 @@ class StackedActorAvatars extends StatelessWidget {
           if (shown.length > 1)
             Positioned(left: 0, top: 0, child: circle(shown[1], 30)),
           Positioned(right: 0, bottom: 0, child: circle(shown[0], 30)),
+          if (likeBadge) _likeBadge(context),
         ],
       ),
     );
@@ -1073,18 +1103,20 @@ class _IdentityAvatar extends StatelessWidget {
   final _NotificationVisual visual;
   final bool brandIdentity;
   final String? avatarUrl;
+  final bool likeBadge;
 
   const _IdentityAvatar({
     required this.visual,
     required this.brandIdentity,
     this.avatarUrl,
+    this.likeBadge = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final url = avatarUrl;
     if (url != null && url.trim().isNotEmpty) {
-      return Container(
+      final photo = Container(
         key: const ValueKey('notification-actor-avatar'),
         height: 42,
         width: 42,
@@ -1099,6 +1131,11 @@ class _IdentityAvatar extends StatelessWidget {
           errorBuilder: (_, __, ___) =>
               Icon(visual.icon, color: visual.color, size: 20),
         ),
+      );
+      if (!likeBadge) return photo;
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [photo, _likeBadge(context)],
       );
     }
     final core = brandIdentity

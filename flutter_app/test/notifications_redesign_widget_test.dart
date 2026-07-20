@@ -391,4 +391,65 @@ void main() {
       expect(find.byIcon(Icons.hourglass_empty_rounded), findsOneWidget);
     });
   });
+
+  group('lencana like', () {
+    testWidgets('like berfoto → lencana ❤️ di sudut avatar', (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'lk1', 'title': 'Andi menyukai postinganmu', 'body': '',
+        'type': 'feed', 'eventType': 'feed_new_like',
+        'actorAvatarUrl': 'https://cdn/andi.jpg',
+        'createdAt': DateTime.now().toIso8601String(), 'read': false,
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+      ));
+      expect(find.byKey(const ValueKey('notification-like-badge')),
+          findsOneWidget);
+    });
+
+    testWidgets('like agregat (stacked) → lencana ❤️ di atas tumpukan',
+        (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'lk2', 'title': '3 orang menyukai Feed kamu', 'body': '',
+        'type': 'feed', 'eventType': 'feed_new_like',
+        'actorAvatarUrls': ['https://cdn/1.jpg', 'https://cdn/2.jpg'],
+        'createdAt': DateTime.now().toIso8601String(), 'read': false,
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+      ));
+      expect(find.byKey(const ValueKey('notification-stacked-avatars')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('notification-like-badge')),
+          findsOneWidget);
+    });
+
+    testWidgets('like TANPA foto → tak ada lencana baru (cabang brand tak disentuh)',
+        (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'lk3', 'title': 'Feed kamu mendapat like baru', 'body': '',
+        'type': 'feed', 'eventType': 'feed_new_like',
+        'createdAt': DateTime.now().toIso8601String(), 'read': false,
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+      ));
+      expect(find.byKey(const ValueKey('notification-like-badge')),
+          findsNothing);
+    });
+
+    testWidgets('komentar berfoto → TIDAK dapat lencana like', (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'lk4', 'title': 'Andi berkomentar', 'body': 'keren!',
+        'type': 'feed', 'eventType': 'feed_new_comment',
+        'actorAvatarUrl': 'https://cdn/andi.jpg',
+        'createdAt': DateTime.now().toIso8601String(), 'read': false,
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: NotificationRow(notification: n, onTap: () {})),
+      ));
+      expect(find.byKey(const ValueKey('notification-like-badge')),
+          findsNothing);
+    });
+  });
 }
