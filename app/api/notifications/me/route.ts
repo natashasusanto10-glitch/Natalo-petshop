@@ -51,6 +51,7 @@ function mapAnnouncement(a: {
   actorName: string | null;
   actorAvatarUrls: string[];
   feedStatus: string | null;
+  commentId: string | null;
   ctaLabel: string | null;
   createdAt: Date;
   reads?: Array<{ readAt: Date }>;
@@ -73,6 +74,7 @@ function mapAnnouncement(a: {
     actorName: a.actorName,
     actorAvatarUrls: a.actorAvatarUrls,
     status: a.feedStatus,
+    commentId: a.commentId,
     ctaLabel: a.ctaLabel,
     createdAt: a.createdAt.toISOString(),
     read: (a.reads?.length ?? 0) > 0,
