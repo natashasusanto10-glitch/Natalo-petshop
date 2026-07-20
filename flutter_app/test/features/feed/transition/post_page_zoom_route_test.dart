@@ -203,6 +203,57 @@ void main() {
       },
     );
 
+    testWidgets(
+      'preparingOpen holds on the tile-geometry zoom surface (same as '
+      'opening@0), not a full-screen cover, and lays the destination out '
+      'full-screen unscaled so readiness can measure it',
+      (tester) async {
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget(
+          'a',
+          rect: const Rect.fromLTWH(40, 120, 150, 200),
+        );
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+
+        await tester.pumpWidget(_app(navigatorKey));
+        expect(session.tryAttachRoute(), isTrue);
+        final destKey = GlobalKey();
+        final route = PostPageZoomRoute(
+          session: session,
+          destinationBuilder: (context) =>
+              SizedBox.expand(key: destKey, child: const Text('destination')),
+        );
+        navigatorKey.currentState!.push(route);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(route.phase, PostPageZoomPhase.preparingOpen);
+        // Device-verify regression (flash + jump): preparingOpen used to paint
+        // a FULL-SCREEN ColoredBox cover, then `opening` snapped the surface
+        // down to the tile before zooming — a visible full-screen flash and a
+        // size jump. The correct hold is the SAME one-surface zoom widget at
+        // progress 0, so frame one already looks like the grid and `opening`
+        // continues from an identical structure.
+        expect(find.byType(PostPageZoomTransition), findsOneWidget);
+        // ...while the destination is laid out at the FULL viewport rect
+        // (unscaled), which is what the destination screen's bounded readiness
+        // stage measures against. A scaled destination (e.g. rendered inside
+        // the zoom surface during the hold) would make that measurement wrong
+        // and force every open into the crossfade fallback.
+        final destRect = tester.getRect(find.byKey(destKey));
+        final screenSize =
+            tester.view.physicalSize / tester.view.devicePixelRatio;
+        expect(destRect.left, 0);
+        expect(destRect.top, 0);
+        expect(destRect.width, screenSize.width);
+        expect(destRect.height, screenSize.height);
+      },
+    );
+
     testWidgets('a destination that reports readiness on mount opens the route '
         'end-to-end with no external markDestinationReady', (tester) async {
       final fake = FakeTransitionSource();

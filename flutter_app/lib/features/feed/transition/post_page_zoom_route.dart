@@ -820,20 +820,40 @@ class PostPageZoomRoute extends PageRoute<void> {
   ) {
     if (currentPhase == PostPageZoomPhase.preparingOpen) {
       final proxy = _activeProxy();
-      // The destination MUST be mounted beneath the proxy cover: the
-      // destination screen is the sole driver of
-      // `session.destinationReadiness` (its bounded readiness stage runs from
-      // its own first frames), so building only the cover here would deadlock
-      // the route at `preparingOpen` forever — the shipped iOS symptom was a
-      // permanent blank screen in the proxy placeholder color. The opaque
-      // cover on top keeps the user-visible contract unchanged (proxy
-      // covering the screen until readiness resolves).
+      // The hold state must be VISUALLY IDENTICAL to `opening` at progress 0
+      // (proxy sitting exactly over the source tile, source grid showing
+      // through the rest of the non-opaque route). A full-screen cover here
+      // instead produced the device-verify symptoms: a full-screen flash in
+      // the placeholder color, then a jump as `opening` snapped the surface
+      // down to the tile before zooming.
+      //
+      // Two stacked layers reconcile the two hard constraints:
+      //   1. Readiness: the destination screen is the SOLE driver of
+      //      `session.destinationReadiness`, and its bounded readiness stage
+      //      measures the target tile against the fullscreen viewport. So the
+      //      destination must be mounted AND laid out at the full, UNSCALED
+      //      viewport size — bottom layer, fully transparent (measured, not
+      //      seen). Building only a cover here deadlocked the route forever
+      //      (the shipped iOS blank screen); scaling it (e.g. reusing the zoom
+      //      surface for the real child) would corrupt that measurement and
+      //      force every open into the crossfade fallback.
+      //   2. Seamlessness: the proxy is drawn through the exact same
+      //      one-surface zoom widget at progress 0, so the preparingOpen ->
+      //      opening handoff is byte-identical — top layer, empty child.
       return Stack(
         fit: StackFit.expand,
         textDirection: TextDirection.ltr,
         children: [
-          RepaintBoundary(child: _destination(context)),
-          ColoredBox(color: proxy?.placeholderColor ?? const Color(0xFF000000)),
+          Opacity(opacity: 0.0, child: _destination(context)),
+          PostPageZoomTransition(
+            progress: kAlwaysDismissedAnimation,
+            tileRect: _tileRect(context),
+            viewportRect: _viewportRect(context),
+            tileCornerRadius: _tileCornerRadius(),
+            destinationChild: const SizedBox.shrink(),
+            proxyImageProvider: _proxyImageProviderFor(proxy),
+            proxyColor: proxy?.placeholderColor ?? const Color(0xFF000000),
+          ),
         ],
       );
     }
