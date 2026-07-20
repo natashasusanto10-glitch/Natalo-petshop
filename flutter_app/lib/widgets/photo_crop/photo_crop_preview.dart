@@ -476,8 +476,6 @@ class _PhotoCropPreviewState extends State<PhotoCropPreview>
           final dpr = MediaQuery.devicePixelRatioOf(context);
           final targetDecodeWidth =
               (frameSize.width * 4 * dpr).clamp(512.0, 1920.0).toInt();
-          final aspectImage = imageSize.width / imageSize.height;
-          final targetDecodeHeight = (targetDecodeWidth / aspectImage).round();
 
           return RepaintBoundary(
             child: Listener(
@@ -535,8 +533,12 @@ class _PhotoCropPreviewState extends State<PhotoCropPreview>
                                   widget.file,
                                   fit: BoxFit.fill,
                                   alignment: Alignment.center,
+                                  // Cuma cacheWidth (bukan +cacheHeight manual)
+                                  // — decoder pakai aspect asli file utk
+                                  // hitung tinggi sendiri, jadi tak mungkin
+                                  // meleset dari _imageSize kita dan bikin
+                                  // gambar ter-squish saat BoxFit.fill.
                                   cacheWidth: targetDecodeWidth,
-                                  cacheHeight: targetDecodeHeight,
                                   filterQuality: FilterQuality.low,
                                   gaplessPlayback: true,
                                 ),
