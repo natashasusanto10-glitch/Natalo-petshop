@@ -2016,7 +2016,6 @@ void _showCartDeleteSnackBar(
   required String message,
   required VoidCallback onUndo,
 }) {
-  ScaffoldMessenger.of(context).hideCurrentSnackBar();
   AppToast.showCartDeleted(
     context,
     message,
