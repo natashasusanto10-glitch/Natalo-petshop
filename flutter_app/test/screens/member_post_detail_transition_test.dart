@@ -73,9 +73,7 @@ void main() {
           return;
         }
         fallbackAbsentAtPublication = find
-            .byKey(
-              const ValueKey('post-detail-transition-fallback-post-3'),
-            )
+            .byKey(const ValueKey('post-detail-transition-fallback-post-3'))
             .evaluate()
             .isEmpty;
         final target = find
@@ -122,7 +120,8 @@ void main() {
           expired ? const Duration(milliseconds: 80) : Duration.zero;
       debugPostDetailReadinessFrameFuture = () async {
         await WidgetsBinding.instance.endOfFrame;
-        final removalRendered = find
+        final removalRendered =
+            find
                 .byKey(const ValueKey('post-detail-transition-fallback-post-3'))
                 .evaluate()
                 .isEmpty &&
@@ -428,11 +427,13 @@ void main() {
       );
 
       var replacementWait = 1;
-      for (var pass = 0;
-          pass < 3 &&
-              replacementSession.destinationReadiness ==
-                  PostDetailDestinationReadiness.preparing;
-          pass++) {
+      for (
+        var pass = 0;
+        pass < 3 &&
+            replacementSession.destinationReadiness ==
+                PostDetailDestinationReadiness.preparing;
+        pass++
+      ) {
         expect(replacementWait, lessThan(frameWaits.length));
         frameWaits[replacementWait++].complete();
         await tester.pump();
@@ -703,7 +704,9 @@ void main() {
     refreshes['b']!.complete(fakePhoto('b', caption: 'b-fresh-caption'));
     await refresh;
     await tester.pump();
-    final controller = tester.widget<ListView>(find.byType(ListView)).controller!;
+    final controller = tester
+        .widget<ListView>(find.byType(ListView))
+        .controller!;
     controller.jumpTo(controller.position.maxScrollExtent);
     await tester.pump();
 
@@ -803,6 +806,47 @@ void main() {
       session.dispose();
     },
   );
+
+  testWidgets(
+    'destination media suppression hides only the active post media slot',
+    (tester) async {
+      useDetailViewport(tester);
+      final a = fakePhoto('a');
+      final b = fakePhoto('b');
+      final session = fakeTransitionSession(a);
+
+      await tester.pumpWidget(detailHost(posts: [a, b], session: session));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump();
+      }
+
+      expect(mediaOpacity(tester, 'a'), 1);
+      expect(mediaOpacity(tester, 'b'), 1);
+
+      session.setDestinationMediaSuppressed(true);
+      await tester.pump();
+
+      // Active post (session.activePost.id == 'a') goes fully transparent.
+      expect(mediaOpacity(tester, 'a'), 0);
+      // Non-active post keeps rendering normally.
+      expect(mediaOpacity(tester, 'b'), 1);
+      // The suppressed slot's rect stays measurable — the hero geometry
+      // resolver still reads its RenderBox while the hero flight is active.
+      final box = mediaSlotRenderBox(tester, 'a');
+      expect(box.attached, isTrue);
+      expect(box.hasSize, isTrue);
+      expect(box.size.isEmpty, isFalse);
+
+      session.setDestinationMediaSuppressed(false);
+      await tester.pump();
+
+      expect(mediaOpacity(tester, 'a'), 1);
+      expect(mediaOpacity(tester, 'b'), 1);
+
+      await disposeDetail(tester);
+      session.dispose();
+    },
+  );
 }
 
 Widget detailHost({
@@ -826,6 +870,20 @@ Widget detailHost({
 
 Rect detailViewportRect(WidgetTester tester) =>
     tester.getRect(find.byType(ListView));
+
+/// Opacity of the dedicated wrapper around a post's `_PostMediaSurface`
+/// (keyed distinctly so it can't be confused with unrelated internal
+/// `Opacity` widgets a media surface may use for its own purposes, e.g. the
+/// pinch-zoom overlay inside `_ImageSurface`).
+double mediaOpacity(WidgetTester tester, String postId) => tester
+    .widget<Opacity>(find.byKey(ValueKey('post-detail-media-opacity-$postId')))
+    .opacity;
+
+/// RenderBox of the mediaKey subtree for a post — same size as the outer
+/// `widget.mediaKey` KeyedSubtree, since neither KeyedSubtree nor Opacity
+/// alter layout size.
+RenderBox mediaSlotRenderBox(WidgetTester tester, String postId) => tester
+    .renderObject<RenderBox>(find.byKey(ValueKey('post-detail-media-$postId')));
 
 FeedPost renderedPost(WidgetTester tester, String postId) {
   final item = tester.widget<KeyedSubtree>(

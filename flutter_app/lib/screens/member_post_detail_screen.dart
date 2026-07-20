@@ -196,6 +196,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   bool _routeCovered = false;
   bool _lastSessionFrozen = false;
   bool _lastPlaybackAllowed = true;
+  bool _lastDestinationMediaSuppressed = false;
   FeedPost? _transitionFallbackPost;
   bool _transitionFallbackVisible = false;
   final GlobalKey _transitionFallbackSurfaceKey = GlobalKey();
@@ -317,6 +318,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     if (transitionSession != null) {
       _lastSessionFrozen = transitionSession.isFrozen;
       _lastPlaybackAllowed = transitionSession.playbackAllowed;
+      _lastDestinationMediaSuppressed =
+          transitionSession.destinationMediaSuppressed;
       transitionSession.addListener(_onTransitionSessionChanged);
     }
     // Lifecycle app (background/foreground) — pause/resume SEMUA sesi (§2.5),
@@ -355,6 +358,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     final session = widget.transitionSession;
     _lastSessionFrozen = session?.isFrozen ?? false;
     _lastPlaybackAllowed = session?.playbackAllowed ?? true;
+    _lastDestinationMediaSuppressed =
+        session?.destinationMediaSuppressed ?? false;
     session?.addListener(_onTransitionSessionChanged);
 
     if (oldPlaybackAllowed != _lastPlaybackAllowed) {
@@ -439,12 +444,22 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
 
     final playbackChanged = _lastPlaybackAllowed != session.playbackAllowed;
     _lastPlaybackAllowed = session.playbackAllowed;
+
+    // Hero flight start/end toggles this — the active post's own media slot
+    // must flip transparent/opaque in lockstep so it never double-draws
+    // against the hero layer painted above it.
+    final destinationMediaSuppressedChanged =
+        _lastDestinationMediaSuppressed != session.destinationMediaSuppressed;
+    _lastDestinationMediaSuppressed = session.destinationMediaSuppressed;
+
     if (playbackChanged) {
       if (_canResumePlayback) {
         _videoCoordinator.resumeAll();
       } else {
         _videoCoordinator.pauseAll();
       }
+    }
+    if (playbackChanged || destinationMediaSuppressedChanged) {
       setState(() {});
     }
 
@@ -1362,6 +1377,18 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // Resolved ONCE per build (not per item) — the hero flight suppresses
+    // exactly the ACTIVE post's own media slot (identity via
+    // session.activePost.id through _transitionTargetIndex, same lookup the
+    // readiness pipeline already uses), never a post picked by scroll
+    // position. -1 (never matches an itemBuilder index) when no session or
+    // no hero is currently covering a slot.
+    final transitionSession = widget.transitionSession;
+    final suppressedMediaIndex =
+        transitionSession != null &&
+            transitionSession.destinationMediaSuppressed
+        ? _transitionTargetIndex(transitionSession)
+        : -1;
     // TIDAK pakai Scaffold.appBar: AppBar bawaan membungkus toolbar-nya
     // dalam SATU Material/Ink layer yang menyerap tap di SELURUH lebarnya
     // — termasuk ruang kosong di tengah — walau backgroundColor transparan.
@@ -1430,6 +1457,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                               // ke post target saat initial open dari grid.
                               key: _postKeys[index],
                               mediaKey: _postMediaKeys[index],
+                              mediaSuppressed: index == suppressedMediaIndex,
                               post: post,
                               coordinator: _videoCoordinator,
                               playbackAllowed: _playbackAllowed,
@@ -1830,6 +1858,13 @@ class _PostFeedItem extends StatefulWidget {
   final FeedPost post;
   final GlobalKey mediaKey;
 
+  /// True while a hero flight is actively covering THIS post's media (it is
+  /// the transition session's active post AND a hero is currently in
+  /// flight). The media surface renders fully transparent — but the
+  /// [mediaKey] subtree stays mounted and measurable — so the hero layer
+  /// painted above the destination is the only thing visible, never both.
+  final bool mediaSuppressed;
+
   /// Coordinator playback milik halaman (T3a) — inline video meminjam sesi
   /// darinya alih-alih membuat controller sendiri.
   final PostVideoCoordinator coordinator;
@@ -1876,6 +1911,7 @@ class _PostFeedItem extends StatefulWidget {
     super.key,
     required this.post,
     required this.mediaKey,
+    this.mediaSuppressed = false,
     required this.coordinator,
     required this.registerVideoUrl,
     required this.handoffSessionId,
@@ -2185,16 +2221,25 @@ class _PostFeedItemState extends State<_PostFeedItem>
               key: ValueKey('post-detail-media-${post.id}'),
               child: Stack(
                 children: [
-                  _PostMediaSurface(
-                    post: post,
-                    coordinator: widget.coordinator,
-                    registerVideoUrl: widget.registerVideoUrl,
-                    handoffSessionId: widget.handoffSessionId,
-                    playbackAllowed: widget.playbackAllowed,
-                    onVideoAnchorReady: _rememberVideoAnchor,
-                    onVideoMediaSingleTap: _handleVideoSingleTap,
-                    onVideoMediaDoubleTapDown: _rememberHeartBurstPosition,
-                    onVideoMediaDoubleTap: _handleDoubleTap,
+                  // Opacity — not a conditional swap — so the mediaKey
+                  // subtree's rect stays mounted and measurable throughout
+                  // the hero flight (the geometry resolver and next-flight
+                  // preparation both read it via
+                  // `_postMediaKeys[i].currentContext.findRenderObject()`).
+                  Opacity(
+                    key: ValueKey('post-detail-media-opacity-${post.id}'),
+                    opacity: widget.mediaSuppressed ? 0 : 1,
+                    child: _PostMediaSurface(
+                      post: post,
+                      coordinator: widget.coordinator,
+                      registerVideoUrl: widget.registerVideoUrl,
+                      handoffSessionId: widget.handoffSessionId,
+                      playbackAllowed: widget.playbackAllowed,
+                      onVideoAnchorReady: _rememberVideoAnchor,
+                      onVideoMediaSingleTap: _handleVideoSingleTap,
+                      onVideoMediaDoubleTapDown: _rememberHeartBurstPosition,
+                      onVideoMediaDoubleTap: _handleDoubleTap,
+                    ),
                   ),
                   if (post.isVideo)
                     Positioned(

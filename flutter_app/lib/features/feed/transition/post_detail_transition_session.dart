@@ -132,6 +132,7 @@ class PostDetailTransitionSession extends ChangeNotifier {
   String? _suppressedPostId;
   bool _playbackAllowed = false;
   bool _routeAttached = false;
+  bool _destinationMediaSuppressed = false;
   bool _isDisposed = false;
 
   FeedPost get activePost => _activePost;
@@ -151,6 +152,13 @@ class PostDetailTransitionSession extends ChangeNotifier {
   bool get playbackAllowed => _playbackAllowed;
 
   bool get routeAttached => _routeAttached;
+
+  /// True while a hero flight is actively covering the active post's media
+  /// (open/close transit). The destination screen must render that post's
+  /// own media slot fully transparent while this holds — otherwise the hero
+  /// layer and the destination's real media would paint on top of each
+  /// other (double-drawn), see Task 3 in hero-task-3-brief.md.
+  bool get destinationMediaSuppressed => _destinationMediaSuppressed;
 
   bool tryAttachRoute() {
     if (_isDisposed || _routeAttached) return false;
@@ -318,6 +326,16 @@ class PostDetailTransitionSession extends ChangeNotifier {
     _restoreSuppressedTile();
   }
 
+  /// Signal consumed by the destination screen (see
+  /// [destinationMediaSuppressed]). Unlike [setFrozenTileSuppressed] (which
+  /// suppresses the SOURCE grid tile via the adapter), this flag is purely
+  /// destination-side rendering state — no `_source` call needed.
+  void setDestinationMediaSuppressed(bool suppressed) {
+    if (_isDisposed || _destinationMediaSuppressed == suppressed) return;
+    _destinationMediaSuppressed = suppressed;
+    notifyListeners();
+  }
+
   void assignPendingReturnTarget() {
     if (_isDisposed || !_source.mounted) return;
     _source.setPendingReturnPostId(_frozenTarget?.post.id ?? _activePost.id);
@@ -390,6 +408,7 @@ class PostDetailTransitionSession extends ChangeNotifier {
     _fallbackProxiesByPostId.clear();
     _routeAttached = false;
     _playbackAllowed = false;
+    _destinationMediaSuppressed = false;
     super.dispose();
   }
 }
