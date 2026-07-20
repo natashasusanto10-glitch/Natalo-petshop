@@ -7,6 +7,7 @@ import '../services/member_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_login_gate.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 
@@ -426,18 +427,14 @@ class _VoucherCard extends StatelessWidget {
                                 ClipboardData(text: voucher.code),
                               );
                               if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Kode "${voucher.code}" disalin. Tempel saat checkout.',
-                                  ),
-                                  behavior: SnackBarBehavior.floating,
-                                  action: SnackBarAction(
-                                    label: 'Ke Keranjang',
-                                    onPressed: () => Navigator.pushNamed(
-                                        context, '/cart'),
-                                  ),
-                                ),
+                              AppToast.showBanner(
+                                context,
+                                'Kode "${voucher.code}" disalin. Tempel saat checkout.',
+                                kind: ToastKind.success,
+                                icon: Icons.copy_rounded,
+                                actionLabel: 'Ke Keranjang',
+                                onAction: () => Navigator.pushNamed(
+                                    context, '/cart'),
                               );
                             }
                           : null,

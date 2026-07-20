@@ -6,6 +6,7 @@ import '../state/member_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/animated_counter.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
@@ -165,27 +166,19 @@ class _MemberLoyaltyScreenState extends State<MemberLoyaltyScreen> {
         );
       }
       AppHaptics.success();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Voucher ${result.code} berhasil ditukar! Cek di Voucher Member.',
-          ),
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: 'Lihat',
-            onPressed: () => Navigator.pushNamed(context, '/member/vouchers'),
-          ),
-        ),
+      AppToast.showBanner(
+        context,
+        'Voucher ${result.code} berhasil ditukar!',
+        subtitle: 'Cek di Voucher Member',
+        kind: ToastKind.success,
+        actionLabel: 'Lihat',
+        onAction: () => Navigator.pushNamed(context, '/member/vouchers'),
       );
     } catch (error) {
       if (!mounted) return;
       AppHaptics.warning();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal menukar poin: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      AppToast.showBanner(context, 'Gagal menukar poin. Coba lagi.',
+          kind: ToastKind.error);
     } finally {
       if (mounted) setState(() => _claimingTierPoints = -1);
     }
