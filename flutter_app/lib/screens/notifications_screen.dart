@@ -10,9 +10,11 @@ import '../models/product.dart';
 import '../services/api_client.dart';
 import '../services/deep_link_service.dart' show openFeedPostSmart;
 import '../services/feed_service.dart';
+import '../services/follow_service.dart';
 import '../services/notification_service.dart';
 import '../services/order_service.dart';
 import '../services/product_service.dart';
+import '../services/profile_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_login_gate.dart';
@@ -152,7 +154,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     // fallback ke AnnouncementDetailScreen karena tidak ada handler `/u/`
     // di chain — sekarang explicit route ke PublicProfileScreen.
     if (eventType == 'user_followed') {
-      final username = _extractProfileUsername(item.url);
+      final username = extractProfileUsername(item.url);
       if (username != null) {
         await Navigator.pushNamed(context, '/u', arguments: username);
         return;
@@ -496,17 +498,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final slug = match.group(1)?.trim() ?? '';
     if (slug.isEmpty) return null;
     return Uri.decodeComponent(slug);
-  }
-
-  /// Extract username dari URL pattern `/u/{username}` (deep link
-  /// public profile). Lowercase karena DB username always lowercase.
-  String? _extractProfileUsername(String? url) {
-    if (url == null || url.isEmpty) return null;
-    final match = RegExp(r'/u/([^/?#]+)').firstMatch(url);
-    if (match == null) return null;
-    final username = match.group(1)?.trim().toLowerCase() ?? '';
-    if (username.isEmpty) return null;
-    return Uri.decodeComponent(username);
   }
 
   @override
@@ -855,17 +846,39 @@ class NotificationHeroHeader extends StatelessWidget {
   }
 }
 
+/// Extract username dari URL pattern `/u/{username}` (deep link
+/// public profile). Lowercase karena DB username always lowercase.
+/// Top-level: dipakai routing layar DAN gate pill follow-back.
+@visibleForTesting
+String? extractProfileUsername(String? url) {
+  if (url == null || url.isEmpty) return null;
+  final match = RegExp(r'/u/([^/?#]+)').firstMatch(url);
+  if (match == null) return null;
+  final username = match.group(1)?.trim().toLowerCase() ?? '';
+  if (username.isEmpty) return null;
+  return Uri.decodeComponent(username);
+}
+
+/// Seam test: fetch profil publik by username. Default produksi memakai
+/// [profileService.fetchPublicProfile]; widget test menyuntik fake.
+typedef PublicProfileFetcher = Future<PublicProfileResult> Function(
+    String username);
+
 /// Baris notifikasi redesign: identitas kiri → kalimat+waktu tengah →
 /// thumbnail kanan (opsional). Unread = bar aksen kiri. Publik untuk test.
 @visibleForTesting
 class NotificationRow extends StatelessWidget {
   final AppNotification notification;
   final VoidCallback onTap;
+  final FollowService? followService;
+  final PublicProfileFetcher? profileFetcher;
 
   const NotificationRow({
     super.key,
     required this.notification,
     required this.onTap,
+    this.followService,
+    this.profileFetcher,
   });
 
   bool get _isBrandIdentity =>
@@ -891,6 +904,10 @@ class NotificationRow extends StatelessWidget {
             : (isFollow ? imageUrl : null);
     final showLikeBadge =
         notification.eventType?.trim().toLowerCase() == 'feed_new_like';
+    final followBackUsername =
+        notification.eventType?.toLowerCase() == 'user_followed'
+            ? extractProfileUsername(notification.url)
+            : null;
 
     return InkWell(
       onTap: onTap,
@@ -959,7 +976,14 @@ class NotificationRow extends StatelessWidget {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          if (ctaLabel != null) ...[
+                          if (followBackUsername != null) ...[
+                            _NotificationFollowBackPill(
+                              username: followBackUsername,
+                              followService: followService,
+                              profileFetcher: profileFetcher,
+                            ),
+                            const SizedBox(width: 10),
+                          ] else if (ctaLabel != null) ...[
                             InkWell(
                               onTap: onTap,
                               borderRadius: BorderRadius.circular(999),
@@ -1023,6 +1047,106 @@ class NotificationRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+enum _FollowBackState { idle, loading, following }
+
+/// Pill follow-balik inline utk notif follow — tap men-follow tanpa keluar
+/// layar (ala IG "Follow back"). State lokal saja: kalau widget di-dispose
+/// (scroll jauh) lalu dibangun ulang, kembali "Ikuti" — dapat diterima.
+/// SENGAJA tidak setFollowOverride pre-await (bukan optimistic lintas-widget;
+/// follow() internal sudah confirm saat sukses + rollback override saat gagal).
+class _NotificationFollowBackPill extends StatefulWidget {
+  final String username;
+  final FollowService? followService;
+  final PublicProfileFetcher? profileFetcher;
+
+  const _NotificationFollowBackPill({
+    required this.username,
+    this.followService,
+    this.profileFetcher,
+  });
+
+  @override
+  State<_NotificationFollowBackPill> createState() =>
+      _NotificationFollowBackPillState();
+}
+
+class _NotificationFollowBackPillState
+    extends State<_NotificationFollowBackPill> {
+  _FollowBackState _state = _FollowBackState.idle;
+
+  Future<void> _handleTap() async {
+    if (_state != _FollowBackState.idle) return;
+    AppHaptics.tap();
+    setState(() => _state = _FollowBackState.loading);
+    try {
+      final fetch = widget.profileFetcher ??
+          (String u) => profileService.fetchPublicProfile(
+                username: u,
+                limit: 1,
+              );
+      final result = await fetch(widget.username);
+      if (!mounted) return;
+      if (result.profile.isOwner) {
+        setState(() => _state = _FollowBackState.idle);
+        return;
+      }
+      if (result.profile.isFollowing) {
+        setState(() => _state = _FollowBackState.following);
+        return;
+      }
+      final service = widget.followService ?? followService;
+      await service.follow(result.profile.id);
+      if (!mounted) return;
+      setState(() => _state = _FollowBackState.following);
+    } on FollowSessionChangedException {
+      if (mounted) setState(() => _state = _FollowBackState.idle);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _state = _FollowBackState.idle);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gagal mengikuti. Coba lagi.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = switch (_state) {
+      _FollowBackState.following => 'Mengikuti',
+      _ => 'Ikuti',
+    };
+    return InkWell(
+      key: const ValueKey('notification-follow-back-pill'),
+      onTap: _state == _FollowBackState.idle ? _handleTap : null,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: NataloColors.primarySoft,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: _state == _FollowBackState.loading
+            ? const SizedBox(
+                height: 14,
+                width: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: NataloColors.primary,
+                ),
+              )
+            : Text(
+                label,
+                style: const TextStyle(
+                  color: NataloColors.primary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
       ),
     );
   }
