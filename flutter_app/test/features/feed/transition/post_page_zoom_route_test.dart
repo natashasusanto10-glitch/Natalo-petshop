@@ -828,6 +828,373 @@ void main() {
     });
   });
 
+  group('Task 14: media & playback gating', () {
+    final navigatorKey = GlobalKey<NavigatorState>();
+
+    testWidgets(
+      'playback is allowed ONLY at forward completion (open), never during '
+      'preparingOpen/opening',
+      (tester) async {
+        final fake = FakeTransitionSource();
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+
+        await tester.pumpWidget(_app(navigatorKey));
+        final route = _pushDirect(navigatorKey, session);
+        await tester.pump();
+        expect(route.phase, PostPageZoomPhase.preparingOpen);
+        expect(session.playbackAllowed, isFalse);
+
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.geometryReady,
+        );
+        await tester.pump();
+        expect(route.phase, PostPageZoomPhase.opening);
+        expect(session.playbackAllowed, isFalse);
+
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.open);
+        expect(session.playbackAllowed, isTrue);
+      },
+    );
+
+    testWidgets(
+      'non-interactive reverse pauses playback BEFORE the surface moves '
+      '(playback:false precedes tile suppression)',
+      (tester) async {
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        final order = <String>[];
+        final session = _EventRecordingSession(
+          initialPost: fakePost('a'),
+          source: fake,
+          order: order,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+
+        await tester.pumpWidget(_app(navigatorKey));
+        final route = _pushDirect(navigatorKey, session);
+        await tester.pump();
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.geometryReady,
+        );
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.open);
+
+        fake.onSuppress = (id, s) => order.add('suppress:$id:$s');
+        order.clear();
+
+        final future = route.requestClose();
+        final pauseIndex = order.indexOf('playback:false');
+        final suppressIndex = order.indexOf('suppress:a:true');
+        expect(pauseIndex, greaterThanOrEqualTo(0));
+        expect(suppressIndex, greaterThan(pauseIndex));
+        expect(session.playbackAllowed, isFalse);
+
+        await tester.pumpAndSettle();
+        await future;
+        expect(route.phase, PostPageZoomPhase.closed);
+      },
+    );
+
+    testWidgets(
+      'interactive back pauses playback at gesture start; a user cancel back '
+      'to open resumes it',
+      (tester) async {
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: FakeTransitionSource(),
+        );
+        addTearDown(session.dispose);
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+        expect(session.playbackAllowed, isTrue);
+
+        route.beginInteractiveBack();
+        route.updateInteractiveBack(0.1);
+        // Paused at gesture start (before surface moved past the first frame).
+        expect(session.playbackAllowed, isFalse);
+
+        route.endInteractiveBack(0); // below threshold -> cancel
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.open);
+        // A plain user cancel returns to a stable, active open: playback resumes.
+        expect(session.playbackAllowed, isTrue);
+      },
+    );
+  });
+
+  group('Task 14: lifecycle & metrics interruption', () {
+    final navigatorKey = GlobalKey<NavigatorState>();
+
+    testWidgets(
+      'real app backgrounding during an interactive gesture cancels to a '
+      'terminal open with media paused (no ghost audio)',
+      (tester) async {
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: FakeTransitionSource(),
+        );
+        addTearDown(session.dispose);
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+
+        route.beginInteractiveBack();
+        route.updateInteractiveBack(0.2);
+        expect(route.phase, PostPageZoomPhase.interactiveBack);
+
+        // Real lifecycle dispatch through the WidgetsBinding observer chain.
+        // Backgrounding immediately begins the cancel and pauses media.
+        tester.binding
+            .handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        expect(route.phase, PostPageZoomPhase.settlingOpenAfterCancel);
+        expect(session.playbackAllowed, isFalse);
+
+        // Tickers are muted while paused; the cancel spring completes once the
+        // app returns to the foreground. It settles to a terminal `open`
+        // (never auto-closed), and media stays paused (no ghost audio) because
+        // the cancel was caused by an interruption, not a user release.
+        tester.binding
+            .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.open);
+        expect(session.playbackAllowed, isFalse);
+      },
+    );
+
+    testWidgets(
+      'a metrics change during a gesture cancels to open; a metrics change at '
+      'rest never auto-closes the route',
+      (tester) async {
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: FakeTransitionSource(),
+        );
+        addTearDown(session.dispose);
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+
+        // At rest `open`: a metrics change must be a no-op (never auto-close).
+        tester.binding.handleMetricsChanged();
+        await tester.pump();
+        expect(route.phase, PostPageZoomPhase.open);
+
+        // During a gesture: a metrics change cancels back to open.
+        route.beginInteractiveBack();
+        route.updateInteractiveBack(0.2);
+        tester.binding.handleMetricsChanged();
+        expect(route.phase, PostPageZoomPhase.settlingOpenAfterCancel);
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.open);
+      },
+    );
+  });
+
+  group('Task 14: reduced motion', () {
+    final navigatorKey = GlobalKey<NavigatorState>();
+
+    testWidgets(
+      'opening uses the crossfade/mild-scale variant (no geometry zoom) while '
+      'B targeting and commit disposition remain identical',
+      (tester) async {
+        tester.binding.platformDispatcher.accessibilityFeaturesTestValue =
+            const FakeAccessibilityFeatures(disableAnimations: true);
+        addTearDown(
+          tester.binding.platformDispatcher.clearAccessibilityFeaturesTestValue,
+        );
+
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+        // Reduced-motion render path: crossfade variant, not the geometry zoom.
+        expect(_findsReducedMotion(), findsOneWidget);
+        expect(find.byType(PostPageZoomTransition), findsNothing);
+
+        // B targeting still resolves: an interactive commit lands on B and the
+        // route reaches the terminal closed state (pop disposition preserved).
+        route.beginInteractiveBack();
+        route.updateInteractiveBack(0.3);
+        final future = route.endInteractiveBack(0);
+        expect(route.phase, PostPageZoomPhase.closingToTarget);
+        await tester.pumpAndSettle();
+        await future;
+        expect(route.phase, PostPageZoomPhase.closed);
+      },
+    );
+
+    testWidgets(
+      'reduced motion still cancels an interactive back to open',
+      (tester) async {
+        tester.binding.platformDispatcher.accessibilityFeaturesTestValue =
+            const FakeAccessibilityFeatures(accessibleNavigation: true);
+        addTearDown(
+          tester.binding.platformDispatcher.clearAccessibilityFeaturesTestValue,
+        );
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: FakeTransitionSource(),
+        );
+        addTearDown(session.dispose);
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+
+        route.beginInteractiveBack();
+        route.updateInteractiveBack(0.1);
+        route.endInteractiveBack(0); // cancel
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.open);
+      },
+    );
+  });
+
+  group('Task 14: fallback matrix (never targets A, restores, assigns pending)',
+      () {
+    final navigatorKey = GlobalKey<NavigatorState>();
+
+    Future<void> expectFallbackClose(
+      WidgetTester tester,
+      FakeTransitionSource fake,
+      PostDetailTransitionSession session, {
+      bool expectPendingReturn = true,
+    }) async {
+      await tester.pumpWidget(_app(navigatorKey));
+      final route = _pushDirect(navigatorKey, session);
+      await tester.pump();
+      session.markDestinationReady(
+        PostDetailDestinationReadiness.crossfadeFallback,
+      );
+      await tester.pumpAndSettle();
+      expect(route.phase, PostPageZoomPhase.open);
+
+      final future = route.requestClose();
+      // Every fallback path enters closingFallback and assigns a pending
+      // return target BEFORE closing (owned by the source, not the session).
+      expect(route.phase, PostPageZoomPhase.closingFallback);
+      // Pending return is assigned to the source (best-effort, source-owned)
+      // whenever the source is still mounted; a disposed/unmounted source
+      // cannot receive it, which is itself correct.
+      if (expectPendingReturn) {
+        expect(fake.pendingReturnPostId, isNotNull);
+      }
+      await tester.pump();
+      // Structurally incapable of animating toward any tile rect (A or stale):
+      // the geometry surface is never built for a fallback close.
+      expect(find.byType(PostPageZoomTransition), findsNothing);
+      expect(_findsFallbackCloseTransition(), findsOneWidget);
+
+      await tester.pumpAndSettle();
+      await future;
+      expect(route.phase, PostPageZoomPhase.closed);
+      // Nothing left net-suppressed on the source.
+      final net = <String, int>{};
+      for (final (id, suppressed) in fake.suppressionCalls) {
+        net[id] = (net[id] ?? 0) + (suppressed ? 1 : -1);
+      }
+      expect(net.values.every((v) => v <= 0), isTrue);
+    }
+
+    testWidgets('B deleted/removed (invalidatePost) falls back', (tester) async {
+      final fake = FakeTransitionSource();
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: fake,
+      );
+      addTearDown(session.dispose);
+      session.invalidatePost('a');
+      await expectFallbackClose(tester, fake, session);
+    });
+
+    testWidgets('source disposed (adapter mounted=false) falls back',
+        (tester) async {
+      final fake = FakeTransitionSource()..mounted = false;
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: fake,
+      );
+      addTearDown(session.dispose);
+      await expectFallbackClose(
+        tester,
+        fake,
+        session,
+        expectPendingReturn: false,
+      );
+    });
+
+    testWidgets('unpreparable tab (prepareTarget returns null) falls back',
+        (tester) async {
+      final fake = FakeTransitionSource(); // no target registered for 'a'
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: fake,
+      );
+      addTearDown(session.dispose);
+      await session.prepareActiveTarget();
+      await expectFallbackClose(tester, fake, session);
+    });
+
+    testWidgets('unmergeable paginated B (active post with no target) falls '
+        'back', (tester) async {
+      final fake = FakeTransitionSource();
+      fake.targets['a'] = fakeTarget('a');
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: fake,
+      );
+      addTearDown(session.dispose);
+      // Navigate to a paginated post 'b' that the source cannot prepare/merge.
+      session.reportActivePost(fakePost('b'));
+      await session.prepareActiveTarget();
+      await expectFallbackClose(tester, fake, session);
+    });
+
+    testWidgets('empty/off-viewport rect (hasUsableGeometry false) falls back',
+        (tester) async {
+      final fake = FakeTransitionSource();
+      final offscreen = fakeTarget(
+        'a',
+        rect: const Rect.fromLTWH(-5000, -5000, 100, 120),
+      );
+      fake.targets['a'] = offscreen;
+      fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+        ..complete(offscreen);
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: fake,
+      );
+      addTearDown(session.dispose);
+      await session.prepareActiveTarget();
+      await expectFallbackClose(tester, fake, session);
+    });
+
+    testWidgets('stale layout generation (invalidated after prepare) falls '
+        'back', (tester) async {
+      final fake = FakeTransitionSource();
+      fake.targets['a'] = fakeTarget('a');
+      fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+        ..complete(fakeTarget('a'));
+      final session = PostDetailTransitionSession(
+        initialPost: fakePost('a'),
+        source: fake,
+      );
+      addTearDown(session.dispose);
+      await session.prepareActiveTarget();
+      // Generation bumped + post invalidated between prepare and freeze.
+      session.invalidatePost('a');
+      await expectFallbackClose(tester, fake, session);
+    });
+  });
+
   group('Android Predictive Back', () {
     final navigatorKey = GlobalKey<NavigatorState>();
 
@@ -1105,6 +1472,12 @@ Finder _findsFallbackCloseTransition() => find.byWidgetPredicate(
   (widget) => widget.runtimeType.toString() == '_FallbackCloseTransition',
 );
 
+/// `_ReducedMotionZoomTransition` is private to `post_page_zoom_route.dart`;
+/// match on its `runtimeType` string (same idiom as the fallback finder).
+Finder _findsReducedMotion() => find.byWidgetPredicate(
+  (widget) => widget.runtimeType.toString() == '_ReducedMotionZoomTransition',
+);
+
 Widget _app(GlobalKey<NavigatorState> navigatorKey) {
   return WidgetsApp(
     color: const Color(0xFFFFFFFF),
@@ -1173,6 +1546,25 @@ class _OrderRecordingSession extends PostDetailTransitionSession {
   PostPageFrozenTarget freeze() {
     order.add('freeze');
     return super.freeze();
+  }
+}
+
+/// Records the ordered sequence of playback-gate changes (and, alongside the
+/// source's `onSuppress` hook, tile suppression) so a test can assert that a
+/// reverse pauses the video BEFORE the surface moves / the tile is suppressed.
+class _EventRecordingSession extends PostDetailTransitionSession {
+  _EventRecordingSession({
+    required super.initialPost,
+    required super.source,
+    required this.order,
+  });
+
+  final List<String> order;
+
+  @override
+  void setPlaybackAllowed(bool value) {
+    order.add('playback:$value');
+    super.setPlaybackAllowed(value);
   }
 }
 

@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 
 import 'post_detail_transition_session.dart';
 import 'post_page_zoom_back_gesture.dart';
+import 'post_page_zoom_geometry.dart';
 import 'post_page_zoom_transition.dart';
 
 /// Stable key on the leading-edge strip that arms the iOS interactive back
@@ -229,6 +230,13 @@ class PostPageZoomRoute extends PageRoute<void> {
   /// flight) does not start a second close.
   bool _systemBackInProgress = false;
 
+  /// True while the current interactive back was cancelled by a lifecycle /
+  /// metrics interruption (backgrounding, rotation) rather than by the user
+  /// releasing below threshold. An interruption cancel must keep media paused
+  /// (the app is inactive); a plain user cancel that returns to `open` resumes
+  /// playback. Cleared at the start of every fresh interactive back.
+  bool _interruptedDuringBack = false;
+
   /// Test-only view of the current interactive-back surface frame, so gesture
   /// tests can assert first-frame continuity (cancel/commit start from the
   /// exact released transform) without reaching into private render state.
@@ -452,6 +460,7 @@ class PostPageZoomRoute extends PageRoute<void> {
   /// media while inactive (spec `Fallback and Error Handling` §).
   void _handleInterruption() {
     if (phase != PostPageZoomPhase.interactiveBack) return;
+    _interruptedDuringBack = true;
     session.setPlaybackAllowed(false);
     cancelInteractiveBack();
   }
@@ -541,6 +550,11 @@ class PostPageZoomRoute extends PageRoute<void> {
     }
     controller!.stop();
     _backEdgeMirrored = mirrored;
+    _interruptedDuringBack = false;
+    // A reverse transition pauses the active video BEFORE the surface moves
+    // (spec `Media Rules` §). The preview begins at progress 0 (no transform
+    // yet), so pausing here is strictly before the first surface movement.
+    session.setPlaybackAllowed(false);
     // Freeze precedes any transform (spec `Freezing the target` §).
     final frozen = session.freeze();
     _frozenTarget = frozen.target;
@@ -601,6 +615,12 @@ class PostPageZoomRoute extends PageRoute<void> {
             _setPhase(PostPageZoomPhase.open);
             // Unfreeze only after the page has settled back to fullscreen.
             session.resumeTrackingAfterCanceledBack();
+            // A user cancel returns to a stable, active `open`, so resume
+            // playback. An interruption cancel (backgrounding/rotation) leaves
+            // the app inactive, so media stays paused until the app resumes.
+            if (!_interruptedDuringBack) {
+              session.setPlaybackAllowed(true);
+            }
           }
         });
   }
@@ -683,6 +703,9 @@ class PostPageZoomRoute extends PageRoute<void> {
       return _performFallbackClose();
     }
 
+    // Pause the active video BEFORE the reverse surface moves (spec `Media
+    // Rules` §), and before the B tile is suppressed / the flight begins.
+    session.setPlaybackAllowed(false);
     _frozenTarget = frozen.target;
     _frozenProxy = frozen.proxy;
     _setPhase(PostPageZoomPhase.closingToTarget);
@@ -697,6 +720,9 @@ class PostPageZoomRoute extends PageRoute<void> {
   }
 
   Future<void> _performFallbackClose() async {
+    // Pause the active video before the fallback surface animates (spec `Media
+    // Rules` §): a fallback close is still a reverse transition.
+    session.setPlaybackAllowed(false);
     final frozen = session.freeze();
     _frozenTarget = null;
     _frozenProxy = frozen.proxy;
@@ -801,6 +827,19 @@ class PostPageZoomRoute extends PageRoute<void> {
       );
     }
     final proxy = _activeProxy();
+    // Reduced motion (spec `Performance and Accessibility -> Reduced motion` §):
+    // replace the geometry zoom with a short crossfade + mild centered scale.
+    // The B-targeting machinery (freeze / prepared target / pending return) is
+    // untouched, so an A->B reverse still resolves B and predictive back /
+    // commit / cancel behave identically; only the *render* changes.
+    if (_reducedMotion(context)) {
+      return _ReducedMotionZoomTransition(
+        progress: controller!,
+        destinationChild: destinationBuilder(context),
+        proxyImageProvider: _proxyImageProviderFor(proxy),
+        proxyColor: proxy?.placeholderColor ?? const Color(0xFF000000),
+      );
+    }
     return PostPageZoomTransition(
       progress: controller!,
       tileRect: _tileRect(context),
@@ -810,6 +849,15 @@ class PostPageZoomRoute extends PageRoute<void> {
       proxyImageProvider: _proxyImageProviderFor(proxy),
       proxyColor: proxy?.placeholderColor ?? const Color(0xFF000000),
     );
+  }
+
+  /// Whether the platform requests reduced motion (system animation reduction
+  /// or an assistive navigation mode). Consulted per-build so a mid-flight
+  /// accessibility change is honored.
+  bool _reducedMotion(BuildContext context) {
+    final media = MediaQuery.maybeOf(context);
+    if (media == null) return false;
+    return media.disableAnimations || media.accessibleNavigation;
   }
 
   Widget _buildInteractivePreview(BuildContext context) {
@@ -1071,6 +1119,57 @@ class _FallbackCloseTransition extends StatelessWidget {
         );
       },
       child: destinationChild,
+    );
+  }
+}
+
+/// Reduced-motion opening / non-interactive-close render: a short crossfade
+/// (clean proxy -> complete destination) under a mild centered scale, driven by
+/// the same forward/reverse [progress] the geometry zoom would use. It never
+/// references source-tile geometry, so it structurally cannot perform the full
+/// zoom; the route's freeze / target machinery still resolves B independently.
+class _ReducedMotionZoomTransition extends StatelessWidget {
+  const _ReducedMotionZoomTransition({
+    required this.progress,
+    required this.destinationChild,
+    this.proxyImageProvider,
+    this.proxyColor = const Color(0x00000000),
+  });
+
+  final Animation<double> progress;
+  final Widget destinationChild;
+  final ImageProvider<Object>? proxyImageProvider;
+  final Color proxyColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: progress,
+      builder: (context, child) {
+        final t = progress.value.clamp(0.0, 1.0);
+        // Mild centered scale (0.96 -> 1.0), and a crossfade that completes in
+        // the first portion of the flight so it never competes with a later
+        // destination fade.
+        final scale = 0.96 + (0.04 * t);
+        final crossfadeT =
+            (t / postPageZoomCrossfadeProgressThreshold).clamp(0.0, 1.0);
+        return Transform.scale(
+          scale: scale,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Opacity(
+                opacity: 1.0 - crossfadeT,
+                child: proxyImageProvider != null
+                    ? Image(image: proxyImageProvider!, fit: BoxFit.cover)
+                    : ColoredBox(color: proxyColor),
+              ),
+              Opacity(opacity: crossfadeT, child: child),
+            ],
+          ),
+        );
+      },
+      child: RepaintBoundary(child: destinationChild),
     );
   }
 }
