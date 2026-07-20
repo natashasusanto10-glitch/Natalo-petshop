@@ -331,7 +331,7 @@ void main() {
           ]));
 
       // Back chevron closes the viewer.
-      await tester.tap(find.byIcon(Icons.chevron_left_rounded));
+      await tester.tap(find.byKey(const ValueKey('scoped-video-back-target')));
       for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 50));
         if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
@@ -437,7 +437,7 @@ void main() {
 
       // Close the viewer → origin controller must survive (re-attach inline at
       // the same timestamp). No dispose of the shared player yet.
-      await tester.tap(find.byIcon(Icons.chevron_left_rounded));
+      await tester.tap(find.byKey(const ValueKey('scoped-video-back-target')));
       for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 50));
         if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
@@ -533,7 +533,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
 
       final beforeClose = fakePlatform.createCount;
-      await tester.tap(find.byIcon(Icons.chevron_left_rounded));
+      await tester.tap(find.byKey(const ValueKey('scoped-video-back-target')));
       for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 50));
         if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
@@ -585,7 +585,7 @@ void main() {
           reason: 'no-swipe: origin remains active in fullscreen');
 
       final beforeClose = fakePlatform.createCount;
-      await tester.tap(find.byIcon(Icons.chevron_left_rounded));
+      await tester.tap(find.byKey(const ValueKey('scoped-video-back-target')));
       for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 50));
         if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;

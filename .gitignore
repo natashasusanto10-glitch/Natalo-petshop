@@ -1,5 +1,6 @@
 node_modules
 .worktrees/
+.codex/
 .next
 .env
 .env*.local

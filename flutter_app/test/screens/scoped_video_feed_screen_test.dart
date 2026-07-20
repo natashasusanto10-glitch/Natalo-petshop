@@ -556,7 +556,7 @@ void main() {
     final backIcon = tester.widget<Icon>(
       find.descendant(
         of: find.byKey(const ValueKey('scoped-video-back-target')),
-        matching: find.byIcon(Icons.chevron_left_rounded),
+        matching: find.byIcon(Icons.arrow_back_ios_new_rounded),
       ),
     );
     expect(backIcon.size, 32);
@@ -613,7 +613,7 @@ void main() {
     expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
-    await tester.tap(find.byIcon(Icons.chevron_left_rounded));
+    await tester.tap(find.byIcon(Icons.arrow_back_ios_new_rounded));
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(result, isNotNull);
@@ -654,7 +654,7 @@ void main() {
     expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
-    await tester.tap(find.byIcon(Icons.chevron_left_rounded));
+    await tester.tap(find.byIcon(Icons.arrow_back_ios_new_rounded));
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
       if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
@@ -701,7 +701,7 @@ void main() {
     expect(find.byType(ScopedVideoFeedScreen), findsOneWidget);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
-    await tester.tap(find.byIcon(Icons.chevron_left_rounded));
+    await tester.tap(find.byIcon(Icons.arrow_back_ios_new_rounded));
     for (var i = 0; i < 16; i++) {
       await tester.pump(const Duration(milliseconds: 100));
       if (find.byType(ScopedVideoFeedScreen).evaluate().isEmpty) break;
