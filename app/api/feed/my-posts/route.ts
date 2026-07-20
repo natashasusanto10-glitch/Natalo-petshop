@@ -113,6 +113,18 @@ export async function GET(request: NextRequest) {
             altText: true,
           },
         },
+        // Author post — WAJIB dikirim supaya tap nama/avatar di header &
+        // caption bisa buka profil (butuh author.username). Tanpa ini
+        // FeedPost.author di Flutter jatuh ke default kosong → tak tappable.
+        author: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            role: true,
+            profilePhotoUrl: true,
+          },
+        },
         likes: {
           orderBy: { createdAt: "desc" },
           take: 3,
@@ -283,6 +295,20 @@ export async function GET(request: NextRequest) {
         viewCount: post.viewCount,
         viewerLiked: viewerLikedIds.has(post.id),
         viewerSaved: viewerSavedIds.has(post.id),
+        // Author brand-safe — admin tampil sebagai brand (nama+foto pemilik
+        // tak bocor), username brand ('natalopetshop') tetap dikirim supaya
+        // tap nama/avatar bisa buka profil.
+        author: {
+          id: post.author.id,
+          name: brandDisplayName(post.author.role, post.author.name),
+          username: post.author.username,
+          role: post.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
+          profilePhotoUrl: brandPhotoUrl(
+            post.author.role,
+            post.author.profilePhotoUrl
+          ),
+          avatarUrl: brandPhotoUrl(post.author.role, post.author.profilePhotoUrl),
+        },
         recentLikers: post.likes.map((like) => ({
           id: like.user.id,
           name: brandDisplayName(like.user.role, like.user.name),
