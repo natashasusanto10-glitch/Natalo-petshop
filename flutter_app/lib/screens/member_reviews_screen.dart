@@ -18,6 +18,7 @@ import '../widgets/app_product_image.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
+import '../widgets/soft_toggle_chip.dart';
 
 const _brandBlue = NataloColors.primary;
 const _starGold = Color(0xFFF6B73C);
@@ -1047,15 +1048,44 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
     }
   }
 
-  void _applySuggestion(String text) {
+  /// Toggle tag cepat: tap tag yang belum aktif → tambahkan ke teks ulasan;
+  /// tap tag yang sudah aktif → nonaktifkan lagi dan buang dari teks.
+  /// Sebelumnya cuma bisa nambah (tap ulang chip aktif tidak berbuat apa2
+  /// secara visual tapi teks tetap ke-duplikat) — sekarang toggle penuh.
+  void _toggleSuggestion(String text) {
     HapticFeedback.selectionClick();
-    final existing = _contentController.text.trim();
-    final separator = existing.isEmpty ? '' : ', ';
-    _contentController.text = '$existing$separator$text';
+    final alreadySelected = _selectedSuggestions.contains(text);
+    setState(() {
+      if (alreadySelected) {
+        _selectedSuggestions.remove(text);
+      } else {
+        _selectedSuggestions.add(text);
+      }
+    });
+
+    final updated = alreadySelected
+        ? _withoutSuggestionText(_contentController.text, text)
+        : _withSuggestionText(_contentController.text, text);
+    _contentController.text = updated;
     _contentController.selection = TextSelection.collapsed(
-      offset: _contentController.text.length,
+      offset: updated.length,
     );
-    setState(() => _selectedSuggestions.add(text));
+  }
+
+  String _withSuggestionText(String current, String suggestion) {
+    final existing = current.trim();
+    final separator = existing.isEmpty ? '' : ', ';
+    return '$existing$separator$suggestion';
+  }
+
+  String _withoutSuggestionText(String current, String suggestion) {
+    if (current.contains('$suggestion, ')) {
+      return current.replaceFirst('$suggestion, ', '');
+    }
+    if (current.contains(', $suggestion')) {
+      return current.replaceFirst(', $suggestion', '');
+    }
+    return current.replaceFirst(suggestion, '').trim();
   }
 
   Future<void> _submit() async {
@@ -1250,7 +1280,7 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
                       const SizedBox(height: 10),
                       _SuggestionChips(
                         selected: _selectedSuggestions,
-                        onSelected: _applySuggestion,
+                        onSelected: _toggleSuggestion,
                         isSelfPickup: widget.isSelfPickup,
                       ),
                       const SizedBox(height: 16),
@@ -1431,30 +1461,13 @@ class _SuggestionChips extends StatelessWidget {
       runSpacing: AppSpacing.sm,
       children: [
         for (final suggestion in suggestions)
-          ChoiceChip(
+          SoftToggleChip(
+            label: suggestion.$2,
+            icon: suggestion.$1,
             selected: selected.contains(suggestion.$2),
-            onSelected: (_) => onSelected(suggestion.$2),
-            avatar: Icon(
-              suggestion.$1,
-              size: 16,
-              color:
-                  selected.contains(suggestion.$2) ? Colors.white : _brandBlue,
-            ),
-            label: Text(suggestion.$2),
-            selectedColor: _brandBlue,
-            backgroundColor: Theme.of(context).colorScheme.surface,
-            labelStyle: TextStyle(
-              color:
-                  selected.contains(suggestion.$2) ? Colors.white : _brandBlue,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-            side: BorderSide(
-              color: selected.contains(suggestion.$2)
-                  ? _brandBlue
-                  : const Color(0xFFBFDBFE),
-            ),
-            shape: RoundedRectangleBorder(borderRadius: AppRadius.pill),
+            // Tap tag yang sudah aktif = nonaktifkan lagi (lihat
+            // _toggleSuggestion di parent).
+            onTap: () => onSelected(suggestion.$2),
           ),
       ],
     );
