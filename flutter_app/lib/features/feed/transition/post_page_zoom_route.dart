@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart' show PredictiveBackEvent, SwipeEdge;
 import 'package:flutter/widgets.dart';
 
 import 'post_detail_transition_session.dart';
@@ -53,9 +54,17 @@ enum PostPageZoomPredictiveEventKind { start, progress, commit, cancel }
 
 /// Injection hook for Android Predictive Back events (Tasks 12-13). When
 /// non-null, it is a test-only stand-in for the system predictive-back
-/// callback stream. Defaults to null (no injection).
+/// callback stream, letting tests drive `start`/`progress`/`commit`/`cancel`
+/// deterministically in lieu of the real platform channel. [progress] is the
+/// linear back-gesture progress (0..1). [edge] is the reported swipe edge on a
+/// `start` event; [SwipeEdge.right] mirrors the preview translation direction.
+/// Defaults to null (no injection).
 @visibleForTesting
-void Function(PostPageZoomPredictiveEventKind kind, {double? progress})?
+void Function(
+  PostPageZoomPredictiveEventKind kind, {
+  double? progress,
+  SwipeEdge? edge,
+})?
 debugPostPageZoomPredictiveEvents;
 
 /// Throwing seam tests install to prove the route never attempts a
@@ -200,6 +209,26 @@ class PostPageZoomRoute extends PageRoute<void> {
   /// Global x of the drag start, for the real recognizer's linear mapping.
   double _dragStartGlobalDx = 0;
 
+  /// True while the active interactive back should mirror its horizontal
+  /// translation (Android Predictive Back from the RIGHT edge). The iOS
+  /// leading-edge gesture and the Android left edge both leave this false.
+  bool _backEdgeMirrored = false;
+
+  /// The Android-only observer that receives system Predictive Back events and
+  /// drives the shared interactive surface. Installed only on Android and only
+  /// when the test predictive seam is not armed. Null on iOS and in production
+  /// on iOS.
+  _PostPageZoomPredictiveBackObserver? _predictiveObserver;
+
+  /// True once this route has wired itself into a Predictive Back input source
+  /// (the real Android observer, or the test seam). Never true on iOS.
+  bool _predictiveParticipating = false;
+
+  /// Guards the non-interactive system-back path so a burst of `maybePop`
+  /// invocations (or a system back arriving while a reverse is already in
+  /// flight) does not start a second close.
+  bool _systemBackInProgress = false;
+
   /// Test-only view of the current interactive-back surface frame, so gesture
   /// tests can assert first-frame continuity (cancel/commit start from the
   /// exact released transform) without reaching into private render state.
@@ -223,12 +252,19 @@ class PostPageZoomRoute extends PageRoute<void> {
     return resolvePostPageBackPreview(
       viewportRect: viewport,
       progress: preview.value,
+      mirror: _backEdgeMirrored,
     );
   }
 
   /// Test-only view of the current linear preview progress.
   @visibleForTesting
   double? get debugBackPreviewProgress => _previewController?.value;
+
+  /// Test-only view of whether this route participates in Android Predictive
+  /// Back (true on Android via the real observer or the armed seam; always
+  /// false on iOS, where the leading-edge recognizer is used instead).
+  @visibleForTesting
+  bool get debugPredictiveBackParticipating => _predictiveParticipating;
 
   Rect? _lastViewportRect;
 
@@ -253,6 +289,50 @@ class PostPageZoomRoute extends PageRoute<void> {
   @override
   Duration get reverseTransitionDuration => _kNonInteractiveReverseDuration;
 
+  /// Ahead-of-time (synchronous) pop disposition consulted by
+  /// `Navigator.maybePop` (system back / predictive-unavailable back) and by
+  /// `PopScope`. While this route is the current top route and at rest in a
+  /// user-facing phase, it reports [RoutePopDisposition.doNotPop] so the
+  /// framework routes the system back into [onPopInvokedWithResult], where the
+  /// route runs its own reverse rather than being popped abruptly. When the
+  /// route is NOT topmost (a modal sheet/dialog sits above Postingan), it
+  /// defers entirely to the default disposition, so that overlay owns the
+  /// first back event and this route neither observes nor animates it. During
+  /// a close already in flight it also defers, allowing the terminal pop.
+  @override
+  RoutePopDisposition get popDisposition {
+    if (!isCurrent) return super.popDisposition;
+    switch (phase) {
+      case PostPageZoomPhase.open:
+      case PostPageZoomPhase.interactiveBack:
+      case PostPageZoomPhase.settlingOpenAfterCancel:
+        return RoutePopDisposition.doNotPop;
+      case PostPageZoomPhase.preparingOpen:
+      case PostPageZoomPhase.opening:
+      case PostPageZoomPhase.closingToTarget:
+      case PostPageZoomPhase.closingFallback:
+      case PostPageZoomPhase.closed:
+        return super.popDisposition;
+    }
+  }
+
+  /// Called by the framework after a `maybePop` that our [popDisposition]
+  /// declined ([RoutePopDisposition.doNotPop]). A `didPop == false` from the
+  /// resting `open` phase is a NON-INTERACTIVE system back (Android 3-button,
+  /// or predictive back unavailable/disabled): run the Task-8 non-interactive
+  /// reverse. Predictive gestures never arrive here — they are consumed by the
+  /// dedicated observer while in `interactiveBack`.
+  @override
+  void onPopInvokedWithResult(bool didPop, void result) {
+    if (!didPop &&
+        !_systemBackInProgress &&
+        phase == PostPageZoomPhase.open) {
+      _systemBackInProgress = true;
+      requestClose();
+    }
+    super.onPopInvokedWithResult(didPop, result);
+  }
+
   void _setPhase(PostPageZoomPhase next) {
     final legal = _kLegalPostPageZoomTransitions[phase] ?? const {};
     if (!legal.contains(next)) {
@@ -276,6 +356,27 @@ class PostPageZoomRoute extends PageRoute<void> {
     if (debugPostPageZoomGestureProgress != null) {
       debugPostPageZoomGestureProgress = _driveInteractiveBackFromSeam;
     }
+    _installPredictiveBack();
+  }
+
+  /// Wires the route into a Predictive Back input source. On iOS the leading-
+  /// edge pointer recognizer (installed in [buildPage]) is used instead, so
+  /// nothing is wired here. When a test has ARMED the predictive seam, this
+  /// route binds its own driver into it (deterministic test injection). In
+  /// production on Android it installs a dedicated [WidgetsBindingObserver]
+  /// that consumes system predictive-back events — NOT a Material predictive
+  /// transition builder, and not a second global back handler.
+  void _installPredictiveBack() {
+    if (debugPostPageZoomPredictiveEvents != null) {
+      debugPostPageZoomPredictiveEvents = _drivePredictiveFromSeam;
+      _predictiveParticipating = true;
+      return;
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      _predictiveObserver = _PostPageZoomPredictiveBackObserver(this);
+      WidgetsBinding.instance.addObserver(_predictiveObserver!);
+      _predictiveParticipating = true;
+    }
   }
 
   void _driveInteractiveBackFromSeam(double progress, double velocity) {
@@ -284,6 +385,66 @@ class PostPageZoomRoute extends PageRoute<void> {
       updateInteractiveBack(progress);
       _lastGestureVelocity = velocity;
     }
+  }
+
+  void _drivePredictiveFromSeam(
+    PostPageZoomPredictiveEventKind kind, {
+    double? progress,
+    SwipeEdge? edge,
+  }) {
+    switch (kind) {
+      case PostPageZoomPredictiveEventKind.start:
+        handlePredictiveBackStart(
+          mirrored: edge == SwipeEdge.right,
+          progress: progress ?? 0,
+        );
+      case PostPageZoomPredictiveEventKind.progress:
+        handlePredictiveBackProgress(progress ?? 0);
+      case PostPageZoomPredictiveEventKind.commit:
+        handlePredictiveBackCommit();
+      case PostPageZoomPredictiveEventKind.cancel:
+        handlePredictiveBackCancel();
+    }
+  }
+
+  // --- Android Predictive Back entry points. The real Android observer and the
+  // test seam both funnel through these, so both drive the exact same
+  // interactive surface and state machine as the iOS edge gesture. The route
+  // handles predictive back ONLY while it is the current top route and at rest
+  // in `open` (its synchronous pop disposition otherwise defers). ---
+
+  /// System predictive-back gesture start. [mirrored] is true for a RIGHT-edge
+  /// swipe (translation is mirrored). No-op unless the route is topmost and at
+  /// rest in `open`.
+  void handlePredictiveBackStart({
+    required bool mirrored,
+    required double progress,
+  }) {
+    if (!isCurrent) return;
+    if (phase != PostPageZoomPhase.open) return;
+    beginInteractiveBack(mirrored: mirrored);
+    updateInteractiveBack(progress);
+  }
+
+  /// System predictive-back progress update (linear 0..1). Freeze happened at
+  /// start; the edge is fixed for the duration of the gesture (no retarget).
+  void handlePredictiveBackProgress(double progress) {
+    if (phase != PostPageZoomPhase.interactiveBack) return;
+    updateInteractiveBack(progress);
+  }
+
+  /// System predictive-back commit: continue from the exact current transform
+  /// to the frozen B target with no geometry restart.
+  void handlePredictiveBackCommit() {
+    if (phase != PostPageZoomPhase.interactiveBack) return;
+    commitInteractiveBack();
+  }
+
+  /// System predictive-back cancellation: spring the exact current transform
+  /// back to fullscreen `open` with no restart.
+  void handlePredictiveBackCancel() {
+    if (phase != PostPageZoomPhase.interactiveBack) return;
+    cancelInteractiveBack();
   }
 
   /// Backgrounding or a metrics change mid-gesture must cancel the gesture and
@@ -372,13 +533,14 @@ class PostPageZoomRoute extends PageRoute<void> {
   /// Gesture start: freeze B at the FIRST progress event (before any transform)
   /// and enter the interactive preview. No scroll/pagination/visibility
   /// callback may retarget the frozen target until a cancel settles.
-  void beginInteractiveBack() {
+  void beginInteractiveBack({bool mirrored = false}) {
     if (phase != PostPageZoomPhase.open) {
       throw StateError(
         'beginInteractiveBack requires phase == open, got $phase',
       );
     }
     controller!.stop();
+    _backEdgeMirrored = mirrored;
     // Freeze precedes any transform (spec `Freezing the target` §).
     final frozen = session.freeze();
     _frozenTarget = frozen.target;
@@ -467,6 +629,7 @@ class PostPageZoomRoute extends PageRoute<void> {
         : resolvePostPageBackPreview(
             viewportRect: viewport,
             progress: _previewController?.value ?? 0,
+            mirror: _backEdgeMirrored,
           );
     _interactiveCommitActive = true;
     _commitTileSuppressed = false;
@@ -658,6 +821,7 @@ class PostPageZoomRoute extends PageRoute<void> {
         final frame = resolvePostPageBackPreview(
           viewportRect: viewport,
           progress: preview.value,
+          mirror: _backEdgeMirrored,
         );
         return PostPageBackSurface(
           frame: frame,
@@ -785,6 +949,16 @@ class PostPageZoomRoute extends PageRoute<void> {
     if (debugPostPageZoomGestureProgress == _driveInteractiveBackFromSeam) {
       debugPostPageZoomGestureProgress = null;
     }
+    // Detach the Android Predictive Back observer and release the predictive
+    // seam symmetrically, so no torn-down route keeps receiving system events
+    // or leaves a dangling test closure behind.
+    if (_predictiveObserver != null) {
+      WidgetsBinding.instance.removeObserver(_predictiveObserver!);
+      _predictiveObserver = null;
+    }
+    if (debugPostPageZoomPredictiveEvents == _drivePredictiveFromSeam) {
+      debugPostPageZoomPredictiveEvents = null;
+    }
     _previewController?.stop(canceled: false);
     _previewController?.dispose();
     _previewController = null;
@@ -828,6 +1002,48 @@ class _PostPageZoomLifecycleObserver with WidgetsBindingObserver {
 
   @override
   void didChangeMetrics() => _onInterruption();
+}
+
+/// Consumes system Android Predictive Back events and drives the route's
+/// shared interactive-back surface. Kept as a dedicated
+/// [WidgetsBindingObserver] (rather than the Material
+/// `PredictiveBackPageTransitionsBuilder`, which the spec forbids wrapping
+/// around the custom route) so predictive back participates through Flutter's
+/// route hooks WITHOUT stacking a second global back handler or a generic
+/// Material transition builder. It claims the gesture only while the route is
+/// the current top route and at rest in `open`; otherwise it returns false so
+/// a modal above Postingan (or the non-interactive fallback) handles the back.
+class _PostPageZoomPredictiveBackObserver with WidgetsBindingObserver {
+  _PostPageZoomPredictiveBackObserver(this._route);
+
+  final PostPageZoomRoute _route;
+
+  @override
+  bool handleStartBackGesture(PredictiveBackEvent backEvent) {
+    // A hardware/3-button back arrives as a "button event": leave it to the
+    // non-interactive `maybePop`/`popDisposition` path.
+    if (backEvent.isButtonEvent) return false;
+    if (!_route.isCurrent) return false;
+    if (_route.phase != PostPageZoomPhase.open) return false;
+    _route.handlePredictiveBackStart(
+      mirrored: backEvent.swipeEdge == SwipeEdge.right,
+      progress: backEvent.progress,
+    );
+    // Only claim the gesture if the route actually entered the interactive
+    // preview (guards against any last-moment phase change).
+    return _route.phase == PostPageZoomPhase.interactiveBack;
+  }
+
+  @override
+  void handleUpdateBackGestureProgress(PredictiveBackEvent backEvent) {
+    _route.handlePredictiveBackProgress(backEvent.progress);
+  }
+
+  @override
+  void handleCommitBackGesture() => _route.handlePredictiveBackCommit();
+
+  @override
+  void handleCancelBackGesture() => _route.handlePredictiveBackCancel();
 }
 
 /// Short fade + mild centered scale used for [PostPageZoomPhase.closingFallback]

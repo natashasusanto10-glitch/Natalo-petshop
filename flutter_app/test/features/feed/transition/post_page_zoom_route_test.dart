@@ -827,6 +827,236 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     });
   });
+
+  group('Android Predictive Back', () {
+    final navigatorKey = GlobalKey<NavigatorState>();
+
+    testWidgets(
+      'no predictive-back handler participates on iOS; the iOS recognizer '
+      'participates instead',
+      (tester) async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        final route = await _openInteractive(tester, navigatorKey);
+        expect(route.debugPredictiveBackParticipating, isFalse);
+        expect(find.byKey(postPageBackGestureEdgeKey), findsOneWidget);
+        debugDefaultTargetPlatformOverride = null;
+      },
+    );
+
+    testWidgets(
+      'the route participates in predictive back on Android and installs no '
+      'iOS leading-edge recognizer',
+      (tester) async {
+        // Default flutter-test platform is Android.
+        final route = await _openInteractive(tester, navigatorKey);
+        expect(route.debugPredictiveBackParticipating, isTrue);
+        expect(find.byKey(postPageBackGestureEdgeKey), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'system predictive progress from the LEFT edge drives the same surface '
+      'and state machine (interactiveBack), translating toward the trailing '
+      'side',
+      (tester) async {
+        debugPostPageZoomPredictiveEvents = (kind, {progress, edge}) {};
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: FakeTransitionSource(),
+        );
+        addTearDown(session.dispose);
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+
+        debugPostPageZoomPredictiveEvents!(
+          PostPageZoomPredictiveEventKind.start,
+          progress: 0.2,
+          edge: SwipeEdge.left,
+        );
+        expect(route.phase, PostPageZoomPhase.interactiveBack);
+        expect(route.debugBackPreviewProgress, closeTo(0.2, 1e-9));
+        // Left edge (not mirrored): surface center moves toward the trailing
+        // (right) side of the 800px viewport.
+        expect(route.debugCurrentBackFrame!.rect.center.dx, greaterThan(400));
+
+        route.cancelInteractiveBack();
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'RIGHT-edge predictive progress is respected (mirrored translation)',
+      (tester) async {
+        debugPostPageZoomPredictiveEvents = (kind, {progress, edge}) {};
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: FakeTransitionSource(),
+        );
+        addTearDown(session.dispose);
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+
+        debugPostPageZoomPredictiveEvents!(
+          PostPageZoomPredictiveEventKind.start,
+          progress: 0.2,
+          edge: SwipeEdge.right,
+        );
+        expect(route.phase, PostPageZoomPhase.interactiveBack);
+        // Right edge: translation is mirrored, surface center moves toward the
+        // leading (left) side.
+        expect(route.debugCurrentBackFrame!.rect.center.dx, lessThan(400));
+
+        route.cancelInteractiveBack();
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'system cancellation follows the exact current transform back to '
+      'fullscreen (no restart), settling open and resuming tracking once',
+      (tester) async {
+        debugPostPageZoomPredictiveEvents = (kind, {progress, edge}) {};
+        final session = _RecordingSession(
+          initialPost: fakePost('a'),
+          source: FakeTransitionSource(),
+        );
+        addTearDown(session.dispose);
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+
+        debugPostPageZoomPredictiveEvents!(
+          PostPageZoomPredictiveEventKind.start,
+          progress: 0.2,
+        );
+        debugPostPageZoomPredictiveEvents!(
+          PostPageZoomPredictiveEventKind.progress,
+          progress: 0.18,
+        );
+        final atRelease = route.debugCurrentBackFrame;
+
+        expect(session.resumeCalls, 0);
+        debugPostPageZoomPredictiveEvents!(
+          PostPageZoomPredictiveEventKind.cancel,
+        );
+        expect(route.phase, PostPageZoomPhase.settlingOpenAfterCancel);
+        // First frame of the settle equals the released transform (no restart).
+        expect(route.debugCurrentBackFrame, atRelease);
+
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.open);
+        expect(route.debugBackPreviewProgress, 0);
+        expect(session.resumeCalls, 1);
+      },
+    );
+
+    testWidgets(
+      'system commit continues from the exact current transform to frozen B '
+      'without geometry restart, ending closed',
+      (tester) async {
+        debugPostPageZoomPredictiveEvents = (kind, {progress, edge}) {};
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+
+        debugPostPageZoomPredictiveEvents!(
+          PostPageZoomPredictiveEventKind.start,
+          progress: 0.3,
+        );
+        final atRelease = route.debugCurrentBackFrame;
+
+        debugPostPageZoomPredictiveEvents!(
+          PostPageZoomPredictiveEventKind.commit,
+        );
+        expect(route.phase, PostPageZoomPhase.closingToTarget);
+        // First frame equals the released transform (no restart).
+        expect(route.debugCurrentBackFrame, atRelease);
+
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.closed);
+      },
+    );
+
+    testWidgets(
+      'predictive-unavailable system back (3-button) runs the Task-8 '
+      'NON-INTERACTIVE reverse, never the interactive preview',
+      (tester) async {
+        // No predictive seam armed: on Android the route installs the real
+        // predictive observer, but a plain system back arrives via maybePop
+        // (not a predictive gesture) and must run the non-interactive reverse.
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+        expect(route.phase, PostPageZoomPhase.open);
+
+        await tester.binding.handlePopRoute();
+        await tester.pump();
+        // Non-interactive reverse (closingToTarget), NOT interactiveBack.
+        expect(route.phase, PostPageZoomPhase.closingToTarget);
+        expect(route.debugBackPreviewProgress, isNull);
+
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.closed);
+      },
+    );
+
+    testWidgets(
+      'a modal route above Postingan owns the first back; the zoom route '
+      'defers (popDisposition != doNotPop while not topmost) and never moves',
+      (tester) async {
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+
+        final route = await _openInteractiveWith(tester, navigatorKey, session);
+        expect(route.phase, PostPageZoomPhase.open);
+
+        // Push a modal route on top of the zoom route.
+        navigatorKey.currentState!.push(
+          PageRouteBuilder<void>(
+            settings: const RouteSettings(name: 'modal-above'),
+            pageBuilder: (context, a, b) =>
+                const Text('modal', textDirection: TextDirection.ltr),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('modal'), findsOneWidget);
+        expect(route.isCurrent, isFalse);
+        // While not topmost, the zoom route defers its pop disposition.
+        expect(route.popDisposition, isNot(RoutePopDisposition.doNotPop));
+
+        // The first back pops the modal, not the zoom route.
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.text('modal'), findsNothing);
+        // The zoom route did not observe/animate the back: still open, and its
+        // interactive preview never started.
+        expect(route.phase, PostPageZoomPhase.open);
+        expect(route.debugBackPreviewProgress, isNull);
+      },
+    );
+  });
 }
 
 /// Opens the route and settles to `open` using the ambient platform override.

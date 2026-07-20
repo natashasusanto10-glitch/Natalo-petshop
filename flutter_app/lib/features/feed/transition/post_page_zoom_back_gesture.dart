@@ -71,16 +71,26 @@ class PostPageBackFrame {
 /// horizontally toward the trailing side by
 /// `progress * viewportRect.width * kPostPageBackPreviewTranslateFraction`, and
 /// its corner radius is [kPostPageBackPreviewCornerRadius].
+///
+/// [mirror] flips the horizontal translation direction. The default (`false`)
+/// matches the iOS leading-edge / Android left-edge gesture (surface follows
+/// toward the trailing side). Android Predictive Back from the RIGHT edge sets
+/// `mirror: true` so the surface moves toward the leading side instead; scale
+/// and radius are identical regardless of edge.
 PostPageBackFrame resolvePostPageBackPreview({
   required Rect viewportRect,
   required double progress,
+  bool mirror = false,
 }) {
   final t = progress.clamp(0.0, 1.0);
   final scale = lerpDouble(1.0, kPostPageBackPreviewMinScale, t)!;
   final width = viewportRect.width * scale;
   final height = viewportRect.height * scale;
   final dx =
-      t * viewportRect.width * kPostPageBackPreviewTranslateFraction;
+      (mirror ? -1 : 1) *
+      t *
+      viewportRect.width *
+      kPostPageBackPreviewTranslateFraction;
   final center = viewportRect.center + Offset(dx, 0);
   final radius = lerpDouble(0.0, kPostPageBackPreviewCornerRadius, t)!;
   return PostPageBackFrame(
