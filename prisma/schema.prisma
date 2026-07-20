@@ -1158,6 +1158,10 @@ model Announcement {
   feedPostId   String?
   thumbnailUrl String?
   feedStatus   String?
+  /// Komentar pemicu notif (feed_new_comment / reply / comment-like).
+  /// Dipakai app untuk aksi inline ♡/Balas. Null utk notif non-komentar
+  /// & notif komentar lama (pra-migration).
+  commentId    String?
   /// Kalau di-set, override segment — cuma user ini yang lihat di bell.
   /// Dipakai untuk personal notification (order status, dll).
   targetUserId String?
