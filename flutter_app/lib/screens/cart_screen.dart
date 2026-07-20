@@ -711,13 +711,11 @@ class _CartScreenState extends State<CartScreen>
   void _goToCheckout() {
     if (_selectedItems.isEmpty) return;
     AppHaptics.impact();
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     if (!memberStore.isLoggedIn) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Masuk member dulu untuk lanjut checkout.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showBanner(
+        context,
+        'Masuk member dulu untuk lanjut checkout.',
+        kind: ToastKind.info,
       );
       Navigator.pushNamed(
         context,

@@ -10,6 +10,7 @@ import '../services/auth_service.dart';
 import '../utils/action_throttle.dart';
 import '../utils/haptics.dart';
 import '../utils/phone_formatter.dart';
+import '../widgets/app_toast.dart';
 
 /// SharedPreferences key untuk store deadline cooldown OTP resend.
 /// Value = `DateTime.millisecondsSinceEpoch` saat cooldown habis. Dipakai
@@ -286,11 +287,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
           builder: (_) => _WelcomeVoucherDialog(voucher: voucher),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Akun berhasil dibuat. Silakan login.'),
-            behavior: SnackBarBehavior.floating,
-          ),
+        AppToast.showBanner(
+          context,
+          'Akun berhasil dibuat. Silakan login.',
+          kind: ToastKind.success,
         );
       }
       if (!mounted) return;

@@ -12,6 +12,7 @@ import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../utils/payment_url_policy.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/compact_commerce_product_card.dart';
 import '../widgets/skeleton_product_card.dart';
@@ -887,7 +888,5 @@ class _ProductCard extends StatelessWidget {
 }
 
 void _showProductSnack(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-  );
+  AppToast.showBanner(context, message, kind: ToastKind.info);
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/block_service.dart';
 import '../services/report_service.dart';
+import 'app_toast.dart';
 
 const _feedSheetSurface = Color(0xFF101114);
 const _feedSheetDivider = Color(0xFF2A2B2F);
@@ -149,26 +150,22 @@ class _ModerationSheet extends StatelessWidget {
                   if (!confirmed) return;
                   final ok = await onSelfDelete!.call();
                   if (!context.mounted) return;
+                  final rootCtx =
+                      Navigator.of(context, rootNavigator: true).context;
                   Navigator.of(context).pop(
                     ModerationActionResult(didDelete: ok),
                   );
                   if (ok) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          '${targetKind.displayLabel.toUpperCase().substring(0, 1)}${targetKind.displayLabel.substring(1)} dihapus.',
-                        ),
-                        behavior: SnackBarBehavior.floating,
-                      ),
+                    AppToast.showBanner(
+                      rootCtx,
+                      '${targetKind.displayLabel.toUpperCase().substring(0, 1)}${targetKind.displayLabel.substring(1)} dihapus.',
+                      kind: ToastKind.success,
                     );
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Gagal hapus ${targetKind.displayLabel}. Coba lagi.',
-                        ),
-                        behavior: SnackBarBehavior.floating,
-                      ),
+                    AppToast.showBanner(
+                      rootCtx,
+                      'Gagal hapus ${targetKind.displayLabel}. Coba lagi.',
+                      kind: ToastKind.error,
                     );
                   }
                 },
@@ -214,18 +211,17 @@ class _ModerationSheet extends StatelessWidget {
                     userName: authorName,
                   );
                   if (!context.mounted) return;
+                  final rootCtx =
+                      Navigator.of(context, rootNavigator: true).context;
                   Navigator.of(context).pop(
                     const ModerationActionResult(didBlock: true),
                   );
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        authorName != null && authorName!.isNotEmpty
-                            ? '$authorName diblokir. Konten dari pengguna ini disembunyikan.'
-                            : 'Pengguna diblokir.',
-                      ),
-                      behavior: SnackBarBehavior.floating,
-                    ),
+                  AppToast.showBanner(
+                    rootCtx,
+                    authorName != null && authorName!.isNotEmpty
+                        ? '$authorName diblokir. Konten dari pengguna ini disembunyikan.'
+                        : 'Pengguna diblokir.',
+                    kind: ToastKind.success,
                   );
                 },
               ),
@@ -275,16 +271,13 @@ class _ModerationSheet extends StatelessWidget {
       reason: reason,
     );
     if (!context.mounted) return result.ok;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          result.ok
-              ? 'Laporan terkirim. Moderator akan meninjau dalam 24 jam.'
-              : (result.errorMessage ?? 'Gagal kirim laporan.'),
-        ),
-        backgroundColor: result.ok ? const Color(0xFF059669) : null,
-        behavior: SnackBarBehavior.floating,
-      ),
+    final rootCtx = Navigator.of(context, rootNavigator: true).context;
+    AppToast.showBanner(
+      rootCtx,
+      result.ok
+          ? 'Laporan terkirim. Moderator akan meninjau dalam 24 jam.'
+          : (result.errorMessage ?? 'Gagal kirim laporan.'),
+      kind: result.ok ? ToastKind.success : ToastKind.error,
     );
     return result.ok;
   }
