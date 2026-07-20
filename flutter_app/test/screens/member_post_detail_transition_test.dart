@@ -107,6 +107,98 @@ void main() {
   );
 
   testWidgets(
+    'an expired post-removal frame never publishes geometry readiness',
+    (tester) async {
+      useDetailViewport(tester);
+      final posts = List.generate(5, (index) => fakePhoto('post-$index'));
+      final session = fakeTransitionSession(posts[3]);
+      // The budget is exhausted at exactly the post-removal readiness frame:
+      // the frame that renders the fallback removal and makes the destination
+      // list observable. A false bounded-frame outcome is authoritative and
+      // must never resolve to geometry readiness, however observable the
+      // destination happens to be at that instant.
+      var expired = false;
+      debugPostDetailReadinessClock = () =>
+          expired ? const Duration(milliseconds: 80) : Duration.zero;
+      debugPostDetailReadinessFrameFuture = () async {
+        await WidgetsBinding.instance.endOfFrame;
+        final removalRendered = find
+                .byKey(const ValueKey('post-detail-transition-fallback-post-3'))
+                .evaluate()
+                .isEmpty &&
+            find
+                .byKey(const ValueKey('post-detail-item-post-3'))
+                .evaluate()
+                .isNotEmpty;
+        if (removalRendered) expired = true;
+      };
+
+      await tester.pumpWidget(
+        detailHost(posts: posts, initialIndex: 3, session: session),
+      );
+      for (var i = 0; i < 6; i++) {
+        await tester.pump();
+      }
+
+      expect(
+        session.destinationReadiness,
+        PostDetailDestinationReadiness.crossfadeFallback,
+        reason: 'a false bounded-frame outcome must not become geometryReady',
+      );
+
+      await disposeDetail(tester);
+      session.dispose();
+    },
+  );
+
+  testWidgets(
+    'an expired post-removal frame recovers a renderable fallback, never '
+    'preparing',
+    (tester) async {
+      useDetailViewport(tester);
+      final posts = List.generate(5, (index) => fakePhoto('post-$index'));
+      final session = fakeTransitionSession(posts[3]);
+      var frameReq = 0;
+      var expired = false;
+      debugPostDetailReadinessClock = () =>
+          expired ? const Duration(milliseconds: 80) : Duration.zero;
+      // Alignment frames render normally; the post-removal frame resolves
+      // without rendering (an already-complete future) and expires the budget,
+      // so the fallback removal never paints and the destination list never
+      // becomes observable. Readiness must still reach a terminal, renderable
+      // crossfade fallback — never geometry readiness, never `preparing`.
+      debugPostDetailReadinessFrameFuture = () {
+        frameReq++;
+        if (frameReq >= 3) {
+          expired = true;
+          return Future<void>.value();
+        }
+        return WidgetsBinding.instance.endOfFrame;
+      };
+
+      await tester.pumpWidget(
+        detailHost(posts: posts, initialIndex: 3, session: session),
+      );
+      for (var i = 0; i < 6; i++) {
+        await tester.pump();
+      }
+
+      expect(
+        session.destinationReadiness,
+        PostDetailDestinationReadiness.crossfadeFallback,
+        reason: 'an invalid destination after expiry must never stay preparing',
+      );
+      expect(
+        find.byKey(const ValueKey('post-detail-transition-fallback-post-3')),
+        findsOneWidget,
+      );
+
+      await disposeDetail(tester);
+      session.dispose();
+    },
+  );
+
+  testWidgets(
     'clamped final post uses fallback instead of geometry readiness',
     (tester) async {
       useDetailViewport(tester);

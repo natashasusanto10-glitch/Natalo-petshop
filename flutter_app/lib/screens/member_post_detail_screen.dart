@@ -599,21 +599,24 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
             });
             final frameWithinDeadline = await _awaitReadinessFrame(stopwatch);
             if (!_ownsTransitionReadiness(session, generation)) return;
-            if (_hasRenderableDestinationSurface(targetIndex)) {
+            // A false bounded-frame outcome is authoritative: never publish
+            // geometry readiness once the deadline has passed, however
+            // observable the destination happens to be at this instant.
+            if (frameWithinDeadline &&
+                _hasRenderableDestinationSurface(targetIndex)) {
               session.markDestinationReady(
                 PostDetailDestinationReadiness.geometryReady,
               );
               _scheduleVisibilityMeasure();
               return;
             }
-            setState(() {
-              _transitionFallbackPost = fallbackPost;
-              _transitionFallbackVisible = true;
-            });
-            if (!frameWithinDeadline ||
-                _hasRenderableFallbackSurface(fallbackPost.id)) {
-              _publishTransitionFallback(session, generation);
-            }
+            await _publishTerminalCrossfade(
+              session,
+              generation,
+              fallbackPost,
+              targetIndex,
+              stopwatch,
+            );
             return;
           }
           final revealOffset = viewport.getOffsetToReveal(box, 0).offset;
@@ -640,6 +643,48 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       return;
     }
     _publishTransitionFallback(session, generation);
+  }
+
+  /// Ends readiness as a terminal, surface-valid crossfade after the geometry
+  /// path is abandoned — an expired deadline or a destination that is not a
+  /// valid geometry surface. It never publishes geometry readiness and never
+  /// leaves readiness at `preparing`: an already-observable destination is a
+  /// valid crossfade base, otherwise the fallback is recovered and published
+  /// once it is renderable, all within the remaining bounded budget so there
+  /// is no unbounded frame wait.
+  Future<void> _publishTerminalCrossfade(
+    PostDetailTransitionSession session,
+    int generation,
+    FeedPost fallbackPost,
+    int targetIndex,
+    Stopwatch stopwatch,
+  ) async {
+    if (_hasRenderableDestinationSurface(targetIndex)) {
+      session.markDestinationReady(
+        PostDetailDestinationReadiness.crossfadeFallback,
+      );
+      return;
+    }
+    setState(() {
+      _transitionFallbackPost = fallbackPost;
+      _transitionFallbackVisible = true;
+    });
+    if (_hasRenderableFallbackSurface(fallbackPost.id)) {
+      _publishTransitionFallback(session, generation);
+      return;
+    }
+    // Give the recovered fallback one bounded frame to render, then publish
+    // against whichever surface is valid so readiness always reaches a
+    // terminal state.
+    await _awaitReadinessFrame(stopwatch);
+    if (!_ownsTransitionReadiness(session, generation)) return;
+    if (_hasRenderableFallbackSurface(fallbackPost.id)) {
+      _publishTransitionFallback(session, generation);
+    } else if (_hasRenderableDestinationSurface(targetIndex)) {
+      session.markDestinationReady(
+        PostDetailDestinationReadiness.crossfadeFallback,
+      );
+    }
   }
 
   Future<void> _settleTransitionFallback() async {
