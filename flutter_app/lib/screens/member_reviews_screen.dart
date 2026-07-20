@@ -144,7 +144,7 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
       earnedBonus
           ? '🎁 Review terkirim. +${submitted.pointsAwarded} poin loyal masuk akunmu!'
           : 'Review terkirim. Tambah foto + deskripsi (min 10 huruf) untuk dapat 5 poin loyal.',
-      kind: ToastKind.success,
+      kind: earnedBonus ? ToastKind.success : ToastKind.info,
       duration: const Duration(seconds: 4),
     );
   }
