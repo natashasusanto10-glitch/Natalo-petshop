@@ -86,6 +86,12 @@ class PostHero extends StatelessWidget {
     return AnimatedBuilder(
       animation: animation,
       builder: (context, _) => ClipRRect(
+        // Kunci debug tetap: penanda bahwa flight NYATA sedang berlangsung
+        // (shuttle ini hanya dibangun HeroController saat menerbangkan
+        // pasangan Hero) — dipakai test untuk membuktikan TIDAK ADA flight
+        // yang tertangkap selama push (lihat
+        // member_post_detail_hero_close_only_test.dart).
+        key: const ValueKey('post-hero-shuttle'),
         borderRadius: BorderRadius.lerp(fromRadius, toRadius, animation.value)!,
         child: display,
       ),

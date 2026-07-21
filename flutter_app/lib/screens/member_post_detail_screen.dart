@@ -2982,7 +2982,8 @@ class _PostMediaSurface extends StatelessWidget {
     final scope = heroScope;
     final notifier = heroPostId;
     if (scope == null || notifier == null) return child;
-    final routeAnimation = ModalRoute.of(context)?.animation;
+    final route = ModalRoute.of(context);
+    final routeAnimation = route?.animation;
     return ValueListenableBuilder<String>(
       valueListenable: notifier,
       builder: (context, activeHeroPostId, staticChild) {
@@ -2997,8 +2998,17 @@ class _PostMediaSurface extends StatelessWidget {
         }
         return _HeroFlightGate(
           animation: routeAnimation,
-          gestureInProgress:
-              ModalRoute.of(context)?.navigator?.userGestureInProgressNotifier,
+          // `HeroController._maybeStartHeroTransition` (flutter SDK
+          // heroes.dart) substitutes `kAlwaysCompleteAnimation` for THIS
+          // route's animation for exactly one build (`route.offstage =
+          // true`) right when a push starts, BEFORE the real controller
+          // status ever reports `forward` — see `_HeroFlightGate` doc
+          // below for why that stand-in defeats a status-only gate. Pass
+          // the ROUTE itself (stable object identity across rebuilds,
+          // unlike a bool snapshot) so the gate can read `.offstage` LIVE
+          // at any time — not just when this ancestor happens to rebuild.
+          route: route,
+          gestureInProgress: route?.navigator?.userGestureInProgressNotifier,
           child: staticChild!,
           builder: (context, heroActive, child) => PostHero(
             scope: scope,
@@ -3145,6 +3155,7 @@ class _HeroFlightGate extends StatefulWidget {
   const _HeroFlightGate({
     required this.animation,
     required this.builder,
+    this.route,
     this.gestureInProgress,
     this.child,
   });
@@ -3152,6 +3163,15 @@ class _HeroFlightGate extends StatefulWidget {
   final Animation<double> animation;
   final Widget Function(BuildContext context, bool heroActive, Widget? child)
       builder;
+
+  /// Route yang memiliki [animation] — objek STABIL (identity sama across
+  /// rebuild ancestor manapun), jadi `.offstage`-nya bisa dibaca LIVE
+  /// kapan saja (di `_resync` yang dipicu status listener, bukan cuma
+  /// waktu `_wrapHero` kebetulan rebuild) — lihat FIX doc di
+  /// [_HeroFlightGateState._activeFor]. Null kalau tak ada Navigator
+  /// (mis. dites tanpa route sungguhan) — fallback ke perilaku status-only
+  /// lama (`offstage` dianggap selalu `false`).
+  final ModalRoute<dynamic>? route;
 
   /// `NavigatorState.userGestureInProgressNotifier` milik route ini (null
   /// kalau tak ada Navigator, mis. dites tanpa route sungguhan — fallback ke
@@ -3164,29 +3184,67 @@ class _HeroFlightGate extends StatefulWidget {
 }
 
 class _HeroFlightGateState extends State<_HeroFlightGate> {
+  /// FIX (device-confirmed bug — lihat close-only-hero-report.md "Fix:
+  /// inert sejak build pertama"): saat route SEDANG di-push,
+  /// `HeroController._maybeStartHeroTransition` (SDK heroes.dart) mem-set
+  /// `route.offstage = true` untuk SATU build pra-pass SEBELUM frame itu
+  /// mulai dibangun, lalu mendaftarkan `_startHeroTransition` (yang
+  /// MENCARI pasangan Hero utk memulai flight) lewat
+  /// `addPostFrameCallback` — didaftarkan SEBELUM `initState` widget ini
+  /// pernah jalan. `ModalRoute.offstage=true` MENGGANTI `animation` route
+  /// dgn `kAlwaysCompleteAnimation` (SDK routes.dart, `set offstage`) —
+  /// status-nya SELALU `completed`, bukan `forward`. Kode lama membaca
+  /// `animation.status` SECARA SINKRON di field initializer
+  /// (`late bool _heroActive = _activeFor(...)`) TANPA tahu ini stand-in
+  /// → `_activeFor` salah pulang `true` (aktif) di build PERTAMA push.
+  /// `HeroController`-nya sendiri lalu menjalankan `_startHeroTransition`
+  /// di postFrameCallback yg SUDAH ANTRE LEBIH DULU (terdaftar sebelum
+  /// widget ini bahkan mount) — menemukan Hero viewer SUDAH aktif → flight
+  /// TERTANGKAP, permanen sampai selesai, TIDAK PEDULI widget ini flip ke
+  /// inert di frame-frame berikutnya (postFrameCallback resync lama,
+  /// terdaftar SETELAH punya HeroController, jadi kalah cepat). Reproduksi:
+  /// RED test `member_post_detail_hero_close_only_test.dart` (shuttle
+  /// `post-hero-shuttle` muncul di frame ke-2 push sebelum fix ini).
+  ///
+  /// Fix: `ModalRoute.offstage` (bool, bukan `animation.status`) adalah
+  /// sinyal yang BENAR-BENAR membedakan stand-in dari transisi asli. Dibaca
+  /// LIVE dari [widget.route] tiap kali `_activeFor` dipanggil — BUKAN dari
+  /// snapshot widget field yang cuma diperbarui saat ancestor (`_wrapHero`)
+  /// kebetulan rebuild. Itu penting: `route.offstage` balik ke `false`
+  /// (dan `animation.status` balik `forward`) via mekanisme INTERNAL
+  /// `HeroController`/`ModalRoute` yang TIDAK menjamin ancestor manapun di
+  /// atas widget ini ikut rebuild — kalau nilainya di-snapshot ke widget
+  /// field, `_resync()` (dipicu status listener asli, yang tetap benar
+  /// jalan lewat langganan langsung ke objek `animation`) akan membaca
+  /// field BASI (`offstage` masih `true` dari build pertama) dan salah
+  /// PERMANEN mengunci Hero inert — regresi nyata ditemukan lewat
+  /// kegagalan `member_post_detail_hero_test.dart` (`.../inert` macet
+  /// walau push sudah lama selesai) saat percobaan pertama fix ini pakai
+  /// bool field. `route` sebagai objek (bukan bool) aman dibaca live
+  /// karena identitasnya stabil sepanjang umur route, terlepas dari
+  /// rebuild ancestor mana pun.
   static bool _activeFor(
     Animation<double> animation,
     ValueListenable<bool>? gestureInProgress,
-  ) =>
-      animation.status != AnimationStatus.forward ||
-      (gestureInProgress?.value ?? false);
+    ModalRoute<dynamic>? route,
+  ) {
+    if (route?.offstage ?? false) return gestureInProgress?.value ?? false;
+    return animation.status != AnimationStatus.forward ||
+        (gestureInProgress?.value ?? false);
+  }
 
   late bool _heroActive =
-      _activeFor(widget.animation, widget.gestureInProgress);
+      _activeFor(widget.animation, widget.gestureInProgress, widget.route);
 
   @override
   void initState() {
     super.initState();
     widget.animation.addStatusListener(_onSignalChanged);
     widget.gestureInProgress?.addListener(_onSignalChanged);
-    // `ModalRoute.offstage` substitutes `kAlwaysCompleteAnimation` for the
-    // route's animation for exactly one frame while a NEW route is being
-    // inserted (before the real AnimationController is attached) — reading
-    // `.status` synchronously here can observe that transient stand-in
-    // (`completed`) instead of the real `forward` the push is about to
-    // drive. Re-check one frame later, same as [_onSignalChanged], so the
-    // very first frame self-corrects instead of trusting a possibly-stale
-    // snapshot.
+    // Belt-and-suspenders utk jalur lain yang mungkin salah baca status
+    // transien di build pertama (mis. `route` null saat dites tanpa
+    // Navigator sungguhan). TIDAK diandalkan lagi utk kasus offstage push
+    // nyata — itu sudah benar sejak build pertama lewat `widget.route`.
     WidgetsBinding.instance.addPostFrameCallback((_) => _resync());
   }
 
@@ -3202,8 +3260,10 @@ class _HeroFlightGateState extends State<_HeroFlightGate> {
       widget.gestureInProgress?.addListener(_onSignalChanged);
     }
     if (oldWidget.animation != widget.animation ||
-        oldWidget.gestureInProgress != widget.gestureInProgress) {
-      _heroActive = _activeFor(widget.animation, widget.gestureInProgress);
+        oldWidget.gestureInProgress != widget.gestureInProgress ||
+        oldWidget.route != widget.route) {
+      _heroActive =
+          _activeFor(widget.animation, widget.gestureInProgress, widget.route);
     }
   }
 
@@ -3220,7 +3280,8 @@ class _HeroFlightGateState extends State<_HeroFlightGate> {
 
   void _resync() {
     if (!mounted) return;
-    final active = _activeFor(widget.animation, widget.gestureInProgress);
+    final active =
+        _activeFor(widget.animation, widget.gestureInProgress, widget.route);
     if (active != _heroActive) setState(() => _heroActive = active);
   }
 

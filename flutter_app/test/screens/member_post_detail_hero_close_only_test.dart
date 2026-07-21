@@ -124,6 +124,50 @@ void main() {
   });
 
   testWidgets(
+      'push (buka viewer): TIDAK ADA flight NYATA tertangkap — shuttle '
+      '(post-hero-shuttle) TIDAK boleh muncul di Overlay selama push '
+      'berjalan, meski tag berbeda di frame-frame awal', (tester) async {
+    // Regresi jujur: test tag-count di atas bisa LULUS walau flight sudah
+    // tertangkap di frame PERTAMA (sebelum tag di-flip ke 'inert') karena
+    // dia cuma menghitung tag Hero di tree saat ini, bukan memeriksa
+    // apakah HeroController benar-benar memulai flight. Kalau flight
+    // sudah tertangkap di frame awal, HeroController tetap menerbangkannya
+    // sampai selesai WALAU tag berubah nonaktif di frame berikutnya —
+    // itulah root cause bug device (media terbang saat OPEN).
+    await tester.pumpWidget(
+      MaterialApp(
+        routes: {'/member/login': (_) => const Scaffold(body: Text('Login'))},
+        home: const MemberScreen(),
+      ),
+    );
+    await pumpBounded(tester);
+
+    await tester.tap(find.byWidgetPredicate(
+      (w) => w is Hero && w.tag == 'post-hero/profile-all/p1',
+    ));
+
+    // Periksa beberapa frame awal push (~4 frame / ~64ms dari total ~600ms
+    // durasi transisi) — kalau flight tertangkap, shuttle nampak di salah
+    // satu frame ini dan bertahan sampai akhir transisi.
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(
+        find.byKey(const ValueKey('post-hero-shuttle')),
+        findsNothing,
+        reason: 'frame ke-${i + 1} push: shuttle flight TIDAK boleh ada — '
+            'push murni transisi native, tanpa media terbang',
+      );
+    }
+
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.byType(MemberPostDetailScreen), findsOneWidget);
+    expect(find.byKey(const ValueKey('post-hero-shuttle')), findsNothing,
+        reason: 'push selesai — tidak pernah ada flight sepanjang transisi');
+  });
+
+  testWidgets(
       'pop (tutup viewer): flight TETAP terjadi — dua Hero berpasangan '
       'selama transisi pop berjalan', (tester) async {
     await tester.pumpWidget(
