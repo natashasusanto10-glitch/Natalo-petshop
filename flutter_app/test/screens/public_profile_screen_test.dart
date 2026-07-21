@@ -121,7 +121,6 @@ void main() {
     }
 
     expect(find.byType(MemberPostDetailScreen), findsOneWidget);
-    expect(find.byType(PostViewerRoute), findsNothing);
     final detailState =
         tester.state(find.byType(MemberPostDetailScreen)) as dynamic;
     expect(detailState.debugVideoCoordinator.sessionFor(post.id),

@@ -47,11 +47,15 @@ class PostHero extends StatelessWidget {
         : BorderRadius.zero;
     final BorderRadius fromRadius = radiusOf(fromHero);
     final BorderRadius toRadius = radiusOf(toHero);
+    // PostHero.build always wraps its child in ClipRRect (see above), so
+    // `content` here is always that ClipRRect — unwrap it directly instead
+    // of guarding a branch that can never be hit.
+    assert(content is ClipRRect, 'PostHero child sudah pasti ClipRRect');
     return AnimatedBuilder(
       animation: animation,
       builder: (context, _) => ClipRRect(
         borderRadius: BorderRadius.lerp(fromRadius, toRadius, animation.value)!,
-        child: content is ClipRRect ? (content).child : content,
+        child: (content as ClipRRect).child,
       ),
     );
   }

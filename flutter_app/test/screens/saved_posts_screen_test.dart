@@ -108,11 +108,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
 
+    // OriginSnapshotSource sudah dihapus total dari codebase (lihat commit
+    // "hapus OriginExpansionRoute total") — sebuah runtimeType-string check
+    // terhadap tipe yang sudah dihapus akan SELALU findsNothing (vacuous,
+    // tak pernah bisa gagal). Sinyal nyata bahwa jalur baru yang dipakai
+    // adalah pushPostViewer (bukan origin-expansion lama) cukup dibuktikan
+    // dari MemberPostDetailScreen yang tampil normal via route standar.
     expect(find.byType(MemberPostDetailScreen), findsOneWidget);
-    expect(
-        find.byWidgetPredicate(
-            (w) => w.runtimeType.toString() == 'OriginSnapshotSource'),
-        findsNothing);
   });
 
   testWidgets('pop from viewer closes without exception', (tester) async {

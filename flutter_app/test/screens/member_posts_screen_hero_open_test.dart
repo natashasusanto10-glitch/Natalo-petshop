@@ -37,12 +37,14 @@ void main() {
       (tester) async {
     await pumpScreen(tester);
 
-    expect(
-      find.byWidgetPredicate(
-          (w) => '${w.runtimeType}' == 'OriginSnapshotSource'),
-      findsNothing,
-    );
-    expect(find.byType(PostViewerRoute), findsNothing);
+    // OriginSnapshotSource sudah dihapus total dari codebase (lihat commit
+    // "hapus OriginExpansionRoute total") — sebuah runtimeType-string check
+    // terhadap tipe yang sudah tidak ada akan SELALU findsNothing (vacuous),
+    // begitu juga find.byType(PostViewerRoute) karena PostViewerRoute
+    // adalah Route (bukan Widget), find.byType tak pernah menemukannya.
+    // Regresi nyata yang relevan cukup: grid tidak melempar exception saat
+    // dibangun dan tap masih membuka MemberPostDetailScreen (lihat test
+    // 'grid membuka viewer via PostViewerRoute' di file ini).
     expect(find.byType(MemberPostDetailScreen), findsNothing);
     expect(tester.takeException(), isNull);
   });
