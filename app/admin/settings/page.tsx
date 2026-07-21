@@ -16,7 +16,7 @@ export default async function AdminSettingsPage() {
   return (
     <AdminPage maxWidth="md">
       <PageHeader
-        title="⚙️ Pengaturan Toko"
+        title="Pengaturan Toko"
         subtitle="Konfigurasi umum toko kamu. Sebagian dikontrol via env vars di server."
         actions={
           <Button href="/admin/dashboard" variant="secondary" size="sm">
@@ -30,27 +30,9 @@ export default async function AdminSettingsPage() {
           title="Informasi Toko"
           subtitle="Ubah nilai ini melalui file .env di server."
         >
-          <div className="space-y-3">
-            <div className="rounded-xl bg-zinc-50 px-4 py-3">
-              <p className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
-                Nama Toko
-              </p>
-              <p className="mt-1 font-black text-zinc-900">{brand}</p>
-              <p className="mt-0.5 font-mono text-[10px] text-zinc-600">
-                NEXT_PUBLIC_BRAND_NAME
-              </p>
-            </div>
-            <div className="rounded-xl bg-zinc-50 px-4 py-3">
-              <p className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
-                URL Toko
-              </p>
-              <p className="mt-1 break-all font-black text-zinc-900">
-                {siteUrl}
-              </p>
-              <p className="mt-0.5 font-mono text-[10px] text-zinc-600">
-                NEXT_PUBLIC_SITE_URL
-              </p>
-            </div>
+          <div className="space-y-2">
+            <SettingRow label="Nama Toko" value={brand} envVar="NEXT_PUBLIC_BRAND_NAME" />
+            <SettingRow label="URL Toko" value={siteUrl} envVar="NEXT_PUBLIC_SITE_URL" breakAll />
           </div>
         </SectionCard>
 
@@ -86,10 +68,43 @@ export default async function AdminSettingsPage() {
           </div>
         </SectionCard>
 
-        <p className="rounded-xl border border-zinc-200 bg-zinc-50/50 px-4 py-3 text-center text-xs font-medium text-zinc-500">
-          ℹ️ Fitur pengaturan langsung dari UI akan segera hadir.
+        <p className="rounded-xl border border-dashed border-zinc-200 px-4 py-3 text-center text-xs font-medium text-zinc-400">
+          Fitur pengaturan langsung dari UI akan segera hadir.
         </p>
       </div>
     </AdminPage>
+  );
+}
+
+/** Baris label/value + badge nama env var — dipakai supaya ritme visual
+ * sama dengan section Payment Gateway/Pengiriman (label+deskripsi kiri,
+ * badge kanan), bukan tumpukan 3 baris teks bersaing bobot. */
+function SettingRow({
+  label,
+  value,
+  envVar,
+  breakAll,
+}: {
+  label: string;
+  value: string;
+  envVar: string;
+  breakAll?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl bg-zinc-50 px-4 py-3">
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+          {label}
+        </p>
+        <p className={`mt-0.5 font-black text-zinc-900 ${breakAll ? "break-all" : "truncate"}`}>
+          {value}
+        </p>
+      </div>
+      <div className="hidden shrink-0 sm:block">
+        <Badge variant="neutral" size="sm">
+          <span className="font-mono">{envVar}</span>
+        </Badge>
+      </div>
+    </div>
   );
 }
