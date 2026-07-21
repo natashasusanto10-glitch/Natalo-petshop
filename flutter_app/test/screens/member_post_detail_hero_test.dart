@@ -220,4 +220,38 @@ void main() {
       expect(closedWith, 'pB');
     },
   );
+
+  testWidgets(
+    'HANYA SATU Hero post-hero/ hidup di viewer, dan tag-nya ikut pindah '
+    'ke post yang paling terlihat saat scroll (single-hero, cegah ghost '
+    'flight neighbor — §4 spec)',
+    (tester) async {
+      final photoA = _fakePhotoPost(id: 'pA');
+      final photoB = _fakePhotoPost(id: 'pB');
+      await pumpScreen(
+        tester,
+        posts: [photoA, photoB],
+        heroScope: 'profile',
+      );
+
+      List<Hero> postHeroes() => tester
+          .widgetList<Hero>(find.byType(Hero))
+          .where((h) => (h.tag as String).startsWith('post-hero/'))
+          .toList();
+
+      final initial = postHeroes();
+      expect(initial, hasLength(1));
+      expect(initial.single.tag, 'post-hero/profile/pA');
+
+      final listFinder = find.byType(Scrollable).first;
+      await tester.drag(listFinder, const Offset(0, -2000));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 30));
+      }
+
+      final afterScroll = postHeroes();
+      expect(afterScroll, hasLength(1));
+      expect(afterScroll.single.tag, 'post-hero/profile/pB');
+    },
+  );
 }
