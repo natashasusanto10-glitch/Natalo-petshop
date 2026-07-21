@@ -19,23 +19,24 @@ Replace the review-oriented UI with a content-type-oriented one, keeping the sam
 
 Replace the current 7 tabs with:
 
-`Semua · Foto/Carousel · Video · Diskusi · Disembunyikan · Sampah`
+`Semua · Foto/Carousel · Video · Disembunyikan · Sampah`
 
-Mapping to `FeedPostKind`:
+Mapping to `FeedPostKind` (the enum has exactly: `VIDEO_ONLY, PRODUCT_ONLY, VIDEO_PRODUCT, PROMO, COMMUNITY, PHOTO_CAROUSEL` — there is **no `USER_VIDEO`**; that string is dead defensive code in the client):
 - **Foto/Carousel** → `kind: PHOTO_CAROUSEL`
-- **Video** → `kind in (VIDEO_ONLY, VIDEO_PRODUCT, USER_VIDEO)` — single tab, no admin/user split (confirmed with user; author name still shows per-row so admin/user is still visible at a glance)
-- **Diskusi** → `kind: COMMUNITY` (text-only posts, no media)
+- **Video** → `kind in (VIDEO_ONLY, VIDEO_PRODUCT, COMMUNITY)` — single tab, no admin/user split (confirmed with user; author name still shows per-row). **`COMMUNITY` is user-uploaded video**, not text: the create route requires `videoUrl + thumbnailUrl` for it. The admin UI currently mislabels `COMMUNITY` as "Diskusi" — that label is corrected to "Video" (see KIND_LABEL change below).
 - **Disembunyikan** → `status: HIDDEN` (unchanged)
 - **Sampah** → `deletedAt: not null` (unchanged, trash view)
 - **Semua** → all non-deleted (unchanged default)
 
-`Menunggu Review` and `Ditolak` tabs are removed entirely. `Video Admin`/`Video User` split is removed (superseded by Foto/Video/Diskusi split).
+There is **no text-only/discussion post kind** — every post is either photo or video. So no "Diskusi" tab. This matches the user's original request: split photo/carousel vs video.
 
-Note: `PRODUCT_ONLY` and `PROMO` kinds exist but aren't primary content — they still appear in `Semua` but don't need their own tab (out of scope; no admin-facing count/tab requested for them).
+`Menunggu Review`, `Ditolak`, `Video Admin`, and `Video User` tabs are all removed.
+
+Note: `PRODUCT_ONLY` (deprecated from create) and `PROMO` (admin promo, rare) kinds still exist in legacy data — they appear in `Semua` but get no dedicated tab and are not counted in the video/photo breakdown. They are neither pure photo nor pure user-video, so folding them into either content tab would be misleading.
 
 ## Header
 
-Subtitle changes from `"{total} post · {pending} menunggu review"` to `"{total} post · {photo} foto · {video} video · {discussion} diskusi"` — reflects composition, not moderation backlog.
+Subtitle changes from `"{total} post · {pending} menunggu review"` to `"{total} post · {photo} foto · {video} video"` — reflects composition, not moderation backlog.
 
 ## Row actions
 
@@ -51,8 +52,7 @@ Keep unchanged:
 - `Edit` icon (admin-authored posts only)
 - External-link icon (open video URL)
 
-Add:
-- Preview (eye icon) action per row — opens the public post detail in a new tab (`/akun/postingan-saya/{id}` pattern or equivalent public URL), giving admins a fast way to see the actual post now that there's no review-detail flow to click into. Uses existing `feedPostOwnerUrl`-style URL building if available; otherwise link to the public feed post permalink already used elsewhere in the codebase — confirm at implementation time which permalink helper exists.
+No new preview action is added: the only per-post URL helper (`feedPostOwnerUrl` → `/akun/postingan-saya/{id}`) is owner-scoped and wouldn't render for an admin viewing another user's post. The existing external-link icon already opens video posts; adding a broken/owner-only preview link is out of scope.
 
 Bulk action bar: remove `Setujui`/`Tolak` bulk buttons; keep `Sembunyikan`/`Tampilkan`/`Ke Sampah` (non-trash view) and `Restore`/`Hapus Permanen` (trash view), matching per-row changes.
 
@@ -60,25 +60,25 @@ Bulk action bar: remove `Setujui`/`Tolak` bulk buttons; keep `Sembunyikan`/`Tamp
 
 [app/api/admin/feed/posts/route.ts](../../../app/api/admin/feed/posts/route.ts):
 
-- `AdminFilter` type: replace `"pending" | "rejected"` with `"photo" | "video" | "discussion"`. Remove `"admin_video" | "user_video"`.
-- `VALID_FILTERS` updated to match.
-- `ADMIN_KINDS` constant and the `admin_video`/`user_video` branches removed.
+- `AdminFilter` type: replace `"admin_video" | "user_video" | "pending" | "rejected"` with `"photo" | "video"`.
+- `VALID_FILTERS` updated to match (`all, photo, video, hidden, deleted`).
+- `ADMIN_KINDS` constant and the `admin_video`/`user_video`/`pending`/`rejected` branches removed.
 - `buildWhere`: add cases —
   - `photo` → `{ ...notDeleted, kind: "PHOTO_CAROUSEL" }`
-  - `video` → `{ ...notDeleted, kind: { in: ["VIDEO_ONLY", "VIDEO_PRODUCT", "USER_VIDEO"] } }`
-  - `discussion` → `{ ...notDeleted, kind: "COMMUNITY" }`
-  - remove `pending` / `rejected` cases
+  - `video` → `{ ...notDeleted, kind: { in: ["VIDEO_ONLY", "VIDEO_PRODUCT", "COMMUNITY"] } }`
+  - remove `pending` / `rejected` / `admin_video` / `user_video` cases
 - `orderBy`: the special-case FIFO (`createdAt: asc`) for `filter === "pending"` is removed — all filters now use `createdAt: desc` (newest first), since there's no queue to process oldest-first.
-- Counts payload: replace `{ pending, total, deleted }` with `{ total, deleted, photo, video, discussion }` (four `prisma.feedPost.count` calls run in parallel via `Promise.all`, same pattern as today).
+- Counts payload: replace `{ pending, total, deleted }` with `{ total, deleted, photo, video }` (four `prisma.feedPost.count` calls run in parallel via `Promise.all`; `photo` = `kind PHOTO_CAROUSEL, deletedAt null`, `video` = `kind in (VIDEO_ONLY, VIDEO_PRODUCT, COMMUNITY), deletedAt null`).
 
 `components/admin/feed/AdminFeedClient.tsx`:
-- `AdminFilter` type and `FILTERS` array updated to match the new backend filter values/labels.
-- `AdminFeedResponse.counts` type updated to the new shape.
+- `AdminFilter` type and `FILTERS` array updated to match the new backend filter values/labels (`Semua, Foto/Carousel, Video, Disembunyikan, Sampah`).
+- `AdminFeedResponse.counts` type updated to the new shape; the pending-count badge on the tab is removed (no more `pending` count).
 - Header subtitle string updated (see above).
-- `moderate()` function: drop `"approve" | "reject"` from the action union; drop the `note` prompt branch tied to `reject`.
+- `moderate()` function: drop `"approve" | "reject"` from the action union; drop the `note` prompt branch tied to `reject` (keep the `hide` reason prompt).
 - `bulkAction()` function: drop `"approve" | "reject"` from the action union and the `reject` note-prompt branch; drop from `labels` record.
-- `AdminFeedRow`: remove `isApprovable` logic and the `Setujui`/`Tolak` JSX block (the `post.status === "PENDING_REVIEW"` branch). Add the preview icon button.
-- `STATUS_META`: `PENDING_REVIEW` and `REJECTED` entries can stay (harmless — legacy rows, if any exist, still render a readable badge) or be removed since no new rows will ever have these statuses. Keep them for safety (defensive rendering of any pre-existing rows still in these states from before the migration) rather than assuming DB is clean.
+- `AdminFeedRow`: remove `isApprovable` logic and the `Setujui`/`Tolak` JSX block (the `post.status === "PENDING_REVIEW"` branch). No preview button added.
+- `KIND_LABEL`: change `COMMUNITY` from `"Diskusi"` to `"Video"` (it's user video, not discussion). The dead `USER_VIDEO` entry can stay as harmless defensive mapping.
+- `STATUS_META`: keep `PENDING_REVIEW` and `REJECTED` entries for defensive rendering of any pre-existing legacy rows still in those states — don't assume the DB is clean.
 
 ## Out of scope
 
@@ -89,4 +89,5 @@ Bulk action bar: remove `Setujui`/`Tolak` bulk buttons; keep `Sembunyikan`/`Tamp
 
 ## Testing
 
+- `npx tsc --noEmit` (or the project's typecheck) must pass — the `AdminFilter` union and `counts` shape change touch both the route and the client; a mismatch is a compile error, which is the primary safety net here.
 - Manual verification in the admin web UI (Next.js, not Flutter — this is a `components/admin` change) after implementation: each new tab returns the right subset, counts match, bulk actions still work for hide/unhide/delete/restore, no leftover approve/reject buttons anywhere.
