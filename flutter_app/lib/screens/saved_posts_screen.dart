@@ -139,6 +139,8 @@ class _SavedPostsScreenState extends State<SavedPostsScreen>
     }
   }
 
+  static const _heroScope = 'saved';
+
   Future<void> _openPost(List<FeedPost> posts, int index) async {
     await openPostGallery(
       posts: posts,
@@ -148,6 +150,7 @@ class _SavedPostsScreenState extends State<SavedPostsScreen>
       isOwner: false,
       authorPerPost: true,
       initialNextCursor: _nextCursor,
+      heroScope: _heroScope,
     );
     if (mounted) setState(() {});
   }
@@ -229,6 +232,7 @@ class _SavedPostsScreenState extends State<SavedPostsScreen>
               onTapDown: () => preparePostVideo(posts[index]),
               onTapCancel: () => cancelPreparedPost(posts[index].id),
               showStatusBadge: false,
+              heroScope: _heroScope,
             ),
           ),
           SliverToBoxAdapter(
