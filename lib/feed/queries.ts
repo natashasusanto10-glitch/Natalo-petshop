@@ -11,6 +11,10 @@
 import { prisma } from "@/lib/prisma";
 import type { FeedPostTab, Prisma } from "@prisma/client";
 import { resolveActiveDiscount } from "@/lib/product-pricing";
+import {
+  attachPublicProductVoucherPreviews,
+  type ProductVoucherPreview,
+} from "@/lib/product-vouchers";
 import { extractMentionHandles } from "./mentions";
 import { signBunnyUrl } from "./bunny";
 import { buildFeedVideoPlaybackUrls } from "./video-playback-urls";
@@ -222,6 +226,12 @@ export async function listFeedPosts({
           name: true,
           price: true,
           discountPrice: true,
+          // brandId/categoryId — WAJIB untuk hitung voucher scoped (Brand
+          // Eksklusif dkk) via voucherMatchesProduct. Bukan dikirim ke
+          // client mentah; cuma dipakai server-side match lalu diringkas
+          // jadi shippingVoucher/discountVoucher.badgeLabel+isBrandExclusive.
+          brandId: true,
+          categoryId: true,
           // Flash sale window + Promo Toko (discountItems) — supaya
           // resolveActiveDiscount bisa tentukan diskon AKTIF + sumbernya.
           // Tanpa ini feed salah label "Flash Sale" untuk Promo Toko.
@@ -269,6 +279,8 @@ export async function listFeedPosts({
               name: true,
               price: true,
               discountPrice: true,
+              brandId: true,
+              categoryId: true,
               flashSaleEndsAt: true,
               discountItems: {
                 where: {
@@ -369,12 +381,56 @@ export async function listFeedPosts({
   // Defensive catch → empty map kalau aggregate error (data tetap render
   // dengan soldCount = 0, bukan crash seluruh feed).
   const soldCountMap = new Map<string, number>();
+  // Voucher preview (Gratis Ongkir / Hemat) per productId — batched sekali
+  // untuk semua produk (main + tagged) di page ini, sama pola dgn
+  // soldCountMap. Map value null = tidak ada voucher publik yang cocok.
+  const voucherPreviewMap = new Map<
+    string,
+    { product: ProductVoucherPreview | null; shipping: ProductVoucherPreview | null }
+  >();
   if (posts.length > 0) {
     const productIds = new Set<string>();
+    const voucherInputById = new Map<
+      string,
+      { id: string; price: number; categoryId: string | null; brandId: string | null }
+    >();
     for (const p of posts) {
-      if (p.product?.id) productIds.add(p.product.id);
+      if (p.product?.id) {
+        productIds.add(p.product.id);
+        voucherInputById.set(p.product.id, {
+          id: p.product.id,
+          price: p.product.price,
+          categoryId: p.product.categoryId,
+          brandId: p.product.brandId,
+        });
+      }
       for (const tp of p.taggedProducts) {
-        if (tp.product?.id) productIds.add(tp.product.id);
+        if (tp.product?.id) {
+          productIds.add(tp.product.id);
+          voucherInputById.set(tp.product.id, {
+            id: tp.product.id,
+            price: tp.product.price,
+            categoryId: tp.product.categoryId,
+            brandId: tp.product.brandId,
+          });
+        }
+      }
+    }
+    if (voucherInputById.size > 0) {
+      try {
+        const withPreviews = await attachPublicProductVoucherPreviews(
+          [...voucherInputById.values()],
+          { userId: viewerUserId }
+        );
+        for (const item of withPreviews) {
+          voucherPreviewMap.set(item.id, {
+            product: item.voucherPreview,
+            shipping: item.shippingVoucherPreview,
+          });
+        }
+      } catch {
+        // Voucher preview kegagalan tidak boleh nge-break feed list —
+        // map kosong → shippingVoucher/discountVoucher null di serialization.
       }
     }
     if (productIds.size > 0) {
@@ -438,6 +494,7 @@ export async function listFeedPosts({
             // resolveActiveDiscount, BUKAN raw Product.discountPrice. Plus
             // discountSource supaya app label "Flash Sale" vs "Diskon" benar.
             const d = resolveFeedProductDiscount(p.product!, now);
+            const voucher = voucherPreviewMap.get(p.product!.id);
             return {
               id: p.product!.id,
               slug: p.product!.slug,
@@ -453,6 +510,18 @@ export async function listFeedPosts({
               avgRating: p.product!.avgRating ?? 0,
               reviewCount: p.product!.reviewCount ?? 0,
               soldCount: soldCountMap.get(p.product!.id) ?? 0,
+              shippingVoucher: voucher?.shipping
+                ? {
+                    badgeLabel: voucher.shipping.badgeLabel,
+                    isBrandExclusive: voucher.shipping.isBrandExclusive,
+                  }
+                : null,
+              discountVoucher: voucher?.product
+                ? {
+                    badgeLabel: voucher.product.badgeLabel,
+                    isBrandExclusive: voucher.product.isBrandExclusive,
+                  }
+                : null,
             };
           })()
         : null,
@@ -463,6 +532,7 @@ export async function listFeedPosts({
         .map((tp) => {
           // Per-tag promoPrice ikut dipertimbangkan (lowest wins).
           const d = resolveFeedProductDiscount(tp.product!, now, tp.promoPrice);
+          const voucher = voucherPreviewMap.get(tp.product!.id);
           return {
             id: tp.product!.id,
             slug: tp.product!.slug,
@@ -480,6 +550,18 @@ export async function listFeedPosts({
             avgRating: tp.product!.avgRating ?? 0,
             reviewCount: tp.product!.reviewCount ?? 0,
             soldCount: soldCountMap.get(tp.product!.id) ?? 0,
+            shippingVoucher: voucher?.shipping
+              ? {
+                  badgeLabel: voucher.shipping.badgeLabel,
+                  isBrandExclusive: voucher.shipping.isBrandExclusive,
+                }
+              : null,
+            discountVoucher: voucher?.product
+              ? {
+                  badgeLabel: voucher.product.badgeLabel,
+                  isBrandExclusive: voucher.product.isBrandExclusive,
+                }
+              : null,
           };
         }),
       promo:
