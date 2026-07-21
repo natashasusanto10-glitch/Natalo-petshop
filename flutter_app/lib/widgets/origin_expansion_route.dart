@@ -317,6 +317,9 @@ class _OriginBackGestureController<T> {
         velocity >= _originBackFlingVelocity;
     if (shouldPop) {
       _watchForTerminalStatus((status) => status == AnimationStatus.dismissed);
+      // Navigator.pop() SINKRON memanggil route.didPop → reverse() sebelum
+      // baris berikutnya — cek dismissed di bawah adalah penutup untuk
+      // kasus reverse selesai seketika (nilai sudah nyaris 0).
       navigator.pop();
       if (controller.status == AnimationStatus.dismissed) _finish();
       return;
