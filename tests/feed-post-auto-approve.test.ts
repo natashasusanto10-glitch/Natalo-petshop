@@ -11,13 +11,13 @@ test("customer PHOTO_CAROUSEL auto-approve → ACTIVE + publishedAt di-set", () 
   assert.ok(result.publishedAt instanceof Date);
 });
 
-test("customer video (COMMUNITY) tetap PENDING_REVIEW + publishedAt null", () => {
+test("customer video (COMMUNITY) kini auto-approve → ACTIVE + publishedAt di-set", () => {
   const result = resolveInitialPostStatus({
     isAdmin: false,
     kind: "COMMUNITY",
   });
-  assert.equal(result.status, "PENDING_REVIEW");
-  assert.equal(result.publishedAt, null);
+  assert.equal(result.status, "ACTIVE");
+  assert.ok(result.publishedAt instanceof Date);
 });
 
 test("admin video → ACTIVE (tak berubah)", () => {

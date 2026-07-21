@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
     // authorRole dipakai untuk pilih duration limit yang benar. Bug
     // sebelumnya: webhook pakai USER_VIDEO_CONFIG untuk semua post, jadi
     // saat limit admin berbeda video bisa salah di-mark "failed".
-    select: { id: true, encodingStatus: true, authorRole: true },
+    select: { id: true, encodingStatus: true, authorRole: true, status: true },
   });
   if (!post) {
     return NextResponse.json({ ok: true, skipped: "unknown-guid" });
@@ -174,8 +174,22 @@ export async function POST(request: NextRequest) {
       videoSizeBytes: meta?.storageSize ?? null,
     },
   });
-  // WAJIB await — alasan sama dengan publish-push di bawah.
+  // WAJIB await — alasan sama dengan publish-push di bawah. No-op kalau post
+  // sudah ACTIVE (helper early-return kalau status != PENDING_REVIEW), jadi
+  // aman dipanggil untuk video customer yang kini auto-approve.
   await sendFeedPendingReviewNotification({ postId: post.id });
+
+  // Video customer auto-approve (ACTIVE sejak create, tapi baru visible saat
+  // ready sekarang) → beri tahu follower author. Analog dengan foto/carousel
+  // yang fire sendNewPostToFollowersNotification saat create (di route posts).
+  // Untuk video, momen "mulai tayang" adalah ready ini, bukan create. Admin
+  // di-skip oleh helper-nya sendiri. WAJIB await — void bisa dibekukan Vercel.
+  if (post.authorRole === "CUSTOMER" && post.status === "ACTIVE") {
+    const { sendNewPostToFollowersNotification } = await import(
+      "@/lib/social/notifications"
+    );
+    await sendNewPostToFollowersNotification(post.id);
+  }
   // Publish-push — guard internal memutuskan (admin post yang tadi masih
   // `uploading` sekarang `ready`; kalau notifyOnPublish=true, kirim di sini).
   // WAJIB await — void promise bisa dibekukan Vercel sebelum jalan

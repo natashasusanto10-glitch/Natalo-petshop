@@ -164,15 +164,12 @@ export async function POST(request: NextRequest) {
   if (!accessibility.ok) {
     return NextResponse.json({ error: accessibility.error }, { status: 400 });
   }
+  // Caption (title) opsional — post tanpa caption disimpan sebagai string
+  // KOSONG (kolom NOT NULL tetap valid) dan tampil polos tanpa baris caption/
+  // username (paritas IG). Tidak ada auto-placeholder.
   const title = String(body.title ?? "").trim();
   const description = body.description ? String(body.description).trim() : null;
 
-  if (!title || title.length < 3) {
-    return NextResponse.json(
-      { error: "Judul minimal 3 karakter." },
-      { status: 400 },
-    );
-  }
   if (title.length > 200) {
     return NextResponse.json({ error: "Judul terlalu panjang." }, { status: 400 });
   }

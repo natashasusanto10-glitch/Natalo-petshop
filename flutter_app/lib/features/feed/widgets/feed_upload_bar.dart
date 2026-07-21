@@ -152,9 +152,13 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
       case FeedUploadStatus.processing:
         return 'Dikit lagi selesai nih…';
       case FeedUploadStatus.waitingReview:
-        return 'Terkirim! Menunggu review admin dulu ya';
+        return 'Terkirim! Sebentar lagi tayang';
       case FeedUploadStatus.success:
-        return 'Postingan kamu sudah tayang';
+        // Video masih di-encode server (auto-approve, tanpa review) — tayang
+        // begitu proses selesai. Foto sudah tayang saat ini juga.
+        return task.kind == FeedUploadKind.video
+            ? 'Terkirim! Videomu lagi diproses, sebentar lagi tayang'
+            : 'Postingan kamu sudah tayang';
       case FeedUploadStatus.failed:
         return 'Gagal mengunggah';
       case FeedUploadStatus.cancelled:
