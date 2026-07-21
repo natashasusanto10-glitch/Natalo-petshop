@@ -82,6 +82,11 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Feed",
         icon: <Glyph d="M23 7l-7 5 7 5V7zM14 5H3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z" />,
       },
+      {
+        href: "/admin/feed/reports",
+        label: "Moderasi Laporan",
+        icon: <Glyph d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1v18" />,
+      },
     ],
   },
   {
