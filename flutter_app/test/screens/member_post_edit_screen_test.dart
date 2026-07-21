@@ -59,30 +59,11 @@ void main() {
   }
 
   group('feedPostEditNeedsReview', () {
-    test('video active -> true, foto active -> false, video pending -> false',
-        () {
-      expect(
-        feedPostEditNeedsReview(wasActive: true, isVideo: true),
-        isTrue,
-      );
-      expect(
-        feedPostEditNeedsReview(wasActive: true, isVideo: false),
-        isFalse,
-      );
-      expect(
-        feedPostEditNeedsReview(wasActive: false, isVideo: true),
-        isFalse,
-      );
-    });
-
-    // Matriks lengkap 4 kombinasi (wasActive x isVideo). Ini adalah helper
-    // murni yang dipakai _save() untuk memutuskan status optimistic yang
-    // ditulis ke feedStore ('PENDING_REVIEW' vs status asal) — mengunci
-    // keputusan itu di level unit karena _save() sendiri tidak bisa
-    // di-drive end-to-end secara deterministik di widget test (lihat
-    // comment di group 'save() status decision' di bawah).
-    test('full decision matrix — only wasActive && isVideo needs review', () {
-      expect(feedPostEditNeedsReview(wasActive: true, isVideo: true), isTrue);
+    // Kebijakan baru: SEMUA konten auto-approve, edit TIDAK pernah re-review
+    // (post-moderation.ts `editReTriggersModeration` selalu false). Helper
+    // Flutter harus match — false untuk semua kombinasi wasActive x isVideo.
+    test('full decision matrix — never needs review anymore', () {
+      expect(feedPostEditNeedsReview(wasActive: true, isVideo: true), isFalse);
       expect(
           feedPostEditNeedsReview(wasActive: true, isVideo: false), isFalse);
       expect(
@@ -136,13 +117,13 @@ void main() {
     });
   });
 
-  group('review notice gating (video-only)', () {
-    testWidgets('shows for active VIDEO post', (tester) async {
+  group('review notice removed (semua konten auto-approve)', () {
+    testWidgets('does NOT show for active VIDEO post', (tester) async {
       await pumpScreen(tester, videoPost(status: 'PUBLISHED'));
 
       expect(
         find.textContaining('masuk review admin lagi'),
-        findsOneWidget,
+        findsNothing,
       );
     });
 
@@ -154,67 +135,34 @@ void main() {
         findsNothing,
       );
     });
-
-    testWidgets('does NOT show for pending VIDEO post', (tester) async {
-      await pumpScreen(tester, videoPost(status: 'PENDING_REVIEW'));
-
-      expect(
-        find.textContaining('masuk review admin lagi'),
-        findsNothing,
-      );
-    });
   });
 
-  // Fix 2 (final review): spec's Testing section asked to verify _save()'s
-  // optimistic feedStore write picks the right status (PENDING_REVIEW for
-  // an active video edit, unchanged for an active photo/carousel edit).
-  //
-  // Feasibility finding: _save() calls `feedService.updateMyPost(...)`
-  // (real HTTP via the module-level `feedService`/`apiClient` singletons —
-  // there is no injectable client/service seam anywhere in this codebase,
-  // confirmed against member_post_detail_double_tap_test.dart and
-  // product_detail_screen_related_posts_test.dart, which document the same
-  // gap for feedStore.toggleLike). Under flutter_test's synthetic
-  // HttpOverrides that call always throws, so tapping the save button only
-  // ever exercises _save()'s `catch` branch (error toast, NO store write) —
-  // it never reaches the `feedStore.applyPostUpdate(...)` line the spec
-  // wants covered. A "tap save, then assert feedStore" test would therefore
-  // pass or fail for the wrong reason (network timing/HttpOverrides
-  // behavior), not because the status decision is right or wrong — writing
-  // it would be dishonest coverage.
-  //
-  // What IS deterministic and exercises the exact same decision inputs
-  // (wasActive, isVideo) that _save() feeds into feedPostEditNeedsReview
-  // before it computes the optimistic status: the review-notice banner
-  // above, gated by the identical `feedPostEditNeedsReview(...)` call in
-  // build(). This group makes that proxy explicit per-scenario so it reads
-  // as the store-write decision test the spec asked for, not just a UI
-  // gating check.
-  group('save() status decision (proxied via notice banner — see comment '
-      'above for why a direct store-write assertion is not feasible)', () {
-    testWidgets(
-        'ACTIVE VIDEO post: needsReview=true (would set store status to '
-        'PENDING_REVIEW)', (tester) async {
+  // Kebijakan baru: edit tidak pernah re-review. _save() menulis status
+  // optimistic = status asal post (tidak pernah PENDING_REVIEW). Diproksikan
+  // lewat absennya review-notice banner — gated oleh `feedPostEditNeedsReview`
+  // yang sama di build() (kini selalu false untuk semua kombinasi).
+  group('save() status decision — edit tidak pernah re-review', () {
+    testWidgets('ACTIVE VIDEO post: needsReview=false (status tetap ACTIVE)',
+        (tester) async {
       final post = videoPost(status: 'PUBLISHED');
       expect(post.isVideo, isTrue);
       expect(post.statusInfo, FeedPostStatus.active);
       expect(
         feedPostEditNeedsReview(wasActive: true, isVideo: post.isVideo),
-        isTrue,
+        isFalse,
       );
 
       await pumpScreen(tester, post);
       expect(
         find.textContaining('masuk review admin lagi'),
-        findsOneWidget,
-        reason: 'notice visible <=> needsReview=true <=> _save() would '
-            'write status PENDING_REVIEW to feedStore',
+        findsNothing,
+        reason: 'notice absent <=> needsReview=false <=> _save() keeps '
+            'the video ACTIVE (auto-approve, tanpa review)',
       );
     });
 
-    testWidgets(
-        'ACTIVE PHOTO/CAROUSEL post: needsReview=false (store status stays '
-        "the post's existing active status)", (tester) async {
+    testWidgets('ACTIVE PHOTO/CAROUSEL post: needsReview=false (status tetap '
+        'ACTIVE)', (tester) async {
       final post = photoPost(status: 'PUBLISHED');
       expect(post.isVideo, isFalse);
       expect(post.statusInfo, FeedPostStatus.active);
@@ -227,8 +175,6 @@ void main() {
       expect(
         find.textContaining('masuk review admin lagi'),
         findsNothing,
-        reason: 'notice absent <=> needsReview=false <=> _save() would '
-            "keep the post's existing active status in feedStore",
       );
     });
   });

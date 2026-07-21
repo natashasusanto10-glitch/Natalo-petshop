@@ -459,8 +459,10 @@ export async function PATCH(
   if (typeof body.title === "string") {
     const t = body.title.trim();
     if (t.length === 0) {
-      // Empty title not allowed (DB NOT NULL). Use placeholder.
-      updates.title = "Postingan baru";
+      // Caption dikosongkan — simpan string kosong (kolom NOT NULL tetap
+      // valid). JANGAN pakai placeholder "Postingan baru": post tanpa caption
+      // harus tampil polos tanpa baris caption/username (paritas IG).
+      updates.title = "";
     } else if (t.length > MAX_TITLE_LENGTH) {
       return NextResponse.json(
         { error: `Judul max ${MAX_TITLE_LENGTH} karakter.` },

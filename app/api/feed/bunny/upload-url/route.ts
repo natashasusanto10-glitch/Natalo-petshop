@@ -47,6 +47,7 @@ import {
   getBunnyConfig,
 } from "@/lib/feed/bunny";
 import { parseFeedAccessibilityMetadata } from "@/lib/feed/accessibility";
+import { resolveInitialPostStatus } from "@/lib/feed/post-moderation";
 
 export const dynamic = "force-dynamic";
 
@@ -131,13 +132,12 @@ export async function POST(request: NextRequest) {
     notifyOnPublish?: boolean;
     pushSegment?: string;
   };
-  // Caption (mapped ke `title` di DB) sekarang opsional sesuai flow baru —
-  // kalau user tidak isi caption, kita pakai placeholder "Postingan baru"
-  // supaya kolom title (NOT NULL di DB) tetap valid. Caption full disimpan
-  // di `description`.
-  const rawTitle = String(body.title ?? "").trim();
+  // Caption (mapped ke `title` di DB) opsional — kalau user tidak isi caption,
+  // simpan string KOSONG (kolom title NOT NULL di DB tetap valid dgn "").
+  // JANGAN auto-isi placeholder: post tanpa caption harus tampil polos tanpa
+  // baris caption/username (paritas IG). Caption full disimpan di `description`.
+  const title = String(body.title ?? "").trim();
   const description = body.description ? String(body.description).trim() : null;
-  const title = rawTitle.length > 0 ? rawTitle : "Postingan baru";
   if (title.length > MAX_TITLE_LENGTH) {
     return NextResponse.json({ error: "Judul terlalu panjang." }, { status: 400 });
   }
@@ -285,6 +285,13 @@ export async function POST(request: NextRequest) {
   // Shop the Look: simpan multi-tag ke FeedPostProduct table dalam satu
   // transaction. FeedPost.productId tetap di-set ke primary product
   // (productIds[0]) untuk legacy display + product page query.
+  // Status awal — sumber kebenaran tunggal di lib/feed/post-moderation.ts.
+  // Sekarang semua konten auto-ACTIVE; gate `encodingStatus: ready` di
+  // PUBLIC_FEED_POST_WHERE menjaga video baru muncul setelah encoding selesai
+  // (row dibuat dgn encodingStatus=uploading di bawah).
+  const { status: initialStatus, publishedAt: initialPublishedAt } =
+    resolveInitialPostStatus({ isAdmin, kind });
+
   let post: { id: string };
   try {
     post = await prisma.$transaction(async (tx) => {
@@ -294,8 +301,8 @@ export async function POST(request: NextRequest) {
         authorRole: isAdmin ? "ADMIN" : "CUSTOMER",
         kind,
         tab,
-        status: isAdmin ? "ACTIVE" : "PENDING_REVIEW",
-        publishedAt: isAdmin ? new Date() : null,
+        status: initialStatus,
+        publishedAt: initialPublishedAt,
         title,
         description: finalDescription,
         thumbnailUrl,

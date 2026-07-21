@@ -3,45 +3,43 @@ import type { FeedPostKind, FeedPostStatus } from "@prisma/client";
 /**
  * Aturan status awal sebuah feed post saat dibuat (moderasi).
  *
- * Sumber kebenaran tunggal untuk keputusan "perlu review admin atau tidak":
- * - Admin  → semua kind langsung `ACTIVE` (auto-publish).
- * - Customer `PHOTO_CAROUSEL` → `ACTIVE` (auto-approve). Foto/carousel tak
- *   lagi pra-review; moderasi jadi reaktif (admin bisa Hide setelah tayang).
- * - Customer video (`COMMUNITY`) → `PENDING_REVIEW` (butuh review admin +
- *   encoding-ready sebelum tampil publik).
+ * Kebijakan sekarang: SEMUA konten (admin & customer, foto & video) langsung
+ * `ACTIVE` (auto-approve, tanpa pra-review admin). Moderasi jadi reaktif —
+ * admin bisa Hide/hapus setelah tayang lewat dashboard Moderasi Laporan +
+ * user report sebagai jaring pengaman.
  *
  * Catatan: ini HANYA menentukan `status`/`publishedAt` awal. Gate visibilitas
  * publik (`PUBLIC_FEED_POST_WHERE`) tetap mensyaratkan `status: "ACTIVE"` DAN
- * `encodingStatus: "ready"`, jadi video yang di-approve tetap harus selesai
- * encoding sebelum tampil — tak tersentuh oleh helper ini.
+ * `encodingStatus: "ready"`, jadi video tetap harus selesai encoding sebelum
+ * tampil — tak tersentuh oleh helper ini (video ACTIVE + masih `uploading`
+ * belum muncul di feed sampai webhook Bunny set `ready`).
+ *
+ * `input.kind` sengaja dipertahankan di signature meski tak lagi dipakai —
+ * call site (create + upload-url) sudah kirim kind, dan kalau kebijakan
+ * berubah lagi (mis. video re-review) diskriminatornya sudah tersedia.
  */
-export function resolveInitialPostStatus(input: {
+export function resolveInitialPostStatus(_input: {
   isAdmin: boolean;
   kind: FeedPostKind;
 }): { status: FeedPostStatus; publishedAt: Date | null } {
-  const autoApprove = input.isAdmin || input.kind === "PHOTO_CAROUSEL";
   return {
-    status: autoApprove ? "ACTIVE" : "PENDING_REVIEW",
-    publishedAt: autoApprove ? new Date() : null,
+    status: "ACTIVE",
+    publishedAt: new Date(),
   };
 }
 
 /**
  * Apakah edit oleh customer harus mengembalikan post ke antrian review admin?
  *
- * Konsisten dengan `resolveInitialPostStatus`: foto/carousel (PHOTO_CAROUSEL)
- * dipercaya (auto-approve saat create → juga tak re-review saat edit); video
- * customer (COMMUNITY) yang sudah tayang → re-review saat di-edit.
- * - Admin edit: TIDAK pernah re-review (return false).
- * - Hanya post yang sedang ACTIVE yang relevan (non-ACTIVE tidak diubah).
- * - Foto/carousel (PHOTO_CAROUSEL) → return false; selain itu (video) → true.
+ * Konsisten dengan `resolveInitialPostStatus`: sekarang TIDAK ada konten yang
+ * pra-review, jadi edit (caption/tag) TIDAK pernah men-trigger review ulang —
+ * foto maupun video tetap tayang. Moderasi tetap reaktif via report/Hide.
+ * Selalu return false.
  */
-export function editReTriggersModeration(input: {
+export function editReTriggersModeration(_input: {
   isAdmin: boolean;
   status: FeedPostStatus;
   kind: FeedPostKind;
 }): boolean {
-  if (input.isAdmin) return false;
-  if (input.status !== "ACTIVE") return false;
-  return input.kind !== "PHOTO_CAROUSEL";
+  return false;
 }

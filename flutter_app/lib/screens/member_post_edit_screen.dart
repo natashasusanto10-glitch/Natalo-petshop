@@ -13,13 +13,16 @@ import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
 
 /// Apakah edit ini akan mengembalikan post ke antrian review admin?
-/// Cocok dengan aturan server (edit-moderation.ts): hanya video yang sudah
-/// tayang yang re-review; foto/carousel tetap tayang.
+///
+/// Cocok dengan aturan server (post-moderation.ts `editReTriggersModeration`):
+/// sekarang TIDAK ada konten yang di-review ulang saat edit — foto maupun
+/// video tetap tayang. Selalu false. Parameter dipertahankan supaya call site
+/// tak berubah kalau kebijakan berubah lagi.
 bool feedPostEditNeedsReview({
   required bool wasActive,
   required bool isVideo,
 }) =>
-    wasActive && isVideo;
+    false;
 
 /// Edit Postingan — edit caption + manage tagged products.
 /// Video/thumbnail tidak bisa di-edit (replace upload ulang).
@@ -120,7 +123,8 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
   }
 
   String _titleFromCaption(String caption) {
-    if (caption.isEmpty) return 'Postingan baru';
+    // Caption kosong → title kosong ("") juga; tanpa placeholder (paritas IG).
+    if (caption.isEmpty) return '';
     final firstLine = caption.split('\n').first.trim();
     final title = firstLine.isEmpty ? caption : firstLine;
     if (title.length <= 200) return title;
@@ -189,10 +193,6 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final showReviewNotice = feedPostEditNeedsReview(
-      wasActive: widget.post.statusInfo == FeedPostStatus.active,
-      isVideo: widget.post.isVideo,
-    );
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
@@ -315,26 +315,6 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
                     ),
                   ),
                   Divider(height: 1, color: cs.outlineVariant),
-                  if (showReviewNotice) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFFBEB),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFFDE68A)),
-                      ),
-                      child: const Text(
-                        'Catatan: perubahan pada video yang sudah tayang akan masuk review admin lagi sebelum tampil publik.',
-                        style: TextStyle(
-                          color: Color(0xFF92400E),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          height: 1.35,
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),

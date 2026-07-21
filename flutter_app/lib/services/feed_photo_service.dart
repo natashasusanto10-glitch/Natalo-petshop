@@ -213,8 +213,8 @@ class FeedPhotoService {
 
   /// Create PHOTO_CAROUSEL FeedPost dengan media + caption + product tags.
   ///
-  /// Customer: status auto-PENDING_REVIEW, dispatch ke admin moderation.
-  /// Admin: status auto-ACTIVE, langsung tayang di feed.
+  /// Semua konten kini auto-ACTIVE (tanpa review admin) — langsung tayang.
+  /// Moderasi reaktif via report/Hide.
   Future<({String postId, String status})> createPhotoPost({
     required List<({String url, String? key, int? width, int? height})> images,
     required String title,
@@ -283,7 +283,7 @@ class FeedPhotoService {
     }
     return (
       postId: post['id']?.toString() ?? '',
-      status: post['status']?.toString() ?? 'PENDING_REVIEW',
+      status: post['status']?.toString() ?? 'ACTIVE',
     );
   }
 }

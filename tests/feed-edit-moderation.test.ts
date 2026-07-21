@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { editReTriggersModeration } from "../lib/feed/post-moderation";
 
-test("customer edit video (COMMUNITY) ACTIVE re-triggers moderation", () => {
+test("customer edit video (COMMUNITY) ACTIVE kini TIDAK re-trigger moderation", () => {
   assert.equal(
     editReTriggersModeration({ isAdmin: false, status: "ACTIVE", kind: "COMMUNITY" }),
-    true,
+    false,
   );
 });
 

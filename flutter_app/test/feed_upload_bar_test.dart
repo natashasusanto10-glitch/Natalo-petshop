@@ -32,11 +32,24 @@ void main() {
     expect(find.byIcon(Icons.close_rounded), findsOneWidget);
   });
 
-  testWidgets('waitingReview: copy terkirim, tanpa tombol batal', (tester) async {
+  testWidgets('waitingReview: copy terkirim (tanpa review), tanpa tombol batal',
+      (tester) async {
     feedUploadStore.debugSetTask(_task(FeedUploadStatus.waitingReview, progress: 1));
     await tester.pumpWidget(_wrap());
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('Terkirim! Menunggu review admin dulu ya'), findsOneWidget);
+    expect(find.text('Terkirim! Sebentar lagi tayang'), findsOneWidget);
+    expect(find.byIcon(Icons.close_rounded), findsNothing);
+  });
+
+  testWidgets('success video: copy diproses (auto-approve), tanpa tombol batal',
+      (tester) async {
+    feedUploadStore.debugSetTask(_task(FeedUploadStatus.success, progress: 1));
+    await tester.pumpWidget(_wrap());
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      find.text('Terkirim! Videomu lagi diproses, sebentar lagi tayang'),
+      findsOneWidget,
+    );
     expect(find.byIcon(Icons.close_rounded), findsNothing);
   });
 

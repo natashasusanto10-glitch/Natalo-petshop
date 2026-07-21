@@ -291,19 +291,21 @@ class FeedUploadStore extends ChangeNotifier {
       // detail screen. Sebelumnya cuma title yang di-pass → description
       // null → caption tidak muncul di comment sheet untuk photo post.
       final caption = task.caption.trim();
+      // Caption kosong → title kosong ("") juga, JANGAN auto-isi placeholder.
+      // Post tanpa caption tampil polos tanpa baris caption/username (IG).
       final result = await feedPhotoService.createPhotoPost(
         images: uploaded,
         title: caption.isEmpty
-            ? 'Postingan baru'
+            ? ''
             : caption.substring(0, math.min(80, caption.length)),
         description: caption.isEmpty ? null : caption,
         productIds: task.productIds,
       );
 
       AppHaptics.success();
-      // Customer post selalu PENDING_REVIEW. Status server konfirmasi
-      // via result.status — kalau "ACTIVE" (admin override), tampilkan
-      // success. Default → waiting review.
+      // Semua konten kini auto-approve (tanpa review admin). Post foto langsung
+      // ACTIVE → success. Fallback ke waitingReview hanya kalau server (versi
+      // lama) masih balikin non-ACTIVE.
       final waitingReview = result.status != 'ACTIVE';
       _update(
         status: waitingReview
@@ -459,8 +461,9 @@ class FeedUploadStore extends ChangeNotifier {
       // otomatis dari 0% dengan state edit/draft tetap tersimpan, BUKAN
       // lanjut-dari-byte-terakhir.
       final provision = await bunnyService.provisionUpload(
+        // Caption kosong → title kosong ("") — tanpa placeholder (paritas IG).
         title: caption.isEmpty
-            ? 'Postingan baru'
+            ? ''
             : caption.substring(0, math.min(80, caption.length)),
         description: caption.isEmpty ? null : caption,
         videoDurationSec: draft.finalDuration?.inSeconds,
@@ -513,12 +516,13 @@ class FeedUploadStore extends ChangeNotifier {
       if (_checkCancel()) return;
 
       // Step 4 — Server akan transcode via Bunny webhook async. Tampilkan
-      // processing state. Customer post selalu PENDING_REVIEW.
+      // processing state. Video kini auto-approve (tanpa review admin); begitu
+      // encoding selesai (webhook Bunny set ready), video langsung tayang.
       _update(status: FeedUploadStatus.processing, progress: 0.95);
       await bunnyService.finalize(provision.postId);
 
       AppHaptics.success();
-      _update(status: FeedUploadStatus.waitingReview, progress: 1);
+      _update(status: FeedUploadStatus.success, progress: 1);
       unawaited(
         AppAnalytics.logEvent('feed_post_upload_success', {'type': 'video'}),
       );

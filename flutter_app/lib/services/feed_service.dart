@@ -503,8 +503,9 @@ class FeedService {
 
   /// Update metadata post milik user sendiri.
   ///
-  /// Backend akan mengembalikan post customer ACTIVE ke PENDING_REVIEW
-  /// setelah edit, supaya caption/tag baru dimoderasi ulang.
+  /// Edit TIDAK lagi men-trigger review ulang — semua konten (foto & video)
+  /// tetap tayang setelah edit (post-moderation.ts `editReTriggersModeration`
+  /// selalu false). Moderasi tetap reaktif via report/Hide.
   Future<bool> updateMyPost(
     String postId, {
     required String title,
