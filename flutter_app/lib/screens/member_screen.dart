@@ -50,6 +50,12 @@ const _brandBlue = NataloColors.primary;
 class MemberScreen extends StatefulWidget {
   const MemberScreen({super.key});
 
+  /// Seam test: pengganti `feedService.fetchMyPosts` supaya widget test
+  /// bisa mengisi grid Postingan tanpa jaringan (pola inject-fetcher
+  /// codebase). null = pakai service asli.
+  @visibleForTesting
+  static Future<FeedPage> Function()? debugMyPostsFetcher;
+
   @override
   State<MemberScreen> createState() => _MemberScreenState();
 }
@@ -200,7 +206,8 @@ class _ProfilePageState extends State<_ProfilePage>
       // summary di Akun (stat post count), kita pakai page pertama saja —
       // tidak perlu fetch all pages. Stats Pengikut/Mengikuti diambil dari
       // memberStore.profile (di-hydrate dari /api/auth/me), bukan di sini.
-      final page = await feedService.fetchMyPosts(filter: 'all');
+      final page = await (MemberScreen.debugMyPostsFetcher?.call() ??
+          feedService.fetchMyPosts(filter: 'all'));
       if (!mounted) return;
       // Seed FeedStore — cross-screen sync (Reels/Detail toggle ke-reflect
       // di Postingan Saya preview kalau di masa depan tile tampil count).
