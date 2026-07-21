@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { FeedReportStatus, Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { signBunnyUrl } from "@/lib/feed/bunny";
 
 const PAGE_SIZE = 20;
 
@@ -118,7 +119,7 @@ export async function GET(request: NextRequest) {
             id: r.post.id,
             title: r.post.title,
             description: r.post.description,
-            thumbnailUrl: r.post.thumbnailUrl,
+            thumbnailUrl: signBunnyUrl(r.post.thumbnailUrl),
             kind: r.post.kind,
             status: r.post.status,
             deletedAt: r.post.deletedAt?.toISOString() ?? null,
