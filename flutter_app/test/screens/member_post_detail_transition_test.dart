@@ -276,6 +276,53 @@ void main() {
     },
   );
 
+  testWidgets(
+    'settle is terminal: fallback is hidden even when settle frames land '
+    'past the readiness budget',
+    (tester) async {
+      useDetailViewport(tester);
+      final posts = [fakePhoto('a'), fakePhoto('b')];
+      final session = fakeTransitionSession(posts.last);
+
+      await tester.pumpWidget(
+        detailHost(posts: posts, initialIndex: 1, session: session),
+      );
+      for (var i = 0; i < 5; i++) {
+        await tester.pump();
+      }
+      expect(
+        session.destinationReadiness,
+        PostDetailDestinationReadiness.crossfadeFallback,
+      );
+      expect(
+        find.byKey(const ValueKey('post-detail-transition-fallback-b')),
+        findsOneWidget,
+      );
+
+      // Device reality: by the time the route reaches `open` and playback is
+      // allowed, the readiness stopwatch is long past the bounded budget.
+      // Settle runs after the route is open (no flight is being held up), so
+      // the budget must not apply — bailing here left the full-screen
+      // fallback at opacity 1 over an invisible list for seconds on device.
+      debugPostDetailReadinessClock = () => const Duration(seconds: 5);
+      session.setPlaybackAllowed(true);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 160));
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey('post-detail-transition-fallback-b')),
+        findsNothing,
+        reason:
+            'settle must never leave the fallback surface covering the list',
+      );
+
+      await disposeDetail(tester);
+      session.dispose();
+    },
+  );
+
   testWidgets('readiness deadline includes the first awaited frame', (
     tester,
   ) async {

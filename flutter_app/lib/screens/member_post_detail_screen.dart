@@ -723,6 +723,16 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     }
   }
 
+  /// End-of-frame await for the post-open settle stage. Unlike
+  /// [_awaitReadinessFrame] there is deliberately NO deadline: settle runs
+  /// after the route is already `open` (no hero flight is being held up), so
+  /// the bounded-budget rationale does not apply — and bailing on a missed
+  /// budget left the full-screen fallback covering an invisible list for
+  /// seconds on device (frozen-looking screen, dead scroll).
+  Future<void> _awaitSettleFrame() =>
+      debugPostDetailReadinessFrameFuture?.call() ??
+      WidgetsBinding.instance.endOfFrame;
+
   Future<void> _settleTransitionFallback() async {
     final generation = _transitionReadinessGeneration;
     if (_settlingTransitionFallbackGeneration == generation) return;
@@ -730,16 +740,25 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     final session = widget.transitionSession;
     if (fallbackPost == null || session == null) return;
     _settlingTransitionFallbackGeneration = generation;
-    final stopwatch = Stopwatch()..start();
     try {
       final targetIndex = _posts.indexWhere(
         (post) => post.id == fallbackPost.id,
       );
-      if (targetIndex < 0) return;
+      if (targetIndex < 0) {
+        // The staged post no longer exists — the fallback surface must not
+        // keep covering the list.
+        if (mounted) _discardStagedTransitionFallback();
+        return;
+      }
       _jumpNearPost(targetIndex);
-      if (!await _awaitReadinessFrame(stopwatch) ||
-          !_ownsTransitionReadiness(session, generation) ||
-          targetIndex >= _postKeys.length) {
+      await _awaitSettleFrame();
+      // Ownership loss (unmount / session replacement / a newer readiness
+      // generation) hands the fallback state to that newer owner — do not
+      // touch it here. Every OTHER early-return below still hides the
+      // fallback: settle must be terminal.
+      if (!_ownsTransitionReadiness(session, generation)) return;
+      if (targetIndex >= _postKeys.length) {
+        _discardStagedTransitionFallback();
         return;
       }
       final itemContext = _postKeys[targetIndex].currentContext;
@@ -753,6 +772,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
           !box.attached ||
           !box.hasSize ||
           box.size.isEmpty) {
+        _discardStagedTransitionFallback();
         return;
       }
       final position = controller.position;
@@ -762,11 +782,10 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
           .clamp(position.minScrollExtent, position.maxScrollExtent)
           .toDouble();
       controller.jumpTo(offset);
-      if (!await _awaitReadinessFrame(stopwatch) ||
-          !_ownsTransitionReadiness(session, generation) ||
-          !box.attached ||
-          !box.hasSize ||
-          box.size.isEmpty) {
+      await _awaitSettleFrame();
+      if (!_ownsTransitionReadiness(session, generation)) return;
+      if (!box.attached || !box.hasSize || box.size.isEmpty) {
+        _discardStagedTransitionFallback();
         return;
       }
       setState(() => _transitionFallbackVisible = false);
