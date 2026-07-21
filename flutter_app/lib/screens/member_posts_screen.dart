@@ -325,15 +325,19 @@ class _MemberPostsScreenState extends State<MemberPostsScreen>
     // inside a NestedScrollView — the profile header, tabs, and grid all
     // share one CustomScrollView (with a plain AppBar above it, not part of
     // the scroll), so there's no pinned-chrome overlap to dodge: topPadding=0.
-    // The grid's own sliver bottom padding already clears the bottom nav /
-    // safe area, so a modest bottomPadding just adds a comfortable margin.
-    // Unlike the old `Scrollable.ensureVisible(alignment: 0.1)`, this only
-    // scrolls when the tile isn't already fully visible, and moves it the
-    // minimum distance needed.
+    // This screen also has NO extendBody / floating BottomNavBar (plain
+    // AppBar + Navigator.maybePop only, see build() below) — the grid's own
+    // sliver bottom padding (bottomInset + 28) already reserves scroll room
+    // past the last row, but nothing overlays the viewport's bottom edge, so
+    // a tile landing flush with it is genuinely fully visible: bottomPadding
+    // =0 is correct, no floating-chrome clearance to add. Unlike the old
+    // `Scrollable.ensureVisible(alignment: 0.1)`, this only scrolls when the
+    // tile isn't already fully visible, and moves it the minimum distance
+    // needed.
     await ensureProfileTileVisible(
       tileContext,
       topPadding: 0,
-      bottomPadding: 24,
+      bottomPadding: 0,
     );
   }
 

@@ -734,16 +734,20 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     // The grid lives in the NestedScrollView's inner scrollable, whose
     // viewport already begins below the pinned chrome (top bar + pinned
     // segmented header live in the OUTER header slivers), so topPadding=0 is
-    // correct. The grid has no extra sliver bottom padding of its own, so a
-    // modest bottomPadding keeps a comfortable margin above the floating
-    // bottom nav. Unlike the old `Scrollable.ensureVisible(alignment: 0.1)`,
-    // this only scrolls the nearest (inner) scrollable, and only when the
-    // tile isn't already fully visible — it no longer walks into the
-    // NestedScrollView's outer header scrollable.
+    // correct. Unlike Own Profile (member_screen.dart), this screen has NO
+    // extendBody / floating BottomNavBar — it's pushed as its own route with
+    // a plain (non-extended) Scaffold, so nothing overlays its bottom edge.
+    // A tile whose bottom lands flush with the physical viewport edge is
+    // therefore genuinely fully visible, so bottomPadding=0 is correct — no
+    // clearance needs to be reserved. Unlike the old
+    // `Scrollable.ensureVisible(alignment: 0.1)`, this only scrolls the
+    // nearest (inner) scrollable, and only when the tile isn't already fully
+    // visible — it no longer walks into the NestedScrollView's outer header
+    // scrollable.
     await ensureProfileTileVisible(
       tileContext,
       topPadding: 0,
-      bottomPadding: 24,
+      bottomPadding: 0,
     );
   }
 

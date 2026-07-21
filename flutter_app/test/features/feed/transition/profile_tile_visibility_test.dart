@@ -79,12 +79,11 @@ void main() {
       final topLeft = renderBox.localToGlobal(Offset.zero);
       final bottom = topLeft.dy + renderBox.size.height;
 
-      // Tile bottom must land within the viewport (600 height, minus any
-      // app bar / safe area offset accounted by localToGlobal already).
-      expect(bottom, lessThanOrEqualTo(600));
-      // And it should not have over-scrolled to the max extent needlessly:
-      // moved just enough so bottom is visible.
-      expect(topLeft.dy, greaterThanOrEqualTo(0));
+      // The helper moves the tile the MINIMUM distance needed — its bottom
+      // lands EXACTLY at (viewportExtent - bottomPadding), here 600 - 0,
+      // not merely "somewhere on screen" (a one-sided bound would also pass
+      // if the helper overshot, e.g. centered the tile instead).
+      expect(bottom, closeTo(600, 0.5));
     });
 
     testWidgets(
@@ -129,7 +128,11 @@ void main() {
             tileKey.currentContext!.findRenderObject() as RenderBox;
         final top = renderBox.localToGlobal(Offset.zero).dy;
 
-        expect(top, greaterThanOrEqualTo(topPadding - 0.01));
+        // The helper moves the tile the MINIMUM distance needed — its top
+        // lands EXACTLY at topPadding, not merely "not above topPadding" (a
+        // one-sided bound would also pass if the helper overshot, e.g.
+        // centered the tile further down than necessary).
+        expect(top, closeTo(topPadding, 0.5));
       },
     );
 

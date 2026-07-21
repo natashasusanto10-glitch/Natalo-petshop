@@ -452,17 +452,25 @@ class _ProfilePageState extends State<_ProfilePage>
     // The grid lives in the NestedScrollView's INNER scrollable, whose viewport
     // already begins below the pinned chrome (top bar + pinned tab header live
     // in the OUTER header slivers). So topPadding=0 is correct — the inner
-    // viewport never overlaps the pinned chrome. The grid's own sliver bottom
-    // padding is 100 (floating bottom nav clearance), so a small extra
-    // bottomPadding just keeps a comfortable margin above that. Unlike the old
-    // `Scrollable.ensureVisible(alignment: 0.1)`, this only scrolls the
-    // nearest (inner) scrollable, and only when the tile isn't already fully
-    // visible — it no longer walks into the NestedScrollView's outer header
-    // scrollable and no longer repositions an already-visible tile.
+    // viewport never overlaps the pinned chrome. This Scaffold uses
+    // extendBody:true + a floating BottomNavBar (see build() below), so the
+    // grid's viewport physically extends BEHIND the glass nav — bottomPadding
+    // must be the nav's real clearance (kFloatingNavClearance) PLUS the
+    // device safe-area (this `context` sits ABOVE the Scaffold it builds, so
+    // it does NOT see the inflated MediaQuery Scaffold gives its own `body`;
+    // the safe-area has to be added back explicitly). Without this, a tile
+    // sitting just above the physical bottom edge but still hidden behind the
+    // nav would be wrongly judged "already visible" and never scrolled clear
+    // of it. Unlike the old `Scrollable.ensureVisible(alignment: 0.1)`, this
+    // only scrolls the nearest (inner) scrollable, and only when the tile
+    // isn't already fully visible — it no longer walks into the
+    // NestedScrollView's outer header scrollable and no longer repositions an
+    // already-visible tile.
     await ensureProfileTileVisible(
       tileContext,
       topPadding: 0,
-      bottomPadding: 24,
+      bottomPadding:
+          kFloatingNavClearance + MediaQuery.paddingOf(context).bottom,
     );
   }
 
