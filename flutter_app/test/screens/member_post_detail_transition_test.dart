@@ -116,6 +116,35 @@ void main() {
   );
 
   testWidgets(
+    'device-speed frames (~100ms) still publish geometry readiness — the '
+    'bounded budget must absorb a cold-built destination list',
+    (tester) async {
+      useDetailViewport(tester);
+      // On real devices the first frames of a cold-built post list routinely
+      // land near 100ms — well past the old 75ms budget, which made nearly
+      // every device open degrade to a crossfade fallback.
+      debugPostDetailReadinessClock = () => const Duration(milliseconds: 100);
+      final posts = List.generate(5, (index) => fakePhoto('post-$index'));
+      final session = fakeTransitionSession(posts[3]);
+
+      await tester.pumpWidget(
+        detailHost(posts: posts, initialIndex: 3, session: session),
+      );
+      for (var i = 0; i < 5; i++) {
+        await tester.pump();
+      }
+
+      expect(
+        session.destinationReadiness,
+        PostDetailDestinationReadiness.geometryReady,
+      );
+
+      await disposeDetail(tester);
+      session.dispose();
+    },
+  );
+
+  testWidgets(
     'an expired post-removal frame never publishes geometry readiness',
     (tester) async {
       useDetailViewport(tester);
@@ -128,7 +157,7 @@ void main() {
       // destination happens to be at that instant.
       var expired = false;
       debugPostDetailReadinessClock = () =>
-          expired ? const Duration(milliseconds: 80) : Duration.zero;
+          expired ? const Duration(milliseconds: 260) : Duration.zero;
       debugPostDetailReadinessFrameFuture = () async {
         await WidgetsBinding.instance.endOfFrame;
         final removalRendered =
@@ -171,7 +200,7 @@ void main() {
       var frameReq = 0;
       var expired = false;
       debugPostDetailReadinessClock = () =>
-          expired ? const Duration(milliseconds: 80) : Duration.zero;
+          expired ? const Duration(milliseconds: 260) : Duration.zero;
       // Alignment frames render normally; the post-removal frame resolves
       // without rendering (an already-complete future) and expires the budget,
       // so the fallback removal never paints and the destination list never
@@ -264,7 +293,7 @@ void main() {
       PostDetailDestinationReadiness.preparing,
     );
 
-    readinessNow = const Duration(milliseconds: 80);
+    readinessNow = const Duration(milliseconds: 260);
     await tester.pump();
 
     expect(
@@ -285,7 +314,7 @@ void main() {
       final posts = List.generate(5, (index) => fakePhoto('post-$index'));
       final session = fakeTransitionSession(posts[3]);
       tester.binding.addPostFrameCallback((_) {
-        readinessNow = const Duration(milliseconds: 80);
+        readinessNow = const Duration(milliseconds: 260);
       });
 
       await tester.pumpWidget(
@@ -326,8 +355,8 @@ void main() {
       PostDetailDestinationReadiness.preparing,
     );
 
-    readinessNow = const Duration(milliseconds: 75);
-    await tester.pump(const Duration(milliseconds: 75));
+    readinessNow = const Duration(milliseconds: 250);
+    await tester.pump(const Duration(milliseconds: 250));
 
     expect(frameWaits, 1);
     expect(

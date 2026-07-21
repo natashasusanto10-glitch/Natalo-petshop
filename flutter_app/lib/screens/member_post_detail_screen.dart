@@ -79,7 +79,14 @@ Duration Function()? debugPostDetailReadinessClock;
 @visibleForTesting
 Future<void> Function()? debugPostDetailReadinessFrameFuture;
 
-const Duration _postDetailReadinessBudget = Duration(milliseconds: 75);
+/// Total bounded budget for the destination's readiness stage (first frame +
+/// up to two scroll-correction passes). The route's proxy covers the
+/// destination for the whole `preparingOpen` hold, so a longer budget only
+/// delays flight start in the worst case — the typical case exits as soon as
+/// geometry is exact. 75ms proved too tight on real devices (cold-building
+/// the post list routinely takes ~100ms+), degrading nearly every open to
+/// the crossfade fallback.
+const Duration _postDetailReadinessBudget = Duration(milliseconds: 250);
 
 /// Whether the inline post-detail video should draw the LIVE player surface
 /// (its last decoded frame) rather than the static thumbnail.
