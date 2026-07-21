@@ -245,6 +245,49 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   /// menyala.
   Timer? _postAlignRecheckTimer;
 
+  // ── Tracking post yang PALING terlihat (semua tipe konten) ──────────
+  // Coordinator hanya melacak sesi VIDEO aktif (_videoCoordinator.
+  // activePostId) — untuk foto/carousel tidak ada pelacakan setara. List ini
+  // continuous-scroll (bukan PageView), jadi "post aktif" untuk kebutuhan
+  // onWillClose (reverse hero target) harus dihitung dari visibilitas
+  // sesungguhnya, bukan diasumsikan dari video. Setiap _PostFeedItem lapor
+  // fraction-nya sendiri lewat VisibilityDetector; di sini kita cukup simpan
+  // fraction terbaru per post lalu ambil id dengan fraction tertinggi.
+  // Sengaja TANPA setState — ini murni bookkeeping untuk dibaca saat pop,
+  // bukan sesuatu yang perlu memicu rebuild tiap frame scroll.
+  final Map<String, double> _postVisibilityFractions = {};
+  String? _mostVisiblePostId;
+
+  void _onPostVisibilityChanged(String postId, double fraction) {
+    if (!mounted) return;
+    _postVisibilityFractions[postId] = fraction;
+    // Ties → keep existing (post yang sudah tercatat menang kalau imbang),
+    // supaya scroll kecil yang belum menggeser dominansi tidak mengganti
+    // target reverse-hero tanpa alasan.
+    final currentBest = _mostVisiblePostId;
+    final currentBestFraction = currentBest == null
+        ? -1.0
+        : (_postVisibilityFractions[currentBest] ?? -1.0);
+    if (fraction > currentBestFraction) {
+      _mostVisiblePostId = postId;
+    } else if (currentBest != null &&
+        postId == currentBest &&
+        fraction < currentBestFraction) {
+      // currentBest sendiri turun fraction-nya (sudah ditulis di atas) —
+      // cari ulang pemenang baru dari seluruh map supaya tidak nyangkut ke
+      // post yang sudah tak lagi paling terlihat.
+      String? bestId;
+      var bestFraction = -1.0;
+      for (final entry in _postVisibilityFractions.entries) {
+        if (entry.value > bestFraction) {
+          bestFraction = entry.value;
+          bestId = entry.key;
+        }
+      }
+      _mostVisiblePostId = bestId;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -892,14 +935,15 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
       canPop: true,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) return;
-        // Fallback aktif: coordinator hanya melacak sesi VIDEO aktif; untuk
-        // post foto/carousel (tidak pernah masuk coordinator) tidak ada
-        // pelacakan "post yang sedang di layar" di halaman ini, jadi kita
-        // fallback ke post pertama yang dibuka (widget.post) — origin hero
-        // tetap benar untuk kasus paling umum (buka 1 post dari grid),
-        // meski scroll menjauh ke post lain sebelum back tidak diikuti.
+        // Resolusi target reverse-hero: post yang PALING terlihat saat ini
+        // (semua tipe konten, dari _mostVisiblePostId — lihat
+        // _onPostVisibilityChanged), fallback ke coordinator video (kalau
+        // visibility belum sempat lapor), fallback terakhir ke post pertama
+        // yang dibuka.
         widget.onWillClose?.call(
-          _videoCoordinator.activePostId ?? widget.post.id,
+          _mostVisiblePostId ??
+              _videoCoordinator.activePostId ??
+              widget.post.id,
         );
       },
       child: Scaffold(
@@ -981,6 +1025,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                           onVideoAnchorReady: (postId, anchorKey) {
                             _videoAnchorKeys[postId] = anchorKey;
                           },
+                          onVisibilityChanged: _onPostVisibilityChanged,
                           heroScope: widget.heroScope,
                         );
                       },
@@ -1330,6 +1375,13 @@ class _PostFeedItem extends StatefulWidget {
   final void Function(String sessionId, GlobalKey anchorKey)? onOpenScopedFeed;
   final void Function(String postId, GlobalKey anchorKey)? onVideoAnchorReady;
 
+  /// Lapor fraction visibilitas item ini (0..1) ke layar — dipakai layar
+  /// untuk melacak post yang PALING terlihat lintas SEMUA tipe konten
+  /// (foto/carousel/video), supaya `onWillClose` tahu target reverse-hero
+  /// yang benar walau user scroll menjauh dari post video terakhir yang
+  /// pernah aktif di coordinator.
+  final void Function(String postId, double fraction)? onVisibilityChanged;
+
   /// Scope hero diteruskan dari layar — null = tanpa PostHero (lihat
   /// [MemberPostDetailScreen.heroScope]).
   final String? heroScope;
@@ -1354,6 +1406,7 @@ class _PostFeedItem extends StatefulWidget {
     required this.onMenuTap,
     this.onOpenScopedFeed,
     this.onVideoAnchorReady,
+    this.onVisibilityChanged,
     this.heroScope,
   });
 
@@ -1602,176 +1655,186 @@ class _PostFeedItemState extends State<_PostFeedItem>
     final memberInitial = widget.memberInitial;
     final memberPhotoUrl = widget.memberPhotoUrl;
     final liked = widget.liked;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Status badge (pending / rejected) — di ATAS media supaya jelas
-        // tanpa harus scroll. Auto-hide kalau published (clean Instagram-feel).
-        // Hanya ditampilkan untuk owner (showStatusBadge=true) — viewer
-        // dari public profile tidak melihat status moderation post orang
-        // lain. Tanpa gate ini, default status='PENDING_REVIEW' di
-        // FeedPost.fromJson bisa kelihatan ke viewer kalau backend
-        // /api/u/{username} tidak set field status di response.
-        if (widget.showStatusBadge &&
-            (post.statusInfo == FeedPostStatus.pending ||
-                post.statusInfo == FeedPostStatus.rejected)) ...[
+    return VisibilityDetector(
+      // Lapor fraction visibilitas item INI (semua tipe konten) ke layar —
+      // dipakai untuk melacak "post paling terlihat" (lihat komentar di
+      // widget.onVisibilityChanged). Key per post.id, terpisah dari key
+      // VisibilityDetector video inline di dalam _InlineVideoPlayer
+      // ('inline-video-${postId}') supaya tidak bentrok.
+      key: ValueKey('post-visibility-${post.id}'),
+      onVisibilityChanged: (info) =>
+          widget.onVisibilityChanged?.call(post.id, info.visibleFraction),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Status badge (pending / rejected) — di ATAS media supaya jelas
+          // tanpa harus scroll. Auto-hide kalau published (clean Instagram-feel).
+          // Hanya ditampilkan untuk owner (showStatusBadge=true) — viewer
+          // dari public profile tidak melihat status moderation post orang
+          // lain. Tanpa gate ini, default status='PENDING_REVIEW' di
+          // FeedPost.fromJson bisa kelihatan ke viewer kalau backend
+          // /api/u/{username} tidak set field status di response.
+          if (widget.showStatusBadge &&
+              (post.statusInfo == FeedPostStatus.pending ||
+                  post.statusInfo == FeedPostStatus.rejected)) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+              child: _PostStatusBadge(post: post),
+            ),
+          ],
+          // Foto/carousel + video LANDSCAPE: author row putih di atas media.
+          // Video PORTRAIT: author masuk overlay di dalam video (IG video post
+          // style). Lihat postVideoUsesOverlay — landscape pakai baris atas
+          // supaya username tidak berdesakan di video pendek-lebar.
+          if (!postVideoUsesOverlay(post))
+            _PostAuthorRow(
+              memberName: memberName,
+              memberInitial: memberInitial,
+              memberPhotoUrl: memberPhotoUrl,
+              isOfficial: widget.memberIsOfficial,
+              authorUsername: widget.memberUsername,
+              onMenuTap: widget.onMenuTap,
+            ),
+          // Double-tap detector membungkus media — HANYA untuk FOTO/carousel.
+          // Untuk VIDEO, gesture (single-tap fullscreen + double-tap like)
+          // ditangani di dalam _InlineVideoPlayer (detector yang membungkus
+          // HANYA layer media, dengan kontrol mute/retry sebagai sibling di
+          // atasnya) supaya kontrol tetap instan (pola feed) — video route-nya
+          // di-forward balik ke handler _PostFeedItem via callback di bawah.
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onDoubleTapDown: post.isVideo ? null : _rememberHeartBurstPosition,
+            onDoubleTap: post.isVideo ? null : _handleDoubleTap,
+            child: Stack(
+              children: [
+                _PostMediaSurface(
+                  post: post,
+                  coordinator: widget.coordinator,
+                  registerVideoUrl: widget.registerVideoUrl,
+                  handoffSessionId: widget.handoffSessionId,
+                  onVideoAnchorReady: _rememberVideoAnchor,
+                  onVideoMediaSingleTap: _handleVideoSingleTap,
+                  onVideoMediaDoubleTapDown: _rememberHeartBurstPosition,
+                  onVideoMediaDoubleTap: _handleDoubleTap,
+                  heroScope: widget.heroScope,
+                ),
+                if (postVideoUsesOverlay(post))
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: _VideoPostAuthorOverlay(
+                      memberName: memberName,
+                      memberInitial: memberInitial,
+                      memberPhotoUrl: memberPhotoUrl,
+                      isOfficial: widget.memberIsOfficial,
+                      authorUsername: widget.memberUsername,
+                      onMenuTap: widget.onMenuTap,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          // Action row di-padding sedikit dari edge.
+          // Count di-render inline samping icon (TikTok/Reels style) supaya
+          // user langsung lihat berapa like/comment/share. 0 → hide count
+          // (icon-only fallback), match IG convention "tidak tampilkan 0".
+          // Like count dari _likedCache parent state sudah optimistic, jadi
+          // tap heart langsung naik 1 — tidak nunggu round-trip backend.
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
-            child: _PostStatusBadge(post: post),
-          ),
-        ],
-        // Foto/carousel + video LANDSCAPE: author row putih di atas media.
-        // Video PORTRAIT: author masuk overlay di dalam video (IG video post
-        // style). Lihat postVideoUsesOverlay — landscape pakai baris atas
-        // supaya username tidak berdesakan di video pendek-lebar.
-        if (!postVideoUsesOverlay(post))
-          _PostAuthorRow(
-            memberName: memberName,
-            memberInitial: memberInitial,
-            memberPhotoUrl: memberPhotoUrl,
-            isOfficial: widget.memberIsOfficial,
-            authorUsername: widget.memberUsername,
-            onMenuTap: widget.onMenuTap,
-          ),
-        // Double-tap detector membungkus media — HANYA untuk FOTO/carousel.
-        // Untuk VIDEO, gesture (single-tap fullscreen + double-tap like)
-        // ditangani di dalam _InlineVideoPlayer (detector yang membungkus
-        // HANYA layer media, dengan kontrol mute/retry sebagai sibling di
-        // atasnya) supaya kontrol tetap instan (pola feed) — video route-nya
-        // di-forward balik ke handler _PostFeedItem via callback di bawah.
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onDoubleTapDown: post.isVideo ? null : _rememberHeartBurstPosition,
-          onDoubleTap: post.isVideo ? null : _handleDoubleTap,
-          child: Stack(
-            children: [
-              _PostMediaSurface(
-                post: post,
-                coordinator: widget.coordinator,
-                registerVideoUrl: widget.registerVideoUrl,
-                handoffSessionId: widget.handoffSessionId,
-                onVideoAnchorReady: _rememberVideoAnchor,
-                onVideoMediaSingleTap: _handleVideoSingleTap,
-                onVideoMediaDoubleTapDown: _rememberHeartBurstPosition,
-                onVideoMediaDoubleTap: _handleDoubleTap,
-                heroScope: widget.heroScope,
-              ),
-              if (postVideoUsesOverlay(post))
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: _VideoPostAuthorOverlay(
-                    memberName: memberName,
-                    memberInitial: memberInitial,
-                    memberPhotoUrl: memberPhotoUrl,
-                    isOfficial: widget.memberIsOfficial,
-                    authorUsername: widget.memberUsername,
-                    onMenuTap: widget.onMenuTap,
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+            child: Row(
+              children: [
+                // Heart icon dibungkus ScaleTransition supaya pop saat di-tap.
+                // _handleLikeTap fire animation + delegate ke widget.onLike
+                // (yang trigger optimistic update + API call di parent).
+                // Action icons: thin outline, close to Instagram's lighter
+                // stroke while keeping Natalo's custom shape.
+                ScaleTransition(
+                  scale: _heartScale,
+                  child: NataloPostActionButton(
+                    key: _likeButtonKey,
+                    type: NataloPostActionIconType.like,
+                    isActive: liked,
+                    iconSize: 30,
+                    strokeWidth: 1.6,
+                    tapSize: 44,
+                    count: post.likeCount,
+                    semanticLabel: liked ? 'Batalkan suka' : 'Sukai postingan',
+                    onTap: _handleLikeTap,
                   ),
                 ),
-            ],
-          ),
-        ),
-        // Action row di-padding sedikit dari edge.
-        // Count di-render inline samping icon (TikTok/Reels style) supaya
-        // user langsung lihat berapa like/comment/share. 0 → hide count
-        // (icon-only fallback), match IG convention "tidak tampilkan 0".
-        // Like count dari _likedCache parent state sudah optimistic, jadi
-        // tap heart langsung naik 1 — tidak nunggu round-trip backend.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-          child: Row(
-            children: [
-              // Heart icon dibungkus ScaleTransition supaya pop saat di-tap.
-              // _handleLikeTap fire animation + delegate ke widget.onLike
-              // (yang trigger optimistic update + API call di parent).
-              // Action icons: thin outline, close to Instagram's lighter
-              // stroke while keeping Natalo's custom shape.
-              ScaleTransition(
-                scale: _heartScale,
-                child: NataloPostActionButton(
-                  key: _likeButtonKey,
-                  type: NataloPostActionIconType.like,
-                  isActive: liked,
+                NataloPostActionButton(
+                  type: NataloPostActionIconType.comment,
                   iconSize: 30,
                   strokeWidth: 1.6,
                   tapSize: 44,
-                  count: post.likeCount,
-                  semanticLabel: liked ? 'Batalkan suka' : 'Sukai postingan',
-                  onTap: _handleLikeTap,
+                  count: post.commentCount,
+                  semanticLabel: 'Buka komentar',
+                  onTap: widget.onComment,
                 ),
-              ),
-              NataloPostActionButton(
-                type: NataloPostActionIconType.comment,
-                iconSize: 30,
-                strokeWidth: 1.6,
-                tapSize: 44,
-                count: post.commentCount,
-                semanticLabel: 'Buka komentar',
-                onTap: widget.onComment,
-              ),
-              NataloPostActionButton(
-                type: NataloPostActionIconType.share,
-                iconSize: 30,
-                strokeWidth: 1.6,
-                tapSize: 44,
-                count: post.shareCount,
-                semanticLabel: 'Bagikan postingan',
-                onTap: widget.onShare,
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: _onSavePressed,
-                visualDensity: VisualDensity.compact,
-                icon: Icon(
-                  _saved
-                      ? Icons.bookmark_rounded
-                      : Icons.bookmark_border_rounded,
-                  color: cs.onSurface,
-                  size: 26,
+                NataloPostActionButton(
+                  type: NataloPostActionIconType.share,
+                  iconSize: 30,
+                  strokeWidth: 1.6,
+                  tapSize: 44,
+                  count: post.shareCount,
+                  semanticLabel: 'Bagikan postingan',
+                  onTap: widget.onShare,
                 ),
-                tooltip: _saved ? 'Hapus dari tersimpan' : 'Simpan postingan',
+                const Spacer(),
+                IconButton(
+                  onPressed: _onSavePressed,
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(
+                    _saved
+                        ? Icons.bookmark_rounded
+                        : Icons.bookmark_border_rounded,
+                    color: cs.onSurface,
+                    size: 26,
+                  ),
+                  tooltip: _saved ? 'Hapus dari tersimpan' : 'Simpan postingan',
+                ),
+              ],
+            ),
+          ),
+          // Likes line. Auto-hide kalau 0 likes (per spec user).
+          if (post.likeCount > 0) ...[
+            const SizedBox(height: 2),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+              child: _LikedByLine(post: post),
+            ),
+          ],
+          // Caption — kalau ada saja.
+          if ((post.caption ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+              child: PostCaption(
+                postId: post.id,
+                memberName: memberName,
+                caption: post.caption!,
+                isOfficial: widget.memberIsOfficial,
+                author: post.author,
               ),
-            ],
-          ),
-        ),
-        // Likes line. Auto-hide kalau 0 likes (per spec user).
-        if (post.likeCount > 0) ...[
-          const SizedBox(height: 2),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
-            child: _LikedByLine(post: post),
-          ),
-        ],
-        // Caption — kalau ada saja.
-        if ((post.caption ?? '').trim().isNotEmpty) ...[
+            ),
+          ],
+          // Tanggal — hybrid format: relative untuk < 7 hari, absolute lebih lama.
           const SizedBox(height: 6),
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
-            child: PostCaption(
-              postId: post.id,
-              memberName: memberName,
-              caption: post.caption!,
-              isOfficial: widget.memberIsOfficial,
-              author: post.author,
+            child: Text(
+              _hybridDateLabel(post.createdAt),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12,
+                fontWeight: NataloWeight.body,
+              ),
             ),
           ),
         ],
-        // Tanggal — hybrid format: relative untuk < 7 hari, absolute lebih lama.
-        const SizedBox(height: 6),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
-          child: Text(
-            _hybridDateLabel(post.createdAt),
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 12,
-              fontWeight: NataloWeight.body,
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

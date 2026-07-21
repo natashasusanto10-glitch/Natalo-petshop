@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
 import 'package:natalo_petshop_flutter/screens/public_profile_screen.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 FeedPost _photoPost({String? username}) => FeedPost.fromJson({
       'id': 'header-tap-photo',
@@ -28,6 +29,13 @@ FeedPost _photoPost({String? username}) => FeedPost.fromJson({
     });
 
 void main() {
+  // WAJIB: post-visibility VisibilityDetector (lihat member_post_detail_
+  // screen.dart) butuh updateInterval=0 supaya timer internalnya tak pending
+  // saat widget tree di-dispose akhir test.
+  setUp(() {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+  });
+
   testWidgets('photo header (avatar+nama) tap opens author profile',
       (tester) async {
     final post = _photoPost(username: 'rani_official');
@@ -48,7 +56,9 @@ void main() {
 
     expect(find.byType(PublicProfileScreen), findsOneWidget);
     expect(
-      tester.widget<PublicProfileScreen>(find.byType(PublicProfileScreen)).username,
+      tester
+          .widget<PublicProfileScreen>(find.byType(PublicProfileScreen))
+          .username,
       'rani_official',
     );
   });

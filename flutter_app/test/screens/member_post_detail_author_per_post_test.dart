@@ -4,14 +4,14 @@ import 'package:natalo_petshop_flutter/constants/official_brand.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
 import 'package:natalo_petshop_flutter/state/feed_store.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 FeedPost _post(String id, String authorName, {Map<String, dynamic>? author}) {
   return FeedPost.fromJson({
     'id': id,
     'slug': id,
     'kind': 'PHOTO',
-    'author': author ??
-        {'id': 'a-$id', 'name': authorName, 'role': 'CUSTOMER'},
+    'author': author ?? {'id': 'a-$id', 'name': authorName, 'role': 'CUSTOMER'},
     'mediaItems': [
       {'mediaUrl': 'https://example.com/$id.jpg', 'kind': 'PHOTO'}
     ],
@@ -21,7 +21,13 @@ FeedPost _post(String id, String authorName, {Map<String, dynamic>? author}) {
 }
 
 void main() {
-  setUp(feedStore.clear);
+  setUp(() {
+    feedStore.clear();
+    // WAJIB: post-visibility VisibilityDetector (lihat member_post_detail_
+    // screen.dart) butuh updateInterval=0 supaya timer internalnya tak
+    // pending saat widget tree di-dispose akhir test.
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+  });
   tearDown(feedStore.clear);
 
   testWidgets('authorPerPost shows each post own author, not "Pengguna"',

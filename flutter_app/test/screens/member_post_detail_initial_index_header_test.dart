@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
 import 'package:natalo_petshop_flutter/state/feed_store.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 /// Bug report: buka "Postingan" langsung ke post ke-2/ke-3 (dari grid) —
 /// media kelihatan "over ke atas" / nembus header transparan, padahal post
@@ -60,7 +61,13 @@ Future<void> _pumpAtIndex(
 }
 
 void main() {
-  setUp(feedStore.clear);
+  setUp(() {
+    feedStore.clear();
+    // WAJIB: post-visibility VisibilityDetector (lihat member_post_detail_
+    // screen.dart) butuh updateInterval=0 supaya timer internalnya tak
+    // pending saat widget tree di-dispose akhir test.
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+  });
   tearDown(feedStore.clear);
 
   const headerInset = _topInset + kToolbarHeight;
@@ -70,8 +77,7 @@ void main() {
     final posts = [_photoPost('p1'), _photoPost('p2'), _photoPost('p3')];
     await _pumpAtIndex(tester, posts, 0);
 
-    final state =
-        tester.state(find.byType(MemberPostDetailScreen)) as dynamic;
+    final state = tester.state(find.byType(MemberPostDetailScreen)) as dynamic;
     final key = state.debugPostKeys[0] as GlobalKey;
     final topY = tester.getTopLeft(find.byKey(key)).dy;
 
@@ -84,8 +90,7 @@ void main() {
     final posts = [_photoPost('p1'), _photoPost('p2'), _photoPost('p3')];
     await _pumpAtIndex(tester, posts, 1);
 
-    final state =
-        tester.state(find.byType(MemberPostDetailScreen)) as dynamic;
+    final state = tester.state(find.byType(MemberPostDetailScreen)) as dynamic;
     final key = state.debugPostKeys[1] as GlobalKey;
     final topY = tester.getTopLeft(find.byKey(key)).dy;
 
@@ -98,8 +103,7 @@ void main() {
     final posts = [_photoPost('p1'), _photoPost('p2'), _photoPost('p3')];
     await _pumpAtIndex(tester, posts, 2);
 
-    final state =
-        tester.state(find.byType(MemberPostDetailScreen)) as dynamic;
+    final state = tester.state(find.byType(MemberPostDetailScreen)) as dynamic;
     final key = state.debugPostKeys[2] as GlobalKey;
     final topY = tester.getTopLeft(find.byKey(key)).dy;
 

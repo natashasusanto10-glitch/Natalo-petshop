@@ -189,4 +189,35 @@ void main() {
 
     expect(closedWith, 'p1');
   });
+
+  testWidgets(
+    'onWillClose menerima post FOTO yang sedang terlihat setelah scroll (bukan post pertama)',
+    (tester) async {
+      String? closedWith;
+      final photoA = _fakePhotoPost(id: 'pA');
+      final photoB = _fakePhotoPost(id: 'pB');
+      await pumpScreen(
+        tester,
+        posts: [photoA, photoB],
+        heroScope: 'profile',
+        onWillClose: (id) => closedWith = id,
+      );
+
+      // Scroll list sampai pB menempati viewport (bukan sekadar sedikit
+      // masuk) — VisibilityDetector re-fire via updateInterval = Duration.zero
+      // (diset di setUp).
+      final listFinder = find.byType(Scrollable).first;
+      await tester.drag(listFinder, const Offset(0, -2000));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 30));
+      }
+
+      tester.state<NavigatorState>(find.byType(Navigator)).pop();
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 30));
+      }
+
+      expect(closedWith, 'pB');
+    },
+  );
 }
