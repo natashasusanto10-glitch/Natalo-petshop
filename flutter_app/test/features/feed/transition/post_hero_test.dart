@@ -24,6 +24,13 @@ void main() {
   });
 
   testWidgets(
+      'PostViewerRoute adalah MaterialPageRoute (transisi native + edge-swipe back)',
+      (tester) async {
+    final route = PostViewerRoute<void>(builder: (_) => const SizedBox());
+    expect(route, isA<MaterialPageRoute<void>>());
+  });
+
+  testWidgets(
       'push PostViewerRoute menerbangkan hero tile ke slot (shuttle hadir mid-flight)',
       (tester) async {
     final navKey = GlobalKey<NavigatorState>();
