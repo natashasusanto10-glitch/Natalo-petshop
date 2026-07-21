@@ -789,6 +789,15 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
         return;
       }
       setState(() => _transitionFallbackVisible = false);
+      // The list is now exactly positioned and visible: upgrade readiness so
+      // a later close can hero-land into the grid tile. Without this, a
+      // fallback open left readiness at crossfadeFallback forever and EVERY
+      // subsequent close rendered as a fade-in-place. Safe post-open: the
+      // route's readiness listener only acts during `preparingOpen`, and the
+      // close path reads `session.destinationReadiness` live.
+      session.markDestinationReady(
+        PostDetailDestinationReadiness.geometryReady,
+      );
       await Future<void>.delayed(const Duration(milliseconds: 160));
       if (!_ownsTransitionReadiness(session, generation)) return;
       setState(() => _transitionFallbackPost = null);

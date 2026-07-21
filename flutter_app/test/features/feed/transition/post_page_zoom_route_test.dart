@@ -1048,6 +1048,66 @@ void main() {
     );
 
     testWidgets(
+      'readiness upgraded to geometryReady after a fallback open does not '
+      'restart the opening, and a later non-interactive close takes the '
+      'hero branch (never the crossfade)',
+      (tester) async {
+        final fake = FakeTransitionSource();
+        fake.targets['a'] = fakeTarget('a');
+        fake.preparations['a'] = Completer<PostPageSourceTarget?>()
+          ..complete(fakeTarget('a'));
+        final session = PostDetailTransitionSession(
+          initialPost: fakePost('a'),
+          source: fake,
+        );
+        addTearDown(session.dispose);
+        await session.prepareActiveTarget();
+
+        await tester.pumpWidget(_app(navigatorKey));
+        final route = _pushDirect(navigatorKey, session);
+        await tester.pump();
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.crossfadeFallback,
+        );
+        await tester.pumpAndSettle();
+        expect(route.phase, PostPageZoomPhase.open);
+
+        // The destination's post-open settle path: fallback swapped out,
+        // media slot measured + reported, readiness upgraded.
+        session.reportDestinationMediaSlot(
+          rect: const Rect.fromLTWH(0, 100, 400, 500),
+          mediaAspect: 0.8,
+        );
+        session.markDestinationReady(
+          PostDetailDestinationReadiness.geometryReady,
+        );
+        await tester.pump();
+        expect(
+          route.phase,
+          PostPageZoomPhase.open,
+          reason: 'a late readiness upgrade must never restart an opening',
+        );
+
+        final future = route.requestClose();
+        expect(route.phase, PostPageZoomPhase.closingToTarget);
+        await tester.pump();
+        expect(
+          _findsCrossfade(),
+          findsNothing,
+          reason:
+              'after the upgrade the close must hero-land into the grid '
+              'tile, not fade in place',
+        );
+        expect(_findsFallbackCloseTransition(), findsNothing);
+        expect(find.byType(PostPageZoomTransition), findsOneWidget);
+
+        await tester.pumpAndSettle();
+        await future;
+        expect(route.phase, PostPageZoomPhase.closed);
+      },
+    );
+
+    testWidgets(
       'crossfadeFallback opening (NOT reduced motion) still applies the '
       'mild centered scale mid-flight — the accessibility split must not '
       'remove it from this non-accessibility trigger',

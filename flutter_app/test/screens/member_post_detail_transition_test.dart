@@ -323,6 +323,48 @@ void main() {
     },
   );
 
+  testWidgets(
+    'successful settle upgrades readiness to geometryReady so a later close '
+    'can hero-land instead of fading',
+    (tester) async {
+      useDetailViewport(tester);
+      final posts = [fakePhoto('a'), fakePhoto('b')];
+      final session = fakeTransitionSession(posts.last);
+
+      await tester.pumpWidget(
+        detailHost(posts: posts, initialIndex: 1, session: session),
+      );
+      for (var i = 0; i < 5; i++) {
+        await tester.pump();
+      }
+      expect(
+        session.destinationReadiness,
+        PostDetailDestinationReadiness.crossfadeFallback,
+      );
+
+      session.setPlaybackAllowed(true);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 160));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('post-detail-transition-fallback-b')),
+        findsNothing,
+      );
+
+      expect(
+        session.destinationReadiness,
+        PostDetailDestinationReadiness.geometryReady,
+        reason:
+            'a settled fallback open must upgrade readiness — otherwise every '
+            'subsequent close is a crossfade that never lands in the grid',
+      );
+
+      await disposeDetail(tester);
+      session.dispose();
+    },
+  );
+
   testWidgets('readiness deadline includes the first awaited frame', (
     tester,
   ) async {
