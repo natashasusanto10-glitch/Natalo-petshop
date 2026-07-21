@@ -10,8 +10,12 @@ import 'package:share_plus/share_plus.dart';
 
 import '../config/api_config.dart';
 import '../models/feed_post.dart';
+import '../features/feed/transition/post_hero.dart';
+import '../features/feed/transition/post_viewer_route.dart';
+import '../features/feed/transition/profile_tile_visibility.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
-import '../features/feed/widgets/gallery_post_tile.dart' show gridShowsLetterbox;
+import '../features/feed/widgets/gallery_post_tile.dart'
+    show gridShowsLetterbox;
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
 import '../services/follow_service.dart';
@@ -31,7 +35,6 @@ import '../widgets/calm_scroll_physics.dart';
 import '../widgets/collapsing_header_delegate.dart';
 import '../widgets/moderation_action_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
-import '../widgets/origin_expansion_route.dart';
 import '../widgets/profile_grid_geometry.dart';
 import '../widgets/public_profile_chrome_overlay.dart';
 import '../widgets/public_profile_identity_tab_header.dart';
@@ -569,6 +572,17 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     if (mounted) _refresh();
   }
 
+  /// Scope hero WAJIB mengandung username (profil A di atas profil B di
+  /// navigation stack tidak boleh bentrok tag) DAN content filter — sama
+  /// alasan dgn `_MemberScreenState._heroScopeFor` (member_screen.dart):
+  /// `TabBarView` membangun tab tetangga saat swipe
+  /// (allowImplicitScrolling), jadi post yang sama bisa muncul di dua tab
+  /// grid sekaligus (mis. video ada di 'all' dan 'video') — tag hero
+  /// duplikat di tree yang sama membuat Flutter menonaktifkan hero itu
+  /// diam-diam.
+  String _heroScopeFor(PublicProfileContentFilter content) =>
+      'publicProfile-${widget.username}-${content.name}';
+
   Future<void> _openPost(
     PublicProfileContentFilter content,
     int index,
@@ -584,15 +598,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     final handoff = _videoPrewarmer.take(post) ?? _createWarmHandoff(post);
     AppHaptics.tap();
     try {
-      await pushOriginExpansion<void>(
+      await pushPostViewer<void>(
         context,
-        originKey: _tileKeys.forPost(content, post.id),
         // IG-style: bukan single-post screen, tapi vertical-scroll feed
         // dari SEMUA posts user — initial scrolled ke tile yang di-tap.
         // Author header pakai data dari PublicProfile (bukan memberStore,
         // karena viewer != author). isOwner: false → sembunyikan menu
         // edit/delete (cuma owner di "Postingan Saya" yang lihat itu).
-        destinationBuilder: (_) => MemberPostDetailScreen(
+        builder: (_) => MemberPostDetailScreen(
           post: post,
           posts: posts,
           initialIndex: index,
@@ -625,12 +638,56 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
               nextCursor: result.nextCursor,
             );
           },
+          heroScope: _heroScopeFor(content),
+          onWillClose: (activePostId) => _revealTile(content, activePostId),
         ),
       );
     } finally {
       await handoff?.disposeIfUnclaimed();
       _openingPost = false;
     }
+  }
+
+  /// Dipanggil sinkron saat viewer pop, dengan id post yang sedang tampil.
+  /// Fire-and-forget — TIDAK menunggu animasi/scroll selesai. Mirror
+  /// `_MemberScreenState._revealTile` (member_screen.dart). Halaman ini
+  /// TIDAK punya bottom nav (lihat Scaffold di build()) — bottomPadding 0.
+  void _revealTile(PublicProfileContentFilter content, String activePostId) {
+    final key = _tileKeys.forPost(content, activePostId);
+    final ctx = key.currentContext;
+    if (ctx != null) {
+      unawaited(ensureProfileTileVisible(ctx));
+      return;
+    }
+    // Tile belum dibangun (di luar viewport jauh) — estimasi posisi baris
+    // via index di list scope ini, lalu jumpTo langsung tanpa animasi.
+    final posts = _contentStates[content]!.posts;
+    final index = posts.indexWhere((p) => p.id == activePostId);
+    if (index < 0) return;
+    BuildContext? anyTileCtx;
+    for (final p in posts) {
+      final c = _tileKeys.forPost(content, p.id).currentContext;
+      if (c != null) {
+        anyTileCtx = c;
+        break;
+      }
+    }
+    final scrollable =
+        anyTileCtx == null ? null : Scrollable.maybeOf(anyTileCtx);
+    if (scrollable == null) return;
+    final position = scrollable.position;
+    final renderObject = anyTileCtx!.findRenderObject();
+    final tileHeight = (renderObject is RenderBox && renderObject.hasSize)
+        ? renderObject.size.height
+        : 0.0;
+    if (tileHeight <= 0) return;
+    final rowExtent = tileHeight + profileGridMainAxisSpacing;
+    final targetRow = index ~/ profileGridCrossAxisCount;
+    final targetOffset = (targetRow * rowExtent).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    position.jumpTo(targetOffset);
   }
 
   PostVideoWarmHandoff? _createWarmHandoff(FeedPost post) {
@@ -880,10 +937,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
                 tabHeight: metrics.tabHeight,
                 t: t,
                 onFollowToggle: profile.isOwner ? null : _toggleFollow,
-                onFollowersTap: () =>
-                    _openFollowList(FollowListKind.followers),
-                onFollowingTap: () =>
-                    _openFollowList(FollowListKind.following),
+                onFollowersTap: () => _openFollowList(FollowListKind.followers),
+                onFollowingTap: () => _openFollowList(FollowListKind.following),
                 onEditProfile: profile.isOwner
                     ? () => Navigator.pushNamed(
                           context,
@@ -1001,6 +1056,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
                       onTap: () => _openPost(content, index),
                       showCommerceBadge:
                           content == PublicProfileContentFilter.shoppable,
+                      heroScope: _heroScopeFor(content),
                     );
                   } catch (_) {
                     return ColoredBox(
@@ -1038,6 +1094,7 @@ class _PostTile extends StatelessWidget {
   final VoidCallback? onTapDown;
   final VoidCallback? onTapCancel;
   final bool showCommerceBadge;
+  final String heroScope;
 
   const _PostTile({
     required this.post,
@@ -1046,6 +1103,7 @@ class _PostTile extends StatelessWidget {
     this.onTapDown,
     this.onTapCancel,
     this.showCommerceBadge = false,
+    required this.heroScope,
   });
 
   @override
@@ -1126,9 +1184,13 @@ class _PostTile extends StatelessWidget {
                   // Video LANDSCAPE → letterbox (contain + latar hitam,
                   // video utuh) paritas IG & GalleryPostTile. Foto/carousel
                   // + video portrait/persegi tetap cover-crop.
-                  _SafeNetworkImage(
-                    url: thumb,
-                    letterbox: gridShowsLetterbox(post),
+                  PostHero(
+                    scope: heroScope,
+                    postId: post.id,
+                    child: _SafeNetworkImage(
+                      url: thumb,
+                      letterbox: gridShowsLetterbox(post),
+                    ),
                   )
                 else
                   ColoredBox(color: cs.surfaceContainerHighest),

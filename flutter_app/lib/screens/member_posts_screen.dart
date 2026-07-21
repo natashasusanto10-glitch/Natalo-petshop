@@ -14,6 +14,8 @@ import '../constants/official_brand.dart';
 import '../models/feed_create_post_draft.dart';
 import '../models/feed_post.dart';
 import '../models/public_profile.dart';
+import '../features/feed/transition/post_viewer_route.dart';
+import '../features/feed/transition/profile_tile_visibility.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../features/feed/widgets/gallery_post_tile.dart';
 import '../services/feed_service.dart';
@@ -27,7 +29,6 @@ import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import 'feed_media_picker_screen.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
-import '../widgets/origin_expansion_route.dart';
 import '../widgets/profile_grid_geometry.dart';
 import '../widgets/public_profile_expanded_header.dart';
 import 'feed_new_post_screen.dart';
@@ -436,13 +437,17 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     }
   }
 
+  // Scope tunggal — halaman ini tidak punya tab konten (beda dgn profil
+  // publik/Akun), jadi satu scope cukup: tidak ada dua grid tab sekaligus
+  // di tree yang bisa bentrok tag hero.
+  static const _heroScope = 'myPosts';
+
   GlobalKey _tileKeyFor(String postId) =>
       _tileKeys.putIfAbsent(postId, GlobalKey.new);
 
   Future<void> _openPostDetail(
     List<FeedPost> posts,
     int initialIndex,
-    GlobalKey originKey,
   ) async {
     if (_openingPost) return;
     _openingPost = true;
@@ -450,10 +455,9 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     final post = posts[initialIndex];
     final handoff = _takePreparedPost(post) ?? _createWarmHandoff(post);
     try {
-      await pushOriginExpansion<void>(
+      await pushPostViewer<void>(
         context,
-        originKey: originKey,
-        destinationBuilder: (_) => MemberPostDetailScreen(
+        builder: (_) => MemberPostDetailScreen(
           post: post,
           posts: posts,
           initialIndex: initialIndex,
@@ -464,6 +468,8 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
             filter: 'all',
             cursor: cursor,
           ),
+          heroScope: _heroScope,
+          onWillClose: _revealTile,
         ),
       );
     } finally {
@@ -471,6 +477,47 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
       _openingPost = false;
     }
     if (mounted) await _loadPosts();
+  }
+
+  /// Dipanggil sinkron saat viewer pop, dengan id post yang sedang tampil.
+  /// Fire-and-forget — TIDAK menunggu animasi/scroll selesai. Mirror
+  /// `_MemberScreenState._revealTile` (member_screen.dart) — cari
+  /// BuildContext tile via key; kalau belum dibangun (jauh di luar
+  /// viewport), estimasi baris via index lalu jumpTo langsung.
+  void _revealTile(String activePostId) {
+    final key = _tileKeyFor(activePostId);
+    final ctx = key.currentContext;
+    if (ctx != null) {
+      unawaited(ensureProfileTileVisible(ctx));
+      return;
+    }
+    final posts = _visiblePosts;
+    final index = posts.indexWhere((p) => p.id == activePostId);
+    if (index < 0) return;
+    BuildContext? anyTileCtx;
+    for (final entry in _tileKeys.entries) {
+      final c = entry.value.currentContext;
+      if (c != null) {
+        anyTileCtx = c;
+        break;
+      }
+    }
+    final scrollable =
+        anyTileCtx == null ? null : Scrollable.maybeOf(anyTileCtx);
+    if (scrollable == null) return;
+    final position = scrollable.position;
+    final renderObject = anyTileCtx!.findRenderObject();
+    final tileHeight = (renderObject is RenderBox && renderObject.hasSize)
+        ? renderObject.size.height
+        : 0.0;
+    if (tileHeight <= 0) return;
+    final rowExtent = tileHeight + profileGridMainAxisSpacing;
+    final targetRow = index ~/ profileGridCrossAxisCount;
+    final targetOffset = (targetRow * rowExtent).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    position.jumpTo(targetOffset);
   }
 
   @override
@@ -605,14 +652,11 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
                     return GalleryPostTile(
                       key: _tileKeyFor(post.id),
                       post: post,
-                      onTap: () => _openPostDetail(
-                        visiblePosts,
-                        index,
-                        _tileKeyFor(post.id),
-                      ),
+                      onTap: () => _openPostDetail(visiblePosts, index),
                       onTapDown: () => _preparePostVideo(post),
                       onTapCancel: () => _cancelPreparedPost(post.id),
                       showStatusBadge: true,
+                      heroScope: _heroScope,
                     );
                   },
                 ),

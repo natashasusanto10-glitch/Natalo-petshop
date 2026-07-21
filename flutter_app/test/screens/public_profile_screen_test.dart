@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/features/feed/transition/post_viewer_route.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/post_video_warm_handoff.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/video_player_session.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
@@ -8,7 +9,6 @@ import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
 import 'package:natalo_petshop_flutter/screens/public_profile_screen.dart';
 import 'package:natalo_petshop_flutter/services/profile_service.dart';
 import 'package:natalo_petshop_flutter/widgets/liquid_glass.dart';
-import 'package:natalo_petshop_flutter/widgets/origin_expansion_route.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_chrome_overlay.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
@@ -61,13 +61,9 @@ void main() {
     );
   });
 
-  testWidgets('video tile opens Postingan through origin expansion and returns',
+  testWidgets(
+      'video tile has PostHero scoped to username+content, opens via PostViewerRoute and returns',
       (tester) async {
-    final reverseSnapshotStatuses = <AnimationStatus>[];
-    debugOriginExpansionStatusObserver = (status, hasSnapshot) {
-      if (hasSnapshot) reverseSnapshotStatuses.add(status);
-    };
-    addTearDown(() => debugOriginExpansionStatusObserver = null);
     final post = FeedPost.fromJson({
       'id': 'video-1',
       'slug': 'video-1',
@@ -111,13 +107,21 @@ void main() {
     );
     await tester.pump();
 
-    await tester.tap(find.byKey(const ValueKey('profile-post-video-1')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1));
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is Hero && w.tag == 'post-hero/publicProfile-creator-all/video-1',
+      ),
+      findsOneWidget,
+    );
 
-    expect(find.byKey(const ValueKey('origin-expansion-snapshot')),
-        findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('profile-post-video-1')));
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
     expect(find.byType(MemberPostDetailScreen), findsOneWidget);
+    expect(find.byType(PostViewerRoute), findsNothing);
     final detailState =
         tester.state(find.byType(MemberPostDetailScreen)) as dynamic;
     expect(detailState.debugVideoCoordinator.sessionFor(post.id),
@@ -125,11 +129,11 @@ void main() {
     expect(disposeCount, 0);
 
     Navigator.of(tester.element(find.byType(MemberPostDetailScreen))).pop();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 110));
-    expect(reverseSnapshotStatuses, contains(AnimationStatus.reverse));
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
 
-    await tester.pump(const Duration(milliseconds: 220));
+    expect(tester.takeException(), isNull);
     expect(find.byType(MemberPostDetailScreen), findsNothing);
     expect(find.byKey(const ValueKey('profile-post-video-1')), findsOneWidget);
   });

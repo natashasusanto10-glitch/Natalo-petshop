@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../models/feed_post.dart';
 import '../../../theme/natalo_text.dart';
+import '../transition/post_hero.dart';
 
 /// Video LANDSCAPE (lebih lebar dari tinggi) → letterbox di grid (video utuh,
 /// bar hitam atas-bawah di dalam kotak 1:1) — paritas IG (lihat screenshot
@@ -26,6 +27,12 @@ class GalleryPostTile extends StatelessWidget {
   final VoidCallback? onTapCancel;
   final bool showStatusBadge;
 
+  /// Scope untuk PostHero — bila non-null, thumbnail dibungkus Hero
+  /// bertag `post-hero/<heroScope>/<post.id>` supaya bisa terbang ke
+  /// viewer (lihat `post_hero.dart`). Null → tidak ada Hero (caller lama
+  /// tak terpengaruh).
+  final String? heroScope;
+
   const GalleryPostTile({
     required Key key,
     required this.post,
@@ -33,6 +40,7 @@ class GalleryPostTile extends StatelessWidget {
     this.onTapDown,
     this.onTapCancel,
     this.showStatusBadge = true,
+    this.heroScope,
   }) : super(key: key);
 
   @override
@@ -53,7 +61,13 @@ class GalleryPostTile extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                _PostThumbnail(post: post),
+                heroScope != null
+                    ? PostHero(
+                        scope: heroScope!,
+                        postId: post.id,
+                        child: _PostThumbnail(post: post),
+                      )
+                    : _PostThumbnail(post: post),
                 if (post.isVideo)
                   const Positioned(
                     right: 7,
