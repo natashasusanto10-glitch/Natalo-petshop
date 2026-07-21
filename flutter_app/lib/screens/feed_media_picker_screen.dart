@@ -14,7 +14,6 @@ import '../models/feed_create_post_draft.dart';
 import '../services/app_analytics.dart';
 import '../utils/fade_route.dart';
 import '../utils/haptics.dart';
-import '../widgets/origin_expansion_route.dart';
 import '../widgets/photo_crop/photo_crop_export.dart';
 import '../widgets/photo_crop/photo_crop_preview.dart';
 import '../widgets/photo_crop/photo_crop_transform.dart';
@@ -106,17 +105,6 @@ class FeedMediaPickerScreen extends StatefulWidget {
     );
   }
 
-  static Future<bool?> openFromOrigin(
-    BuildContext context,
-    GlobalKey originKey,
-  ) {
-    return pushOriginExpansion<bool>(
-      context,
-      originKey: originKey,
-      destinationBuilder: (_) => const FeedMediaPickerScreen(),
-    );
-  }
-
   /// Rasio frame preview — KONSTAN 4:5 (fixed-frame ala IG). Seam test +
   /// dokumentasi invariant: WAJIB sama untuk kedua nilai [fitOriginal].
   /// Regresi lama: rasio berubah ke natural foto saat fitOriginal=true →
@@ -151,6 +139,7 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   VideoPlayerController? _videoController;
   bool _videoControllerReady = false;
   String? _videoControllerPath;
+
   /// Pesan error preview video (mis. format tak didukung / decode gagal
   /// oleh VideoPlayerController). null = tidak ada error. Di-reset saat
   /// ganti preview asset (`_setPreviewAsset`). Dipakai `_buildPreviewContent`
@@ -223,7 +212,8 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   void initState() {
     super.initState();
     unawaited(
-      AppAnalytics.logEvent('feed_post_pick_opened', {'source': 'media_picker'}),
+      AppAnalytics.logEvent(
+          'feed_post_pick_opened', {'source': 'media_picker'}),
     );
     _initPermissionAndLoad();
   }
@@ -463,8 +453,7 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     final futures = items.asMap().entries.map((entry) async {
       final index = entry.key;
       final item = entry.value;
-      final transform =
-          _photoCropTransforms[item.id] ?? PhotoCropTransform();
+      final transform = _photoCropTransforms[item.id] ?? PhotoCropTransform();
       // HEIC-safe: sama seperti jalur profil (profile_photo_picker_screen).
       final normalizedPath = await normalizePhotoSourceToJpeg(
         item.localPath,
@@ -937,7 +926,8 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     final asset = _assetById[id];
     if (asset == null || _busyProcessing) return;
     AppHaptics.selection();
-    await _setPreviewAsset(asset); // bawa ke preview besar; transform-nya ke-bind
+    await _setPreviewAsset(
+        asset); // bawa ke preview besar; transform-nya ke-bind
   }
 
   /// Strip re-crop carousel (Task 5B) — tampil di bawah preview besar saat
@@ -1655,13 +1645,12 @@ class _PickerToast extends StatelessWidget {
   }
 }
 
-
 /// Strip thumbnail foto terpilih (carousel) — tap untuk membawa foto ke
 /// preview besar & atur crop-nya lagi. Presentasional murni.
 class _SelectedThumbStrip extends StatelessWidget {
   final List<({String id, String path})> items; // urut = urutan slide
-  final String? activeId;                         // foto yang sedang di preview
-  final ValueChanged<String> onTap;               // tap thumbnail → recrop id
+  final String? activeId; // foto yang sedang di preview
+  final ValueChanged<String> onTap; // tap thumbnail → recrop id
   const _SelectedThumbStrip({
     required this.items,
     required this.activeId,

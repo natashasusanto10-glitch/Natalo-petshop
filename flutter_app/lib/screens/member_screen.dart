@@ -141,7 +141,6 @@ class _ProfilePageState extends State<_ProfilePage>
   String? _preparedPostId;
   PostVideoWarmHandoff? _preparedHandoff;
   final _tileKeys = <String, GlobalKey>{};
-  final GlobalKey _createPostOriginKey = GlobalKey();
 
   @override
   void initState() {
@@ -253,10 +252,7 @@ class _ProfilePageState extends State<_ProfilePage>
     if (_openingCreatePost) return;
     setState(() => _openingCreatePost = true);
     try {
-      final uploaded = await FeedMediaPickerScreen.openFromOrigin(
-        context,
-        _createPostOriginKey,
-      );
+      final uploaded = await FeedMediaPickerScreen.open(context);
       if (uploaded == true && mounted) {
         await _loadAll();
       }
@@ -447,7 +443,6 @@ class _ProfilePageState extends State<_ProfilePage>
               // username ditambahkan di tengah (ala IG own-profile).
               _ProfileTopBar(
                 onCreatePost: _openingCreatePost ? null : _openCreatePost,
-                createPostOriginKey: _createPostOriginKey,
                 username: _ownPublicProfile().displayHandle,
               ),
               Expanded(
@@ -585,12 +580,10 @@ class _ProfilePageState extends State<_ProfilePage>
 /// Row/tap-target ikon yang sudah ada).
 class _ProfileTopBar extends StatelessWidget {
   final VoidCallback? onCreatePost;
-  final GlobalKey createPostOriginKey;
   final String? username;
 
   const _ProfileTopBar({
     required this.onCreatePost,
-    required this.createPostOriginKey,
     this.username,
   });
 
@@ -608,7 +601,6 @@ class _ProfileTopBar extends StatelessWidget {
               const SizedBox(width: 4),
               // Plus icon kiri — buka create-post flow existing.
               RepaintBoundary(
-                key: createPostOriginKey,
                 child: IconButton(
                   key: const ValueKey('profile-create-post'),
                   onPressed: onCreatePost,
