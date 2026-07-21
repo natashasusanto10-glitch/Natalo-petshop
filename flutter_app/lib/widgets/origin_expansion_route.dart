@@ -88,6 +88,8 @@ class _OriginExpansionPageRoute<T> extends PageRoute<T> {
   /// ter-pop yang boleh (dan harus) dilanjutkan animasi penutupnya;
   /// menyentuh controller route yang di-remove memicu assert
   /// `finalizeRoute` framework (state-nya bukan `popping`).
+  /// Write-once aman: instance PageRoute sekali-pakai (satu push per
+  /// pushOriginExpansion), tidak pernah di-push ulang.
   bool _wasPopped = false;
 
   @override
