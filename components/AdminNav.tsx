@@ -144,9 +144,27 @@ function Glyph({ d }: { d: string }) {
   );
 }
 
-function isActiveItem(pathname: string, item: NavItem) {
+function matchesItem(pathname: string, item: NavItem) {
   if (item.exact) return pathname === item.href;
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
+}
+
+/** Cari nav item paling spesifik (href terpanjang) yang match pathname —
+ * mencegah dua item sama-sama menyala saat satu href adalah prefix dari
+ * yang lain (mis. "/admin/feed" vs "/admin/feed/reports"). */
+function findActiveItem(pathname: string): NavItem | null {
+  let best: NavItem | null = null;
+  for (const group of NAV_GROUPS) {
+    for (const item of group.items) {
+      if (!matchesItem(pathname, item)) continue;
+      if (!best || item.href.length > best.href.length) best = item;
+    }
+  }
+  return best;
+}
+
+function isActiveItem(pathname: string, item: NavItem) {
+  return findActiveItem(pathname)?.href === item.href;
 }
 
 function titleCaseSegment(segment: string): string {
