@@ -88,6 +88,16 @@ class PostVideoCoordinator {
   static const int maxSessions = 5;
   static const int maxPreloadSessions = 3;
 
+  /// Ambang porsi-terlihat minimum sebelum sebuah video boleh jadi aktif
+  /// (autoplay ala IG). Di bawah ini tidak ada yang direbut sebagai aktif.
+  static const double activationThreshold = 0.6;
+
+  /// Histeresis anti-flicker: video yang lebih terlihat baru MEREBUT status
+  /// aktif dari video aktif sekarang bila porsinya melebihi porsi aktif
+  /// SEKARANG + margin ini. Mencegah gonta-ganti pas dua video seimbang di
+  /// tengah scroll. Kandidat pertama (belum ada aktif) tak butuh margin.
+  static const double _switchHysteresis = 0.08;
+
   final PlaybackSessionFactory _sessionFactory;
   final Listenable _mutedListenable;
   final bool Function() _readMuted;
@@ -122,6 +132,13 @@ class PostVideoCoordinator {
   String? _activePostId;
 
   final LinkedHashSet<String> _preloadPostIds = LinkedHashSet<String>();
+
+  /// Porsi terlihat terakhir yang dilaporkan tiap view (0..1). Wasit tunggal
+  /// "most-visible-wins": saat scroll, video dgn porsi tertinggi ≥
+  /// [activationThreshold] yang jadi aktif — bukan view mana pun yang kebetulan
+  /// callback-nya nyala paling akhir. Entri dibuang saat porsi ≤ 0 atau sesinya
+  /// mati.
+  final Map<String, double> _visibility = <String, double>{};
 
   /// True hanya bila user secara eksplisit pause video aktif
   /// ([userTogglePlay]). Visibilitas/init TIDAK boleh menyetel ini.
@@ -270,30 +287,94 @@ class PostVideoCoordinator {
 
   /// Jadikan [postId] video AKTIF: aktif lama → paused + volume 0; aktif
   /// baru → volume dari `feedMuted` SAAT INI, lalu play (autoplay ala IG).
+  ///
+  /// Ini jalur IMPERATIF (tap, handoff origin, wiring feed lama). Ia menegaskan
+  /// dominasi visibilitas (`assertVisibility: true` → porsi dianggap 1.0)
+  /// supaya arbitrase scroll berikutnya tidak langsung merebut balik sebelum
+  /// view sempat melaporkan porsi aslinya. Jalur scroll murni lewat
+  /// [reportVisibility] yang memakai porsi asli.
   void setActive(String postId) {
     if (_disposed) return;
-    _guard(() {
-      final previous = _activePostId;
-      final previousSession = previous != null && previous != postId
-          ? _entries[previous]?.session
-          : null;
-      _activePostId = postId;
-      _userPausedActive = false;
-      _suspended = false;
-      _playbackRevision.value++;
-      _preloadPostIds.remove(postId);
-      final entry = _ensureEntry(postId);
-      entry.lastUsed = ++_clock;
-      final generation = ++_playbackGeneration;
-      _enqueuePlayback(() async {
-        if (previousSession != null) {
-          await previousSession.setVolume(0);
-          await previousSession.pause();
-        }
-        await _claimAndPlay(entry, generation);
-      });
-      _evict();
+    _guard(() => _activate(postId, assertVisibility: true));
+  }
+
+  /// Inti aktivasi (dipakai [setActive] imperatif & arbitrase visibilitas).
+  /// Harus dipanggil di dalam [_guard]. [assertVisibility] true menyetel porsi
+  /// terlihat postId ke 1.0 (dominasi imperatif); false membiarkan porsi asli
+  /// dari [_visibility] apa adanya (arbitrase sudah memilih pemenangnya).
+  void _activate(String postId, {required bool assertVisibility}) {
+    final previous = _activePostId;
+    final previousSession = previous != null && previous != postId
+        ? _entries[previous]?.session
+        : null;
+    _activePostId = postId;
+    if (assertVisibility) _visibility[postId] = 1.0;
+    _userPausedActive = false;
+    _suspended = false;
+    _playbackRevision.value++;
+    _preloadPostIds.remove(postId);
+    final entry = _ensureEntry(postId);
+    entry.lastUsed = ++_clock;
+    final generation = ++_playbackGeneration;
+    _enqueuePlayback(() async {
+      if (previousSession != null) {
+        await previousSession.setVolume(0);
+        await previousSession.pause();
+      }
+      await _claimAndPlay(entry, generation);
     });
+    _evict();
+  }
+
+  /// View melaporkan porsi terlihat [fraction] (0..1) untuk [postId]. Wasit
+  /// tunggal autoplay: koordinator memilih video dgn porsi tertinggi ≥
+  /// [activationThreshold] sebagai aktif (most-visible-wins), dgn histeresis
+  /// anti-flicker. Menggantikan pola lama "tiap view `setActive` sendiri" yang
+  /// non-deterministik saat dua video sama-sama lewat ambang. Porsi ≤ 0 =
+  /// video keluar layar → dilupakan dari arbitrase.
+  void reportVisibility(String postId, double fraction) {
+    if (_disposed) return;
+    final clamped = fraction.clamp(0.0, 1.0);
+    if (clamped <= 0) {
+      _visibility.remove(postId);
+    } else {
+      _visibility[postId] = clamped;
+    }
+    _guard(_recomputeActiveFromVisibility);
+  }
+
+  /// Pilih pemenang most-visible-wins. Harus dipanggil di dalam [_guard].
+  void _recomputeActiveFromVisibility() {
+    String? best;
+    var bestFraction = 0.0;
+    _visibility.forEach((id, fraction) {
+      if (fraction < activationThreshold) return;
+      // Tie-break deterministik saat porsi persis sama: id lebih kecil menang,
+      // supaya hasil tak bergantung urutan iterasi map.
+      if (fraction > bestFraction ||
+          (fraction == bestFraction && (best == null || id.compareTo(best!) < 0))) {
+        bestFraction = fraction;
+        best = id;
+      }
+    });
+    if (best == null) return; // Tak ada yang cukup terlihat → biarkan apa adanya.
+    final active = _activePostId;
+    if (best == active) {
+      // Aktif saat ini sekaligus paling terlihat → cukup pastikan ia jalan.
+      reportVisible(active!);
+      return;
+    }
+    final activeFraction = active == null ? 0.0 : (_visibility[active] ?? 0.0);
+    // Histeresis hanya melindungi aktif yang MASIH layak main (porsinya sendiri
+    // ≥ ambang). Bila aktif sekarang sudah jatuh di bawah ambang, ia tak lagi
+    // diputar — kandidat yang layak langsung merebut tanpa margin (cegah macet
+    // dua-duanya pause saat scroll berhenti pas di tengah). Kandidat pertama
+    // (belum ada aktif) juga langsung menang.
+    final margin =
+        activeFraction >= activationThreshold ? _switchHysteresis : 0.0;
+    if (bestFraction > activeFraction + margin) {
+      _activate(best!, assertVisibility: false);
+    }
   }
 
   /// Kosongkan status "video aktif" — dipakai saat item aktif Feed BUKAN video
@@ -514,6 +595,7 @@ class PostVideoCoordinator {
     _originPostId = null;
     _activePostId = null;
     _preloadPostIds.clear();
+    _visibility.clear();
     // Beri tahu view yang masih listen bahwa semua sesi lenyap (mereka re-cek
     // sessionFor → null → lepas), lalu tutup notifier. Fire sebelum dispose
     // karena notifyListeners menolak setelah dispose.
@@ -664,6 +746,7 @@ class PostVideoCoordinator {
     for (final id in staleIds) {
       final entry = _entries.remove(id);
       if (entry == null) continue;
+      _visibility.remove(id);
       _registryDirty = true;
       unawaited(entry.session.dispose());
     }
@@ -692,6 +775,7 @@ class PostVideoCoordinator {
       if (entry.attachedViewIds.isNotEmpty) continue; // masih dirender.
       if (entry.cleanupInFlight) continue; // barrier teardown belum selesai.
       _entries.remove(id);
+      _visibility.remove(id);
       _registryDirty = true; // sesi mati → registry berubah (KUNCI 1).
       unawaited(entry.session.dispose());
     }

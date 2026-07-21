@@ -3279,25 +3279,25 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
 
   void _applyVisibility() {
     if (!mounted || widget.dormant) return;
-    final visible = _visibleFraction >= 0.6;
-    if (visible) {
+    if (_visibleFraction >= PostVideoCoordinator.activationThreshold) {
       _ensureAttached();
-      // Jadikan aktif (autoplay ala IG) — coordinator yang play + set volume
-      // sesuai feedMuted. Kalau sudah aktif, cukup lapor terlihat (resume).
-      if (_coordinator.activePostId != widget.postId) {
-        _coordinator.setActive(widget.postId);
-      } else {
-        _coordinator.reportVisible(widget.postId);
-      }
+      // Lapor porsi terlihat — coordinator jadi WASIT tunggal autoplay
+      // (most-visible-wins). Tidak lagi `setActive` sendiri: kalau dua video
+      // sama-sama lewat ambang, yang porsinya paling besar yang menang, bukan
+      // yang callback-nya kebetulan nyala paling akhir (akar bug gonta-ganti).
+      _coordinator.reportVisibility(widget.postId, _visibleFraction);
     } else if (_visibleFraction <= 0.0) {
-      // Keluar viewport sepenuhnya → detach (coordinator urus nasib sesi).
+      // Keluar viewport sepenuhnya → lupakan dari arbitrase + detach.
+      _coordinator.reportVisibility(widget.postId, 0);
       if (_attached) {
         _coordinator.detach(_viewId, widget.postId);
         _attached = false;
         _unbindSession();
       }
     } else {
-      // Sebagian terlihat (<60%) tapi masih di layar → pause, tetap attached.
+      // Sebagian terlihat (<ambang) tapi masih di layar → porsi rendah tak akan
+      // dipilih wasit; pause kalau kebetulan masih jadi aktif, tetap attached.
+      _coordinator.reportVisibility(widget.postId, _visibleFraction);
       if (_attached) {
         _coordinator.reportHidden(widget.postId);
       }

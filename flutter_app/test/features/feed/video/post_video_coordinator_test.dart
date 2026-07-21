@@ -1101,4 +1101,107 @@ void main() {
       coord.dispose();
     });
   });
+
+  group('reportVisibility — wasit most-visible-wins', () {
+    test('video paling terlihat yang aktif, bukan pelapor terakhir', () async {
+      // A lebih terlihat (0.7) daripada B (0.5) → A aktif walau B lapor
+      // belakangan. Ini akar fix: bukan "callback terakhir menang".
+      coordinator.reportVisibility('A', 0.7);
+      coordinator.reportVisibility('B', 0.5);
+      await settlePlayback();
+      expect(coordinator.activePostId, 'A');
+      expect(sessions['A']!.playing, isTrue);
+
+      // Scroll: B kini dominan (0.9), A mengecil (0.5) → pindah ke B.
+      coordinator.reportVisibility('A', 0.5);
+      coordinator.reportVisibility('B', 0.9);
+      await settlePlayback();
+      expect(coordinator.activePostId, 'B');
+      expect(sessions['B']!.playing, isTrue);
+      expect(sessions['A']!.playing, isFalse);
+      expect(sessions['A']!.volume, 0);
+    });
+
+    test('tak ada yang ≥ ambang → tak ada yang play', () async {
+      coordinator.reportVisibility('A', 0.4);
+      coordinator.reportVisibility('B', 0.3);
+      await settlePlayback();
+      expect(coordinator.activePostId, isNull);
+    });
+
+    test('pelapor terakhir yang KURANG terlihat tak merebut (order-independent)',
+        () async {
+      // Urutan "jahat": pelapor terakhir (B) porsinya lebih kecil. Pola lama
+      // (tiap view setActive sendiri) akan salah menjadikan B aktif; wasit
+      // porsi memilih A yang lebih terlihat, tak peduli urutan.
+      coordinator.reportVisibility('B', 0.65);
+      coordinator.reportVisibility('A', 0.85);
+      await settlePlayback();
+      expect(coordinator.activePostId, 'A');
+    });
+
+    test('histeresis: rebut hanya bila cukup lebih terlihat', () async {
+      coordinator.reportVisibility('A', 0.7);
+      await settlePlayback();
+      expect(coordinator.activePostId, 'A');
+
+      // B sedikit lebih terlihat (< margin 0.08) → BELUM merebut.
+      coordinator.reportVisibility('B', 0.72);
+      await settlePlayback();
+      expect(coordinator.activePostId, 'A',
+          reason: 'selisih < histeresis → tak flicker');
+
+      // B jelas lebih terlihat (> A + 0.08) → merebut.
+      coordinator.reportVisibility('B', 0.85);
+      await settlePlayback();
+      expect(coordinator.activePostId, 'B');
+    });
+
+    test('aktif jatuh di bawah ambang → kandidat layak rebut tanpa margin',
+        () async {
+      coordinator.reportVisibility('A', 0.9);
+      await settlePlayback();
+      expect(coordinator.activePostId, 'A');
+
+      // A turun ke 0.55 (di bawah ambang, tapi masih di peta). B pas di atas
+      // ambang (0.62) — selisih < histeresis, TAPI A sudah tak layak main
+      // → B tetap merebut (tak ada kondisi macet dua-duanya pause).
+      coordinator.reportVisibility('A', 0.55);
+      coordinator.reportVisibility('B', 0.62);
+      await settlePlayback();
+      expect(coordinator.activePostId, 'B');
+    });
+
+    test('porsi ≤ 0 = keluar layar → dilupakan dari arbitrase', () async {
+      coordinator.reportVisibility('A', 0.9);
+      await settlePlayback();
+      expect(coordinator.activePostId, 'A');
+
+      // A keluar layar; B muncul di atas ambang → B menang (A tak lagi diadu).
+      coordinator.reportVisibility('A', 0);
+      coordinator.reportVisibility('B', 0.7);
+      await settlePlayback();
+      expect(coordinator.activePostId, 'B');
+    });
+
+    test('setActive imperatif menegaskan dominasi atas arbitrase scroll',
+        () async {
+      // Tap/handoff: A dijadikan aktif secara imperatif (porsi dianggap 1.0).
+      coordinator.setActive('A');
+      await settlePlayback();
+      expect(coordinator.activePostId, 'A');
+
+      // B lapor 0.7 — tak boleh langsung merebut dari A yang baru ditegaskan.
+      coordinator.reportVisibility('B', 0.7);
+      await settlePlayback();
+      expect(coordinator.activePostId, 'A',
+          reason: 'porsi A ditegaskan 1.0 → B 0.7 belum menang');
+
+      // Setelah view A melapor porsi ASLI (0.5), B (0.7) baru boleh merebut.
+      coordinator.reportVisibility('A', 0.5);
+      coordinator.reportVisibility('B', 0.7);
+      await settlePlayback();
+      expect(coordinator.activePostId, 'B');
+    });
+  });
 }
