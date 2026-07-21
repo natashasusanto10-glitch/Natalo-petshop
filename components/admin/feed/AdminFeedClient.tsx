@@ -1,16 +1,15 @@
 "use client";
 
 /**
- * Admin Feed dashboard — list + filter + moderation actions.
+ * Admin Feed dashboard — list + filter + manage actions.
  *
- * Spec section 11 filter:
- *   Semua | Video Admin | Video User | Menunggu Review | Ditolak | Disembunyikan
+ * Filter berbasis jenis konten (bukan status review — semua post auto-ACTIVE):
+ *   Semua | Foto/Carousel | Video | Disembunyikan | Sampah
  *
  * Actions per row:
- *   - PENDING_REVIEW: Approve / Reject (with note prompt)
- *   - ACTIVE       : Hide / Delete
- *   - HIDDEN       : Unhide / Delete
- *   - REJECTED     : Delete only
+ *   - ACTIVE  : Hide / Delete
+ *   - HIDDEN  : Unhide / Delete
+ *   - Sampah  : Restore / Hapus permanen
  */
 import Link from "next/link";
 import Image from "next/image";
@@ -26,14 +25,7 @@ import {
 import { Badge, Button, PageHeader } from "@/components/admin/ui";
 import type { BadgeVariant } from "@/components/admin/ui";
 
-type AdminFilter =
-  | "all"
-  | "admin_video"
-  | "user_video"
-  | "pending"
-  | "rejected"
-  | "hidden"
-  | "deleted";
+type AdminFilter = "all" | "photo" | "video" | "hidden" | "deleted";
 
 type AdminFeedItem = {
   id: string;
@@ -74,15 +66,13 @@ type AdminFeedItem = {
 type AdminFeedResponse = {
   items: AdminFeedItem[];
   nextCursor: string | null;
-  counts: { pending: number; total: number; deleted: number };
+  counts: { total: number; deleted: number; photo: number; video: number };
 };
 
 const FILTERS: { value: AdminFilter; label: string }[] = [
   { value: "all", label: "Semua" },
-  { value: "admin_video", label: "Video Admin" },
-  { value: "user_video", label: "Video User" },
-  { value: "pending", label: "Menunggu Review" },
-  { value: "rejected", label: "Ditolak" },
+  { value: "photo", label: "Foto/Carousel" },
+  { value: "video", label: "Video" },
   { value: "hidden", label: "Disembunyikan" },
   { value: "deleted", label: "Sampah" },
 ];
@@ -95,7 +85,12 @@ export function AdminFeedClient() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [counts, setCounts] = useState({ pending: 0, total: 0, deleted: 0 });
+  const [counts, setCounts] = useState({
+    total: 0,
+    deleted: 0,
+    photo: 0,
+    video: 0,
+  });
   const [actionBusy, setActionBusy] = useState<string | null>(null); // post id
   const [syncBusy, setSyncBusy] = useState(false);
 
@@ -179,14 +174,10 @@ export function AdminFeedClient() {
 
   async function moderate(
     postId: string,
-    action: "approve" | "reject" | "hide" | "unhide" | "restore",
+    action: "hide" | "unhide" | "restore",
   ) {
     let note: string | undefined;
-    if (action === "reject") {
-      const input = window.prompt("Alasan menolak video (wajib):");
-      if (!input || !input.trim()) return;
-      note = input.trim();
-    } else if (action === "hide") {
+    if (action === "hide") {
       const input = window.prompt("Alasan menyembunyikan (opsional):");
       note = input?.trim() || undefined;
     }
@@ -244,29 +235,13 @@ export function AdminFeedClient() {
   // result di-return supaya admin tahu ada yang skip (mis. status sudah
   // ACTIVE, tidak bisa di-approve lagi).
   async function bulkAction(
-    action:
-      | "approve"
-      | "reject"
-      | "hide"
-      | "unhide"
-      | "restore"
-      | "soft-delete"
-      | "hard-delete",
+    action: "hide" | "unhide" | "restore" | "soft-delete" | "hard-delete",
   ) {
     if (bulkBusy || selectedIds.size === 0) return;
 
-    let note: string | undefined;
-    if (action === "reject") {
-      const input = window.prompt(
-        `Alasan menolak ${selectedIds.size} video (wajib):`,
-      );
-      if (!input || !input.trim()) return;
-      note = input.trim();
-    }
+    const note: string | undefined = undefined;
 
     const labels: Record<typeof action, string> = {
-      approve: "Setujui",
-      reject: "Tolak",
       hide: "Sembunyikan",
       unhide: "Tampilkan",
       restore: "Restore",
@@ -389,7 +364,7 @@ export function AdminFeedClient() {
     <div className="space-y-4">
       <PageHeader
         title="Feed"
-        subtitle={`${counts.total} post · ${counts.pending} menunggu review`}
+        subtitle={`${counts.total} post · ${counts.photo} foto · ${counts.video} video`}
         actions={
           <>
             <Button
@@ -420,7 +395,11 @@ export function AdminFeedClient() {
         {FILTERS.map((f) => {
           const active = filter === f.value;
           const badge =
-            f.value === "pending" && counts.pending > 0 ? counts.pending : null;
+            f.value === "photo"
+              ? counts.photo
+              : f.value === "video"
+                ? counts.video
+                : null;
           return (
             <button
               key={f.value}
@@ -438,7 +417,7 @@ export function AdminFeedClient() {
               {badge != null && (
                 <span
                   className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-black ${
-                    active ? "bg-white text-natalo-700" : "bg-amber-500 text-white"
+                    active ? "bg-white text-natalo-700" : "bg-zinc-200 text-zinc-600"
                   }`}
                 >
                   {badge}
@@ -544,18 +523,6 @@ export function AdminFeedClient() {
             ) : (
               <>
                 <BulkBtn
-                  label="Setujui"
-                  tone="green"
-                  onClick={() => bulkAction("approve")}
-                  busy={bulkBusy}
-                />
-                <BulkBtn
-                  label="Tolak"
-                  tone="red"
-                  onClick={() => bulkAction("reject")}
-                  busy={bulkBusy}
-                />
-                <BulkBtn
                   label="Sembunyikan"
                   tone="gray"
                   onClick={() => bulkAction("hide")}
@@ -616,7 +583,8 @@ const KIND_LABEL: Record<string, string> = {
   USER_VIDEO: "Video",
   VIDEO_ONLY: "Video",
   PHOTO_CAROUSEL: "Foto",
-  COMMUNITY: "Diskusi",
+  // COMMUNITY = video user (bukan diskusi teks) — mewajibkan video di create.
+  COMMUNITY: "Video",
   PRODUCT_ONLY: "Produk",
   PROMO: "Promo",
 };
@@ -648,20 +616,17 @@ function AdminFeedRow({
   isTrashView: boolean;
   selected: boolean;
   onToggleSelect: () => void;
-  onModerate: (
-    action: "approve" | "reject" | "hide" | "unhide" | "restore",
-  ) => void;
+  onModerate: (action: "hide" | "unhide" | "restore") => void;
   onDelete: () => void;
 }) {
   const statusMeta = STATUS_META[post.status] ?? {
     text: post.status,
     variant: "neutral" as BadgeVariant,
   };
-  // Encoding badge — sembunyi kalau sudah "ready" (90% kasus). Yang penting
-  // ditampilkan adalah state non-terminal/error supaya admin tahu kenapa
-  // tombol Approve disabled atau kenapa post tidak muncul di feed.
+  // Encoding badge — sembunyi kalau sudah "ready" (90% kasus). Ditampilkan
+  // hanya saat state non-terminal/error supaya admin tahu kenapa post video
+  // belum muncul di feed (informational; tidak lagi mem-block action apa pun).
   const encodingMeta = ENCODING_META[post.encodingStatus];
-  const isApprovable = post.encodingStatus === "ready";
 
   const thumb = post.thumbnailUrl || post.firstMediaUrl;
   const isVideo =
@@ -750,30 +715,6 @@ function AdminFeedRow({
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          {!isTrashView && post.status === "PENDING_REVIEW" && (
-            <>
-              <ActionButton
-                label="Setujui"
-                tone="green"
-                onClick={() => onModerate("approve")}
-                busy={busy}
-                disabled={!isApprovable}
-                title={
-                  isApprovable
-                    ? undefined
-                    : post.encodingStatus === "failed"
-                      ? "Video gagal di-encode — tolak / hapus saja"
-                      : "Tunggu sampai encoding selesai"
-                }
-              />
-              <ActionButton
-                label="Tolak"
-                tone="red"
-                onClick={() => onModerate("reject")}
-                busy={busy}
-              />
-            </>
-          )}
           {!isTrashView && post.status === "ACTIVE" && (
             <ActionButton
               label="Sembunyikan"

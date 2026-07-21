@@ -208,11 +208,31 @@ export async function GET() {
       }
     }
 
+    // Status like komentar milik user ini untuk notif komentar (feed_new_comment
+    // / mention / reply). Tanpa ini, tombol love di baris notifikasi selalu
+    // mulai kosong walau komentarnya sudah di-like di sheet komentar.
+    const commentIds = Array.from(
+      new Set(
+        mapped
+          .map((item) => item.commentId)
+          .filter((id): id is string => Boolean(id && id.trim())),
+      ),
+    );
+    const likedCommentIds = new Set<string>();
+    if (commentIds.length > 0) {
+      const likes = await prisma.feedCommentLike.findMany({
+        where: { userId, commentId: { in: commentIds } },
+        select: { commentId: true },
+      });
+      for (const like of likes) likedCommentIds.add(like.commentId);
+    }
+
     const itemsWithReviewSummary = mapped.map((item) => {
       const orderNumber = extractOrderNumberFromNotification(item);
       return {
         ...item,
         reviewSummary: orderNumber ? reviewSummaryByOrder.get(orderNumber) ?? null : null,
+        commentLiked: item.commentId ? likedCommentIds.has(item.commentId) : false,
       };
     });
     const unreadCount = itemsWithReviewSummary.filter((i) => !i.read).length;

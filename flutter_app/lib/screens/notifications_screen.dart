@@ -1010,6 +1010,7 @@ class NotificationRow extends StatelessWidget {
                             _NotificationCommentActions(
                               commentId: commentIdTrim,
                               feedPostId: feedPostIdTrim,
+                              initialLiked: notification.commentLiked,
                               likeSetter: commentLikeSetter,
                               fetcher: commentByIdFetcher,
                               poster: commentReplyPoster,
@@ -1191,6 +1192,10 @@ class _NotificationFollowBackPillState
 class _NotificationCommentActions extends StatefulWidget {
   final String commentId;
   final String feedPostId;
+
+  /// State like awal komentar (dari server) supaya ♡ tampil merah kalau memang
+  /// sudah di-like — bukan selalu kosong. Sinkron dgn sheet komentar saat load.
+  final bool initialLiked;
   final CommentLikeSetter? likeSetter;
   final CommentByIdFetcher? fetcher;
   final CommentReplyPoster? poster;
@@ -1198,6 +1203,7 @@ class _NotificationCommentActions extends StatefulWidget {
   const _NotificationCommentActions({
     required this.commentId,
     required this.feedPostId,
+    this.initialLiked = false,
     this.likeSetter,
     this.fetcher,
     this.poster,
@@ -1210,9 +1216,19 @@ class _NotificationCommentActions extends StatefulWidget {
 
 class _NotificationCommentActionsState
     extends State<_NotificationCommentActions> {
-  bool _liked = false;
+  late bool _liked = widget.initialLiked;
   bool _likeBusy = false;
   bool _replyLoading = false;
+
+  @override
+  void didUpdateWidget(covariant _NotificationCommentActions oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Refetch daftar notifikasi bawa state like terbaru dari server — ikuti,
+    // KECUALI ada toggle optimistik yang belum selesai (jangan timpa).
+    if (!_likeBusy && widget.initialLiked != oldWidget.initialLiked) {
+      _liked = widget.initialLiked;
+    }
+  }
 
   Future<void> _toggleLike() async {
     if (_likeBusy) return;

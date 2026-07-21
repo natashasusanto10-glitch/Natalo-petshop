@@ -23,6 +23,11 @@ class AppNotification {
   final DateTime createdAt;
   final bool read;
 
+  /// Apakah user yang login sudah menyukai komentar yang dirujuk notif ini
+  /// (untuk notif komentar). Diisi server dari FeedCommentLike — menyinkronkan
+  /// tombol love di baris notifikasi dgn like asli di sheet komentar.
+  final bool commentLiked;
+
   const AppNotification({
     required this.id,
     required this.title,
@@ -47,6 +52,7 @@ class AppNotification {
     this.actorAvatarUrls = const [],
     required this.createdAt,
     required this.read,
+    this.commentLiked = false,
   });
 
   factory AppNotification.fromApiJson(Map<String, dynamic> json) {
@@ -91,6 +97,7 @@ class AppNotification {
       createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString()) ??
           DateTime.now(),
       read: json['read'] == true,
+      commentLiked: json['commentLiked'] == true,
     );
   }
 
@@ -121,6 +128,7 @@ class AppNotification {
       actorAvatarUrls: actorAvatarUrls,
       createdAt: createdAt,
       read: read ?? this.read,
+      commentLiked: commentLiked,
     );
   }
 }
