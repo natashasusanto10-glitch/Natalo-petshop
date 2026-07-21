@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/features/feed/widgets/feed_product_links_sheet.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_post_view.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/state/settings_store.dart';
@@ -186,9 +187,9 @@ void main() {
     await tester.tap(find.text('Produk A').first);
     for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 50));
-      if (find.text('Produk (2)').evaluate().isNotEmpty) break;
+      if (find.byType(FeedProductRowCard).evaluate().isNotEmpty) break;
     }
-    expect(find.text('Produk (2)'), findsOneWidget); // sheet open
+    expect(find.byType(FeedProductRowCard), findsNWidgets(2)); // sheet open
     expect(pausedReason, CoverPauseReason.productSheet);
 
     // Let the sheet entrance animation settle before hitting close.

@@ -93,10 +93,10 @@ void main() {
     await tester.tap(find.text('Produk A').first);
     for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 50));
-      if (find.text('Produk (2)').evaluate().isNotEmpty) break;
+      if (find.byType(FeedProductRowCard).evaluate().isNotEmpty) break;
     }
 
-    expect(find.text('Produk (2)'), findsOneWidget); // sheet open
-    expect(find.byType(FeedProductGridCard), findsNWidgets(2));
+    expect(find.text('2'), findsOneWidget); // sheet open, count label
+    expect(find.byType(FeedProductRowCard), findsNWidgets(2));
   });
 }

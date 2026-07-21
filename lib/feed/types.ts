@@ -26,6 +26,16 @@ export type FeedPostAuthor = {
   isFollowing?: boolean;
 };
 
+// Preview voucher (Gratis Ongkir / Hemat) untuk satu produk — badgeLabel
+// siap-tampil + flag brand-exclusive (voucher scoped ke brand tertentu,
+// BUKAN produk pasti punya brand). Sumber: lib/product-vouchers.ts, sama
+// persis dengan yang dipakai halaman Produk — supaya sheet Links (video)
+// paritas visual dengan Katalog.
+export type FeedPostVoucherPreview = {
+  badgeLabel: string;
+  isBrandExclusive: boolean;
+} | null;
+
 export type FeedPostProduct = {
   id: string;
   slug: string;
@@ -50,6 +60,10 @@ export type FeedPostProduct = {
   avgRating: number;
   reviewCount: number;
   soldCount: number;
+  // Voucher aktif yang cocok produk ini — independen dari discountPrice
+  // (diskon produk) di atas. null kalau tidak ada voucher publik cocok.
+  shippingVoucher: FeedPostVoucherPreview;
+  discountVoucher: FeedPostVoucherPreview;
 } | null;
 
 // Shop the Look — non-nullable variant. Setiap item di taggedProducts
@@ -77,6 +91,9 @@ export type FeedPostTaggedProduct = {
   avgRating: number;
   reviewCount: number;
   soldCount: number;
+  // Voucher aktif — sama spt FeedPostProduct.shippingVoucher/discountVoucher.
+  shippingVoucher: FeedPostVoucherPreview;
+  discountVoucher: FeedPostVoucherPreview;
 };
 
 export type FeedPostListItem = {

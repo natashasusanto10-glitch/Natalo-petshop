@@ -111,6 +111,12 @@ class FeedProductLink {
   final int reviewCount;
   final int soldCount;
 
+  /// Preview voucher publik yang cocok produk ini — independen dari
+  /// discountPrice/discountSource (diskon produk) di atas. null kalau
+  /// tidak ada voucher gratis-ongkir/hemat yang aktif untuk produk ini.
+  final FeedProductVoucherBadge? shippingVoucher;
+  final FeedProductVoucherBadge? discountVoucher;
+
   const FeedProductLink({
     required this.id,
     required this.slug,
@@ -127,6 +133,8 @@ class FeedProductLink {
     this.avgRating = 0,
     this.reviewCount = 0,
     this.soldCount = 0,
+    this.shippingVoucher,
+    this.discountVoucher,
   });
 
   bool get isAvailable => isActive && stock > 0;
@@ -134,6 +142,15 @@ class FeedProductLink {
   /// True kalau diskon aktif berasal dari Flash Sale (bukan Promo Toko).
   /// Dipakai untuk pilih label badge.
   bool get isFlashSale => discountSource == 'FLASH_SALE';
+
+  /// True kalau ada diskon aktif (Flash Sale ATAU Promo Toko).
+  bool get hasDiscountSource => discountSource != null;
+
+  /// True kalau salah satu voucher (ongkir/diskon) yang cocok produk ini
+  /// scoped ke brand tertentu — dipakai badge "Brand Eksklusif".
+  bool get isBrandExclusiveVoucher =>
+      (shippingVoucher?.isBrandExclusive ?? false) ||
+      (discountVoucher?.isBrandExclusive ?? false);
 
   /// Diskon aktif → tampilkan badge "Diskon X%" + harga coret di UI.
   bool get hasActiveDiscount {
@@ -175,6 +192,32 @@ class FeedProductLink {
       avgRating: (json['avgRating'] as num?)?.toDouble() ?? 0,
       reviewCount: (json['reviewCount'] as num?)?.toInt() ?? 0,
       soldCount: (json['soldCount'] as num?)?.toInt() ?? 0,
+      shippingVoucher: FeedProductVoucherBadge.fromJson(json['shippingVoucher']),
+      discountVoucher: FeedProductVoucherBadge.fromJson(json['discountVoucher']),
+    );
+  }
+}
+
+/// Badge voucher siap-tampil untuk satu produk tag — label + flag brand
+/// exclusive. Sumber: lib/product-vouchers.ts (server), sama persis dengan
+/// yang dipakai kartu Katalog/Produk, supaya sheet Links (video) paritas
+/// visual (Gratis Ongkir / Hemat s.d. / Brand Eksklusif).
+class FeedProductVoucherBadge {
+  final String badgeLabel;
+  final bool isBrandExclusive;
+
+  const FeedProductVoucherBadge({
+    required this.badgeLabel,
+    this.isBrandExclusive = false,
+  });
+
+  static FeedProductVoucherBadge? fromJson(dynamic json) {
+    if (json is! Map<String, dynamic>) return null;
+    final label = (json['badgeLabel'] as String?)?.trim();
+    if (label == null || label.isEmpty) return null;
+    return FeedProductVoucherBadge(
+      badgeLabel: label,
+      isBrandExclusive: json['isBrandExclusive'] as bool? ?? false,
     );
   }
 }

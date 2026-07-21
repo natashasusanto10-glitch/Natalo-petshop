@@ -76,6 +76,8 @@ export function FeedVideoCard({
           avgRating: product.avgRating,
           reviewCount: product.reviewCount,
           soldCount: product.soldCount,
+          shippingVoucher: product.shippingVoucher,
+          discountVoucher: product.discountVoucher,
         },
       ];
     }
