@@ -991,6 +991,13 @@ class VideoPlayerSession implements PlaybackSession {
       await completion.future;
     }
     final disposedIdentity = await _cleanupResources();
+    // Bump `revision` supaya listener (mis. `_HeroVideoFlightSurface` di
+    // member_post_detail_screen.dart, yang membaca controller sinkron dari
+    // sesi ini) rebuild dan jatuh ke fallback thumbnail alih-alih memegang
+    // controller yang sudah di-dispose — tanpa ini surface bisa
+    // menggambar/memanggil controller mati di tengah flight kalau dispose
+    // terjadi persis selagi shuttle aktif.
+    revision.value++;
     _observe(
       SocialVideoLifecycleType.disposed,
       controllerIdentity: disposedIdentity,

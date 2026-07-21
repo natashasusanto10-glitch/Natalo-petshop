@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -2996,6 +2997,8 @@ class _PostMediaSurface extends StatelessWidget {
         }
         return _HeroFlightGate(
           animation: routeAnimation,
+          gestureInProgress:
+              ModalRoute.of(context)?.navigator?.userGestureInProgressNotifier,
           child: staticChild!,
           builder: (context, heroActive, child) => PostHero(
             scope: scope,
@@ -3097,16 +3100,63 @@ class _PostMediaSurface extends StatelessWidget {
 /// membiarkan `HeroController` selesai memproses status-change itu dulu
 /// (tanpa Hero baru di frame yang sama), baru `PostHero` muncul di frame
 /// BERIKUTNYA yang tenang (tanpa status-change baru).
+///
+/// GESTURE POP (edge-swipe iOS): `_CupertinoBackGestureController.dragUpdate`
+/// menulis `controller.value -= delta` LANGSUNG (bukan lewat
+/// `animateTo`/`reverse`). `AnimationController.value` setter memanggil
+/// `_internalSetValue`, yang menghitung status dari `_direction` TERAKHIR
+/// (masih `forward` dari push sebelumnya) — jadi selama SELURUH drag,
+/// `animation.status` tetap `forward` walau usernya sedang menyeret pop.
+/// Kalau `heroActive` cuma bergantung pada status, gate ini salah baca
+/// drag itu sebagai "push sedang jalan" → Hero tetap inert → fly-back tidak
+/// pernah terjadi untuk gesture close (yang paling umum di iOS).
+///
+/// Fix: OR-kan dengan `navigator.userGestureInProgressNotifier` (ValueNotifier
+/// bool milik NavigatorState, true selama `didStartUserGesture()`..
+/// `didStopUserGesture()`). Gate ini TIDAK perlu membuat sinyal gesture itu
+/// sinkron/instan — cukup pola defer-satu-frame yang SAMA dengan status
+/// listener, karena capture flight awal utk gesture-pop tidak bergantung
+/// padanya sama sekali:
+///
+///  - `_CupertinoBackGestureController` konstruktor memanggil
+///    `navigator.didStartUserGesture()` SEBELUM drag pertama (`dragUpdate`)
+///    — di titik itu `animation.status` MASIH `completed` (halaman baru saja
+///    selesai push, diam), jadi `_heroActive` gate ini SUDAH `true` dari
+///    resync sebelumnya (idle state pasca-push). `HeroController` yang men-
+///    tangkap pasangan Hero via `didStartUserGesture` observer callback jadi
+///    melihat Hero yang SUDAH aktif — tidak ada capture yang terlewat.
+///  - Baru SETELAHNYA `dragUpdate` menulis `.value` dan status jatuh ke
+///    `forward` (side-effect di atas) — pada titik itu flight SUDAH
+///    tertangkap; gate ini cuma perlu MEMPERTAHANKAN `heroActive=true` lewat
+///    kondisi OR, bukan menangkap flight baru. Sinyal
+///    `userGestureInProgressNotifier` sudah `true` SEBELUM status pertama
+///    kali jatuh ke `forward` (constructor jalan dulu, baru drag), jadi
+///    resync yang ditunda satu frame tetap melihat kombinasi
+///    (`status=forward`, `gestureInProgress=true`) → `active=true` — TIDAK
+///    ada jendela di mana gate salah nonaktifkan Hero di tengah gesture.
+///  - Race `_HeroFlight.divert` yang memaksa defer status listener adalah
+///    soal ORDERING dalam SATU frame yang sama (Hero baru muncul di frame
+///    yang sama HeroController lagi memproses status-change). Gesture-flip
+///    tidak punya kebutuhan sinkron serupa — capture-nya sudah selesai
+///    sebelum drag mengubah status apa pun — jadi menyamakan pola defer di
+///    kedua listener aman dan konsisten, tanpa kebutuhan jalur sinkron
+///    khusus.
 class _HeroFlightGate extends StatefulWidget {
   const _HeroFlightGate({
     required this.animation,
     required this.builder,
+    this.gestureInProgress,
     this.child,
   });
 
   final Animation<double> animation;
   final Widget Function(BuildContext context, bool heroActive, Widget? child)
       builder;
+
+  /// `NavigatorState.userGestureInProgressNotifier` milik route ini (null
+  /// kalau tak ada Navigator, mis. dites tanpa route sungguhan — fallback ke
+  /// perilaku status-only lama).
+  final ValueListenable<bool>? gestureInProgress;
   final Widget? child;
 
   @override
@@ -3114,21 +3164,27 @@ class _HeroFlightGate extends StatefulWidget {
 }
 
 class _HeroFlightGateState extends State<_HeroFlightGate> {
-  static bool _activeFor(Animation<double> animation) =>
-      animation.status != AnimationStatus.forward;
+  static bool _activeFor(
+    Animation<double> animation,
+    ValueListenable<bool>? gestureInProgress,
+  ) =>
+      animation.status != AnimationStatus.forward ||
+      (gestureInProgress?.value ?? false);
 
-  late bool _heroActive = _activeFor(widget.animation);
+  late bool _heroActive =
+      _activeFor(widget.animation, widget.gestureInProgress);
 
   @override
   void initState() {
     super.initState();
-    widget.animation.addStatusListener(_onStatusChanged);
+    widget.animation.addStatusListener(_onSignalChanged);
+    widget.gestureInProgress?.addListener(_onSignalChanged);
     // `ModalRoute.offstage` substitutes `kAlwaysCompleteAnimation` for the
     // route's animation for exactly one frame while a NEW route is being
     // inserted (before the real AnimationController is attached) — reading
     // `.status` synchronously here can observe that transient stand-in
     // (`completed`) instead of the real `forward` the push is about to
-    // drive. Re-check one frame later, same as [_onStatusChanged], so the
+    // drive. Re-check one frame later, same as [_onSignalChanged], so the
     // very first frame self-corrects instead of trusting a possibly-stale
     // snapshot.
     WidgetsBinding.instance.addPostFrameCallback((_) => _resync());
@@ -3138,25 +3194,33 @@ class _HeroFlightGateState extends State<_HeroFlightGate> {
   void didUpdateWidget(covariant _HeroFlightGate oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.animation != widget.animation) {
-      oldWidget.animation.removeStatusListener(_onStatusChanged);
-      widget.animation.addStatusListener(_onStatusChanged);
-      _heroActive = _activeFor(widget.animation);
+      oldWidget.animation.removeStatusListener(_onSignalChanged);
+      widget.animation.addStatusListener(_onSignalChanged);
+    }
+    if (oldWidget.gestureInProgress != widget.gestureInProgress) {
+      oldWidget.gestureInProgress?.removeListener(_onSignalChanged);
+      widget.gestureInProgress?.addListener(_onSignalChanged);
+    }
+    if (oldWidget.animation != widget.animation ||
+        oldWidget.gestureInProgress != widget.gestureInProgress) {
+      _heroActive = _activeFor(widget.animation, widget.gestureInProgress);
     }
   }
 
   @override
   void dispose() {
-    widget.animation.removeStatusListener(_onStatusChanged);
+    widget.animation.removeStatusListener(_onSignalChanged);
+    widget.gestureInProgress?.removeListener(_onSignalChanged);
     super.dispose();
   }
 
-  void _onStatusChanged(AnimationStatus _) {
+  void _onSignalChanged([AnimationStatus? _]) {
     WidgetsBinding.instance.addPostFrameCallback((_) => _resync());
   }
 
   void _resync() {
     if (!mounted) return;
-    final active = _activeFor(widget.animation);
+    final active = _activeFor(widget.animation, widget.gestureInProgress);
     if (active != _heroActive) setState(() => _heroActive = active);
   }
 
