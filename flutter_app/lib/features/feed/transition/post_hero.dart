@@ -12,12 +12,24 @@ class PostHero extends StatelessWidget {
     this.borderRadius = BorderRadius.zero,
     required this.child,
     this.flightChild,
+    this.active = true,
   });
 
   final String scope;
   final String postId;
   final BorderRadius borderRadius;
   final Widget child;
+
+  /// `false` → Hero dipasang dengan tag "inert" (bukan
+  /// `postHeroTag(scope, postId)`, jadi TIDAK PERNAH cocok dengan Hero mana
+  /// pun di route lain) — dipakai untuk close-only Hero (lihat
+  /// `_HeroFlightGate` di member_post_detail_screen.dart): bentuk tree
+  /// SELALU sama (Hero tetap membungkus child) supaya subtree media (mis.
+  /// `_InlineVideoPlayer`) TIDAK pernah di-reparent/dibuat ulang hanya
+  /// karena Hero aktif/nonaktif — cuma STRING tag yang berubah, yang inert
+  /// terhadap HeroController selama tidak ada transisi navigasi berjalan
+  /// tepat di frame yang sama.
+  final bool active;
 
   /// Surface RINGAN dipakai HANYA di dalam shuttle (kedua arah), sebagai
   /// pengganti [child]. Untuk video: `_HeroVideoFlightSurface` yang membaca
@@ -32,7 +44,9 @@ class PostHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Hero(
-      tag: postHeroTag(scope, postId),
+      tag: active
+          ? postHeroTag(scope, postId)
+          : '${postHeroTag(scope, postId)}/inert',
       transitionOnUserGestures: true,
       flightShuttleBuilder: _shuttle,
       child: ClipRRect(

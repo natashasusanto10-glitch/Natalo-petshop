@@ -129,7 +129,11 @@ void main() {
     );
     await tester.pump();
     await tester.tap(find.text('open'));
-    for (var i = 0; i < 10; i++) {
+    // 20 frames (600ms) — melewati durasi transisi push (diamati ~480ms di
+    // test binding ini) supaya ModalRoute.animation pasti sudah `completed`
+    // sebelum assertion (viewer's PostHero baru muncul setelah push selesai
+    // — lihat _wrapHero close-only gating di member_post_detail_screen.dart).
+    for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 30));
     }
   }

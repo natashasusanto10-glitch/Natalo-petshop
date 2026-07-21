@@ -240,6 +240,29 @@ void main() {
       expect(originController, isNotNull,
           reason: 'origin video harus initialized sebelum pop');
 
+      // Settle push dulu sebelum pop. Hero close-only gating (§ dokumentasi
+      // `_HeroFlightGate` di member_post_detail_screen.dart) baru mengekspos
+      // PostHero sisi viewer SETELAH transisi push selesai (+ satu frame
+      // jeda) — video di atas biasanya sudah initialized JAUH sebelum push
+      // selesai, jadi tanpa settle ini pop bisa terjadi sebelum viewer
+      // punya Hero sama sekali → tidak ada pasangan → tidak ada flight.
+      // Fetch ulang controller SETELAH settle: begitu Hero terpasang,
+      // subtree `_InlineVideoPlayer` di posisi itu di-reparent (tree-shape
+      // berubah dari child polos → Hero>ClipRRect>_HeroContent>child), jadi
+      // elemen lama dibuang & session/controller yang benar adalah yang
+      // terikat SETELAH reparent itu — origin lama sebelum settle tidak
+      // valid lagi untuk dibandingkan dengan controller shuttle.
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final settledFinder = find.byType(VideoPlayer);
+      expect(settledFinder.evaluate().isNotEmpty, isTrue,
+          reason: 'origin video harus tetap ada setelah push settle');
+      originController =
+          tester.widget<VideoPlayer>(settledFinder.first).controller;
+      expect(originController.value.isInitialized, isTrue,
+          reason: 'origin video harus tetap initialized setelah push settle');
+
       // Pop, lalu pump SATU frame pendek — mid-flight, JAUH sebelum animasi
       // Hero (~300ms) selesai.
       navigatorKey.currentState!.pop();

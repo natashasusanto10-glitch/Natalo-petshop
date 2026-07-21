@@ -2946,19 +2946,64 @@ class _PostMediaSurface extends StatelessWidget {
   /// nilai, bukan seluruh list (lihat komentar `_heroPostId` di layar).
   /// Null [heroScope]/[heroPostId] (deep-link tanpa origin grid) → child
   /// apa adanya, tanpa Hero maupun listener.
-  Widget _wrapHero(Widget child, {Widget? flightChild}) {
+  ///
+  /// Close-only Hero (device feedback): pada OPEN (push), page slide native
+  /// dan Hero flight berjalan BERSAMAAN terasa "berlapis". Pada CLOSE (pop),
+  /// fly-back-to-tile sudah bagus dan dipertahankan. Karena `Hero` tidak
+  /// punya flag arah bawaan, gating dilakukan lewat [PostHero.active]:
+  /// `PostHero` SELALU membungkus child (bentuk tree TIDAK PERNAH berubah —
+  /// lihat dokumentasi `PostHero.active`), tapi selama push masih berjalan
+  /// tag-nya "inert" (tak pernah cocok dengan tile grid) sehingga Flutter
+  /// tidak membuat flight sama sekali (push jadi murni transisi native).
+  /// PENTING: JANGAN gating dengan meng-OMIT `PostHero` dari tree (mis.
+  /// `heroActive ? PostHero(...) : child`) — itu mengubah BENTUK tree
+  /// (Hero>ClipRRect>_HeroContent>child vs child polos), yang membuat
+  /// Flutter mem-BUANG & membuat ULANG elemen media (`_InlineVideoPlayer`)
+  /// begitu status berubah — video jadi restart dingin (controller baru)
+  /// tepat saat push selesai. Reproduksi nyata & fix: regresi
+  /// member_post_detail_video_hero_flight_test.dart (VideoPlayer lenyap
+  /// dari tree persis di frame status berubah).
+  ///
+  /// Sumber kebenaran `heroActive`: animasi milik ROUTE itu sendiri
+  /// (`ModalRoute.of(context)!.animation`) — bukan timer/controller buatan:
+  ///
+  ///   status      | kapan                          | PostHero.active?
+  ///   ------------|--------------------------------|------------------
+  ///   forward     | push sedang berjalan (0→1)      | false (no flight)
+  ///   completed   | push selesai, halaman diam      | true (siap utk pop)
+  ///   reverse     | pop sedang berjalan (1→0)        | true (flight jalan)
+  ///   dismissed   | pop selesai, route akan dibuang | true (harmless)
+  ///
+  /// Hanya `forward` yang inert. Kalau `ModalRoute.of(context)` null (mis.
+  /// dites tanpa route sungguhan) → fallback selalu active, degradasi aman
+  /// (sama seperti sebelum perubahan ini).
+  Widget _wrapHero(BuildContext context, Widget child, {Widget? flightChild}) {
     final scope = heroScope;
     final notifier = heroPostId;
     if (scope == null || notifier == null) return child;
+    final routeAnimation = ModalRoute.of(context)?.animation;
     return ValueListenableBuilder<String>(
       valueListenable: notifier,
       builder: (context, activeHeroPostId, staticChild) {
         if (activeHeroPostId != post.id) return staticChild!;
-        return PostHero(
-          scope: scope,
-          postId: post.id,
-          flightChild: flightChild,
+        if (routeAnimation == null) {
+          return PostHero(
+            scope: scope,
+            postId: post.id,
+            flightChild: flightChild,
+            child: staticChild!,
+          );
+        }
+        return _HeroFlightGate(
+          animation: routeAnimation,
           child: staticChild!,
+          builder: (context, heroActive, child) => PostHero(
+            scope: scope,
+            postId: post.id,
+            flightChild: flightChild,
+            active: heroActive,
+            child: child!,
+          ),
         );
       },
       child: child,
@@ -2981,6 +3026,7 @@ class _PostMediaSurface extends StatelessWidget {
       aspectRatio: aspectRatio,
       child: switch (post.contentType) {
         FeedContentType.video => _wrapHero(
+            context,
             _InlineVideoPlayer(
               postId: post.id,
               coordinator: coordinator,
@@ -3012,6 +3058,7 @@ class _PostMediaSurface extends StatelessWidget {
             ),
           ),
         FeedContentType.carousel => _wrapHero(
+            context,
             _CarouselSurface(
               post: post,
               aspectRatio: aspectRatio,
@@ -3021,6 +3068,7 @@ class _PostMediaSurface extends StatelessWidget {
             ),
           ),
         FeedContentType.photo => _wrapHero(
+            context,
             _ImageSurface(
               imageUrl: post.previewMediaUrl,
               placeholderIcon: Icons.image_outlined,
@@ -3029,6 +3077,92 @@ class _PostMediaSurface extends StatelessWidget {
       },
     );
   }
+}
+
+/// Gate reaktif atas status [animation] milik ROUTE (bukan controller
+/// buatan) — dipakai [_PostMediaSurface._wrapHero] untuk close-only Hero
+/// (lihat dokumentasi di sana untuk tabel status).
+///
+/// Perubahan `heroActive` DIBERI JEDA satu frame lewat
+/// `addPostFrameCallback`, bukan langsung sinkron di status listener.
+/// Alasan: `HeroController` bawaan Flutter JUGA mendengarkan status
+/// `animation` route yang sama untuk memutuskan mulai/lanjut flight untuk
+/// transisi yang sedang berjalan. Kalau widget ini menampilkan `PostHero`
+/// (Hero baru muncul, jadi berpasangan dengan tile grid) TEPAT di frame yang
+/// sama saat status berubah (mis. forward→completed), `HeroController`
+/// bisa melihat pasangan Hero yang baru itu SEBAGAI transisi yang masih
+/// aktif dan mencoba memulai flight kedua — reproduksi nyata: assertion
+/// `_HeroFlight.divert` (ketemu lewat regresi
+/// member_post_detail_video_hero_flight_test.dart). Menunda satu frame
+/// membiarkan `HeroController` selesai memproses status-change itu dulu
+/// (tanpa Hero baru di frame yang sama), baru `PostHero` muncul di frame
+/// BERIKUTNYA yang tenang (tanpa status-change baru).
+class _HeroFlightGate extends StatefulWidget {
+  const _HeroFlightGate({
+    required this.animation,
+    required this.builder,
+    this.child,
+  });
+
+  final Animation<double> animation;
+  final Widget Function(BuildContext context, bool heroActive, Widget? child)
+      builder;
+  final Widget? child;
+
+  @override
+  State<_HeroFlightGate> createState() => _HeroFlightGateState();
+}
+
+class _HeroFlightGateState extends State<_HeroFlightGate> {
+  static bool _activeFor(Animation<double> animation) =>
+      animation.status != AnimationStatus.forward;
+
+  late bool _heroActive = _activeFor(widget.animation);
+
+  @override
+  void initState() {
+    super.initState();
+    widget.animation.addStatusListener(_onStatusChanged);
+    // `ModalRoute.offstage` substitutes `kAlwaysCompleteAnimation` for the
+    // route's animation for exactly one frame while a NEW route is being
+    // inserted (before the real AnimationController is attached) — reading
+    // `.status` synchronously here can observe that transient stand-in
+    // (`completed`) instead of the real `forward` the push is about to
+    // drive. Re-check one frame later, same as [_onStatusChanged], so the
+    // very first frame self-corrects instead of trusting a possibly-stale
+    // snapshot.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _resync());
+  }
+
+  @override
+  void didUpdateWidget(covariant _HeroFlightGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.animation != widget.animation) {
+      oldWidget.animation.removeStatusListener(_onStatusChanged);
+      widget.animation.addStatusListener(_onStatusChanged);
+      _heroActive = _activeFor(widget.animation);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.animation.removeStatusListener(_onStatusChanged);
+    super.dispose();
+  }
+
+  void _onStatusChanged(AnimationStatus _) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _resync());
+  }
+
+  void _resync() {
+    if (!mounted) return;
+    final active = _activeFor(widget.animation);
+    if (active != _heroActive) setState(() => _heroActive = active);
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      widget.builder(context, _heroActive, widget.child);
 }
 
 class _CarouselSurface extends StatefulWidget {
