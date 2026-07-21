@@ -18,7 +18,7 @@ Dua engine transisi custom (`PostPageZoomRoute` di PR #206 dan `OriginExpansionR
 
 ### 1. `PostViewerRoute` — satu route standar untuk semua origin
 
-`PageRoute` standar (turunan `MaterialPageRoute`/`PageRouteBuilder` dengan transisi fade untuk chrome) — TANPA state machine, TANPA session readiness, TANPA gesture kustom. Barrier/opaque default framework. Semua origin memanggil route yang sama lewat helper bersama (`post_gallery_opener.dart` yang ada dipertahankan sebagai pintu).
+`MaterialPageRoute` standar — transisi chrome mengikuti NATIVE per platform (keputusan user 2026-07-21: iOS slide Cupertino + edge-swipe back native; Android transisi default + Predictive Back). TANPA transisi fade kustom (fade murni terbukti tidak bisa digabung dgn edge-swipe native tanpa gesture kustom). TANPA state machine, TANPA session readiness, TANPA gesture kustom. Barrier/opaque default framework. Semua origin memanggil route yang sama lewat helper bersama (`post_gallery_opener.dart` yang ada dipertahankan sebagai pintu).
 
 ### 2. Hero pairing
 
@@ -29,7 +29,7 @@ Dua engine transisi custom (`PostPageZoomRoute` di PR #206 dan `OriginExpansionR
 
 ### 3. Chrome fade
 
-Halaman viewer dirender penuh di posisi final sejak awal; `FadeTransition` route menganimasi opacity chrome 0→1 mengikuti animasi route. Hero terbang DI ATAS kedua halaman (overlay framework) sehingga media tidak pernah dobel: slot media viewer otomatis dikosongkan framework selama penerbangan (perilaku bawaan Hero).
+Halaman viewer dirender penuh; chrome teranimasi oleh transisi native platform (slide iOS / default Android). Hero terbang DI ATAS kedua halaman (overlay framework) sehingga media tidak pernah dobel: slot media viewer otomatis dikosongkan framework selama penerbangan (perilaku bawaan Hero).
 
 ### 4. Reverse target = post aktif (pengganti `session.freeze()`)
 
