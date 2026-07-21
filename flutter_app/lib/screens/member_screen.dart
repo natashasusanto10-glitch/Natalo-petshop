@@ -8,8 +8,12 @@ import '../theme/natalo_text.dart';
 
 import '../constants/official_brand.dart';
 import '../models/feed_post.dart';
+import '../features/feed/transition/post_hero.dart';
+import '../features/feed/transition/post_viewer_route.dart';
+import '../features/feed/transition/profile_tile_visibility.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
-import '../features/feed/widgets/gallery_post_tile.dart' show gridShowsLetterbox;
+import '../features/feed/widgets/gallery_post_tile.dart'
+    show gridShowsLetterbox;
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
@@ -24,7 +28,6 @@ import '../widgets/bottom_nav.dart';
 import '../widgets/calm_scroll_physics.dart';
 import 'feed_media_picker_screen.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
-import '../widgets/origin_expansion_route.dart';
 import '../widgets/profile_grid_geometry.dart';
 import '../widgets/public_profile_content_tab_bar.dart';
 import '../widgets/public_profile_expanded_header.dart';
@@ -32,6 +35,12 @@ import '../widgets/username_prompt_banner.dart';
 import 'member_post_detail_screen.dart';
 import 'profile_qr_screen.dart';
 import 'public_profile_follow_list_screen.dart';
+
+/// Test-only seam — bypasses the real network call in `_loadAll` so widget
+/// tests can seed `MemberScreen`'s own-posts grid deterministically. Null in
+/// production; must be reset to null in `tearDown`.
+@visibleForTesting
+Future<FeedPage> Function({String filter, String? cursor})? debugMyPostsFetcher;
 
 /// Halaman Akun — social profile + galeri postingan user.
 ///
@@ -200,7 +209,8 @@ class _ProfilePageState extends State<_ProfilePage>
       // summary di Akun (stat post count), kita pakai page pertama saja —
       // tidak perlu fetch all pages. Stats Pengikut/Mengikuti diambil dari
       // memberStore.profile (di-hydrate dari /api/auth/me), bukan di sini.
-      final page = await feedService.fetchMyPosts(filter: 'all');
+      final fetcher = debugMyPostsFetcher ?? feedService.fetchMyPosts;
+      final page = await fetcher(filter: 'all');
       if (!mounted) return;
       // Seed FeedStore — cross-screen sync (Reels/Detail toggle ke-reflect
       // di Postingan Saya preview kalau di masa depan tile tampil count).
@@ -317,10 +327,19 @@ class _ProfilePageState extends State<_ProfilePage>
   GlobalKey _tileKeyFor(String scope, String postId) =>
       _tileKeys.putIfAbsent('$scope:$postId', GlobalKey.new);
 
+  /// Tab scope ('all'/'video'/'tagged') dipakai baik untuk `_tileKeys`
+  /// MAUPUN sebagai bagian PostHero scope ('profile-<tabScope>'). WAJIB
+  /// per-tab, bukan satu 'profile' bersama: `TabBarView` membangun tab
+  /// tetangga saat swipe (allowImplicitScrolling), jadi post yang sama
+  /// bisa muncul di dua tab grid sekaligus (mis. video ada di 'all' dan
+  /// 'video') — tag hero duplikat di tree yang sama membuat Flutter
+  /// menonaktifkan hero itu diam-diam.
+  String _heroScopeFor(String tabScope) => 'profile-$tabScope';
+
   Future<void> _openPostDetail(
     List<FeedPost> posts,
     int initialIndex,
-    GlobalKey originKey,
+    String tabScope,
   ) async {
     if (posts.isEmpty || _openingPost) return;
     _openingPost = true;
@@ -328,10 +347,9 @@ class _ProfilePageState extends State<_ProfilePage>
     final post = posts[initialIndex];
     final handoff = _takePreparedPost(post) ?? _createWarmHandoff(post);
     try {
-      await pushOriginExpansion<void>(
+      await pushPostViewer<void>(
         context,
-        originKey: originKey,
-        destinationBuilder: (_) => MemberPostDetailScreen(
+        builder: (_) => MemberPostDetailScreen(
           post: post,
           posts: posts,
           initialIndex: initialIndex,
@@ -340,6 +358,8 @@ class _ProfilePageState extends State<_ProfilePage>
           initialNextCursor: _postsNextCursor,
           loadMoreScopedPosts: (cursor) =>
               feedService.fetchMyPosts(filter: 'all', cursor: cursor),
+          heroScope: _heroScopeFor(tabScope),
+          onWillClose: (activePostId) => _revealTile(tabScope, activePostId),
         ),
       );
     } finally {
@@ -347,6 +367,57 @@ class _ProfilePageState extends State<_ProfilePage>
       _openingPost = false;
     }
     if (mounted) await _loadAll();
+  }
+
+  /// Dipanggil sinkron saat viewer pop, dengan id post yang sedang tampil.
+  /// Fire-and-forget — TIDAK menunggu animasi/scroll selesai.
+  void _revealTile(String tabScope, String activePostId) {
+    final key = _tileKeyFor(tabScope, activePostId);
+    final ctx = key.currentContext;
+    if (ctx != null) {
+      final bottomPadding =
+          kFloatingNavClearance + MediaQuery.of(context).padding.bottom;
+      ensureProfileTileVisible(ctx, bottomPadding: bottomPadding);
+      return;
+    }
+    // Tile belum dibangun (di luar viewport jauh) — estimasi posisi baris
+    // via index di list scope ini, lalu jumpTo langsung tanpa animasi.
+    final posts = switch (tabScope) {
+      'video' => _videoPosts,
+      'tagged' => _taggedPosts,
+      _ => _allPosts,
+    };
+    final index = posts.indexWhere((p) => p.id == activePostId);
+    if (index < 0) return;
+    // Cari Scrollable manapun yang masih hidup lewat tile lain di scope
+    // yang sama, supaya kita tetap mendapat ScrollPosition grid yang benar
+    // tanpa bergantung pada context State ini sendiri (yang berada di ATAS
+    // NestedScrollView di tree, bukan di dalamnya).
+    BuildContext? anyTileCtx;
+    for (final entry in _tileKeys.entries) {
+      if (!entry.key.startsWith('$tabScope:')) continue;
+      final c = entry.value.currentContext;
+      if (c != null) {
+        anyTileCtx = c;
+        break;
+      }
+    }
+    final scrollable =
+        anyTileCtx == null ? null : Scrollable.maybeOf(anyTileCtx);
+    if (scrollable == null) return;
+    final position = scrollable.position;
+    final renderObject = anyTileCtx!.findRenderObject();
+    final tileHeight = (renderObject is RenderBox && renderObject.hasSize)
+        ? renderObject.size.height
+        : 0.0;
+    if (tileHeight <= 0) return;
+    final rowExtent = tileHeight + profileGridMainAxisSpacing;
+    final targetRow = index ~/ profileGridCrossAxisCount;
+    final targetOffset = (targetRow * rowExtent).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    position.jumpTo(targetOffset);
   }
 
   List<FeedPost> get _videoPosts => _allPosts.where((p) => p.isVideo).toList();
@@ -426,89 +497,81 @@ class _ProfilePageState extends State<_ProfilePage>
                         ),
                       ),
                     ],
-                        body: TabBarView(
-                          controller: _tabController,
-                          children: [
-                            _PostGrid(
-                              posts: _allPosts,
-                              loading: _loadingPosts,
-                              errorText: _postsError,
-                              emptyText: 'Belum ada postingan',
-                              emptySubtext:
-                                  'Bagikan momen lucu hewan kesayanganmu di Feed Natalo.',
-                              showCreateCta: true,
-                              onCreateCta: _openCreatePost,
-                              onRetry: _loadAll,
-                              onTapPost: (idx) => _openPostDetail(
-                                _allPosts,
-                                idx,
-                                _tileKeyFor('all', _allPosts[idx].id),
-                              ),
-                              originKeyForPost: (post) =>
-                                  _tileKeyFor('all', post.id),
-                              onTapDown: (idx) =>
-                                  _preparePostVideo(_allPosts[idx]),
-                              onTapCancel: (idx) =>
-                                  _cancelPreparedPost(_allPosts[idx].id),
-                            ),
-                            _PostGrid(
-                              posts: _videoPosts,
-                              loading: _loadingPosts,
-                              errorText: _postsError,
-                              emptyText: 'Belum ada video',
-                              emptySubtext:
-                                  'Video yang kamu unggah akan muncul di sini.',
-                              showCreateCta: false,
-                              onCreateCta: _openCreatePost,
-                              onRetry: _loadAll,
-                              onTapPost: (idx) => _openPostDetail(
-                                _videoPosts,
-                                idx,
-                                _tileKeyFor('video', _videoPosts[idx].id),
-                              ),
-                              originKeyForPost: (post) =>
-                                  _tileKeyFor('video', post.id),
-                              onTapDown: (idx) =>
-                                  _preparePostVideo(_videoPosts[idx]),
-                              onTapCancel: (idx) =>
-                                  _cancelPreparedPost(_videoPosts[idx].id),
-                            ),
-                            _PostGrid(
-                              posts: _taggedPosts,
-                              loading: _loadingPosts,
-                              errorText: _postsError,
-                              emptyText: 'Belum ada postingan belanja',
-                              emptySubtext:
-                                  'Postingan yang terhubung ke produk Natalo akan muncul di sini.',
-                              showCreateCta: false,
-                              onCreateCta: _openCreatePost,
-                              onRetry: _loadAll,
-                              onTapPost: (idx) => _openPostDetail(
-                                _taggedPosts,
-                                idx,
-                                _tileKeyFor('tagged', _taggedPosts[idx].id),
-                              ),
-                              originKeyForPost: (post) =>
-                                  _tileKeyFor('tagged', post.id),
-                              onTapDown: (idx) =>
-                                  _preparePostVideo(_taggedPosts[idx]),
-                              onTapCancel: (idx) =>
-                                  _cancelPreparedPost(_taggedPosts[idx].id),
-                            ),
-                          ],
+                    body: TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _PostGrid(
+                          posts: _allPosts,
+                          loading: _loadingPosts,
+                          errorText: _postsError,
+                          emptyText: 'Belum ada postingan',
+                          emptySubtext:
+                              'Bagikan momen lucu hewan kesayanganmu di Feed Natalo.',
+                          showCreateCta: true,
+                          onCreateCta: _openCreatePost,
+                          onRetry: _loadAll,
+                          onTapPost: (idx) =>
+                              _openPostDetail(_allPosts, idx, 'all'),
+                          heroScope: _heroScopeFor('all'),
+                          originKeyForPost: (post) =>
+                              _tileKeyFor('all', post.id),
+                          onTapDown: (idx) => _preparePostVideo(_allPosts[idx]),
+                          onTapCancel: (idx) =>
+                              _cancelPreparedPost(_allPosts[idx].id),
                         ),
-                      ),
+                        _PostGrid(
+                          posts: _videoPosts,
+                          loading: _loadingPosts,
+                          errorText: _postsError,
+                          emptyText: 'Belum ada video',
+                          emptySubtext:
+                              'Video yang kamu unggah akan muncul di sini.',
+                          showCreateCta: false,
+                          onCreateCta: _openCreatePost,
+                          onRetry: _loadAll,
+                          onTapPost: (idx) =>
+                              _openPostDetail(_videoPosts, idx, 'video'),
+                          heroScope: _heroScopeFor('video'),
+                          originKeyForPost: (post) =>
+                              _tileKeyFor('video', post.id),
+                          onTapDown: (idx) =>
+                              _preparePostVideo(_videoPosts[idx]),
+                          onTapCancel: (idx) =>
+                              _cancelPreparedPost(_videoPosts[idx].id),
+                        ),
+                        _PostGrid(
+                          posts: _taggedPosts,
+                          loading: _loadingPosts,
+                          errorText: _postsError,
+                          emptyText: 'Belum ada postingan belanja',
+                          emptySubtext:
+                              'Postingan yang terhubung ke produk Natalo akan muncul di sini.',
+                          showCreateCta: false,
+                          onCreateCta: _openCreatePost,
+                          onRetry: _loadAll,
+                          onTapPost: (idx) =>
+                              _openPostDetail(_taggedPosts, idx, 'tagged'),
+                          heroScope: _heroScopeFor('tagged'),
+                          originKeyForPost: (post) =>
+                              _tileKeyFor('tagged', post.id),
+                          onTapDown: (idx) =>
+                              _preparePostVideo(_taggedPosts[idx]),
+                          onTapCancel: (idx) =>
+                              _cancelPreparedPost(_taggedPosts[idx].id),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
+        ),
+      ),
       bottomNavigationBar: const BottomNavBar(currentIndex: 4),
     );
   }
 }
-
 
 // ─── Header top bar (in-body, di atas hero biru) ───────────────────
 
@@ -563,8 +626,7 @@ class _ProfileTopBar extends StatelessWidget {
               // bookmark & settings pakai IconButton mentah (minSize 48)
               // sehingga terlihat lebih renggang dari lonceng di tengahnya.
               AppHeaderIconButton(
-                onPressed: () =>
-                    Navigator.pushNamed(context, '/member/saved'),
+                onPressed: () => Navigator.pushNamed(context, '/member/saved'),
                 tooltip: 'Postingan tersimpan',
                 color: ink,
                 child: const Icon(Icons.bookmark_border_rounded, size: 28),
@@ -663,6 +725,7 @@ class _PostGrid extends StatelessWidget {
   final VoidCallback onCreateCta;
   final VoidCallback onRetry;
   final ValueChanged<int> onTapPost;
+  final String heroScope;
   final GlobalKey Function(FeedPost) originKeyForPost;
   final ValueChanged<int>? onTapDown;
   final ValueChanged<int>? onTapCancel;
@@ -677,6 +740,7 @@ class _PostGrid extends StatelessWidget {
     required this.onCreateCta,
     required this.onRetry,
     required this.onTapPost,
+    required this.heroScope,
     required this.originKeyForPost,
     this.onTapDown,
     this.onTapCancel,
@@ -720,6 +784,7 @@ class _PostGrid extends StatelessWidget {
         itemBuilder: (context, index) {
           return _PostThumbnail(
             post: posts[index],
+            heroScope: heroScope,
             originKey: originKeyForPost(posts[index]),
             onTap: () => onTapPost(index),
             onTapDown: () => onTapDown?.call(index),
@@ -799,6 +864,7 @@ class _ErrorState extends StatelessWidget {
 
 class _PostThumbnail extends StatelessWidget {
   final FeedPost post;
+  final String heroScope;
   final GlobalKey originKey;
   final VoidCallback onTap;
   final VoidCallback? onTapDown;
@@ -806,6 +872,7 @@ class _PostThumbnail extends StatelessWidget {
 
   const _PostThumbnail({
     required this.post,
+    required this.heroScope,
     required this.originKey,
     required this.onTap,
     this.onTapDown,
@@ -819,72 +886,70 @@ class _PostThumbnail extends StatelessWidget {
             : null) ??
         (post.previewMediaUrl.trim().isNotEmpty ? post.previewMediaUrl : null);
     final cs = Theme.of(context).colorScheme;
+    // originKey masih dipertahankan (RepaintBoundary) — bukan lagi untuk
+    // OriginSnapshotSource/pushOriginExpansion (dihapus), tapi sebagai
+    // penanda tile yang dipakai `_revealTile` untuk mencari BuildContext
+    // + Scrollable saat viewer ditutup.
     return RepaintBoundary(
       key: originKey,
-      child: OriginSnapshotSource(
-        child: InkWell(
-          onTap: onTap,
-          onTapDown: (_) => onTapDown?.call(),
-          onTapCancel: onTapCancel,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Video LANDSCAPE → latar hitam (bar letterbox). Selain itu
-              // latar netral biasa. gridShowsLetterbox: video landscape saja.
-              Container(
-                color: gridShowsLetterbox(post)
-                    ? Colors.black
-                    : cs.surfaceContainerHighest,
-              ),
-              if (mediaUrl != null)
-                // Keep the tag for the detail screen's later fullscreen flow.
-                // OriginSnapshotSource suppresses this grid-side Hero while the
-                // static route snapshot performs the Profile -> Postingan morph.
-                Hero(
-                  tag: 'post-thumb-${post.id}',
-                  child: CachedNetworkImage(
-                    imageUrl: mediaUrl,
-                    // Video landscape → contain (letterbox, utuh); sisanya
-                    // cover-crop penuh (foto/carousel/portrait, tak berubah).
-                    fit: gridShowsLetterbox(post)
-                        ? BoxFit.contain
-                        : BoxFit.cover,
-                    fadeInDuration: const Duration(milliseconds: 180),
-                    placeholder: (_, __) =>
-                        Container(color: cs.surfaceContainerHigh),
-                    errorWidget: (_, __, ___) => const Center(
-                      child: Icon(
-                        Icons.image_not_supported_outlined,
-                        color: Color(0xFF94A3B8),
-                        size: 28,
-                      ),
+      child: InkWell(
+        onTap: onTap,
+        onTapDown: (_) => onTapDown?.call(),
+        onTapCancel: onTapCancel,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Video LANDSCAPE → latar hitam (bar letterbox). Selain itu
+            // latar netral biasa. gridShowsLetterbox: video landscape saja.
+            Container(
+              color: gridShowsLetterbox(post)
+                  ? Colors.black
+                  : cs.surfaceContainerHighest,
+            ),
+            if (mediaUrl != null)
+              PostHero(
+                scope: heroScope,
+                postId: post.id,
+                child: CachedNetworkImage(
+                  imageUrl: mediaUrl,
+                  // Video landscape → contain (letterbox, utuh); sisanya
+                  // cover-crop penuh (foto/carousel/portrait, tak berubah).
+                  fit: gridShowsLetterbox(post) ? BoxFit.contain : BoxFit.cover,
+                  fadeInDuration: const Duration(milliseconds: 180),
+                  placeholder: (_, __) =>
+                      Container(color: cs.surfaceContainerHigh),
+                  errorWidget: (_, __, ___) => const Center(
+                    child: Icon(
+                      Icons.image_not_supported_outlined,
+                      color: Color(0xFF94A3B8),
+                      size: 28,
                     ),
                   ),
-                )
-              else
-                const Center(
-                  child: Icon(
-                    Icons.image_outlined,
-                    color: Color(0xFF94A3B8),
-                    size: 28,
-                  ),
                 ),
-              // Type indicators top-right (video play OR shopping bag).
-              // Priority: video > tagged products (kalau dua-duanya, video win).
-              if (post.isVideo)
-                const Positioned(
-                  top: 8,
-                  right: 8,
-                  child: _ThumbnailIcon(icon: Icons.play_arrow_rounded),
-                )
-              else if (post.productIds.isNotEmpty)
-                const Positioned(
-                  top: 8,
-                  right: 8,
-                  child: _ThumbnailIcon(icon: Icons.shopping_bag_outlined),
+              )
+            else
+              const Center(
+                child: Icon(
+                  Icons.image_outlined,
+                  color: Color(0xFF94A3B8),
+                  size: 28,
                 ),
-            ],
-          ),
+              ),
+            // Type indicators top-right (video play OR shopping bag).
+            // Priority: video > tagged products (kalau dua-duanya, video win).
+            if (post.isVideo)
+              const Positioned(
+                top: 8,
+                right: 8,
+                child: _ThumbnailIcon(icon: Icons.play_arrow_rounded),
+              )
+            else if (post.productIds.isNotEmpty)
+              const Positioned(
+                top: 8,
+                right: 8,
+                child: _ThumbnailIcon(icon: Icons.shopping_bag_outlined),
+              ),
+          ],
         ),
       ),
     );
