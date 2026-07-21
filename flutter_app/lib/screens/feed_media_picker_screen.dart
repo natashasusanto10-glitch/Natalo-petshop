@@ -84,7 +84,7 @@ class SelectedMediaItem {
 /// Spec:
 ///  - Background hitam.
 ///  - Header: [X] Buat Postingan [Next]
-///  - Preview centered 75% lebar layar × ratio 3:4.
+///  - Preview full-width × ratio 4:5 fixed (frame tetap; toggle cover/contain).
 ///  - Gallery section: "Terbaru ˅" + "Album" button + helper text +
 ///    grid mixed foto/video thumbnails.
 ///  - Selection mode auto-detect: first pick = photo → photo mode (max 8),
@@ -116,6 +116,14 @@ class FeedMediaPickerScreen extends StatefulWidget {
       destinationBuilder: (_) => const FeedMediaPickerScreen(),
     );
   }
+
+  /// Rasio frame preview — KONSTAN 4:5 (fixed-frame ala IG). Seam test +
+  /// dokumentasi invariant: WAJIB sama untuk kedua nilai [fitOriginal].
+  /// Regresi lama: rasio berubah ke natural foto saat fitOriginal=true →
+  /// seluruh layout (grid galeri) melompat.
+  @visibleForTesting
+  static double resolvePreviewAspect({required bool fitOriginal}) =>
+      _FeedMediaPickerScreenState._defaultPreviewAspect;
 
   @override
   State<FeedMediaPickerScreen> createState() => _FeedMediaPickerScreenState();
@@ -150,21 +158,18 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   /// saat error pertama terjadi.
   String? _previewVideoError;
 
-  // Instagram-style preview frame:
-  // - Default (fitOriginal=false): Frame 4:5, foto cover/fill (crop).
-  // - Tap icon (fitOriginal=true): Frame **resize ke aspect natural foto**
-  //   (match IG fullscreen expand behavior). Frame portrait 3:4 atau
-  //   landscape 4:3 sesuai foto. Foto fill tanpa letterbox.
-  // - Aspect ratio di-clamp [0.5, 1.91] supaya tidak terlalu tall/wide
-  //   yang awkward di phone screen.
+  // Instagram-style preview frame — FIXED, tidak pernah berubah ukuran:
+  // - Frame selalu full-width × rasio 4:5 (ala IG picker).
+  // - Default (fitOriginal=false): foto COVER (mengisi penuh + crop) →
+  //   kesan pertama natural, bukan "terpress".
+  // - Tap icon (fitOriginal=true): foto CONTAIN (utuh + letterbox) DI DALAM
+  //   frame 4:5 yang SAMA. Bingkai diam, foto yang mengecil.
+  // Toggle TIDAK me-resize frame lagi (dulu begitu → grid galeri melompat).
   static const double _defaultPreviewAspect = 4 / 5; // 0.8 portrait
-  static const double _minNaturalAspect = 0.5; // 1:2 max tall
-  static const double _maxNaturalAspect = 1.91; // landscape IG
   bool _previewFitOriginal = false;
   // Preview image size (lazy load lewat ui.instantiateImageCodec, ~50ms
-  // vs ~500-1500ms via image package). Dipakai untuk:
-  // 1. Compute natural aspect saat fitOriginal=true.
-  // 2. Pass ke _PhotoCropPreview supaya tidak load ulang.
+  // vs ~500-1500ms via image package). Dipakai untuk pra-muat ke
+  // PhotoCropPreview supaya tidak load ulang (anti-flash pinch).
   Size? _previewImageSize;
   String? _previewImageSizeAssetId; // track asset yg size-nya sudah loaded.
   final Map<String, PhotoCropTransform> _photoCropTransforms = {};
@@ -173,17 +178,12 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   final Map<String, AssetEntity> _assetById = {};
   bool _thumbStripHintShown = false;
 
-  /// Computed preview aspect — 4:5 default, atau natural foto kalau
-  /// fitOriginal mode aktif dan image size sudah loaded.
-  double get _previewAspect {
-    if (!_previewFitOriginal) return _defaultPreviewAspect;
-    final size = _previewImageSize;
-    if (size == null || size.width <= 0 || size.height <= 0) {
-      return _defaultPreviewAspect;
-    }
-    final natural = size.width / size.height;
-    return natural.clamp(_minNaturalAspect, _maxNaturalAspect).toDouble();
-  }
+  /// Rasio frame preview — KONSTAN 4:5 (ala IG picker, fixed-frame).
+  /// Toggle fitOriginal tidak lagi mengubah ukuran frame; hanya cara foto
+  /// mengisinya (cover ↔ contain) di dalam frame yang sama.
+  double get _previewAspect => FeedMediaPickerScreen.resolvePreviewAspect(
+        fitOriginal: _previewFitOriginal,
+      );
 
   /// Load preview image dimensions cepat pakai `ui.instantiateImageCodec`
   /// (native, ~10x faster dari image package decode). Update state +
@@ -774,9 +774,9 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         // Subtitle + constraint info dihapus per spec user — UI lebih
         // clean match Instagram (header langsung media tanpa helper text).
         const SliverToBoxAdapter(child: SizedBox(height: 8)),
-        // ── Preview area 75% × fixed 4:5 ──
-        // Diagonal button overlay toggle cover/fill <-> contain/fit,
-        // seperti Instagram picker.
+        // ── Preview area full-width × fixed 4:5 ──
+        // Diagonal button overlay toggle cover/fill <-> contain/fit di dalam
+        // frame yang sama, seperti Instagram picker.
         SliverToBoxAdapter(child: _buildPreview()),
         if (_mode == FeedPostContentType.image && _selectedPhotos.length >= 2)
           SliverToBoxAdapter(child: _buildThumbStripSection()),
@@ -881,52 +881,43 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   }
 
   Widget _buildPreview() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final screenWidth = constraints.maxWidth;
-        final previewWidth = screenWidth * 0.75;
-        return Center(
-          child: SizedBox(
-            width: previewWidth,
-            child: AspectRatio(
-              // Frame tetap 4:5; yang berubah hanya fit image di dalamnya.
-              aspectRatio: _previewAspect,
-              child: ClipRRect(
-                borderRadius: BorderRadius.zero,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    _buildPreviewContent(),
-                    // Floating fit/fill toggle bottom-left — visible saat mode
-                    // foto. Tap = cover <-> contain.
-                    if (_mode != FeedPostContentType.video &&
-                        _previewType == FeedPostContentType.image)
-                      Positioned(
-                        left: 12,
-                        bottom: 12,
-                        child: _AspectToggleButton(
-                          fitOriginal: _previewFitOriginal,
-                          onTap: _togglePreviewFit,
-                        ),
-                      ),
-                    if (_mode == FeedPostContentType.image &&
-                        _selectedPhotos.length > 1 &&
-                        _previewAsset != null)
-                      Positioned(
-                        right: 10,
-                        top: 10,
-                        child: _PhotoCounterPill(
-                          current: _selectedPhotoOrderForCounter,
-                          total: _selectedPhotos.length,
-                        ),
-                      ),
-                  ],
+    // Frame FIXED: full-width (mengikuti lebar sliver) × rasio 4:5 konstan.
+    // Tidak pernah berubah ukuran apa pun status toggle → grid galeri di
+    // bawah tak bergeser (ala IG).
+    return AspectRatio(
+      aspectRatio: _previewAspect,
+      child: ClipRRect(
+        borderRadius: BorderRadius.zero,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _buildPreviewContent(),
+            // Floating fit/fill toggle bottom-left — visible saat mode
+            // foto. Tap = cover <-> contain (di dalam frame yang sama).
+            if (_mode != FeedPostContentType.video &&
+                _previewType == FeedPostContentType.image)
+              Positioned(
+                left: 12,
+                bottom: 12,
+                child: _AspectToggleButton(
+                  fitOriginal: _previewFitOriginal,
+                  onTap: _togglePreviewFit,
                 ),
               ),
-            ),
-          ),
-        );
-      },
+            if (_mode == FeedPostContentType.image &&
+                _selectedPhotos.length > 1 &&
+                _previewAsset != null)
+              Positioned(
+                right: 10,
+                top: 10,
+                child: _PhotoCounterPill(
+                  current: _selectedPhotoOrderForCounter,
+                  total: _selectedPhotos.length,
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -987,8 +978,9 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     );
   }
 
-  /// Toggle preview image fitting: default cover/fill, tap icon diagonal
-  /// untuk contain/fit supaya foto terlihat utuh di frame 4:5 yang sama.
+  /// Toggle cara foto mengisi frame 4:5 fixed: default cover/fill, tap ikon
+  /// diagonal → contain/fit (foto utuh + letterbox) di frame yang SAMA.
+  /// Frame tidak berubah ukuran; hanya BoxFit foto yang berganti.
   void _togglePreviewFit() {
     AppHaptics.tap();
     setState(() => _previewFitOriginal = !_previewFitOriginal);
@@ -1095,10 +1087,10 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         ],
       );
     }
-    // Photo preview — Instagram-style fit/fill toggle.
-    // - Default (fitOriginal=false): frame 4:5, foto cover/fill (crop).
-    // - Tap icon (fitOriginal=true): frame **resize ke aspect natural**
-    //   foto (match IG fullscreen expand). Foto fill, no letterbox.
+    // Photo preview — Instagram-style fit/fill toggle di frame 4:5 FIXED.
+    // - Default (fitOriginal=false): foto cover/fill (crop) mengisi frame.
+    // - Tap icon (fitOriginal=true): foto contain/fit (utuh + letterbox)
+    //   di dalam frame 4:5 yang SAMA — frame tidak berubah ukuran.
     // - Mode default: user bisa pinch/drag, hasil upload follow crop.
     if (_previewPath != null) {
       // Pass pre-loaded imageSize supaya _PhotoCropPreview tidak load
