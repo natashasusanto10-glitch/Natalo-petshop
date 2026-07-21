@@ -12,24 +12,12 @@ class PostHero extends StatelessWidget {
     this.borderRadius = BorderRadius.zero,
     required this.child,
     this.flightChild,
-    this.active = true,
   });
 
   final String scope;
   final String postId;
   final BorderRadius borderRadius;
   final Widget child;
-
-  /// `false` → Hero dipasang dengan tag "inert" (bukan
-  /// `postHeroTag(scope, postId)`, jadi TIDAK PERNAH cocok dengan Hero mana
-  /// pun di route lain) — dipakai untuk close-only Hero (lihat
-  /// `_HeroFlightGate` di member_post_detail_screen.dart): bentuk tree
-  /// SELALU sama (Hero tetap membungkus child) supaya subtree media (mis.
-  /// `_InlineVideoPlayer`) TIDAK pernah di-reparent/dibuat ulang hanya
-  /// karena Hero aktif/nonaktif — cuma STRING tag yang berubah, yang inert
-  /// terhadap HeroController selama tidak ada transisi navigasi berjalan
-  /// tepat di frame yang sama.
-  final bool active;
 
   /// Surface RINGAN dipakai HANYA di dalam shuttle (kedua arah), sebagai
   /// pengganti [child]. Untuk video: `_HeroVideoFlightSurface` yang membaca
@@ -44,9 +32,7 @@ class PostHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Hero(
-      tag: active
-          ? postHeroTag(scope, postId)
-          : '${postHeroTag(scope, postId)}/inert',
+      tag: postHeroTag(scope, postId),
       transitionOnUserGestures: true,
       flightShuttleBuilder: _shuttle,
       child: ClipRRect(
@@ -88,9 +74,8 @@ class PostHero extends StatelessWidget {
       builder: (context, _) => ClipRRect(
         // Kunci debug tetap: penanda bahwa flight NYATA sedang berlangsung
         // (shuttle ini hanya dibangun HeroController saat menerbangkan
-        // pasangan Hero) — dipakai test untuk membuktikan TIDAK ADA flight
-        // yang tertangkap selama push (lihat
-        // member_post_detail_hero_close_only_test.dart).
+        // pasangan Hero) — dipakai test untuk membuktikan flight terjadi di
+        // KEDUA arah (push DAN pop).
         key: const ValueKey('post-hero-shuttle'),
         borderRadius: BorderRadius.lerp(fromRadius, toRadius, animation.value)!,
         child: display,

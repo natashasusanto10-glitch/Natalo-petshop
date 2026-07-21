@@ -226,6 +226,37 @@ void main() {
   );
 
   testWidgets(
+    'drag-turun melewati ambang memicu pop (dismiss gesture)',
+    (tester) async {
+      var popped = false;
+      final postFoto = _fakePhotoPost(id: 'p1');
+      await pumpScreen(
+        tester,
+        posts: [postFoto],
+        heroScope: 'profile',
+        onWillClose: (_) => popped = true,
+      );
+
+      expect(find.byType(MemberPostDetailScreen), findsOneWidget);
+
+      // Seret jauh ke bawah (>100px ambang) pada header (area non-scrollable)
+      // supaya gesture ditangkap detektor dismiss viewer, bukan ListView.
+      await tester.drag(
+        find.byType(MemberPostDetailScreen),
+        const Offset(0, 400),
+        warnIfMissed: false,
+      );
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(popped, isTrue,
+          reason: 'drag-turun melewati ambang harus menutup viewer');
+      expect(find.byType(MemberPostDetailScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
     'HANYA SATU Hero post-hero/ hidup di viewer, dan tag-nya ikut pindah '
     'ke post yang paling terlihat saat scroll (single-hero, cegah ghost '
     'flight neighbor — §4 spec)',

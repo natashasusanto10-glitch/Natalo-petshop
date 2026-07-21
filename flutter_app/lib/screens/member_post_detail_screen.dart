@@ -3,7 +3,6 @@ import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -269,6 +268,53 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   // ValueListenableBuilder so only the (at most two) affected media
   // subtrees rebuild when it changes, not the whole list.
   late final ValueNotifier<String> _heroPostId;
+
+  // ── Drag-down-to-dismiss (model IG/TikTok) ───────────────────────────
+  // Route viewer memakai transisi FADE (bukan slide native), jadi swipe
+  // edge iOS / predictive-back Android tidak lagi mengendarai transisi.
+  // Sebagai gantinya, tarik-turun dari puncak list menggeser halaman; lepas
+  // di atas ambang → maybePop (hero terbang balik ke tile karena
+  // transitionOnUserGestures: true). Di bawah ambang → balik ke rest.
+  //
+  // Pakai [Listener] (pointer mentah, TIDAK ikut gesture arena) — bukan
+  // GestureDetector — supaya `VerticalDragGestureRecognizer` milik ListView
+  // (yang selalu MENANG arena untuk drag vertikal) tidak mencuri gesture.
+  // Translasi hanya aktif saat scroll di puncak (`pixels <= 0`) dan arah
+  // tarik ke bawah, jadi scroll normal di tengah list tak terpengaruh.
+  // Sederhana & robust — bukan interactive route controller penuh.
+  static const double _dragDismissThreshold = 100;
+  double _dragOffset = 0;
+  bool _dragging = false;
+
+  bool get _listAtTop =>
+      !_scrollController.hasClients || _scrollController.position.pixels <= 0.0;
+
+  void _onViewerPointerMove(PointerMoveEvent event) {
+    // Mulai/lanjutkan hanya bila (a) sudah menyeret, atau (b) di puncak list
+    // dan menarik ke bawah. Kalau tidak, biarkan scroll normal jalan.
+    if (_dragOffset <= 0 && !(_listAtTop && event.delta.dy > 0)) return;
+    final next = (_dragOffset + event.delta.dy).clamp(0.0, double.infinity);
+    if (next == _dragOffset) return;
+    setState(() {
+      _dragging = true;
+      _dragOffset = next;
+    });
+  }
+
+  void _onViewerPointerUp(PointerUpEvent event) => _settleDrag();
+  void _onViewerPointerCancel(PointerCancelEvent event) => _settleDrag();
+
+  void _settleDrag() {
+    if (_dragOffset <= 0) return;
+    if (_dragOffset > _dragDismissThreshold) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    setState(() {
+      _dragging = false;
+      _dragOffset = 0;
+    });
+  }
 
   void _onPostVisibilityChanged(String postId, double fraction) {
     if (!mounted) return;
@@ -1026,121 +1072,147 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
               widget.post.id,
         );
       },
-      child: Scaffold(
-        backgroundColor: cs.surface,
-        body: Stack(
-          children: [
-            _posts.isEmpty
-                ? Center(
-                    child: Text(
-                      'Belum ada postingan',
-                      style: TextStyle(
-                        color: cs.onSurfaceVariant,
-                        fontSize: 14,
-                        fontWeight: NataloWeight.body,
+      child: Listener(
+        // Drag-down-to-dismiss (menggantikan edge-swipe/predictive-back yang
+        // hilang bersama slide native). Pointer mentah supaya tidak berebut
+        // gesture arena dengan drag vertikal ListView (lihat _onViewerPointer*).
+        onPointerMove: _onViewerPointerMove,
+        onPointerUp: _onViewerPointerUp,
+        onPointerCancel: _onViewerPointerCancel,
+        child: Transform.translate(
+          offset: Offset(0, _dragOffset),
+          child: Transform.scale(
+            scale: 1 - (_dragOffset / 2000).clamp(0.0, 0.08),
+            alignment: Alignment.center,
+            child: Opacity(
+              // Backdrop fade proporsional — isyarat visual bahwa gesture
+              // akan menutup (di bawah ambang tetap terbaca jelas).
+              opacity: 1 - (_dragOffset / 1000).clamp(0.0, 0.35),
+              child: Scaffold(
+                backgroundColor: _dragging ? Colors.transparent : cs.surface,
+                body: Stack(
+                  children: [
+                    _posts.isEmpty
+                        ? Center(
+                            child: Text(
+                              'Belum ada postingan',
+                              style: TextStyle(
+                                color: cs.onSurfaceVariant,
+                                fontSize: 14,
+                                fontWeight: NataloWeight.body,
+                              ),
+                            ),
+                          )
+                        : NataloPawRefreshIndicator(
+                            onRefresh: _refreshPosts,
+                            child: ListView.separated(
+                              controller: _scrollController,
+                              cacheExtent: _maximumEstimatedPostExtent(
+                                      MediaQuery.sizeOf(context).width) *
+                                  2,
+                              // Top: media post pertama mulai TEPAT di bawah header (status
+                              // bar + toolbar), jadi saat pertama buka media tidak "over ke
+                              // atas" / kepotong — framing 9:16 utuh (paritas IG). Saat
+                              // discroll, media lewat di belakang header frosted-tipis.
+                              // Bottom: extra space supaya post terakhir bisa discroll lega
+                              // ke atas viewport (gak mepet ke home indicator).
+                              padding: EdgeInsets.only(
+                                top: MediaQuery.paddingOf(context).top +
+                                    kToolbarHeight,
+                                bottom: 48,
+                              ),
+                              // Fling diredam ala IG — lihat CalmScrollPhysics.
+                              physics: const CalmScrollPhysics(),
+                              itemCount: _posts.length,
+                              // Whitespace pemisah antar post tetap ada, tapi lebih compact
+                              // supaya detail terasa seperti feed/post Instagram.
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 24),
+                              itemBuilder: (context, index) {
+                                final post = _posts[index];
+                                return _PostFeedItem(
+                                  // GlobalKey untuk Scrollable.ensureVisible jump akurat
+                                  // ke post target saat initial open dari grid.
+                                  key: _postKeys[index],
+                                  post: post,
+                                  coordinator: _videoCoordinator,
+                                  registerVideoUrl: _registerVideoUrl,
+                                  handoffSessionId: _handoffSessionId,
+                                  memberName: widget.authorPerPost
+                                      ? _authorNameFor(post)
+                                      : _memberName,
+                                  memberInitial: widget.authorPerPost
+                                      ? _authorInitialFor(post)
+                                      : _memberInitial,
+                                  memberPhotoUrl: widget.authorPerPost
+                                      ? _authorPhotoFor(post)
+                                      : _memberPhotoUrl,
+                                  memberUsername: widget.authorPerPost
+                                      ? post.author.username
+                                      : _memberUsernameFor(post),
+                                  memberIsOfficial: widget.authorPerPost
+                                      ? post.author.isOfficialAccount
+                                      : widget.authorIsOfficial,
+                                  liked: _likedCache[post.id] ?? false,
+                                  // Hide ... menu ketika viewing post user lain — tidak ada
+                                  // edit/delete option untuk non-owner. (Bisa ekspansi nanti
+                                  // ke Report/Block via tombol terpisah kalau perlu.)
+                                  showMenu: widget.isOwner,
+                                  // Status badge owner-only (Menunggu review/Ditolak).
+                                  showStatusBadge: widget.isOwner,
+                                  onLike: () => _toggleLike(index),
+                                  onComment: () => _openComments(index),
+                                  onShare: () => _shareNative(index),
+                                  onMenuTap: widget.isOwner
+                                      ? () => _openPostMenu(index)
+                                      : null,
+                                  onOpenScopedFeed: (sessionId, anchorKey) =>
+                                      _openScopedVideoFeed(
+                                          index, sessionId, anchorKey),
+                                  onVideoAnchorReady: (postId, anchorKey) {
+                                    _videoAnchorKeys[postId] = anchorKey;
+                                  },
+                                  onVisibilityChanged: _onPostVisibilityChanged,
+                                  onVisibilityDisposed:
+                                      _onPostVisibilityDisposed,
+                                  heroScope: widget.heroScope,
+                                  heroPostId: _heroPostId,
+                                );
+                              },
+                            ),
+                          ),
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: _PostDetailTransparentHeaderBar(
+                        // Cross-account (authorPerPost): overlay ini fixed di atas
+                        // SELURUH pager, bukan per-index — tak ada satu author yang
+                        // representatif saat isinya lintas akun. Sembunyikan
+                        // nama/badge/chip ikuti (sama alasan dgn subtitle AppBar lama
+                        // yang disembunyikan di mode ini), sisakan cuma judul +
+                        // tombol back.
+                        memberName: widget.authorPerPost ? '' : _memberName,
+                        authorIsOfficial: widget.authorPerPost
+                            ? false
+                            : widget.authorIsOfficial,
+                        // authorId kosong (data profil tak lengkap) → chip
+                        // disembunyikan: follow('') pasti gagal + override tak pernah
+                        // nyambung, lebih baik tak tampil daripada selalu "Ikuti".
+                        showFollowChip: !widget.isOwner &&
+                            !widget.authorPerPost &&
+                            (widget.authorId ?? widget.post.author.id)
+                                .isNotEmpty,
+                        authorId: widget.authorId ?? widget.post.author.id,
+                        authorInitiallyFollowing: widget.authorIsFollowing ??
+                            widget.post.author.isFollowing,
                       ),
                     ),
-                  )
-                : NataloPawRefreshIndicator(
-                    onRefresh: _refreshPosts,
-                    child: ListView.separated(
-                      controller: _scrollController,
-                      cacheExtent: _maximumEstimatedPostExtent(
-                              MediaQuery.sizeOf(context).width) *
-                          2,
-                      // Top: media post pertama mulai TEPAT di bawah header (status
-                      // bar + toolbar), jadi saat pertama buka media tidak "over ke
-                      // atas" / kepotong — framing 9:16 utuh (paritas IG). Saat
-                      // discroll, media lewat di belakang header frosted-tipis.
-                      // Bottom: extra space supaya post terakhir bisa discroll lega
-                      // ke atas viewport (gak mepet ke home indicator).
-                      padding: EdgeInsets.only(
-                        top: MediaQuery.paddingOf(context).top + kToolbarHeight,
-                        bottom: 48,
-                      ),
-                      // Fling diredam ala IG — lihat CalmScrollPhysics.
-                      physics: const CalmScrollPhysics(),
-                      itemCount: _posts.length,
-                      // Whitespace pemisah antar post tetap ada, tapi lebih compact
-                      // supaya detail terasa seperti feed/post Instagram.
-                      separatorBuilder: (_, __) => const SizedBox(height: 24),
-                      itemBuilder: (context, index) {
-                        final post = _posts[index];
-                        return _PostFeedItem(
-                          // GlobalKey untuk Scrollable.ensureVisible jump akurat
-                          // ke post target saat initial open dari grid.
-                          key: _postKeys[index],
-                          post: post,
-                          coordinator: _videoCoordinator,
-                          registerVideoUrl: _registerVideoUrl,
-                          handoffSessionId: _handoffSessionId,
-                          memberName: widget.authorPerPost
-                              ? _authorNameFor(post)
-                              : _memberName,
-                          memberInitial: widget.authorPerPost
-                              ? _authorInitialFor(post)
-                              : _memberInitial,
-                          memberPhotoUrl: widget.authorPerPost
-                              ? _authorPhotoFor(post)
-                              : _memberPhotoUrl,
-                          memberUsername: widget.authorPerPost
-                              ? post.author.username
-                              : _memberUsernameFor(post),
-                          memberIsOfficial: widget.authorPerPost
-                              ? post.author.isOfficialAccount
-                              : widget.authorIsOfficial,
-                          liked: _likedCache[post.id] ?? false,
-                          // Hide ... menu ketika viewing post user lain — tidak ada
-                          // edit/delete option untuk non-owner. (Bisa ekspansi nanti
-                          // ke Report/Block via tombol terpisah kalau perlu.)
-                          showMenu: widget.isOwner,
-                          // Status badge owner-only (Menunggu review/Ditolak).
-                          showStatusBadge: widget.isOwner,
-                          onLike: () => _toggleLike(index),
-                          onComment: () => _openComments(index),
-                          onShare: () => _shareNative(index),
-                          onMenuTap: widget.isOwner
-                              ? () => _openPostMenu(index)
-                              : null,
-                          onOpenScopedFeed: (sessionId, anchorKey) =>
-                              _openScopedVideoFeed(index, sessionId, anchorKey),
-                          onVideoAnchorReady: (postId, anchorKey) {
-                            _videoAnchorKeys[postId] = anchorKey;
-                          },
-                          onVisibilityChanged: _onPostVisibilityChanged,
-                          onVisibilityDisposed: _onPostVisibilityDisposed,
-                          heroScope: widget.heroScope,
-                          heroPostId: _heroPostId,
-                        );
-                      },
-                    ),
-                  ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: _PostDetailTransparentHeaderBar(
-                // Cross-account (authorPerPost): overlay ini fixed di atas
-                // SELURUH pager, bukan per-index — tak ada satu author yang
-                // representatif saat isinya lintas akun. Sembunyikan
-                // nama/badge/chip ikuti (sama alasan dgn subtitle AppBar lama
-                // yang disembunyikan di mode ini), sisakan cuma judul +
-                // tombol back.
-                memberName: widget.authorPerPost ? '' : _memberName,
-                authorIsOfficial:
-                    widget.authorPerPost ? false : widget.authorIsOfficial,
-                // authorId kosong (data profil tak lengkap) → chip
-                // disembunyikan: follow('') pasti gagal + override tak pernah
-                // nyambung, lebih baik tak tampil daripada selalu "Ikuti".
-                showFollowChip: !widget.isOwner &&
-                    !widget.authorPerPost &&
-                    (widget.authorId ?? widget.post.author.id).isNotEmpty,
-                authorId: widget.authorId ?? widget.post.author.id,
-                authorInitiallyFollowing:
-                    widget.authorIsFollowing ?? widget.post.author.isFollowing,
+                  ],
+                ),
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -2948,75 +3020,24 @@ class _PostMediaSurface extends StatelessWidget {
   /// Null [heroScope]/[heroPostId] (deep-link tanpa origin grid) → child
   /// apa adanya, tanpa Hero maupun listener.
   ///
-  /// Close-only Hero (device feedback): pada OPEN (push), page slide native
-  /// dan Hero flight berjalan BERSAMAAN terasa "berlapis". Pada CLOSE (pop),
-  /// fly-back-to-tile sudah bagus dan dipertahankan. Karena `Hero` tidak
-  /// punya flag arah bawaan, gating dilakukan lewat [PostHero.active]:
-  /// `PostHero` SELALU membungkus child (bentuk tree TIDAK PERNAH berubah —
-  /// lihat dokumentasi `PostHero.active`), tapi selama push masih berjalan
-  /// tag-nya "inert" (tak pernah cocok dengan tile grid) sehingga Flutter
-  /// tidak membuat flight sama sekali (push jadi murni transisi native).
-  /// PENTING: JANGAN gating dengan meng-OMIT `PostHero` dari tree (mis.
-  /// `heroActive ? PostHero(...) : child`) — itu mengubah BENTUK tree
-  /// (Hero>ClipRRect>_HeroContent>child vs child polos), yang membuat
-  /// Flutter mem-BUANG & membuat ULANG elemen media (`_InlineVideoPlayer`)
-  /// begitu status berubah — video jadi restart dingin (controller baru)
-  /// tepat saat push selesai. Reproduksi nyata & fix: regresi
-  /// member_post_detail_video_hero_flight_test.dart (VideoPlayer lenyap
-  /// dari tree persis di frame status berubah).
-  ///
-  /// Sumber kebenaran `heroActive`: animasi milik ROUTE itu sendiri
-  /// (`ModalRoute.of(context)!.animation`) — bukan timer/controller buatan:
-  ///
-  ///   status      | kapan                          | PostHero.active?
-  ///   ------------|--------------------------------|------------------
-  ///   forward     | push sedang berjalan (0→1)      | false (no flight)
-  ///   completed   | push selesai, halaman diam      | true (siap utk pop)
-  ///   reverse     | pop sedang berjalan (1→0)        | true (flight jalan)
-  ///   dismissed   | pop selesai, route akan dibuang | true (harmless)
-  ///
-  /// Hanya `forward` yang inert. Kalau `ModalRoute.of(context)` null (mis.
-  /// dites tanpa route sungguhan) → fallback selalu active, degradasi aman
-  /// (sama seperti sebelum perubahan ini).
+  /// Hero DUA ARAH (model IG/TikTok): route viewer memakai transisi FADE
+  /// (bukan slide native), jadi media boleh terbang tile↔slot pada push DAN
+  /// pop tanpa terasa "berlapis" — TIDAK ada gating arah lagi. `PostHero`
+  /// selalu membungkus child (bentuk tree konstan → subtree media tidak
+  /// pernah di-reparent).
   Widget _wrapHero(BuildContext context, Widget child, {Widget? flightChild}) {
     final scope = heroScope;
     final notifier = heroPostId;
     if (scope == null || notifier == null) return child;
-    final route = ModalRoute.of(context);
-    final routeAnimation = route?.animation;
     return ValueListenableBuilder<String>(
       valueListenable: notifier,
       builder: (context, activeHeroPostId, staticChild) {
         if (activeHeroPostId != post.id) return staticChild!;
-        if (routeAnimation == null) {
-          return PostHero(
-            scope: scope,
-            postId: post.id,
-            flightChild: flightChild,
-            child: staticChild!,
-          );
-        }
-        return _HeroFlightGate(
-          animation: routeAnimation,
-          // `HeroController._maybeStartHeroTransition` (flutter SDK
-          // heroes.dart) substitutes `kAlwaysCompleteAnimation` for THIS
-          // route's animation for exactly one build (`route.offstage =
-          // true`) right when a push starts, BEFORE the real controller
-          // status ever reports `forward` — see `_HeroFlightGate` doc
-          // below for why that stand-in defeats a status-only gate. Pass
-          // the ROUTE itself (stable object identity across rebuilds,
-          // unlike a bool snapshot) so the gate can read `.offstage` LIVE
-          // at any time — not just when this ancestor happens to rebuild.
-          route: route,
-          gestureInProgress: route?.navigator?.userGestureInProgressNotifier,
+        return PostHero(
+          scope: scope,
+          postId: post.id,
+          flightChild: flightChild,
           child: staticChild!,
-          builder: (context, heroActive, child) => PostHero(
-            scope: scope,
-            postId: post.id,
-            flightChild: flightChild,
-            active: heroActive,
-            child: child!,
-          ),
         );
       },
       child: child,
@@ -3090,204 +3111,6 @@ class _PostMediaSurface extends StatelessWidget {
       },
     );
   }
-}
-
-/// Gate reaktif atas status [animation] milik ROUTE (bukan controller
-/// buatan) — dipakai [_PostMediaSurface._wrapHero] untuk close-only Hero
-/// (lihat dokumentasi di sana untuk tabel status).
-///
-/// Perubahan `heroActive` DIBERI JEDA satu frame lewat
-/// `addPostFrameCallback`, bukan langsung sinkron di status listener.
-/// Alasan: `HeroController` bawaan Flutter JUGA mendengarkan status
-/// `animation` route yang sama untuk memutuskan mulai/lanjut flight untuk
-/// transisi yang sedang berjalan. Kalau widget ini menampilkan `PostHero`
-/// (Hero baru muncul, jadi berpasangan dengan tile grid) TEPAT di frame yang
-/// sama saat status berubah (mis. forward→completed), `HeroController`
-/// bisa melihat pasangan Hero yang baru itu SEBAGAI transisi yang masih
-/// aktif dan mencoba memulai flight kedua — reproduksi nyata: assertion
-/// `_HeroFlight.divert` (ketemu lewat regresi
-/// member_post_detail_video_hero_flight_test.dart). Menunda satu frame
-/// membiarkan `HeroController` selesai memproses status-change itu dulu
-/// (tanpa Hero baru di frame yang sama), baru `PostHero` muncul di frame
-/// BERIKUTNYA yang tenang (tanpa status-change baru).
-///
-/// GESTURE POP (edge-swipe iOS): `_CupertinoBackGestureController.dragUpdate`
-/// menulis `controller.value -= delta` LANGSUNG (bukan lewat
-/// `animateTo`/`reverse`). `AnimationController.value` setter memanggil
-/// `_internalSetValue`, yang menghitung status dari `_direction` TERAKHIR
-/// (masih `forward` dari push sebelumnya) — jadi selama SELURUH drag,
-/// `animation.status` tetap `forward` walau usernya sedang menyeret pop.
-/// Kalau `heroActive` cuma bergantung pada status, gate ini salah baca
-/// drag itu sebagai "push sedang jalan" → Hero tetap inert → fly-back tidak
-/// pernah terjadi untuk gesture close (yang paling umum di iOS).
-///
-/// Fix: OR-kan dengan `navigator.userGestureInProgressNotifier` (ValueNotifier
-/// bool milik NavigatorState, true selama `didStartUserGesture()`..
-/// `didStopUserGesture()`). Gate ini TIDAK perlu membuat sinyal gesture itu
-/// sinkron/instan — cukup pola defer-satu-frame yang SAMA dengan status
-/// listener, karena capture flight awal utk gesture-pop tidak bergantung
-/// padanya sama sekali:
-///
-///  - `_CupertinoBackGestureController` konstruktor memanggil
-///    `navigator.didStartUserGesture()` SEBELUM drag pertama (`dragUpdate`)
-///    — di titik itu `animation.status` MASIH `completed` (halaman baru saja
-///    selesai push, diam), jadi `_heroActive` gate ini SUDAH `true` dari
-///    resync sebelumnya (idle state pasca-push). `HeroController` yang men-
-///    tangkap pasangan Hero via `didStartUserGesture` observer callback jadi
-///    melihat Hero yang SUDAH aktif — tidak ada capture yang terlewat.
-///  - Baru SETELAHNYA `dragUpdate` menulis `.value` dan status jatuh ke
-///    `forward` (side-effect di atas) — pada titik itu flight SUDAH
-///    tertangkap; gate ini cuma perlu MEMPERTAHANKAN `heroActive=true` lewat
-///    kondisi OR, bukan menangkap flight baru. Sinyal
-///    `userGestureInProgressNotifier` sudah `true` SEBELUM status pertama
-///    kali jatuh ke `forward` (constructor jalan dulu, baru drag), jadi
-///    resync yang ditunda satu frame tetap melihat kombinasi
-///    (`status=forward`, `gestureInProgress=true`) → `active=true` — TIDAK
-///    ada jendela di mana gate salah nonaktifkan Hero di tengah gesture.
-///  - Race `_HeroFlight.divert` yang memaksa defer status listener adalah
-///    soal ORDERING dalam SATU frame yang sama (Hero baru muncul di frame
-///    yang sama HeroController lagi memproses status-change). Gesture-flip
-///    tidak punya kebutuhan sinkron serupa — capture-nya sudah selesai
-///    sebelum drag mengubah status apa pun — jadi menyamakan pola defer di
-///    kedua listener aman dan konsisten, tanpa kebutuhan jalur sinkron
-///    khusus.
-class _HeroFlightGate extends StatefulWidget {
-  const _HeroFlightGate({
-    required this.animation,
-    required this.builder,
-    this.route,
-    this.gestureInProgress,
-    this.child,
-  });
-
-  final Animation<double> animation;
-  final Widget Function(BuildContext context, bool heroActive, Widget? child)
-      builder;
-
-  /// Route yang memiliki [animation] — objek STABIL (identity sama across
-  /// rebuild ancestor manapun), jadi `.offstage`-nya bisa dibaca LIVE
-  /// kapan saja (di `_resync` yang dipicu status listener, bukan cuma
-  /// waktu `_wrapHero` kebetulan rebuild) — lihat FIX doc di
-  /// [_HeroFlightGateState._activeFor]. Null kalau tak ada Navigator
-  /// (mis. dites tanpa route sungguhan) — fallback ke perilaku status-only
-  /// lama (`offstage` dianggap selalu `false`).
-  final ModalRoute<dynamic>? route;
-
-  /// `NavigatorState.userGestureInProgressNotifier` milik route ini (null
-  /// kalau tak ada Navigator, mis. dites tanpa route sungguhan — fallback ke
-  /// perilaku status-only lama).
-  final ValueListenable<bool>? gestureInProgress;
-  final Widget? child;
-
-  @override
-  State<_HeroFlightGate> createState() => _HeroFlightGateState();
-}
-
-class _HeroFlightGateState extends State<_HeroFlightGate> {
-  /// FIX (device-confirmed bug — lihat close-only-hero-report.md "Fix:
-  /// inert sejak build pertama"): saat route SEDANG di-push,
-  /// `HeroController._maybeStartHeroTransition` (SDK heroes.dart) mem-set
-  /// `route.offstage = true` untuk SATU build pra-pass SEBELUM frame itu
-  /// mulai dibangun, lalu mendaftarkan `_startHeroTransition` (yang
-  /// MENCARI pasangan Hero utk memulai flight) lewat
-  /// `addPostFrameCallback` — didaftarkan SEBELUM `initState` widget ini
-  /// pernah jalan. `ModalRoute.offstage=true` MENGGANTI `animation` route
-  /// dgn `kAlwaysCompleteAnimation` (SDK routes.dart, `set offstage`) —
-  /// status-nya SELALU `completed`, bukan `forward`. Kode lama membaca
-  /// `animation.status` SECARA SINKRON di field initializer
-  /// (`late bool _heroActive = _activeFor(...)`) TANPA tahu ini stand-in
-  /// → `_activeFor` salah pulang `true` (aktif) di build PERTAMA push.
-  /// `HeroController`-nya sendiri lalu menjalankan `_startHeroTransition`
-  /// di postFrameCallback yg SUDAH ANTRE LEBIH DULU (terdaftar sebelum
-  /// widget ini bahkan mount) — menemukan Hero viewer SUDAH aktif → flight
-  /// TERTANGKAP, permanen sampai selesai, TIDAK PEDULI widget ini flip ke
-  /// inert di frame-frame berikutnya (postFrameCallback resync lama,
-  /// terdaftar SETELAH punya HeroController, jadi kalah cepat). Reproduksi:
-  /// RED test `member_post_detail_hero_close_only_test.dart` (shuttle
-  /// `post-hero-shuttle` muncul di frame ke-2 push sebelum fix ini).
-  ///
-  /// Fix: `ModalRoute.offstage` (bool, bukan `animation.status`) adalah
-  /// sinyal yang BENAR-BENAR membedakan stand-in dari transisi asli. Dibaca
-  /// LIVE dari [widget.route] tiap kali `_activeFor` dipanggil — BUKAN dari
-  /// snapshot widget field yang cuma diperbarui saat ancestor (`_wrapHero`)
-  /// kebetulan rebuild. Itu penting: `route.offstage` balik ke `false`
-  /// (dan `animation.status` balik `forward`) via mekanisme INTERNAL
-  /// `HeroController`/`ModalRoute` yang TIDAK menjamin ancestor manapun di
-  /// atas widget ini ikut rebuild — kalau nilainya di-snapshot ke widget
-  /// field, `_resync()` (dipicu status listener asli, yang tetap benar
-  /// jalan lewat langganan langsung ke objek `animation`) akan membaca
-  /// field BASI (`offstage` masih `true` dari build pertama) dan salah
-  /// PERMANEN mengunci Hero inert — regresi nyata ditemukan lewat
-  /// kegagalan `member_post_detail_hero_test.dart` (`.../inert` macet
-  /// walau push sudah lama selesai) saat percobaan pertama fix ini pakai
-  /// bool field. `route` sebagai objek (bukan bool) aman dibaca live
-  /// karena identitasnya stabil sepanjang umur route, terlepas dari
-  /// rebuild ancestor mana pun.
-  static bool _activeFor(
-    Animation<double> animation,
-    ValueListenable<bool>? gestureInProgress,
-    ModalRoute<dynamic>? route,
-  ) {
-    if (route?.offstage ?? false) return gestureInProgress?.value ?? false;
-    return animation.status != AnimationStatus.forward ||
-        (gestureInProgress?.value ?? false);
-  }
-
-  late bool _heroActive =
-      _activeFor(widget.animation, widget.gestureInProgress, widget.route);
-
-  @override
-  void initState() {
-    super.initState();
-    widget.animation.addStatusListener(_onSignalChanged);
-    widget.gestureInProgress?.addListener(_onSignalChanged);
-    // Belt-and-suspenders utk jalur lain yang mungkin salah baca status
-    // transien di build pertama (mis. `route` null saat dites tanpa
-    // Navigator sungguhan). TIDAK diandalkan lagi utk kasus offstage push
-    // nyata — itu sudah benar sejak build pertama lewat `widget.route`.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _resync());
-  }
-
-  @override
-  void didUpdateWidget(covariant _HeroFlightGate oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.animation != widget.animation) {
-      oldWidget.animation.removeStatusListener(_onSignalChanged);
-      widget.animation.addStatusListener(_onSignalChanged);
-    }
-    if (oldWidget.gestureInProgress != widget.gestureInProgress) {
-      oldWidget.gestureInProgress?.removeListener(_onSignalChanged);
-      widget.gestureInProgress?.addListener(_onSignalChanged);
-    }
-    if (oldWidget.animation != widget.animation ||
-        oldWidget.gestureInProgress != widget.gestureInProgress ||
-        oldWidget.route != widget.route) {
-      _heroActive =
-          _activeFor(widget.animation, widget.gestureInProgress, widget.route);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.animation.removeStatusListener(_onSignalChanged);
-    widget.gestureInProgress?.removeListener(_onSignalChanged);
-    super.dispose();
-  }
-
-  void _onSignalChanged([AnimationStatus? _]) {
-    WidgetsBinding.instance.addPostFrameCallback((_) => _resync());
-  }
-
-  void _resync() {
-    if (!mounted) return;
-    final active =
-        _activeFor(widget.animation, widget.gestureInProgress, widget.route);
-    if (active != _heroActive) setState(() => _heroActive = active);
-  }
-
-  @override
-  Widget build(BuildContext context) =>
-      widget.builder(context, _heroActive, widget.child);
 }
 
 class _CarouselSurface extends StatefulWidget {

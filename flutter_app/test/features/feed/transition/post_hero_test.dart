@@ -23,11 +23,33 @@ void main() {
     expect(hero.flightShuttleBuilder, isNotNull);
   });
 
-  testWidgets(
-      'PostViewerRoute adalah MaterialPageRoute (transisi native + edge-swipe back)',
+  testWidgets('PostViewerRoute opaque + FadeTransition (bukan slide native)',
       (tester) async {
     final route = PostViewerRoute<void>(builder: (_) => const SizedBox());
-    expect(route, isA<MaterialPageRoute<void>>());
+    expect(route.opaque, isTrue);
+    expect(route.maintainState, isTrue);
+    expect(route, isNot(isA<MaterialPageRoute<void>>()));
+
+    // Bukti tak ada slide: push viewer lalu pastikan transisi yang dipakai
+    // adalah FadeTransition (opacity animasi), tanpa SlideTransition.
+    final navKey = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(MaterialApp(
+      navigatorKey: navKey,
+      home: const Scaffold(body: SizedBox()),
+    ));
+    navKey.currentState!.push(PostViewerRoute<void>(
+        builder: (_) => const Scaffold(body: Text('viewer'))));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150)); // mid-transisi
+    // Konten viewer dibungkus FadeTransition milik route ini (bukan slide).
+    expect(
+      find.ancestor(
+        of: find.text('viewer'),
+        matching: find.byType(FadeTransition),
+      ),
+      findsWidgets,
+    );
+    await tester.pump(const Duration(milliseconds: 400));
   });
 
   testWidgets(
@@ -36,7 +58,7 @@ void main() {
     final navKey = GlobalKey<NavigatorState>();
     await tester.pumpWidget(MaterialApp(
       navigatorKey: navKey,
-      home: Scaffold(
+      home: const Scaffold(
         body: Align(
           alignment: Alignment.topLeft,
           child: PostHero(
@@ -46,7 +68,7 @@ void main() {
                   width: 40,
                   height: 40,
                   child: ColoredBox(
-                      color: Colors.blue, key: const Key('tile-media')))),
+                      color: Colors.blue, key: Key('tile-media')))),
         ),
       ),
     ));
@@ -75,7 +97,7 @@ void main() {
                 .byWidgetPredicate((w) => identical(w, box))
                 .evaluate()
                 .first;
-            return (element as Element).size;
+            return element.size;
           } catch (_) {
             return null;
           }
