@@ -83,6 +83,19 @@ class _OriginExpansionPageRoute<T> extends PageRoute<T> {
   final Color snapshotFallbackColor;
   _OriginBackGestureController<T>? _backGestureController;
 
+  /// True hanya bila route keluar via POP (didPop) — pembeda dari
+  /// removeRoute/dispose. Dipakai gesture controller: hanya route yang
+  /// ter-pop yang boleh (dan harus) dilanjutkan animasi penutupnya;
+  /// menyentuh controller route yang di-remove memicu assert
+  /// `finalizeRoute` framework (state-nya bukan `popping`).
+  bool _wasPopped = false;
+
+  @override
+  bool didPop(T? result) {
+    _wasPopped = true;
+    return super.didPop(result);
+  }
+
   @override
   bool get opaque => false;
 
@@ -128,7 +141,15 @@ class _OriginExpansionPageRoute<T> extends PageRoute<T> {
     Widget child,
   ) {
     return _OriginEdgeBackGestureDetector<T>(
-      enabledCallback: () => popGestureEnabled,
+      // WAJIB menunggu animasi buka selesai: gesture yang mulai saat
+      // status masih `forward` menulis controller.value → menghentikan
+      // animasi buka SELAMANYA di nilai parsial (status macet `forward`).
+      // Akibat di device: viewer semi-transparan (ghost) / viewer
+      // tak-terlihat yang tetap menelan input ("profil nyangkut").
+      // Perilaku sama dengan CupertinoRouteTransitionMixin standar.
+      enabledCallback: () =>
+          popGestureEnabled &&
+          controller!.status == AnimationStatus.completed,
       onStartPopGesture: _startPopGesture,
       child: OriginExpansionTransition(
         animation: animation,
@@ -148,6 +169,7 @@ class _OriginExpansionPageRoute<T> extends PageRoute<T> {
       navigator: navigator!,
       controller: controller!,
       getIsCurrent: () => isCurrent,
+      getWasPopped: () => _wasPopped,
       onFinished: () {
         if (identical(_backGestureController, backGestureController)) {
           _backGestureController = null;
@@ -258,6 +280,7 @@ class _OriginBackGestureController<T> {
     required this.navigator,
     required this.controller,
     required this.getIsCurrent,
+    required this.getWasPopped,
     required this.onFinished,
   }) {
     navigator.didStartUserGesture();
@@ -266,13 +289,21 @@ class _OriginBackGestureController<T> {
   final NavigatorState navigator;
   final AnimationController controller;
   final ValueGetter<bool> getIsCurrent;
+  final ValueGetter<bool> getWasPopped;
   final VoidCallback onFinished;
   bool _active = true;
   AnimationStatusListener? _statusListener;
 
   void dragUpdate(double delta) {
     if (!_active) return;
-    controller.value -= delta;
+    // Route sudah ter-pop dari sumber lain saat jari masih di layar —
+    // reverse() yang sedang berjalan TIDAK boleh dihentikan oleh drag.
+    if (!getIsCurrent()) return;
+    // Clamp bawah ke epsilon: nilai tidak boleh menyentuh 0.0 selagi
+    // route masih current — status `dismissed` prematur membuat pop
+    // berikutnya tidak menghasilkan notifikasi status baru → route tak
+    // pernah difinalisasi (mati-tak-terlihat + barrier menelan input).
+    controller.value = (controller.value - delta).clamp(0.001, 1.0);
   }
 
   void dragEnd({required double velocity, required double width}) {
@@ -294,6 +325,23 @@ class _OriginBackGestureController<T> {
   }
 
   void abort() {
+    // Route sudah ter-POP tapi animasi penutup terhenti/belum selesai →
+    // lanjutkan sampai dismissed supaya framework memfinalisasi route
+    // (overlay + barrier dilepas). Tanpa ini: ghost beku permanen.
+    // Guard getWasPopped: HANYA route yang keluar via pop — route yang
+    // di-remove/dispose haram disentuh controller-nya (framework
+    // meng-assert state `popping` di finalizeRoute, dan animateBack pada
+    // controller ter-dispose melempar di tengah callback gesture →
+    // _finish tak jalan → didStopUserGesture bocor → performance-mode
+    // leak menular ke seluruh app).
+    // Guard navigator.mounted: abort juga dipanggil dari route.dispose()
+    // saat navigator dibongkar — jangan memulai animasi di situ.
+    if (navigator.mounted &&
+        getWasPopped() &&
+        controller.status != AnimationStatus.dismissed &&
+        !controller.isAnimating) {
+      controller.animateBack(0, curve: _kOriginCloseCurve);
+    }
     _finish();
   }
 
@@ -305,9 +353,14 @@ class _OriginBackGestureController<T> {
       1,
       normalizedVelocity,
     );
-    _watchForSpringTerminalStatus();
-    controller.animateWith(simulation);
-    if (!controller.isAnimating) _finishSpring();
+    _removeStatusListener();
+    // Penyelesaian berbasis TICKER, bukan status-listener: pegas
+    // hampir-kritis (damping ratio ≈0.99) mendekat asimtotik dan bisa
+    // berhenti di 0.999… TANPA pernah menyentuh 1.0 → status tidak
+    // pernah berubah ke `completed` → listener status tidak pernah
+    // menembak → gesture tak pernah selesai (didStopUserGesture bocor)
+    // dan route macet nyaris-penuh. TickerFuture selalu selesai/batal.
+    controller.animateWith(simulation).whenCompleteOrCancel(_finishSpring);
   }
 
   void _watchForTerminalStatus(
@@ -326,22 +379,14 @@ class _OriginBackGestureController<T> {
     _statusListener = null;
   }
 
-  void _watchForSpringTerminalStatus() {
-    _removeStatusListener();
-    _statusListener = (status) {
-      if (status == AnimationStatus.completed) {
-        _finishSpring();
-      } else if (status == AnimationStatus.dismissed) {
-        _finish();
-      }
-    };
-    controller.addStatusListener(_statusListener!);
-  }
-
   void _finishSpring() {
     if (!_active) return;
     _removeStatusListener();
-    if (controller.status == AnimationStatus.completed) controller.value = 1;
+    // Route masih current + ticker sudah berhenti → pastikan mendarat
+    // PENUH di 1.0 (spring bisa berhenti di 0.999… tanpa status
+    // `completed`; nilai parsial = viewer tembus tipis + status macet
+    // `forward` yang memblokir gesture berikutnya via enabledCallback).
+    if (getIsCurrent() && !controller.isAnimating) controller.value = 1;
     _finish();
   }
 
