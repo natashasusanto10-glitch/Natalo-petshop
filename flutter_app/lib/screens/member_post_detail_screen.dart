@@ -2946,7 +2946,7 @@ class _PostMediaSurface extends StatelessWidget {
   /// nilai, bukan seluruh list (lihat komentar `_heroPostId` di layar).
   /// Null [heroScope]/[heroPostId] (deep-link tanpa origin grid) → child
   /// apa adanya, tanpa Hero maupun listener.
-  Widget _wrapHero(Widget child) {
+  Widget _wrapHero(Widget child, {Widget? flightChild}) {
     final scope = heroScope;
     final notifier = heroPostId;
     if (scope == null || notifier == null) return child;
@@ -2954,7 +2954,12 @@ class _PostMediaSurface extends StatelessWidget {
       valueListenable: notifier,
       builder: (context, activeHeroPostId, staticChild) {
         if (activeHeroPostId != post.id) return staticChild!;
-        return PostHero(scope: scope, postId: post.id, child: staticChild!);
+        return PostHero(
+          scope: scope,
+          postId: post.id,
+          flightChild: flightChild,
+          child: staticChild!,
+        );
       },
       child: child,
     );
@@ -2994,6 +2999,16 @@ class _PostMediaSurface extends StatelessWidget {
               onMediaSingleTap: onVideoMediaSingleTap,
               onMediaDoubleTapDown: onVideoMediaDoubleTapDown,
               onMediaDoubleTap: onVideoMediaDoubleTap,
+            ),
+            // Hero flight: TIDAK pakai _InlineVideoPlayer segar (state baru
+            // = unbound sampai VisibilityDetector menembak, throttle lebih
+            // lambat dari durasi flight → placeholder/kosong sekilas alih-
+            // alih video hidup, lihat komentar PostHero.flightChild). Surface
+            // ringan ini baca controller yang SUDAH hidup secara sinkron.
+            flightChild: _HeroVideoFlightSurface(
+              postId: post.id,
+              coordinator: coordinator,
+              thumbnailUrl: post.thumbnailUrl,
             ),
           ),
         FeedContentType.carousel => _wrapHero(
@@ -3140,6 +3155,118 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Hero flight surface — video (lihat PostHero.flightChild) ────────
+
+/// Surface video dipakai HANYA di dalam shuttle Hero ([PostHero._shuttle]).
+/// BUKAN [_InlineVideoPlayer]: elemen itu selalu lahir baru di overlay flight
+/// (Hero mem-placeholder-kan slot asal, memutus State lama), dan state
+/// barunya baru attach/bind ke [PostVideoCoordinator] lewat callback
+/// [VisibilityDetector] yang di-throttle (default ~500ms — jauh lebih lambat
+/// dari durasi animasi flight). Hasilnya: sepanjang flight, _InlineVideoPlayer
+/// versi baru SELALU unbound → merender placeholder/thumbnail dingin,
+/// padahal origin baru saja menampilkan frame video HIDUP — persis bug
+/// "kedip lalu video muncul di tengah flight".
+///
+/// Widget ini TIDAK attach/detach apa pun ke coordinator (origin
+/// [_InlineVideoPlayer] tetap memegang attachment-nya; sesi videonya pinned
+/// selama post ini aktif) — ia HANYA *membaca* sesi yang sudah hidup, secara
+/// SINKRON di `initState`, lalu merender `VideoPlayer(controller)` yang SAMA
+/// (satu texture, tanpa swap). Kalau sesi belum initialized (mis. post video
+/// baru dibuka, belum sempat play), fallback ke thumbnail cache yang SAMA
+/// dipakai _InlineVideoPlayer/grid — bukan gambar baru, bukan menunggu apa
+/// pun. Rendering TIDAK digerbang oleh playbackAllowed/dormant — yang
+/// digambar murni fungsi ready/tidak (gotcha VideoCompressGate-adjacent:
+/// jangan gantungkan apa yang DIGAMBAR pada state play/pause).
+class _HeroVideoFlightSurface extends StatefulWidget {
+  final String postId;
+  final PostVideoCoordinator coordinator;
+  final String? thumbnailUrl;
+
+  const _HeroVideoFlightSurface({
+    required this.postId,
+    required this.coordinator,
+    required this.thumbnailUrl,
+  });
+
+  @override
+  State<_HeroVideoFlightSurface> createState() =>
+      _HeroVideoFlightSurfaceState();
+}
+
+class _HeroVideoFlightSurfaceState extends State<_HeroVideoFlightSurface> {
+  VideoPlayerSession? _session;
+
+  @override
+  void initState() {
+    super.initState();
+    // Sinkron, TANPA VisibilityDetector/throttle — origin sudah attach sesi
+    // ini sebelum flight ada alasan untuk mulai (video harus sudah main
+    // untuk user bisa lihat lalu tap back).
+    _bind();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HeroVideoFlightSurface oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.postId != widget.postId ||
+        oldWidget.coordinator != widget.coordinator) {
+      _bind();
+    }
+  }
+
+  void _bind() {
+    final session = widget.coordinator.sessionFor(widget.postId);
+    final next = session is VideoPlayerSession ? session : null;
+    if (identical(next, _session)) return;
+    _session?.revision.removeListener(_onRevision);
+    _session = next;
+    _session?.revision.addListener(_onRevision);
+  }
+
+  void _onRevision() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _session?.revision.removeListener(_onRevision);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _session?.controller;
+    final ready = controller != null && controller.value.isInitialized;
+    return ColoredBox(
+      color: Colors.black,
+      child: ready
+          ? ClipRect(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: controller.value.size.width > 0
+                      ? controller.value.size.width
+                      : 100,
+                  height: controller.value.size.height > 0
+                      ? controller.value.size.height
+                      : 100,
+                  child: VideoPlayer(controller),
+                ),
+              ),
+            )
+          : (widget.thumbnailUrl != null &&
+                  widget.thumbnailUrl!.trim().isNotEmpty
+              ? _ImageSurface(
+                  imageUrl: widget.thumbnailUrl!,
+                  placeholderIcon: Icons.video_collection_outlined,
+                )
+              : const _MediaPlaceholder(
+                  icon: Icons.video_collection_outlined,
+                )),
     );
   }
 }
