@@ -630,6 +630,7 @@ void main() {
       String? feedPostId = 'p1',
       String eventType = 'feed_new_comment',
       String ctaLabel = 'Lihat Komentar',
+      bool commentLiked = false,
     }) =>
         AppNotification.fromApiJson({
           'id': 'cm1', 'title': 'Asiong berkomentar', 'body': 'mantap',
@@ -637,6 +638,7 @@ void main() {
           if (feedPostId != null) 'feedPostId': feedPostId,
           if (commentId != null) 'commentId': commentId,
           'ctaLabel': ctaLabel,
+          'commentLiked': commentLiked,
           'createdAt': DateTime.now().toIso8601String(), 'read': true,
         });
 
@@ -662,6 +664,40 @@ void main() {
       expect(find.byKey(const ValueKey('notification-comment-reply')),
           findsOneWidget);
       expect(find.text('Lihat Komentar'), findsNothing);
+    });
+
+    testWidgets('commentLiked:true → ♡ mulai MERAH (sinkron sheet komentar)',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(
+            notification: commentNotif(commentLiked: true),
+            onTap: () {},
+          ),
+        ),
+      ));
+      final icon = tester.widget<Icon>(find.descendant(
+        of: find.byKey(const ValueKey('notification-comment-like')),
+        matching: find.byType(Icon),
+      ));
+      expect(icon.icon, Icons.favorite_rounded,
+          reason: 'komentar sudah di-like → love terisi, bukan outline');
+    });
+
+    testWidgets('commentLiked:false → ♡ mulai outline', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(
+            notification: commentNotif(commentLiked: false),
+            onTap: () {},
+          ),
+        ),
+      ));
+      final icon = tester.widget<Icon>(find.descendant(
+        of: find.byKey(const ValueKey('notification-comment-like')),
+        matching: find.byType(Icon),
+      ));
+      expect(icon.icon, Icons.favorite_border_rounded);
     });
 
     testWidgets('notif komentar lama (tanpa commentId) → pill Lihat Komentar',
