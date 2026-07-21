@@ -13,6 +13,7 @@
 import { prisma } from "@/lib/prisma";
 import {
   BUNNY_VIDEO_STATUS,
+  bunnyDisplayDimensions,
   bunnyPlaylistUrl,
   bunnyThumbnailUrl,
   getBunnyVideo,
@@ -123,8 +124,9 @@ export async function reconcileFeedPost(
         thumbnailBlurhash: blurhash,
         videoMimeType: "application/vnd.apple.mpegurl",
         videoDurationSec: meta.length ? Math.round(meta.length) : null,
-        videoWidth: meta.width ?? null,
-        videoHeight: meta.height ?? null,
+        // Rotation-corrected display dims — see bunnyDisplayDimensions.
+        videoWidth: bunnyDisplayDimensions(meta).width,
+        videoHeight: bunnyDisplayDimensions(meta).height,
         videoSizeBytes: meta.storageSize ?? null,
       },
     });

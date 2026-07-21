@@ -156,11 +156,58 @@ export async function getBunnyVideo(guid: string) {
       length: number; // seconds
       width: number;
       height: number;
+      // Display rotation in degrees (0/90/180/270). Bunny reports the CODED
+      // width/height of the SOURCE plus this flag — for portrait phone clips
+      // the source is often stored as landscape pixels (e.g. 1920×1080) with
+      // rotation=90/270; the player rotates at playback but width/height stay
+      // landscape. Persist DISPLAY-oriented dims via bunnyDisplayDimensions().
+      rotation?: number;
       storageSize: number;
     };
   } catch {
     return null;
   }
+}
+
+/**
+ * Display-oriented { width, height } for a Bunny video, correcting for the
+ * source rotation flag.
+ *
+ * We persist width/height to drive the feed's aspect-ratio frame BEFORE the
+ * first video frame loads, so they MUST match what the player actually shows.
+ * When Bunny reports a quarter-turn rotation (90°/270°) the raw width/height
+ * describe the pre-rotation (landscape) pixels — using them verbatim frames a
+ * portrait clip as landscape → letterbox/crop mismatch vs the rotated
+ * playback (incident: "postingan portrait jadi hitam kiri-kanan"). Swapping
+ * the pair yields the visual portrait dimensions, matching Instagram.
+ *
+ * Null-safe: nullish/zero/non-finite dims pass through unchanged so callers
+ * keep their existing `?? null` fallbacks. Rotation is normalized to the
+ * nearest quarter turn, so odd values (e.g. 89.98) and negatives are handled.
+ */
+export function bunnyDisplayDimensions(
+  meta: { width?: number | null; height?: number | null; rotation?: number | null } | null,
+): { width: number | null; height: number | null } {
+  const rawWidth = meta?.width;
+  const rawHeight = meta?.height;
+  const width = typeof rawWidth === "number" && Number.isFinite(rawWidth) && rawWidth > 0
+    ? rawWidth
+    : null;
+  const height = typeof rawHeight === "number" && Number.isFinite(rawHeight) && rawHeight > 0
+    ? rawHeight
+    : null;
+
+  const rawRotation = meta?.rotation;
+  const rotation = typeof rawRotation === "number" && Number.isFinite(rawRotation)
+    ? rawRotation
+    : 0;
+  const normalized = (((Math.round(rotation / 90) * 90) % 360) + 360) % 360;
+  const quarterTurn = normalized === 90 || normalized === 270;
+
+  if (quarterTurn && width !== null && height !== null) {
+    return { width: height, height: width };
+  }
+  return { width, height };
 }
 
 /**

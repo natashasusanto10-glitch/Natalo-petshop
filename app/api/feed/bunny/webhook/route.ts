@@ -28,6 +28,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   BUNNY_VIDEO_STATUS,
+  bunnyDisplayDimensions,
   bunnyPlaylistUrl,
   bunnyThumbnailUrl,
   getBunnyConfig,
@@ -154,6 +155,8 @@ export async function POST(request: NextRequest) {
   // tidak ngegantung indefinite.
   const blurhash = await generateBlurhashFromUrl(thumbnailUrl);
 
+  const displayDims = bunnyDisplayDimensions(meta);
+
   await prisma.feedPost.update({
     where: { id: post.id },
     data: {
@@ -169,8 +172,10 @@ export async function POST(request: NextRequest) {
       thumbnailBlurhash: blurhash,
       videoMimeType: "application/vnd.apple.mpegurl",
       videoDurationSec: meta?.length ? Math.round(meta.length) : null,
-      videoWidth: meta?.width ?? null,
-      videoHeight: meta?.height ?? null,
+      // Display-oriented dims (rotation-corrected) so a portrait clip stored
+      // as landscape pixels + rotation flag frames correctly in the feed.
+      videoWidth: displayDims.width,
+      videoHeight: displayDims.height,
       videoSizeBytes: meta?.storageSize ?? null,
     },
   });
