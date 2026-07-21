@@ -12,6 +12,7 @@ import '../features/feed/transition/post_detail_transition_session.dart';
 import '../features/feed/transition/post_page_zoom_route.dart';
 import '../features/feed/transition/post_transition_source_tile.dart';
 import '../features/feed/transition/profile_post_source_adapter.dart';
+import '../features/feed/transition/profile_tile_visibility.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
@@ -66,8 +67,7 @@ List<FeedPost> mergeProfilePostsById(
   List<FeedPost> incoming,
 ) {
   final ids = existing.map((post) => post.id).toSet();
-  final additions =
-      incoming.where((post) => !ids.contains(post.id)).toList();
+  final additions = incoming.where((post) => !ids.contains(post.id)).toList();
   if (additions.isEmpty) return existing;
   return [...existing, ...additions];
 }
@@ -82,8 +82,9 @@ List<FeedPost> reconcileProfilePosts(
   List<FeedPost> existing,
 ) {
   final refreshedIds = refreshed.map((post) => post.id).toSet();
-  final retainedTail =
-      existing.where((post) => !refreshedIds.contains(post.id));
+  final retainedTail = existing.where(
+    (post) => !refreshedIds.contains(post.id),
+  );
   return [...refreshed, ...retainedTail];
 }
 
@@ -106,10 +107,7 @@ class MemberScreen extends StatefulWidget {
   @visibleForTesting
   final Future<FeedPage> Function(String? cursor)? debugPostsPageLoader;
 
-  const MemberScreen({
-    super.key,
-    this.debugPostsPageLoader,
-  });
+  const MemberScreen({super.key, this.debugPostsPageLoader});
 
   @override
   State<MemberScreen> createState() => _MemberScreenState();
@@ -149,9 +147,7 @@ class _MemberScreenState extends State<MemberScreen> {
         if (!memberStore.isLoggedIn) {
           return const _LoadingShell();
         }
-        return _ProfilePage(
-          debugPostsPageLoader: widget.debugPostsPageLoader,
-        );
+        return _ProfilePage(debugPostsPageLoader: widget.debugPostsPageLoader);
       },
     );
   }
@@ -455,17 +451,18 @@ class _ProfilePageState extends State<_ProfilePage>
     if (tileContext == null || !tileContext.mounted) return;
     // The grid lives in the NestedScrollView's INNER scrollable, whose viewport
     // already begins below the pinned chrome (top bar + pinned tab header live
-    // in the OUTER header slivers) and stops above the floating bottom nav
-    // (grid bottom padding = 100). So any alignment in [0,1) lands the tile with
-    // `rect.top >= pinnedChromeBottom`, and the short tile height keeps
-    // `rect.bottom <= viewportHeight - bottomNavHeight`. A small non-zero
-    // alignment leaves a comfortable top margin without pushing the tile down.
-    // (Exact pinned-chrome/bottom-nav pixel bounds are a device-verify item —
-    // see Task 15 checklist.)
-    await Scrollable.ensureVisible(
+    // in the OUTER header slivers). So topPadding=0 is correct — the inner
+    // viewport never overlaps the pinned chrome. The grid's own sliver bottom
+    // padding is 100 (floating bottom nav clearance), so a small extra
+    // bottomPadding just keeps a comfortable margin above that. Unlike the old
+    // `Scrollable.ensureVisible(alignment: 0.1)`, this only scrolls the
+    // nearest (inner) scrollable, and only when the tile isn't already fully
+    // visible — it no longer walks into the NestedScrollView's outer header
+    // scrollable and no longer repositions an already-visible tile.
+    await ensureProfileTileVisible(
       tileContext,
-      alignment: 0.1,
-      duration: Duration.zero,
+      topPadding: 0,
+      bottomPadding: 24,
     );
   }
 
@@ -490,8 +487,9 @@ class _ProfilePageState extends State<_ProfilePage>
     adapter.consumePendingReturn(
       gridWidth: gridWidth,
       indexOfPostInCurrentScope: (postId) {
-        final index =
-            _scopeList(_activeTransitionScope).indexWhere((p) => p.id == postId);
+        final index = _scopeList(
+          _activeTransitionScope,
+        ).indexWhere((p) => p.id == postId);
         return index < 0 ? null : index;
       },
       jumpToOffset: (offset) {
@@ -630,9 +628,7 @@ class _ProfilePageState extends State<_ProfilePage>
                       // Banner reminder pilih @username — di area putih di
                       // bawah header. Auto-hide kalau user sudah set / pernah
                       // snooze 7 hari.
-                      const SliverToBoxAdapter(
-                        child: UsernamePromptBanner(),
-                      ),
+                      const SliverToBoxAdapter(child: UsernamePromptBanner()),
                       SliverPersistentHeader(
                         pinned: true,
                         delegate: _AccountTabHeaderDelegate(
@@ -641,89 +637,93 @@ class _ProfilePageState extends State<_ProfilePage>
                         ),
                       ),
                     ],
-                        body: TabBarView(
-                          controller: _tabController,
-                          children: [
-                            _PostGrid(
-                              posts: _allPosts,
-                              registry: _transitionRegistry,
-                              scope: profilePostScopeAll,
-                              loading: _loadingPosts,
-                              errorText: _postsError,
-                              emptyText: 'Belum ada postingan',
-                              emptySubtext:
-                                  'Bagikan momen lucu hewan kesayanganmu di Feed Natalo.',
-                              showCreateCta: true,
-                              onCreateCta: _openCreatePost,
-                              onRetry: _loadAll,
-                              onTapPost: (idx) =>
-                                  _openPostDetail(_allPosts, idx, profilePostScopeAll),
-                              originKeyForPost: (post) =>
-                                  _tileKeyFor(profilePostScopeAll, post.id),
-                              onTapDown: (idx) =>
-                                  _preparePostVideo(_allPosts[idx]),
-                              onTapCancel: (idx) =>
-                                  _cancelPreparedPost(_allPosts[idx].id),
-                            ),
-                            _PostGrid(
-                              posts: _videoPosts,
-                              registry: _transitionRegistry,
-                              scope: profilePostScopeVideo,
-                              loading: _loadingPosts,
-                              errorText: _postsError,
-                              emptyText: 'Belum ada video',
-                              emptySubtext:
-                                  'Video yang kamu unggah akan muncul di sini.',
-                              showCreateCta: false,
-                              onCreateCta: _openCreatePost,
-                              onRetry: _loadAll,
-                              onTapPost: (idx) =>
-                                  _openPostDetail(_videoPosts, idx, profilePostScopeVideo),
-                              originKeyForPost: (post) =>
-                                  _tileKeyFor(profilePostScopeVideo, post.id),
-                              onTapDown: (idx) =>
-                                  _preparePostVideo(_videoPosts[idx]),
-                              onTapCancel: (idx) =>
-                                  _cancelPreparedPost(_videoPosts[idx].id),
-                            ),
-                            _PostGrid(
-                              posts: _taggedPosts,
-                              registry: _transitionRegistry,
-                              scope: profilePostScopeTagged,
-                              loading: _loadingPosts,
-                              errorText: _postsError,
-                              emptyText: 'Belum ada postingan belanja',
-                              emptySubtext:
-                                  'Postingan yang terhubung ke produk Natalo akan muncul di sini.',
-                              showCreateCta: false,
-                              onCreateCta: _openCreatePost,
-                              onRetry: _loadAll,
-                              onTapPost: (idx) => _openPostDetail(
-                                _taggedPosts,
-                                idx,
-                                profilePostScopeTagged,
-                              ),
-                              originKeyForPost: (post) =>
-                                  _tileKeyFor(profilePostScopeTagged, post.id),
-                              onTapDown: (idx) =>
-                                  _preparePostVideo(_taggedPosts[idx]),
-                              onTapCancel: (idx) =>
-                                  _cancelPreparedPost(_taggedPosts[idx].id),
-                            ),
-                          ],
+                    body: TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _PostGrid(
+                          posts: _allPosts,
+                          registry: _transitionRegistry,
+                          scope: profilePostScopeAll,
+                          loading: _loadingPosts,
+                          errorText: _postsError,
+                          emptyText: 'Belum ada postingan',
+                          emptySubtext:
+                              'Bagikan momen lucu hewan kesayanganmu di Feed Natalo.',
+                          showCreateCta: true,
+                          onCreateCta: _openCreatePost,
+                          onRetry: _loadAll,
+                          onTapPost: (idx) => _openPostDetail(
+                            _allPosts,
+                            idx,
+                            profilePostScopeAll,
+                          ),
+                          originKeyForPost: (post) =>
+                              _tileKeyFor(profilePostScopeAll, post.id),
+                          onTapDown: (idx) => _preparePostVideo(_allPosts[idx]),
+                          onTapCancel: (idx) =>
+                              _cancelPreparedPost(_allPosts[idx].id),
                         ),
-                      ),
+                        _PostGrid(
+                          posts: _videoPosts,
+                          registry: _transitionRegistry,
+                          scope: profilePostScopeVideo,
+                          loading: _loadingPosts,
+                          errorText: _postsError,
+                          emptyText: 'Belum ada video',
+                          emptySubtext:
+                              'Video yang kamu unggah akan muncul di sini.',
+                          showCreateCta: false,
+                          onCreateCta: _openCreatePost,
+                          onRetry: _loadAll,
+                          onTapPost: (idx) => _openPostDetail(
+                            _videoPosts,
+                            idx,
+                            profilePostScopeVideo,
+                          ),
+                          originKeyForPost: (post) =>
+                              _tileKeyFor(profilePostScopeVideo, post.id),
+                          onTapDown: (idx) =>
+                              _preparePostVideo(_videoPosts[idx]),
+                          onTapCancel: (idx) =>
+                              _cancelPreparedPost(_videoPosts[idx].id),
+                        ),
+                        _PostGrid(
+                          posts: _taggedPosts,
+                          registry: _transitionRegistry,
+                          scope: profilePostScopeTagged,
+                          loading: _loadingPosts,
+                          errorText: _postsError,
+                          emptyText: 'Belum ada postingan belanja',
+                          emptySubtext:
+                              'Postingan yang terhubung ke produk Natalo akan muncul di sini.',
+                          showCreateCta: false,
+                          onCreateCta: _openCreatePost,
+                          onRetry: _loadAll,
+                          onTapPost: (idx) => _openPostDetail(
+                            _taggedPosts,
+                            idx,
+                            profilePostScopeTagged,
+                          ),
+                          originKeyForPost: (post) =>
+                              _tileKeyFor(profilePostScopeTagged, post.id),
+                          onTapDown: (idx) =>
+                              _preparePostVideo(_taggedPosts[idx]),
+                          onTapCancel: (idx) =>
+                              _cancelPreparedPost(_taggedPosts[idx].id),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
+        ),
+      ),
       bottomNavigationBar: const BottomNavBar(currentIndex: 4),
     );
   }
 }
-
 
 // ─── Header top bar (in-body, di atas hero biru) ───────────────────
 
@@ -778,8 +778,7 @@ class _ProfileTopBar extends StatelessWidget {
               // bookmark & settings pakai IconButton mentah (minSize 48)
               // sehingga terlihat lebih renggang dari lonceng di tengahnya.
               AppHeaderIconButton(
-                onPressed: () =>
-                    Navigator.pushNamed(context, '/member/saved'),
+                onPressed: () => Navigator.pushNamed(context, '/member/saved'),
                 tooltip: 'Postingan tersimpan',
                 color: ink,
                 child: const Icon(Icons.bookmark_border_rounded, size: 28),
@@ -831,10 +830,7 @@ class _AccountTabHeaderDelegate extends SliverPersistentHeaderDelegate {
   final TabController controller;
   final ValueChanged<int>? onTap;
 
-  const _AccountTabHeaderDelegate({
-    required this.controller,
-    this.onTap,
-  });
+  const _AccountTabHeaderDelegate({required this.controller, this.onTap});
 
   @override
   double get minExtent => PublicProfileContentTabBar.height;
@@ -1039,7 +1035,8 @@ class _PostThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mediaUrl = (post.thumbnailUrl?.trim().isNotEmpty == true
+    final mediaUrl =
+        (post.thumbnailUrl?.trim().isNotEmpty == true
             ? post.thumbnailUrl
             : null) ??
         (post.previewMediaUrl.trim().isNotEmpty ? post.previewMediaUrl : null);
@@ -1049,8 +1046,9 @@ class _PostThumbnail extends StatelessWidget {
       registry: registry,
       id: PostTransitionTileId(scope: scope, postId: post.id),
       fallbackColor: cs.surfaceContainerHighest,
-      imageProvider:
-          mediaUrl != null ? CachedNetworkImageProvider(mediaUrl) : null,
+      imageProvider: mediaUrl != null
+          ? CachedNetworkImageProvider(mediaUrl)
+          : null,
       child: OriginSnapshotSource(
         child: InkWell(
           key: ValueKey('profile-post-${post.id}'),

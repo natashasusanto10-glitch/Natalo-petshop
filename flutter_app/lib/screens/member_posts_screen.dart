@@ -17,6 +17,7 @@ import '../models/public_profile.dart';
 import '../features/feed/transition/post_detail_transition_session.dart';
 import '../features/feed/transition/post_transition_source_tile.dart';
 import '../features/feed/transition/profile_post_source_adapter.dart';
+import '../features/feed/transition/profile_tile_visibility.dart';
 import '../features/feed/widgets/gallery_post_tile.dart';
 import '../features/feed/widgets/post_gallery_opener.dart';
 import '../services/feed_service.dart';
@@ -48,10 +49,7 @@ class MemberPostsScreen extends StatefulWidget {
   @visibleForTesting
   final Future<FeedPage> Function(String? cursor)? debugPostsPageLoader;
 
-  const MemberPostsScreen({
-    super.key,
-    this.debugPostsPageLoader,
-  });
+  const MemberPostsScreen({super.key, this.debugPostsPageLoader});
 
   @override
   State<MemberPostsScreen> createState() => _MemberPostsScreenState();
@@ -169,10 +167,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen>
       // refresh, Detail → grid count refresh) kalau di masa depan grid
       // tile expose count. Sekaligus protect dari stale overwrite via
       // fetchedAt.
-      feedStore.mergeFromServer(
-        page.items,
-        fetchedAt: fetchedAt,
-      );
+      feedStore.mergeFromServer(page.items, fetchedAt: fetchedAt);
       setState(() {
         _allPosts = retainLoadedExtent
             ? reconcileProfilePosts(page.items, _allPosts)
@@ -210,22 +205,17 @@ class _MemberPostsScreenState extends State<MemberPostsScreen>
     try {
       final loader = widget.debugPostsPageLoader;
       final page = loader == null
-          ? await feedService.fetchMyPosts(
-              filter: 'all',
-              cursor: _nextCursor,
-            )
+          ? await feedService.fetchMyPosts(filter: 'all', cursor: _nextCursor)
           : await loader(_nextCursor);
       if (!mounted) return;
-      feedStore.mergeFromServer(
-        page.items,
-        fetchedAt: fetchedAt,
-      );
+      feedStore.mergeFromServer(page.items, fetchedAt: fetchedAt);
       setState(() {
         // Append + dedupe by id (defensive: backend cursor pattern
         // sudah skip:1 tapi tetap guard kalau ada race condition).
         final existingIds = _allPosts.map((p) => p.id).toSet();
-        final fresh =
-            page.items.where((p) => !existingIds.contains(p.id)).toList();
+        final fresh = page.items
+            .where((p) => !existingIds.contains(p.id))
+            .toList();
         _allPosts = [..._allPosts, ...fresh];
         _nextCursor = page.nextCursor;
         _loadingMore = false;
@@ -318,8 +308,9 @@ class _MemberPostsScreenState extends State<MemberPostsScreen>
     );
     if (resolvedScope != _activeTransitionScope) {
       _activeTransitionScope = resolvedScope;
-      final index =
-          _filters.indexWhere((filter) => filter.type.name == resolvedScope);
+      final index = _filters.indexWhere(
+        (filter) => filter.type.name == resolvedScope,
+      );
       if (index >= 0 && index != _filterIndex) {
         setState(() => _filterIndex = index);
       }
@@ -330,13 +321,19 @@ class _MemberPostsScreenState extends State<MemberPostsScreen>
     final tileContext =
         _scopeTileKeys['$_activeTransitionScope:${post.id}']?.currentContext;
     if (tileContext == null || !tileContext.mounted) return;
-    // A small non-zero alignment leaves a comfortable top margin below the
-    // pinned chrome without pushing the tile down. (Exact pixel bounds are a
-    // device-verify item — Task 15.)
-    await Scrollable.ensureVisible(
+    // Unlike member_screen/public_profile_screen, this screen's grid is NOT
+    // inside a NestedScrollView — the profile header, tabs, and grid all
+    // share one CustomScrollView (with a plain AppBar above it, not part of
+    // the scroll), so there's no pinned-chrome overlap to dodge: topPadding=0.
+    // The grid's own sliver bottom padding already clears the bottom nav /
+    // safe area, so a modest bottomPadding just adds a comfortable margin.
+    // Unlike the old `Scrollable.ensureVisible(alignment: 0.1)`, this only
+    // scrolls when the tile isn't already fully visible, and moves it the
+    // minimum distance needed.
+    await ensureProfileTileVisible(
       tileContext,
-      alignment: 0.1,
-      duration: Duration.zero,
+      topPadding: 0,
+      bottomPadding: 24,
     );
   }
 
@@ -361,8 +358,9 @@ class _MemberPostsScreenState extends State<MemberPostsScreen>
     adapter.consumePendingReturn(
       gridWidth: gridWidth,
       indexOfPostInCurrentScope: (postId) {
-        final index =
-            _scopeList(_activeTransitionScope).indexWhere((p) => p.id == postId);
+        final index = _scopeList(
+          _activeTransitionScope,
+        ).indexWhere((p) => p.id == postId);
         return index < 0 ? null : index;
       },
       jumpToOffset: (offset) {
@@ -465,8 +463,9 @@ class _MemberPostsScreenState extends State<MemberPostsScreen>
     final reconstructed = FeedCreatePostDraft(
       localVideoPath: videoPath,
       thumbnailPath: draft.thumbnailPath,
-      originalDuration:
-          originalMs != null ? Duration(milliseconds: originalMs) : null,
+      originalDuration: originalMs != null
+          ? Duration(milliseconds: originalMs)
+          : null,
       trimmedDuration: draft.trimmedDurationMs != null
           ? Duration(milliseconds: draft.trimmedDurationMs!)
           : null,
@@ -570,8 +569,9 @@ class _MemberPostsScreenState extends State<MemberPostsScreen>
       final box = context.findRenderObject() as RenderBox?;
       await Share.share(
         'Lihat profil $label di Natalo\n$url',
-        sharePositionOrigin:
-            box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+        sharePositionOrigin: box != null
+            ? box.localToGlobal(Offset.zero) & box.size
+            : null,
       );
     } catch (_) {
       // Cancel / share fail — silent.
@@ -642,11 +642,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen>
           IconButton(
             onPressed: _openUpload,
             tooltip: 'Buat postingan',
-            icon: Icon(
-              Icons.add_box_outlined,
-              color: cs.onSurface,
-              size: 26,
-            ),
+            icon: Icon(Icons.add_box_outlined, color: cs.onSurface, size: 26),
           ),
           const SizedBox(width: 4),
         ],
@@ -749,7 +745,8 @@ class _MemberPostsScreenState extends State<MemberPostsScreen>
                       child: GalleryPostTile(
                         key: ValueKey('member-post-tile-$scope-${post.id}'),
                         post: post,
-                        onTap: () => _openPostDetail(visiblePosts, index, scope),
+                        onTap: () =>
+                            _openPostDetail(visiblePosts, index, scope),
                         onTapDown: () => preparePostVideo(post),
                         onTapCancel: () => cancelPreparedPost(post.id),
                         showStatusBadge: true,
@@ -1200,21 +1197,18 @@ class _MemberPostPreviewScreenState extends State<_MemberPostPreviewScreen> {
                       thumbnailUrl: widget.post.thumbnailUrl,
                     )
                   : isSlider
-                      ? PageView.builder(
-                          itemCount: items.length,
-                          onPageChanged: (index) =>
-                              setState(() => _index = index),
-                          itemBuilder: (context, index) {
-                            return _PreviewImage(
-                              imageUrl: items[index].mediaUrl,
-                            );
-                          },
-                        )
-                      : _PreviewImage(
-                          imageUrl: items.isEmpty
-                              ? widget.post.previewMediaUrl
-                              : items.first.mediaUrl,
-                        ),
+                  ? PageView.builder(
+                      itemCount: items.length,
+                      onPageChanged: (index) => setState(() => _index = index),
+                      itemBuilder: (context, index) {
+                        return _PreviewImage(imageUrl: items[index].mediaUrl);
+                      },
+                    )
+                  : _PreviewImage(
+                      imageUrl: items.isEmpty
+                          ? widget.post.previewMediaUrl
+                          : items.first.mediaUrl,
+                    ),
             ),
             Positioned(
               left: 8,
@@ -1341,9 +1335,7 @@ class _PreviewVideoPlayerState extends State<_PreviewVideoPlayer> {
   void _onSettingsChanged() {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
-    unawaited(
-      controller.setVolume(appSettingsStore.feedMuted ? 0 : 1),
-    );
+    unawaited(controller.setVolume(appSettingsStore.feedMuted ? 0 : 1));
   }
 
   Future<void> _initVideo() async {
@@ -1430,8 +1422,10 @@ class _PreviewVideoPlayerState extends State<_PreviewVideoPlayer> {
           if (_error != null)
             Center(
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.55),
                   borderRadius: BorderRadius.circular(999),
@@ -1496,13 +1490,7 @@ class _PreviewPlaceholder extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: Colors.black,
-      child: Center(
-        child: Icon(
-          icon,
-          color: Colors.white24,
-          size: 72,
-        ),
-      ),
+      child: Center(child: Icon(icon, color: Colors.white24, size: 72)),
     );
   }
 }
