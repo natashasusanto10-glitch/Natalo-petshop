@@ -110,6 +110,7 @@ export async function sendFollowNotification(params: {
           thumbnailUrl: actorPhoto,
           actorName,
           actorAvatarUrl: actorPhoto,
+          actorId: params.followerId,
           ctaLabel: "Lihat Profil",
           publishedAt: new Date(),
           targetUserId: params.followingId,

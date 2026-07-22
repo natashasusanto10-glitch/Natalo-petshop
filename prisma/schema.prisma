@@ -1171,6 +1171,11 @@ model Announcement {
   actorAvatarUrl String?
   actorName      String?
   actorAvatarUrls   String[]  @default([])
+  /// User id aktor (follower) untuk notif "user_followed" — dipakai server
+  /// hitung isFollowing (viewer follow-balik atau belum) supaya pill
+  /// "Ikuti"/"Mengikuti" di app benar sejak render pertama, bukan nunggu
+  /// tap. Null untuk notif non-follow / baris lama pra-migration.
+  actorId        String?
   createdAt    DateTime           @default(now())
   reads        AnnouncementRead[]
 

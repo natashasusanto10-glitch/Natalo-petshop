@@ -1002,6 +1002,7 @@ class NotificationRow extends StatelessWidget {
                           if (followBackUsername != null) ...[
                             _NotificationFollowBackPill(
                               username: followBackUsername,
+                              initialIsFollowing: notification.isFollowing,
                               followService: followService,
                               profileFetcher: profileFetcher,
                             ),
@@ -1088,17 +1089,23 @@ class NotificationRow extends StatelessWidget {
 enum _FollowBackState { idle, loading, following }
 
 /// Pill follow-balik inline utk notif follow — tap men-follow tanpa keluar
-/// layar (ala IG "Follow back"). State lokal saja: kalau widget di-dispose
-/// (scroll jauh) lalu dibangun ulang, kembali "Ikuti" — dapat diterima.
+/// layar (ala IG "Follow back"). Status awal diseed dari `initialIsFollowing`
+/// (server: UserFollow lewat Announcement.actorId, lihat commentLiked utk
+/// pola sama) supaya pill BENAR sejak render pertama — sebelumnya selalu
+/// mulai "Ikuti" walau viewer sudah follow-balik, baru benar setelah tap.
+/// Null (notif lama pra-migration / server belum kirim) → fallback idle,
+/// tap tetap cek fresh ke server sebelum follow (defensif, bukan asumsi).
 /// SENGAJA tidak setFollowOverride pre-await (bukan optimistic lintas-widget;
 /// follow() internal sudah confirm saat sukses + rollback override saat gagal).
 class _NotificationFollowBackPill extends StatefulWidget {
   final String username;
+  final bool? initialIsFollowing;
   final FollowService? followService;
   final PublicProfileFetcher? profileFetcher;
 
   const _NotificationFollowBackPill({
     required this.username,
+    this.initialIsFollowing,
     this.followService,
     this.profileFetcher,
   });
@@ -1110,7 +1117,9 @@ class _NotificationFollowBackPill extends StatefulWidget {
 
 class _NotificationFollowBackPillState
     extends State<_NotificationFollowBackPill> {
-  _FollowBackState _state = _FollowBackState.idle;
+  late _FollowBackState _state = widget.initialIsFollowing == true
+      ? _FollowBackState.following
+      : _FollowBackState.idle;
 
   Future<void> _handleTap() async {
     if (_state != _FollowBackState.idle) return;
