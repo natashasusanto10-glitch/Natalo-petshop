@@ -82,7 +82,12 @@ enum FeedVideoFraming {
 ///  - [appBackground] → `pauseAll` (app ke background/lock → nol audio hantu).
 ///  - [commentSheetFull] → `pauseAll` (comment sheet full menutup video).
 ///  - [productSheet] → `pauseAll` (sheet Links produk terbuka menutup video).
-enum CoverPauseReason { routePush, appBackground, commentSheetFull, productSheet }
+enum CoverPauseReason {
+  routePush,
+  appBackground,
+  commentSheetFull,
+  productSheet
+}
 
 /// Hasil klaim preload dari pemilik map (FeedScreen). Controller +
 /// wrapper cache 1:1 — wrapper bisa null (HLS bypass wrapper), controller
@@ -380,10 +385,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   String get _effectivePlaybackUrl =>
       _refreshedVideoPlaybackUrl ?? widget.post.videoPlaybackUrl;
 
-  String? get _effectiveDataSaverUrl =>
-      _refreshedVideoPlaybackUrl != null
-          ? _refreshedDataSaverUrl
-          : widget.post.videoDataSaverUrl;
+  String? get _effectiveDataSaverUrl => _refreshedVideoPlaybackUrl != null
+      ? _refreshedDataSaverUrl
+      : widget.post.videoDataSaverUrl;
   _CommentDrawerPhase _commentDrawerPhase = _CommentDrawerPhase.closed;
   bool _commentOverlayLockHeld = false;
   int _commentOverlayLockEpoch = 0;
@@ -2855,6 +2859,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     _activeGestureLease = null;
     unawaited(lease.end(allowResume: allowResume));
   }
+
   // Last-known media area width (set di build LayoutBuilder). Dipakai
   // untuk hitung zone dari localPosition.dx. Default screen width — akan
   // di-update ke real value saat build pertama.
@@ -3143,13 +3148,13 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                           minChildSize: _commentSheetMinExtent,
                           maxChildSize: commentSheetMaxExtent,
                           snap: true,
-                          snapSizes: commentSheetMaxExtent >
-                                  _commentSheetInitialExtent
-                              ? [
-                                  _commentSheetInitialExtent,
-                                  commentSheetMaxExtent,
-                                ]
-                              : const [_commentSheetInitialExtent],
+                          snapSizes:
+                              commentSheetMaxExtent > _commentSheetInitialExtent
+                                  ? [
+                                      _commentSheetInitialExtent,
+                                      commentSheetMaxExtent,
+                                    ]
+                                  : const [_commentSheetInitialExtent],
                           builder: (context, scrollController) {
                             // scrollController TIDAK dipasang ke daftar komentar
                             // (yang bikin scroll komentar menyeret sheet naik →
@@ -3390,20 +3395,33 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                             left: 0,
                             right: 0,
                             bottom: navClearance,
-                            child: FeedVideoScrubber(
-                              controller: _videoController!,
-                              isCurrent: widget.isActive,
-                              // §2.1: managed → scrubber seek-only (nol
-                              // ctrl.play/pause; tak ada resume yang menembus
-                              // suspend coordinator).
-                              managed: _managed,
-                              onScrubbingChanged: (scrubbing) {
-                                if (!mounted) return;
-                                if (scrubbing && !_isScrubbing) {
-                                  _playbackDiscontinuitySequence++;
-                                }
-                                setState(() => _isScrubbing = scrubbing);
-                              },
+                            // Fade bareng rail aksi + bottom nav saat
+                            // pinch-zoom (sebelumnya scrubber diam total,
+                            // tak terpengaruh zoom sama sekali — beda dari
+                            // rail aksi/info yang sudah fade). Durasi 200ms
+                            // disamakan dgn FeedActionRail supaya ketiganya
+                            // (nav, rail aksi, scrubber) melebur serempak.
+                            child: AnimatedOpacity(
+                              opacity: _hideOverlayForPinchZoom ? 0 : 1,
+                              duration: const Duration(milliseconds: 200),
+                              child: IgnorePointer(
+                                ignoring: _hideOverlayForPinchZoom,
+                                child: FeedVideoScrubber(
+                                  controller: _videoController!,
+                                  isCurrent: widget.isActive,
+                                  // §2.1: managed → scrubber seek-only (nol
+                                  // ctrl.play/pause; tak ada resume yang
+                                  // menembus suspend coordinator).
+                                  managed: _managed,
+                                  onScrubbingChanged: (scrubbing) {
+                                    if (!mounted) return;
+                                    if (scrubbing && !_isScrubbing) {
+                                      _playbackDiscontinuitySequence++;
+                                    }
+                                    setState(() => _isScrubbing = scrubbing);
+                                  },
+                                ),
+                              ),
                             ),
                           ),
                         // ── Right action column (Reels-style: tight + minimal) ──
