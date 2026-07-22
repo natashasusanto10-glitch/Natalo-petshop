@@ -2498,10 +2498,14 @@ class _ShortcutGrid extends StatelessWidget {
           ),
         ),
       ),
+      // IKAN (SVG custom) — set_meal_rounded sebenarnya sashimi di piring
+      // (salah makna). SVG ikan polos, gaya sama dgn bone.svg; set_meal
+      // disimpan sebagai fallback kalau aset gagal load.
       _ShortcutItem(
         Icons.set_meal_rounded,
         'Makanan Ikan',
         const Color(0xFF0891B2),
+        iconAsset: 'assets/icons/fish.svg',
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
           '/products',
@@ -2529,8 +2533,10 @@ class _ShortcutGrid extends StatelessWidget {
           arguments: const ProductCatalogArgs(discountOnly: true),
         ),
       ),
+      // Sparkle, bukan new_releases_rounded — starburst itu bahasa badge
+      // verified/warning di Material; sparkle = "baru/fresh" ala marketplace.
       _ShortcutItem(
-        Icons.new_releases_rounded,
+        Icons.auto_awesome_rounded,
         'Produk Baru',
         const Color(0xFF16A34A),
         onTap: (ctx) => Navigator.pushNamed(
@@ -2539,14 +2545,18 @@ class _ShortcutGrid extends StatelessWidget {
           arguments: const ProductCatalogArgs(newestOnly: true),
         ),
       ),
+      // Tiket sobek = ikon voucher di seluruh app (checkout/cart/notif);
+      // local_offer (tag harga) lebih bermakna "diskon", bukan voucher.
       _ShortcutItem(
-        Icons.local_offer_rounded,
+        Icons.confirmation_number_rounded,
         'Voucher',
         const Color(0xFFDB2777),
         onTap: (ctx) => Navigator.pushNamed(ctx, '/member/vouchers'),
       ),
+      // Kado (redeem) = literal "tukar hadiah"; stars_rounded mudah
+      // terbaca sebagai rating.
       _ShortcutItem(
-        Icons.stars_rounded,
+        Icons.redeem_rounded,
         'Tukar Poin',
         const Color(0xFFEA580C),
         onTap: (ctx) => Navigator.pushNamed(ctx, '/member/loyalty'),
@@ -4231,7 +4241,8 @@ class _CategorySection extends StatelessWidget {
   // (imageUrl null). Mapping dirapikan Jul 2026: anjing dulu
   // cruelty_free_rounded (icon KELINCI, salah makna — Material tak punya
   // icon anjing) → cookie (biskuit, selaras shortcut grid); ikan
-  // water→set_meal (selaras shortcut); pasir box→grain (butiran);
+  // water→set_meal (shortcut grid kini pakai fish.svg; set_meal bertahan
+  // di sini karena fallback ini butuh IconData); pasir box→grain (butiran);
   // snack cookie→icecream (cookie pindah ke anjing); kandang home→fence;
   // grooming spa→gunting; shampoo dipisah→sabun; aquarium dapat water.
   static IconData _iconFor(String name) {
