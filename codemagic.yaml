@@ -112,6 +112,27 @@ workflows:
             --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
             --verbose
 
+      - name: Fetch signing files — NotificationService extension (verbose)
+        script: |
+          # Profile terpisah untuk target NotificationService (Notification
+          # Service Extension, lihat flutter_app/ios/NotificationService/) —
+          # tiap App Extension dianggap Apple sebagai bundle ID sendiri.
+          #
+          # PRASYARAT MANUAL (belum bisa di-skip lewat script ini): Bundle ID
+          # com.natalo.petshop.NotificationService HARUS sudah terdaftar
+          # sebagai App ID di Apple Developer Portal (App Extension type)
+          # SEBELUM step ini bisa fetch/create profile-nya. --create di sini
+          # cuma bikin PROFILE baru, bukan App ID-nya. Kalau App ID belum
+          # terdaftar, step ini akan gagal dengan error jelas dari Apple API
+          # (bukan silent) — daftarkan dulu via developer.apple.com →
+          # Certificates, Identifiers & Profiles → Identifiers → (+).
+          app-store-connect fetch-signing-files com.natalo.petshop.NotificationService \
+            --platform IOS \
+            --type IOS_APP_STORE \
+            --create \
+            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
+            --verbose
+
       - name: Add certs to keychain
         script: keychain add-certificates
 
