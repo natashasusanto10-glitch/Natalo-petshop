@@ -930,17 +930,27 @@ class _FeedScreenState extends State<FeedScreen>
           ],
         ),
       ),
-      bottomNavigationBar: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 220),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        child: (_interactionLocked || _mediaZooming)
-            ? const SizedBox.shrink(key: ValueKey('feed-nav-hidden'))
-            : const BottomNavBar(
-                key: ValueKey('feed-nav-visible'),
-                currentIndex: 2,
-                variant: BottomNavVariant.dark,
-              ),
+      // AnimatedOpacity (widget TETAP mounted, bukan AnimatedSwitcher yang
+      // swap identity) — sama seperti pola 'feed-top-chrome' di atas. Nav ini
+      // frosted glass (BackdropFilter, mahal di-render ulang); AnimatedSwitcher
+      // melepas widget dari tree SEKALIGUS di akhir transisi — kalau frame
+      // itu jank (rebutan raster dengan blur + video yang sedang di-scale
+      // pinch), hilangnya terasa "loncat" bukan meluruh. RepaintBoundary
+      // supaya hasil blur di-cache selama fade, bukan dihitung ulang tiap
+      // frame. IgnorePointer menjaga nav tak bisa ditap saat opacity 0.
+      bottomNavigationBar: RepaintBoundary(
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          opacity: (_interactionLocked || _mediaZooming) ? 0 : 1,
+          child: IgnorePointer(
+            ignoring: _interactionLocked || _mediaZooming,
+            child: const BottomNavBar(
+              currentIndex: 2,
+              variant: BottomNavVariant.dark,
+            ),
+          ),
+        ),
       ),
     );
   }
