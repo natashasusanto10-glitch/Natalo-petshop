@@ -19,25 +19,19 @@
  * supaya nilainya eksplisit di source, bukan env var tersembunyi yang bisa
  * gagal-senyap ke `[]` kalau lupa di-set.
  *
- * CARA DAPAT FINGERPRINT (WAJIB dibetulkan sebelum rilis):
- *   Play Console → Setup → App integrity → App signing key certificate →
- *   SHA-256   (ini kunci yang dipakai Google Play App Signing, BUKAN upload
- *   key). Atau dari keystore rilis:
- *     keytool -list -v -keystore <release.keystore> -alias <alias>
- *   Format: uppercase, colon-delimited (`AA:BB:CC:...`).
- *
  * Bisa >1 fingerprint (mis. Play signing key + upload key) — tambahkan saja
  * ke array SHA256_FINGERPRINTS.
+ *
+ * Fingerprint di bawah = App signing key certificate SHA-256 dari Play
+ * Console → App integrity, untuk package com.natalo.petshop (app Flutter
+ * native, BUKAN keystore Capacitor lama). Diambil user 2026-07-22.
  */
 import { NextResponse } from "next/server";
 
 const PACKAGE_NAME = "com.natalo.petshop";
 
-// TODO(rilis): GANTI dengan SHA-256 dari Play Console (App signing key).
-// Nilai di bawah dibawa dari file statis lama & kemungkinan milik keystore
-// Capacitor lama — verifikasi App Links akan GAGAL sampai ini dibetulkan.
 const SHA256_FINGERPRINTS = [
-  "F6:C8:F6:3F:5B:DF:24:3A:8F:9E:3E:C4:AC:91:23:08:EC:0B:57:77:85:A1:2A:7C:DB:12:1F:BF:26:85:2A:44",
+  "B3:07:D9:B5:2C:4A:C8:DD:60:A6:25:3C:DF:E4:36:B3:99:60:DB:E5:C8:A7:AE:EE:1A:5A:07:70:28:D8:19:50",
 ];
 
 export async function GET() {
