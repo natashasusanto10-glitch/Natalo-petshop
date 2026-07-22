@@ -28,6 +28,12 @@ class AppNotification {
   /// tombol love di baris notifikasi dgn like asli di sheet komentar.
   final bool commentLiked;
 
+  /// Untuk notif "user_followed": apakah viewer sudah follow-balik aktor
+  /// notif ini. Diisi server dari UserFollow — supaya pill "Ikuti"/
+  /// "Mengikuti" benar sejak render pertama, bukan nunggu tap. Null untuk
+  /// notif non-follow atau baris lama pra-migration (actorId belum ada).
+  final bool? isFollowing;
+
   const AppNotification({
     required this.id,
     required this.title,
@@ -53,6 +59,7 @@ class AppNotification {
     required this.createdAt,
     required this.read,
     this.commentLiked = false,
+    this.isFollowing,
   });
 
   factory AppNotification.fromApiJson(Map<String, dynamic> json) {
@@ -98,6 +105,7 @@ class AppNotification {
           DateTime.now(),
       read: json['read'] == true,
       commentLiked: json['commentLiked'] == true,
+      isFollowing: json['isFollowing'] as bool?,
     );
   }
 
@@ -129,6 +137,7 @@ class AppNotification {
       createdAt: createdAt,
       read: read ?? this.read,
       commentLiked: commentLiked,
+      isFollowing: isFollowing,
     );
   }
 }
