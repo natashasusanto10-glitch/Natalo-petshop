@@ -50,3 +50,33 @@ endpoint and uses a bounded, allowlisted image loader.
 The route fetches image bytes itself so redirect, timeout, MIME, and size
 policy are enforceable. Product and profile OG routes are intentionally left
 for Task 6, where they will reuse the same validator and loader.
+
+## Security Review Fix
+
+The Task 5 review found four Important findings. They are resolved by
+`17cce019 fix(share): harden OG image fetch security`.
+
+### RED evidence
+
+The reviewed pre-fix implementation accepted every path on the Natalo hosts,
+read remote bodies through `arrayBuffer()` before enforcing the byte limit,
+trusted the declared image MIME type, and gave every `v` query the long CDN
+cache header. The new regressions cover those exact failure modes:
+
+- Natalo `/api/`, dynamic pages, encoded `/api/`, and encoded dot-segment
+  bypasses are rejected while known static image paths remain allowed.
+- Missing and lying `Content-Length` payloads crossing 4 MB cancel the reader
+  and abort the fetch signal.
+- HTML, SVG, corrupt/truncated bytes, and MIME/magic mismatches are rejected;
+  JPEG, PNG, WebP, and GIF need matching minimal raster headers.
+- Only the exact deterministic current token is cacheable; missing `v` renders
+  with `private, no-store`, and malformed, oversized, or stale tokens redirect
+  without caching to the current token.
+
+### GREEN evidence
+
+- `npx tsx --test tests/share-og-security.test.ts tests/share-feed-card.test.ts tests/share-feed-data.test.ts tests/share-metadata.test.ts` passed: 23/23.
+- Targeted TypeScript check passed with a temporary Task 5 tsconfig, removed
+  after verification.
+- Targeted ESLint passed with no errors.
+- `git diff --check` passed.
