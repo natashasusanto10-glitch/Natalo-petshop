@@ -2,7 +2,8 @@
 
 ## Status
 
-Complete. Final security/spec review found no Critical or Important issue.
+Complete. Follow-up review found and resolved cache, title-contract, and
+defense-in-depth visibility issues.
 
 ## Implementation
 
@@ -11,10 +12,23 @@ Complete. Final security/spec review found no Critical or Important issue.
 - Added `buildFeedShareMetadata()` with a canonical Feed URL that omits `v`, a versioned explicit Task 5 OG image URL, safe fallback copy, public robots, Open Graph, and Twitter large-image metadata.
 - Added `/feed/[id]` server page with a cache-safe poster, author identity, caption, and store CTA. Missing or non-public posts use `notFound()` and no private data is selected.
 - Added a canonical `/feed` alternate URL.
+- Made `/feed/[id]` dynamic (`revalidate = 0`) so metadata for a newly
+  versioned share URL cannot be served from the prior 60-second page cache.
+- Locked Feed title metadata to `<authorName> di Natalo` for document, Open
+  Graph, and Twitter metadata.
+- Added a final visibility gate after the Prisma query. Even if a future query
+  regression returns a draft, rejected, deleted, or not-ready row, no author,
+  caption, or media can be serialized.
+- Shared unavailable metadata so non-public posts consistently remain noindex.
 
 ## Validation
 
-- RED/GREEN focused tests: `npx tsx --test tests/share-feed-data.test.ts tests/share-metadata.test.ts` - 3 passed.
+- RED: strengthened non-public Feed tests deliberately returned private rows;
+  `npx tsx --test tests/share-feed-data.test.ts tests/share-metadata.test.ts`
+  failed for draft, rejected, deleted, and not-ready media before the final
+  visibility gate was added.
+- GREEN: `npx tsx --test tests/share-feed-data.test.ts tests/share-metadata.test.ts`
+  - 10 passed, including the direct Next 404 regression for the public page.
 - Targeted source typecheck: `npx tsc --noEmit -p tsconfig.task4.json` - passed. The temporary config was removed after verification.
 - `git diff --check` - passed.
 - Root `npx tsc --noEmit` still fails only on six pre-existing test imports for missing `vitest`; Task 4-specific type errors were fixed and no longer appear.
@@ -22,6 +36,8 @@ Complete. Final security/spec review found no Critical or Important issue.
 ## Commit
 
 `2b3b38f5 feat(web): add public Feed share pages`
+
+Follow-up fix commit pending.
 
 ## Concerns
 

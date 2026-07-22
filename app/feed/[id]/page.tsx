@@ -4,24 +4,23 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { getPublicShareFeedPost } from "@/lib/share/feed-share-data";
-import { buildFeedShareMetadata } from "@/lib/share/share-metadata";
+import {
+  buildFeedShareMetadata,
+  buildUnavailableFeedShareMetadata,
+} from "@/lib/share/share-metadata";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.natalopetshop.com";
 
 type PageProps = { params: Promise<{ id: string }> };
 
-export const revalidate = 60;
+// The page HTML carries cache-busting metadata. Cache only the versioned OG image.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
   const post = await getPublicShareFeedPost(id);
-  if (!post) {
-    return {
-      title: "Postingan tidak ditemukan | Natalo Petshop",
-      description: "Postingan yang Anda cari tidak tersedia.",
-      robots: { index: false, follow: false },
-    };
-  }
+  if (!post) return buildUnavailableFeedShareMetadata();
   return buildFeedShareMetadata(post, siteUrl);
 }
 

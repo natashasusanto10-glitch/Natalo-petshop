@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildFeedShareMetadata } from "@/lib/share/share-metadata";
+import {
+  buildFeedShareMetadata,
+  buildUnavailableFeedShareMetadata,
+} from "@/lib/share/share-metadata";
+import PublicFeedPostPage, {
+  dynamic,
+  revalidate,
+} from "@/app/feed/[id]/page";
+import { prisma } from "@/lib/prisma";
 
 const siteUrl = "https://www.natalopetshop.com";
 
@@ -38,6 +46,8 @@ test("Feed metadata uses canonical without v and versioned OG image", () => {
   );
   assert.ok(metadata.twitter && "card" in metadata.twitter);
   assert.equal(metadata.twitter.card, "summary_large_image");
+  assert.equal(metadata.title, "Natalo Petshop di Natalo");
+  assert.equal(metadata.openGraph?.title, "Natalo Petshop di Natalo");
 });
 
 test("Feed metadata has stable safe fallback copy and public robots", () => {
@@ -58,7 +68,39 @@ test("Feed metadata has stable safe fallback copy and public robots", () => {
     siteUrl,
   );
 
-  assert.match(String(metadata.title), /Postingan Natalo/);
-  assert.match(String(metadata.description), /Natalo Petshop/);
+  assert.equal(metadata.title, "Natalo Petshop di Natalo");
+  assert.match(String(metadata.description), /Lihat postingan terbaru dari Natalo Petshop di Natalo/);
   assert.deepEqual(metadata.robots, { index: true, follow: true });
+});
+
+test("unavailable Feed metadata is noindex and does not leak private post data", () => {
+  const metadata = buildUnavailableFeedShareMetadata();
+  const serialized = JSON.stringify(metadata);
+
+  assert.deepEqual(metadata.robots, { index: false, follow: false });
+  assert.doesNotMatch(serialized, /draft author|private caption|private-media/i);
+});
+
+test("Feed share page is dynamic so a new v URL cannot reuse stale metadata", () => {
+  assert.equal(dynamic, "force-dynamic");
+  assert.equal(revalidate, 0);
+});
+
+test("public Feed page becomes a Next 404 when the public post cannot resolve", async () => {
+  const feedPost = prisma.feedPost as unknown as {
+    findFirst: typeof prisma.feedPost.findFirst;
+  };
+  const originalFindFirst = feedPost.findFirst;
+  feedPost.findFirst = (async () => null) as typeof feedPost.findFirst;
+
+  try {
+    await assert.rejects(
+      () => PublicFeedPostPage({ params: Promise.resolve({ id: "private-post" }) }),
+      (error: { digest?: string }) =>
+        error.digest === "NEXT_HTTP_ERROR_FALLBACK;404" ||
+        error.digest === "NEXT_NOT_FOUND",
+    );
+  } finally {
+    feedPost.findFirst = originalFindFirst;
+  }
 });

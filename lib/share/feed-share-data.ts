@@ -32,6 +32,8 @@ export type PublicShareFeedPost = {
   };
 };
 
+export type PublicShareFeedPostRepository = Pick<typeof prisma, "feedPost">;
+
 type FeedVersionInput = {
   id: string;
   title: string;
@@ -41,6 +43,34 @@ type FeedVersionInput = {
   author: { role: string; name: string; profilePhotoUrl: string | null };
   authorRole: string;
 };
+
+type ShareVisibilityCheckedFeedPost = {
+  status: string;
+  deletedAt: Date | null;
+  encodingStatus: string;
+  kind: string;
+  productId: string | null;
+  videoUrl: string | null;
+  thumbnailUrl: string | null;
+};
+
+function isPublicShareFeedPost(post: ShareVisibilityCheckedFeedPost) {
+  if (
+    post.status !== "ACTIVE" ||
+    post.deletedAt !== null ||
+    post.encodingStatus !== "ready"
+  ) {
+    return false;
+  }
+
+  if (post.kind === "PRODUCT_ONLY" || post.kind === "PHOTO_CAROUSEL") {
+    return true;
+  }
+
+  if (post.kind === "PROMO") return post.productId !== null;
+
+  return post.videoUrl !== null && post.thumbnailUrl !== null;
+}
 
 /** Keep the share URL token aligned with the existing public Feed API. */
 export function buildFeedShareVersion(post: FeedVersionInput) {
@@ -67,14 +97,20 @@ export function buildFeedShareVersion(post: FeedVersionInput) {
  */
 export async function getPublicShareFeedPost(
   id: string,
+  repository: PublicShareFeedPostRepository = prisma,
 ): Promise<PublicShareFeedPost | null> {
-  const post = await prisma.feedPost.findFirst({
+  const post = await repository.feedPost.findFirst({
     where: { id, ...PUBLIC_SHARE_FEED_POST_WHERE },
     select: {
       id: true,
       title: true,
       description: true,
       kind: true,
+      status: true,
+      deletedAt: true,
+      encodingStatus: true,
+      productId: true,
+      videoUrl: true,
       thumbnailUrl: true,
       videoDurationSec: true,
       authorRole: true,
@@ -93,7 +129,7 @@ export async function getPublicShareFeedPost(
       },
     },
   });
-  if (!post) return null;
+  if (!post || !isPublicShareFeedPost(post)) return null;
 
   const authorPhoto = brandPhotoUrl(post.author.role, post.author.profilePhotoUrl);
   const posterUrl =
