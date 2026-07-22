@@ -7,19 +7,19 @@ import '../theme/natalo_colors.dart';
 import '../theme/natalo_text.dart';
 import 'package:video_player/video_player.dart';
 
-import 'package:share_plus/share_plus.dart';
 
-import '../config/api_config.dart';
 import '../constants/official_brand.dart';
 import '../models/feed_create_post_draft.dart';
 import '../models/feed_post.dart';
 import '../models/public_profile.dart';
+import '../models/share_content.dart';
 import '../features/feed/transition/post_viewer_route.dart';
 import '../features/feed/transition/profile_tile_visibility.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../features/feed/widgets/gallery_post_tile.dart';
 import '../services/feed_service.dart';
 import '../services/profile_service.dart';
+import '../services/share_sheet_launcher.dart';
 import '../services/video_quality_service.dart';
 import '../state/feed_draft_store.dart';
 import '../state/feed_store.dart';
@@ -415,22 +415,20 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     );
   }
 
-  /// Share link profil publik sendiri — pola sama dengan
-  /// PublicProfileScreen._shareProfile (sharePositionOrigin wajib iOS).
+  /// A profile without a username does not have a canonical public URL.
   Future<void> _shareProfile() async {
     AppHaptics.tap();
     try {
       final profile = _ownPublicProfile();
-      final username = profile.username;
-      final url = (username != null && username.isNotEmpty)
-          ? ApiConfig.uri('/u/$username').toString()
-          : ApiConfig.uri('/').toString();
-      final label = profile.isOfficial ? profile.name : profile.displayHandle;
-      final box = context.findRenderObject() as RenderBox?;
-      await Share.share(
-        'Lihat profil $label di Natalo\n$url',
-        sharePositionOrigin:
-            box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+      final username = profile.username?.trim();
+      if (username == null || username.isEmpty) return;
+      await ShareSheetLauncher().launch(
+        ProfileShareContent(
+          username: username,
+          displayName: profile.isOfficial ? profile.name : profile.displayHandle,
+          shareVersion: profile.shareVersion,
+        ),
+        origin: shareOriginFor(context),
       );
     } catch (_) {
       // Cancel / share fail — silent.

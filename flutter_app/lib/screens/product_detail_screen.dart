@@ -2,16 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
-import '../config/api_config.dart';
 import '../config/natalo_store_config.dart';
 import '../constants/official_brand.dart';
 import '../models/cart_item.dart';
 import '../models/feed_post.dart';
 import '../models/product.dart';
+import '../models/share_content.dart';
 import '../models/review.dart';
 import '../services/api_client.dart';
 import '../services/app_analytics.dart';
@@ -20,6 +19,7 @@ import '../services/feed_service.dart';
 import '../services/product_service.dart';
 import '../services/report_service.dart';
 import '../services/review_service.dart';
+import '../services/share_sheet_launcher.dart';
 import '../services/stock_notification_service.dart';
 import '../state/cart_store.dart';
 import '../state/chat_store.dart';
@@ -564,15 +564,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Future<void> _shareProduct(BuildContext context) async {
     AppHaptics.tap();
-    final url = '${ApiConfig.publicSiteUrl}/products/${product.slug}';
-    final text = '${product.title}\n${formatRupiah(product.finalPrice)}\n$url';
-    final box = context.findRenderObject() as RenderBox?;
     try {
-      await Share.share(
-        text,
-        subject: product.title,
-        sharePositionOrigin:
-            box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+      await ShareSheetLauncher().launch(
+        ProductShareContent(
+          slug: product.slug,
+          productName: product.title,
+          price: product.finalPrice,
+          shareVersion: product.shareVersion,
+        ),
+        origin: shareOriginFor(context),
       );
     } catch (_) {
       // Fail silently — share sheet ditutup user atau platform tidak support.

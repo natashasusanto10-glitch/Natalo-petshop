@@ -81,6 +81,65 @@ class AppAnalytics {
   static Future<void> logScreenView(String screenName) =>
       logEvent('screen_view', {'screen_name': screenName});
 
+  static Future<void> logShareSheetOpened({
+    required String contentType,
+    required String contentId,
+  }) =>
+      _logShareEvent(
+        'share_sheet_opened',
+        contentType: contentType,
+        contentId: contentId,
+        result: 'opened',
+      );
+
+  static Future<void> logShareCompleted({
+    required String contentType,
+    required String contentId,
+  }) =>
+      _logShareEvent(
+        'share_completed',
+        contentType: contentType,
+        contentId: contentId,
+        result: 'success',
+      );
+
+  static Future<void> logShareDismissed({
+    required String contentType,
+    required String contentId,
+    required String result,
+  }) =>
+      _logShareEvent(
+        'share_dismissed',
+        contentType: contentType,
+        contentId: contentId,
+        result: result,
+      );
+
+  static Future<void> _logShareEvent(
+    String eventName, {
+    required String contentType,
+    required String contentId,
+    required String result,
+  }) =>
+      logEvent(eventName, {
+        'content_type': contentType,
+        'content_id': contentId,
+        'os': _sharePlatform,
+        'result': result,
+      });
+
+  static String get _sharePlatform {
+    if (kIsWeb) return 'web';
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.android => 'android',
+      TargetPlatform.iOS => 'ios',
+      TargetPlatform.macOS => 'macos',
+      TargetPlatform.windows => 'windows',
+      TargetPlatform.linux => 'linux',
+      TargetPlatform.fuchsia => 'fuchsia',
+    };
+  }
+
   static Future<void> setUserId(String? userId) async {
     if (!_ready || _instance == null) return;
     await _instance!.setUserId(id: userId);
