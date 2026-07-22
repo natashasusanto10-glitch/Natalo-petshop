@@ -8,6 +8,7 @@ import {
   OFFICIAL_BRAND_NAME,
 } from "@/lib/social/brand-user";
 import { feedNotificationThumbnail } from "@/lib/feed/notification-thumbnail";
+import { signBunnyUrl } from "@/lib/feed/bunny";
 
 export const SOCIAL_NOTIFICATION_SOURCE = "social";
 
@@ -48,7 +49,12 @@ export async function sendFollowNotification(params: {
     const actorName = isAdminRole(follower.role)
       ? OFFICIAL_BRAND_NAME
       : displayName(follower);
-    const actorPhoto = brandPhotoUrl(follower.role, follower.profilePhotoUrl);
+    // signBunnyUrl no-op untuk URL non-Bunny (profil biasanya di storage
+    // lain) — aman dipanggil selalu, cuma efektif kalau memang hotlink
+    // protection aktif & URL-nya memang di CDN Bunny.
+    const actorPhoto =
+      signBunnyUrl(brandPhotoUrl(follower.role, follower.profilePhotoUrl)) ??
+      null;
     const url = follower.username
       ? `/u/${encodeURIComponent(follower.username)}`
       : "/notifications";
@@ -195,7 +201,12 @@ export async function sendNewPostToFollowersNotification(postId: string) {
     const kindLabel = post.kind === "PHOTO_CAROUSEL" ? "foto" : "video";
     const title = "Postingan baru";
     const body = `${actorName} posting ${kindLabel} baru`;
-    const thumb = feedNotificationThumbnail(post);
+    // WAJIB sign — video thumbnail di-hosting Bunny CDN dgn hotlink
+    // protection; tanpa token, APNs/FCM gagal fetch gambar saat push
+    // (403), rich image tak pernah nongol walau NSE iOS sudah beres.
+    // In-app read path (mapAnnouncement) sudah sign versi Announcement-nya
+    // sendiri; ini KHUSUS untuk imageUrl yang dikirim ke push itself.
+    const thumb = signBunnyUrl(feedNotificationThumbnail(post)) ?? null;
     const actorFields = notificationActorFields(
       post.author.role,
       post.author.name,
