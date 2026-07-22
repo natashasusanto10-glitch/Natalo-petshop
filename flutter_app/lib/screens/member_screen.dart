@@ -12,6 +12,7 @@ import '../features/feed/transition/post_hero.dart';
 import '../features/feed/transition/post_viewer_route.dart';
 import '../features/feed/transition/profile_tile_visibility.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
+import '../features/feed/video/video_media_cache.dart';
 import '../features/feed/widgets/gallery_post_tile.dart'
     show gridShowsLetterbox;
 import '../models/public_profile.dart';
@@ -904,6 +905,21 @@ class _PostThumbnail extends StatelessWidget {
                 postId: post.id,
                 child: CachedNetworkImage(
                   imageUrl: mediaUrl,
+                  // cacheKey STABIL (strip token/expires signed URL) — thumbnail
+                  // video Bunny bawa signed-token yang berubah tiap refetch.
+                  // Tanpa ini, `_loadAll()` pasca-tutup viewer mengganti URL
+                  // (token baru) → CachedNetworkImage reload → baris tile video
+                  // KEDIP ABU-ABU (gejala device: glitch back di Profil sendiri;
+                  // foto URL stabil jadi tak kena). Sama seperti videoMediaCacheKey
+                  // dipakai player video.
+                  cacheKey: videoMediaCacheKey(mediaId: post.id, url: mediaUrl),
+                  // cacheKey STABIL (strip token/expires signed URL) — thumbnail
+                  // video Bunny bawa signed-token yang berubah tiap refetch.
+                  // Tanpa ini, `_loadAll()` pasca-tutup viewer mengganti URL
+                  // (token baru) → CachedNetworkImage reload → baris tile video
+                  // KEDIP ABU-ABU (gejala device: glitch back di Profil sendiri;
+                  // foto URL stabil jadi tak kena). Sama seperti videoMediaCacheKey
+                  // dipakai player video.
                   // Video landscape → contain (letterbox, utuh); sisanya
                   // cover-crop penuh (foto/carousel/portrait, tak berubah).
                   fit: gridShowsLetterbox(post) ? BoxFit.contain : BoxFit.cover,
