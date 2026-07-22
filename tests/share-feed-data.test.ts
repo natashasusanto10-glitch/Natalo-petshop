@@ -2,10 +2,58 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildFeedShareVersion,
   getPublicShareFeedPost,
   PUBLIC_SHARE_FEED_POST_WHERE,
   type PublicShareFeedPostRepository,
 } from "@/lib/share/feed-share-data";
+
+const carouselVersionInput = {
+  id: "carousel-post",
+  title: "Produk pilihan",
+  description: "Lihat koleksi terbaru",
+  thumbnailUrl: null,
+  videoDurationSec: null,
+  author: {
+    role: "MEMBER",
+    name: "Natalo Member",
+    profilePhotoUrl: null,
+  },
+  authorRole: "MEMBER",
+};
+
+test("shareVersion carousel mengikuti media poster pertama, bukan query CDN sementara", () => {
+  const first = buildFeedShareVersion({
+    ...carouselVersionInput,
+    media: [
+      {
+        url: "https://cdn.example.com/carousel-a.jpg?token=old&expires=1",
+        thumbnailUrl: null,
+      },
+    ],
+  });
+  const resignedFirst = buildFeedShareVersion({
+    ...carouselVersionInput,
+    media: [
+      {
+        url: "https://cdn.example.com/carousel-a.jpg?token=new&expires=2",
+        thumbnailUrl: null,
+      },
+    ],
+  });
+  const replacedFirst = buildFeedShareVersion({
+    ...carouselVersionInput,
+    media: [
+      {
+        url: "https://cdn.example.com/carousel-b.jpg?token=new&expires=2",
+        thumbnailUrl: null,
+      },
+    ],
+  });
+
+  assert.equal(first, resignedFirst);
+  assert.notEqual(first, replacedFirst);
+});
 
 test("public share Feed query always restricts to active, non-deleted posts", () => {
   assert.equal(PUBLIC_SHARE_FEED_POST_WHERE.status, "ACTIVE");

@@ -42,3 +42,15 @@ defense-in-depth visibility issues.
 ## Concerns
 
 The explicit Feed OG image endpoint is intentionally only referenced here; it is implemented in Task 5.
+
+## Final review follow-up
+
+- The preview poster selection is now shared by the rendered Feed poster and
+  `buildFeedShareVersion()`. A carousel with no post thumbnail therefore hashes
+  its first media thumbnail, or its first media URL when no thumbnail exists.
+- Signed or expiring query parameters are stripped before hashing, while a real
+  replacement of the first carousel image produces a new versioned share URL.
+- RED: the carousel regression failed because two distinct first-media URLs
+  produced the same token.
+- GREEN: `npx tsx --test tests/share-feed-data.test.ts tests/share-metadata.test.ts`
+  passed 11/11; targeted TypeScript validation passed; `git diff --check` passed.

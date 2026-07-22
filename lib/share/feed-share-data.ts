@@ -39,6 +39,7 @@ type FeedVersionInput = {
   title: string;
   description: string | null;
   thumbnailUrl: string | null;
+  media?: readonly { url: string; thumbnailUrl: string | null }[];
   videoDurationSec: number | null;
   author: { role: string; name: string; profilePhotoUrl: string | null };
   authorRole: string;
@@ -72,6 +73,12 @@ function isPublicShareFeedPost(post: ShareVisibilityCheckedFeedPost) {
   return post.videoUrl !== null && post.thumbnailUrl !== null;
 }
 
+function selectFeedPreviewPoster(
+  post: Pick<FeedVersionInput, "thumbnailUrl" | "media">,
+) {
+  return post.thumbnailUrl ?? post.media?.[0]?.thumbnailUrl ?? post.media?.[0]?.url ?? null;
+}
+
 /** Keep the share URL token aligned with the existing public Feed API. */
 export function buildFeedShareVersion(post: FeedVersionInput) {
   const authorDisplayName = brandDisplayName(post.author.role, post.author.name);
@@ -80,7 +87,7 @@ export function buildFeedShareVersion(post: FeedVersionInput) {
     post.id,
     post.title,
     post.description,
-    stripEphemeralUrlQuery(post.thumbnailUrl),
+    stripEphemeralUrlQuery(selectFeedPreviewPoster(post)),
     post.videoDurationSec,
     authorDisplayName,
     stripEphemeralUrlQuery(authorPhoto),
@@ -132,8 +139,7 @@ export async function getPublicShareFeedPost(
   if (!post || !isPublicShareFeedPost(post)) return null;
 
   const authorPhoto = brandPhotoUrl(post.author.role, post.author.profilePhotoUrl);
-  const posterUrl =
-    post.thumbnailUrl ?? post.media[0]?.thumbnailUrl ?? post.media[0]?.url ?? null;
+  const posterUrl = selectFeedPreviewPoster(post);
 
   return {
     id: post.id,
