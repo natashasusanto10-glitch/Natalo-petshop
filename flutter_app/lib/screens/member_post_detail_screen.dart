@@ -35,6 +35,7 @@ import '../theme/natalo_text.dart';
 import '../utils/app_route_observer.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../utils/mention_text.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/calm_scroll_physics.dart';
 import '../widgets/feed_comment_sheet.dart';
@@ -2793,10 +2794,29 @@ class _PostCaptionState extends State<PostCaption>
   late final TapGestureRecognizer _nameRecognizer = TapGestureRecognizer()
     ..onTap = _openAuthorProfile;
 
+  // Recognizer per @mention di body caption — fresh tiap build (sama pola
+  // dgn MentionText), beda dgn _nameRecognizer/_expandRecognizer yang
+  // stabil karena target-nya tak berubah antar-build.
+  final List<TapGestureRecognizer> _mentionRecognizers = [];
+
   @override
   void initState() {
     super.initState();
     postCaptionSessionStore.addListener(_onSessionChanged);
+  }
+
+  void _disposeMentionRecognizers() {
+    for (final r in _mentionRecognizers) {
+      r.dispose();
+    }
+    _mentionRecognizers.clear();
+  }
+
+  void _openMentionProfile(String handle) {
+    final normalized = handle.trim().replaceFirst('@', '').toLowerCase();
+    if (normalized.isEmpty) return;
+    AppHaptics.tap();
+    Navigator.pushNamed(context, '/u', arguments: normalized);
   }
 
   void _onSessionChanged() {
@@ -2824,6 +2844,7 @@ class _PostCaptionState extends State<PostCaption>
     postCaptionSessionStore.removeListener(_onSessionChanged);
     _expandRecognizer.dispose();
     _nameRecognizer.dispose();
+    _disposeMentionRecognizers();
     super.dispose();
   }
 
@@ -2889,6 +2910,15 @@ class _PostCaptionState extends State<PostCaption>
       final suffixIndex =
           truncated == null ? -1 : text.lastIndexOf('... selengkapnya');
       final canTapName = widget.author?.hasUsername ?? false;
+      final truncatedBody =
+          suffixIndex >= 0 && !expanded ? text.substring(0, suffixIndex + 4) : text;
+      _disposeMentionRecognizers();
+      final mentionSpans = buildMentionSpans(
+        truncatedBody,
+        onMentionTap: _openMentionProfile,
+        defaultStyle: style,
+        collectRecognizers: _mentionRecognizers,
+      );
       final span = TextSpan(children: [
         TextSpan(
             text: '${widget.memberName} ',
@@ -2898,14 +2928,12 @@ class _PostCaptionState extends State<PostCaption>
                 color: widget.isOfficial
                     ? NataloColors.officialGoldOnLight
                     : null)),
-        if (suffixIndex >= 0 && !expanded) ...[
-          TextSpan(text: text.substring(0, suffixIndex + 4)),
+        ...mentionSpans,
+        if (suffixIndex >= 0 && !expanded)
           TextSpan(
               text: 'selengkapnya',
               recognizer: _expandRecognizer,
               style: const TextStyle(fontWeight: NataloWeight.strong)),
-        ] else
-          TextSpan(text: text),
       ]);
       return AnimatedSize(
           duration: const Duration(milliseconds: 280),
