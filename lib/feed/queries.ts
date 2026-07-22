@@ -20,9 +20,9 @@ import { signBunnyUrl } from "./bunny";
 import { buildFeedVideoPlaybackUrls } from "./video-playback-urls";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 import {
-  buildShareVersion,
   stripEphemeralUrlQuery,
 } from "@/lib/share/share-version";
+import { buildFeedShareVersion } from "@/lib/share/feed-share-data";
 import { feedAccessibilityPayload } from "./accessibility";
 import { visibleFeedCommentRootWhere } from "./comment-sync";
 import type {
@@ -483,16 +483,7 @@ export async function listFeedPosts({
     const isOfficial = p.authorRole === "ADMIN";
     return {
       id: p.id,
-      shareVersion: buildShareVersion([
-        p.id,
-        p.title,
-        p.description,
-        stripEphemeralUrlQuery(p.thumbnailUrl),
-        p.videoDurationSec,
-        authorDisplayName,
-        stripEphemeralUrlQuery(authorPhoto),
-        isOfficial,
-      ]),
+      shareVersion: buildFeedShareVersion(p),
       kind: p.kind,
       tab: p.tab,
       status: p.status,
