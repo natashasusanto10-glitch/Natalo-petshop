@@ -76,14 +76,34 @@ Future<void> openFeedPostSmart(
 class DeepLinkService {
   DeepLinkService._();
 
+  /// Instance TERPISAH dari singleton [deepLinkService] — dipakai test untuk
+  /// reproduksi race navigator tanpa terikat guard `_initialized` singleton
+  /// (yang cuma boleh initialize() sekali seumur proses) atau plugin channel
+  /// `AppLinks()` asli.
+  @visibleForTesting
+  DeepLinkService.test();
+
   final AppLinks _appLinks = AppLinks();
   StreamSubscription<Uri>? _sub;
   bool _initialized = false;
   GlobalKey<NavigatorState>? _navigatorKey;
 
+  /// Set langsung tanpa lewat [initialize] — test bisa attach [GlobalKey]
+  /// yang BELUM ter-mount ke widget tree apa pun (`currentState == null`)
+  /// untuk simulasi race cold-start, lalu mount tree-nya belakangan.
+  @visibleForTesting
+  set navigatorKeyForTesting(GlobalKey<NavigatorState> key) =>
+      _navigatorKey = key;
+
   /// True bila app cold-start dipicu tap deep-link (bukan buka app biasa).
   /// Dibaca LaunchPromoGate untuk skip popup agar tidak menutupi tujuan link.
   bool launchedFromDeepLink = false;
+
+  /// Batas tunggu Navigator ter-mount — lihat [_waitForNavigator]. 40 x 50ms
+  /// = 2 detik, cukup longgar utk cold-start (splash/onboarding gate) tapi
+  /// tak menggantung selamanya kalau memang navigator tak pernah muncul.
+  static const _maxNavigatorWaitAttempts = 40;
+  static const _navigatorWaitInterval = Duration(milliseconds: 50);
 
   Future<void> initialize(GlobalKey<NavigatorState> navigatorKey) async {
     if (_initialized) return;
@@ -103,8 +123,26 @@ class DeepLinkService {
     }
   }
 
+  /// `_navigatorKey.currentState` BELUM TENTU ter-mount saat link cold-start
+  /// diproses: `initialize()` dipanggil sebelum `runApp()` selesai membangun
+  /// widget tree (main.dart), jadi `getInitialLink()` yang resolve duluan
+  /// menemukan Navigator masih null. Dulu `_handle` langsung `return` diam-
+  /// diam kalau null → deep link DIBUANG, user cuma lihat initialRoute
+  /// default (Beranda) — gejala device: share profil/produk buka app tapi
+  /// SELALU jatuh ke Beranda, utk SEMUA jenis link (bukan bug per-case).
+  /// Poll bounded sampai Navigator ter-mount alih-alih menyerah di percobaan
+  /// pertama.
+  Future<NavigatorState?> _waitForNavigator() async {
+    for (var attempt = 0; attempt < _maxNavigatorWaitAttempts; attempt++) {
+      final nav = _navigatorKey?.currentState;
+      if (nav != null) return nav;
+      await Future.delayed(_navigatorWaitInterval);
+    }
+    return _navigatorKey?.currentState;
+  }
+
   Future<void> _handle(Uri uri) async {
-    final nav = _navigatorKey?.currentState;
+    final nav = await _waitForNavigator();
     if (nav == null) return;
     final segments = uri.pathSegments;
     if (segments.isEmpty) {

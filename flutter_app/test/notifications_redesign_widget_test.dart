@@ -608,6 +608,33 @@ void main() {
       expect(find.text('Gagal mengikuti. Coba lagi.'), findsOneWidget);
     });
 
+    testWidgets(
+        'server kirim isFollowing:true → pill langsung Mengikuti tanpa fetch/tap',
+        (tester) async {
+      final n = AppNotification.fromApiJson({
+        'id': 'fb2', 'title': 'budi mulai mengikuti kamu', 'body': '',
+        'type': 'info', 'eventType': 'user_followed', 'url': '/u/budi',
+        'ctaLabel': 'Lihat Profil', 'isFollowing': true,
+        'createdAt': DateTime.now().toIso8601String(), 'read': false,
+      });
+      var fetchCalls = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(
+            notification: n,
+            onTap: () {},
+            profileFetcher: (_) async {
+              fetchCalls++;
+              return profileResult();
+            },
+          ),
+        ),
+      ));
+      expect(find.text('Mengikuti'), findsOneWidget);
+      expect(find.text('Ikuti'), findsNothing);
+      expect(fetchCalls, 0);
+    });
+
     testWidgets('follower TANPA username (url /notifications) → fallback pill generik',
         (tester) async {
       await tester.pumpWidget(MaterialApp(

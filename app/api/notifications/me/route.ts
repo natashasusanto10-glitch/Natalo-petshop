@@ -50,6 +50,7 @@ function mapAnnouncement(a: {
   actorAvatarUrl: string | null;
   actorName: string | null;
   actorAvatarUrls: string[];
+  actorId: string | null;
   feedStatus: string | null;
   commentId: string | null;
   ctaLabel: string | null;
@@ -73,6 +74,7 @@ function mapAnnouncement(a: {
     actorAvatarUrl: a.actorAvatarUrl,
     actorName: a.actorName,
     actorAvatarUrls: a.actorAvatarUrls,
+    actorId: a.actorId,
     status: a.feedStatus,
     commentId: a.commentId,
     ctaLabel: a.ctaLabel,
@@ -227,12 +229,37 @@ export async function GET() {
       for (const like of likes) likedCommentIds.add(like.commentId);
     }
 
+    // Status follow-balik untuk notif "user_followed" (pill "Ikuti"/
+    // "Mengikuti" di app). Tanpa ini, pill selalu mulai "Ikuti" walau
+    // viewer sudah follow-balik actor-nya — baru benar setelah di-tap
+    // (lihat notifications_screen.dart _NotificationFollowBackPill).
+    const followActorIds = Array.from(
+      new Set(
+        mapped
+          .filter((item) => item.eventType === "user_followed")
+          .map((item) => item.actorId)
+          .filter((id): id is string => Boolean(id && id.trim())),
+      ),
+    );
+    const followingActorIds = new Set<string>();
+    if (followActorIds.length > 0) {
+      const follows = await prisma.userFollow.findMany({
+        where: { followerId: userId, followingId: { in: followActorIds } },
+        select: { followingId: true },
+      });
+      for (const follow of follows) followingActorIds.add(follow.followingId);
+    }
+
     const itemsWithReviewSummary = mapped.map((item) => {
       const orderNumber = extractOrderNumberFromNotification(item);
       return {
         ...item,
         reviewSummary: orderNumber ? reviewSummaryByOrder.get(orderNumber) ?? null : null,
         commentLiked: item.commentId ? likedCommentIds.has(item.commentId) : false,
+        isFollowing:
+          item.eventType === "user_followed" && item.actorId
+            ? followingActorIds.has(item.actorId)
+            : null,
       };
     });
     const unreadCount = itemsWithReviewSummary.filter((i) => !i.read).length;

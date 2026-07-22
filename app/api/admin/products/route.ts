@@ -3,43 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { syncProduct, productSearchWhere } from "@/lib/search";
 import { putVariantsPayloadSchema } from "@/lib/validators/variant-schema";
-import { z } from "zod";
+import { createProductSchema } from "@/lib/validators/product-schema";
 import type { Prisma } from "@prisma/client";
 import { normalizeProductFormPayload } from "@/lib/product/admin-product-form";
-
-// Schema: Create product (extended dari POST sederhana original — sekarang
-// support gallery + opsional variants. Backwards compatible: caller lama
-// tanpa gallery / variants tetap jalan.
-const createProductSchema = z.object({
-  name: z.string().trim().min(1).max(200),
-  description: z.string().trim().max(5000).optional().default(""),
-  price: z.number().int().min(0).max(999_999_999),
-  stock: z.number().int().min(0).max(999_999).optional().default(0),
-  weightGram: z.number().int().min(1).max(999_999).optional().default(500),
-  imageUrl: z.string().trim().optional(),
-  imageUrls: z.array(z.string().trim()).max(9).optional(),
-  // Maksimal 9 foto total: 1 cover (imageUrl) + 8 gallery.
-  gallery: z.array(z.string().trim()).max(8).optional().default([]),
-  categoryId: z.string().trim().optional(),
-  brandId: z.string().trim().optional(),
-  isActive: z.boolean().optional().default(true),
-  // SKU Induk — opsional, identifier produk single (tanpa varian).
-  // Validasi: huruf/angka/_/- saja (consistent dengan ProductVariant.sku).
-  sku: z
-    .string()
-    .trim()
-    .max(80)
-    .regex(/^[A-Za-z0-9_\-]+$/, "SKU Induk hanya boleh huruf, angka, _ dan -")
-    .optional()
-    .or(z.literal("")),
-  // Variant payload optional. Kalau ada + hasVariants=true, varian
-  // di-create dalam transaction yang sama. Reuse validator dari
-  // putVariantsPayloadSchema (sub-set untuk struktur attribute+variant).
-  hasVariants: z.boolean().optional().default(false),
-  attributes: z.array(z.any()).optional().default([]),
-  variants: z.array(z.any()).optional().default([]),
-  video: z.object({ guid: z.string().optional(), url: z.string().optional(), status: z.string().optional() }).nullable().optional(),
-});
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 50;
