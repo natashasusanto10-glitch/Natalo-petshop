@@ -24,6 +24,8 @@ export type PublicShareFeedPost = {
   description: string | null;
   kind: string;
   posterUrl: string | null;
+  durationSec: number | null;
+  mediaCount: number;
   author: {
     displayName: string;
     photoUrl: string | null;
@@ -134,6 +136,7 @@ export async function getPublicShareFeedPost(
         take: 1,
         select: { url: true, thumbnailUrl: true },
       },
+      _count: { select: { media: true } },
     },
   });
   if (!post || !isPublicShareFeedPost(post)) return null;
@@ -148,6 +151,8 @@ export async function getPublicShareFeedPost(
     description: post.description,
     kind: post.kind,
     posterUrl: posterUrl ? stripEphemeralUrlQuery(posterUrl) : null,
+    durationSec: post.videoDurationSec,
+    mediaCount: post._count.media,
     author: {
       displayName: brandDisplayName(post.author.role, post.author.name),
       photoUrl: authorPhoto ? stripEphemeralUrlQuery(authorPhoto) : null,
