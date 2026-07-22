@@ -37,7 +37,7 @@ defense-in-depth visibility issues.
 
 `2b3b38f5 feat(web): add public Feed share pages`
 
-Follow-up fix commit pending.
+`14f2475a fix(share): harden Feed preview metadata`
 
 ## Concerns
 
