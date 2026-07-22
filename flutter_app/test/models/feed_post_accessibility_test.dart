@@ -5,6 +5,7 @@ Map<String, dynamic> _postJson({
   String? videoAltText,
   String? caption,
   String description = '',
+  String? shareVersion,
 }) {
   return {
     'id': 'post-1',
@@ -17,6 +18,7 @@ Map<String, dynamic> _postJson({
     'subtitleLanguage': 'id',
     'caption': caption,
     'description': description,
+    'shareVersion': shareVersion,
     'author': {'id': 'author-1', 'name': 'Natalo Petshop'},
     'mediaItems': [
       {
@@ -74,6 +76,14 @@ void main() {
     expect(restored.mediaItems.single.altText, post.mediaItems.single.altText);
     expect(post.mediaItems.single.toJson()['altText'],
         'Kemasan makanan kucing berwarna biru');
+  });
+
+  test('shareVersion is backward-compatible and survives Feed cache round-trip',
+      () {
+    final post = FeedPost.fromJson(_postJson(shareVersion: 'preview-abc'));
+    expect(post.shareVersion, 'preview-abc');
+    expect(FeedPost.fromJson(post.toJson()).shareVersion, 'preview-abc');
+    expect(FeedPost.fromJson(_postJson()).shareVersion, isNull);
   });
 
   test('media label prefers alt text, then caption, description, and author',

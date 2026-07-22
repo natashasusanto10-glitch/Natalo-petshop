@@ -357,6 +357,7 @@ class ProductVoucherPreview {
 class Product {
   final String id;
   final String slug;
+  final String? shareVersion;
   final String title;
   final String category;
   final String brand;
@@ -416,6 +417,7 @@ class Product {
   Product({
     required this.id,
     required this.slug,
+    this.shareVersion,
     required this.title,
     required this.category,
     required this.brand,
@@ -483,6 +485,7 @@ class Product {
     return Product(
       id: _string(json['id'], fallback: _string(json['slug'])),
       slug: _string(json['slug'], fallback: _string(json['id'])),
+      shareVersion: _stringOrNull(json['shareVersion']),
       title: _string(json['name'] ?? json['title'], fallback: 'Produk Natalo'),
       category: _nameOrString(
         // recommendations & recently-viewed API return 'category' sebagai string.
@@ -574,6 +577,7 @@ class Product {
   Map<String, dynamic> toJson() => {
         'id': id,
         'slug': slug,
+        'shareVersion': shareVersion,
         'name': title,
         'category_name': category,
         'brand_name': brand,
