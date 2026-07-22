@@ -70,22 +70,28 @@ void Function(String sessionId, String url)? debugPostVideoSessionUrlObserver;
 /// di dalam video) atau sebagai baris terpisah putih di ATAS media (teks
 /// gelap, seperti post foto).
 ///
-/// Paritas Instagram:
+/// Paritas Instagram (dikoreksi dari asumsi lama "portrait = overlay" —
+/// dibuktikan salah lewat screenshot device: video portrait 4:5 non-9:16
+/// tetap dapat baris terpisah di IG, hanya video 9:16 PENUH yang overlay):
 /// - Foto/carousel → SELALU baris terpisah (return false).
-/// - Video PORTRAIT / persegi (tinggi ≥ lebar) → overlay di atas video
-///   (return true) — video mengisi frame tinggi, username menimpa.
-/// - Video LANDSCAPE (lebih lebar dari tinggi) → baris terpisah (return
-///   false) — video tampil pendek-lebar, overlay akan terasa sempit &
-///   berdesakan. IG menaruh username di baris atas untuk landscape.
+/// - Video 9:16 PENUH (mengisi layar tinggi ala Reels) → overlay di atas
+///   video (return true) — username menimpa.
+/// - Video lebih pendek dari 9:16 (4:5, 1:1, 3:4, landscape, dst) → baris
+///   terpisah (return false), sama seperti foto — video tak memenuhi
+///   layar penuh jadi overlay terasa sempit/berdesakan.
 ///
-/// Video tanpa dimensi (w/h ≤ 0) default portrait → overlay (aman: mayoritas
-/// video customer portrait, dan default aspectRatio model 9/16).
+/// Video tanpa dimensi (w/h ≤ 0) default 9:16 → overlay (aman: mayoritas
+/// video customer portrait penuh, dan default aspectRatio model 9/16).
 bool postVideoUsesOverlay(FeedPost post) {
   if (!post.isVideo) return false;
   final w = post.aspectWidthInt;
   final h = post.aspectHeightInt;
   if (w <= 0 || h <= 0) return true;
-  return w <= h;
+  // Toleransi kecil di atas 9/16 (0.5625) untuk variasi encoding minor
+  // (mis. 1080x1900, bukan persis 1080x1920) — di atas ambang ini video
+  // dianggap "boxed" (4:5/1:1/3:4/landscape), bukan full vertical.
+  const fullVerticalMaxRatio = 0.6;
+  return (w / h) <= fullVerticalMaxRatio;
 }
 
 /// Detail Postingan style Instagram Feed — continuous vertical scroll list
@@ -3356,7 +3362,9 @@ class _HeroVideoFlightSurfaceState extends State<_HeroVideoFlightSurface> {
       child: ready
           ? ClipRect(
               child: FittedBox(
-                fit: BoxFit.cover,
+                // contain, bukan cover — video tak pernah dipotong, sama
+                // dengan _InlineVideoPlayer di bawah (lihat komentar di sana).
+                fit: BoxFit.contain,
                 child: SizedBox(
                   width: controller.value.size.width > 0
                       ? controller.value.size.width
@@ -3862,7 +3870,12 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
                 if (ready)
                   ClipRect(
                     child: FittedBox(
-                      fit: BoxFit.cover,
+                      // contain — frame sudah AspectRatio(clamp source), jadi
+                      // no-op utk video rasio normal; utk rasio ekstrem (di
+                      // luar 9:16..1.91) contain menampilkan video UTUH
+                      // (pillarbox/letterbox) alih-alih cover memotongnya.
+                      // Paritas IG: video tak pernah di-crop di viewer post.
+                      fit: BoxFit.contain,
                       child: SizedBox(
                         width: controller.value.size.width > 0
                             ? controller.value.size.width

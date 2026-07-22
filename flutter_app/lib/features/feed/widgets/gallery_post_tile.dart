@@ -5,16 +5,13 @@ import '../../../models/feed_post.dart';
 import '../../../theme/natalo_text.dart';
 import '../transition/post_hero.dart';
 
-/// Video LANDSCAPE (lebih lebar dari tinggi) → letterbox di grid (video utuh,
-/// bar hitam atas-bawah di dalam kotak 1:1) — paritas IG (lihat screenshot
-/// device: grid IG letterbox video landscape, bukan cover-crop). Foto/
-/// carousel dan video portrait/persegi tetap cover-crop penuh (tak berubah).
-bool gridShowsLetterbox(FeedPost post) {
-  if (!post.isVideo) return false;
-  final w = post.aspectWidthInt;
-  final h = post.aspectHeightInt;
-  return w > h;
-}
+/// Video (semua orientasi) → letterbox di grid (video utuh, bar hitam
+/// mengisi sisa ruang) — paritas IG: grid IG tidak pernah cover-crop video,
+/// termasuk portrait/persegi yang rasio-nya meleset dari tile 4:5 (dibuktikan
+/// screenshot device — video ads non-9:16 tetap tampil utuh berletterbox di
+/// grid IG, bukan di-zoom/dipotong). Foto/carousel tetap cover-crop penuh
+/// (tak berubah — grid foto IG masih crop).
+bool gridShowsLetterbox(FeedPost post) => post.isVideo;
 
 /// Tile grid foto/video 1:1 full-bleed — dipakai bersama halaman Postingan
 /// Saya, profil, dan Postingan Tersimpan. Badge tipe media (video/carousel)

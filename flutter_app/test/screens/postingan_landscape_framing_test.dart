@@ -26,7 +26,7 @@ FeedPost _post(
 
 void main() {
   group('postVideoUsesOverlay — overlay vs baris author', () {
-    test('video portrait → overlay (true)', () {
+    test('video 9:16 penuh → overlay (true)', () {
       expect(postVideoUsesOverlay(_post('VIDEO_ONLY', w: 1080, h: 1920)),
           isTrue);
     });
@@ -36,12 +36,22 @@ void main() {
           isFalse);
     });
 
-    test('video persegi → overlay (true, diperlakukan seperti portrait)', () {
+    test('video persegi → baris terpisah juga (false, bukan 9:16 penuh)', () {
       expect(postVideoUsesOverlay(_post('VIDEO_ONLY', w: 1080, h: 1080)),
-          isTrue);
+          isFalse);
     });
 
-    test('video tanpa dimensi → overlay (default portrait)', () {
+    test('video portrait 4:5 (iklan non-native) → baris terpisah (false)', () {
+      expect(postVideoUsesOverlay(_post('VIDEO_ONLY', w: 1080, h: 1350)),
+          isFalse);
+    });
+
+    test('video portrait 3:4 → baris terpisah (false)', () {
+      expect(postVideoUsesOverlay(_post('VIDEO_ONLY', w: 1080, h: 1440)),
+          isFalse);
+    });
+
+    test('video tanpa dimensi → overlay (default 9:16 penuh)', () {
       expect(postVideoUsesOverlay(_post('VIDEO_ONLY')), isTrue);
     });
 
@@ -64,13 +74,13 @@ void main() {
       );
     });
 
-    test('fullscreen + portrait → cover (isi penuh)', () {
+    test('fullscreen + portrait → contain juga (paritas IG, tak crop)', () {
       expect(
         resolveFeedCoverFit(
           framing: FeedVideoFraming.fullscreenFeed,
           isLandscape: false,
         ),
-        BoxFit.cover,
+        BoxFit.contain,
       );
     });
 
@@ -84,13 +94,13 @@ void main() {
       );
     });
 
-    test('mainFeed + portrait → cover (isi penuh, tak berubah)', () {
+    test('mainFeed + portrait → contain juga (paritas IG, tak crop)', () {
       expect(
         resolveFeedCoverFit(
           framing: FeedVideoFraming.mainFeed,
           isLandscape: false,
         ),
-        BoxFit.cover,
+        BoxFit.contain,
       );
     });
   });

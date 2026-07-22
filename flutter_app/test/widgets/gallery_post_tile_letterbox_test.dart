@@ -24,14 +24,14 @@ void main() {
           isTrue);
     });
 
-    test('video portrait → cover (tak letterbox)', () {
+    test('video portrait → letterbox juga (paritas IG, tak pernah crop)', () {
       expect(gridShowsLetterbox(_post('VIDEO_ONLY', w: 1080, h: 1920)),
-          isFalse);
+          isTrue);
     });
 
-    test('video persegi → cover (tak letterbox)', () {
+    test('video persegi → letterbox juga (paritas IG, tak pernah crop)', () {
       expect(gridShowsLetterbox(_post('VIDEO_ONLY', w: 1080, h: 1080)),
-          isFalse);
+          isTrue);
     });
 
     test('video landscape tanpa aspect post-level (fallback mediaItems) → letterbox', () {

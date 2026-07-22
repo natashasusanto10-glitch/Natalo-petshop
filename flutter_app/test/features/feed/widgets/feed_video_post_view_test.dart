@@ -1663,7 +1663,7 @@ void main() {
   });
 
   testWidgets(
-      'main Feed uses one top-aligned cover thumbnail without blurred backdrop',
+      'main Feed uses one centered contain thumbnail without blurred backdrop',
       (tester) async {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
     await tester.pumpWidget(
@@ -1690,12 +1690,14 @@ void main() {
         .where((image) => image.imageUrl.endsWith('.jpg'))
         .toList();
     expect(thumbnails, hasLength(1));
-    expect(thumbnails.single.fit, BoxFit.cover);
-    expect(thumbnails.single.alignment, Alignment.topCenter);
+    // contain + center — paritas IG: video/thumbnail tak pernah di-crop di
+    // Feed/fullscreen, letterbox bar hitam mengisi sisa ruang simetris.
+    expect(thumbnails.single.fit, BoxFit.contain);
+    expect(thumbnails.single.alignment, Alignment.center);
     expect(find.byType(ImageFiltered), findsNothing);
   });
 
-  testWidgets('fullscreen Feed uses one top-aligned cover thumbnail',
+  testWidgets('fullscreen Feed uses one centered contain thumbnail',
       (tester) async {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
     await tester.pumpWidget(
@@ -1723,8 +1725,8 @@ void main() {
         .where((image) => image.imageUrl.endsWith('.jpg'))
         .toList();
     expect(thumbnails, hasLength(1));
-    expect(thumbnails.single.fit, BoxFit.cover);
-    expect(thumbnails.single.alignment, Alignment.topCenter);
+    expect(thumbnails.single.fit, BoxFit.contain);
+    expect(thumbnails.single.alignment, Alignment.center);
 
     final mediaViewport = tester.widget<Positioned>(
       find.byKey(const ValueKey('feed-video-media-viewport')),
@@ -1733,7 +1735,7 @@ void main() {
     expect(mediaViewport.bottom, 0);
   });
 
-  testWidgets('main Feed initialized player shares cover topCenter framing',
+  testWidgets('main Feed initialized player shares contain center framing',
       (tester) async {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
     final platform = _FakeVideoPlayerPlatform();
@@ -1767,8 +1769,8 @@ void main() {
       ),
     );
     expect(mediaFittedBoxes, isNotEmpty);
-    expect(mediaFittedBoxes.last.fit, BoxFit.cover);
-    expect(mediaFittedBoxes.last.alignment, Alignment.topCenter);
+    expect(mediaFittedBoxes.last.fit, BoxFit.contain);
+    expect(mediaFittedBoxes.last.alignment, Alignment.center);
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('feed-video-media-viewport')),
@@ -1779,7 +1781,7 @@ void main() {
   });
 
   testWidgets(
-      'fullscreen Feed initialized player shares cover topCenter framing',
+      'fullscreen Feed initialized player shares contain center framing',
       (tester) async {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
     final platform = _FakeVideoPlayerPlatform();
@@ -1816,8 +1818,8 @@ void main() {
       ),
     );
     expect(mediaFittedBoxes, isNotEmpty);
-    expect(mediaFittedBoxes.last.fit, BoxFit.cover);
-    expect(mediaFittedBoxes.last.alignment, Alignment.topCenter);
+    expect(mediaFittedBoxes.last.fit, BoxFit.contain);
+    expect(mediaFittedBoxes.last.alignment, Alignment.center);
   });
 
   testWidgets(
