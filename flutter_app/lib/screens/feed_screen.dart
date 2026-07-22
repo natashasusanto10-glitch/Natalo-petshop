@@ -206,7 +206,6 @@ class FeedScreen extends StatefulWidget {
 class _FeedScreenState extends State<FeedScreen>
     with WidgetsBindingObserver, RouteAware {
   final PageController _pageController = PageController();
-  final GlobalKey _createPostOriginKey = GlobalKey();
 
   // ── Migrasi Feed→PostVideoCoordinator (Opsi D) ────────────────────────
   // Coordinator dimiliki screen (lifecycle app + route push/pop →
@@ -637,10 +636,9 @@ class _FeedScreenState extends State<FeedScreen>
     final coordinator = _videoCoordinator;
     if (coordinator == null) return;
     final visible = _visiblePosts;
-    final activePost =
-        (activeIndex >= 0 && activeIndex < visible.length)
-            ? visible[activeIndex]
-            : null;
+    final activePost = (activeIndex >= 0 && activeIndex < visible.length)
+        ? visible[activeIndex]
+        : null;
     final previousActiveId = _managedActivePostId;
 
     if (activePost != null && activePost.isVideo) {
@@ -726,10 +724,7 @@ class _FeedScreenState extends State<FeedScreen>
     // SEMUA "+" icon (feed + akun + postingan saya) lead ke flow yang
     // sama untuk konsistensi UX.
     try {
-      await FeedMediaPickerScreen.openFromOrigin(
-        context,
-        _createPostOriginKey,
-      );
+      await FeedMediaPickerScreen.open(context);
       if (mounted) _setFeedInteractionLocked(false);
       if (!mounted) return;
       await _loadInitial();
@@ -797,82 +792,83 @@ class _FeedScreenState extends State<FeedScreen>
                     // page settle → segar saat _onPageChanged memanggil preload.
                     onNotification: (notification) {
                       if (notification.depth != 0) return false;
-                      final velocity = notification.dragDetails?.primaryVelocity;
+                      final velocity =
+                          notification.dragDetails?.primaryVelocity;
                       if (velocity != null) _lastFlingVelocity = velocity;
                       return false;
                     },
                     child: PageView.builder(
-                    controller: _pageController,
-                    scrollDirection: Axis.vertical,
-                    physics: (_interactionLocked || _mediaZooming)
-                        ? const NeverScrollableScrollPhysics()
-                        // BouncingScrollPhysics di parent untuk rubber-band
-                        // overscroll di Android (iOS default sudah elastic).
-                        // PageScrollPhysics di-keep untuk page snap behavior
-                        // (TikTok-style snap per post).
-                        : const PageScrollPhysics(
-                            parent: BouncingScrollPhysics(),
-                          ),
-                    itemCount: visible.length,
-                    onPageChanged: _onPageChanged,
-                    itemBuilder: (context, index) {
-                      final post = visible[index];
-                      // Branch by kind: PHOTO_CAROUSEL render carousel
-                      // PageView horizontal 1-8 foto; video kind render
-                      // FeedVideoPostView dengan VideoPlayerController.
-                      // ValueKey(post.id) WAJIB — tanpa key, Flutter match
-                      // State by posisi list. Saat _visiblePosts bergeser
-                      // (block/unblock user), State di index i menerima post
-                      // BERBEDA dan controller video lama tetap memutar klip
-                      // lama di bawah post baru (audio nyasar).
-                      if (post.isPhotoCarousel) {
-                        return _PhotoCarouselPostView(
-                          key: ValueKey('feed-photo-${post.id}'),
+                      controller: _pageController,
+                      scrollDirection: Axis.vertical,
+                      physics: (_interactionLocked || _mediaZooming)
+                          ? const NeverScrollableScrollPhysics()
+                          // BouncingScrollPhysics di parent untuk rubber-band
+                          // overscroll di Android (iOS default sudah elastic).
+                          // PageScrollPhysics di-keep untuk page snap behavior
+                          // (TikTok-style snap per post).
+                          : const PageScrollPhysics(
+                              parent: BouncingScrollPhysics(),
+                            ),
+                      itemCount: visible.length,
+                      onPageChanged: _onPageChanged,
+                      itemBuilder: (context, index) {
+                        final post = visible[index];
+                        // Branch by kind: PHOTO_CAROUSEL render carousel
+                        // PageView horizontal 1-8 foto; video kind render
+                        // FeedVideoPostView dengan VideoPlayerController.
+                        // ValueKey(post.id) WAJIB — tanpa key, Flutter match
+                        // State by posisi list. Saat _visiblePosts bergeser
+                        // (block/unblock user), State di index i menerima post
+                        // BERBEDA dan controller video lama tetap memutar klip
+                        // lama di bawah post baru (audio nyasar).
+                        if (post.isPhotoCarousel) {
+                          return _PhotoCarouselPostView(
+                            key: ValueKey('feed-photo-${post.id}'),
+                            post: post,
+                            isActive: index == _activeIndex,
+                            onOverlayStateChanged: _setFeedInteractionLocked,
+                            onMediaZoomChanged: _setFeedMediaZooming,
+                          );
+                        }
+                        // Coordinator (Opsi D) pemilik controller (dispose) +
+                        // pengendali playback. Widget hanya merender + melapor
+                        // intent lewat callback; coordinator yang eksekusi
+                        // (attach/setActive/detach sudah diurus
+                        // `_managePreloadWindow` di atas). Pola identik
+                        // `scoped_video_feed_screen._buildItem`.
+                        final coordinator = _videoCoordinator!;
+                        final postId = post.id;
+                        return FeedVideoPostView(
+                          key: ValueKey('feed-video-$postId'),
                           post: post,
                           isActive: index == _activeIndex,
+                          framing: FeedVideoFraming.mainFeed,
+                          ownsController: false,
+                          playbackManagedExternally: true,
+                          coordinator: coordinator,
+                          preloadedController: null,
+                          onBufferAheadChanged: (ahead) =>
+                              _onActiveBufferAheadChanged(postId, ahead),
                           onOverlayStateChanged: _setFeedInteractionLocked,
                           onMediaZoomChanged: _setFeedMediaZooming,
+                          // Visibilitas → resume/pause sesi yang MEMANG aktif;
+                          // setActive authoritative di `_managePreloadWindow` —
+                          // di sini tidak setActive supaya urutan transisi tetap
+                          // deterministik.
+                          onVisibleChanged: (visible) {
+                            if (coordinator.activePostId != postId) return;
+                            if (visible) {
+                              coordinator.reportVisible(postId);
+                            } else {
+                              coordinator.reportHidden(postId);
+                            }
+                          },
+                          onRequestUserTogglePlay: coordinator.userTogglePlay,
+                          onRequestPlay: coordinator.resumeAll,
+                          onRequestPause: (_) => coordinator.pauseAll(),
                         );
-                      }
-                      // Coordinator (Opsi D) pemilik controller (dispose) +
-                      // pengendali playback. Widget hanya merender + melapor
-                      // intent lewat callback; coordinator yang eksekusi
-                      // (attach/setActive/detach sudah diurus
-                      // `_managePreloadWindow` di atas). Pola identik
-                      // `scoped_video_feed_screen._buildItem`.
-                      final coordinator = _videoCoordinator!;
-                      final postId = post.id;
-                      return FeedVideoPostView(
-                        key: ValueKey('feed-video-$postId'),
-                        post: post,
-                        isActive: index == _activeIndex,
-                        framing: FeedVideoFraming.mainFeed,
-                        ownsController: false,
-                        playbackManagedExternally: true,
-                        coordinator: coordinator,
-                        preloadedController: null,
-                        onBufferAheadChanged: (ahead) =>
-                            _onActiveBufferAheadChanged(postId, ahead),
-                        onOverlayStateChanged: _setFeedInteractionLocked,
-                        onMediaZoomChanged: _setFeedMediaZooming,
-                        // Visibilitas → resume/pause sesi yang MEMANG aktif;
-                        // setActive authoritative di `_managePreloadWindow` —
-                        // di sini tidak setActive supaya urutan transisi tetap
-                        // deterministik.
-                        onVisibleChanged: (visible) {
-                          if (coordinator.activePostId != postId) return;
-                          if (visible) {
-                            coordinator.reportVisible(postId);
-                          } else {
-                            coordinator.reportHidden(postId);
-                          }
-                        },
-                        onRequestUserTogglePlay: coordinator.userTogglePlay,
-                        onRequestPlay: coordinator.resumeAll,
-                        onRequestPause: (_) => coordinator.pauseAll(),
-                      );
-                    },
-                  ),
+                      },
+                    ),
                   );
                 }),
               ),
@@ -893,7 +889,6 @@ class _FeedScreenState extends State<FeedScreen>
                       top: MediaQuery.paddingOf(context).top + 8,
                       left: 4,
                       child: RepaintBoundary(
-                        key: _createPostOriginKey,
                         child: _FeedTopIconButton(
                           key: const ValueKey('feed-create-post'),
                           iconChild: const _FeedPlusGlyph(),

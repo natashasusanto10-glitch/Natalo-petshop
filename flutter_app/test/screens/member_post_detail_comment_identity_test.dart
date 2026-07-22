@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
 import 'package:natalo_petshop_flutter/widgets/feed_comment_sheet.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 FeedPost _partialAuthorPost() => FeedPost.fromJson({
       'id': 'post-partial-author',
@@ -22,6 +23,13 @@ FeedPost _partialAuthorPost() => FeedPost.fromJson({
     });
 
 void main() {
+  // WAJIB: post-visibility VisibilityDetector (lihat member_post_detail_
+  // screen.dart) butuh updateInterval=0 supaya timer internalnya tak pending
+  // saat widget tree di-dispose akhir test.
+  setUp(() {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+  });
+
   testWidgets('Postingan comment drawer uses the resolved page author identity',
       (tester) async {
     tester.view.physicalSize = const Size(400, 1200);

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -11,6 +10,14 @@ import 'package:natalo_petshop_flutter/screens/member_screen.dart';
 import 'package:natalo_petshop_flutter/state/member_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+
+// NOTE: composer entry (+ icon di Feed & Profil) sebelumnya memakai
+// OriginExpansionTransition custom (pushOriginExpansion/OriginSnapshotSource).
+// Mekanisme itu sudah DIHAPUS total — composer sekarang buka lewat
+// MaterialPageRoute(fullscreenDialog: true) standar via
+// FeedMediaPickerScreen.open(). Test ini kini cuma memverifikasi
+// route terbuka/tertutup dengan benar, bukan detail transisi snapshot/fade
+// lama yang sudah tidak ada.
 
 FeedPost _photoPost() => FeedPost.fromJson({
       'id': 'composer-origin-photo',
@@ -36,7 +43,7 @@ void main() {
     });
   });
 
-  testWidgets('Feed plus expands into the media picker and reverses on cancel',
+  testWidgets('Feed plus opens the media picker and closes on cancel',
       (tester) async {
     tester.view.physicalSize = const Size(400, 900);
     tester.view.devicePixelRatio = 1;
@@ -58,22 +65,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 120));
 
     expect(find.byType(FeedMediaPickerScreen), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('origin-expansion-snapshot')),
-      findsOneWidget,
-    );
 
     await tester.tap(find.byIcon(Icons.close_rounded));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 110));
-
-    expect(
-      find.byKey(const ValueKey('origin-expansion-snapshot')),
-      findsOneWidget,
-    );
-
-    await tester.pump(const Duration(milliseconds: 220));
+    await tester.pump(const Duration(milliseconds: 320));
     await tester.pump();
+
     expect(find.byType(FeedMediaPickerScreen), findsNothing);
     expect(find.byKey(const ValueKey('feed-create-post')), findsOneWidget);
   });
@@ -106,31 +103,26 @@ void main() {
     await tester.pump(const Duration(milliseconds: 120));
 
     expect(find.byType(FeedMediaPickerScreen), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('origin-expansion-snapshot')),
-      findsOneWidget,
-    );
 
     await tester.binding.handlePopRoute();
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 220));
+    await tester.pump(const Duration(milliseconds: 320));
     await tester.pump();
     expect(find.byType(FeedMediaPickerScreen), findsNothing);
     expect(createPost, findsOneWidget);
   });
 
-  testWidgets('media picker falls back to a reversible fade without an origin',
+  testWidgets('FeedMediaPickerScreen.open pushes a standard modal route',
       (tester) async {
-    final missingOrigin = GlobalKey();
     await tester.pumpWidget(
       MaterialApp(
         home: Builder(
           builder: (context) => Scaffold(
             body: Center(
               child: FilledButton(
-                onPressed: () => unawaited(
-                  FeedMediaPickerScreen.openFromOrigin(context, missingOrigin),
-                ),
+                onPressed: () {
+                  FeedMediaPickerScreen.open(context);
+                },
                 child: const Text('Open composer'),
               ),
             ),
@@ -144,18 +136,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1));
 
     expect(find.byType(FeedMediaPickerScreen), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('origin-expansion-fade')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('origin-expansion-snapshot')),
-      findsNothing,
-    );
 
     await tester.binding.handlePopRoute();
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 220));
+    await tester.pump(const Duration(milliseconds: 320));
     await tester.pump();
     expect(find.byType(FeedMediaPickerScreen), findsNothing);
   });
@@ -192,14 +176,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 120));
 
     expect(find.byType(FeedMediaPickerScreen), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('origin-expansion-snapshot')),
-      findsOneWidget,
-    );
 
     await tester.binding.handlePopRoute();
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 220));
+    await tester.pump(const Duration(milliseconds: 320));
     await tester.pump();
     expect(find.byType(FeedMediaPickerScreen), findsNothing);
     expect(createPost, findsOneWidget);

@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 class _RecordingNavigatorObserver extends NavigatorObserver {
   final List<Route<dynamic>> pushed = [];
@@ -55,6 +56,13 @@ FeedPost _fakePhotoPost({String id = 'post-edit-nav'}) => FeedPost.fromJson({
     });
 
 void main() {
+  // WAJIB: post-visibility VisibilityDetector (lihat member_post_detail_
+  // screen.dart) butuh updateInterval=0 supaya timer internalnya tak pending
+  // saat widget tree di-dispose akhir test.
+  setUp(() {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+  });
+
   testWidgets(
     '"..." → Edit caption menavigasi ke /member/postingan-edit (sesuai main.dart) dengan post yang benar',
     (tester) async {
@@ -105,8 +113,7 @@ void main() {
           .where((r) => r.settings.name == '/member/postingan-edit')
           .toList();
       expect(editRoutes, hasLength(1),
-          reason:
-              'Edit caption harus push route /member/postingan-edit persis '
+          reason: 'Edit caption harus push route /member/postingan-edit persis '
               'sekali (sesuai registrasi main.dart), bukan lagi '
               'showModalBottomSheet _EditCaptionSheet lokal ataupun nama '
               'rute lain yang tak terdaftar');

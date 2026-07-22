@@ -13,6 +13,7 @@ import 'package:visibility_detector/visibility_detector.dart';
 
 import '../config/api_config.dart';
 import '../features/feed/layout/postingan_media_aspect_ratio.dart';
+import '../features/feed/transition/post_hero.dart';
 import '../features/feed/widgets/double_tap_burst_guard.dart';
 import '../features/feed/widgets/feed_post_shared_widgets.dart';
 import '../features/feed/video/post_video_coordinator.dart';
@@ -145,6 +146,16 @@ class MemberPostDetailScreen extends StatefulWidget {
   final String? initialNextCursor;
   final ScopedPostPageLoader? loadMoreScopedPosts;
 
+  /// Scope hero untuk transisi grid→viewer bawaan Flutter (Task 1/2 rewrite
+  /// hero). Null = TANPA hero (mis. deep-link langsung ke halaman ini tanpa
+  /// origin grid) — mencegah tag hero yatim/duplikat di tree.
+  final String? heroScope;
+
+  /// Dipanggil SINKRON saat pop mulai (sebelum animasi selesai), dengan id
+  /// post yang sedang aktif di layar saat itu — supaya origin grid tahu post
+  /// mana yang harus jadi tujuan hero pop-back.
+  final void Function(String activePostId)? onWillClose;
+
   const MemberPostDetailScreen({
     super.key,
     required this.post,
@@ -161,6 +172,8 @@ class MemberPostDetailScreen extends StatefulWidget {
     this.warmVideoHandoff,
     this.initialNextCursor,
     this.loadMoreScopedPosts,
+    this.heroScope,
+    this.onWillClose,
   });
 
   @override
@@ -232,6 +245,120 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   /// menyala.
   Timer? _postAlignRecheckTimer;
 
+  // ── Tracking post yang PALING terlihat (semua tipe konten) ──────────
+  // Coordinator hanya melacak sesi VIDEO aktif (_videoCoordinator.
+  // activePostId) — untuk foto/carousel tidak ada pelacakan setara. List ini
+  // continuous-scroll (bukan PageView), jadi "post aktif" untuk kebutuhan
+  // onWillClose (reverse hero target) harus dihitung dari visibilitas
+  // sesungguhnya, bukan diasumsikan dari video. Setiap _PostFeedItem lapor
+  // fraction-nya sendiri lewat VisibilityDetector; di sini kita cukup simpan
+  // fraction terbaru per post lalu ambil id dengan fraction tertinggi.
+  // Sengaja TANPA setState — ini murni bookkeeping untuk dibaca saat pop,
+  // bukan sesuatu yang perlu memicu rebuild tiap frame scroll.
+  final Map<String, double> _postVisibilityFractions = {};
+  String? _mostVisiblePostId;
+
+  // ── Single viewer hero (§4 spec) ─────────────────────────────────────
+  // Flutter's Hero framework flies EVERY tag present in both routes'
+  // subtrees simultaneously. Wrapping every built post in PostHero (as the
+  // old code did) meant co-built neighbor posts sharing the origin grid's
+  // hero scope produced stray "ghost" flights on push/pop. Only the
+  // currently-most-visible post's media should carry a live Hero — this
+  // notifier is that single source of truth, read by `_wrapHero` via
+  // ValueListenableBuilder so only the (at most two) affected media
+  // subtrees rebuild when it changes, not the whole list.
+  late final ValueNotifier<String> _heroPostId;
+
+  // ── Drag-down-to-dismiss (model IG/TikTok) ───────────────────────────
+  // Route viewer memakai transisi FADE (bukan slide native), jadi swipe
+  // edge iOS / predictive-back Android tidak lagi mengendarai transisi.
+  // Sebagai gantinya, tarik-turun dari puncak list menggeser halaman; lepas
+  // di atas ambang → maybePop (hero terbang balik ke tile karena
+  // transitionOnUserGestures: true). Di bawah ambang → balik ke rest.
+  //
+  // Pakai [Listener] (pointer mentah, TIDAK ikut gesture arena) — bukan
+  // GestureDetector — supaya `VerticalDragGestureRecognizer` milik ListView
+  // (yang selalu MENANG arena untuk drag vertikal) tidak mencuri gesture.
+  // Translasi hanya aktif saat scroll di puncak (`pixels <= 0`) dan arah
+  // tarik ke bawah, jadi scroll normal di tengah list tak terpengaruh.
+  // Sederhana & robust — bukan interactive route controller penuh.
+  static const double _dragDismissThreshold = 100;
+  double _dragOffset = 0;
+  bool _dragging = false;
+
+  bool get _listAtTop =>
+      !_scrollController.hasClients || _scrollController.position.pixels <= 0.0;
+
+  void _onViewerPointerMove(PointerMoveEvent event) {
+    // Mulai/lanjutkan hanya bila (a) sudah menyeret, atau (b) di puncak list
+    // dan menarik ke bawah. Kalau tidak, biarkan scroll normal jalan.
+    if (_dragOffset <= 0 && !(_listAtTop && event.delta.dy > 0)) return;
+    final next = (_dragOffset + event.delta.dy).clamp(0.0, double.infinity);
+    if (next == _dragOffset) return;
+    setState(() {
+      _dragging = true;
+      _dragOffset = next;
+    });
+  }
+
+  void _onViewerPointerUp(PointerUpEvent event) => _settleDrag();
+  void _onViewerPointerCancel(PointerCancelEvent event) => _settleDrag();
+
+  void _settleDrag() {
+    if (_dragOffset <= 0) return;
+    if (_dragOffset > _dragDismissThreshold) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    setState(() {
+      _dragging = false;
+      _dragOffset = 0;
+    });
+  }
+
+  void _onPostVisibilityChanged(String postId, double fraction) {
+    if (!mounted) return;
+    _postVisibilityFractions[postId] = fraction;
+    // Ties → keep existing (post yang sudah tercatat menang kalau imbang),
+    // supaya scroll kecil yang belum menggeser dominansi tidak mengganti
+    // target reverse-hero tanpa alasan.
+    final currentBest = _mostVisiblePostId;
+    final currentBestFraction = currentBest == null
+        ? -1.0
+        : (_postVisibilityFractions[currentBest] ?? -1.0);
+    if (fraction > currentBestFraction) {
+      _mostVisiblePostId = postId;
+    } else if (currentBest != null &&
+        postId == currentBest &&
+        fraction < currentBestFraction) {
+      // currentBest sendiri turun fraction-nya (sudah ditulis di atas) —
+      // cari ulang pemenang baru dari seluruh map supaya tidak nyangkut ke
+      // post yang sudah tak lagi paling terlihat.
+      String? bestId;
+      var bestFraction = -1.0;
+      for (final entry in _postVisibilityFractions.entries) {
+        if (entry.value > bestFraction) {
+          bestFraction = entry.value;
+          bestId = entry.key;
+        }
+      }
+      _mostVisiblePostId = bestId;
+    }
+    final winner = _mostVisiblePostId;
+    if (winner != null && winner != _heroPostId.value) {
+      _heroPostId.value = winner;
+    }
+  }
+
+  /// Buang entry post yang item-nya sudah dispose (mis. discroll cepat lalu
+  /// balik) — supaya map tidak menumpuk data basi post yang sudah tidak ada
+  /// widget-nya lagi (leak kecil + risiko `_onPostVisibilityChanged` memilih
+  /// pemenang dari fraction stale).
+  void _onPostVisibilityDisposed(String postId) {
+    _postVisibilityFractions.remove(postId);
+    if (_mostVisiblePostId == postId) _mostVisiblePostId = null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -240,7 +367,32 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
         ? [widget.post]
         : List<FeedPost>.from(source);
     _postKeys = List.generate(_posts.length, (_) => GlobalKey());
-    _scrollController = ScrollController();
+    _heroPostId = ValueNotifier<String>(widget.post.id);
+    // Deep-tap first-frame layout (§4 spec): posisikan ScrollController
+    // SUDAH dekat post target SEBELUM frame pertama dibangun, bukan mulai
+    // dari offset 0 lalu jumpTo pasca-frame. Tanpa ini, saat user tap tile
+    // ke-N (N di luar viewport awal), first frame membangun list dari
+    // offset 0 — slot post target belum ter-layout saat Flutter meng-capture
+    // geometri Hero untuk flight (dijalankan sangat awal), sehingga PostHero
+    // milik post target diam-diam gagal ikut terbang (walau _heroPostId
+    // sudah benar sejak initState — lihat di atas) padahal neighbor yang
+    // kebetulan sudah ter-render tetap terbang. `_estimatedOffsetToPost`
+    // sudah ada (dipakai `_jumpNearPost` untuk retry pasca-frame) — pakai
+    // estimasi yang SAMA di sini, dari initState, sebagai posisi awal asli.
+    // RESIDU: estimasi pakai aspectRatio post (akurat) + KONSTANTA untuk
+    // tinggi author-row/caption/date (authorRowHeight, actionCaptionDateHeight
+    // di `_estimatedPostExtent`) — caption yang wrap banyak baris bikin
+    // tinggi post sesungguhnya lebih besar dari estimasi. `_ensurePostVisible`
+    // (dipanggil di `_jumpToInitial`, post-frame) tetap jalan sebagai
+    // KOREKSI presisi final berdasar layout nyata (GlobalKey context), jadi
+    // posisi akhir selalu tepat — bagian yang residual cuma seberapa DEKAT
+    // frame pertama mendarat sebelum koreksi itu (dengan caption panjang,
+    // frame pertama mungkin sedikit meleset dari target, bukan pas).
+    final targetIndex = widget.initialIndex;
+    final initialOffset = (targetIndex > 0 && targetIndex < _posts.length)
+        ? _estimatedOffsetToPost(_screenWidthPreLayout(context), targetIndex)
+        : 0.0;
+    _scrollController = ScrollController(initialScrollOffset: initialOffset);
     _playbackNetworkTier = videoQualityService.currentTier;
     // Prapopulasi URL video utama tiap post (video item non-carousel).
     for (final post in _posts) {
@@ -350,7 +502,14 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     if (targetIndex <= 0 || targetIndex >= _posts.length) {
       return;
     }
-    _jumpNearPost(targetIndex);
+    // Posisi kasar SUDAH dipasang pra-layout via
+    // ScrollController(initialScrollOffset:) di initState (§4 spec deep-tap
+    // fix) — TIDAK perlu `_jumpNearPost` lagi di sini (dulu re-estimasi +
+    // jumpTo dari offset 0 setelah frame pertama; kini frame pertama SUDAH
+    // dekat target). `_ensurePostVisible` di bawah tinggal jadi koreksi
+    // presisi final (align pas di bawah header dari layout nyata via
+    // GlobalKey), retry-loop-nya tetap dipertahankan untuk kasus estimasi
+    // meleset (caption panjang — lihat komentar residual di initState).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensurePostVisible(targetIndex, attemptsLeft: 8);
     });
@@ -359,7 +518,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   void _jumpNearPost(int targetIndex) {
     if (!_scrollController.hasClients) return;
     final maxExtent = _scrollController.position.maxScrollExtent;
-    final approxOffset = _estimatedOffsetToPost(context, targetIndex);
+    final approxOffset =
+        _estimatedOffsetToPost(MediaQuery.sizeOf(context).width, targetIndex);
     final targetOffset = approxOffset.clamp(0.0, maxExtent).toDouble();
     _scrollController.jumpTo(targetOffset);
   }
@@ -408,8 +568,30 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     );
   }
 
-  double _estimatedPostExtent(BuildContext context, FeedPost post) {
-    final width = MediaQuery.of(context).size.width;
+  /// Lebar layar untuk estimasi extent post — TIDAK boleh lewat
+  /// `MediaQuery.of(context)` di [initState] (dilarang keras oleh framework:
+  /// "dependOnInheritedWidgetOfExactType... was called before initState()
+  /// completed"). Dipakai dari initState untuk posisi awal
+  /// ScrollController pra-layout (§4 spec deep-tap fix); baca langsung dari
+  /// platformDispatcher (data mentah OS, bukan InheritedWidget) supaya aman
+  /// dipanggil sebelum initState selesai. Setelah first frame, pemanggil
+  /// yang sudah punya BuildContext ter-attach (build()/post-frame callback)
+  /// tetap boleh pakai `MediaQuery.sizeOf(context).width` — lihat caller.
+  double _screenWidthPreLayout(BuildContext context) {
+    if (context.mounted) {
+      final inherited =
+          context.getElementForInheritedWidgetOfExactType<MediaQuery>()?.widget;
+      if (inherited is MediaQuery) return inherited.data.size.width;
+    }
+    final view = View.maybeOf(context) ??
+        (WidgetsBinding.instance.platformDispatcher.views.isNotEmpty
+            ? WidgetsBinding.instance.platformDispatcher.views.first
+            : null);
+    if (view == null) return 400.0;
+    return view.physicalSize.width / view.devicePixelRatio;
+  }
+
+  double _estimatedPostExtent(double screenWidth, FeedPost post) {
     final mediaAspectRatio = resolvePostinganMediaAspectRatio(
       width: post.aspectWidthInt,
       height: post.aspectHeightInt,
@@ -417,24 +599,23 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     );
     const authorRowHeight = 52.0;
     const actionCaptionDateHeight = 118.0;
-    final mediaHeight = width / mediaAspectRatio;
+    final mediaHeight = screenWidth / mediaAspectRatio;
     return mediaHeight + authorRowHeight + actionCaptionDateHeight;
   }
 
-  double _maximumEstimatedPostExtent(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
+  double _maximumEstimatedPostExtent(double screenWidth) {
     const authorRowHeight = 52.0;
     const actionCaptionDateHeight = 118.0;
-    return (width / postinganVideoMinAspectRatio) +
+    return (screenWidth / postinganVideoMinAspectRatio) +
         authorRowHeight +
         actionCaptionDateHeight;
   }
 
-  double _estimatedOffsetToPost(BuildContext context, int targetIndex) {
+  double _estimatedOffsetToPost(double screenWidth, int targetIndex) {
     const separatorHeight = 24.0;
     var offset = 0.0;
     for (var index = 0; index < targetIndex && index < _posts.length; index++) {
-      offset += _estimatedPostExtent(context, _posts[index]);
+      offset += _estimatedPostExtent(screenWidth, _posts[index]);
       offset += separatorHeight;
     }
     return offset;
@@ -590,6 +771,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     WidgetsBinding.instance.removeObserver(this);
     _videoCoordinator.dispose();
     _scrollController.dispose();
+    _heroPostId.dispose();
     super.dispose();
   }
 
@@ -875,114 +1057,163 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     // Fix: Positioned manual TANPA Material pembungkus penuh — celah kosong
     // meneruskan tap ke konten di bawahnya, cuma back button/judul/chip
     // Ikuti yang benar-benar menyerap tap.
-    return Scaffold(
-      backgroundColor: cs.surface,
-      body: Stack(
-        children: [
-          _posts.isEmpty
-              ? Center(
-                  child: Text(
-                    'Belum ada postingan',
-                    style: TextStyle(
-                      color: cs.onSurfaceVariant,
-                      fontSize: 14,
-                      fontWeight: NataloWeight.body,
-                    ),
-                  ),
-                )
-              : NataloPawRefreshIndicator(
-                  onRefresh: _refreshPosts,
-                  child: ListView.separated(
-                    controller: _scrollController,
-                    cacheExtent: _maximumEstimatedPostExtent(context) * 2,
-                    // Top: media post pertama mulai TEPAT di bawah header (status
-                    // bar + toolbar), jadi saat pertama buka media tidak "over ke
-                    // atas" / kepotong — framing 9:16 utuh (paritas IG). Saat
-                    // discroll, media lewat di belakang header frosted-tipis.
-                    // Bottom: extra space supaya post terakhir bisa discroll lega
-                    // ke atas viewport (gak mepet ke home indicator).
-                    padding: EdgeInsets.only(
-                      top: MediaQuery.paddingOf(context).top + kToolbarHeight,
-                      bottom: 48,
-                    ),
-                    // Fling diredam ala IG — lihat CalmScrollPhysics.
-                    physics: const CalmScrollPhysics(),
-                    itemCount: _posts.length,
-                    // Whitespace pemisah antar post tetap ada, tapi lebih compact
-                    // supaya detail terasa seperti feed/post Instagram.
-                    separatorBuilder: (_, __) => const SizedBox(height: 24),
-                    itemBuilder: (context, index) {
-                      final post = _posts[index];
-                      return _PostFeedItem(
-                        // GlobalKey untuk Scrollable.ensureVisible jump akurat
-                        // ke post target saat initial open dari grid.
-                        key: _postKeys[index],
-                        post: post,
-                        coordinator: _videoCoordinator,
-                        registerVideoUrl: _registerVideoUrl,
-                        handoffSessionId: _handoffSessionId,
-                        memberName: widget.authorPerPost
-                            ? _authorNameFor(post)
-                            : _memberName,
-                        memberInitial: widget.authorPerPost
-                            ? _authorInitialFor(post)
-                            : _memberInitial,
-                        memberPhotoUrl: widget.authorPerPost
-                            ? _authorPhotoFor(post)
-                            : _memberPhotoUrl,
-                        memberUsername: widget.authorPerPost
-                            ? post.author.username
-                            : _memberUsernameFor(post),
-                        memberIsOfficial: widget.authorPerPost
-                            ? post.author.isOfficialAccount
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) return;
+        // Resolusi target reverse-hero: post yang PALING terlihat saat ini
+        // (semua tipe konten, dari _mostVisiblePostId — lihat
+        // _onPostVisibilityChanged), fallback ke coordinator video (kalau
+        // visibility belum sempat lapor), fallback terakhir ke post pertama
+        // yang dibuka.
+        widget.onWillClose?.call(
+          _mostVisiblePostId ??
+              _videoCoordinator.activePostId ??
+              widget.post.id,
+        );
+      },
+      child: Listener(
+        // Drag-down-to-dismiss (menggantikan edge-swipe/predictive-back yang
+        // hilang bersama slide native). Pointer mentah supaya tidak berebut
+        // gesture arena dengan drag vertikal ListView (lihat _onViewerPointer*).
+        onPointerMove: _onViewerPointerMove,
+        onPointerUp: _onViewerPointerUp,
+        onPointerCancel: _onViewerPointerCancel,
+        child: Transform.translate(
+          offset: Offset(0, _dragOffset),
+          child: Transform.scale(
+            scale: 1 - (_dragOffset / 2000).clamp(0.0, 0.08),
+            alignment: Alignment.center,
+            child: Opacity(
+              // Backdrop fade proporsional — isyarat visual bahwa gesture
+              // akan menutup (di bawah ambang tetap terbaca jelas).
+              opacity: 1 - (_dragOffset / 1000).clamp(0.0, 0.35),
+              child: Scaffold(
+                backgroundColor: _dragging ? Colors.transparent : cs.surface,
+                body: Stack(
+                  children: [
+                    _posts.isEmpty
+                        ? Center(
+                            child: Text(
+                              'Belum ada postingan',
+                              style: TextStyle(
+                                color: cs.onSurfaceVariant,
+                                fontSize: 14,
+                                fontWeight: NataloWeight.body,
+                              ),
+                            ),
+                          )
+                        : NataloPawRefreshIndicator(
+                            onRefresh: _refreshPosts,
+                            child: ListView.separated(
+                              controller: _scrollController,
+                              cacheExtent: _maximumEstimatedPostExtent(
+                                      MediaQuery.sizeOf(context).width) *
+                                  2,
+                              // Top: media post pertama mulai TEPAT di bawah header (status
+                              // bar + toolbar), jadi saat pertama buka media tidak "over ke
+                              // atas" / kepotong — framing 9:16 utuh (paritas IG). Saat
+                              // discroll, media lewat di belakang header frosted-tipis.
+                              // Bottom: extra space supaya post terakhir bisa discroll lega
+                              // ke atas viewport (gak mepet ke home indicator).
+                              padding: EdgeInsets.only(
+                                top: MediaQuery.paddingOf(context).top +
+                                    kToolbarHeight,
+                                bottom: 48,
+                              ),
+                              // Fling diredam ala IG — lihat CalmScrollPhysics.
+                              physics: const CalmScrollPhysics(),
+                              itemCount: _posts.length,
+                              // Whitespace pemisah antar post tetap ada, tapi lebih compact
+                              // supaya detail terasa seperti feed/post Instagram.
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 24),
+                              itemBuilder: (context, index) {
+                                final post = _posts[index];
+                                return _PostFeedItem(
+                                  // GlobalKey untuk Scrollable.ensureVisible jump akurat
+                                  // ke post target saat initial open dari grid.
+                                  key: _postKeys[index],
+                                  post: post,
+                                  coordinator: _videoCoordinator,
+                                  registerVideoUrl: _registerVideoUrl,
+                                  handoffSessionId: _handoffSessionId,
+                                  memberName: widget.authorPerPost
+                                      ? _authorNameFor(post)
+                                      : _memberName,
+                                  memberInitial: widget.authorPerPost
+                                      ? _authorInitialFor(post)
+                                      : _memberInitial,
+                                  memberPhotoUrl: widget.authorPerPost
+                                      ? _authorPhotoFor(post)
+                                      : _memberPhotoUrl,
+                                  memberUsername: widget.authorPerPost
+                                      ? post.author.username
+                                      : _memberUsernameFor(post),
+                                  memberIsOfficial: widget.authorPerPost
+                                      ? post.author.isOfficialAccount
+                                      : widget.authorIsOfficial,
+                                  liked: _likedCache[post.id] ?? false,
+                                  // Hide ... menu ketika viewing post user lain — tidak ada
+                                  // edit/delete option untuk non-owner. (Bisa ekspansi nanti
+                                  // ke Report/Block via tombol terpisah kalau perlu.)
+                                  showMenu: widget.isOwner,
+                                  // Status badge owner-only (Menunggu review/Ditolak).
+                                  showStatusBadge: widget.isOwner,
+                                  onLike: () => _toggleLike(index),
+                                  onComment: () => _openComments(index),
+                                  onShare: () => _shareNative(index),
+                                  onMenuTap: widget.isOwner
+                                      ? () => _openPostMenu(index)
+                                      : null,
+                                  onOpenScopedFeed: (sessionId, anchorKey) =>
+                                      _openScopedVideoFeed(
+                                          index, sessionId, anchorKey),
+                                  onVideoAnchorReady: (postId, anchorKey) {
+                                    _videoAnchorKeys[postId] = anchorKey;
+                                  },
+                                  onVisibilityChanged: _onPostVisibilityChanged,
+                                  onVisibilityDisposed:
+                                      _onPostVisibilityDisposed,
+                                  heroScope: widget.heroScope,
+                                  heroPostId: _heroPostId,
+                                );
+                              },
+                            ),
+                          ),
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: _PostDetailTransparentHeaderBar(
+                        // Cross-account (authorPerPost): overlay ini fixed di atas
+                        // SELURUH pager, bukan per-index — tak ada satu author yang
+                        // representatif saat isinya lintas akun. Sembunyikan
+                        // nama/badge/chip ikuti (sama alasan dgn subtitle AppBar lama
+                        // yang disembunyikan di mode ini), sisakan cuma judul +
+                        // tombol back.
+                        memberName: widget.authorPerPost ? '' : _memberName,
+                        authorIsOfficial: widget.authorPerPost
+                            ? false
                             : widget.authorIsOfficial,
-                        liked: _likedCache[post.id] ?? false,
-                        // Hide ... menu ketika viewing post user lain — tidak ada
-                        // edit/delete option untuk non-owner. (Bisa ekspansi nanti
-                        // ke Report/Block via tombol terpisah kalau perlu.)
-                        showMenu: widget.isOwner,
-                        // Status badge owner-only (Menunggu review/Ditolak).
-                        showStatusBadge: widget.isOwner,
-                        onLike: () => _toggleLike(index),
-                        onComment: () => _openComments(index),
-                        onShare: () => _shareNative(index),
-                        onMenuTap:
-                            widget.isOwner ? () => _openPostMenu(index) : null,
-                        onOpenScopedFeed: (sessionId, anchorKey) =>
-                            _openScopedVideoFeed(index, sessionId, anchorKey),
-                        onVideoAnchorReady: (postId, anchorKey) {
-                          _videoAnchorKeys[postId] = anchorKey;
-                        },
-                      );
-                    },
-                  ),
+                        // authorId kosong (data profil tak lengkap) → chip
+                        // disembunyikan: follow('') pasti gagal + override tak pernah
+                        // nyambung, lebih baik tak tampil daripada selalu "Ikuti".
+                        showFollowChip: !widget.isOwner &&
+                            !widget.authorPerPost &&
+                            (widget.authorId ?? widget.post.author.id)
+                                .isNotEmpty,
+                        authorId: widget.authorId ?? widget.post.author.id,
+                        authorInitiallyFollowing: widget.authorIsFollowing ??
+                            widget.post.author.isFollowing,
+                      ),
+                    ),
+                  ],
                 ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: _PostDetailTransparentHeaderBar(
-              // Cross-account (authorPerPost): overlay ini fixed di atas
-              // SELURUH pager, bukan per-index — tak ada satu author yang
-              // representatif saat isinya lintas akun. Sembunyikan
-              // nama/badge/chip ikuti (sama alasan dgn subtitle AppBar lama
-              // yang disembunyikan di mode ini), sisakan cuma judul +
-              // tombol back.
-              memberName: widget.authorPerPost ? '' : _memberName,
-              authorIsOfficial:
-                  widget.authorPerPost ? false : widget.authorIsOfficial,
-              // authorId kosong (data profil tak lengkap) → chip
-              // disembunyikan: follow('') pasti gagal + override tak pernah
-              // nyambung, lebih baik tak tampil daripada selalu "Ikuti".
-              showFollowChip: !widget.isOwner &&
-                  !widget.authorPerPost &&
-                  (widget.authorId ?? widget.post.author.id).isNotEmpty,
-              authorId: widget.authorId ?? widget.post.author.id,
-              authorInitiallyFollowing:
-                  widget.authorIsFollowing ?? widget.post.author.isFollowing,
+              ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1179,7 +1410,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
 
     // Keep the destination inline dormant while the list is repositioned.
     _scrollController.jumpTo(
-      _estimatedOffsetToPost(context, index)
+      _estimatedOffsetToPost(MediaQuery.sizeOf(context).width, index)
           .clamp(0.0, _scrollController.position.maxScrollExtent),
     );
     if (mounted) setState(() => _handoffSessionId = result.postId);
@@ -1300,6 +1531,28 @@ class _PostFeedItem extends StatefulWidget {
   final void Function(String sessionId, GlobalKey anchorKey)? onOpenScopedFeed;
   final void Function(String postId, GlobalKey anchorKey)? onVideoAnchorReady;
 
+  /// Lapor fraction visibilitas item ini (0..1) ke layar — dipakai layar
+  /// untuk melacak post yang PALING terlihat lintas SEMUA tipe konten
+  /// (foto/carousel/video), supaya `onWillClose` tahu target reverse-hero
+  /// yang benar walau user scroll menjauh dari post video terakhir yang
+  /// pernah aktif di coordinator.
+  final void Function(String postId, double fraction)? onVisibilityChanged;
+
+  /// Dipanggil sekali saat item ini dispose — layar induk pakai ini untuk
+  /// membuang entry post dari `_postVisibilityFractions` (lihat
+  /// [MemberPostDetailScreen._onPostVisibilityDisposed]).
+  final void Function(String postId)? onVisibilityDisposed;
+
+  /// Scope hero diteruskan dari layar — null = tanpa PostHero (lihat
+  /// [MemberPostDetailScreen.heroScope]).
+  final String? heroScope;
+
+  /// Id post yang SEDANG memegang hero tunggal viewer ini (§4 spec) — hanya
+  /// media milik post dengan id == heroPostId.value yang dibungkus PostHero;
+  /// post lain render medianya polos tanpa Hero, supaya push/pop hanya
+  /// menerbangkan satu tag (cegah ghost flight neighbor).
+  final ValueNotifier<String>? heroPostId;
+
   const _PostFeedItem({
     super.key,
     required this.post,
@@ -1320,6 +1573,10 @@ class _PostFeedItem extends StatefulWidget {
     required this.onMenuTap,
     this.onOpenScopedFeed,
     this.onVideoAnchorReady,
+    this.onVisibilityChanged,
+    this.onVisibilityDisposed,
+    this.heroScope,
+    this.heroPostId,
   });
 
   @override
@@ -1447,6 +1704,9 @@ class _PostFeedItemState extends State<_PostFeedItem>
     _heartScaleController.dispose();
     _heartBurstController.dispose();
     _doubleTapBurstGuard.dispose();
+    // Prune fraction bookkeeping di layar induk — item ini sudah tidak ada,
+    // jangan biarkan fraction basi-nya ikut menang di _onPostVisibilityChanged.
+    widget.onVisibilityDisposed?.call(widget.post.id);
     super.dispose();
   }
 
@@ -1567,175 +1827,187 @@ class _PostFeedItemState extends State<_PostFeedItem>
     final memberInitial = widget.memberInitial;
     final memberPhotoUrl = widget.memberPhotoUrl;
     final liked = widget.liked;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Status badge (pending / rejected) — di ATAS media supaya jelas
-        // tanpa harus scroll. Auto-hide kalau published (clean Instagram-feel).
-        // Hanya ditampilkan untuk owner (showStatusBadge=true) — viewer
-        // dari public profile tidak melihat status moderation post orang
-        // lain. Tanpa gate ini, default status='PENDING_REVIEW' di
-        // FeedPost.fromJson bisa kelihatan ke viewer kalau backend
-        // /api/u/{username} tidak set field status di response.
-        if (widget.showStatusBadge &&
-            (post.statusInfo == FeedPostStatus.pending ||
-                post.statusInfo == FeedPostStatus.rejected)) ...[
+    return VisibilityDetector(
+      // Lapor fraction visibilitas item INI (semua tipe konten) ke layar —
+      // dipakai untuk melacak "post paling terlihat" (lihat komentar di
+      // widget.onVisibilityChanged). Key per post.id, terpisah dari key
+      // VisibilityDetector video inline di dalam _InlineVideoPlayer
+      // ('inline-video-${postId}') supaya tidak bentrok.
+      key: ValueKey('post-visibility-${post.id}'),
+      onVisibilityChanged: (info) =>
+          widget.onVisibilityChanged?.call(post.id, info.visibleFraction),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Status badge (pending / rejected) — di ATAS media supaya jelas
+          // tanpa harus scroll. Auto-hide kalau published (clean Instagram-feel).
+          // Hanya ditampilkan untuk owner (showStatusBadge=true) — viewer
+          // dari public profile tidak melihat status moderation post orang
+          // lain. Tanpa gate ini, default status='PENDING_REVIEW' di
+          // FeedPost.fromJson bisa kelihatan ke viewer kalau backend
+          // /api/u/{username} tidak set field status di response.
+          if (widget.showStatusBadge &&
+              (post.statusInfo == FeedPostStatus.pending ||
+                  post.statusInfo == FeedPostStatus.rejected)) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+              child: _PostStatusBadge(post: post),
+            ),
+          ],
+          // Foto/carousel + video LANDSCAPE: author row putih di atas media.
+          // Video PORTRAIT: author masuk overlay di dalam video (IG video post
+          // style). Lihat postVideoUsesOverlay — landscape pakai baris atas
+          // supaya username tidak berdesakan di video pendek-lebar.
+          if (!postVideoUsesOverlay(post))
+            _PostAuthorRow(
+              memberName: memberName,
+              memberInitial: memberInitial,
+              memberPhotoUrl: memberPhotoUrl,
+              isOfficial: widget.memberIsOfficial,
+              authorUsername: widget.memberUsername,
+              onMenuTap: widget.onMenuTap,
+            ),
+          // Double-tap detector membungkus media — HANYA untuk FOTO/carousel.
+          // Untuk VIDEO, gesture (single-tap fullscreen + double-tap like)
+          // ditangani di dalam _InlineVideoPlayer (detector yang membungkus
+          // HANYA layer media, dengan kontrol mute/retry sebagai sibling di
+          // atasnya) supaya kontrol tetap instan (pola feed) — video route-nya
+          // di-forward balik ke handler _PostFeedItem via callback di bawah.
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onDoubleTapDown: post.isVideo ? null : _rememberHeartBurstPosition,
+            onDoubleTap: post.isVideo ? null : _handleDoubleTap,
+            child: Stack(
+              children: [
+                _PostMediaSurface(
+                  post: post,
+                  coordinator: widget.coordinator,
+                  registerVideoUrl: widget.registerVideoUrl,
+                  handoffSessionId: widget.handoffSessionId,
+                  onVideoAnchorReady: _rememberVideoAnchor,
+                  onVideoMediaSingleTap: _handleVideoSingleTap,
+                  onVideoMediaDoubleTapDown: _rememberHeartBurstPosition,
+                  onVideoMediaDoubleTap: _handleDoubleTap,
+                  heroScope: widget.heroScope,
+                  heroPostId: widget.heroPostId,
+                ),
+                if (postVideoUsesOverlay(post))
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: _VideoPostAuthorOverlay(
+                      memberName: memberName,
+                      memberInitial: memberInitial,
+                      memberPhotoUrl: memberPhotoUrl,
+                      isOfficial: widget.memberIsOfficial,
+                      authorUsername: widget.memberUsername,
+                      onMenuTap: widget.onMenuTap,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          // Action row di-padding sedikit dari edge.
+          // Count di-render inline samping icon (TikTok/Reels style) supaya
+          // user langsung lihat berapa like/comment/share. 0 → hide count
+          // (icon-only fallback), match IG convention "tidak tampilkan 0".
+          // Like count dari _likedCache parent state sudah optimistic, jadi
+          // tap heart langsung naik 1 — tidak nunggu round-trip backend.
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
-            child: _PostStatusBadge(post: post),
-          ),
-        ],
-        // Foto/carousel + video LANDSCAPE: author row putih di atas media.
-        // Video PORTRAIT: author masuk overlay di dalam video (IG video post
-        // style). Lihat postVideoUsesOverlay — landscape pakai baris atas
-        // supaya username tidak berdesakan di video pendek-lebar.
-        if (!postVideoUsesOverlay(post))
-          _PostAuthorRow(
-            memberName: memberName,
-            memberInitial: memberInitial,
-            memberPhotoUrl: memberPhotoUrl,
-            isOfficial: widget.memberIsOfficial,
-            authorUsername: widget.memberUsername,
-            onMenuTap: widget.onMenuTap,
-          ),
-        // Double-tap detector membungkus media — HANYA untuk FOTO/carousel.
-        // Untuk VIDEO, gesture (single-tap fullscreen + double-tap like)
-        // ditangani di dalam _InlineVideoPlayer (detector yang membungkus
-        // HANYA layer media, dengan kontrol mute/retry sebagai sibling di
-        // atasnya) supaya kontrol tetap instan (pola feed) — video route-nya
-        // di-forward balik ke handler _PostFeedItem via callback di bawah.
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onDoubleTapDown: post.isVideo ? null : _rememberHeartBurstPosition,
-          onDoubleTap: post.isVideo ? null : _handleDoubleTap,
-          child: Stack(
-            children: [
-              _PostMediaSurface(
-                post: post,
-                coordinator: widget.coordinator,
-                registerVideoUrl: widget.registerVideoUrl,
-                handoffSessionId: widget.handoffSessionId,
-                onVideoAnchorReady: _rememberVideoAnchor,
-                onVideoMediaSingleTap: _handleVideoSingleTap,
-                onVideoMediaDoubleTapDown: _rememberHeartBurstPosition,
-                onVideoMediaDoubleTap: _handleDoubleTap,
-              ),
-              if (postVideoUsesOverlay(post))
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: _VideoPostAuthorOverlay(
-                    memberName: memberName,
-                    memberInitial: memberInitial,
-                    memberPhotoUrl: memberPhotoUrl,
-                    isOfficial: widget.memberIsOfficial,
-                    authorUsername: widget.memberUsername,
-                    onMenuTap: widget.onMenuTap,
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+            child: Row(
+              children: [
+                // Heart icon dibungkus ScaleTransition supaya pop saat di-tap.
+                // _handleLikeTap fire animation + delegate ke widget.onLike
+                // (yang trigger optimistic update + API call di parent).
+                // Action icons: thin outline, close to Instagram's lighter
+                // stroke while keeping Natalo's custom shape.
+                ScaleTransition(
+                  scale: _heartScale,
+                  child: NataloPostActionButton(
+                    key: _likeButtonKey,
+                    type: NataloPostActionIconType.like,
+                    isActive: liked,
+                    iconSize: 30,
+                    strokeWidth: 1.6,
+                    tapSize: 44,
+                    count: post.likeCount,
+                    semanticLabel: liked ? 'Batalkan suka' : 'Sukai postingan',
+                    onTap: _handleLikeTap,
                   ),
                 ),
-            ],
-          ),
-        ),
-        // Action row di-padding sedikit dari edge.
-        // Count di-render inline samping icon (TikTok/Reels style) supaya
-        // user langsung lihat berapa like/comment/share. 0 → hide count
-        // (icon-only fallback), match IG convention "tidak tampilkan 0".
-        // Like count dari _likedCache parent state sudah optimistic, jadi
-        // tap heart langsung naik 1 — tidak nunggu round-trip backend.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-          child: Row(
-            children: [
-              // Heart icon dibungkus ScaleTransition supaya pop saat di-tap.
-              // _handleLikeTap fire animation + delegate ke widget.onLike
-              // (yang trigger optimistic update + API call di parent).
-              // Action icons: thin outline, close to Instagram's lighter
-              // stroke while keeping Natalo's custom shape.
-              ScaleTransition(
-                scale: _heartScale,
-                child: NataloPostActionButton(
-                  key: _likeButtonKey,
-                  type: NataloPostActionIconType.like,
-                  isActive: liked,
+                NataloPostActionButton(
+                  type: NataloPostActionIconType.comment,
                   iconSize: 30,
                   strokeWidth: 1.6,
                   tapSize: 44,
-                  count: post.likeCount,
-                  semanticLabel: liked ? 'Batalkan suka' : 'Sukai postingan',
-                  onTap: _handleLikeTap,
+                  count: post.commentCount,
+                  semanticLabel: 'Buka komentar',
+                  onTap: widget.onComment,
                 ),
-              ),
-              NataloPostActionButton(
-                type: NataloPostActionIconType.comment,
-                iconSize: 30,
-                strokeWidth: 1.6,
-                tapSize: 44,
-                count: post.commentCount,
-                semanticLabel: 'Buka komentar',
-                onTap: widget.onComment,
-              ),
-              NataloPostActionButton(
-                type: NataloPostActionIconType.share,
-                iconSize: 30,
-                strokeWidth: 1.6,
-                tapSize: 44,
-                count: post.shareCount,
-                semanticLabel: 'Bagikan postingan',
-                onTap: widget.onShare,
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: _onSavePressed,
-                visualDensity: VisualDensity.compact,
-                icon: Icon(
-                  _saved
-                      ? Icons.bookmark_rounded
-                      : Icons.bookmark_border_rounded,
-                  color: cs.onSurface,
-                  size: 26,
+                NataloPostActionButton(
+                  type: NataloPostActionIconType.share,
+                  iconSize: 30,
+                  strokeWidth: 1.6,
+                  tapSize: 44,
+                  count: post.shareCount,
+                  semanticLabel: 'Bagikan postingan',
+                  onTap: widget.onShare,
                 ),
-                tooltip: _saved ? 'Hapus dari tersimpan' : 'Simpan postingan',
+                const Spacer(),
+                IconButton(
+                  onPressed: _onSavePressed,
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(
+                    _saved
+                        ? Icons.bookmark_rounded
+                        : Icons.bookmark_border_rounded,
+                    color: cs.onSurface,
+                    size: 26,
+                  ),
+                  tooltip: _saved ? 'Hapus dari tersimpan' : 'Simpan postingan',
+                ),
+              ],
+            ),
+          ),
+          // Likes line. Auto-hide kalau 0 likes (per spec user).
+          if (post.likeCount > 0) ...[
+            const SizedBox(height: 2),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+              child: _LikedByLine(post: post),
+            ),
+          ],
+          // Caption — kalau ada saja.
+          if ((post.caption ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+              child: PostCaption(
+                postId: post.id,
+                memberName: memberName,
+                caption: post.caption!,
+                isOfficial: widget.memberIsOfficial,
+                author: post.author,
               ),
-            ],
-          ),
-        ),
-        // Likes line. Auto-hide kalau 0 likes (per spec user).
-        if (post.likeCount > 0) ...[
-          const SizedBox(height: 2),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
-            child: _LikedByLine(post: post),
-          ),
-        ],
-        // Caption — kalau ada saja.
-        if ((post.caption ?? '').trim().isNotEmpty) ...[
+            ),
+          ],
+          // Tanggal — hybrid format: relative untuk < 7 hari, absolute lebih lama.
           const SizedBox(height: 6),
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
-            child: PostCaption(
-              postId: post.id,
-              memberName: memberName,
-              caption: post.caption!,
-              isOfficial: widget.memberIsOfficial,
-              author: post.author,
+            child: Text(
+              _hybridDateLabel(post.createdAt),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12,
+                fontWeight: NataloWeight.body,
+              ),
             ),
           ),
         ],
-        // Tanggal — hybrid format: relative untuk < 7 hari, absolute lebih lama.
-        const SizedBox(height: 6),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
-          child: Text(
-            _hybridDateLabel(post.createdAt),
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 12,
-              fontWeight: NataloWeight.body,
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -2715,6 +2987,15 @@ class _PostMediaSurface extends StatelessWidget {
   final void Function(TapDownDetails)? onVideoMediaDoubleTapDown;
   final VoidCallback? onVideoMediaDoubleTap;
 
+  /// Scope hero (Task 2 — rewrite ke Hero bawaan). Null = tanpa hero (mis.
+  /// deep-link) supaya tidak ada tag duplikat/yatim di tree.
+  final String? heroScope;
+
+  /// Id post yang sedang memegang hero tunggal viewer (§4 spec — lihat
+  /// [MemberPostDetailScreen._heroPostId]). Null = tanpa live tracking
+  /// (perilaku sama seperti heroScope null: media polos, tanpa Hero).
+  final ValueNotifier<String>? heroPostId;
+
   const _PostMediaSurface({
     required this.post,
     required this.coordinator,
@@ -2724,7 +3005,44 @@ class _PostMediaSurface extends StatelessWidget {
     this.onVideoMediaSingleTap,
     this.onVideoMediaDoubleTapDown,
     this.onVideoMediaDoubleTap,
+    this.heroScope,
+    this.heroPostId,
   });
+
+  /// Bungkus [child] dengan [PostHero] ber-scope HANYA saat post ini adalah
+  /// pemegang hero aktif (`heroPostId.value == post.id`) — post lain di
+  /// list render medianya polos tanpa Hero. Ini yang mencegah ghost flight:
+  /// Flutter hanya menerbangkan tag yang benar-benar ada sebagai Hero di
+  /// kedua route, jadi neighbor post yang co-built tidak ikut terbang.
+  /// ValueListenableBuilder membuat rebuild scope-nya sempit — cuma media
+  /// subtree post yang kalah/menang hero yang rebuild saat notifier ganti
+  /// nilai, bukan seluruh list (lihat komentar `_heroPostId` di layar).
+  /// Null [heroScope]/[heroPostId] (deep-link tanpa origin grid) → child
+  /// apa adanya, tanpa Hero maupun listener.
+  ///
+  /// Hero DUA ARAH (model IG/TikTok): route viewer memakai transisi FADE
+  /// (bukan slide native), jadi media boleh terbang tile↔slot pada push DAN
+  /// pop tanpa terasa "berlapis" — TIDAK ada gating arah lagi. `PostHero`
+  /// selalu membungkus child (bentuk tree konstan → subtree media tidak
+  /// pernah di-reparent).
+  Widget _wrapHero(BuildContext context, Widget child, {Widget? flightChild}) {
+    final scope = heroScope;
+    final notifier = heroPostId;
+    if (scope == null || notifier == null) return child;
+    return ValueListenableBuilder<String>(
+      valueListenable: notifier,
+      builder: (context, activeHeroPostId, staticChild) {
+        if (activeHeroPostId != post.id) return staticChild!;
+        return PostHero(
+          scope: scope,
+          postId: post.id,
+          flightChild: flightChild,
+          child: staticChild!,
+        );
+      },
+      child: child,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2733,35 +3051,49 @@ class _PostMediaSurface extends StatelessWidget {
       height: post.aspectHeightInt,
       type: post.contentType,
     );
-    // Hero destination — wraps photo (single & carousel cover) dengan tag
-    // sama dengan _PostThumbnail di member_screen grid: 'post-thumb-${id}'.
-    // Saat user tap thumb di grid, image fly + scale ke posisi ini.
-    // Video skip (VideoPlayer destination tidak compatible).
+    // Hero destination — dibungkus PostHero (scope+postId) dengan tag SAMA
+    // dengan origin grid ('post-hero/<scope>/<postId>', lihat postHeroTag).
+    // Saat user tap thumb di grid, media terbang ke posisi ini via Hero
+    // bawaan Flutter. Foto, carousel, DAN video ikut hero (video: texture
+    // VideoPlayer yang sama tanpa swap thumbnail, lihat PostHero shuttle).
     return AspectRatio(
       aspectRatio: aspectRatio,
       child: switch (post.contentType) {
-        FeedContentType.video => _InlineVideoPlayer(
-            postId: post.id,
-            coordinator: coordinator,
-            registerVideoUrl: registerVideoUrl,
-            dormant: handoffSessionId == post.id,
-            // videoPlaybackUrl (videoUrl-first), BUKAN previewMediaUrl
-            // (yang thumbnail-first → JPG → player gagal initialize).
-            mediaUrl: videoQualityService.resolvePlaybackUrl(
-              post.videoPlaybackUrl,
-              dataSaverUrl: post.videoDataSaverUrl,
-              userPreference: appSettingsStore.feedVideoQuality,
+        FeedContentType.video => _wrapHero(
+            context,
+            _InlineVideoPlayer(
+              postId: post.id,
+              coordinator: coordinator,
+              registerVideoUrl: registerVideoUrl,
+              dormant: handoffSessionId == post.id,
+              // videoPlaybackUrl (videoUrl-first), BUKAN previewMediaUrl
+              // (yang thumbnail-first → JPG → player gagal initialize).
+              mediaUrl: videoQualityService.resolvePlaybackUrl(
+                post.videoPlaybackUrl,
+                dataSaverUrl: post.videoDataSaverUrl,
+                userPreference: appSettingsStore.feedVideoQuality,
+              ),
+              thumbnailUrl: post.thumbnailUrl,
+              aspectRatio: aspectRatio,
+              onAnchorReady: onVideoAnchorReady,
+              onMediaSingleTap: onVideoMediaSingleTap,
+              onMediaDoubleTapDown: onVideoMediaDoubleTapDown,
+              onMediaDoubleTap: onVideoMediaDoubleTap,
             ),
-            thumbnailUrl: post.thumbnailUrl,
-            aspectRatio: aspectRatio,
-            onAnchorReady: onVideoAnchorReady,
-            onMediaSingleTap: onVideoMediaSingleTap,
-            onMediaDoubleTapDown: onVideoMediaDoubleTapDown,
-            onMediaDoubleTap: onVideoMediaDoubleTap,
+            // Hero flight: TIDAK pakai _InlineVideoPlayer segar (state baru
+            // = unbound sampai VisibilityDetector menembak, throttle lebih
+            // lambat dari durasi flight → placeholder/kosong sekilas alih-
+            // alih video hidup, lihat komentar PostHero.flightChild). Surface
+            // ringan ini baca controller yang SUDAH hidup secara sinkron.
+            flightChild: _HeroVideoFlightSurface(
+              postId: post.id,
+              coordinator: coordinator,
+              thumbnailUrl: post.thumbnailUrl,
+            ),
           ),
-        FeedContentType.carousel => Hero(
-            tag: 'post-thumb-${post.id}',
-            child: _CarouselSurface(
+        FeedContentType.carousel => _wrapHero(
+            context,
+            _CarouselSurface(
               post: post,
               aspectRatio: aspectRatio,
               coordinator: coordinator,
@@ -2769,9 +3101,9 @@ class _PostMediaSurface extends StatelessWidget {
               handoffSessionId: handoffSessionId,
             ),
           ),
-        FeedContentType.photo => Hero(
-            tag: 'post-thumb-${post.id}',
-            child: _ImageSurface(
+        FeedContentType.photo => _wrapHero(
+            context,
+            _ImageSurface(
               imageUrl: post.previewMediaUrl,
               placeholderIcon: Icons.image_outlined,
             ),
@@ -2905,6 +3237,118 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Hero flight surface — video (lihat PostHero.flightChild) ────────
+
+/// Surface video dipakai HANYA di dalam shuttle Hero ([PostHero._shuttle]).
+/// BUKAN [_InlineVideoPlayer]: elemen itu selalu lahir baru di overlay flight
+/// (Hero mem-placeholder-kan slot asal, memutus State lama), dan state
+/// barunya baru attach/bind ke [PostVideoCoordinator] lewat callback
+/// [VisibilityDetector] yang di-throttle (default ~500ms — jauh lebih lambat
+/// dari durasi animasi flight). Hasilnya: sepanjang flight, _InlineVideoPlayer
+/// versi baru SELALU unbound → merender placeholder/thumbnail dingin,
+/// padahal origin baru saja menampilkan frame video HIDUP — persis bug
+/// "kedip lalu video muncul di tengah flight".
+///
+/// Widget ini TIDAK attach/detach apa pun ke coordinator (origin
+/// [_InlineVideoPlayer] tetap memegang attachment-nya; sesi videonya pinned
+/// selama post ini aktif) — ia HANYA *membaca* sesi yang sudah hidup, secara
+/// SINKRON di `initState`, lalu merender `VideoPlayer(controller)` yang SAMA
+/// (satu texture, tanpa swap). Kalau sesi belum initialized (mis. post video
+/// baru dibuka, belum sempat play), fallback ke thumbnail cache yang SAMA
+/// dipakai _InlineVideoPlayer/grid — bukan gambar baru, bukan menunggu apa
+/// pun. Rendering TIDAK digerbang oleh playbackAllowed/dormant — yang
+/// digambar murni fungsi ready/tidak (gotcha VideoCompressGate-adjacent:
+/// jangan gantungkan apa yang DIGAMBAR pada state play/pause).
+class _HeroVideoFlightSurface extends StatefulWidget {
+  final String postId;
+  final PostVideoCoordinator coordinator;
+  final String? thumbnailUrl;
+
+  const _HeroVideoFlightSurface({
+    required this.postId,
+    required this.coordinator,
+    required this.thumbnailUrl,
+  });
+
+  @override
+  State<_HeroVideoFlightSurface> createState() =>
+      _HeroVideoFlightSurfaceState();
+}
+
+class _HeroVideoFlightSurfaceState extends State<_HeroVideoFlightSurface> {
+  VideoPlayerSession? _session;
+
+  @override
+  void initState() {
+    super.initState();
+    // Sinkron, TANPA VisibilityDetector/throttle — origin sudah attach sesi
+    // ini sebelum flight ada alasan untuk mulai (video harus sudah main
+    // untuk user bisa lihat lalu tap back).
+    _bind();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HeroVideoFlightSurface oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.postId != widget.postId ||
+        oldWidget.coordinator != widget.coordinator) {
+      _bind();
+    }
+  }
+
+  void _bind() {
+    final session = widget.coordinator.sessionFor(widget.postId);
+    final next = session is VideoPlayerSession ? session : null;
+    if (identical(next, _session)) return;
+    _session?.revision.removeListener(_onRevision);
+    _session = next;
+    _session?.revision.addListener(_onRevision);
+  }
+
+  void _onRevision() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _session?.revision.removeListener(_onRevision);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _session?.controller;
+    final ready = controller != null && controller.value.isInitialized;
+    return ColoredBox(
+      color: Colors.black,
+      child: ready
+          ? ClipRect(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: controller.value.size.width > 0
+                      ? controller.value.size.width
+                      : 100,
+                  height: controller.value.size.height > 0
+                      ? controller.value.size.height
+                      : 100,
+                  child: VideoPlayer(controller),
+                ),
+              ),
+            )
+          : (widget.thumbnailUrl != null &&
+                  widget.thumbnailUrl!.trim().isNotEmpty
+              ? _ImageSurface(
+                  imageUrl: widget.thumbnailUrl!,
+                  placeholderIcon: Icons.video_collection_outlined,
+                )
+              : const _MediaPlaceholder(
+                  icon: Icons.video_collection_outlined,
+                )),
     );
   }
 }

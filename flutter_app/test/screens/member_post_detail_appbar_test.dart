@@ -6,6 +6,7 @@ import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
 import 'package:natalo_petshop_flutter/screens/public_profile_screen.dart';
 import 'package:natalo_petshop_flutter/widgets/liquid_glass.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 FeedPost _photoPost({
   String id = 'appbar-test-photo',
@@ -26,6 +27,15 @@ FeedPost _photoPost({
     });
 
 void main() {
+  // WAJIB: _PostFeedItem membungkus setiap post (foto/carousel/video) dengan
+  // VisibilityDetector (post visibility tracking untuk onWillClose, lihat
+  // member_post_detail_screen.dart). Tanpa updateInterval=0, timer internal
+  // library (default 500ms) masih pending saat widget tree di-dispose akhir
+  // test → 'A Timer is still pending' assertion.
+  setUp(() {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+  });
+
   testWidgets(
       'header is a transparent overlay (no Scaffold.appBar) with LiquidGlass back button',
       (tester) async {
@@ -50,9 +60,8 @@ void main() {
 
     // Media post pertama mulai DI BAWAH header — ListView diberi top padding
     // (status bar + toolbar) supaya tidak "over ke atas" / kepotong.
-    final listPadding = tester
-        .widget<ListView>(find.byType(ListView))
-        .padding as EdgeInsets;
+    final listPadding =
+        tester.widget<ListView>(find.byType(ListView)).padding as EdgeInsets;
     expect(listPadding.top, greaterThan(0));
   });
 
