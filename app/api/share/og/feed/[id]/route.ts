@@ -3,22 +3,35 @@ import { NextResponse } from "next/server";
 
 import { getPublicShareFeedPost } from "@/lib/share/feed-share-data";
 import { renderFeedShareCard } from "@/lib/share/og/feed-card";
-import { fetchSafeOgImageData } from "@/lib/share/og-image-security";
+import {
+  fetchSafeOgImageData,
+  resolveOgImageCachePolicy,
+} from "@/lib/share/og-image-security";
 
 export const runtime = "nodejs";
 
 const IMAGE_OPTIONS = { height: 630, width: 1200 } as const;
-const CACHE_HEADERS = {
-  "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
-};
-
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   const post = await getPublicShareFeedPost(id);
   if (!post) return new NextResponse(null, { status: 404 });
+
+  const cachePolicy = resolveOgImageCachePolicy(
+    new URL(request.url).searchParams.get("v"),
+    post.shareVersion,
+  );
+  if (cachePolicy.redirectToVersion) {
+    const redirectUrl = new URL(request.url);
+    redirectUrl.search = `v=${encodeURIComponent(cachePolicy.redirectToVersion)}`;
+    return NextResponse.redirect(redirectUrl, {
+      headers: { "Cache-Control": cachePolicy.cacheControl },
+      status: 307,
+    });
+  }
+  const responseHeaders = { "Cache-Control": cachePolicy.cacheControl };
 
   try {
     const [renderedMediaUrl, renderedAuthorImageUrl] = await Promise.all([
@@ -31,7 +44,7 @@ export async function GET(
       renderedMediaUrl,
     }), {
       ...IMAGE_OPTIONS,
-      headers: CACHE_HEADERS,
+      headers: responseHeaders,
     });
   } catch (error) {
     console.error("feed_share_og_render_failed", { postId: id, error });
@@ -43,7 +56,7 @@ export async function GET(
       renderedMediaUrl: null,
     }), {
       ...IMAGE_OPTIONS,
-      headers: CACHE_HEADERS,
+      headers: responseHeaders,
     });
   }
 }
