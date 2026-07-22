@@ -1,62 +1,111 @@
-# Task 1 — Exact audit inputs
+# Task 1 Report: Deterministic `shareVersion`
 
-## Scope and baseline
+## Status
 
-- Worktree: `codex-feed-profile-race-audit`
-- Old branch/commit: `ee1c48cae55ad2c111288c2ea9d153d2be07ac7d`
-- Commit subject: `fix(feed): race Feed→Profile — audio hantu init-race (tertinggal dari squash PR #135)`
-- No production files were modified during this task.
+`DONE_WITH_CONCERNS`
 
-## Commands executed
+Commit: `0c6edad3 feat(share): expose deterministic preview versions`
+
+## Implementation
+
+- Added `buildShareVersion` with SHA-256 base64url output truncated to 16 characters, plus `stripEphemeralUrlQuery` to remove signed CDN query parameters before hashing.
+- Added deterministic feed versions to the existing canonical feed serializer and the public single-post response. Inputs are post id, title, description, unsigned thumbnail URL, duration, brand-safe author display name/avatar, and official flag.
+- Added a profile version to the public `user` payload from username, brand-safe public identity, public bio, official flag, and post/follower/following counts. Profile response feed items carry their own feed version.
+- Added product version to the existing product payload using slug, name, unsigned image URL, existing effective price (`discountPrice ?? price`), base price, and stock.
+- No Flutter, Prisma, Android/iOS, or dependency changes were made. `package-lock.json` was deliberately excluded from the commit.
+
+## Files
+
+- Created `lib/share/share-version.ts`
+- Created `tests/share-version.test.ts`
+- Modified `lib/feed/queries.ts`
+- Modified `app/api/feed/posts/[id]/route.ts`
+- Modified `app/api/u/[username]/route.ts`
+- Modified `app/api/products/[slug]/route.ts`
+
+## TDD Evidence
+
+### RED
+
+Command:
 
 ```powershell
-git diff ee1c48ca^ ee1c48ca -- flutter_app/lib/features/feed/widgets/feed_video_post_view.dart flutter_app/lib/features/feed/widgets/feed_post_shared_widgets.dart flutter_app/pubspec.yaml
-git diff --name-only ee1c48ca^ ee1c48ca -- flutter_app/test
-rg -n "Race fix|HARDENING|audio hantu|routeCovered|appBackgrounded|transparent|nested|foreground|volume|resume" flutter_app/test/features/feed/widgets/feed_video_post_view_test.dart
-git show --stat --oneline --decorate ee1c48ca
-git show --format=fuller --no-patch ee1c48ca
-git status --short
+npx tsx --test tests/share-version.test.ts
 ```
 
-## Commit-scoped paths identified
+Result: exit `1`, expected failure: `Cannot find module '../lib/share/share-version'`. The test file reported one failing test file and zero passing tests because the production helper did not yet exist.
 
-Production paths changed by `ee1c48ca`:
+### GREEN
 
-- `flutter_app/lib/features/feed/widgets/feed_video_post_view.dart`
-- `flutter_app/lib/features/feed/widgets/feed_post_shared_widgets.dart`
-- `flutter_app/pubspec.yaml`
+Command:
 
-Test path changed by `ee1c48ca`:
+```powershell
+npx tsx --test tests/share-version.test.ts
+```
 
-- `flutter_app/test/features/feed/widgets/feed_video_post_view_test.dart`
+Result: exit `0`; 2/2 tests passed:
 
-Commit summary reports 4 files changed, 812 insertions, and 32 deletions (the test file contributes 605 inserted lines).
+- `shareVersion stabil dan berubah ketika data preview berubah`
+- `signed query media tidak membuat versi berubah`
 
-## Old-branch behavior labels captured
+## Validation
 
-The test file contains the following mapping labels/scenarios for Task 2:
+Focused regression command:
 
-- Managed resume guard / `audio hantu` (inactive origin must not resume; active origin may resume).
-- Live volume claim behavior (inactive/background controllers stay silent; unmute only affects active claim).
-- Legacy delayed volume/play after dispose.
-- Race fix for Feed→Profile while controller is loading or uninitialized.
-- `_routeCovered` set immediately on opaque route push, before controller readiness.
-- `_appBackgrounded` lifecycle gate and resume state-machine.
-- Forced uncover resume through `didPopNext`/`AppLifecycleState.resumed`, without waiting for VisibilityDetector.
-- Volume restoration after uncover (`feedMuted=false` restores volume 1; muted restores 0).
-- Opaque-aware route behavior: Profile/nested routes keep Feed paused and silent until Feed is uncovered.
-- Nested Feed→Profile→Post route: popping only the top nested route must not resume Feed while Profile remains above it.
-- Background during navigation: init completion behind an opaque route must not play; foreground alone is insufficient until Feed is uncovered.
-- Transparent sheet regression: product/cart/tagged transparent route permits Feed playback/resume behind the sheet.
-- Opaque-route contrast: foreground while an opaque route remains above Feed must not resume playback.
-- Central `_canAutoplayNow` gate across init, adopt, visibility, comment close, tap, long-press, cinema, and cover-resume paths.
-- Debug-only `_logPlay` telemetry records source, route-current, covered, background, and active state.
+```powershell
+npx tsx --test tests/share-version.test.ts tests/brand-user.test.ts tests/feed-product-discount.test.ts
+```
 
-The matching source comments also explicitly identify “GAP #3” (volume stuck at zero after uncover) and “GAP #4” (controller-null-at-cover requiring forced resume).
+Result: exit `0`; 9/9 tests passed.
 
-## Concerns for Task 2
+Required project typecheck command:
 
-1. The old commit predates the latest `main` playback architecture. Its diff contains legacy direct `ctrl.play()` paths and must not be applied wholesale without checking current `VideoAudioClaim`/coordinator ownership.
-2. `_feedRouteIsCurrent` is intentionally telemetry-only in the old commit; treating `ModalRoute.isCurrent` as a playback gate would regress transparent bottom-sheet playback.
-3. The old commit claims 295 tests green and clean analysis (with six pre-existing `use_key` infos), but this result must be independently re-run against current `main` after behavior mapping.
-4. The worktree currently contains the task brief as an untracked audit input; this is expected and is not production code.
+```powershell
+npx tsc --noEmit
+```
+
+Result: exit `1` due to six pre-existing tests importing unavailable `vitest` (`admin-brand-schema`, `admin-product-form`, `admin-product-media`, `admin-product-schema`, `admin-product-visibility`, and `product-video-draft`). The task base `package.json` has no `vitest`, while root `tsconfig.json` includes all `**/*.ts` test files.
+
+Isolated Task 1 typecheck was run with a temporary `tsconfig.task-1.json` limited to the six changed source/test files, then the temporary config and its build artifact were removed:
+
+```powershell
+npx tsc --noEmit --project tsconfig.task-1.json
+```
+
+Result: exit `0`.
+
+## Self-Review
+
+- The change uses existing `brandDisplayName` and `brandPhotoUrl` helpers, so admin identity is never hashed from private owner data.
+- Version inputs use original media URLs after stripping query strings, avoiding signature expiry churn while preserving content-path changes.
+- Existing response serializers were extended in place; no parallel feed serializer was introduced.
+- The staged diff was reviewed and whitespace-checked before commit. The commit contains only the six task files.
+
+## Concerns
+
+1. Full root typecheck remains unavailable until the existing missing `vitest` dependency/type configuration is resolved. This is outside Task 1 scope and was not changed.
+
+## Reviewer Fix
+
+Reviewer found that the Feed serializer emitted `shareVersion` while the
+`FeedPostListItem` API contract did not declare it. The type is now required
+and a focused serialized Feed-response fixture locks that contract.
+
+### RED
+
+The new contract check failed before the fix with:
+
+```text
+Type '"shareVersion"' is not assignable to type 'keyof FeedPostListItem'.
+```
+
+### GREEN
+
+```powershell
+npx tsc --ignoreConfig --noEmit --module NodeNext --moduleResolution NodeNext --target ES2022 --skipLibCheck --types node tests/share-version.test.ts
+npx tsx --test tests/share-version.test.ts tests/brand-user.test.ts tests/feed-product-discount.test.ts
+git diff --check
+```
+
+Results: contract typecheck passed, 10/10 focused tests passed, and the diff
+check passed.
