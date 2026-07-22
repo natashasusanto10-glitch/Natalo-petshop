@@ -13,7 +13,7 @@ Saat ini pengguna bisa menandai produk yang pernah dibeli saat membuat postingan
 
 1. Sembunyikan section "Tag Produk Pernah Dibeli" di layar New Post — reversibel lewat satu flag, tanpa menghapus kode/data.
 2. Ganti tab ke-3 Profil (ikon tas belanja + label "Belanja") menjadi ikon dua-orang + label **"Ditandai"**, dengan isi grid berupa *empty state* statis (belum ada query data — data asli menyusul di Spec B).
-3. Terapkan gaya "tab aktif" yang lebih jelas & premium ke KETIGA tab (Postingan/Video/Ditandai), bukan cuma tab Ditandai — supaya konsisten: ikon outline→filled + warna abu→biru brand + gerak naik tipis (~2–3px), meleburmengikuti swipe (bukan snap instan). Ukuran ikon diseragamkan ke 24px (menyamai bottom nav).
+3. Terapkan gaya "tab aktif" yang lebih jelas & premium ke KETIGA tab (Postingan/Video/Ditandai), bukan cuma tab Ditandai — supaya konsisten: ikon outline→filled + warna abu→biru brand + gerak naik tipis (~2–3px), melebur mengikuti swipe (bukan snap instan). Ukuran ikon diseragamkan ke 24px (menyamai bottom nav).
 4. Perubahan berlaku di kedua permukaan yang memakai `PublicProfileContentTabBar`: profil sendiri (`MemberScreen`, mode selalu-expanded) dan profil publik (`PublicProfileScreen`, termasuk mode pill saat header collapse — lihat referensi di bawah).
 
 ## Non-tujuan
@@ -51,15 +51,24 @@ Konsisten dengan folder `lib/config/` yang sudah ada (`api_config.dart`, `natalo
 
 ### 4. Konten tab "Ditandai" (empty state statis)
 
-- `flutter_app/lib/screens/member_screen.dart`: `_PostGrid` ke-3 (saat ini diberi `posts: _taggedPosts` hasil filter produk) diganti jadi selalu render empty state, tanpa query: teks **"Belum ada postingan yang menandaimu"**, subteks **"Saat orang lain menandaimu di sebuah postingan, itu akan muncul di sini."** — pola sama seperti empty state tab Video yang sudah ada.
-- `flutter_app/lib/screens/public_profile_screen.dart`: tab `PublicProfileContentFilter.shoppable` (baris ~48) render dengan cara yang sama (empty state statis), bukan lagi query produk-tertaut.
-- Jumlah tab tetap 3 — tidak perlu ubah `TabController(length: ...)` atau pembagian `/3` di perhitungan posisi indikator (sudah benar apa adanya).
+Kedua layar punya arsitektur data yang BEDA untuk tab ini — jangan disamakan:
+
+- **`flutter_app/lib/screens/member_screen.dart`** (profil sendiri): `_taggedPosts` saat ini adalah getter client-side (`_allPosts.where((p) => p.productIds.isNotEmpty)`, baris ~422) — tidak ada network call terpisah. Cukup ganti isinya jadi selalu `const []` (atau getter yang sengaja mengembalikan list kosong) supaya `_PostGrid` ke-3 selalu jatuh ke cabang empty-state.
+  - Ikon empty-state di `_EmptyState` (baris ~988) **TIDAK perlu diganti** — ikonnya sudah generik (`Icons.pets_rounded`, paw, dibungkus badge biru muda) dan SAMA untuk ketiga tab, bukan per-tab. Cukup ubah `emptyText`/`emptySubtext` di pemanggilan `_PostGrid` ke-3 (baris ~542-544): **"Belum ada postingan yang menandaimu"** / **"Saat orang lain menandaimu di sebuah postingan, itu akan muncul di sini."** (kata "menandaimu" valid di sini karena ini profil milik viewer sendiri).
+
+- **`flutter_app/lib/screens/public_profile_screen.dart`** (profil orang lain): tab `PublicProfileContentFilter.shoppable` (baris ~48) memanggil **network call sungguhan** lewat `profileService.fetchPublicProfile(content: ..., cursor: ...)` di `_loadSelectedContent`/`_loadMore` (baris ~438-529) — bukan filter client-side. Perlu intercept: saat `content == shoppable` (Ditandai), `_activateContent` langsung menandai `contentState.loaded = true` dengan `posts: []` TANPA memanggil `_loadSelectedContent`/API sama sekali — supaya tidak ada network call sia-sia tiap kali viewer buka tab ini.
+  - Ikon+teks empty-state di sini diatur widget `_EmptyPosts` (baris ~1412-1457) lewat `switch (content)` — **ikon PERLU diganti** (`Icons.shopping_bag_outlined` → `Icons.people_outline_rounded`, konsisten dengan ikon tab bar) di baris ~1431-1432.
+  - **Teksnya HARUS beda dari versi profil sendiri** — ini profil milik ORANG LAIN, jadi "menandaimu" salah secara tata bahasa (menyiratkan menandai si penonton). Pakai orang ketiga, mis. **"Belum ada postingan yang menandai akun ini."** (baris ~1442-1443).
+  - `_EmptyPosts` saat ini cuma render satu baris teks (tidak ada slot subteks, beda dari `_EmptyState` milik `member_screen.dart` yang dua baris) — usulan: tambah parameter subteks opsional supaya kesan premium konsisten di kedua layar. Kalau ingin tetap satu baris demi diff minimal, itu juga valid — keputusan kecil ini terbuka saat review.
+  - `showCommerceBadge: content == PublicProfileContentFilter.shoppable` (baris ~1057-1058, badge harga/jumlah produk di tile grid) otomatis jadi kode mati (tidak pernah ke-trigger lagi karena tab ini selalu kosong) — aman dibiarkan apa adanya, tidak perlu dihapus, cukup dicatat supaya tidak disangka terlewat saat implementasi.
+
+Jumlah tab tetap 3 di kedua layar — tidak perlu ubah `TabController(length: ...)` atau pembagian `/3` di perhitungan posisi indikator (sudah benar apa adanya).
 
 ## Testing
 
 - Widget test `feed_new_post_screen_test.dart`: dengan `kShopTagEnabled = false` (default), section "Tag Produk Pernah Dibeli" tidak ditemukan di widget tree, dan `fetchPinnableProducts` tidak terpanggil (mock verify no-call).
 - Widget test tab bar: label "Ditandai" + ikon baru muncul di index 2; assert warna & posisi ikon (`translateY`, opacity crossfade) berubah sesuai nilai `controller.animation` (sample 0.0, 0.5, 1.0) — termasuk kasus `pillOpacity: 0` (mode `MemberScreen`) untuk memastikan bug warna statis di atas benar-benar hilang.
-- Widget test empty state: tab "Ditandai" di `MemberScreen` dan `PublicProfileScreen` menampilkan teks empty state yang benar, tanpa memanggil endpoint produk-tertaut apa pun.
+- Widget test empty state: tab "Ditandai" di `MemberScreen` menampilkan "...menandaimu" (getter `_taggedPosts` selalu kosong, tanpa filter produk); di `PublicProfileScreen` menampilkan teks orang-ketiga ("...menandai akun ini") DAN memastikan `profileService.fetchPublicProfile` tidak pernah terpanggil dengan `content: shoppable` (mock verify no-call) saat tab itu di-tap.
 - Golden tab bar profil (`profile_tabbar_*`, `public_profile_premium_test.dart`) diregenerasi untuk ikon+label baru.
 - Regresi: seluruh test profil (`public_profile_*`, `member_screen_*`) dan feed New Post tetap hijau.
 
