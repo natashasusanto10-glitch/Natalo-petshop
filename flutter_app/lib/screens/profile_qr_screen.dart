@@ -253,9 +253,8 @@ class _ActionButton extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: filled
-                ? null
-                : Border.all(color: cs.outlineVariant, width: 1),
+            border:
+                filled ? null : Border.all(color: cs.outlineVariant, width: 1),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -291,14 +290,18 @@ class _HeaderIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 40,
-      height: 40,
-      child: IconButton(
-        icon: Icon(icon, size: 24),
-        tooltip: tooltip,
-        padding: EdgeInsets.zero,
-        onPressed: onTap,
+    return Semantics(
+      label: tooltip,
+      button: true,
+      excludeSemantics: true,
+      child: SizedBox(
+        width: 40,
+        height: 40,
+        child: IconButton(
+          icon: Icon(icon, size: 24),
+          padding: EdgeInsets.zero,
+          onPressed: onTap,
+        ),
       ),
     );
   }
