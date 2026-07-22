@@ -968,6 +968,8 @@ class _OrderCardState extends State<_OrderCard> {
                           ),
                           style: IconButton.styleFrom(
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            overlayColor: Colors.transparent,
+                            splashFactory: NoSplash.splashFactory,
                           ),
                         ),
                       ],

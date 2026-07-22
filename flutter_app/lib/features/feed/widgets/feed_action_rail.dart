@@ -187,58 +187,59 @@ class _ReelsActionState extends State<_ReelsAction>
       selected: widget.selected,
       label: widget.semanticLabel,
       excludeSemantics: true,
-      child: Tooltip(
-        message: widget.semanticLabel,
-        excludeFromSemantics: true,
-        child: SizedBox(
-          width: 54,
-          child: Material(
-            color: Colors.transparent,
-            child: InkResponse(
-              onTap: _handleTap,
-              radius: 28,
-              child: ScaleTransition(
-                scale: _tapPulseScale,
-                child: SizedBox(
-                  height: widget.count == null ? 44 : 54,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      widget.iconChild,
-                      if (widget.count != null) ...[
-                        const SizedBox(height: 2),
-                        AnimatedOpacity(
-                          opacity: showCount ? 1 : 0,
-                          duration: const Duration(milliseconds: 150),
-                          child: RepaintBoundary(
-                            child: Text(
-                              // Saat 0 (invisible) tampilkan nilai terakhir yang
-                              // masuk akal (1) supaya fade-out unlike 1→0 tidak
-                              // sempat flash "0".
-                              _formatCount(
-                                widget.count! > 0 ? widget.count! : 1,
-                              ),
-                              style: const TextStyle(
-                                color: _feedActionForegroundColor,
-                                fontSize: _feedActionCountFontSize,
-                                // Ikut halus ala IG: w600 (dari w900). Shadow
-                                // tetap menjaga keterbacaan di atas video.
-                                fontWeight: FontWeight.w600,
-                                height: 1,
-                                shadows: [
-                                  Shadow(
-                                    color: _feedActionTextShadowColor,
-                                    blurRadius: 2.4,
-                                    offset: Offset(0, 0.8),
-                                  ),
-                                ],
-                              ),
+      child: SizedBox(
+        width: 54,
+        child: Material(
+          color: Colors.transparent,
+          child: InkResponse(
+            onTap: _handleTap,
+            radius: 28,
+            splashFactory: NoSplash.splashFactory,
+            splashColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            overlayColor:
+                const WidgetStatePropertyAll<Color>(Colors.transparent),
+            child: ScaleTransition(
+              scale: _tapPulseScale,
+              child: SizedBox(
+                height: widget.count == null ? 44 : 54,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    widget.iconChild,
+                    if (widget.count != null) ...[
+                      const SizedBox(height: 2),
+                      AnimatedOpacity(
+                        opacity: showCount ? 1 : 0,
+                        duration: const Duration(milliseconds: 150),
+                        child: RepaintBoundary(
+                          child: Text(
+                            // Saat 0 (invisible) tampilkan nilai terakhir yang
+                            // masuk akal (1) supaya fade-out unlike 1→0 tidak
+                            // sempat flash "0".
+                            _formatCount(
+                              widget.count! > 0 ? widget.count! : 1,
+                            ),
+                            style: const TextStyle(
+                              color: _feedActionForegroundColor,
+                              fontSize: _feedActionCountFontSize,
+                              // Ikut halus ala IG: w600 (dari w900). Shadow
+                              // tetap menjaga keterbacaan di atas video.
+                              fontWeight: FontWeight.w600,
+                              height: 1,
+                              shadows: [
+                                Shadow(
+                                  color: _feedActionTextShadowColor,
+                                  blurRadius: 2.4,
+                                  offset: Offset(0, 0.8),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                      ],
+                      ),
                     ],
-                  ),
+                  ],
                 ),
               ),
             ),

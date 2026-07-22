@@ -121,29 +121,37 @@ class _AppCartButtonState extends State<AppCartButton>
         return Stack(
           alignment: Alignment.center,
           children: [
-            IconButton(
-              tooltip: 'Keranjang',
-              // Warna onSurface eksplisit (default M3 IconButton = abu
-              // onSurfaceVariant) + chrome rapat samakan dgn AppHeaderIconButton
-              // → ikon header hitam & jaraknya konsisten.
-              color: widget.iconColor ?? Theme.of(context).colorScheme.onSurface,
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-              constraints: const BoxConstraints(minWidth: 34, minHeight: 44),
-              // shrinkWrap: tanpa ini MaterialTapTargetSize.padded tetap
-              // melebarkan layout ke 48px → gap antar ikon header jauh.
-              style: IconButton.styleFrom(
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              onPressed: () => _tapThrottle.run(
-                widget.onPressed ?? () => Navigator.pushNamed(context, '/cart'),
-              ),
-              // Wrap icon dgn KeyedSubtree(key: _iconKey) — per-instance
-              // key supaya tidak konflik dengan AppCartButton di tab lain.
-              // flyImageToCart() lookup via AppCartButton.activeIconKey
-              // yang track instance terakhir aktif.
-              icon: KeyedSubtree(
-                key: _iconKey,
-                child: const Icon(Icons.shopping_cart_outlined),
+            Semantics(
+              label: 'Keranjang',
+              button: true,
+              excludeSemantics: true,
+              child: IconButton(
+                // Warna onSurface eksplisit (default M3 IconButton = abu
+                // onSurfaceVariant) + chrome rapat samakan dgn AppHeaderIconButton
+                // → ikon header hitam & jaraknya konsisten.
+                color:
+                    widget.iconColor ?? Theme.of(context).colorScheme.onSurface,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                constraints: const BoxConstraints(minWidth: 34, minHeight: 44),
+                // shrinkWrap: tanpa ini MaterialTapTargetSize.padded tetap
+                // melebarkan layout ke 48px → gap antar ikon header jauh.
+                style: IconButton.styleFrom(
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  overlayColor: Colors.transparent,
+                  splashFactory: NoSplash.splashFactory,
+                ),
+                onPressed: () => _tapThrottle.run(
+                  widget.onPressed ??
+                      () => Navigator.pushNamed(context, '/cart'),
+                ),
+                // Wrap icon dgn KeyedSubtree(key: _iconKey) — per-instance
+                // key supaya tidak konflik dengan AppCartButton di tab lain.
+                // flyImageToCart() lookup via AppCartButton.activeIconKey
+                // yang track instance terakhir aktif.
+                icon: KeyedSubtree(
+                  key: _iconKey,
+                  child: const Icon(Icons.shopping_cart_outlined),
+                ),
               ),
             ),
             if (count > 0)

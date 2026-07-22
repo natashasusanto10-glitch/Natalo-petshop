@@ -66,9 +66,9 @@ void main() {
       onSave: () => saveTaps++,
     )));
 
-    expect(find.byTooltip('Simpan postingan'), findsOneWidget);
+    expect(find.byType(Tooltip), findsNothing);
     expect(find.bySemanticsLabel('Simpan postingan'), findsOneWidget);
-    await tester.tap(find.byTooltip('Simpan postingan'));
+    await tester.tap(find.bySemanticsLabel('Simpan postingan'));
     expect(saveTaps, 1);
   });
 
@@ -81,7 +81,7 @@ void main() {
       saved: true,
     )));
 
-    expect(find.byTooltip('Hapus dari tersimpan'), findsOneWidget);
+    expect(find.byType(Tooltip), findsNothing);
     expect(find.bySemanticsLabel('Hapus dari tersimpan'), findsOneWidget);
   });
 
@@ -96,9 +96,9 @@ void main() {
 
     expect(tester.getSize(find.byType(FeedActionRail)).height, 274);
 
-    final likeRect = tester.getRect(find.byTooltip('Sukai'));
-    final commentRect = tester.getRect(find.byTooltip('Komentar'));
-    final shareRect = tester.getRect(find.byTooltip('Bagikan'));
+    final likeRect = tester.getRect(find.bySemanticsLabel('Sukai'));
+    final commentRect = tester.getRect(find.bySemanticsLabel('Komentar'));
+    final shareRect = tester.getRect(find.bySemanticsLabel('Bagikan'));
     expect(commentRect.top - likeRect.bottom, 6);
     expect(shareRect.top - commentRect.bottom, 6);
   });

@@ -130,8 +130,8 @@ class _FeedCoverPickerScreenState extends State<FeedCoverPickerScreen> {
   }
 
   Future<void> _onDragEnd() async {
-    final absoluteMs =
-        widget.rangeStart.inMilliseconds + (_fraction * widget.rangeSpan.inMilliseconds).round();
+    final absoluteMs = widget.rangeStart.inMilliseconds +
+        (_fraction * widget.rangeSpan.inMilliseconds).round();
     setState(() => _selectedMs = absoluteMs);
     try {
       final bytes = await _extractPreview(widget.videoPath, absoluteMs);
@@ -198,7 +198,9 @@ class _FeedCoverPickerScreenState extends State<FeedCoverPickerScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _Header(onClose: () => Navigator.of(context).pop(), onConfirm: _confirm),
+            _Header(
+                onClose: () => Navigator.of(context).pop(),
+                onConfirm: _confirm),
             const SizedBox(height: 6),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 24),
@@ -358,6 +360,7 @@ class _Header extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: _CircleIconButton(
                 icon: Icons.close_rounded,
+                semanticLabel: 'Tutup',
                 iconColor: _coverInk,
                 bgColor: Colors.white,
                 borderColor: _coverBorder,
@@ -378,6 +381,7 @@ class _Header extends StatelessWidget {
               alignment: Alignment.centerRight,
               child: _CircleIconButton(
                 icon: Icons.check_rounded,
+                semanticLabel: 'Simpan sampul',
                 iconColor: Colors.white,
                 bgColor: _coverBlue,
                 borderColor: _coverBlue,
@@ -393,6 +397,7 @@ class _Header extends StatelessWidget {
 
 class _CircleIconButton extends StatelessWidget {
   final IconData icon;
+  final String semanticLabel;
   final Color iconColor;
   final Color bgColor;
   final Color borderColor;
@@ -400,6 +405,7 @@ class _CircleIconButton extends StatelessWidget {
 
   const _CircleIconButton({
     required this.icon,
+    required this.semanticLabel,
     required this.iconColor,
     required this.bgColor,
     required this.borderColor,
@@ -408,16 +414,25 @@ class _CircleIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: bgColor,
-      shape: CircleBorder(side: BorderSide(color: borderColor)),
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: SizedBox(
-          width: 36,
-          height: 36,
-          child: Icon(icon, color: iconColor, size: 20),
+    return Semantics(
+      label: semanticLabel,
+      button: true,
+      excludeSemantics: true,
+      child: Material(
+        color: bgColor,
+        shape: CircleBorder(side: BorderSide(color: borderColor)),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          splashFactory: NoSplash.splashFactory,
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          overlayColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: Icon(icon, color: iconColor, size: 20),
+          ),
         ),
       ),
     );

@@ -1132,13 +1132,22 @@ class _FeedTopIconButton extends StatelessWidget {
     final button = InkResponse(
       onTap: onTap,
       radius: 26,
+      splashFactory: NoSplash.splashFactory,
+      splashColor: Colors.transparent,
+      highlightColor: Colors.transparent,
+      overlayColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: iconWidget,
       ),
     );
     if (tooltip == null) return button;
-    return Tooltip(message: tooltip!, child: button);
+    return Semantics(
+      label: tooltip,
+      button: true,
+      excludeSemantics: true,
+      child: button,
+    );
   }
 }
 

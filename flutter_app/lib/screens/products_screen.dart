@@ -1616,8 +1616,10 @@ class _DockIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
+    return Semantics(
+      label: tooltip,
+      button: true,
+      excludeSemantics: true,
       child: SizedBox(
         width: _tap,
         height: _tap,
@@ -1641,6 +1643,12 @@ class _DockIconButton extends StatelessWidget {
                 child: InkWell(
                   onTap: onTap,
                   borderRadius: BorderRadius.circular(14),
+                  splashFactory: NoSplash.splashFactory,
+                  splashColor: Colors.transparent,
+                  highlightColor: Colors.transparent,
+                  overlayColor: const WidgetStatePropertyAll<Color>(
+                    Colors.transparent,
+                  ),
                 ),
               ),
             ),

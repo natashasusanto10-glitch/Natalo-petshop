@@ -312,9 +312,8 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
-    final playing = controller != null &&
-        controller.value.isInitialized &&
-        !_initializing;
+    final playing =
+        controller != null && controller.value.isInitialized && !_initializing;
     return VisibilityDetector(
       key: ValueKey('detail-video-${widget.videoUrl}'),
       onVisibilityChanged: (info) {
@@ -331,9 +330,7 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
       },
       child: ColoredBox(
         color: Colors.black,
-        child: playing
-            ? _buildPlaying(controller)
-            : _buildThumbnail(context),
+        child: playing ? _buildPlaying(controller) : _buildThumbnail(context),
       ),
     );
   }
@@ -372,7 +369,8 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
     // slide hitam; jatuh ke posterImageUrl dulu. ▶ + kapsul tetap di atas.
     final thumb = widget.thumbnailUrl?.trim() ?? '';
     final poster = widget.posterImageUrl?.trim() ?? '';
-    if (thumb.isEmpty) return _posterImage(poster); // langsung ke fallback foto.
+    if (thumb.isEmpty)
+      return _posterImage(poster); // langsung ke fallback foto.
     return CachedNetworkImage(
       imageUrl: thumb,
       width: double.infinity,
@@ -429,9 +427,8 @@ class ProductDetailVideoSlideState extends State<ProductDetailVideoSlide>
               opacity: showIcon ? 1 : 0,
               duration: const Duration(milliseconds: 200),
               child: _CircleGlyph(
-                icon: isPlaying
-                    ? Icons.pause_rounded
-                    : Icons.play_arrow_rounded,
+                icon:
+                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
               ),
             ),
           ),
@@ -525,14 +522,14 @@ class _BottomRightControls extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _CapsuleIconButton(
-            icon: muted
-                ? Icons.volume_off_rounded
-                : Icons.volume_up_rounded,
+            icon: muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+            semanticLabel: muted ? 'Aktifkan suara' : 'Matikan suara',
             onTap: onToggleMute,
           ),
           const SizedBox(width: 8),
           _CapsuleIconButton(
             icon: Icons.fullscreen_rounded,
+            semanticLabel: 'Layar penuh',
             onTap: onOpenFullscreen,
           ),
         ],
@@ -545,20 +542,31 @@ class _BottomRightControls extends StatelessWidget {
 /// tombol mute & fullscreen di `_BottomRightControls`.
 class _CapsuleIconButton extends StatelessWidget {
   final IconData icon;
+  final String semanticLabel;
   final VoidCallback onTap;
-  const _CapsuleIconButton({required this.icon, required this.onTap});
+  const _CapsuleIconButton({
+    required this.icon,
+    required this.semanticLabel,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.55),
-          borderRadius: BorderRadius.circular(999),
+    return Semantics(
+      label: semanticLabel,
+      button: true,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.55),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Icon(icon, color: Colors.white, size: 20),
         ),
-        child: Icon(icon, color: Colors.white, size: 20),
       ),
     );
   }
