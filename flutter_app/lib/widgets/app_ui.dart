@@ -48,10 +48,18 @@ class AppHeaderIconButton extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 34, minHeight: 44),
       style: IconButton.styleFrom(
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        overlayColor: Colors.transparent,
+        splashFactory: NoSplash.splashFactory,
       ),
     );
     if (tooltip == null) return button;
-    return Tooltip(message: tooltip!, child: button);
+    return Semantics(
+      label: tooltip,
+      button: true,
+      enabled: onPressed != null,
+      excludeSemantics: true,
+      child: button,
+    );
   }
 }
 
@@ -601,10 +609,12 @@ class AppEmptyState extends StatelessWidget {
   final Widget? action;
   final String? buttonLabel;
   final VoidCallback? onPressed;
+
   /// Path ke Lottie animation asset (mis. 'assets/lottie/empty_box.json').
   /// Kalau di-set, render Lottie animation menggantikan icon. Empty state
   /// jadi lebih hidup + branded vs icon static abu-abu.
   final String? lottiePath;
+
   /// Tinggi Lottie animation. Default 160 — sweet spot untuk empty state
   /// tanpa dominate viewport. Override kalau perlu (mis. 200 untuk hero
   /// empty state, 120 untuk compact).

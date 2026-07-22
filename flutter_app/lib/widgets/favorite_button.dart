@@ -41,9 +41,9 @@ class FavoriteButton extends StatefulWidget {
     this.size = 24,
     this.elevated = false,
   }) : assert(
-         productId != null || product != null,
-         'FavoriteButton butuh productId atau product',
-       );
+          productId != null || product != null,
+          'FavoriteButton butuh productId atau product',
+        );
 
   String get effectiveProductId => productId ?? product!.id;
 
@@ -147,9 +147,8 @@ class _FavoriteButtonState extends State<FavoriteButton>
       animation: favoriteStore,
       builder: (context, _) {
         final favorite = _isFavorite();
-        final iconColor = favorite
-            ? NataloColors.danger
-            : NataloColors.textSecondary;
+        final iconColor =
+            favorite ? NataloColors.danger : NataloColors.textSecondary;
         final icon = AnimatedSwitcher(
           duration: const Duration(milliseconds: 180),
           switchInCurve: Curves.easeOut,
@@ -180,8 +179,11 @@ class _FavoriteButtonState extends State<FavoriteButton>
             onTap: _toggle,
             excludeFromSemantics: true,
             customBorder: const CircleBorder(),
-            splashColor: iconColor.withValues(alpha: 0.10),
-            highlightColor: iconColor.withValues(alpha: 0.06),
+            splashFactory: NoSplash.splashFactory,
+            splashColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            overlayColor:
+                const WidgetStatePropertyAll<Color>(Colors.transparent),
             child: SizedBox(
               width: widget.size,
               height: widget.size,

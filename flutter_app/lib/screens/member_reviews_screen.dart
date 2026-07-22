@@ -1564,6 +1564,8 @@ class _ReviewMediaPicker extends StatelessWidget {
                       style: IconButton.styleFrom(
                         backgroundColor: const Color(0xFFEF4444),
                         foregroundColor: Colors.white,
+                        overlayColor: Colors.transparent,
+                        splashFactory: NoSplash.splashFactory,
                         fixedSize: const Size(28, 28),
                         minimumSize: const Size(28, 28),
                         padding: EdgeInsets.zero,

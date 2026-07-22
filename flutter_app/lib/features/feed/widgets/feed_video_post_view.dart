@@ -4042,6 +4042,10 @@ class _PausedControlButtonState extends State<_PausedControlButton> {
         child: InkResponse(
           onTap: widget.onTap,
           radius: widget.inkRadius,
+          splashFactory: NoSplash.splashFactory,
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          overlayColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
           onHighlightChanged: (v) => setState(() => _pressed = v),
           child: AnimatedScale(
             scale: _pressed ? 0.86 : 1.0,

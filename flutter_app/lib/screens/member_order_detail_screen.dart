@@ -2131,6 +2131,8 @@ class _OrderHeader extends StatelessWidget {
                     tooltip: 'Salin nomor pesanan',
                     style: IconButton.styleFrom(
                       backgroundColor: Colors.white.withValues(alpha: 0.12),
+                      overlayColor: Colors.transparent,
+                      splashFactory: NoSplash.splashFactory,
                     ),
                   ),
                 ],

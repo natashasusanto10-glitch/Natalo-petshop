@@ -775,11 +775,10 @@ class _CartScreenState extends State<CartScreen>
           picked.shippingCode;
       _appliedDiscountVoucher = picked.discountVoucher;
       _appliedLoyaltyVoucher = picked.loyaltyVoucher;
-      _appliedShippingVoucher =
-          picked.shippingSelected && picked.shippingCode != null
-              ? _findVoucherByCode(
-                  _availableDiscountVouchers, picked.shippingCode!)
-              : null;
+      _appliedShippingVoucher = picked.shippingSelected &&
+              picked.shippingCode != null
+          ? _findVoucherByCode(_availableDiscountVouchers, picked.shippingCode!)
+          : null;
     });
     // Setelah Hapus Voucher, re-run auto-apply supaya 3 slot ke-isi
     // ulang dari best available (ongkir + diskon produk + reward poin).
@@ -837,6 +836,8 @@ class _CartScreenState extends State<CartScreen>
             // melebarkan layout ke 48px → gap antar ikon header jauh.
             style: IconButton.styleFrom(
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              overlayColor: Colors.transparent,
+              splashFactory: NoSplash.splashFactory,
             ),
             onPressed: () => Navigator.pushNamed(context, '/wishlist'),
             icon: const Icon(Icons.favorite_border_rounded),
@@ -2432,8 +2433,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
 
   void _pickShipping(String code) {
     setState(() {
-      _selectedShippingCode =
-          _selectedShippingCode == code ? null : code;
+      _selectedShippingCode = _selectedShippingCode == code ? null : code;
     });
   }
 
@@ -2802,7 +2802,8 @@ class _CartVoucherCard extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: _brandExclusiveAmberSoft,
                             borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: _brandExclusiveAmberBorder),
+                            border:
+                                Border.all(color: _brandExclusiveAmberBorder),
                           ),
                           child: const Text(
                             'Brand Eksklusif',
@@ -2948,9 +2949,7 @@ class _CartRecommendationsSection extends StatelessWidget {
                       // WAJIB CrossAxisAlignment.start (JANGAN .stretch →
                       // intrinsic-height exception ditelan → section blank).
                       // Lihat catatan lengkap di products_screen.dart.
-                      for (var row = 0;
-                          row < (products.length + 1) ~/ 2;
-                          row++)
+                      for (var row = 0; row < (products.length + 1) ~/ 2; row++)
                         Padding(
                           padding: EdgeInsets.only(
                             bottom:
@@ -2965,8 +2964,7 @@ class _CartRecommendationsSection extends StatelessWidget {
                               const SizedBox(width: 6),
                               Expanded(
                                 child: row * 2 + 1 < products.length
-                                    ? _buildCard(
-                                        context, products[row * 2 + 1])
+                                    ? _buildCard(context, products[row * 2 + 1])
                                     : const SizedBox.shrink(),
                               ),
                             ],

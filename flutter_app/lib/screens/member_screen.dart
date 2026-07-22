@@ -609,6 +609,8 @@ class _ProfileTopBar extends StatelessWidget {
                   style: IconButton.styleFrom(
                     minimumSize: const Size(52, 52),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    overlayColor: Colors.transparent,
+                    splashFactory: NoSplash.splashFactory,
                   ),
                   icon: Icon(Icons.add_rounded, size: 36, color: ink),
                 ),
