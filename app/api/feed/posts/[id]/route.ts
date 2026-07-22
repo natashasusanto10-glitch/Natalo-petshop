@@ -13,10 +13,7 @@ import {
   resolveFeedProductDiscount,
 } from "@/lib/feed/queries";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
-import {
-  buildShareVersion,
-  stripEphemeralUrlQuery,
-} from "@/lib/share/share-version";
+import { buildFeedShareVersion } from "@/lib/share/feed-share-data";
 import {
   feedAccessibilityPayload,
   parseFeedAccessibilityMetadata,
@@ -106,6 +103,7 @@ export async function GET(
       likeCount: true,
       commentCount: true,
       viewCount: true,
+      authorRole: true,
       product: { select: productSelect },
       taggedProducts: {
         orderBy: { position: "asc" },
@@ -189,7 +187,6 @@ export async function GET(
     post.author.role,
     post.author.profilePhotoUrl
   );
-  const isOfficial = post.author.role === "ADMIN";
   const products = [
     ...post.taggedProducts,
     ...(post.product
@@ -228,16 +225,7 @@ export async function GET(
 
   return NextResponse.json({
     id: post.id,
-    shareVersion: buildShareVersion([
-      post.id,
-      post.title,
-      post.description,
-      stripEphemeralUrlQuery(post.thumbnailUrl),
-      post.videoDurationSec,
-      authorDisplayName,
-      stripEphemeralUrlQuery(authorPhoto),
-      isOfficial,
-    ]),
+    shareVersion: buildFeedShareVersion(post),
     kind: post.kind,
     title: post.title,
     description: post.description,

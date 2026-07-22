@@ -54,3 +54,15 @@ The explicit Feed OG image endpoint is intentionally only referenced here; it is
   produced the same token.
 - GREEN: `npx tsx --test tests/share-feed-data.test.ts tests/share-metadata.test.ts`
   passed 11/11; targeted TypeScript validation passed; `git diff --check` passed.
+
+## Detail API follow-up
+
+- The viewer-facing single-post endpoint now delegates `shareVersion` to
+  `buildFeedShareVersion(post)` and selects `authorRole` plus carousel media
+  in `sortOrder: asc` order. This makes detail/postingan shares use the exact
+  same preview-poster precedence as the public Feed page.
+- RED: a regression asserted that the detail route imports the shared helper,
+  invokes it with the queried post, and keeps deterministic media ordering;
+  it failed while the route calculated a thumbnail-only version locally.
+- GREEN: the focused Feed data and metadata suite passed 12/12, targeted
+  TypeScript validation passed, and `git diff --check` passed.

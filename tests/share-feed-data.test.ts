@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import test from "node:test";
 
 import {
@@ -53,6 +55,23 @@ test("shareVersion carousel mengikuti media poster pertama, bukan query CDN seme
 
   assert.equal(first, resignedFirst);
   assert.notEqual(first, replacedFirst);
+});
+
+test("detail Feed API delegates carousel preview version to the shared helper", () => {
+  const routeSource = readFileSync(
+    resolve(process.cwd(), "app/api/feed/posts/[id]/route.ts"),
+    "utf8",
+  );
+
+  assert.match(
+    routeSource,
+    /import\s*\{\s*buildFeedShareVersion\s*\}\s*from\s*["']@\/lib\/share\/feed-share-data["']/,
+  );
+  assert.match(routeSource, /shareVersion:\s*buildFeedShareVersion\(post\)/);
+  assert.match(
+    routeSource,
+    /media:\s*\{\s*orderBy:\s*\{\s*sortOrder:\s*["']asc["']\s*\}/,
+  );
 });
 
 test("public share Feed query always restricts to active, non-deleted posts", () => {
