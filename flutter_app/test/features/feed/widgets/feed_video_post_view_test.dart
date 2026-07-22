@@ -15,6 +15,7 @@ import 'package:natalo_petshop_flutter/features/feed/video/feed_video_observatio
 import 'package:natalo_petshop_flutter/features/feed/video/social_video_session_observer.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/video_playback_health_monitor.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/video_player_session.dart';
+import 'package:natalo_petshop_flutter/features/feed/widgets/feed_action_rail.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_post_view.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_scrubber.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
@@ -1141,8 +1142,8 @@ void main() {
 
     // Tarik handle turun ~15% layar (extent ~0.45 — band terlarang), TAHAN.
     final handle = find.byKey(const ValueKey('feed-comment-drag-handle'));
-    final screenHeight = tester.view.physicalSize.height /
-        tester.view.devicePixelRatio;
+    final screenHeight =
+        tester.view.physicalSize.height / tester.view.devicePixelRatio;
     final gesture = await tester.startGesture(tester.getCenter(handle));
     for (var i = 0; i < 6; i++) {
       await gesture.moveBy(Offset(0, screenHeight * 0.025));
@@ -1656,8 +1657,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     // Satu FittedBox media (tanpa backdrop): fitWidth + rata atas.
-    final fittedBox =
-        tester.widgetList<FittedBox>(find.byType(FittedBox)).last;
+    final fittedBox = tester.widgetList<FittedBox>(find.byType(FittedBox)).last;
     expect(fittedBox.fit, BoxFit.fitWidth);
     expect(fittedBox.alignment, Alignment.topCenter);
   });
@@ -2170,11 +2170,11 @@ void main() {
       await tap(); // double-tap fires di sini
       await tester.pump(const Duration(milliseconds: 60));
       await tap(); // tap ganjil
-      await tester.pump(const Duration(milliseconds: 350)); // resolve single-tap
+      await tester
+          .pump(const Duration(milliseconds: 350)); // resolve single-tap
 
       expect(toggleCalls, 0,
-          reason:
-              'burst like (tap ganjil) tidak boleh men-toggle play/pause');
+          reason: 'burst like (tap ganjil) tidak boleh men-toggle play/pause');
 
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(seconds: 4));
@@ -2339,6 +2339,117 @@ void main() {
       }
       expect(reasons.last, CoverPauseReason.appBackground,
           reason: 'app background → reason appBackground (T3 pauseAll)');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+    });
+
+    // BUG (paritas overlay pinch-zoom): scrubber SEBELUMNYA diam total saat
+    // pinch dua-jari — beda dari rail aksi (FeedActionRail) & info block yang
+    // dari awal sudah fade lewat _hideOverlayForPinchZoom. Fix: scrubber kini
+    // dibungkus AnimatedOpacity + IgnorePointer yang sama (lihat build(),
+    // cari `FeedVideoScrubber(` — di-gate `_hideOverlayForPinchZoom`).
+    //
+    // Test ini pinch SUNGGUHAN — dua `TestGesture` independen (pointer 1 &
+    // 2) lewat Listener mentah di FeedPostSnapBackZoomMedia
+    // (feed_post_shared_widgets.dart: _handlePointerDown/_handlePointerMove),
+    // BUKAN memanggil onMediaZoomChanged langsung — supaya jalur
+    // gesture-recognition asli benar2 teruji sampai _startPinch()/
+    // _endPinch() + snap-back 220ms.
+    testWidgets(
+        'pinch dua-jari SUNGGUHAN → scrubber fade bareng rail aksi, balik '
+        'lagi sesudah snap-back', (tester) async {
+      installPlatform();
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final borrowed = VideoPlayerController.networkUrl(
+        Uri.parse('https://example.com/managed-pinch.mp4'),
+      );
+      await tester.runAsync(() => borrowed.initialize());
+      await tester.runAsync(() => borrowed.play());
+      addTearDown(borrowed.dispose);
+      expect(borrowed.value.isPlaying, isTrue);
+
+      await tester.pumpWidget(host(
+        isActive: true,
+        preloaded: borrowed,
+        ownsController: false,
+        playbackManagedExternally: true,
+      ));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(find.byType(FeedVideoScrubber), findsOneWidget,
+          reason: 'scrubber harus ter-render untuk controller aktif');
+
+      // AnimatedOpacity ANCESTOR LANGSUNG scrubber. Unambiguous: caption
+      // scrim, rail aksi, dan info block masing2 punya AnimatedOpacity
+      // sendiri tapi sebagai SIBLING scrubber di dalam Stack yang sama
+      // (Positioned per entry List di build()) — bukan ancestor scrubber.
+      // Satu-satunya AnimatedOpacity yang benar2 membungkus FeedVideoScrubber
+      // adalah yang ditambahkan fix ini.
+      final scrubberOpacity = find.ancestor(
+        of: find.byType(FeedVideoScrubber),
+        matching: find.byType(AnimatedOpacity),
+      );
+      expect(scrubberOpacity, findsOneWidget,
+          reason: 'scrubber harus punya SATU AnimatedOpacity ancestor — '
+              'sebelum fix ini jumlahnya NOL (scrubber tak pernah fade)');
+      expect(tester.widget<AnimatedOpacity>(scrubberOpacity).opacity, 1.0,
+          reason: 'sebelum pinch: scrubber full opaque');
+
+      // Consistency check — rail aksi SUDAH benar sebelum fix ini (bukan
+      // bagian yang dibuktikan RED oleh test ini, cuma pembanding paralel).
+      final actionRailOpacity = find.ancestor(
+        of: find.byType(FeedActionRail),
+        matching: find.byType(AnimatedOpacity),
+      );
+      expect(tester.widget<AnimatedOpacity>(actionRailOpacity).opacity, 1.0);
+
+      // ── Pinch dua-jari SUNGGUHAN: dua pointer independen (bukan shortcut
+      // panggil callback langsung). Mulai berdekatan lalu direnggangkan ala
+      // jari asli — dikenali _handlePointerDown via event.pointer masing2.
+      final gesture1 =
+          await tester.startGesture(const Offset(180, 400), pointer: 1);
+      await tester.pump(const Duration(milliseconds: 16));
+      final gesture2 =
+          await tester.startGesture(const Offset(220, 400), pointer: 2);
+      await tester.pump(const Duration(milliseconds: 16));
+
+      // Renggangkan jari (pinch-out) supaya _scale menyimpang dari minScale —
+      // WAJIB agar _endPinch() nanti benar2 lewat jalur snap-back animasi
+      // 220ms, bukan reset instan (yang bikin assertion "balik ke 1.0
+      // sesudah snap-back" trivial, bukan genuine).
+      await gesture1.moveTo(const Offset(140, 400));
+      await tester.pump(const Duration(milliseconds: 16));
+      await gesture2.moveTo(const Offset(260, 400));
+      await tester.pump(const Duration(milliseconds: 16));
+      await gesture1.moveTo(const Offset(110, 400));
+      await tester.pump(const Duration(milliseconds: 16));
+      await gesture2.moveTo(const Offset(290, 400));
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+
+      expect(tester.widget<AnimatedOpacity>(scrubberOpacity).opacity, 0.0,
+          reason: 'pinch aktif → scrubber HARUS fade (bug: dulu tetap 1.0 — '
+              'malah tak ada AnimatedOpacity ancestor sama sekali)');
+      expect(tester.widget<AnimatedOpacity>(actionRailOpacity).opacity, 0.0,
+          reason: 'consistency check — rail aksi sudah fade dari dulu');
+
+      // Lepas kedua jari → snap-back ~220ms lalu overlay balik muncul.
+      await gesture1.up();
+      await gesture2.up();
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(tester.widget<AnimatedOpacity>(scrubberOpacity).opacity, 1.0,
+          reason: 'sesudah snap-back kelar, scrubber balik full opaque');
 
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(milliseconds: 50));
@@ -3507,9 +3618,8 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
         const MethodChannel('plugins.flutter.io/path_provider'),
-        (call) async => Directory.systemTemp
-            .createTempSync('d4_signed_url_refresh')
-            .path,
+        (call) async =>
+            Directory.systemTemp.createTempSync('d4_signed_url_refresh').path,
       );
     });
 
@@ -3555,8 +3665,8 @@ void main() {
         return _fakeVideoPost(id: 'post-d4', videoUrl: freshUrl);
       };
 
-      await tester
-          .pumpWidget(host(_fakeVideoPost(id: 'post-d4', videoUrl: staleUrl, thumbnailUrl: '')));
+      await tester.pumpWidget(host(
+          _fakeVideoPost(id: 'post-d4', videoUrl: staleUrl, thumbnailUrl: '')));
       await pumpBounded(tester);
 
       expect(fetchCalls, 1, reason: 'refresh dipanggil tepat sekali');
@@ -3592,8 +3702,8 @@ void main() {
         return _fakeVideoPost(id: 'post-d4b', videoUrl: freshUrl);
       };
 
-      await tester
-          .pumpWidget(host(_fakeVideoPost(id: 'post-d4b', videoUrl: plainUrl, thumbnailUrl: '')));
+      await tester.pumpWidget(host(_fakeVideoPost(
+          id: 'post-d4b', videoUrl: plainUrl, thumbnailUrl: '')));
       await pumpBounded(tester);
 
       expect(fetchCalls, 0,
@@ -3619,8 +3729,8 @@ void main() {
         return _fakeVideoPost(id: 'post-d4c', videoUrl: staleUrl);
       };
 
-      await tester
-          .pumpWidget(host(_fakeVideoPost(id: 'post-d4c', videoUrl: staleUrl, thumbnailUrl: '')));
+      await tester.pumpWidget(host(_fakeVideoPost(
+          id: 'post-d4c', videoUrl: staleUrl, thumbnailUrl: '')));
       await pumpBounded(tester);
 
       expect(fetchCalls, 1);
@@ -3645,8 +3755,8 @@ void main() {
         return null; // post dihapus / 404
       };
 
-      await tester
-          .pumpWidget(host(_fakeVideoPost(id: 'post-d4d', videoUrl: staleUrl, thumbnailUrl: '')));
+      await tester.pumpWidget(host(_fakeVideoPost(
+          id: 'post-d4d', videoUrl: staleUrl, thumbnailUrl: '')));
       await pumpBounded(tester);
 
       expect(fetchCalls, 1);
@@ -3696,11 +3806,12 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
 
       // Zona kiri: x = 40 / 400 = 0.1 < 0.4 → doubleSpeed.
-      final gesture =
-          await tester.startGesture(const Offset(40, 600));
-      await tester.pump(const Duration(milliseconds: 600)); // trigger long-press
+      final gesture = await tester.startGesture(const Offset(40, 600));
+      await tester
+          .pump(const Duration(milliseconds: 600)); // trigger long-press
       expect(coordinator.beginCalls, hasLength(1));
-      expect(coordinator.beginCalls.single.kind, TransientGestureKind.doubleSpeed);
+      expect(
+          coordinator.beginCalls.single.kind, TransientGestureKind.doubleSpeed);
       expect(coordinator.beginCalls.single.postId, 'gest-1');
 
       await gesture.up();
@@ -3726,7 +3837,8 @@ void main() {
       // Zona tengah: x = 200 / 400 = 0.5 ∈ [0.4, 0.6] → peekPause.
       final gesture = await tester.startGesture(const Offset(200, 600));
       await tester.pump(const Duration(milliseconds: 600));
-      expect(coordinator.beginCalls.single.kind, TransientGestureKind.peekPause);
+      expect(
+          coordinator.beginCalls.single.kind, TransientGestureKind.peekPause);
 
       await gesture.up();
       await tester.pump(const Duration(milliseconds: 50));
@@ -3735,7 +3847,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     });
 
-    testWidgets('coordinator tolak (null) → tak crash, tak ada state tersangkut',
+    testWidgets(
+        'coordinator tolak (null) → tak crash, tak ada state tersangkut',
         (tester) async {
       tester.view.physicalSize = const Size(400, 1200);
       tester.view.devicePixelRatio = 1.0;
