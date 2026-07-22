@@ -91,6 +91,8 @@ Reviewer found that the Feed serializer emitted `shareVersion` while the
 `FeedPostListItem` API contract did not declare it. The type is now required
 and a focused serialized Feed-response fixture locks that contract.
 
+Fix commit: `8a0cc7db fix(share): type Feed preview version`
+
 ### RED
 
 The new contract check failed before the fix with:
