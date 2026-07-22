@@ -265,6 +265,15 @@ class NataloTheme {
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
+      iconButtonTheme: const IconButtonThemeData(
+        style: ButtonStyle(
+          overlayColor: WidgetStatePropertyAll<Color>(Colors.transparent),
+          splashFactory: NoSplash.splashFactory,
+        ),
+      ),
+      tooltipTheme: const TooltipThemeData(
+        triggerMode: TooltipTriggerMode.manual,
+      ),
       fontFamily: fontFamily,
       fontFamilyFallback: const ['Roboto', 'Arial'],
       // Scaffold bg slightly off-white (#F8FAFC) supaya card body white
@@ -510,6 +519,15 @@ class NataloTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
+      iconButtonTheme: const IconButtonThemeData(
+        style: ButtonStyle(
+          overlayColor: WidgetStatePropertyAll<Color>(Colors.transparent),
+          splashFactory: NoSplash.splashFactory,
+        ),
+      ),
+      tooltipTheme: const TooltipThemeData(
+        triggerMode: TooltipTriggerMode.manual,
+      ),
       scaffoldBackgroundColor: darkScaffold,
       fontFamily: _nataloFontFamily,
       fontFamilyFallback: const ['Roboto', 'Arial'],
