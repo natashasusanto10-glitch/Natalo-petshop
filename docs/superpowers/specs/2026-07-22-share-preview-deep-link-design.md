@@ -1,7 +1,7 @@
 # Share Preview dan Deep Link Natalo Petshop
 
 Tanggal: 22 Juli 2026  
-Status: Desain untuk ditinjau  
+Status: Ditinjau setelah audit implementasi
 Platform: Flutter Android, Flutter iOS, Next.js web, WhatsApp dan system share sheet
 
 ## 1. Ringkasan
@@ -71,10 +71,11 @@ WhatsApp tetap memiliki kendali atas ukuran akhir, susunan kartu, cache, dan apa
 ### 4.4 Web
 
 - Produk memiliki `generateMetadata()` dinamis dengan judul, deskripsi, URL canonical, dan foto produk.
+- Produk juga sudah memiliki `app/products/[slug]/opengraph-image.tsx`. Implementasi ini harus dimigrasikan atau diperkeras, bukan dibuat ulang. Saat ini ia masih memakai remote image langsung, fallback host lama, dan belum berbagi policy keamanan dengan Feed/profil.
 - Profil memiliki `generateMetadata()` dinamis dengan identitas dan avatar.
 - `/feed` hanya memiliki metadata umum.
 - Belum ada halaman publik `/feed/[id]` dengan metadata per postingan.
-- Belum ada sistem generator gambar Open Graph terpusat untuk Feed, produk, dan profil.
+- Belum ada kontrak data, policy keamanan remote image, cache, dan endpoint Open Graph yang konsisten untuk Feed, produk, dan profil.
 
 ## 5. Alternatif Desain
 
@@ -183,10 +184,10 @@ GET /feed/<postId>
 Aturan:
 
 - `postId` adalah ID database yang valid.
-- Query `v` opsional digunakan untuk cache busting preview:
+- Query `v` opsional menggunakan token versi share yang stabil:
 
 ```text
-/feed/<postId>?v=<updatedAtEpoch>
+/feed/<postId>?v=<shareVersion>
 ```
 
 - Query `v` tidak mengubah identitas objek.
@@ -196,7 +197,7 @@ Aturan:
 ### 7.3 Produk
 
 ```text
-GET /products/<slug>?v=<updatedAtEpoch>
+GET /products/<slug>?v=<shareVersion>
 ```
 
 - Slug dinormalisasi server.
@@ -205,7 +206,7 @@ GET /products/<slug>?v=<updatedAtEpoch>
 ### 7.4 Profil
 
 ```text
-GET /u/<username>?v=<profileUpdatedAtEpoch>
+GET /u/<username>?v=<shareVersion>
 ```
 
 - Username diubah ke lowercase sebelum membentuk URL.
@@ -224,20 +225,20 @@ final class FeedShareContent extends ShareContent {
   final String postId;
   final String authorName;
   final String caption;
-  final DateTime updatedAt;
+  final String? shareVersion;
 }
 
 final class ProductShareContent extends ShareContent {
   final String slug;
   final String name;
   final int effectivePrice;
-  final DateTime updatedAt;
+  final String? shareVersion;
 }
 
 final class ProfileShareContent extends ShareContent {
   final String username;
   final String displayName;
-  final DateTime updatedAt;
+  final String? shareVersion;
 }
 ```
 
@@ -250,7 +251,9 @@ Nama akhir boleh mengikuti pola lokal repo, tetapi tanggung jawabnya harus tetap
 - URL HTTPS absolut.
 - Subject opsional untuk platform yang mendukungnya.
 - Teks pendek yang dilanjutkan URL pada baris terakhir.
-- Versi cache dari `updatedAt` jika tersedia.
+- Versi cache dari `shareVersion` jika tersedia.
+
+`shareVersion` adalah token opaque dan deterministik dari server, bukan waktu yang dibuat ketika tombol share ditekan. Server membentuknya dari field publik yang memengaruhi preview, misalnya caption, media utama, identitas author, harga efektif, stok, atau avatar. Implementasi awal boleh memakai hash SHA-256 yang dipotong menjadi 12-16 karakter URL-safe. Flutter hanya menyimpan, meng-encode, dan meneruskannya; Flutter tidak menghitung versi sendiri. Seluruh parser harus tetap kompatibel jika server lama belum mengirim field ini.
 
 Builder tidak boleh:
 
@@ -482,6 +485,24 @@ Gunakan sanitasi identitas official yang sama dengan halaman profil publik. Jang
 - statistik privat
 - data membership
 
+### 11.4 Kontrak `shareVersion`
+
+Server membentuk token melalui satu helper, misalnya `buildShareVersion(parts)`, lalu menyertakannya pada payload publik yang sudah dipakai Flutter:
+
+- setiap item Feed list dan single post
+- detail produk
+- profil publik dan item Feed pada profil
+
+Token adalah hash pendek URL-safe dari nilai publik yang sudah dinormalisasi. Field bersifat additive dan nullable agar build Flutter lama tetap kompatibel. Flutter model menyimpan token sebagai `String?` tanpa menginterpretasikan isinya.
+
+Field input minimal:
+
+- Feed: post ID, caption/deskripsi, thumbnail/media pertama, durasi, author display name/avatar/official flag.
+- Produk: slug, nama, image utama, harga efektif, harga asli, status diskon, dan label stok.
+- Profil: username, display name, avatar/logo, bio publik, official flag, dan statistik publik yang tampil di kartu.
+
+Dengan kontrak ini, perubahan harga promo dari tabel turunan tetap menghasilkan URL versi baru walaupun `Product.updatedAt` tidak berubah. Jangan memasukkan waktu request, token autentikasi, signed media query yang cepat kedaluwarsa, atau data privat ke hash.
+
 ## 12. Halaman Publik Feed Per Post
 
 Buat route:
@@ -504,25 +525,34 @@ Halaman ini tidak menggantikan `/feed` utama.
 
 ## 13. Generator OG Image
 
-Struktur yang disarankan:
+Struktur yang dipilih setelah audit:
 
 ```text
-app/feed/[id]/opengraph-image.tsx
-app/products/[slug]/opengraph-image.tsx
-app/u/[username]/opengraph-image.tsx
-lib/share/og-image-data.ts
+app/api/share/og/feed/[id]/route.ts
+app/api/share/og/product/[slug]/route.ts
+app/api/share/og/profile/[username]/route.ts
+lib/share/feed-share-data.ts
+lib/share/product-share-data.ts
+lib/share/profile-share-data.ts
+lib/share/share-version.ts
 lib/share/og-image-security.ts
+lib/share/og/feed-card.tsx
+lib/share/og/product-card.tsx
+lib/share/og/profile-card.tsx
 ```
 
-Jika duplikasi render meningkat, pindahkan primitive visual ke helper bersama yang kompatibel dengan `ImageResponse`. Jangan memaksa satu template untuk semua tipe objek.
+Endpoint eksplisit dipilih karena metadata dapat menunjuk URL gambar yang versioned secara deterministik dan route dapat menetapkan `Cache-Control`, content type, serta fallback secara eksplisit. Template tetap berbeda per tipe objek. Primitive visual boleh dibagi jika benar-benar sama, tetapi satu template universal tidak diwajibkan.
+
+`app/products/[slug]/opengraph-image.tsx` yang sudah ada dimigrasikan ke endpoint produk di atas setelah metadata produk menunjuk endpoint baru dan regression test lulus. Jangan menjalankan dua template produk sebagai sumber kebenaran permanen.
 
 ### 13.1 Cache
 
 - Metadata page: revalidate 60 detik atau mengikuti strategi halaman yang sudah ada.
 - OG image: CDN cache dengan `s-maxage` dan `stale-while-revalidate`.
-- Share URL boleh memakai `?v=<updatedAtEpoch>` agar WhatsApp melihat URL baru setelah perubahan penting.
+- Share URL dan URL gambar OG boleh memakai `?v=<shareVersion>` agar crawler melihat URL baru setelah perubahan penting.
 - Canonical URL tetap tanpa `v`.
 - Versi tidak boleh memakai timestamp saat tombol ditekan karena akan membuat URL unik setiap share dan menghancurkan cache.
+- Nilai `v` tidak pernah dipakai untuk memilih data database; ia hanya menjadi cache key. Endpoint selalu membaca objek terbaru yang masih publik.
 
 ### 13.2 Fallback
 
@@ -547,13 +577,11 @@ Allowlist minimal:
 Aturan:
 
 - hanya HTTPS
-- tidak mengikuti redirect ke host di luar allowlist
+- hanya host exact atau suffix CDN resmi yang dikonfigurasi; pencocokan substring dilarang
 - blok localhost, loopback, private IP, link-local, dan metadata service
-- batas ukuran response
-- timeout ketat
-- content type harus `image/*`
+- URL dengan credential, port non-HTTPS, IP literal, atau scheme selain HTTPS ditolak
 
-Alternatif paling aman adalah memakai URL CDN yang sudah tervalidasi pada saat upload dan tidak melakukan proxy arbitrary pada OG request.
+Versi pertama tidak membuat generic image proxy. `ImageResponse` hanya menerima URL HTTPS dari host CDN resmi yang lolos validator; URL lain diganti fallback lokal. Karena tidak ada endpoint proxy arbitrary, user tidak dapat meminta server mengambil host bebas. Jika kemudian dibutuhkan fetch byte server-side, perubahan itu wajib menambah timeout, batas ukuran response, validasi `image/*`, dan pemeriksaan redirect terpisah sebelum dirilis.
 
 ### 14.2 Sanitasi teks
 
@@ -710,6 +738,7 @@ Jangan log:
 - Builder Feed menghasilkan path, teks, dan version query yang benar.
 - Builder produk memformat harga dan encode slug.
 - Builder profil lowercase dan encode username.
+- Builder tidak menambahkan `v` bila `shareVersion` null atau kosong.
 - Tidak ada data null yang menghasilkan string `null`.
 - Share count hanya dipanggil pada success.
 - Dismissed tidak mengubah count.
@@ -784,10 +813,11 @@ Gunakan URL versi baru ketika perlu menghindari cache preview WhatsApp selama QA
 
 ### Tahap 1: Fondasi URL dan Share Builder
 
-1. Tambahkan `ShareContent` dan `ShareLinkBuilder`.
-2. Migrasikan tombol share Feed, detail Postingan, produk, dan profil ke builder.
-3. Pertahankan behavior share count.
-4. Tambahkan unit test Android/iOS-independent.
+1. Tambahkan `shareVersion` pada serializer publik Feed, produk, dan profil serta parser model Flutter secara backward-compatible.
+2. Tambahkan `ShareContent` dan `ShareLinkBuilder`.
+3. Migrasikan tombol share Feed, detail Postingan, produk, dan profil ke builder.
+4. Pertahankan behavior share count.
+5. Tambahkan unit test Android/iOS-independent.
 
 ### Tahap 2: Feed Public Page dan Metadata
 
@@ -799,9 +829,9 @@ Gunakan URL versi baru ketika perlu menghindari cache preview WhatsApp selama QA
 
 ### Tahap 3: OG Image
 
-1. Implementasikan template Feed.
-2. Implementasikan template produk.
-3. Implementasikan template profil.
+1. Implementasikan endpoint dan template Feed.
+2. Migrasikan generator produk lama ke endpoint/template produk yang diperkeras.
+3. Implementasikan endpoint dan template profil.
 4. Tambahkan fallback dan image host allowlist.
 5. Tambahkan cache headers dan test.
 
@@ -873,6 +903,9 @@ Daftar final ditentukan setelah implementation plan, tetapi batas perubahan dipe
 flutter_app/lib/services/deep_link_service.dart
 flutter_app/lib/services/share_link_builder.dart
 flutter_app/lib/models/share_content.dart
+flutter_app/lib/models/feed_post.dart
+flutter_app/lib/models/product.dart
+flutter_app/lib/models/public_profile.dart
 flutter_app/lib/features/feed/widgets/feed_video_post_view.dart
 flutter_app/lib/screens/feed_screen.dart
 flutter_app/lib/screens/member_post_detail_screen.dart
@@ -883,11 +916,17 @@ flutter_app/android/app/src/main/AndroidManifest.xml
 flutter_app/ios/Runner/Runner.entitlements
 
 app/feed/[id]/page.tsx
-app/feed/[id]/opengraph-image.tsx
 app/products/[slug]/page.tsx
 app/products/[slug]/opengraph-image.tsx
 app/u/[username]/page.tsx
-app/u/[username]/opengraph-image.tsx
+app/api/share/og/feed/[id]/route.ts
+app/api/share/og/product/[slug]/route.ts
+app/api/share/og/profile/[username]/route.ts
+app/api/feed/posts/[id]/route.ts
+app/api/feed/posts/route.ts
+lib/feed/queries.ts
+app/api/products/[slug]/route.ts
+app/api/u/[username]/route.ts
 app/.well-known/apple-app-site-association/route.ts
 app/.well-known/assetlinks.json/route.ts
 lib/share/*
@@ -905,5 +944,6 @@ lib/share/*
 6. WhatsApp menentukan layout akhir preview.
 7. `/feed/*` ditambahkan ke AASA iOS.
 8. Konten publik tetap dapat dibuka di web tanpa app.
-9. Cache preview dibusting berdasarkan `updatedAt`, bukan waktu share.
+9. Cache preview dibusting berdasarkan `shareVersion` server yang stabil, bukan waktu share.
 10. Keamanan remote image dan visibilitas konten adalah release gate.
+11. Endpoint OG eksplisit menjadi satu-satunya sumber gambar preview dinamis; generator produk lama dipensiunkan setelah parity test lulus.
