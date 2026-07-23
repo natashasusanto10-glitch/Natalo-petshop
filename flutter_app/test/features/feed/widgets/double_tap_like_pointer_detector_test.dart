@@ -221,4 +221,30 @@ void main() {
       expect(hits, isEmpty);
     });
   });
+
+  group('ExternalDoubleTapLike', () {
+    test('fire tanpa handler → false; dengan handler → true + terpanggil',
+        () {
+      final bridge = ExternalDoubleTapLike();
+      expect(bridge.fire(const Offset(1, 2)), isFalse);
+      Offset? received;
+      void handler(Offset p) => received = p;
+      bridge.attach(handler);
+      expect(bridge.fire(const Offset(3, 4)), isTrue);
+      expect(received, const Offset(3, 4));
+    });
+
+    test('detach hanya melepas handler yang sama (guard race attach baru)',
+        () {
+      final bridge = ExternalDoubleTapLike();
+      void oldHandler(Offset p) {}
+      Offset? received;
+      void newHandler(Offset p) => received = p;
+      bridge.attach(oldHandler);
+      bridge.attach(newHandler); // view baru attach duluan…
+      bridge.detach(oldHandler); // …lalu view lama detach — jangan clobber.
+      expect(bridge.fire(const Offset(5, 6)), isTrue);
+      expect(received, const Offset(5, 6));
+    });
+  });
 }

@@ -258,3 +258,38 @@ class _DoubleTapLikePointerDetectorState
     );
   }
 }
+
+/// Jembatan perintah like eksternal: layar (pemilik detector luar) →
+/// [FeedVideoPostView] yang sedang aktif. Handler tunggal — hanya view
+/// aktif yang attach; view lama wajib detach dengan referensi handler-nya
+/// sendiri supaya tidak meng-clobber attach view baru (urutan attach/detach
+/// saat pindah halaman tidak dijamin).
+class ExternalDoubleTapLike {
+  void Function(Offset globalPosition)? _handler;
+
+  void attach(void Function(Offset globalPosition) handler) {
+    _handler = handler;
+  }
+
+  void detach(void Function(Offset globalPosition) handler) {
+    // KENAPA `==` bukan `identical()`: instance-method tear-off di Dart
+    // TIDAK dijamin `identical` antar evaluasi (`obj.method` bisa
+    // menghasilkan closure object baru tiap dipanggil), meski merujuk
+    // metode+instance yang SAMA — closure semacam ini tetap `==` (Dart
+    // menjamin operator== untuk tear-off metode instance yang sama).
+    // Pakai `identical()` di sini akan membuat view GAGAL detach dirinya
+    // sendiri (isActive→false) karena `widget.externalDoubleTapLike
+    // ?.detach(_onExternalDoubleTapLike)` mengevaluasi tear-off baru yang
+    // tak `identical` dengan yang di-attach — bridge tetap nyangkut
+    // attached ke view yang sudah tak aktif.
+    if (_handler == handler) _handler = null;
+  }
+
+  /// True bila ada view aktif yang menangani.
+  bool fire(Offset globalPosition) {
+    final handler = _handler;
+    if (handler == null) return false;
+    handler(globalPosition);
+    return true;
+  }
+}
