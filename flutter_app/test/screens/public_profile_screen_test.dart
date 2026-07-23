@@ -8,8 +8,8 @@ import 'package:natalo_petshop_flutter/models/public_profile.dart';
 import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
 import 'package:natalo_petshop_flutter/screens/public_profile_screen.dart';
 import 'package:natalo_petshop_flutter/services/profile_service.dart';
-import 'package:natalo_petshop_flutter/widgets/liquid_glass.dart';
-import 'package:natalo_petshop_flutter/widgets/public_profile_chrome_overlay.dart';
+import 'package:natalo_petshop_flutter/widgets/public_profile_content_tab_bar.dart';
+import 'package:natalo_petshop_flutter/widgets/public_profile_expanded_header.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 void main() {
@@ -138,7 +138,7 @@ void main() {
   });
 
   testWidgets(
-      'real scroll collapses and reverses chrome without resetting content',
+      'static app bar layout: tab switch survives scroll without resetting content',
       (tester) async {
     final post = FeedPost.fromJson({
       'id': 'post-1',
@@ -171,9 +171,11 @@ void main() {
 
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
     expect(scaffold.bottomNavigationBar, isNull);
-    expect(
-        find.byKey(const Key('public_profile_grid_underlay')), findsOneWidget);
-    expect(find.byType(PublicProfileChromeOverlay), findsOneWidget);
+    // Bar atas statis: AppBar konvensional dengan username sebagai judul.
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.descendant(of: find.byType(AppBar), matching: find.text('creator')),
+        findsOneWidget);
+    expect(find.byType(PublicProfileExpandedHeader), findsOneWidget);
     expect(find.byKey(const ValueKey('profile-post-post-1')), findsOneWidget);
 
     await tester.drag(find.byType(TabBarView), const Offset(-420, 0));
@@ -193,16 +195,10 @@ void main() {
     final dragPoint = tester.getBottomLeft(scrollView) + const Offset(200, -80);
     await tester.dragFrom(dragPoint, const Offset(0, -360));
     await tester.pump();
-    // Tab labels now render inside PublicProfileIdentityTabHeader's sliver
-    // (Key('public_profile_tab_group')), not inside PublicProfileChromeOverlay
-    // (which only owns the toolbar row since Task 2's refactor).
-    final tabGroup = find.byKey(const Key('public_profile_tab_group'));
-    expect(find.descendant(of: tabGroup, matching: find.text('Postingan')),
-        findsOneWidget);
-    expect(find.descendant(of: tabGroup, matching: find.text('Video')),
-        findsOneWidget);
-    expect(find.descendant(of: tabGroup, matching: find.text('Belanja')),
-        findsOneWidget);
+    // Layout statis: AppBar + tab bar tetap ada setelah scroll; tak ada
+    // chrome overlay/glass yang menggantikan mereka.
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.byType(PublicProfileContentTabBar), findsOneWidget);
 
     final selected = tester.widget<Semantics>(
       find
@@ -232,7 +228,8 @@ void main() {
     expect(find.byKey(const ValueKey('profile-post-post-1')), findsOneWidget);
   });
 
-  testWidgets('real grid enters glass chrome before full collapse',
+  testWidgets(
+      'scroll pushes identity header away, tab bar pins under static app bar',
       (tester) async {
     final posts = List.generate(18, (index) {
       return FeedPost.fromJson({
@@ -265,74 +262,40 @@ void main() {
     ));
     await tester.pump();
 
-    final overlayFinder = find.byType(PublicProfileChromeOverlay);
-    PublicProfileChromeOverlay overlay() =>
-        tester.widget<PublicProfileChromeOverlay>(overlayFinder);
     final nestedScrollables = find.descendant(
       of: find.byType(NestedScrollView),
       matching: find.byType(Scrollable),
     );
     final outerPosition =
         tester.state<ScrollableState>(nestedScrollables.first).position;
-    final metrics = overlay().metrics;
-    // The header sliver list now leads with a PINNED spacer reserving
-    // topPadding+toolbarHeight (fix for the tab-bar-under-status-bar
-    // regression) — that spacer consumes real scroll extent before the
-    // identity+tab sliver's own shrink begins, so every offset that targets
-    // "N% through the identity shrink" must add this inset first.
-    final headerLeadInset = metrics.topPadding + metrics.toolbarHeight;
+    final headerHeight =
+        tester.getSize(find.byType(PublicProfileExpandedHeader)).height;
+    final appBarBottom = tester.getRect(find.byType(AppBar)).bottom;
 
-    // Midway through the identity shrink — well before the grid can reach
-    // the chrome — the glass must already be gradually fading in (never an
-    // instant snap from 0 straight to full opacity).
-    final midOffset = headerLeadInset + metrics.identityHeight * 0.75;
-    outerPosition.jumpTo(midOffset);
+    // Scroll melewati seluruh tinggi header identitas.
+    outerPosition.jumpTo(headerHeight + 200);
     await tester.pump();
-    expect(overlay().t, closeTo(0.75, 0.01));
-    final midOpacities = tester
-        .widgetList<LiquidGlass>(find.byType(LiquidGlass))
-        .map((glass) => glass.opacity)
-        .toList();
-    expect(midOpacities, isNotEmpty);
-    expect(midOpacities.any((o) => o > 0 && o < 1), isTrue);
 
-    // One logical pixel beyond identity collapse is the first moment the real
-    // grid enters beneath the collapsed chrome. Chrome and the tab bar now
-    // share the exact same shrink progress `t` (the fix for the old
-    // independent-timing bug that used to let the chrome glass lag behind),
-    // so by the time t reaches 1 the glass has ALREADY finished fading in —
-    // there is no frame where the grid is visible beneath a still-partial
-    // chip.
-    final intermediateOffset = headerLeadInset + metrics.identityHeight + 1;
-    outerPosition.jumpTo(intermediateOffset);
-    await tester.pump();
-    final intermediateTile = tester.getRect(
+    // Header identitas sudah ter-scroll keluar viewport; AppBar statis
+    // tetap di tempat dan tab bar pinned menempel TEPAT di bawahnya.
+    expect(find.byType(AppBar), findsOneWidget);
+    final tabBarRect = tester.getRect(find.byType(PublicProfileContentTabBar));
+    expect(tabBarRect.top, closeTo(appBarBottom, 0.5));
+
+    // Grid benar-benar naik sampai area di bawah tab bar.
+    final tile = tester.getRect(
       find.byKey(const ValueKey('profile-post-geometry-0')),
     );
-    expect(overlay().t, 1.0);
-    expect(intermediateTile.top, lessThan(metrics.collapsedChromeHeight));
-    expect(intermediateTile.bottom, greaterThan(0));
-    final intermediateOpacities = tester
-        .widgetList<LiquidGlass>(find.byType(LiquidGlass))
-        .map((glass) => glass.opacity)
-        .toList();
-    expect(intermediateOpacities, isNotEmpty);
-    expect(intermediateOpacities.every((o) => o == 0 || o >= 0.99), isTrue);
+    expect(tile.top, lessThan(tabBarRect.bottom));
 
-    outerPosition.jumpTo(metrics.scrollSpaceHeight);
+    // Mesin lama benar-benar hilang: tidak ada BackdropFilter (glass) di
+    // tree profil publik.
+    expect(find.byType(BackdropFilter), findsNothing);
+
+    // Kembali ke atas — header identitas muncul lagi utuh.
+    outerPosition.jumpTo(0);
     await tester.pump();
-    final collapsedTile = tester.getRect(
-      find.byKey(const ValueKey('profile-post-geometry-0')),
-    );
-    expect(overlay().t, 1.0);
-    expect(collapsedTile.top, lessThanOrEqualTo(0.5));
-    expect(collapsedTile.bottom, greaterThan(0));
-    expect(find.byType(BackdropFilter), findsWidgets);
-    final collapsedOpacities = tester
-        .widgetList<LiquidGlass>(find.byType(LiquidGlass))
-        .map((glass) => glass.opacity)
-        .toList();
-    expect(collapsedOpacities.any((o) => o >= 0.99), isTrue);
+    expect(find.byType(PublicProfileExpandedHeader), findsOneWidget);
   });
 }
 
