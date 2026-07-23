@@ -95,6 +95,6 @@ void main() {
     // bawah tab aktif (bukan garis full-width UnderlineTabIndicator lama).
     expect(find.byKey(const Key('public_tab_posts_pill')), findsOneWidget);
     expect(find.byKey(const Key('public_tab_video_pill')), findsOneWidget);
-    expect(find.byKey(const Key('public_tab_shop_pill')), findsOneWidget);
+    expect(find.byKey(const Key('public_tab_tagged_pill')), findsOneWidget);
   });
 }
