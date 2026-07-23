@@ -361,18 +361,25 @@ void main() {
     // cuma pindah satu halaman per drag, tidak reliable untuk lompat dari
     // tab 0 ke tab 2 dalam satu gerakan.
     await tester.tap(find.byKey(const Key('public_tab_tagged_pill')));
-    // pumpAndSettle (bukan satu pump) — tab 0->2 loncat lebih dari satu
+    // Bounded pump (bukan pumpAndSettle) — tab 0->2 loncat lebih dari satu
     // index, jadi TabBarView lewat mekanisme internal Flutter
     // _warpToNonAdjacentTab: jump ke halaman tetangga dulu lalu animate ke
-    // tujuan selama kTabScrollDuration (~300ms). Halaman "Ditandai" baru
-    // benar-benar ter-mount setelah animasi itu selesai, jadi satu pump
-    // tanpa delay belum cukup untuk query kontennya. Aman dipakai di sini:
-    // skeleton loading tab (_ProfileGridLoading) cuma ColoredBox statis,
-    // bukan shimmer tanpa henti, jadi tidak berisiko hang seperti kasus
-    // AppProductImage.
-    await tester.pumpAndSettle();
+    // tujuan selama kTabScrollDuration (~300ms). Pump pertama (tanpa durasi)
+    // WAJIB ada duluan supaya ticker TabController mengambil tick pertamanya
+    // (yang menetapkan start-time animasi, elapsed=0) — baru pump kedua
+    // dengan durasi 400ms (> 300ms) bisa menghitung elapsed time yang benar
+    // dan membawa animasi tab sampai selesai, hingga halaman "Ditandai"
+    // ter-mount. 400ms tetap jauh lebih pendek dari network round-trip
+    // nyata. Ini penting: pumpAndSettle akan ikut menunggu fetch nyata
+    // selesai/timeout kalau guard "jangan fetch" untuk filter shoppable
+    // dilepas, sehingga assertion di bawah tidak lagi membuktikan apa-apa.
+    // Dengan bounded pump, checkpoint ini bisa membedakan kedua kasus secara
+    // deterministik: guard branch untuk shoppable di _activateContent tidak
+    // pernah menyentuh contentState.loading, sedangkan _loadSelectedContent
+    // (fetch asli) set loading = true secara sinkron sebelum await pertama.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
-    expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(
       find.text('Belum ada postingan yang menandai akun ini'),
       findsOneWidget,
