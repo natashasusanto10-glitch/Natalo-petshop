@@ -119,6 +119,20 @@ export function serializeTaggedUsers(
  * Select fragment standar untuk relasi taggedUsers di query post.
  * hidden ikut di-select supaya serializer/route bisa filter kalau perlu.
  */
+/**
+ * Validasi body PATCH self-service tag ("Sembunyikan/Tampilkan dari
+ * profil saya"). Hanya menerima { hidden: boolean }.
+ */
+export function parseHiddenBody(
+  raw: unknown,
+): { ok: true; hidden: boolean } | { ok: false; error: string } {
+  if (typeof raw === "object" && raw !== null) {
+    const hidden = (raw as Record<string, unknown>).hidden;
+    if (typeof hidden === "boolean") return { ok: true, hidden };
+  }
+  return { ok: false, error: "Body harus {hidden: boolean}." };
+}
+
 export const TAGGED_USERS_SELECT = {
   orderBy: { createdAt: "asc" as const },
   select: {
