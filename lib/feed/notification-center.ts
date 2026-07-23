@@ -114,6 +114,10 @@ export async function createFeedNotification(params: {
   commentId?: string | null;
   data?: Record<string, string | null | undefined>;
   actor?: { avatarUrl?: string | null; name?: string | null };
+  // ID user aktor — disimpan supaya read path bisa resolve avatar/nama LIVE
+  // (foto profil terkini), bukan snapshot basi. Null untuk notif tanpa aktor
+  // tunggal (share, milestone).
+  actorId?: string | null;
   dedupeByEvent?: boolean;
   surface?: NotificationSurface;
 }) {
@@ -191,6 +195,7 @@ export async function createFeedNotification(params: {
           ctaLabel: params.ctaLabel ?? "Lihat Postingan",
           actorAvatarUrl: params.actor?.avatarUrl ?? null,
           actorName: params.actor?.name ?? null,
+          actorId: params.actorId ?? null,
           publishedAt: new Date(),
           targetUserId: params.userId,
         },

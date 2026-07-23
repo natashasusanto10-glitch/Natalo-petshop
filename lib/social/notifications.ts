@@ -245,6 +245,7 @@ export async function sendNewPostToFollowersNotification(postId: string) {
         ctaLabel: "Lihat Postingan",
         publishedAt: new Date(),
         targetUserId: fid,
+        actorId: post.author.id,
         actorAvatarUrl: actorFields.actorAvatarUrl,
         actorName: actorFields.actorName,
       })),

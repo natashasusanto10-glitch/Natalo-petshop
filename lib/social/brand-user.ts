@@ -79,6 +79,39 @@ export function notificationActorFields(
 }
 
 /**
+ * Resolve identitas aktor notifikasi LIVE saat baca (bukan snapshot).
+ *
+ * KENAPA: avatar & nama aktor di-simpan (denormalisasi) ke baris Announcement
+ * saat notif dibuat. Kalau aktor lalu ganti/hapus foto profil, notif lama
+ * memegang URL basi (bug "foto profil di notifikasi tak sinkron"). Helper ini
+ * mengambil identitas terkini dari record User (via actorId) supaya selalu
+ * sinkron, brand-safe (admin → nama brand + foto null lewat
+ * [notificationActorFields]).
+ *
+ * Fallback ke [snapshot] bila:
+ *  - [isAggregate] true → baris agregat like (avatar bertumpuk `actorAvatarUrls`)
+ *    memang tak punya identitas aktor tunggal; jangan diisi satu avatar.
+ *  - [actorId] null → notif lama (dibuat sebelum actorId ditulis).
+ *  - [liveUser] null → user tak ditemukan (mis. akun dihapus).
+ */
+export function resolveNotificationActor(params: {
+  actorId: string | null;
+  isAggregate: boolean;
+  snapshot: { actorName: string | null; actorAvatarUrl: string | null };
+  liveUser:
+    | { role: string | null; name: string | null; profilePhotoUrl: string | null }
+    | null;
+}): { actorName: string | null; actorAvatarUrl: string | null } {
+  if (params.isAggregate) return params.snapshot;
+  if (!params.actorId || !params.liveUser) return params.snapshot;
+  return notificationActorFields(
+    params.liveUser.role,
+    params.liveUser.name,
+    params.liveUser.profilePhotoUrl,
+  );
+}
+
+/**
  * Field aktor untuk baris notif LIKE. Baris agregat (>=2 liker, judul
  * "N orang menyukai...") kehilangan identitas aktor tunggal → null; like
  * TUNGGAL membawa aktor. Dipakai di kedua cabang (create + update batch)

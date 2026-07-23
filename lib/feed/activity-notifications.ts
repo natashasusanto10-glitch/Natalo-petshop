@@ -95,6 +95,7 @@ export async function sendCommentNotification(params: {
       commentId: params.commentId,
       data: { comment_id: params.commentId },
       surface: SOCIAL_NOTIFICATION_SOURCE,
+      actorId: params.actorUserId,
       actor: {
         avatarUrl: actorFields.actorAvatarUrl,
         name: actorFields.actorName,
@@ -163,6 +164,7 @@ export async function sendReplyNotification(params: {
         reply_comment_id: params.replyCommentId,
       },
       surface: SOCIAL_NOTIFICATION_SOURCE,
+      actorId: params.actorUserId,
       actor: {
         avatarUrl: actorFields.actorAvatarUrl,
         name: actorFields.actorName,
@@ -263,6 +265,7 @@ export async function sendMentionNotifications(params: {
               : {}),
           },
           surface: SOCIAL_NOTIFICATION_SOURCE,
+          actorId: params.actorUserId,
           actor: {
             avatarUrl: actorFields.actorAvatarUrl,
             name: actorFields.actorName,
@@ -418,6 +421,7 @@ export async function sendLikeNotification(params: {
       ctaLabel: "Lihat Postingan",
       tag: `feed-like-${post.id}`,
       data: { like_count: String(params.likeCount) },
+      actorId: params.actorUserId,
       actor: { avatarUrl: actorFields.actorAvatarUrl, name: actorFields.actorName },
       surface: SOCIAL_NOTIFICATION_SOURCE,
     });
@@ -524,6 +528,7 @@ export async function sendCommentLikeNotification(params: {
         comment_id: params.commentId,
         like_count: String(params.likeCount),
       },
+      actorId: params.actorUserId,
       actor: { avatarUrl: actorFields.actorAvatarUrl, name: actorFields.actorName },
       surface: SOCIAL_NOTIFICATION_SOURCE,
     });

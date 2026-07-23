@@ -24,6 +24,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { signBunnyUrl } from "@/lib/feed/bunny";
+import { resolveNotificationActor } from "@/lib/social/brand-user";
 
 const MAX_ITEMS = 50;
 
@@ -265,17 +266,61 @@ export async function GET() {
     );
     const existingPostIds = new Set<string>();
     if (feedPostIds.length > 0) {
+      // Filter `deletedAt: null` — post yang di-soft-delete owner (row masih
+      // ada, deletedAt terisi) DIANGGAP tak ada di sini supaya notif lama yang
+      // belum ke-cascade tetap tampil "Sudah dihapus". Post baru yang dihapus
+      // kini di-cascade (baris notif hilang total, lihat DELETE handler), jadi
+      // ini jala pengaman untuk data lama + kasus lomba.
       const posts = await prisma.feedPost.findMany({
-        where: { id: { in: feedPostIds } },
+        where: { id: { in: feedPostIds }, deletedAt: null },
         select: { id: true },
       });
       for (const post of posts) existingPostIds.add(post.id);
     }
 
+    // Identitas aktor LIVE — avatar/nama diambil dari record User terkini
+    // (via actorId) supaya ganti/hapus foto profil langsung sinkron di notif
+    // lama. Snapshot di baris hanya fallback (notif lama tanpa actorId /
+    // user terhapus / baris agregat). Brand-safe lewat resolveNotificationActor.
+    const actorIds = Array.from(
+      new Set(
+        mapped
+          .map((item) => item.actorId)
+          .filter((id): id is string => Boolean(id && id.trim())),
+      ),
+    );
+    const liveActorById = new Map<
+      string,
+      { role: string | null; name: string | null; profilePhotoUrl: string | null }
+    >();
+    if (actorIds.length > 0) {
+      const actors = await prisma.user.findMany({
+        where: { id: { in: actorIds } },
+        select: { id: true, role: true, name: true, profilePhotoUrl: true },
+      });
+      for (const a of actors) {
+        liveActorById.set(a.id, {
+          role: a.role,
+          name: a.name,
+          profilePhotoUrl: a.profilePhotoUrl,
+        });
+      }
+    }
+
     const itemsWithReviewSummary = mapped.map((item) => {
       const orderNumber = extractOrderNumberFromNotification(item);
+      const liveActor = resolveNotificationActor({
+        actorId: item.actorId,
+        // Baris agregat like membawa avatar bertumpuk di actorAvatarUrls;
+        // identitas aktor tunggal memang null → jangan diisi 1 avatar live.
+        isAggregate: (item.actorAvatarUrls?.length ?? 0) > 0,
+        snapshot: { actorName: item.actorName, actorAvatarUrl: item.actorAvatarUrl },
+        liveUser: item.actorId ? liveActorById.get(item.actorId) ?? null : null,
+      });
       return {
         ...item,
+        actorName: liveActor.actorName,
+        actorAvatarUrl: liveActor.actorAvatarUrl,
         reviewSummary: orderNumber ? reviewSummaryByOrder.get(orderNumber) ?? null : null,
         commentLiked: item.commentId ? likedCommentIds.has(item.commentId) : false,
         isFollowing:
