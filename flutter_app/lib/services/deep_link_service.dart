@@ -8,6 +8,7 @@ import '../models/feed_post.dart';
 import '../screens/member_post_detail_screen.dart';
 import '../screens/scoped_video_feed_screen.dart';
 import '../state/member_store.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/scaled_video_feed_route.dart';
 import 'feed_service.dart';
 import 'order_service.dart';
@@ -269,7 +270,19 @@ class DeepLinkService {
     try {
       final post = await feedService.fetchPostById(postId);
       if (post == null) {
+        // Postingan dihapus / belum tayang. Beda dgn jalur bell in-app (yang
+        // TETAP di layar notifikasi), di sini user datang dari LUAR app (tap
+        // push saat app tertutup/background) → tetap butuh landing, jadi ke
+        // /feed TAPI dengan toast jelas, bukan pindah diam-diam.
         nav.pushNamed('/feed');
+        if (nav.mounted) {
+          AppToast.show(
+            nav.context,
+            'Postingan ini sudah dihapus.',
+            kind: ToastKind.info,
+            icon: Icons.delete_outline_rounded,
+          );
+        }
         return;
       }
       // `nav` = State<Navigator> — `mounted` guard SEBELUM pakai `nav.context`

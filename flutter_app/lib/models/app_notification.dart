@@ -34,6 +34,12 @@ class AppNotification {
   /// notif non-follow atau baris lama pra-migration (actorId belum ada).
   final bool? isFollowing;
 
+  /// Untuk notif ber-feedPostId (Postingan baru/komentar/like/mention):
+  /// apakah postingan yang dirujuk SUDAH DIHAPUS (baris FeedPost hilang di
+  /// server). True → baris diredupkan + label "Sudah dihapus" + tap mati
+  /// (Lapisan 2, ala IG). Default false (belum dihapus / bukan notif post).
+  final bool postDeleted;
+
   const AppNotification({
     required this.id,
     required this.title,
@@ -60,6 +66,7 @@ class AppNotification {
     required this.read,
     this.commentLiked = false,
     this.isFollowing,
+    this.postDeleted = false,
   });
 
   factory AppNotification.fromApiJson(Map<String, dynamic> json) {
@@ -106,6 +113,7 @@ class AppNotification {
       read: json['read'] == true,
       commentLiked: json['commentLiked'] == true,
       isFollowing: json['isFollowing'] as bool?,
+      postDeleted: json['postDeleted'] == true,
     );
   }
 
@@ -138,6 +146,7 @@ class AppNotification {
       read: read ?? this.read,
       commentLiked: commentLiked,
       isFollowing: isFollowing,
+      postDeleted: postDeleted,
     );
   }
 }

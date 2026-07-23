@@ -428,8 +428,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (!mounted) return;
 
     if (post == null) {
-      // Postingan dihapus / belum tayang / error → fallback ke feed utama.
-      await Navigator.pushNamed(context, '/feed');
+      // Postingan dihapus / belum tayang / error. Dulu diam-diam lempar ke
+      // /feed (user bingung: tap notif malah pindah ke Feed tanpa sebab).
+      // Sekarang TETAP di layar Notifikasi + toast jelas — paritas IG.
+      AppToast.show(
+        context,
+        'Postingan ini sudah dihapus.',
+        kind: ToastKind.info,
+        icon: Icons.delete_outline_rounded,
+      );
       return;
     }
 
@@ -927,13 +934,19 @@ class NotificationRow extends StatelessWidget {
             : null;
     final feedPostIdTrim = notification.feedPostId?.trim() ?? '';
     final commentIdTrim = notification.commentId?.trim() ?? '';
-    final showCommentActions =
+    // Postingan yang dirujuk sudah dihapus (server: FeedPost hilang). Baris
+    // diredupkan + label pasif "Sudah dihapus" + tap dimatikan (Lapisan 2
+    // ala IG). Aksi lain (pill follow / komentar / CTA) disembunyikan supaya
+    // user tidak menekan tujuan yang sudah tak ada.
+    final deleted = notification.postDeleted;
+    final showCommentActions = !deleted &&
         notification.eventType?.trim().toLowerCase() == 'feed_new_comment' &&
-            commentIdTrim.isNotEmpty &&
-            feedPostIdTrim.isNotEmpty;
+        commentIdTrim.isNotEmpty &&
+        feedPostIdTrim.isNotEmpty;
+    final titleColor = deleted ? cs.onSurfaceVariant : cs.onSurface;
 
     return InkWell(
-      onTap: onTap,
+      onTap: deleted ? null : onTap,
       child: Stack(
         children: [
           if (!notification.read)
@@ -990,7 +1003,7 @@ class NotificationRow extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: cs.onSurface,
+                          color: titleColor,
                           fontSize: 13.5,
                           fontWeight: FontWeight.w400,
                           height: 1.4,
@@ -999,7 +1012,35 @@ class NotificationRow extends StatelessWidget {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          if (followBackUsername != null) ...[
+                          if (deleted) ...[
+                            Container(
+                              key: const ValueKey(
+                                  'notification-post-deleted-label'),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: cs.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.delete_outline_rounded,
+                                      size: 13, color: cs.onSurfaceVariant),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    'Sudah dihapus',
+                                    style: TextStyle(
+                                      color: cs.onSurfaceVariant,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                          ] else if (followBackUsername != null) ...[
                             _NotificationFollowBackPill(
                               username: followBackUsername,
                               initialIsFollowing: notification.isFollowing,
@@ -1054,7 +1095,23 @@ class NotificationRow extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (imageUrl != null &&
+                if (deleted && feedPostIdTrim.isNotEmpty) ...[
+                  const SizedBox(width: 12),
+                  Container(
+                    key: const ValueKey('notification-thumb-deleted'),
+                    height: 46,
+                    width: 46,
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.image_not_supported_outlined,
+                      size: 20,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ] else if (imageUrl != null &&
                     imageUrl.trim().isNotEmpty &&
                     !isFollow) ...[
                   const SizedBox(width: 12),
