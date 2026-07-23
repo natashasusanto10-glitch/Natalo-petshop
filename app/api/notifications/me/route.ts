@@ -24,6 +24,11 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { signBunnyUrl } from "@/lib/feed/bunny";
+import {
+  resolveNotificationActor,
+  notificationActorLabels,
+  fillNotificationActorTokens,
+} from "@/lib/social/brand-user";
 
 const MAX_ITEMS = 50;
 
@@ -107,11 +112,21 @@ export async function GET() {
         orderBy: { createdAt: "desc" },
         take: MAX_ITEMS,
       });
+      // Broadcast "all" tak punya token aktor, tapi fill defensif memastikan
+      // token tak pernah bocor mentah ke klien (fallback "Seseorang").
+      const anonLabels = notificationActorLabels(null);
       return NextResponse.json({
         ok: true,
         loggedIn: false,
         unreadCount: 0,
-        items: items.map((a) => mapAnnouncement(a)),
+        items: items.map((a) => {
+          const m = mapAnnouncement(a);
+          return {
+            ...m,
+            title: fillNotificationActorTokens(m.title, anonLabels),
+            body: fillNotificationActorTokens(m.body, anonLabels),
+          };
+        }),
       });
     }
 
@@ -265,17 +280,82 @@ export async function GET() {
     );
     const existingPostIds = new Set<string>();
     if (feedPostIds.length > 0) {
+      // Filter `deletedAt: null` — post yang di-soft-delete owner (row masih
+      // ada, deletedAt terisi) DIANGGAP tak ada di sini supaya notif lama yang
+      // belum ke-cascade tetap tampil "Sudah dihapus". Post baru yang dihapus
+      // kini di-cascade (baris notif hilang total, lihat DELETE handler), jadi
+      // ini jala pengaman untuk data lama + kasus lomba.
       const posts = await prisma.feedPost.findMany({
-        where: { id: { in: feedPostIds } },
+        where: { id: { in: feedPostIds }, deletedAt: null },
         select: { id: true },
       });
       for (const post of posts) existingPostIds.add(post.id);
     }
 
+    // Identitas aktor LIVE — avatar/nama diambil dari record User terkini
+    // (via actorId) supaya ganti/hapus foto profil langsung sinkron di notif
+    // lama. Snapshot di baris hanya fallback (notif lama tanpa actorId /
+    // user terhapus / baris agregat). Brand-safe lewat resolveNotificationActor.
+    const actorIds = Array.from(
+      new Set(
+        mapped
+          .map((item) => item.actorId)
+          .filter((id): id is string => Boolean(id && id.trim())),
+      ),
+    );
+    const liveActorById = new Map<
+      string,
+      {
+        role: string | null;
+        name: string | null;
+        username: string | null;
+        profilePhotoUrl: string | null;
+      }
+    >();
+    if (actorIds.length > 0) {
+      const actors = await prisma.user.findMany({
+        where: { id: { in: actorIds } },
+        select: {
+          id: true,
+          role: true,
+          name: true,
+          username: true,
+          profilePhotoUrl: true,
+        },
+      });
+      for (const a of actors) {
+        liveActorById.set(a.id, {
+          role: a.role,
+          name: a.name,
+          username: a.username,
+          profilePhotoUrl: a.profilePhotoUrl,
+        });
+      }
+    }
+
     const itemsWithReviewSummary = mapped.map((item) => {
       const orderNumber = extractOrderNumberFromNotification(item);
+      const liveUser = item.actorId
+        ? liveActorById.get(item.actorId) ?? null
+        : null;
+      const liveActor = resolveNotificationActor({
+        actorId: item.actorId,
+        // Baris agregat like membawa avatar bertumpuk di actorAvatarUrls;
+        // identitas aktor tunggal memang null → jangan diisi 1 avatar live.
+        isAggregate: (item.actorAvatarUrls?.length ?? 0) > 0,
+        snapshot: { actorName: item.actorName, actorAvatarUrl: item.actorAvatarUrl },
+        liveUser,
+      });
+      // Ganti token nama/username di judul/body dengan nilai LIVE (username &
+      // nama terkini). Notif lama tanpa token → no-op. Aktor terhapus / tanpa
+      // actorId → label "Seseorang" (notificationActorLabels(null)).
+      const labels = notificationActorLabels(liveUser);
       return {
         ...item,
+        actorName: liveActor.actorName,
+        actorAvatarUrl: liveActor.actorAvatarUrl,
+        title: fillNotificationActorTokens(item.title, labels),
+        body: fillNotificationActorTokens(item.body, labels),
         reviewSummary: orderNumber ? reviewSummaryByOrder.get(orderNumber) ?? null : null,
         commentLiked: item.commentId ? likedCommentIds.has(item.commentId) : false,
         isFollowing:

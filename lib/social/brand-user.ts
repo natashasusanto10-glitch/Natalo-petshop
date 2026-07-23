@@ -79,6 +79,92 @@ export function notificationActorFields(
 }
 
 /**
+ * Token placeholder untuk nama/username aktor di JUDUL/BODY notifikasi.
+ *
+ * KENAPA: judul notif ("X berkomentar", "X menyebut kamu") dulu memanggang
+ * nama/username aktor jadi teks jadi → basi saat aktor ganti nama/username.
+ * Kini judul disimpan dengan token ini; read path mengganti token dengan
+ * nama/username LIVE terkini (in-app selalu sinkron). Push yang sudah terkirim
+ * tetap snapshot (di-fill saat kirim) — tak bisa diubah, itu wajar.
+ *
+ * Pakai karakter Private Use Area (U+E000) supaya tak mungkin bentrok dgn
+ * teks buatan user. Notif LAMA tak punya token → fill jadi no-op (tetap teks
+ * lama; sinkron hanya berlaku maju/forward untuk notif baru).
+ */
+export const NOTIF_ACTOR_NAME_TOKEN = "actorName";
+export const NOTIF_ACTOR_USERNAME_TOKEN = "actorUsername";
+
+/**
+ * Label nama & username aktor brand-safe untuk mengisi token judul notifikasi.
+ * Admin → nama brand (dua-duanya). User biasa → nama asli / username; fallback
+ * "Seseorang" bila kosong. [user] null (aktor terhapus) → "Seseorang".
+ *
+ *  - nameLabel dipakai judul jenis "X berkomentar / membalas / menyukai".
+ *  - usernameLabel dipakai judul jenis "X menyebut kamu / posting baru".
+ */
+export function notificationActorLabels(
+  user:
+    | { role?: string | null; name?: string | null; username?: string | null }
+    | null,
+): { nameLabel: string; usernameLabel: string } {
+  if (user && isAdminRole(user.role)) {
+    return { nameLabel: OFFICIAL_BRAND_NAME, usernameLabel: OFFICIAL_BRAND_NAME };
+  }
+  const name = user?.name?.trim() || "";
+  const username = user?.username?.trim() || "";
+  return {
+    nameLabel: name || "Seseorang",
+    usernameLabel: username || name || "Seseorang",
+  };
+}
+
+/** Ganti token nama/username aktor di [text] dengan label. Tanpa token → apa adanya. */
+export function fillNotificationActorTokens(
+  text: string,
+  labels: { nameLabel: string; usernameLabel: string },
+): string {
+  if (!text) return text;
+  return text
+    .split(NOTIF_ACTOR_NAME_TOKEN)
+    .join(labels.nameLabel)
+    .split(NOTIF_ACTOR_USERNAME_TOKEN)
+    .join(labels.usernameLabel);
+}
+
+/**
+ * Resolve identitas aktor notifikasi LIVE saat baca (bukan snapshot).
+ *
+ * KENAPA: avatar & nama aktor di-simpan (denormalisasi) ke baris Announcement
+ * saat notif dibuat. Kalau aktor lalu ganti/hapus foto profil, notif lama
+ * memegang URL basi (bug "foto profil di notifikasi tak sinkron"). Helper ini
+ * mengambil identitas terkini dari record User (via actorId) supaya selalu
+ * sinkron, brand-safe (admin → nama brand + foto null lewat
+ * [notificationActorFields]).
+ *
+ * Fallback ke [snapshot] bila:
+ *  - [isAggregate] true → baris agregat like (avatar bertumpuk `actorAvatarUrls`)
+ *    memang tak punya identitas aktor tunggal; jangan diisi satu avatar.
+ *  - [actorId] null → notif lama (dibuat sebelum actorId ditulis).
+ *  - [liveUser] null → user tak ditemukan (mis. akun dihapus).
+ */
+export function resolveNotificationActor(params: {
+  actorId: string | null;
+  isAggregate: boolean;
+  snapshot: { actorName: string | null; actorAvatarUrl: string | null };
+  liveUser:
+    | { role: string | null; name: string | null; profilePhotoUrl: string | null }
+    | null;
+}): { actorName: string | null; actorAvatarUrl: string | null } {
+  if (params.isAggregate) return params.snapshot;
+  if (!params.actorId || !params.liveUser) return params.snapshot;
+  return notificationActorFields(
+    params.liveUser.role,
+    params.liveUser.name,
+    params.liveUser.profilePhotoUrl,
+  );
+}
+
+/**
  * Field aktor untuk baris notif LIKE. Baris agregat (>=2 liker, judul
  * "N orang menyukai...") kehilangan identitas aktor tunggal → null; like
  * TUNGGAL membawa aktor. Dipakai di kedua cabang (create + update batch)

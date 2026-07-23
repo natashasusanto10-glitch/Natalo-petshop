@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 import 'firebase_options.dart';
 import 'models/app_notification.dart';
@@ -92,6 +93,12 @@ String _initialRoute = '/';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // VisibilityDetector default throttle 500ms → video Feed/Postingan telat
+  // attach+autoplay setengah detik tiap kali masuk layar (delay-nya juga
+  // menunda MULAI loading, bukan cuma play). 100ms: tak terasa manusia,
+  // tetap ada throttle supaya cek geometry saat scroll cepat tak per-frame.
+  VisibilityDetectorController.instance.updateInterval =
+      const Duration(milliseconds: 100);
   // Android high refresh rate opt-in — Galaxy S / Pixel Pro / OnePlus dll
   // default locked 60fps di Flutter walau hardware support 90/120Hz.
   // Call ini cari display mode dengan refresh rate tertinggi yang fit

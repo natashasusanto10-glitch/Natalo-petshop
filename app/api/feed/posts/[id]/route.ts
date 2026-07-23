@@ -744,6 +744,11 @@ export async function DELETE(
         note: "Deleted by post owner",
       },
     }),
+    // Cascade hapus SEMUA notifikasi yang merujuk post ini (ala IG: hapus post
+    // → notif "X posting baru / komentar / like / mention" hilang dari bell
+    // semua penerima). Announcement.feedPostId hanya string ber-index (tanpa
+    // FK/onDelete), jadi cascade harus manual. Query murah (ter-index).
+    prisma.announcement.deleteMany({ where: { feedPostId: post.id } }),
   ]);
 
   // Cleanup Bunny Stream video record (HLS + MP4 variants + thumbnail

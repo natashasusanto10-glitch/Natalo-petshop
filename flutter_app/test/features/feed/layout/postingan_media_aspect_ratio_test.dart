@@ -1,3 +1,5 @@
+import 'dart:ui' show Size;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/layout/postingan_media_aspect_ratio.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
@@ -125,6 +127,57 @@ void main() {
           closeTo(3 / 4, 0.000001),
         );
       });
+    });
+  });
+
+  group('resolvePostinganVideoBoxAspectRatio — pilih ukuran asli vs fallback', () {
+    // fallback landscape 16:9 = 1.7778 (mensimulasikan metadata SALAH).
+    const fallbackLandscape = 16 / 9;
+
+    test('liveSize null (controller belum siap) → pakai fallback', () {
+      expect(
+        resolvePostinganVideoBoxAspectRatio(
+          fallbackAspectRatio: fallbackLandscape,
+          liveSize: null,
+        ),
+        fallbackLandscape,
+      );
+    });
+
+    test('KUNCI: liveSize portrait walau fallback landscape → rasio portrait '
+        '(kotak portrait → tak ada bar kiri-kanan)', () {
+      final r = resolvePostinganVideoBoxAspectRatio(
+        fallbackAspectRatio: fallbackLandscape,
+        liveSize: const Size(1080, 1920),
+      );
+      expect(r, closeTo(9 / 16, 1e-9));
+    });
+
+    test('liveSize landscape lebih lebar dari 1.91 → clamp 1.91 '
+        '(letterbox atas-bawah tetap)', () {
+      final r = resolvePostinganVideoBoxAspectRatio(
+        fallbackAspectRatio: 9 / 16,
+        liveSize: const Size(2560, 1080), // 2.37
+      );
+      expect(r, closeTo(1.91, 1e-9));
+    });
+
+    test('liveSize 0/invalid → pakai fallback', () {
+      expect(
+        resolvePostinganVideoBoxAspectRatio(
+          fallbackAspectRatio: fallbackLandscape,
+          liveSize: const Size(0, 0),
+        ),
+        fallbackLandscape,
+      );
+    });
+
+    test('liveSize portrait normal 9:16 → 9:16', () {
+      final r = resolvePostinganVideoBoxAspectRatio(
+        fallbackAspectRatio: 9 / 16,
+        liveSize: const Size(1080, 1920),
+      );
+      expect(r, closeTo(9 / 16, 1e-9));
     });
   });
 }

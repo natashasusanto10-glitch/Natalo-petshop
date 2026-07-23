@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+import 'dart:ui' show Size;
+
 import '../../../models/feed_post.dart';
 
 // Batas potret video di halaman Postingan disamakan dengan Instagram feed
@@ -32,4 +35,32 @@ double resolvePostinganMediaAspectRatio({
   return sourceAspectRatio
       .clamp(minAspectRatio, postinganMaxAspectRatio)
       .toDouble();
+}
+
+/// Aspect ratio KOTAK video halaman Postingan.
+///
+/// Pakai ukuran video ASLI [liveSize] (dari `controller.value.size`, sudah
+/// dirotasi benar oleh player) begitu tersedia & valid; sebelum controller
+/// siap, fallback ke [fallbackAspectRatio] (dari metadata tersimpan).
+///
+/// KENAPA: sebagian video punya metadata dimensi SALAH (landscape untuk video
+/// portrait — sisa bug rotasi Bunny). Membangun kotak dari metadata itu bikin
+/// video portrait masuk kotak lebar → bar hitam kiri-kanan. Ukuran asli
+/// controller selalu benar, jadi jadikan itu sumber saat ada.
+double resolvePostinganVideoBoxAspectRatio({
+  required double fallbackAspectRatio,
+  Size? liveSize,
+}) {
+  if (liveSize != null && liveSize.width > 0 && liveSize.height > 0) {
+    // Hitung rasio dari ukuran asli. Jangan clamp minimum (3:5) karena ukuran
+    // controller sudah terbukti benar; hanya cap maksimum untuk landscape
+    // yang terlalu lebar (math.min, bukan clamp — batas bawah tak diperlukan
+    // karena rasio sudah dijamin > 0 oleh guard di atas).
+    final sourceAspectRatio = liveSize.width / liveSize.height;
+    if (!sourceAspectRatio.isFinite || sourceAspectRatio <= 0) {
+      return fallbackAspectRatio;
+    }
+    return math.min(sourceAspectRatio, postinganMaxAspectRatio);
+  }
+  return fallbackAspectRatio;
 }

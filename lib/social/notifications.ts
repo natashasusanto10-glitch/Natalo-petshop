@@ -5,6 +5,7 @@ import {
   brandPhotoUrl,
   isAdminRole,
   notificationActorFields,
+  NOTIF_ACTOR_USERNAME_TOKEN,
   OFFICIAL_BRAND_NAME,
 } from "@/lib/social/brand-user";
 import { feedNotificationThumbnail } from "@/lib/feed/notification-thumbnail";
@@ -200,7 +201,11 @@ export async function sendNewPostToFollowersNotification(postId: string) {
     const actorName = post.author.username || post.author.name || "Seseorang";
     const kindLabel = post.kind === "PHOTO_CAROUSEL" ? "foto" : "video";
     const title = "Postingan baru";
+    // Push = snapshot (tak bisa di-update setelah terkirim). Baris Announcement
+    // simpan token username → read path isi username LIVE (author baru saja
+    // dicek non-admin di atas, jadi username aman ditampilkan).
     const body = `${actorName} posting ${kindLabel} baru`;
+    const storedBody = `${NOTIF_ACTOR_USERNAME_TOKEN} posting ${kindLabel} baru`;
     // WAJIB sign — video thumbnail di-hosting Bunny CDN dgn hotlink
     // protection; tanpa token, APNs/FCM gagal fetch gambar saat push
     // (403), rich image tak pernah nongol walau NSE iOS sudah beres.
@@ -234,7 +239,7 @@ export async function sendNewPostToFollowersNotification(postId: string) {
     await prisma.announcement.createMany({
       data: followerIds.map((fid) => ({
         title,
-        body,
+        body: storedBody,
         url,
         segment: "all",
         type: "feed",
@@ -245,6 +250,7 @@ export async function sendNewPostToFollowersNotification(postId: string) {
         ctaLabel: "Lihat Postingan",
         publishedAt: new Date(),
         targetUserId: fid,
+        actorId: post.author.id,
         actorAvatarUrl: actorFields.actorAvatarUrl,
         actorName: actorFields.actorName,
       })),
