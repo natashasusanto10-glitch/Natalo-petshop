@@ -39,6 +39,66 @@ TagPillPlacement placeTagPill({
   return TagPillPlacement(Offset(left, top), arrowBelow);
 }
 
+/// Pure function (final review Spec B fix — koordinat tag drift) — koordinat
+/// tag disimpan sebagai fraksi 0-1 RELATIF TERHADAP FOTO, tapi media
+/// dirender di dalam sebuah container yang bisa saja beda aspect ratio dari
+/// foto itu sendiri (mis. foto landscape di container portrait). Di bawah
+/// `BoxFit.contain`, itu artinya ada letterbox bar (kiri-kanan ATAU
+/// atas-bawah) yang BUKAN bagian dari foto — kalau fraksi tag dihitung
+/// relatif terhadap [container] penuh (bukan area foto yang benar-benar
+/// ter-render), posisi tag drift, makin parah makin beda aspect ratio-nya.
+///
+/// [container] = ukuran area yang tersedia untuk media (biasanya dari
+/// LayoutBuilder). [aspectRatio] = width/height foto ASLI (bukan container).
+/// [fit] = BoxFit yang dipakai render media (composer & viewer keduanya
+/// pakai `BoxFit.contain` — lihat feed_tag_people_screen.dart &
+/// feed_screen.dart).
+///
+/// Return: Rect (dalam koordinat [container], origin kiri-atas container)
+/// yang benar-benar ditempati piksel foto:
+///   - `BoxFit.contain`: foto discale supaya utuh masuk container →
+///     di-tengah pada sumbu yang berlebih (letterbox), ukurannya BISA lebih
+///     kecil dari container.
+///   - `BoxFit.cover`: foto mengisi SELURUH container (kelebihan di-crop di
+///     luar container) → rect = container itu sendiri (semua piksel
+///     container menampilkan sebagian foto, tak ada letterbox).
+///
+/// Input tak valid (container kosong / aspectRatio <= 0 / non-finite) →
+/// fallback aman: seluruh container (setara perilaku lama sebelum fix ini,
+/// dipakai juga untuk post lama yang tidak punya width/height tersimpan).
+Rect fittedPhotoRect(Size container, double aspectRatio, BoxFit fit) {
+  if (container.width <= 0 ||
+      container.height <= 0 ||
+      !aspectRatio.isFinite ||
+      aspectRatio <= 0) {
+    return Offset.zero & container;
+  }
+  if (fit == BoxFit.cover) {
+    // Foto mengisi penuh container (kelebihan di-crop off-screen) — setiap
+    // piksel container menampilkan piksel foto, jadi rect = container.
+    return Offset.zero & container;
+  }
+  // BoxFit.contain (default/satu-satunya fit lain yang dipakai codebase ini
+  // untuk tag people — lihat feed_tag_people_screen.dart & feed_screen.dart).
+  final containerAspect = container.width / container.height;
+  double width;
+  double height;
+  if (containerAspect > aspectRatio) {
+    // Container relatif lebih LEBAR dari foto → letterbox KIRI-KANAN;
+    // tinggi foto = tinggi container penuh.
+    height = container.height;
+    width = height * aspectRatio;
+  } else {
+    // Container relatif lebih SEMPIT/TINGGI dari foto → letterbox
+    // ATAS-BAWAH; lebar foto = lebar container penuh.
+    width = container.width;
+    height = width / aspectRatio;
+  }
+  final dx = (container.width - width) / 2;
+  final dy = (container.height - height) / 2;
+  return Rect.fromLTWH(dx, dy, width, height);
+}
+
 /// Pill gelap username putih + panah pointer, ala IG. Muncul dengan pop
 /// scale-fade easeOutCubic (dibungkus caller via animasi implicit di sini).
 class FeedUserTagPill extends StatelessWidget {

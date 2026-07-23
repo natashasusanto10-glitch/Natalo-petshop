@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -86,13 +87,46 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
   late final PageController _pageController =
       PageController(initialPage: _pageIndex);
 
+  // Aspect ratio ASLI tiap foto (width/height), keyed by index di
+  // widget.photoFiles (final review Spec B fix — koordinat tag drift).
+  // Dipakai fittedPhotoRect supaya fraksi tag dihitung relatif area FOTO
+  // yang benar-benar ter-render (BoxFit.contain bisa letterbox kalau
+  // aspect ratio foto != container), bukan container mentah. Di-load async
+  // per file via ui.instantiateImageCodec (native, ~50ms — pola sama
+  // dengan feed_media_picker_screen.dart _loadPreviewImageSize). Entry
+  // absen (masih loading / gagal decode) → fallback ke aspect container
+  // sendiri di build() (rect = container penuh, setara perilaku lama).
+  final Map<int, double> _photoAspectRatios = {};
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadPhotoAspectRatios());
+  }
+
+  Future<void> _loadPhotoAspectRatios() async {
+    for (var i = 0; i < widget.photoFiles.length; i++) {
+      try {
+        final bytes = await widget.photoFiles[i].readAsBytes();
+        final codec = await ui.instantiateImageCodec(bytes);
+        final frame = await codec.getNextFrame();
+        final ratio = frame.image.width / frame.image.height;
+        frame.image.dispose();
+        if (!mounted) return;
+        setState(() => _photoAspectRatios[i] = ratio);
+      } catch (_) {
+        // Biarkan tanpa entry — fallback ke aspect container di build().
+      }
+    }
+  }
+
   @override
   void dispose() {
     _pageController.dispose();
     super.dispose();
   }
 
-  Future<void> _onPhotoTapUp(TapUpDetails details, Size renderSize) async {
+  Future<void> _onPhotoTapUp(TapUpDetails details, Rect photoRect) async {
     if (_tags.length >= _kMaxTags) {
       AppToast.show(
         context,
@@ -101,10 +135,13 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
       );
       return;
     }
-    if (renderSize.width <= 0 || renderSize.height <= 0) return;
+    if (photoRect.width <= 0 || photoRect.height <= 0) return;
     final local = details.localPosition;
-    final fx = (local.dx / renderSize.width).clamp(0.0, 1.0);
-    final fy = (local.dy / renderSize.height).clamp(0.0, 1.0);
+    // Fraksi relatif FOTO (photoRect), bukan container mentah — supaya tap
+    // di area letterbox tetap clamp ke tepi foto terdekat, bukan salah
+    // posisi relatif ke seluruh container.
+    final fx = ((local.dx - photoRect.left) / photoRect.width).clamp(0.0, 1.0);
+    final fy = ((local.dy - photoRect.top) / photoRect.height).clamp(0.0, 1.0);
     setState(() => _revealRemoveUserId = null);
     final picked = await Navigator.of(context).push<TagSearchUser>(
       PageRouteBuilder(
@@ -147,16 +184,22 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
   void _onPillDragUpdate(
     NewPostUserTag tag,
     DragUpdateDetails details,
-    Size renderSize,
+    Rect photoRect,
   ) {
-    if (renderSize.width <= 0 || renderSize.height <= 0) return;
+    if (photoRect.width <= 0 || photoRect.height <= 0) return;
     final index = _tags.indexWhere((t) => t.userId == tag.userId);
     if (index == -1) return;
     final current = _tags[index];
-    final nx = (((current.x ?? 0.5) * renderSize.width) + details.delta.dx) /
-        renderSize.width;
-    final ny = (((current.y ?? 0.5) * renderSize.height) + details.delta.dy) /
-        renderSize.height;
+    // Pixel delta (details.delta) berlaku sama di koordinat container ATAU
+    // photoRect (translasi murni tak mengubah delta) — konversi ke fraksi
+    // tetap harus relatif photoRect, bukan container mentah.
+    final currentPx = Offset(
+      photoRect.left + (current.x ?? 0.5) * photoRect.width,
+      photoRect.top + (current.y ?? 0.5) * photoRect.height,
+    );
+    final nextPx = currentPx + details.delta;
+    final nx = (nextPx.dx - photoRect.left) / photoRect.width;
+    final ny = (nextPx.dy - photoRect.top) / photoRect.height;
     setState(() {
       _tags[index] = current.copyWith(
         x: nx.clamp(0.0, 1.0),
@@ -225,6 +268,7 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
                   file: widget.photoFiles[index],
                   tags: _tags.where((t) => t.mediaIndex == index).toList(),
                   revealRemoveUserId: _revealRemoveUserId,
+                  photoAspectRatio: _photoAspectRatios[index],
                   onTapUp: _onPhotoTapUp,
                   onPillDragUpdate: _onPillDragUpdate,
                   onPillTap: _onPillTap,
@@ -276,9 +320,13 @@ class _TaggablePhotoPage extends StatelessWidget {
   final File file;
   final List<NewPostUserTag> tags;
   final String? revealRemoveUserId;
-  final Future<void> Function(TapUpDetails details, Size renderSize) onTapUp;
+  // Aspect ratio ASLI foto (width/height) — null selama masih loading /
+  // gagal decode, fallback ke aspect container sendiri (final review
+  // Spec B fix, lihat _photoAspectRatios di parent state).
+  final double? photoAspectRatio;
+  final Future<void> Function(TapUpDetails details, Rect photoRect) onTapUp;
   final void Function(
-      NewPostUserTag tag, DragUpdateDetails details, Size renderSize)
+      NewPostUserTag tag, DragUpdateDetails details, Rect photoRect)
       onPillDragUpdate;
   final void Function(NewPostUserTag tag) onPillTap;
   final void Function(NewPostUserTag tag) onPillRemove;
@@ -287,6 +335,7 @@ class _TaggablePhotoPage extends StatelessWidget {
     required this.file,
     required this.tags,
     required this.revealRemoveUserId,
+    required this.photoAspectRatio,
     required this.onTapUp,
     required this.onPillDragUpdate,
     required this.onPillTap,
@@ -299,9 +348,23 @@ class _TaggablePhotoPage extends StatelessWidget {
       builder: (context, constraints) {
         final renderSize =
             Size(constraints.maxWidth, constraints.maxHeight);
+        // Rect area yang BENAR-BENAR ditempati foto di dalam renderSize
+        // (Image.file di bawah pakai BoxFit.contain juga) — kalau aspect
+        // ratio foto belum diketahui (masih loading/gagal), fallback ke
+        // aspect container sendiri (fittedPhotoRect jadi no-op, setara
+        // perilaku lama).
+        final containerAspect = renderSize.height > 0
+            ? renderSize.width / renderSize.height
+            : 1.0;
+        final effectiveAspect =
+            (photoAspectRatio != null && photoAspectRatio!.isFinite && photoAspectRatio! > 0)
+                ? photoAspectRatio!
+                : containerAspect;
+        final photoRect =
+            fittedPhotoRect(renderSize, effectiveAspect, BoxFit.contain);
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTapUp: (details) => onTapUp(details, renderSize),
+          onTapUp: (details) => onTapUp(details, photoRect),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -315,17 +378,31 @@ class _TaggablePhotoPage extends StatelessWidget {
                       color: Colors.white38, size: 40),
                 ),
               ),
-              for (final tag in tags)
-                _TagPillOverlay(
-                  key: ValueKey(tag.userId),
-                  tag: tag,
-                  renderSize: renderSize,
-                  showRemove: revealRemoveUserId == tag.userId,
-                  onDragUpdate: (details) =>
-                      onPillDragUpdate(tag, details, renderSize),
-                  onTap: () => onPillTap(tag),
-                  onRemove: () => onPillRemove(tag),
+              // Layer pill dibungkus Positioned sesuai photoRect — anchor
+              // tag & clamp placeTagPill (via _TagPillOverlay) jadi relatif
+              // FOTO, bukan container (letterbox bar tidak dianggap "dalam
+              // foto").
+              Positioned(
+                left: photoRect.left,
+                top: photoRect.top,
+                width: photoRect.width,
+                height: photoRect.height,
+                child: Stack(
+                  children: [
+                    for (final tag in tags)
+                      _TagPillOverlay(
+                        key: ValueKey(tag.userId),
+                        tag: tag,
+                        renderSize: photoRect.size,
+                        showRemove: revealRemoveUserId == tag.userId,
+                        onDragUpdate: (details) =>
+                            onPillDragUpdate(tag, details, photoRect),
+                        onTap: () => onPillTap(tag),
+                        onRemove: () => onPillRemove(tag),
+                      ),
+                  ],
                 ),
+              ),
             ],
           ),
         );

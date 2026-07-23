@@ -41,6 +41,7 @@ import '../state/settings_store.dart';
 import '../utils/android_back_overlays.dart';
 import '../widgets/feed_tagged_users_overlay.dart';
 import '../widgets/feed_tag_options_sheet.dart';
+import '../widgets/feed_user_tag_pill.dart';
 import '../utils/app_route_observer.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
@@ -2304,12 +2305,56 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                   child: IgnorePointer(
                     ignoring: !_showTagPills,
                     child: LayoutBuilder(
-                      builder: (context, constraints) => FeedTaggedUsersOverlay(
-                        tags: _tagsForCurrentPhoto,
-                        visible: _showTagPills,
-                        photoSize: constraints.biggest,
-                        onTapUser: _onTapTaggedUser,
-                      ),
+                      builder: (context, constraints) {
+                        // Final review Spec B fix — koordinat tag drift:
+                        // foto dirender BoxFit.contain, jadi kalau aspect
+                        // ratio foto != container ada letterbox bar. Hitung
+                        // rect foto yang BENAR-BENAR ter-render via
+                        // fittedPhotoRect, lalu bungkus overlay pill di
+                        // Positioned sesuai rect itu (bukan container
+                        // mentah) supaya placeTagPill (di
+                        // FeedTaggedUsersOverlay) clamp relatif foto.
+                        final container = constraints.biggest;
+                        final currentPhoto = _photoIndex < photos.length
+                            ? photos[_photoIndex]
+                            : null;
+                        final containerAspect = container.height > 0
+                            ? container.width / container.height
+                            : 1.0;
+                        // width/height bisa null untuk post lama (belum
+                        // backfill) — fallback ke aspect container sendiri
+                        // (fittedPhotoRect jadi no-op, setara perilaku lama)
+                        // daripada menebak/crash.
+                        final hasKnownDims = currentPhoto != null &&
+                            currentPhoto.width != null &&
+                            currentPhoto.height != null &&
+                            currentPhoto.width! > 0 &&
+                            currentPhoto.height! > 0;
+                        final effectiveAspect = hasKnownDims
+                            ? currentPhoto.aspectRatio
+                            : containerAspect;
+                        final photoRect = fittedPhotoRect(
+                          container,
+                          effectiveAspect,
+                          BoxFit.contain,
+                        );
+                        return Stack(
+                          children: [
+                            Positioned(
+                              left: photoRect.left,
+                              top: photoRect.top,
+                              width: photoRect.width,
+                              height: photoRect.height,
+                              child: FeedTaggedUsersOverlay(
+                                tags: _tagsForCurrentPhoto,
+                                visible: _showTagPills,
+                                photoSize: photoRect.size,
+                                onTapUser: _onTapTaggedUser,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
                 ),
