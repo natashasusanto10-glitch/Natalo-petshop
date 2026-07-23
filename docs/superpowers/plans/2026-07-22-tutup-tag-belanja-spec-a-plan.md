@@ -395,20 +395,26 @@ menjadi:
           final position = controller.animation?.value ?? controller.index;
           final emphasis =
               (1 - (position - index).abs()).clamp(0.0, 1.0).toDouble();
+          // PREMIUM: emphasis mentah linear terhadap posisi jari saat swipe —
+          // terasa "menempel" ke gerakan. Bungkus dengan easeOutCubic supaya
+          // treatment visual (warna, gerak naik, crossfade) MENGENDAP di
+          // ujung transisi, bukan tracking 1:1. Underline geser TIDAK pakai
+          // ini (mekanismenya sendiri, sudah mulus).
+          final curvedEmphasis = Curves.easeOutCubic.transform(emphasis);
           // Mode expanded (pillOpacity 0, dipakai MemberScreen & profil
           // publik sebelum scroll): dulu foreground SELALU = expandedForeground
           // konstan (bug — tidak pernah ikut emphasis). Sekarang warna
-          // melebur abu→biru brand mengikuti emphasis, sama seperti mode
+          // melebur abu→biru brand mengikuti curvedEmphasis, sama seperti mode
           // pill di bawahnya.
           final expandedDynamic = Color.lerp(
             expandedForeground,
             NataloColors.primary,
-            emphasis,
+            curvedEmphasis,
           )!;
           final collapsedForeground = Color.lerp(
             inactiveForeground,
             activeForeground,
-            emphasis,
+            curvedEmphasis,
           )!;
           final foreground = Color.lerp(
             expandedDynamic,
@@ -427,16 +433,21 @@ Lalu cari baris `Icon(icon, color: foreground, size: iconSize),` di dalam `Row` 
 
 ```dart
                   Transform.translate(
-                    offset: Offset(0, lerpDouble(0, -2.5, emphasis)!),
+                    // Gerak naik 3px di-ease supaya terasa "terangkat lalu
+                    // mengendap", bukan meluncur linear. Crossfade outline↔
+                    // filled memakai kurva yang sama supaya bentuk & posisi
+                    // berubah serempak (premium: satu gerakan, bukan dua
+                    // animasi yang balapan).
+                    offset: Offset(0, lerpDouble(0, -3, curvedEmphasis)!),
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
                         Opacity(
-                          opacity: (1 - emphasis).clamp(0.0, 1.0),
+                          opacity: (1 - curvedEmphasis).clamp(0.0, 1.0),
                           child: Icon(icon, color: foreground, size: iconSize),
                         ),
                         Opacity(
-                          opacity: emphasis.clamp(0.0, 1.0),
+                          opacity: curvedEmphasis.clamp(0.0, 1.0),
                           child: Icon(
                             activeIcon,
                             color: foreground,
@@ -447,6 +458,8 @@ Lalu cari baris `Icon(icon, color: foreground, size: iconSize),` di dalam `Row` 
                     ),
                   ),
 ```
+
+Catatan performa: `Transform.translate` + `Opacity` + `Icon` semuanya murah (tidak ada layout/clip mahal), aman 60fps. `AnimatedBuilder` yang membungkus (sudah ada di widget) rebuild hanya sub-tree ini, bukan seluruh tab bar.
 
 - [ ] **Step 7: Jalankan test, pastikan lulus**
 
@@ -470,7 +483,7 @@ git commit -m "feat: animasi tab aktif (fill biru + gerak naik) konsisten di ket
 ### Task 4: Konten tab "Ditandai" kosong — profil sendiri
 
 **Files:**
-- Modify: `flutter_app/lib/screens/member_screen.dart:420-423` (getter `_taggedPosts`), `:538-557` (teks empty state), `:946-959` (badge tas belanja di thumbnail grid)
+- Modify: `flutter_app/lib/screens/member_screen.dart:420-423` (getter `_taggedPosts`), `:538-557` (teks empty state), `:946-959` (badge tas belanja di thumbnail grid), `:490-493` (haptic tab di `_AccountTabHeaderDelegate`)
 - Test: `flutter_app/test/screens/member_screen_test.dart`
 
 **Interfaces:**
@@ -605,16 +618,42 @@ menjadi:
           ],
 ```
 
-- [ ] **Step 6: Jalankan test, pastikan lulus**
+- [ ] **Step 6: Matikan haptic saat ganti tab (permintaan user)**
+
+User minta haptic pada tap tab profil dimatikan. Di `flutter_app/lib/screens/member_screen.dart` baris ~490-493, ganti:
+
+```dart
+                        delegate: _AccountTabHeaderDelegate(
+                          controller: _tabController,
+                          onTap: (_) => AppHaptics.tap(),
+                        ),
+```
+
+menjadi:
+
+```dart
+                        delegate: _AccountTabHeaderDelegate(
+                          controller: _tabController,
+                          // Haptic ganti-tab sengaja dimatikan (permintaan
+                          // user) — pindah tab profil harus terasa halus,
+                          // tanpa getar. AppHaptics.tap tetap dipakai di
+                          // aksi lain (buka post, edit profil, dll).
+                          onTap: null,
+                        ),
+```
+
+Cek: `_AccountTabHeaderDelegate.onTap` bertipe `ValueChanged<int>?` (sudah nullable — lihat definisinya) dan `PublicProfileContentTabBar` menerima `onTap` nullable, jadi `null` aman. JANGAN sentuh `AppHaptics.tap()` di method lain (`_openEditProfile`, `_shareProfile`, `_openFollowList`, `_openPostDetail`) — hanya haptic tab yang dimatikan.
+
+- [ ] **Step 7: Jalankan test, pastikan lulus**
 
 Run: `cd flutter_app && flutter test test/screens/member_screen_test.dart`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add flutter_app/lib/screens/member_screen.dart flutter_app/test/screens/member_screen_test.dart
-git commit -m "feat: tab Ditandai profil sendiri selalu kosong + hapus badge tas belanja"
+git commit -m "feat: tab Ditandai profil sendiri kosong + hapus badge belanja + matikan haptic tab"
 ```
 
 ---
@@ -622,7 +661,7 @@ git commit -m "feat: tab Ditandai profil sendiri selalu kosong + hapus badge tas
 ### Task 5: Konten tab "Ditandai" kosong — profil publik (tanpa network call)
 
 **Files:**
-- Modify: `flutter_app/lib/screens/public_profile_screen.dart:480-487` (`_activateContent`), `:1412-1457` (`_EmptyPosts`)
+- Modify: `flutter_app/lib/screens/public_profile_screen.dart:480-487` (`_activateContent`), `:1412-1457` (`_EmptyPosts`), `:489-493` (haptic tab di `_onTabTapped`)
 - Test: `flutter_app/test/screens/public_profile_screen_test.dart`
 
 **Interfaces:**
@@ -771,16 +810,42 @@ menjadi:
 
 Catatan: teks ini SENGAJA beda dari versi `member_screen.dart` ("...menandaimu") karena ini profil ORANG LAIN — "menandaimu" salah tata bahasa di konteks ini (lihat spec, bagian koreksi review).
 
-- [ ] **Step 5: Jalankan test, pastikan lulus**
+- [ ] **Step 5: Matikan haptic saat ganti tab (permintaan user)**
+
+Di `flutter_app/lib/screens/public_profile_screen.dart` baris ~489-493, ganti:
+
+```dart
+  void _onTabTapped(int index) {
+    if (index == _profileContentTabs.indexOf(_selectedContent)) return;
+    AppHaptics.tap();
+    _activateContent(_profileContentTabs[index]);
+  }
+```
+
+menjadi:
+
+```dart
+  void _onTabTapped(int index) {
+    if (index == _profileContentTabs.indexOf(_selectedContent)) return;
+    // Haptic ganti-tab sengaja dimatikan (permintaan user) — pindah tab
+    // profil harus terasa halus, tanpa getar. AppHaptics.tap tetap dipakai
+    // di aksi lain (buka post, share, follow, dll).
+    _activateContent(_profileContentTabs[index]);
+  }
+```
+
+JANGAN sentuh `AppHaptics.tap()` di method lain di file ini (share, follow, open post, moderation) — hanya haptic tab yang dimatikan. `AppHaptics` import tetap dipakai, jadi tidak ada unused-import.
+
+- [ ] **Step 6: Jalankan test, pastikan lulus**
 
 Run: `cd flutter_app && flutter test test/screens/public_profile_screen_test.dart`
 Expected: PASS — termasuk test lama (baris 204, `find.text('Ditandai')` dari Task 2) dan test baru.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add flutter_app/lib/screens/public_profile_screen.dart flutter_app/test/screens/public_profile_screen_test.dart
-git commit -m "feat: tab Ditandai profil publik langsung kosong tanpa network call"
+git commit -m "feat: tab Ditandai profil publik kosong tanpa network call + matikan haptic tab"
 ```
 
 ---

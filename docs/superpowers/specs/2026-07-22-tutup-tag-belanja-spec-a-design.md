@@ -13,8 +13,9 @@ Saat ini pengguna bisa menandai produk yang pernah dibeli saat membuat postingan
 
 1. Sembunyikan section "Tag Produk Pernah Dibeli" di layar New Post — reversibel lewat satu flag, tanpa menghapus kode/data.
 2. Ganti tab ke-3 Profil (ikon tas belanja + label "Belanja") menjadi ikon dua-orang + label **"Ditandai"**, dengan isi grid berupa *empty state* statis (belum ada query data — data asli menyusul di Spec B).
-3. Terapkan gaya "tab aktif" yang lebih jelas & premium ke KETIGA tab (Postingan/Video/Ditandai), bukan cuma tab Ditandai — supaya konsisten: ikon outline→filled + warna abu→biru brand + gerak naik tipis (~2–3px), melebur mengikuti swipe (bukan snap instan). Ukuran ikon diseragamkan ke 24px (menyamai bottom nav).
-4. Perubahan berlaku di kedua permukaan yang memakai `PublicProfileContentTabBar`: profil sendiri (`MemberScreen`, mode selalu-expanded) dan profil publik (`PublicProfileScreen`, termasuk mode pill saat header collapse — lihat referensi di bawah).
+3. Terapkan gaya "tab aktif" yang lebih jelas & premium ke KETIGA tab (Postingan/Video/Ditandai), bukan cuma tab Ditandai — supaya konsisten: ikon outline→filled + warna abu→biru brand + gerak naik tipis (~3px), melebur mengikuti swipe (bukan snap instan). Ukuran ikon diseragamkan ke 24px (menyamai bottom nav). Treatment visual (warna/gerak/crossfade) memakai kurva `easeOutCubic` atas nilai `emphasis` supaya mengendap di ujung transisi, bukan tracking 1:1 jari (kesan premium). Indikator garis bawah TIDAK ikut kurva ini (mekanismenya sendiri, sudah mulus).
+4. Matikan haptic saat ganti tab profil (permintaan user) — di kedua layar. `AppHaptics.tap` di aksi lain (buka post, edit profil, follow, share) TIDAK disentuh.
+5. Perubahan berlaku di kedua permukaan yang memakai `PublicProfileContentTabBar`: profil sendiri (`MemberScreen`, mode selalu-expanded) dan profil publik (`PublicProfileScreen`, termasuk mode pill saat header collapse — lihat referensi di bawah).
 
 ## Non-tujuan
 
