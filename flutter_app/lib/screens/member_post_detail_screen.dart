@@ -3124,42 +3124,53 @@ class _PostMediaSurface extends StatelessWidget {
     // Saat user tap thumb di grid, media terbang ke posisi ini via Hero
     // bawaan Flutter. Foto, carousel, DAN video ikut hero (video: texture
     // VideoPlayer yang sama tanpa swap thumbnail, lihat PostHero shuttle).
-    return AspectRatio(
-      aspectRatio: aspectRatio,
-      child: switch (post.contentType) {
-        FeedContentType.video => _wrapHero(
-            context,
-            _InlineVideoPlayer(
-              postId: post.id,
-              coordinator: coordinator,
-              registerVideoUrl: registerVideoUrl,
-              dormant: handoffSessionId == post.id,
-              // videoPlaybackUrl (videoUrl-first), BUKAN previewMediaUrl
-              // (yang thumbnail-first → JPG → player gagal initialize).
-              mediaUrl: videoQualityService.resolvePlaybackUrl(
-                post.videoPlaybackUrl,
-                dataSaverUrl: post.videoDataSaverUrl,
-                userPreference: appSettingsStore.feedVideoQuality,
+    return switch (post.contentType) {
+      // Video: kotak MENGIKUTI ukuran asli controller (fallback rasio
+      // tersimpan sebelum siap) supaya video portrait bermetadata-landscape
+      // tak lagi kena bar hitam kiri-kanan. Lihat _VideoAspectBox.
+      FeedContentType.video => _VideoAspectBox(
+          coordinator: coordinator,
+          postId: post.id,
+          fallbackAspectRatio: aspectRatio,
+          builder: (context, liveAspectRatio) => AspectRatio(
+            aspectRatio: liveAspectRatio,
+            child: _wrapHero(
+              context,
+              _InlineVideoPlayer(
+                postId: post.id,
+                coordinator: coordinator,
+                registerVideoUrl: registerVideoUrl,
+                dormant: handoffSessionId == post.id,
+                // videoPlaybackUrl (videoUrl-first), BUKAN previewMediaUrl
+                // (yang thumbnail-first → JPG → player gagal initialize).
+                mediaUrl: videoQualityService.resolvePlaybackUrl(
+                  post.videoPlaybackUrl,
+                  dataSaverUrl: post.videoDataSaverUrl,
+                  userPreference: appSettingsStore.feedVideoQuality,
+                ),
+                thumbnailUrl: post.thumbnailUrl,
+                aspectRatio: liveAspectRatio,
+                onAnchorReady: onVideoAnchorReady,
+                onMediaSingleTap: onVideoMediaSingleTap,
+                onMediaDoubleTapDown: onVideoMediaDoubleTapDown,
+                onMediaDoubleTap: onVideoMediaDoubleTap,
               ),
-              thumbnailUrl: post.thumbnailUrl,
-              aspectRatio: aspectRatio,
-              onAnchorReady: onVideoAnchorReady,
-              onMediaSingleTap: onVideoMediaSingleTap,
-              onMediaDoubleTapDown: onVideoMediaDoubleTapDown,
-              onMediaDoubleTap: onVideoMediaDoubleTap,
-            ),
-            // Hero flight: TIDAK pakai _InlineVideoPlayer segar (state baru
-            // = unbound sampai VisibilityDetector menembak, throttle lebih
-            // lambat dari durasi flight → placeholder/kosong sekilas alih-
-            // alih video hidup, lihat komentar PostHero.flightChild). Surface
-            // ringan ini baca controller yang SUDAH hidup secara sinkron.
-            flightChild: _HeroVideoFlightSurface(
-              postId: post.id,
-              coordinator: coordinator,
-              thumbnailUrl: post.thumbnailUrl,
+              // Hero flight: TIDAK pakai _InlineVideoPlayer segar (state baru
+              // = unbound sampai VisibilityDetector menembak, throttle lebih
+              // lambat dari durasi flight → placeholder/kosong sekilas alih-
+              // alih video hidup, lihat komentar PostHero.flightChild). Surface
+              // ringan ini baca controller yang SUDAH hidup secara sinkron.
+              flightChild: _HeroVideoFlightSurface(
+                postId: post.id,
+                coordinator: coordinator,
+                thumbnailUrl: post.thumbnailUrl,
+              ),
             ),
           ),
-        FeedContentType.carousel => _wrapHero(
+        ),
+      FeedContentType.carousel => AspectRatio(
+          aspectRatio: aspectRatio,
+          child: _wrapHero(
             context,
             _CarouselSurface(
               post: post,
@@ -3169,15 +3180,18 @@ class _PostMediaSurface extends StatelessWidget {
               handoffSessionId: handoffSessionId,
             ),
           ),
-        FeedContentType.photo => _wrapHero(
+        ),
+      FeedContentType.photo => AspectRatio(
+          aspectRatio: aspectRatio,
+          child: _wrapHero(
             context,
             _ImageSurface(
               imageUrl: post.previewMediaUrl,
               placeholderIcon: Icons.image_outlined,
             ),
           ),
-      },
-    );
+        ),
+    };
   }
 }
 
@@ -3331,6 +3345,96 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
 /// pun. Rendering TIDAK digerbang oleh playbackAllowed/dormant — yang
 /// digambar murni fungsi ready/tidak (gotcha VideoCompressGate-adjacent:
 /// jangan gantungkan apa yang DIGAMBAR pada state play/pause).
+/// Membungkus media video Postingan dengan [AspectRatio] yang MENGIKUTI ukuran
+/// video ASLI (`controller.value.size`) begitu controller siap; sebelum itu
+/// pakai [fallbackAspectRatio] (metadata tersimpan).
+///
+/// KENAPA: lihat [resolvePostinganVideoBoxAspectRatio] — metadata dimensi bisa
+/// salah (landscape utk video portrait) → kotak lebar → bar hitam kiri-kanan.
+/// Feed/fullscreen sudah pakai ukuran asli; ini menyamakan halaman Postingan.
+///
+/// Pola listen SAMA dengan [_HeroVideoFlightSurface]: [registryListenable]
+/// (sesi muncul saat attach lazily) + `session.revision` (init selesai).
+class _VideoAspectBox extends StatefulWidget {
+  final PostVideoCoordinator coordinator;
+  final String postId;
+  final double fallbackAspectRatio;
+  final Widget Function(BuildContext context, double aspectRatio) builder;
+
+  const _VideoAspectBox({
+    required this.coordinator,
+    required this.postId,
+    required this.fallbackAspectRatio,
+    required this.builder,
+  });
+
+  @override
+  State<_VideoAspectBox> createState() => _VideoAspectBoxState();
+}
+
+class _VideoAspectBoxState extends State<_VideoAspectBox> {
+  VideoPlayerSession? _session;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.coordinator.registryListenable.addListener(_onRegistry);
+    _bind();
+  }
+
+  @override
+  void didUpdateWidget(covariant _VideoAspectBox oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.coordinator != widget.coordinator) {
+      oldWidget.coordinator.registryListenable.removeListener(_onRegistry);
+      widget.coordinator.registryListenable.addListener(_onRegistry);
+    }
+    if (oldWidget.postId != widget.postId ||
+        oldWidget.coordinator != widget.coordinator) {
+      _bind();
+    }
+  }
+
+  /// Sesi terdaftar/berubah → re-cek sessionFor (sesi bisa baru muncul).
+  void _onRegistry() {
+    _bind();
+    if (mounted) setState(() {});
+  }
+
+  void _bind() {
+    final session = widget.coordinator.sessionFor(widget.postId);
+    final next = session is VideoPlayerSession ? session : null;
+    if (identical(next, _session)) return;
+    _session?.revision.removeListener(_onRevision);
+    _session = next;
+    _session?.revision.addListener(_onRevision);
+  }
+
+  void _onRevision() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.coordinator.registryListenable.removeListener(_onRegistry);
+    _session?.revision.removeListener(_onRevision);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _session?.controller;
+    final liveSize = (controller != null && controller.value.isInitialized)
+        ? controller.value.size
+        : null;
+    final aspectRatio = resolvePostinganVideoBoxAspectRatio(
+      fallbackAspectRatio: widget.fallbackAspectRatio,
+      liveSize: liveSize,
+    );
+    return widget.builder(context, aspectRatio);
+  }
+}
+
 class _HeroVideoFlightSurface extends StatefulWidget {
   final String postId;
   final PostVideoCoordinator coordinator;
