@@ -1044,7 +1044,8 @@ class _PostThumbnail extends StatelessWidget {
                   size: 28,
                 ),
               ),
-            // Type indicator top-right: video play saja. Badge tas belanja
+            // Type indicator top-right: video play, atau carousel (multi-foto)
+            // ala IG (kotak bertumpuk) kalau bukan video. Badge tas belanja
             // utk post lama yang punya produk tertaut sengaja dihapus
             // (Spec A) — tidak ada lagi jejak visual "tag belanja" di
             // Profil. Lihat
@@ -1054,6 +1055,12 @@ class _PostThumbnail extends StatelessWidget {
                 top: 8,
                 right: 8,
                 child: _ThumbnailIcon(icon: Icons.play_arrow_rounded),
+              )
+            else if (post.isCarousel || post.mediaItems.length > 1)
+              const Positioned(
+                top: 8,
+                right: 8,
+                child: _ThumbnailIcon(icon: Icons.collections_rounded),
               ),
           ],
         ),
