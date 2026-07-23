@@ -698,19 +698,7 @@ menjadi:
 
 - [ ] **Step 5: Hapus badge tas belanja di thumbnail grid "Postingan"**
 
-Tulis dulu test yang gagal — tambahkan di `flutter_app/test/screens/member_screen_test.dart`:
-
-```dart
-  testWidgets('badge tas belanja tidak lagi muncul di thumbnail grid',
-      (tester) async {
-    await pumpScreen(tester);
-    expect(find.byIcon(Icons.shopping_bag_outlined), findsNothing);
-  });
-```
-
-Run: `cd flutter_app && flutter test test/screens/member_screen_test.dart -n "badge tas belanja"` — expected FAIL kalau kebetulan ada post lama dengan produk tertaut ter-render (di test env network gagal cepat sehingga `_allPosts` biasanya kosong dan test ini PASS secara trivial; tetap tulis sebagai regression guard).
-
-Lalu di `flutter_app/lib/screens/member_screen.dart` baris 946-959, ganti:
+Tanpa test unit khusus (guard-nya lemah: di test env post tidak ter-load, jadi test `findsNothing` lulus trivial tanpa bisa "gagal dulu" — keputusan user: andalkan golden regen Task 6 + code review untuk verifikasi visual). Cukup ubah kodenya. Di `flutter_app/lib/screens/member_screen.dart` baris 946-959, ganti:
 
 ```dart
             // Type indicators top-right (video play OR shopping bag).
