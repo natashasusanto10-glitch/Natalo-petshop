@@ -18,6 +18,7 @@ import '../features/feed/widgets/gallery_post_tile.dart'
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
+import '../services/profile_service.dart';
 import '../services/video_quality_service.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
@@ -42,6 +43,12 @@ import 'public_profile_follow_list_screen.dart';
 /// production; must be reset to null in `tearDown`.
 @visibleForTesting
 Future<FeedPage> Function({String filter, String? cursor})? debugMyPostsFetcher;
+
+/// Test-only seam — bypasses the real network call in `_loadTaggedPosts` so
+/// widget tests can seed tab "Ditandai" deterministically (Spec B). Null in
+/// production; must be reset to null in `tearDown`.
+@visibleForTesting
+Future<PublicProfileResult> Function(String username)? debugTaggedPostsFetcher;
 
 /// Halaman Akun — social profile + galeri postingan user.
 ///
@@ -143,18 +150,49 @@ class _ProfilePageState extends State<_ProfilePage>
   PostVideoWarmHandoff? _preparedHandoff;
   final _tileKeys = <String, GlobalKey>{};
 
+  // Tab "Ditandai" (Spec B) — post orang lain yang menandai user ini. Fetch
+  // TERPISAH dari _allPosts (bukan derived getter seperti _videoPosts) lewat
+  // endpoint profil publik milik sendiri (content=tagged); hidden sudah
+  // di-exclude server-side (Task 4).
+  List<FeedPost> _taggedPostsData = const [];
+  bool _taggedLoaded = false;
+  bool _taggedLoading = false;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 3, vsync: this)
+      ..addListener(_onTabControllerChanged);
     _loadAll();
   }
 
   @override
   void dispose() {
     unawaited(_preparedHandoff?.disposeIfUnclaimed());
-    _tabController.dispose();
+    _tabController
+      ..removeListener(_onTabControllerChanged)
+      ..dispose();
     super.dispose();
+  }
+
+  /// Tap langsung tab (respon instan, tak menunggu animasi tab settle).
+  void _onAccountTabTapped(int index) => _maybeLoadTaggedPosts(index);
+
+  /// Swipe TabBarView (setelah animasi settle di index integer) — mirror
+  /// pola `_PublicProfileScreenState._onTabControllerChanged`.
+  void _onTabControllerChanged() {
+    if (_tabController.indexIsChanging) return;
+    final position = _tabController.animation?.value;
+    if (position != null && (position - _tabController.index).abs() > 0.001) {
+      return;
+    }
+    _maybeLoadTaggedPosts(_tabController.index);
+  }
+
+  void _maybeLoadTaggedPosts(int tabIndex) {
+    if (tabIndex == 2 && !_taggedLoaded && !_taggedLoading) {
+      unawaited(_loadTaggedPosts());
+    }
   }
 
   PostVideoWarmHandoff? _createWarmHandoff(FeedPost post) {
@@ -242,11 +280,48 @@ class _ProfilePageState extends State<_ProfilePage>
     }
   }
 
+  /// Fetch tab "Ditandai" — endpoint profil publik milik SENDIRI
+  /// (`content=tagged`, Task 4), sumber username sama dengan yang
+  /// ditampilkan header (`memberStore.profile?.username` — dipakai juga
+  /// oleh `_ProfileTopBar`/`_ownPublicProfile().displayHandle`). User yang
+  /// belum set username (nullable, lihat `MemberProfile.username`) tidak
+  /// bisa di-fetch lewat rute ini — tab tetap kosong (aman, bukan error).
+  Future<void> _loadTaggedPosts() async {
+    final username = memberStore.profile?.username;
+    if (username == null || username.isEmpty) return;
+    if (_taggedLoading) return;
+    _taggedLoading = true;
+    try {
+      final fetcher = debugTaggedPostsFetcher ??
+          (String u) => profileService.fetchPublicProfile(
+                username: u,
+                content: PublicProfileContentFilter.shoppable,
+              );
+      final result = await fetcher(username);
+      if (!mounted) return;
+      setState(() {
+        _taggedPostsData = result.posts;
+        _taggedLoaded = true;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _taggedLoaded = true);
+    } finally {
+      _taggedLoading = false;
+    }
+  }
+
   Future<void> _refresh() async {
-    // Segarkan posts + profil (follower/following count di /api/auth/me)
-    // paralel. hydrateFromApi notify listeners → AnimatedBuilder luar
-    // rebuild dgn count terbaru.
-    await Future.wait([_loadAll(), memberStore.hydrateFromApi()]);
+    // Segarkan posts + profil (follower/following count di /api/auth/me) +
+    // tab Ditandai, paralel. hydrateFromApi notify listeners → AnimatedBuilder
+    // luar rebuild dgn count terbaru. Ditandai ikut di-refresh TANPA syarat
+    // (sama seperti _loadAll untuk "all"/"video") supaya "Hapus saya"/
+    // "Sembunyikan" (Task 12) yang terjadi di layar lain langsung terlihat
+    // begitu user menarik-refresh, tanpa perlu store sinkronisasi baru.
+    await Future.wait([
+      _loadAll(),
+      memberStore.hydrateFromApi(),
+      _loadTaggedPosts(),
+    ]);
   }
 
   Future<void> _openCreatePost() async {
@@ -363,7 +438,16 @@ class _ProfilePageState extends State<_ProfilePage>
       await handoff?.disposeIfUnclaimed();
       _openingPost = false;
     }
-    if (mounted) await _loadAll();
+    if (mounted) {
+      await _loadAll();
+      // Sinkron "Hapus saya"/"Sembunyikan" (Task 12): kalau viewer yang baru
+      // ditutup sempat mengubah tag diri sendiri, tab Ditandai harus
+      // reflect itu. Tidak ada store sinkronisasi baru — cukup tandai stale
+      // (refetch lazy saat tab dibuka lagi) + langsung refetch kalau user
+      // KEBETULAN sedang berada di tab itu sekarang.
+      _taggedLoaded = false;
+      _maybeLoadTaggedPosts(_tabController.index);
+    }
   }
 
   /// Dipanggil sinkron saat viewer pop, dengan id post yang sedang tampil.
@@ -419,10 +503,11 @@ class _ProfilePageState extends State<_ProfilePage>
 
   List<FeedPost> get _videoPosts => _allPosts.where((p) => p.isVideo).toList();
 
-  // Tab "Ditandai" (dulu "Belanja") sengaja selalu kosong sampai Spec B
-  // (Tag People) membangun data tag-orang sungguhan. Lihat
-  // docs/superpowers/specs/2026-07-22-tutup-tag-belanja-spec-a-design.md.
-  List<FeedPost> get _taggedPosts => const [];
+  // Tab "Ditandai" (Spec B) — post orang lain yang menandai user ini, dari
+  // `_loadTaggedPosts` (bukan derived dari `_allPosts` seperti `_videoPosts`,
+  // karena sumbernya endpoint terpisah — profil publik milik sendiri dengan
+  // `content=tagged`).
+  List<FeedPost> get _taggedPosts => _taggedPostsData;
 
   @override
   Widget build(BuildContext context) {
@@ -495,7 +580,11 @@ class _ProfilePageState extends State<_ProfilePage>
                           // user) — pindah tab profil harus terasa halus,
                           // tanpa getar. AppHaptics.tap tetap dipakai di
                           // aksi lain (buka post, edit profil, dll).
-                          onTap: null,
+                          // onTap tetap dipakai (bukan haptic) untuk memicu
+                          // _loadTaggedPosts() secepat mungkin saat tab
+                          // Ditandai di-tap langsung — tak perlu menunggu
+                          // animasi swipe settle (_onTabControllerChanged).
+                          onTap: _onAccountTabTapped,
                         ),
                       ),
                     ],
@@ -543,14 +632,18 @@ class _ProfilePageState extends State<_ProfilePage>
                         ),
                         _PostGrid(
                           posts: _taggedPosts,
-                          loading: _loadingPosts,
-                          errorText: _postsError,
+                          // Loading state SENDIRI (bukan _loadingPosts, yang
+                          // hanya milik _loadAll/_allPosts) — true sampai
+                          // fetch pertama tab ini selesai (sukses ATAU
+                          // gagal; lihat _loadTaggedPosts).
+                          loading: !_taggedLoaded,
+                          errorText: null,
                           emptyText: 'Belum ada postingan yang menandaimu',
                           emptySubtext:
                               'Saat orang lain menandaimu di sebuah postingan, itu akan muncul di sini.',
                           showCreateCta: false,
                           onCreateCta: _openCreatePost,
-                          onRetry: _loadAll,
+                          onRetry: _loadTaggedPosts,
                           onTapPost: (idx) =>
                               _openPostDetail(_taggedPosts, idx, 'tagged'),
                           heroScope: _heroScopeFor('tagged'),
