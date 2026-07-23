@@ -22,6 +22,8 @@ import {
   isAdminRole,
   likeRowActorFields,
   notificationActorFields,
+  NOTIF_ACTOR_NAME_TOKEN,
+  NOTIF_ACTOR_USERNAME_TOKEN,
   OFFICIAL_BRAND_NAME,
   topLikerAvatars,
 } from "@/lib/social/brand-user";
@@ -70,17 +72,18 @@ export async function sendCommentNotification(params: {
       where: { id: params.actorUserId },
       select: { name: true, role: true, profilePhotoUrl: true },
     });
-    // Akun official (admin) → brand name; nama asli pemilik tak boleh bocor.
-    const actorName = isAdminRole(actor?.role)
-      ? OFFICIAL_BRAND_NAME
-      : actor?.name?.trim() || "Seseorang";
     const actorFields = notificationActorFields(
       actor?.role,
       actor?.name,
       actor?.profilePhotoUrl
     );
 
-    const commentText = buildCommentNotificationText(actorName, params.content);
+    // Judul simpan token nama → read path isi nama LIVE (lihat notifications/me);
+    // push di-fill snapshot oleh createFeedNotification.
+    const commentText = buildCommentNotificationText(
+      NOTIF_ACTOR_NAME_TOKEN,
+      params.content,
+    );
 
     await createFeedNotification({
       userId: post.authorId,
@@ -95,6 +98,7 @@ export async function sendCommentNotification(params: {
       commentId: params.commentId,
       data: { comment_id: params.commentId },
       surface: SOCIAL_NOTIFICATION_SOURCE,
+      actorId: params.actorUserId,
       actor: {
         avatarUrl: actorFields.actorAvatarUrl,
         name: actorFields.actorName,
@@ -128,9 +132,6 @@ export async function sendReplyNotification(params: {
       where: { id: params.actorUserId },
       select: { name: true, role: true, profilePhotoUrl: true },
     });
-    const actorName = isAdminRole(actor?.role)
-      ? OFFICIAL_BRAND_NAME
-      : actor?.name?.trim() || "Seseorang";
     const actorFields = notificationActorFields(
       actor?.role,
       actor?.name,
@@ -150,7 +151,7 @@ export async function sendReplyNotification(params: {
     await createFeedNotification({
       userId: parent.authorId,
       eventType: "feed_new_comment",
-      title: `${actorName} membalas komentarmu`,
+      title: `${NOTIF_ACTOR_NAME_TOKEN} membalas komentarmu`,
       message: truncateFeedText(params.content),
       feedPostId: params.postId,
       thumbnailUrl: post ? feedNotificationThumbnail(post) : null,
@@ -163,6 +164,7 @@ export async function sendReplyNotification(params: {
         reply_comment_id: params.replyCommentId,
       },
       surface: SOCIAL_NOTIFICATION_SOURCE,
+      actorId: params.actorUserId,
       actor: {
         avatarUrl: actorFields.actorAvatarUrl,
         name: actorFields.actorName,
@@ -213,14 +215,13 @@ export async function sendMentionNotifications(params: {
       }),
     ]);
     if (!post) return;
-    // IG/TikTok pattern: notif title pakai bare username sebagai
-    // identity label, bukan `@username`. Konsisten dengan rule
-    // "identity = no @, mention in text = @". Akun official → brand name.
-    const actorName = isAdminRole(actor?.role)
+    // IG/TikTok pattern: notif title pakai bare username sebagai identity
+    // label, bukan `@username`. Judul simpan token username → read path isi
+    // username LIVE. Snapshot username (brand-safe) untuk fill push. Akun
+    // official → brand name (username asli pemilik tak boleh bocor).
+    const actorUsernameSnapshot = isAdminRole(actor?.role)
       ? OFFICIAL_BRAND_NAME
-      : actor?.username && actor.username.length > 0
-        ? actor.username
-        : actor?.name?.trim() || "Seseorang";
+      : actor?.username?.trim() || actor?.name?.trim() || "Seseorang";
     const actorFields = notificationActorFields(
       actor?.role,
       actor?.name,
@@ -229,8 +230,8 @@ export async function sendMentionNotifications(params: {
 
     const isComment = params.source === "comment";
     const title = isComment
-      ? `${actorName} menyebut kamu di komentar`
-      : `${actorName} menyebut kamu di postingan`;
+      ? `${NOTIF_ACTOR_USERNAME_TOKEN} menyebut kamu di komentar`
+      : `${NOTIF_ACTOR_USERNAME_TOKEN} menyebut kamu di postingan`;
     const message = truncateFeedText(params.excerpt);
 
     // Filter actor sendiri (defensive — caller seharusnya sudah skip).
@@ -263,9 +264,11 @@ export async function sendMentionNotifications(params: {
               : {}),
           },
           surface: SOCIAL_NOTIFICATION_SOURCE,
+          actorId: params.actorUserId,
           actor: {
             avatarUrl: actorFields.actorAvatarUrl,
             name: actorFields.actorName,
+            username: actorUsernameSnapshot,
           },
         }),
       ),
@@ -366,7 +369,6 @@ export async function sendLikeNotification(params: {
       actor?.name,
       actor?.profilePhotoUrl,
     );
-    const likerName = actorFields.actorName ?? "Seseorang";
 
     const since = new Date(Date.now() - LIKE_BATCH_WINDOW_MS);
     const recentUnread = await prisma.announcement.findFirst({
@@ -411,13 +413,14 @@ export async function sendLikeNotification(params: {
       userId: post.authorId,
       eventType: "feed_new_like",
       title: "Feed kamu mendapat like baru",
-      message: `${likerName} menyukai postingan ${quoteFeedTitle(post.title)}.`,
+      message: `${NOTIF_ACTOR_NAME_TOKEN} menyukai postingan ${quoteFeedTitle(post.title)}.`,
       feedPostId: post.id,
       thumbnailUrl: thumb,
       url: feedPostOwnerUrl(post.id),
       ctaLabel: "Lihat Postingan",
       tag: `feed-like-${post.id}`,
       data: { like_count: String(params.likeCount) },
+      actorId: params.actorUserId,
       actor: { avatarUrl: actorFields.actorAvatarUrl, name: actorFields.actorName },
       surface: SOCIAL_NOTIFICATION_SOURCE,
     });
@@ -468,7 +471,6 @@ export async function sendCommentLikeNotification(params: {
       actor?.name,
       actor?.profilePhotoUrl,
     );
-    const likerName = actorFields.actorName ?? "Seseorang";
 
     const since = new Date(Date.now() - LIKE_BATCH_WINDOW_MS);
     const recentUnread = await prisma.announcement.findFirst({
@@ -513,7 +515,7 @@ export async function sendCommentLikeNotification(params: {
       userId: params.commentAuthorId,
       eventType: "feed_new_like",
       title: "Komentarmu mendapat like",
-      message: `${likerName} menyukai komentarmu di Feed.`,
+      message: `${NOTIF_ACTOR_NAME_TOKEN} menyukai komentarmu di Feed.`,
       feedPostId: params.postId,
       thumbnailUrl: post ? feedNotificationThumbnail(post) : null,
       url: feedPostOwnerUrl(params.postId),
@@ -524,6 +526,7 @@ export async function sendCommentLikeNotification(params: {
         comment_id: params.commentId,
         like_count: String(params.likeCount),
       },
+      actorId: params.actorUserId,
       actor: { avatarUrl: actorFields.actorAvatarUrl, name: actorFields.actorName },
       surface: SOCIAL_NOTIFICATION_SOURCE,
     });
