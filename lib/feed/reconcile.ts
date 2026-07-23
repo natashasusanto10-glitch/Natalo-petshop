@@ -65,6 +65,7 @@ export async function reconcileFeedPost(
       encodingStatus: true,
       videoGuid: true,
       createdAt: true,
+      authorId: true,
     },
   });
   if (!post) return { action: "skipped", postId, detail: "post-not-found" };
@@ -132,6 +133,18 @@ export async function reconcileFeedPost(
     });
     // WAJIB await — alasan sama dengan publish-push di bawah.
     await sendFeedPendingReviewNotification({ postId: post.id });
+    // Tag People VIDEO fix (final review Spec B) — notif tagged-user
+    // dipindah ke SINI (ready-transition), BUKAN provision time. Lihat
+    // notifyTaggedUsersOnVideoReady di lib/feed/activity-notifications.ts
+    // untuk alasan lengkap (notif phantom kalau upload dibatalkan/encoding
+    // gagal). WAJIB await — alasan sama dengan publish-push di bawah.
+    const { notifyTaggedUsersOnVideoReady } = await import(
+      "@/lib/feed/activity-notifications"
+    );
+    await notifyTaggedUsersOnVideoReady({
+      postId: post.id,
+      actorUserId: post.authorId,
+    });
     // Publish-push — HARUS dipicu di sini juga, bukan cuma di webhook.
     // Bunny webhook feed sering miss FINISHED (lihat komentar bunny-reconcile),
     // jadi reconcile-lah yang biasanya menandai post "ready". Kalau trigger

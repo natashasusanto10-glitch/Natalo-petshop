@@ -95,6 +95,38 @@ export type SerializedTaggedUser = {
 };
 
 /**
+ * Ready-transition notif fix (final review Spec B) — re-derive daftar
+ * recipient userId dari baris FeedTaggedUser TERSIMPAN di DB (bukan dari
+ * body request provisioning yang sudah basi). Dedupe saja; self-filter
+ * (actor tidak dinotif ke diri sendiri) tetap tanggung jawab
+ * sendTaggedUserNotifications (lib/feed/activity-notifications.ts) supaya
+ * tidak dobel logic. Dipakai oleh notifyTaggedUsersOnVideoReady.
+ */
+export function taggedUserIdsFromRows(
+  rows: ReadonlyArray<{ taggedUserId: string }>,
+): string[] {
+  return [...new Set(rows.map((row) => row.taggedUserId))];
+}
+
+/**
+ * Viewer self-hide state (final review Spec B fix) — "viewerTagHidden" pada
+ * level POST (bukan per-tag) merepresentasikan "apakah tag milik VIEWER YANG
+ * SEDANG REQUEST ini disembunyikan", null kalau viewer tidak login atau tidak
+ * ditandai di post ini. TIDAK PERNAH membocorkan status hidden tag milik user
+ * lain — hanya baris yang cocok dengan viewerUserId yang pernah dibaca.
+ * Tanpa field ini, sheet Opsi Tag selalu mulai dari `false` (session-local
+ * saja) sehingga "un-hide" tidak bisa dijangkau lagi setelah app restart.
+ */
+export function resolveViewerTagHidden(
+  rows: ReadonlyArray<Pick<TaggedUserRow, "hidden"> & { taggedUser: { id: string } }>,
+  viewerUserId: string | null | undefined,
+): boolean | null {
+  if (!viewerUserId) return null;
+  const own = rows.find((row) => row.taggedUser.id === viewerUserId);
+  return own ? own.hidden : null;
+}
+
+/**
  * Shape response taggedUsers[] untuk semua endpoint post. Identitas akun
  * official WAJIB di-brand-kan (brand-user.ts) — nama/foto asli pemilik
  * tidak boleh bocor.

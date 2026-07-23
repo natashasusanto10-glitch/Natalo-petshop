@@ -17,6 +17,7 @@
  * action that triggered them.
  */
 
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   isAdminRole,
@@ -35,6 +36,7 @@ import {
   truncateFeedText,
 } from "@/lib/feed/notification-center";
 import { feedNotificationThumbnail } from "@/lib/feed/notification-thumbnail";
+import { taggedUserIdsFromRows } from "@/lib/feed/tagged-users";
 
 // Milestone helper remains available for bulk/broadcast-style summaries.
 // Per-like Notification Center entries are batched below.
@@ -343,6 +345,56 @@ export async function sendTaggedUserNotifications(params: {
     );
   } catch (err) {
     console.warn("[feed-activity] sendTaggedUserNotifications:", err);
+  }
+}
+
+/**
+ * Tag People VIDEO fix (final review Spec B) — dispatch notif tagged-user
+ * persis saat video post bertransisi ke `encodingStatus: "ready"` (video
+ * benar-benar playable), BUKAN saat provision time
+ * (app/api/feed/bunny/upload-url/route.ts TIDAK LAGI memanggil
+ * sendTaggedUserNotifications langsung). Sebelumnya notif dikirim begitu
+ * row FeedPost dibuat dengan encodingStatus "uploading" — kalau upload
+ * dibatalkan atau encoding gagal, tagged user tetap dapat notif phantom
+ * yang mengarah ke post yang tak pernah tayang (videoUrl masih null).
+ *
+ * Dipanggil dari 2 hook point yang sama-sama menandai ready:
+ *   - lib/feed/reconcile.ts (cron/manual reconcile)
+ *   - app/api/feed/bunny/webhook/route.ts (webhook Bunny)
+ *
+ * Re-derive recipient dari baris FeedTaggedUser TERSIMPAN di DB (query
+ * fresh di sini), bukan dari data provisioning-time yang sudah basi — kalau
+ * tag berubah selagi video masih encoding, notif tetap akurat.
+ *
+ * `db`/`notify` injectable untuk test (default: prisma asli +
+ * sendTaggedUserNotifications asli) — pola sama dengan
+ * lib/feed/queries.ts getFeedCommentDetail. Errors ditelan (konsisten
+ * dengan semua helper notif lain di file ini) — kegagalan notif tidak
+ * boleh menggagalkan transisi ready itu sendiri.
+ */
+export async function notifyTaggedUsersOnVideoReady(
+  params: { postId: string; actorUserId: string },
+  deps: {
+    db?: Pick<Prisma.TransactionClient, "feedTaggedUser">;
+    notify?: typeof sendTaggedUserNotifications;
+  } = {},
+) {
+  const db = deps.db ?? prisma;
+  const notify = deps.notify ?? sendTaggedUserNotifications;
+  try {
+    const rows = await db.feedTaggedUser.findMany({
+      where: { feedPostId: params.postId },
+      select: { taggedUserId: true },
+    });
+    const recipientUserIds = taggedUserIdsFromRows(rows);
+    if (recipientUserIds.length === 0) return;
+    await notify({
+      actorUserId: params.actorUserId,
+      recipientUserIds,
+      postId: params.postId,
+    });
+  } catch (err) {
+    console.warn("[feed-activity] notifyTaggedUsersOnVideoReady:", err);
   }
 }
 

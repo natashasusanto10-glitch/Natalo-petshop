@@ -409,21 +409,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Tag People notif — WAJIB await (Vercel void-promise freeze).
-  if (taggedUsers.length > 0) {
-    try {
-      const { sendTaggedUserNotifications } = await import(
-        "@/lib/feed/activity-notifications"
-      );
-      await sendTaggedUserNotifications({
-        actorUserId: session.sub,
-        recipientUserIds: taggedUsers.map((t) => t.userId),
-        postId: post.id,
-      });
-    } catch (err) {
-      console.warn("[upload-url] tagged notif failed:", err);
-    }
-  }
+  // Tag People notif — SENGAJA TIDAK dikirim di sini (final review Spec B
+  // fix). Provision time = row masih encodingStatus "uploading", video BELUM
+  // playable. Mengirim notif di sini (perilaku lama) bikin user yang
+  // ditandai dapat notif phantom kalau upload dibatalkan/encoding gagal
+  // sebelum video pernah tayang, dan deep-link bisa resolve ke post dengan
+  // videoUrl masih null. Notif dipicu nanti persis saat encodingStatus
+  // bertransisi ke "ready" — lihat notifyTaggedUsersOnVideoReady di
+  // lib/feed/activity-notifications.ts, dipanggil dari lib/feed/reconcile.ts
+  // dan app/api/feed/bunny/webhook/route.ts (kedua tempat yang menandai
+  // ready). FeedTaggedUser rows tetap dibuat di transaction di atas — cuma
+  // dispatch notifikasinya yang ditunda.
 
   // TUS resumable upload — SATU-SATUNYA path sekarang. Pakai signature
   // scoped per-video (generateBunnyTusCredentials), bukan master key.

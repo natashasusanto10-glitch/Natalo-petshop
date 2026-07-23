@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import {
   MAX_TAGGED_USERS_PER_POST,
   parseTaggedUsersInput,
+  resolveViewerTagHidden,
   serializeTaggedUsers,
+  taggedUserIdsFromRows,
 } from "../lib/feed/tagged-users";
 
 test("limit 20 tag per post", () => {
@@ -133,4 +135,57 @@ test("pesan error limit menyebut angka 20 (dipakai snackbar client)", () => {
   const result = parseTaggedUsersInput(raw, { mediaCount: 1, isVideo: false });
   assert.equal(result.ok, false);
   if (!result.ok) assert.match(result.error, /20/);
+});
+
+// ── taggedUserIdsFromRows (final review Spec B fix — video ready notif) ──
+
+test("taggedUserIdsFromRows: dedupe taggedUserId duplikat", () => {
+  const ids = taggedUserIdsFromRows([
+    { taggedUserId: "u1" },
+    { taggedUserId: "u2" },
+    { taggedUserId: "u1" },
+  ]);
+  assert.deepEqual(ids, ["u1", "u2"]);
+});
+
+test("taggedUserIdsFromRows: array kosong → []", () => {
+  assert.deepEqual(taggedUserIdsFromRows([]), []);
+});
+
+// ── resolveViewerTagHidden (final review Spec B fix — un-hide reachability) ──
+
+function tagRow(userId: string, hidden: boolean) {
+  return { hidden, taggedUser: { id: userId } };
+}
+
+test("resolveViewerTagHidden: viewer adalah tag yang hidden=true → true", () => {
+  const rows = [tagRow("viewer1", true), tagRow("other1", false)];
+  assert.equal(resolveViewerTagHidden(rows, "viewer1"), true);
+});
+
+test("resolveViewerTagHidden: viewer adalah tag yang hidden=false → false", () => {
+  const rows = [tagRow("viewer1", false), tagRow("other1", true)];
+  assert.equal(resolveViewerTagHidden(rows, "viewer1"), false);
+});
+
+test("resolveViewerTagHidden: viewer tidak ditandai di post ini → null", () => {
+  const rows = [tagRow("other1", true), tagRow("other2", false)];
+  assert.equal(resolveViewerTagHidden(rows, "viewer1"), null);
+});
+
+test("resolveViewerTagHidden: tanpa viewerUserId (anonim) → null", () => {
+  const rows = [tagRow("other1", true)];
+  assert.equal(resolveViewerTagHidden(rows, null), null);
+  assert.equal(resolveViewerTagHidden(rows, undefined), null);
+});
+
+test("resolveViewerTagHidden: tidak membocorkan hidden state user LAIN — viewer beda dari tag yang hidden tetap null, bukan ikut true", () => {
+  // other1 hidden=true, tapi viewer yang tanya adalah other2 (juga ditandai,
+  // tapi hidden=false) — hasil harus reflect baris OTHER2, bukan "leak" dari
+  // other1.
+  const rows = [tagRow("other1", true), tagRow("other2", false)];
+  assert.equal(resolveViewerTagHidden(rows, "other2"), false);
+  // Viewer ketiga yang tidak ada di rows sama sekali → null, tidak mewarisi
+  // hidden state siapa pun.
+  assert.equal(resolveViewerTagHidden(rows, "stranger"), null);
 });
