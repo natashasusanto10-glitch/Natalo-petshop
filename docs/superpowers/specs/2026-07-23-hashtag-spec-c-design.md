@@ -97,6 +97,19 @@ Semua di **editor caption existing** (`feed_caption_edit_screen.dart`) — dipak
 - Empty state: "Belum ada postingan dengan tag ini."
 - Tap hashtag dari post di dalam halaman hashtag → menumpuk halaman hashtag lagi (back stack normal, ala IG).
 
+## 3b. Kualitas UI premium (WAJIB — pelajaran Spec B)
+
+Spec B butuh dua PR polish susulan karena standar ini tidak tertulis di spec-nya. Untuk Spec C, semuanya requirement sejak awal:
+
+- **Semantics** di setiap elemen interaktif baru: baris `HashtagPicker` ("Tag kucing, 24 postingan"), span hashtag (label "Tag kucing"), AppBar halaman hashtag.
+- **Tap target**: baris picker ≥48dp (ListTile default lolos). Span hashtag inline text = pengecualian sadar (setinggi baris, sama seperti mention & IG) — dicatat, bukan dilanggar diam-diam.
+- **Tap feedback**: elemen interaktif custom non-ListTile wajib pressed-state (pola `_PressableTag` dari feed_user_tag_pill.dart); ListTile sudah punya ripple bawaan.
+- **Reduced-motion**: animasi baru APA PUN (kemunculan overlay picker dll.) lewat `MotionPrefs.effective(context, ...)` — konsisten fix #252.
+- **State halaman hashtag**: error TIDAK boleh menyamar jadi empty state (bug app-wide yang sudah dibersihkan PR #46) — pakai error view + coba-lagi standar app; loading pakai pola grid existing; footer indikator paginasi.
+- **Haptic**: pilih saran picker = haptic ringan, samakan dengan perilaku MentionPicker existing (verifikasi saat planning).
+- **Kontras**: biru `0xFF0B7FEA` di atas putih ~3,9:1 (sedikit di bawah 4,5:1) — dipertahankan demi konsistensi dengan mention yang sudah memakainya; masuk daftar device-verify kontras BERSAMA mention (kalau diubah kelak, keduanya sekaligus).
+- **Token**: warna/bobot dari NataloColors/NataloWeight — tanpa hex/angka lepas baru.
+
 ## 4. Testing
 
 - **Backend**: extractor (boundary `harga#promo` & `/#promo` ditolak; panjang 2–50; dedup; lowercase; >5 → error), transaksi create (upsert + junction + increment; foto, video, DAN jalur admin), delete post (sesuai temuan hard/soft), endpoint page (visibilitas feed; multi-author brand-safe; hitungan akurat; param invalid → 400; cursor), autocomplete (prefix, urut postCount, maks 8, q kosong → list kosong tanpa error).
