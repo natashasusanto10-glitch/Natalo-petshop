@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+/// Opasitas latar gelap pill — satu sumber dipakai badan pill DAN panah
+/// pointer supaya keduanya tidak drift kalau diubah (audit polish Spec B).
+const double _kPillBgAlpha = 0.82;
+
 /// Hasil layout pill: offset kiri-atas badan pill (px, relatif area foto)
 /// + apakah panah pointer di bawah pill (flip karena dekat tepi bawah).
 class TagPillPlacement {
@@ -123,33 +127,60 @@ class FeedUserTagPill extends StatelessWidget {
       size: const Size(10, 6),
       painter: _TagArrowPainter(pointsUp: !arrowBelow),
     );
-    final body = GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.78),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              username,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            if (showRemove) ...[
-              const SizedBox(width: 6),
-              GestureDetector(
-                onTap: onRemove,
-                child: const Icon(Icons.close, size: 14, color: Colors.white),
+    final body = Semantics(
+      button: true,
+      label: 'Akun ditandai: $username',
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: _kPillBgAlpha),
+            borderRadius: BorderRadius.circular(6),
+            // Sentuhan "melayang" ala IG — bayangan lembut memisahkan pill
+            // dari foto di belakangnya (audit polish Spec B).
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x40000000),
+                blurRadius: 6,
+                offset: Offset(0, 1),
               ),
             ],
-          ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                username,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              if (showRemove) ...[
+                const SizedBox(width: 4),
+                // Tap target diperbesar (≥24px) tanpa memperbesar ikon —
+                // ikon 14px di dalam kotak transaksi opaque 24px (audit
+                // polish Spec B: tap target lama cuma seluas ikon).
+                Semantics(
+                  button: true,
+                  label: 'Hapus tag $username',
+                  child: GestureDetector(
+                    onTap: onRemove,
+                    behavior: HitTestBehavior.opaque,
+                    child: const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: Center(
+                        child: Icon(Icons.close, size: 14, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -166,7 +197,7 @@ class _TagArrowPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.black.withValues(alpha: 0.78);
+    final paint = Paint()..color = Colors.black.withValues(alpha: _kPillBgAlpha);
     final path = Path();
     if (pointsUp) {
       path

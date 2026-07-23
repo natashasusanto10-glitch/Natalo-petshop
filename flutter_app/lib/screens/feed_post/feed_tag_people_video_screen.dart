@@ -125,9 +125,21 @@ class _FeedTagPeopleVideoScreenState extends State<FeedTagPeopleVideoScreen> {
               ),
               title: Text(tag.username),
               subtitle: tag.name.isNotEmpty ? Text(tag.name) : null,
-              trailing: GestureDetector(
-                onTap: () => _removePerson(tag),
-                child: Icon(Icons.close, size: 20, color: cs.onSurfaceVariant),
+              trailing: Semantics(
+                button: true,
+                label: 'Hapus ${tag.username}',
+                child: GestureDetector(
+                  onTap: () => _removePerson(tag),
+                  behavior: HitTestBehavior.opaque,
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Center(
+                      child: Icon(Icons.close,
+                          size: 20, color: cs.onSurfaceVariant),
+                    ),
+                  ),
+                ),
               ),
             ),
         ],

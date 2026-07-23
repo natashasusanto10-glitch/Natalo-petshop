@@ -1,8 +1,28 @@
 import 'package:flutter/material.dart';
 import '../models/feed_post.dart';
 import '../services/feed_service.dart';
+import '../theme/natalo_colors.dart';
 import 'app_toast.dart';
 import 'profile_avatar.dart';
+
+/// Grip bar ala IG di atas bottom sheet — penanda visual sheet bisa
+/// di-drag/ditutup (audit polish Spec B).
+class _SheetHandle extends StatelessWidget {
+  const _SheetHandle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 36,
+      height: 4,
+      margin: const EdgeInsets.only(top: 10, bottom: 2),
+      decoration: BoxDecoration(
+        color: NataloColors.grey300,
+        borderRadius: BorderRadius.circular(2),
+      ),
+    );
+  }
+}
 
 /// Sheet "Opsi Tag" untuk nama sendiri (Spec B Task 12). onRemoved dipanggil
 /// SEBELUM await network selesai (optimistic — pill/baris hilang seketika).
@@ -30,6 +50,7 @@ Future<void> showFeedTagOptionsSheet(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const _SheetHandle(),
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 14),
               child: Text(
@@ -40,11 +61,11 @@ Future<void> showFeedTagOptionsSheet(
             ListTile(
               leading: const Icon(
                 Icons.person_remove_outlined,
-                color: Colors.red,
+                color: NataloColors.danger,
               ),
               title: const Text(
                 'Hapus saya dari post',
-                style: TextStyle(color: Colors.red),
+                style: TextStyle(color: NataloColors.danger),
               ),
               onTap: () async {
                 final confirmed = await showDialog<bool>(
@@ -63,7 +84,7 @@ Future<void> showFeedTagOptionsSheet(
                         onPressed: () => Navigator.pop(dialogContext, true),
                         child: const Text(
                           'Hapus',
-                          style: TextStyle(color: Colors.red),
+                          style: TextStyle(color: NataloColors.danger),
                         ),
                       ),
                     ],
@@ -150,6 +171,7 @@ Future<void> showFeedTaggedUsersSheet(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const _SheetHandle(),
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 14),
               child: Text(

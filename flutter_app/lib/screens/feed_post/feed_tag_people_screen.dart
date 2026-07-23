@@ -240,16 +240,22 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: Center(
-              child: GestureDetector(
-                onTap: _onDone,
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: const BoxDecoration(
-                    color: NataloColors.primary,
-                    shape: BoxShape.circle,
+              child: Semantics(
+                button: true,
+                label: 'Selesai menandai',
+                child: GestureDetector(
+                  onTap: _onDone,
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: const BoxDecoration(
+                      color: NataloColors.primary,
+                      shape: BoxShape.circle,
+                    ),
+                    child:
+                        const Icon(Icons.check, color: Colors.white, size: 20),
                   ),
-                  child: const Icon(Icons.check, color: Colors.white, size: 20),
                 ),
               ),
             ),
@@ -286,6 +292,7 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
                   final active = i == _pageIndex;
                   return AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
                     margin: const EdgeInsets.symmetric(horizontal: 3),
                     width: active ? 7 : 5.5,
                     height: active ? 7 : 5.5,
@@ -368,14 +375,19 @@ class _TaggablePhotoPage extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Image.file(
-                file,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stack) => Container(
-                  color: Colors.grey.shade900,
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.image_not_supported_outlined,
-                      color: Colors.white38, size: 40),
+              // RepaintBoundary — isolasi layer foto supaya setState per-frame
+              // saat pill di-drag tidak ikut me-repaint bitmap foto (audit
+              // polish Spec B: sumber jank saat geser tag).
+              RepaintBoundary(
+                child: Image.file(
+                  file,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stack) => Container(
+                    color: Colors.grey.shade900,
+                    alignment: Alignment.center,
+                    child: const Icon(Icons.image_not_supported_outlined,
+                        color: Colors.white38, size: 40),
+                  ),
                 ),
               ),
               // Layer pill dibungkus Positioned sesuai photoRect — anchor
@@ -447,7 +459,7 @@ class _TagPillOverlay extends StatelessWidget {
       maxLines: 1,
     )..layout();
     final pillWidth =
-        textPainter.width + 20 + (showRemove ? 20 : 0); // padding + close
+        textPainter.width + 20 + (showRemove ? 28 : 0); // padding + close(24+gap)
     const pillHeight = 28.0;
     final pillSize = Size(pillWidth, pillHeight);
     final placement = placeTagPill(
@@ -571,7 +583,7 @@ class _TagUserSearchPanelState extends State<TagUserSearchPanel> {
                     child: Container(
                       height: 40,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF242A30),
+                        color: NataloColors.surfaceVariantDark,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: TextField(
@@ -584,9 +596,10 @@ class _TagUserSearchPanelState extends State<TagUserSearchPanel> {
                           contentPadding:
                               EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                           hintText: 'Cari akun',
-                          hintStyle: TextStyle(color: Color(0xFF8D96A3)),
-                          prefixIcon:
-                              Icon(Icons.search, color: Color(0xFF8D96A3)),
+                          hintStyle:
+                              TextStyle(color: NataloColors.feedTextMuted),
+                          prefixIcon: Icon(Icons.search,
+                              color: NataloColors.feedTextMuted),
                         ),
                       ),
                     ),
@@ -626,8 +639,8 @@ class _TagUserSearchPanelState extends State<TagUserSearchPanel> {
                               style: const TextStyle(color: Colors.white)),
                           subtitle: u.name.isNotEmpty
                               ? Text(u.name,
-                                  style:
-                                      const TextStyle(color: Color(0xFF8D96A3)))
+                                  style: const TextStyle(
+                                      color: NataloColors.feedTextMuted))
                               : null,
                           onTap: () => Navigator.of(context).pop(u),
                         );

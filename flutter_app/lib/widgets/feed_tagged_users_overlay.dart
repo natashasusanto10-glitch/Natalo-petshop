@@ -11,16 +11,32 @@ class FeedTaggedBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 28,
-        height: 28,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.55),
-          shape: BoxShape.circle,
+    return Semantics(
+      button: true,
+      label: 'Lihat orang yang ditandai',
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        // Hit target 44dp (guideline) tapi lingkaran visual tetap 28px &
+        // ter-anchor di bawah-kiri — jadi posisi visual tidak bergeser dari
+        // Positioned(left/bottom) caller; padding tap ekstra memanjang ke
+        // atas-kanan (audit polish Spec B).
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Align(
+            alignment: Alignment.bottomLeft,
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.person, size: 16, color: Colors.white),
+            ),
+          ),
         ),
-        child: const Icon(Icons.person, size: 16, color: Colors.white),
       ),
     );
   }
