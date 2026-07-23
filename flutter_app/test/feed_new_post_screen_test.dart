@@ -134,4 +134,10 @@ void main() {
 
     expect(find.text('1/2'), findsOneWidget);
   });
+
+  testWidgets('section Tag Produk Pernah Dibeli tersembunyi (flag off)',
+      (tester) async {
+    await pumpScreen(tester);
+    expect(find.text('Tag Produk Pernah Dibeli'), findsNothing);
+  });
 }
