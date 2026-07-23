@@ -36,10 +36,10 @@ void main() {
 
     expect(find.text('Postingan'), findsOneWidget);
     expect(find.text('Video'), findsOneWidget);
-    expect(find.text('Belanja'), findsOneWidget);
+    expect(find.text('Ditandai'), findsOneWidget);
     expect(find.byKey(const Key('public_tab_posts_pill')), findsOneWidget);
     expect(find.byKey(const Key('public_tab_video_pill')), findsOneWidget);
-    expect(find.byKey(const Key('public_tab_shop_pill')), findsOneWidget);
+    expect(find.byKey(const Key('public_tab_tagged_pill')), findsOneWidget);
     expect(find.byKey(const Key('public_tab_shared_surface')), findsNothing);
     expect(
       find.byKey(const Key('public_tab_sliding_underline')),
@@ -84,7 +84,7 @@ void main() {
       for (final (label, selected) in <(String, bool)>[
         ('Postingan', true),
         ('Video', false),
-        ('Belanja', false),
+        ('Ditandai', false),
       ]) {
         final semantics = tester.widget<Semantics>(
           find
@@ -99,7 +99,7 @@ void main() {
         expect(semantics.properties.selected, selected);
       }
 
-      for (final label in const ['Postingan', 'Video', 'Belanja']) {
+      for (final label in const ['Postingan', 'Video', 'Ditandai']) {
         expect(
           tester.widget<Text>(find.text(label)).textScaler,
           const TextScaler.linear(1.3),
@@ -133,7 +133,7 @@ void main() {
 
     await tester.drag(find.byType(TabBarView), const Offset(-400, 0));
     await tester.pumpAndSettle();
-    expect(find.text('Belanja page'), findsOneWidget);
+    expect(find.text('Ditandai page'), findsOneWidget);
   });
 
   testWidgets('tab bar draws no full-width Material divider', (tester) async {
@@ -279,7 +279,7 @@ class _PublicTabsHarnessState extends State<_PublicTabsHarness>
             children: const [
               Center(child: Text('Postingan page')),
               Center(child: Text('Video page')),
-              Center(child: Text('Belanja page')),
+              Center(child: Text('Ditandai page')),
             ],
           ),
         ),

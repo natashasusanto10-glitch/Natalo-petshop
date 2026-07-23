@@ -201,7 +201,7 @@ void main() {
         findsOneWidget);
     expect(find.descendant(of: tabGroup, matching: find.text('Video')),
         findsOneWidget);
-    expect(find.descendant(of: tabGroup, matching: find.text('Belanja')),
+    expect(find.descendant(of: tabGroup, matching: find.text('Ditandai')),
         findsOneWidget);
 
     final selected = tester.widget<Semantics>(
