@@ -897,6 +897,25 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     final profile = _profile!;
     final metrics = PublicProfileHeaderMetrics.resolve(context, profile);
     final headerLeadInset = metrics.topPadding + metrics.toolbarHeight;
+    // Header hanya boleh melipat kalau konten tab aktif benar-benar
+    // memerlukan scroll. Akun sepi (1-2 post) tak punya apa pun untuk
+    // digulir di bawah header penuh — biarkan diam daripada melipat
+    // "kosong" (lipat + pill mengambang tanpa konten baru yang terungkap).
+    // Syarat nextCursor == null: freeze cuma setelah kita YAKIN semua
+    // halaman sudah termuat, supaya header tidak "meleleh" mid-scroll
+    // begitu load-more datang.
+    final activeContentState = _contentStates[_selectedContent]!;
+    final gridWidth = MediaQuery.sizeOf(context).width;
+    final gridHeight = profileGridExtentForWidth(
+      gridWidth,
+      itemCount: activeContentState.posts.length,
+    );
+    final availableBodyHeight =
+        MediaQuery.sizeOf(context).height - metrics.scrollSpaceHeight;
+    final freezeHeader = activeContentState.loaded &&
+        !activeContentState.loading &&
+        activeContentState.nextCursor == null &&
+        gridHeight <= availableBodyHeight;
     final nestedScrollView = NestedScrollView(
       controller: _scrollController,
       // Fling diredam ala IG — lihat CalmScrollPhysics.
@@ -924,7 +943,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
         SliverPersistentHeader(
           pinned: true,
           delegate: CollapsingHeaderDelegate(
-            minHeight: metrics.tabHeight,
+            minHeight: freezeHeader
+                ? metrics.identityHeight + metrics.tabHeight
+                : metrics.tabHeight,
             maxHeight: metrics.identityHeight + metrics.tabHeight,
             builder: (context, t) => AnimatedBuilder(
               animation: chatStore,
@@ -992,9 +1013,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
                     .clamp(0.0, metrics.identityHeight)
                     .toDouble()
                 : 0.0;
-            final t = metrics.identityHeight > 0
-                ? shrinkOffset / metrics.identityHeight
-                : 1.0;
+            // Frozen: paksa t=0 supaya overlay (back button, judul, pill)
+            // tetap dalam mode expanded, terlepas dari overscroll/bounce
+            // kecil yang bisa menggeser _scrollController.offset.
+            final t = freezeHeader
+                ? 0.0
+                : metrics.identityHeight > 0
+                    ? shrinkOffset / metrics.identityHeight
+                    : 1.0;
             return PublicProfileChromeOverlay(
               profile: profile,
               t: t,
