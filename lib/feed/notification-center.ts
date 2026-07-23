@@ -1,6 +1,7 @@
 import { sendFcmToUser } from "@/lib/fcm";
 import { prisma } from "@/lib/prisma";
 import { sendPushToUser, type PushPayload } from "@/lib/push";
+import { fillNotificationActorTokens } from "@/lib/social/brand-user";
 
 export const FEED_NOTIFICATION_CATEGORY = "feed";
 export const FEED_NOTIFICATION_SOURCE = "feed";
@@ -113,7 +114,7 @@ export async function createFeedNotification(params: {
   tag?: string | null;
   commentId?: string | null;
   data?: Record<string, string | null | undefined>;
-  actor?: { avatarUrl?: string | null; name?: string | null };
+  actor?: { avatarUrl?: string | null; name?: string | null; username?: string | null };
   // ID user aktor — disimpan supaya read path bisa resolve avatar/nama LIVE
   // (foto profil terkini), bukan snapshot basi. Null untuk notif tanpa aktor
   // tunggal (share, milestone).
@@ -156,9 +157,18 @@ export async function createFeedNotification(params: {
     // tampil sebagai BigPictureStyle di Android, Web Push tampil image
     // di body notification. Fallback graceful — kalau thumbnail null
     // (post tanpa video / belum encoding), notif tetap text-only.
+    // Judul/body dari caller BISA memuat token aktor (nama/username). Push yang
+    // terkirim tak bisa di-update kemudian → isi token dgn label SNAPSHOT
+    // (identitas aktor saat ini). Baris Announcement tetap disimpan DENGAN
+    // token supaya read path bisa isi nilai LIVE (lihat notifications/me).
+    const snapshotActorLabels = {
+      nameLabel: params.actor?.name?.trim() || "Seseorang",
+      usernameLabel:
+        params.actor?.username?.trim() || params.actor?.name?.trim() || "Seseorang",
+    };
     const payload: PushPayload = {
-      title: params.title,
-      body: params.message,
+      title: fillNotificationActorTokens(params.title, snapshotActorLabels),
+      body: fillNotificationActorTokens(params.message, snapshotActorLabels),
       url,
       tag: params.tag ?? `${params.eventType}-${params.feedPostId}`,
       data: pushData,

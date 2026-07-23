@@ -24,7 +24,11 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { signBunnyUrl } from "@/lib/feed/bunny";
-import { resolveNotificationActor } from "@/lib/social/brand-user";
+import {
+  resolveNotificationActor,
+  notificationActorLabels,
+  fillNotificationActorTokens,
+} from "@/lib/social/brand-user";
 
 const MAX_ITEMS = 50;
 
@@ -108,11 +112,21 @@ export async function GET() {
         orderBy: { createdAt: "desc" },
         take: MAX_ITEMS,
       });
+      // Broadcast "all" tak punya token aktor, tapi fill defensif memastikan
+      // token tak pernah bocor mentah ke klien (fallback "Seseorang").
+      const anonLabels = notificationActorLabels(null);
       return NextResponse.json({
         ok: true,
         loggedIn: false,
         unreadCount: 0,
-        items: items.map((a) => mapAnnouncement(a)),
+        items: items.map((a) => {
+          const m = mapAnnouncement(a);
+          return {
+            ...m,
+            title: fillNotificationActorTokens(m.title, anonLabels),
+            body: fillNotificationActorTokens(m.body, anonLabels),
+          };
+        }),
       });
     }
 
@@ -291,17 +305,29 @@ export async function GET() {
     );
     const liveActorById = new Map<
       string,
-      { role: string | null; name: string | null; profilePhotoUrl: string | null }
+      {
+        role: string | null;
+        name: string | null;
+        username: string | null;
+        profilePhotoUrl: string | null;
+      }
     >();
     if (actorIds.length > 0) {
       const actors = await prisma.user.findMany({
         where: { id: { in: actorIds } },
-        select: { id: true, role: true, name: true, profilePhotoUrl: true },
+        select: {
+          id: true,
+          role: true,
+          name: true,
+          username: true,
+          profilePhotoUrl: true,
+        },
       });
       for (const a of actors) {
         liveActorById.set(a.id, {
           role: a.role,
           name: a.name,
+          username: a.username,
           profilePhotoUrl: a.profilePhotoUrl,
         });
       }
@@ -309,18 +335,27 @@ export async function GET() {
 
     const itemsWithReviewSummary = mapped.map((item) => {
       const orderNumber = extractOrderNumberFromNotification(item);
+      const liveUser = item.actorId
+        ? liveActorById.get(item.actorId) ?? null
+        : null;
       const liveActor = resolveNotificationActor({
         actorId: item.actorId,
         // Baris agregat like membawa avatar bertumpuk di actorAvatarUrls;
         // identitas aktor tunggal memang null → jangan diisi 1 avatar live.
         isAggregate: (item.actorAvatarUrls?.length ?? 0) > 0,
         snapshot: { actorName: item.actorName, actorAvatarUrl: item.actorAvatarUrl },
-        liveUser: item.actorId ? liveActorById.get(item.actorId) ?? null : null,
+        liveUser,
       });
+      // Ganti token nama/username di judul/body dengan nilai LIVE (username &
+      // nama terkini). Notif lama tanpa token → no-op. Aktor terhapus / tanpa
+      // actorId → label "Seseorang" (notificationActorLabels(null)).
+      const labels = notificationActorLabels(liveUser);
       return {
         ...item,
         actorName: liveActor.actorName,
         actorAvatarUrl: liveActor.actorAvatarUrl,
+        title: fillNotificationActorTokens(item.title, labels),
+        body: fillNotificationActorTokens(item.body, labels),
         reviewSummary: orderNumber ? reviewSummaryByOrder.get(orderNumber) ?? null : null,
         commentLiked: item.commentId ? likedCommentIds.has(item.commentId) : false,
         isFollowing:

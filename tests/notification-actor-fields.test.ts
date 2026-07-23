@@ -5,6 +5,10 @@ import {
   likeRowActorFields,
   topLikerAvatars,
   resolveNotificationActor,
+  notificationActorLabels,
+  fillNotificationActorTokens,
+  NOTIF_ACTOR_NAME_TOKEN,
+  NOTIF_ACTOR_USERNAME_TOKEN,
   OFFICIAL_BRAND_NAME,
 } from "../lib/social/brand-user";
 
@@ -118,6 +122,55 @@ test("resolveNotificationActor: aktor admin → brand-safe live (nama brand, fot
   });
   assert.equal(r.actorName, OFFICIAL_BRAND_NAME);
   assert.equal(r.actorAvatarUrl, null);
+});
+
+test("notificationActorLabels: user biasa → nama & username asli", () => {
+  const r = notificationActorLabels({ role: "USER", name: "Andi Wijaya", username: "andi_w" });
+  assert.equal(r.nameLabel, "Andi Wijaya");
+  assert.equal(r.usernameLabel, "andi_w");
+});
+
+test("notificationActorLabels: username kosong → jatuh ke nama", () => {
+  const r = notificationActorLabels({ role: "USER", name: "Andi", username: null });
+  assert.equal(r.usernameLabel, "Andi");
+});
+
+test("notificationActorLabels: semua kosong / user null → 'Seseorang'", () => {
+  assert.deepEqual(notificationActorLabels({ role: "USER", name: null, username: null }), {
+    nameLabel: "Seseorang",
+    usernameLabel: "Seseorang",
+  });
+  assert.deepEqual(notificationActorLabels(null), {
+    nameLabel: "Seseorang",
+    usernameLabel: "Seseorang",
+  });
+});
+
+test("notificationActorLabels: admin → nama brand (dua-duanya, tak bocor)", () => {
+  const r = notificationActorLabels({ role: "ADMIN", name: "Natasha", username: "natasha_owner" });
+  assert.equal(r.nameLabel, OFFICIAL_BRAND_NAME);
+  assert.equal(r.usernameLabel, OFFICIAL_BRAND_NAME);
+});
+
+test("fillNotificationActorTokens: token judul diganti nama/username live", () => {
+  const title = `${NOTIF_ACTOR_USERNAME_TOKEN} menyebut kamu di komentar`;
+  const body = `${NOTIF_ACTOR_NAME_TOKEN} berkomentar`;
+  assert.equal(
+    fillNotificationActorTokens(title, { nameLabel: "Andi", usernameLabel: "andi_w" }),
+    "andi_w menyebut kamu di komentar",
+  );
+  assert.equal(
+    fillNotificationActorTokens(body, { nameLabel: "Andi", usernameLabel: "andi_w" }),
+    "Andi berkomentar",
+  );
+});
+
+test("fillNotificationActorTokens: teks tanpa token (notif lama) → apa adanya", () => {
+  const old = "matcha_latte membalas komentarmu";
+  assert.equal(
+    fillNotificationActorTokens(old, { nameLabel: "X", usernameLabel: "y" }),
+    old,
+  );
 });
 
 test("topLikerAvatars: null/empty foto dibuang", () => {
