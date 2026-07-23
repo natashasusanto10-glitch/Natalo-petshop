@@ -419,8 +419,10 @@ class _ProfilePageState extends State<_ProfilePage>
 
   List<FeedPost> get _videoPosts => _allPosts.where((p) => p.isVideo).toList();
 
-  List<FeedPost> get _taggedPosts =>
-      _allPosts.where((p) => p.productIds.isNotEmpty).toList();
+  // Tab "Ditandai" (dulu "Belanja") sengaja selalu kosong sampai Spec B
+  // (Tag People) membangun data tag-orang sungguhan. Lihat
+  // docs/superpowers/specs/2026-07-22-tutup-tag-belanja-spec-a-design.md.
+  List<FeedPost> get _taggedPosts => const [];
 
   @override
   Widget build(BuildContext context) {
@@ -489,7 +491,11 @@ class _ProfilePageState extends State<_ProfilePage>
                         pinned: true,
                         delegate: _AccountTabHeaderDelegate(
                           controller: _tabController,
-                          onTap: (_) => AppHaptics.tap(),
+                          // Haptic ganti-tab sengaja dimatikan (permintaan
+                          // user) — pindah tab profil harus terasa halus,
+                          // tanpa getar. AppHaptics.tap tetap dipakai di
+                          // aksi lain (buka post, edit profil, dll).
+                          onTap: null,
                         ),
                       ),
                     ],
@@ -539,9 +545,9 @@ class _ProfilePageState extends State<_ProfilePage>
                           posts: _taggedPosts,
                           loading: _loadingPosts,
                           errorText: _postsError,
-                          emptyText: 'Belum ada postingan belanja',
+                          emptyText: 'Belum ada postingan yang menandaimu',
                           emptySubtext:
-                              'Postingan yang terhubung ke produk Natalo akan muncul di sini.',
+                              'Saat orang lain menandaimu di sebuah postingan, itu akan muncul di sini.',
                           showCreateCta: false,
                           onCreateCta: _openCreatePost,
                           onRetry: _loadAll,
@@ -945,19 +951,16 @@ class _PostThumbnail extends StatelessWidget {
                   size: 28,
                 ),
               ),
-            // Type indicators top-right (video play OR shopping bag).
-            // Priority: video > tagged products (kalau dua-duanya, video win).
+            // Type indicator top-right: video play saja. Badge tas belanja
+            // utk post lama yang punya produk tertaut sengaja dihapus
+            // (Spec A) — tidak ada lagi jejak visual "tag belanja" di
+            // Profil. Lihat
+            // docs/superpowers/specs/2026-07-22-tutup-tag-belanja-spec-a-design.md.
             if (post.isVideo)
               const Positioned(
                 top: 8,
                 right: 8,
                 child: _ThumbnailIcon(icon: Icons.play_arrow_rounded),
-              )
-            else if (post.productIds.isNotEmpty)
-              const Positioned(
-                top: 8,
-                right: 8,
-                child: _ThumbnailIcon(icon: Icons.shopping_bag_outlined),
               ),
           ],
         ),

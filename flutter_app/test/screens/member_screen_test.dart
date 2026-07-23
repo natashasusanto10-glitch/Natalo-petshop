@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/models/member_profile.dart';
 import 'package:natalo_petshop_flutter/screens/member_screen.dart';
 import 'package:natalo_petshop_flutter/state/member_store.dart';
@@ -96,5 +97,29 @@ void main() {
     expect(find.byKey(const Key('public_tab_posts_pill')), findsOneWidget);
     expect(find.byKey(const Key('public_tab_video_pill')), findsOneWidget);
     expect(find.byKey(const Key('public_tab_tagged_pill')), findsOneWidget);
+  });
+
+  testWidgets('tab Ditandai selalu kosong dengan copy baru', (tester) async {
+    // Mock fetcher untuk mengembalikan empty page tanpa error
+    debugMyPostsFetcher = ({String filter = 'all', String? cursor}) async {
+      return const FeedPage(items: [], nextCursor: null);
+    };
+
+    await pumpScreen(tester);
+    await tester.tap(find.byKey(const Key('public_tab_tagged_pill')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Belum ada postingan yang menandaimu'),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'Saat orang lain menandaimu di sebuah postingan, itu akan muncul di sini.',
+      ),
+      findsOneWidget,
+    );
+
+    debugMyPostsFetcher = null;
   });
 }
