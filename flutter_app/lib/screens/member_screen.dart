@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shimmer/shimmer.dart';
 import '../theme/natalo_colors.dart';
 import '../theme/natalo_text.dart';
 
@@ -158,12 +159,34 @@ class _ProfilePageState extends State<_ProfilePage>
   bool _taggedLoaded = false;
   bool _taggedLoading = false;
 
+  /// Total postingan publik untuk stat "Postingan" ala IG — diambil dari
+  /// endpoint profil publik (hitungan server-side, semua halaman), bukan
+  /// cuma page pertama yang sudah dimuat ke grid. null = belum terisi →
+  /// fallback ke _allPosts.length. Pola sama dengan member_posts_screen.
+  int? _postCount;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this)
       ..addListener(_onTabControllerChanged);
     _loadAll();
+    _loadPostCount();
+  }
+
+  Future<void> _loadPostCount() async {
+    final username = memberStore.profile?.username;
+    if (username == null || username.isEmpty) return;
+    try {
+      final result = await profileService.fetchPublicProfile(
+        username: username,
+        limit: 1,
+      );
+      if (!mounted) return;
+      setState(() => _postCount = result.profile.postCount);
+    } catch (_) {
+      // Best-effort — fallback ke jumlah post termuat.
+    }
   }
 
   @override
@@ -312,15 +335,17 @@ class _ProfilePageState extends State<_ProfilePage>
 
   Future<void> _refresh() async {
     // Segarkan posts + profil (follower/following count di /api/auth/me) +
-    // tab Ditandai, paralel. hydrateFromApi notify listeners → AnimatedBuilder
-    // luar rebuild dgn count terbaru. Ditandai ikut di-refresh TANPA syarat
-    // (sama seperti _loadAll untuk "all"/"video") supaya "Hapus saya"/
-    // "Sembunyikan" (Task 12) yang terjadi di layar lain langsung terlihat
-    // begitu user menarik-refresh, tanpa perlu store sinkronisasi baru.
+    // tab Ditandai + total postingan server, paralel. hydrateFromApi notify
+    // listeners → AnimatedBuilder luar rebuild dgn count terbaru. Ditandai
+    // ikut di-refresh TANPA syarat (sama seperti _loadAll untuk "all"/
+    // "video") supaya "Hapus saya"/"Sembunyikan" (Task 12) yang terjadi di
+    // layar lain langsung terlihat begitu user menarik-refresh, tanpa perlu
+    // store sinkronisasi baru.
     await Future.wait([
       _loadAll(),
       memberStore.hydrateFromApi(),
       _loadTaggedPosts(),
+      _loadPostCount(),
     ]);
   }
 
@@ -373,7 +398,7 @@ class _ProfilePageState extends State<_ProfilePage>
       username: profile?.username,
       profilePhotoUrl: profile?.profilePhotoUrl,
       bio: profile?.bio,
-      postCount: _allPosts.length,
+      postCount: _postCount ?? _allPosts.length,
       followersCount: profile?.followersCount ?? 0,
       followingCount: profile?.followingCount ?? 0,
       isOwner: true,
@@ -843,12 +868,7 @@ class _PostGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (loading && posts.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(40),
-          child: CircularProgressIndicator(strokeWidth: 2.4, color: _brandBlue),
-        ),
-      );
+      return const _PostGridSkeleton();
     }
     if ((errorText ?? '').isNotEmpty && posts.isEmpty) {
       return _ErrorState(text: errorText!, onRetry: onRetry);
@@ -890,6 +910,37 @@ class _PostGrid extends StatelessWidget {
   }
 }
 
+/// Skeleton grid ala IG saat postingan pertama kali dimuat — menggantikan
+/// spinner tunggal supaya bentuk grid 3-kolom sudah terasa sebelum data
+/// nyata datang (konsisten dgn shimmer skeleton di Feed).
+class _PostGridSkeleton extends StatelessWidget {
+  const _PostGridSkeleton();
+
+  static const int _tileCount = 12;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final baseColor = isDark ? Colors.white12 : const Color(0xFFE9ECEF);
+    final highlightColor = isDark ? Colors.white24 : const Color(0xFFF6F7F9);
+    return MediaQuery.removePadding(
+      context: context,
+      removeTop: true,
+      child: Shimmer.fromColors(
+        baseColor: baseColor,
+        highlightColor: highlightColor,
+        child: GridView.builder(
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 100),
+          gridDelegate: profileGridDelegate(),
+          itemCount: _tileCount,
+          itemBuilder: (context, index) => ColoredBox(color: baseColor),
+        ),
+      ),
+    );
+  }
+}
+
 class _ErrorState extends StatelessWidget {
   final String text;
   final VoidCallback onRetry;
@@ -914,7 +965,7 @@ class _ErrorState extends StatelessWidget {
                 // blue alpha rendah supaya icon tetap kebaca.
                 color: isDark
                     ? _brandBlue.withValues(alpha: 0.20)
-                    : const Color(0xFFEAF5FF),
+                    : NataloColors.primarySoft,
                 borderRadius: BorderRadius.circular(26),
               ),
               child: const Icon(
@@ -1030,7 +1081,7 @@ class _PostThumbnail extends StatelessWidget {
                   errorWidget: (_, __, ___) => const Center(
                     child: Icon(
                       Icons.image_not_supported_outlined,
-                      color: Color(0xFF94A3B8),
+                      color: NataloColors.grey400,
                       size: 28,
                     ),
                   ),
@@ -1040,7 +1091,7 @@ class _PostThumbnail extends StatelessWidget {
               const Center(
                 child: Icon(
                   Icons.image_outlined,
-                  color: Color(0xFF94A3B8),
+                  color: NataloColors.grey400,
                   size: 28,
                 ),
               ),
@@ -1118,7 +1169,7 @@ class _EmptyState extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: isDark
                           ? _brandBlue.withValues(alpha: 0.20)
-                          : const Color(0xFFEAF5FF),
+                          : NataloColors.primarySoft,
                       borderRadius: BorderRadius.circular(26),
                     ),
                     child: const Icon(

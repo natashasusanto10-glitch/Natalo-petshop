@@ -386,11 +386,24 @@ class _BottomNavItem extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(18),
+          // Dip opacity halus saat ditekan — dulu splash/highlight/overlay
+          // semuanya transparent sehingga tap tidak memberi respons visual
+          // sama sekali. NoSplash tetap dipakai (ripple bulat asing di pill
+          // nav), tapi overlayColor kini bereaksi ke state pressed.
           splashFactory: NoSplash.splashFactory,
           splashColor: Colors.transparent,
           highlightColor: Colors.transparent,
-          overlayColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
-          child: Padding(
+          overlayColor: WidgetStateProperty.resolveWith<Color>((states) {
+            if (states.contains(WidgetState.pressed)) {
+              return color.withValues(alpha: 0.14);
+            }
+            return Colors.transparent;
+          }),
+          child: ConstrainedBox(
+            // Tap area minimum 44x44pt — sebelumnya ikon 25 + padding
+            // vertical 8x2 = 41px, di bawah standar.
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -426,6 +439,7 @@ class _BottomNavItem extends StatelessWidget {
                       : const SizedBox.shrink(),
                 ),
               ],
+            ),
             ),
           ),
         ),
