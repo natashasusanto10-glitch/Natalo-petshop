@@ -55,8 +55,8 @@ Meniru pola `FeedPostProduct`:
 
 - **Entry:** baris "Tandai Orang" di layar Buat Post (area bekas "Tag Produk Pernah Dibeli"), ikon orang-dalam-bingkai + chevron. Kalau sudah ada tag → subtitle ringkasan ("2 orang" / nama).
 - **Layar (foto):** judul tengah "Tandai Orang", tombol selesai lingkaran biru brand + centang di kanan atas, foto di tengah, hint "Ketuk foto untuk menandai orang" di bawah.
-  - Tap titik mana pun di foto → panel pencarian fullscreen (search bar "Cari akun" + Batal; endpoint `/api/users/search` existing; UI meniru picker cari-akun/mention yang ada).
-  - Pilih akun → pill gelap (username putih + panah pointer) tertanam **tepat di koordinat tap user** (bebas, bukan grid).
+  - Tap titik mana pun di foto → panel pencarian fullscreen (search bar "Cari akun" + Batal; endpoint `/api/users/search` existing; UI meniru picker cari-akun/mention yang ada). **Sebelum mengetik, panel langsung menampilkan saran akun (`suggested=1`)** — ala IG yang menaruh akun ter-follow teratas.
+  - Pilih akun → pill gelap (username putih + panah pointer) tertanam **tepat di koordinat tap user** (bebas, bukan grid). Koordinat tersimpan = titik tap/drop; **badan pill di-clamp agar selalu utuh di dalam batas foto** dan panah pointer flip ke atas/bawah sesuai ruang (pill dekat tepi bawah → panah di bawah pill). Aturan clamp+flip yang sama berlaku di overlay viewer (§3).
   - Pill **bisa di-drag** untuk digeser; posisi akhir yang disimpan. Haptic ringan saat mulai drag.
   - Tap pill → tombol X untuk hapus.
   - **Carousel:** swipe antar foto di layar ini, tanam titik per-foto, indikator halaman. Limit 20 total → snackbar saat penuh.
