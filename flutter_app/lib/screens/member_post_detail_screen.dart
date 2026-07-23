@@ -3323,28 +3323,8 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
   }
 }
 
-// ─── Hero flight surface — video (lihat PostHero.flightChild) ────────
+// ─── Kotak aspect ratio video Postingan — ikut ukuran asli controller ─
 
-/// Surface video dipakai HANYA di dalam shuttle Hero ([PostHero._shuttle]).
-/// BUKAN [_InlineVideoPlayer]: elemen itu selalu lahir baru di overlay flight
-/// (Hero mem-placeholder-kan slot asal, memutus State lama), dan state
-/// barunya baru attach/bind ke [PostVideoCoordinator] lewat callback
-/// [VisibilityDetector] yang di-throttle (default ~500ms — jauh lebih lambat
-/// dari durasi animasi flight). Hasilnya: sepanjang flight, _InlineVideoPlayer
-/// versi baru SELALU unbound → merender placeholder/thumbnail dingin,
-/// padahal origin baru saja menampilkan frame video HIDUP — persis bug
-/// "kedip lalu video muncul di tengah flight".
-///
-/// Widget ini TIDAK attach/detach apa pun ke coordinator (origin
-/// [_InlineVideoPlayer] tetap memegang attachment-nya; sesi videonya pinned
-/// selama post ini aktif) — ia HANYA *membaca* sesi yang sudah hidup, secara
-/// SINKRON di `initState`, lalu merender `VideoPlayer(controller)` yang SAMA
-/// (satu texture, tanpa swap). Kalau sesi belum initialized (mis. post video
-/// baru dibuka, belum sempat play), fallback ke thumbnail cache yang SAMA
-/// dipakai _InlineVideoPlayer/grid — bukan gambar baru, bukan menunggu apa
-/// pun. Rendering TIDAK digerbang oleh playbackAllowed/dormant — yang
-/// digambar murni fungsi ready/tidak (gotcha VideoCompressGate-adjacent:
-/// jangan gantungkan apa yang DIGAMBAR pada state play/pause).
 /// Membungkus media video Postingan dengan [AspectRatio] yang MENGIKUTI ukuran
 /// video ASLI (`controller.value.size`) begitu controller siap; sebelum itu
 /// pakai [fallbackAspectRatio] (metadata tersimpan).
@@ -3435,6 +3415,28 @@ class _VideoAspectBoxState extends State<_VideoAspectBox> {
   }
 }
 
+// ─── Hero flight surface — video (lihat PostHero.flightChild) ────────
+
+/// Surface video dipakai HANYA di dalam shuttle Hero ([PostHero._shuttle]).
+/// BUKAN [_InlineVideoPlayer]: elemen itu selalu lahir baru di overlay flight
+/// (Hero mem-placeholder-kan slot asal, memutus State lama), dan state
+/// barunya baru attach/bind ke [PostVideoCoordinator] lewat callback
+/// [VisibilityDetector] yang di-throttle (default ~500ms — jauh lebih lambat
+/// dari durasi animasi flight). Hasilnya: sepanjang flight, _InlineVideoPlayer
+/// versi baru SELALU unbound → merender placeholder/thumbnail dingin,
+/// padahal origin baru saja menampilkan frame video HIDUP — persis bug
+/// "kedip lalu video muncul di tengah flight".
+///
+/// Widget ini TIDAK attach/detach apa pun ke coordinator (origin
+/// [_InlineVideoPlayer] tetap memegang attachment-nya; sesi videonya pinned
+/// selama post ini aktif) — ia HANYA *membaca* sesi yang sudah hidup, secara
+/// SINKRON di `initState`, lalu merender `VideoPlayer(controller)` yang SAMA
+/// (satu texture, tanpa swap). Kalau sesi belum initialized (mis. post video
+/// baru dibuka, belum sempat play), fallback ke thumbnail cache yang SAMA
+/// dipakai _InlineVideoPlayer/grid — bukan gambar baru, bukan menunggu apa
+/// pun. Rendering TIDAK digerbang oleh playbackAllowed/dormant — yang
+/// digambar murni fungsi ready/tidak (gotcha VideoCompressGate-adjacent:
+/// jangan gantungkan apa yang DIGAMBAR pada state play/pause).
 class _HeroVideoFlightSurface extends StatefulWidget {
   final String postId;
   final PostVideoCoordinator coordinator;
