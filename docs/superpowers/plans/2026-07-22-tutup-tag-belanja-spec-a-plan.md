@@ -15,6 +15,8 @@
 - Jumlah tab profil tetap 3 di kedua layar — jangan ubah `TabController(length: ...)` atau pembagian `/3` di perhitungan posisi indikator.
 - Flag `kShopTagEnabled` default `false`; membalikkannya ke `true` HANYA menghidupkan lagi input New Post, TIDAK otomatis mengembalikan tab Profil ke "Belanja" (trade-off yang sudah disetujui user).
 - Semua teks UI berbahasa Indonesia, sentence case, konsisten dengan copy existing di file yang sama.
+- Branch SUDAH di-rebase ke `main` terkini (memuat kebijakan clean-icon + freeze-header profil sepi). Nomor baris di plan ini mengacu kode pasca-rebase; kalau meleset sedikit, cari lewat string/nama simbol yang dikutip, bukan baris mentah.
+- Konvensi app-wide "Global Icon Clean Interaction": kontrol ikon TANPA tooltip/ripple/splash/overlay. Task 3 menghapus `Tooltip` tab profil agar patuh; JANGAN menambah splash/tooltip baru pada elemen ikon mana pun.
 - Spec sumber: `docs/superpowers/specs/2026-07-22-tutup-tag-belanja-spec-a-design.md` — baca dulu kalau ada keraguan konteks.
 
 ---
@@ -204,12 +206,13 @@ git commit -m "feat: ganti tab profil ke-3 dari Belanja jadi Ditandai (label+iko
 ### Task 3: Fix warna tab aktif + animasi outline→filled + gerak naik
 
 **Files:**
-- Modify: `flutter_app/lib/widgets/public_profile_content_tab_bar.dart:1-7` (import), `:61-105` (ketiga `_PublicProfileTab`), `:157-260` (class `_PublicProfileTab`)
-- Modify (existing test, assersi perlu diperbarui): `flutter_app/test/widgets/public_profile_content_tab_bar_test.dart:7-24` (test `'expanded public tabs are icon-only and neutral'` + helper `_expectNeutralForegrounds`)
+- Modify: `flutter_app/lib/widgets/public_profile_content_tab_bar.dart:1-7` (import), `:61-105` (ketiga `_PublicProfileTab`), `:157-260` (field+build `_PublicProfileTab`), `:262-290` (hapus `Tooltip`)
+- Modify (existing test, assersi perlu diperbarui): `flutter_app/test/widgets/public_profile_content_tab_bar_test.dart:7-24` (test warna), `:84-100` (anchor semantics → pill key)
+- Modify (existing test, anchor byTooltip → pill key): `flutter_app/test/screens/public_profile_screen_test.dart:185,210,222,229`
 
 **Interfaces:**
 - Consumes: `Key('public_tab_tagged_pill')`, label `'Ditandai'` dari Task 2.
-- Produces: field baru `activeIcon` pada `_PublicProfileTab` (dipakai ketiga tab); tidak ada API baru yang dikonsumsi task lain.
+- Produces: field baru `activeIcon` pada `_PublicProfileTab` (dipakai ketiga tab). Menghapus `Tooltip` dari tab → task lain (4 & 5) yang meng-tap tab HARUS pakai `find.byKey(public_tab_*_pill)`, bukan `find.byTooltip`.
 
 - [ ] **Step 1: Tulis test baru untuk warna tab aktif di mode expanded (akan gagal)**
 
@@ -461,21 +464,147 @@ Lalu cari baris `Icon(icon, color: foreground, size: iconSize),` di dalam `Row` 
 
 Catatan performa: `Transform.translate` + `Opacity` + `Icon` semuanya murah (tidak ada layout/clip mahal), aman 60fps. `AnimatedBuilder` yang membungkus (sudah ada di widget) rebuild hanya sub-tree ini, bukan seluruh tab bar.
 
-- [ ] **Step 7: Jalankan test, pastikan lulus**
+- [ ] **Step 7: Hapus `Tooltip` pada tab (konsistensi clean-icon)**
+
+Sesuai keputusan user, tab profil ikut kehilangan tooltip agar konsisten dengan kebijakan app-wide "Global Icon Clean Interaction". Aksesibilitas tetap lewat `Semantics(label:...)` yang membungkusnya. Di `flutter_app/lib/widgets/public_profile_content_tab_bar.dart` baris ~262-290, ganti:
+
+```dart
+          return Semantics(
+            label: label,
+            button: true,
+            selected: emphasis > 0.5,
+            excludeSemantics: true,
+            child: Tooltip(
+              message: label,
+              excludeFromSemantics: true,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 7,
+                    ),
+                    child: LiquidGlass(
+                      // Glass memudar saat pill aktif jadi solid gelap —
+                      // opacity kaca mengikuti seberapa "inactive" pill.
+                      opacity: pillOpacity * (1 - emphasis),
+                      reducedMotion: reducedMotion,
+                      borderRadius: BorderRadius.circular(19),
+                      child: pillContent,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+```
+
+menjadi (buang wrapper `Tooltip`, jadikan `Stack` langsung child `Semantics`):
+
+```dart
+          return Semantics(
+            label: label,
+            button: true,
+            selected: emphasis > 0.5,
+            excludeSemantics: true,
+            // Tooltip long-press SENGAJA dihapus mengikuti kebijakan
+            // "Global Icon Clean Interaction" — nama tetap terbaca screen
+            // reader lewat Semantics.label di atas. Lihat
+            // docs/superpowers/specs/2026-07-22-tutup-tag-belanja-spec-a-design.md.
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 7,
+                  ),
+                  child: LiquidGlass(
+                    // Glass memudar saat pill aktif jadi solid gelap —
+                    // opacity kaca mengikuti seberapa "inactive" pill.
+                    opacity: pillOpacity * (1 - emphasis),
+                    reducedMotion: reducedMotion,
+                    borderRadius: BorderRadius.circular(19),
+                    child: pillContent,
+                  ),
+                ),
+              ],
+            ),
+          );
+```
+
+- [ ] **Step 8: Update test existing yang meng-anchor lewat `find.byTooltip`**
+
+Karena tooltip tab hilang, ganti anchor ke pill key yang robust.
+
+Di `flutter_app/test/widgets/public_profile_content_tab_bar_test.dart`, test `'full tab semantics remain buttons and selected outside visual scale cap'` (loop baris ~84-100), ubah tuple list + anchor jadi memakai pill key. Ganti blok:
+
+```dart
+      for (final (label, selected) in <(String, bool)>[
+        ('Postingan', true),
+        ('Video', false),
+        ('Ditandai', false),
+      ]) {
+        final semantics = tester.widget<Semantics>(
+          find
+              .ancestor(
+                of: find.byTooltip(label),
+                matching: find.byType(Semantics),
+              )
+              .first,
+        );
+        expect(semantics.properties.label, label);
+        expect(semantics.properties.button, isTrue);
+        expect(semantics.properties.selected, selected);
+      }
+```
+
+menjadi:
+
+```dart
+      for (final (label, pillKey, selected) in <(String, String, bool)>[
+        ('Postingan', 'public_tab_posts_pill', true),
+        ('Video', 'public_tab_video_pill', false),
+        ('Ditandai', 'public_tab_tagged_pill', false),
+      ]) {
+        final semantics = tester.widget<Semantics>(
+          find
+              .ancestor(
+                of: find.byKey(Key(pillKey)),
+                matching: find.byType(Semantics),
+              )
+              .first,
+        );
+        expect(semantics.properties.label, label);
+        expect(semantics.properties.button, isTrue);
+        expect(semantics.properties.selected, selected);
+      }
+```
+
+Di `flutter_app/test/screens/public_profile_screen_test.dart`, ganti keempat pemakaian `find.byTooltip(...)` yang menarget tab:
+- Baris ~185: `of: find.byTooltip('Video'),` → `of: find.byKey(const Key('public_tab_video_pill')),`
+- Baris ~210: `of: find.byTooltip('Video'),` → `of: find.byKey(const Key('public_tab_video_pill')),`
+- Baris ~222: `of: find.byTooltip('Video'),` → `of: find.byKey(const Key('public_tab_video_pill')),`
+- Baris ~229: `await tester.tap(find.byTooltip('Postingan'));` → `await tester.tap(find.byKey(const Key('public_tab_posts_pill')));`
+
+JANGAN sentuh `find.byTooltip('Buat postingan')`/`'Postingan tersimpan'`/`'Pengaturan akun'` di `member_screen_test.dart:66-68` — itu tooltip IconButton top bar, BUKAN tab, dan di luar scope perubahan ini.
+
+- [ ] **Step 9: Jalankan test, pastikan lulus**
 
 Run: `cd flutter_app && flutter test test/widgets/public_profile_content_tab_bar_test.dart`
-Expected: PASS — semua test termasuk yang baru dan yang lama (indikator geser, tap/swipe, no-divider, dsb tetap hijau karena tidak disentuh).
+Expected: PASS — termasuk test semantics yang di-anchor ulang ke pill key.
 
-- [ ] **Step 8: Jalankan seluruh suite tab bar + profil untuk regresi**
+- [ ] **Step 10: Jalankan seluruh suite tab bar + profil untuk regresi**
 
 Run: `cd flutter_app && flutter test test/screens/public_profile_screen_test.dart test/screens/member_screen_test.dart`
 Expected: PASS.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add flutter_app/lib/widgets/public_profile_content_tab_bar.dart flutter_app/test/widgets/public_profile_content_tab_bar_test.dart
-git commit -m "feat: animasi tab aktif (fill biru + gerak naik) konsisten di ketiga tab profil"
+git add flutter_app/lib/widgets/public_profile_content_tab_bar.dart flutter_app/test/widgets/public_profile_content_tab_bar_test.dart flutter_app/test/screens/public_profile_screen_test.dart
+git commit -m "feat: animasi tab aktif (fill biru + easing) + hapus tooltip tab (clean-icon)"
 ```
 
 ---
@@ -487,7 +616,7 @@ git commit -m "feat: animasi tab aktif (fill biru + gerak naik) konsisten di ket
 - Test: `flutter_app/test/screens/member_screen_test.dart`
 
 **Interfaces:**
-- Consumes: label tooltip `'Ditandai'` dari Task 2 (dipakai untuk `find.byTooltip('Ditandai')`).
+- Consumes: `Key('public_tab_tagged_pill')` dari Task 2 (dipakai untuk tap tab; tooltip sudah dihapus di Task 3 sehingga `find.byTooltip` tidak lagi berlaku untuk tab).
 
 - [ ] **Step 1: Tulis test yang gagal — teks empty state baru**
 
@@ -496,7 +625,7 @@ Tambahkan di `flutter_app/test/screens/member_screen_test.dart` (dalam `main()`,
 ```dart
   testWidgets('tab Ditandai selalu kosong dengan copy baru', (tester) async {
     await pumpScreen(tester);
-    await tester.tap(find.byTooltip('Ditandai'));
+    await tester.tap(find.byKey(const Key('public_tab_tagged_pill')));
     await tester.pumpAndSettle();
 
     expect(
@@ -661,11 +790,11 @@ git commit -m "feat: tab Ditandai profil sendiri kosong + hapus badge belanja + 
 ### Task 5: Konten tab "Ditandai" kosong — profil publik (tanpa network call)
 
 **Files:**
-- Modify: `flutter_app/lib/screens/public_profile_screen.dart:480-487` (`_activateContent`), `:1412-1457` (`_EmptyPosts`), `:489-493` (haptic tab di `_onTabTapped`)
+- Modify: `flutter_app/lib/screens/public_profile_screen.dart:480-487` (`_activateContent`), `:1438-1483` (`_EmptyPosts` — nomor baris setelah rebase ke main; cari `class _EmptyPosts` untuk memastikan), `:489-493` (haptic tab di `_onTabTapped`)
 - Test: `flutter_app/test/screens/public_profile_screen_test.dart`
 
 **Interfaces:**
-- Consumes: `PublicProfileContentFilter.shoppable` (enum sudah ada, tidak berubah namanya — cuma makna tampilannya yang berganti jadi "Ditandai").
+- Consumes: `PublicProfileContentFilter.shoppable` (enum sudah ada, tidak berubah namanya — cuma makna tampilannya yang berganti jadi "Ditandai"); `Key('public_tab_tagged_pill')` dari Task 2 untuk tap tab (tooltip sudah dihapus Task 3).
 
 - [ ] **Step 1: Tulis test yang gagal — no network call + teks orang-ketiga**
 
@@ -693,10 +822,11 @@ Tambahkan di `flutter_app/test/screens/public_profile_screen_test.dart` (dalam `
     ));
     await tester.pump();
 
-    // Tap langsung tab "Ditandai" (bukan drag TabBarView — drag gesture
-    // pada PageView biasanya cuma pindah satu halaman per drag, tidak
-    // reliable untuk lompat dari tab 0 ke tab 2 dalam satu gerakan).
-    await tester.tap(find.byTooltip('Ditandai'));
+    // Tap langsung tab "Ditandai" via pill key (tooltip sudah dihapus di
+    // Task 3). Bukan drag TabBarView — drag gesture pada PageView biasanya
+    // cuma pindah satu halaman per drag, tidak reliable untuk lompat dari
+    // tab 0 ke tab 2 dalam satu gerakan.
+    await tester.tap(find.byKey(const Key('public_tab_tagged_pill')));
     // Satu pump tanpa delay — kalau masih ada fetch async sungguhan,
     // spinner loading akan sempat kelihatan di frame ini.
     await tester.pump();
@@ -760,7 +890,7 @@ menjadi:
 
 - [ ] **Step 4: Update ikon + teks di `_EmptyPosts`**
 
-Di `flutter_app/lib/screens/public_profile_screen.dart` sekitar baris 1426-1444, ganti:
+Di `flutter_app/lib/screens/public_profile_screen.dart` (di dalam `class _EmptyPosts`, cari `Icons.shopping_bag_outlined` dan `'Belum ada postingan belanja'` — sekitar baris 1452-1470 setelah rebase), ganti:
 
 ```dart
             Icon(
