@@ -481,6 +481,20 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     if (content == _selectedContent) return;
     setState(() => _selectedContent = content);
     final contentState = _contentStates[content]!;
+    // Tab "Ditandai" (enum lama: shoppable) sengaja selalu kosong sampai
+    // Spec B membangun data tag-orang — jangan pernah memanggil network
+    // fetch untuk filter ini. Lihat
+    // docs/superpowers/specs/2026-07-22-tutup-tag-belanja-spec-a-design.md.
+    if (content == PublicProfileContentFilter.shoppable) {
+      if (!contentState.loaded) {
+        setState(() {
+          contentState
+            ..loaded = true
+            ..posts = const [];
+        });
+      }
+      return;
+    }
     if (!contentState.loaded && !contentState.loading) {
       unawaited(_loadSelectedContent(content));
     }
@@ -488,7 +502,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
 
   void _onTabTapped(int index) {
     if (index == _profileContentTabs.indexOf(_selectedContent)) return;
-    AppHaptics.tap();
+    // Haptic ganti-tab sengaja dimatikan (permintaan user) — pindah tab
+    // profil harus terasa halus, tanpa getar. AppHaptics.tap tetap dipakai
+    // di aksi lain (buka post, share, follow, dll).
     _activateContent(_profileContentTabs[index]);
   }
 
@@ -1455,7 +1471,7 @@ class _EmptyPosts extends StatelessWidget {
                 PublicProfileContentFilter.video =>
                   Icons.play_circle_outline_rounded,
                 PublicProfileContentFilter.shoppable =>
-                  Icons.shopping_bag_outlined,
+                  Icons.people_outline_rounded,
               },
               color: cs.onSurfaceVariant,
               size: 32,
@@ -1466,7 +1482,7 @@ class _EmptyPosts extends StatelessWidget {
                 PublicProfileContentFilter.all => 'Belum ada postingan',
                 PublicProfileContentFilter.video => 'Belum ada video',
                 PublicProfileContentFilter.shoppable =>
-                  'Belum ada postingan belanja',
+                  'Belum ada postingan yang menandai akun ini',
               },
               style: TextStyle(
                 color: cs.onSurface,

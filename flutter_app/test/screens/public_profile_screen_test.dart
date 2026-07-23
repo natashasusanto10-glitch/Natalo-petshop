@@ -334,6 +334,50 @@ void main() {
         .toList();
     expect(collapsedOpacities.any((o) => o >= 0.99), isTrue);
   });
+
+  testWidgets(
+      'tab Ditandai di profil publik langsung kosong tanpa network call',
+      (tester) async {
+    const result = PublicProfileResult(
+      profile: PublicProfile(
+        id: 'creator-1',
+        name: 'Creator',
+        username: 'creator',
+        isOwner: false,
+      ),
+      posts: [],
+    );
+    await tester.pumpWidget(const MaterialApp(
+      home: PublicProfileScreen(
+        username: 'creator',
+        initialResult: result,
+        fetchChatConfig: _noOpFetch,
+      ),
+    ));
+    await tester.pump();
+
+    // Tap langsung tab "Ditandai" via pill key (tooltip sudah dihapus di
+    // Task 3). Bukan drag TabBarView — drag gesture pada PageView biasanya
+    // cuma pindah satu halaman per drag, tidak reliable untuk lompat dari
+    // tab 0 ke tab 2 dalam satu gerakan.
+    await tester.tap(find.byKey(const Key('public_tab_tagged_pill')));
+    // pumpAndSettle (bukan satu pump) — tab 0->2 loncat lebih dari satu
+    // index, jadi TabBarView lewat mekanisme internal Flutter
+    // _warpToNonAdjacentTab: jump ke halaman tetangga dulu lalu animate ke
+    // tujuan selama kTabScrollDuration (~300ms). Halaman "Ditandai" baru
+    // benar-benar ter-mount setelah animasi itu selesai, jadi satu pump
+    // tanpa delay belum cukup untuk query kontennya. Aman dipakai di sini:
+    // skeleton loading tab (_ProfileGridLoading) cuma ColoredBox statis,
+    // bukan shimmer tanpa henti, jadi tidak berisiko hang seperti kasus
+    // AppProductImage.
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(
+      find.text('Belum ada postingan yang menandai akun ini'),
+      findsOneWidget,
+    );
+  });
 }
 
 Future<void> _noOpFetch() async {}
