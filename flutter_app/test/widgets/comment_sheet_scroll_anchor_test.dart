@@ -14,6 +14,8 @@ void main() {
       })> pumpAnchor(
     WidgetTester tester, {
     int itemCount = 60,
+    TargetPlatform platform = TargetPlatform.android,
+    ScrollPhysics physics = const AlwaysScrollableScrollPhysics(),
   }) async {
     final sheetCtrl = DraggableScrollableController();
     final listCtrl = ScrollController();
@@ -22,6 +24,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        theme: ThemeData(platform: platform),
         home: Scaffold(
           body: DraggableScrollableSheet(
             controller: sheetCtrl,
@@ -38,7 +41,7 @@ void main() {
                 color: const Color(0xFF101114),
                 child: ListView.builder(
                   controller: listCtrl,
-                  physics: const AlwaysScrollableScrollPhysics(),
+                  physics: physics,
                   itemCount: itemCount,
                   itemExtent: 48,
                   itemBuilder: (context, i) => SizedBox(
@@ -107,5 +110,46 @@ void main() {
         reason: 'pelepasan setelah menarik harus settle tepat sekali');
     expect(h.listCtrl.offset, 0,
         reason: 'konten tetap di paling atas — yang bergerak adalah sheet, bukan list');
+  });
+
+  testWidgets(
+      'iOS: fisika default (bouncing) MENELAN overscroll tepi atas → '
+      'pull-to-dismiss mati (regresi yang diperbaiki feedCommentListPhysics)',
+      (tester) async {
+    // Regresi akar: di iOS, BouncingScrollPhysics membiarkan list memantul
+    // sendiri di tepi atas sehingga OverscrollNotification tak pernah
+    // terkirim → sheet tidak ikut jari. Test ini mengunci bukti mekanisme.
+    final h = await pumpAnchor(
+      tester,
+      platform: TargetPlatform.iOS,
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+    );
+    await tester.drag(find.byType(ListView), const Offset(0, 240));
+    await tester.pumpAndSettle();
+
+    expect(h.pulls, isEmpty,
+        reason: 'bouncing iOS menelan overscroll — inilah bug yang dilaporkan');
+  });
+
+  testWidgets(
+      'iOS: feedCommentListPhysics (clamping) meneruskan overscroll tepi atas → '
+      'pull-to-dismiss hidup lagi', (tester) async {
+    final h = await pumpAnchor(
+      tester,
+      platform: TargetPlatform.iOS,
+      physics: feedCommentListPhysics,
+    );
+    await tester.drag(find.byType(ListView), const Offset(0, 240));
+    await tester.pumpAndSettle();
+
+    expect(h.pulls, isNotEmpty,
+        reason: 'clamping di iOS wajib memicu onPullDown seperti Android');
+    expect(h.pulls.first.primaryDelta! > 0, isTrue,
+        reason: 'delta jari ke bawah positif (menyusutkan sheet ke arah tutup)');
+    expect(h.settles.length, 1);
+    expect(h.listCtrl.offset, 0,
+        reason: 'konten tetap di atas — yang bergerak sheet, bukan list');
   });
 }
