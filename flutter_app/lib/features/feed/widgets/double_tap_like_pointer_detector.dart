@@ -10,6 +10,16 @@ import 'package:flutter/widgets.dart';
 /// event yang hit-test ke area-nya terlepas siapa pemenang arena, jadi
 /// deteksi manual di sini tetap jalan saat arena "macet".
 ///
+/// KENAPA tracker ini dipasang MEMBUNGKUS PageView (bukan di dalam tiap
+/// halaman): selama settle, [ScrollableState] mengaktifkan
+/// `IgnorePointer(ignoring: true)` atas SELURUH viewport
+/// (`BallisticScrollActivity.shouldIgnorePointer == true`), sehingga
+/// hit-test tidak pernah mencapai widget apa pun di dalam halaman —
+/// termasuk [Listener] raw sekalipun. Ini bukan soal siapa menang arena,
+/// tapi soal hit-test tidak pernah sampai ke sana sama sekali. Level di
+/// ATAS Scrollable (ancestor) tetap menerima semua event pointer, jadi
+/// tracker HARUS dipasang di situ, bukan di dalam tiap halaman.
+///
 /// Kriteria satu KETUKAN bersih: gerakan < [tapSlop] px sejak down, durasi
 /// tekan < [maxTapDuration], dan hanya satu pointer aktif (pointer kedua yang
 /// turun bersamaan = pinch-zoom → sequence batal). DOUBLE-tap: dua ketukan
@@ -36,12 +46,15 @@ class RawDoubleTapTracker {
   Duration? _downTime;
   bool _movedPastSlop = false;
   bool _multiTouch = false;
+  bool _downSettling = false;
 
   // Ketukan pertama yang sudah selesai (menunggu pasangan).
   Offset? _firstTapDown;
   Duration? _firstTapUpTime;
+  bool _firstTapSettling = false;
 
-  void onPointerDown(int pointer, Offset position, Duration timeStamp) {
+  void onPointerDown(int pointer, Offset position, Duration timeStamp,
+      {bool settling = false}) {
     if (_activePointer != null) {
       // Pointer kedua turun saat pertama masih ditekan → pinch/multi-touch.
       // Batalkan seluruh sequence; JANGAN jadikan salah satunya ketukan.
@@ -54,6 +67,7 @@ class RawDoubleTapTracker {
     _downPosition = position;
     _downTime = timeStamp;
     _movedPastSlop = false;
+    _downSettling = settling;
     // Ketukan pertama basi (lewat jendela) → buang sebelum menilai yang baru.
     final firstUp = _firstTapUpTime;
     if (firstUp != null && timeStamp - firstUp > window) {
@@ -70,8 +84,10 @@ class RawDoubleTapTracker {
     }
   }
 
-  /// Return posisi (lokal) ketukan kedua bila up ini MELENGKAPI double-tap.
-  Offset? onPointerUp(int pointer, Offset position, Duration timeStamp) {
+  /// Return posisi (global) ketukan kedua + flag "ketukan pertama terjadi
+  /// saat scroll settle" bila up ini MELENGKAPI double-tap; selain itu null.
+  ({Offset position, bool firstTapSettling})? onPointerUp(
+      int pointer, Offset position, Duration timeStamp) {
     if (pointer != _activePointer) {
       // Up milik pointer non-aktif (sisa multi-touch). Saat semua terangkat,
       // bersihkan flag supaya tap berikutnya mulai bersih.
@@ -80,6 +96,7 @@ class RawDoubleTapTracker {
     }
     final down = _downPosition;
     final downTime = _downTime;
+    final downSettling = _downSettling;
     _activePointer = null;
     _downPosition = null;
     _downTime = null;
@@ -105,13 +122,15 @@ class RawDoubleTapTracker {
         downTime - firstUp <= window &&
         (down - firstDown).distance <= secondTapSlop;
     if (pairs) {
+      final settledFlag = _firstTapSettling;
       _firstTapDown = null;
       _firstTapUpTime = null;
-      return down;
+      return (position: down, firstTapSettling: settledFlag);
     }
     // Bukan pasangan → ketukan ini jadi "pertama" yang baru.
     _firstTapDown = down;
     _firstTapUpTime = timeStamp;
+    _firstTapSettling = downSettling;
     return null;
   }
 
@@ -123,28 +142,36 @@ class RawDoubleTapTracker {
       _movedPastSlop = false;
     }
     _multiTouch = false;
-    // FALLBACK PageView settle: jangan reset _firstTapDown/Up saat cancel
-    // karena cancel adalah sinyal arena (scroll menang), bukan pembatalan OS.
-    // Biarkan double-tap deteksi tetap jalan walau PageView halangi arena.
-    // _firstTapDown = null;
-    // _firstTapUpTime = null;
+    _firstTapDown = null;
+    _firstTapUpTime = null;
   }
 }
 
-/// Pembungkus media yang menembakkan [onDoubleTapDetected] dari raw pointer
-/// (lihat [RawDoubleTapTracker] untuk alasan & kriteria). Behavior
-/// translucent: TIDAK ikut arena, TIDAK menghalangi GestureDetector anak
-/// (single-tap play/pause, long-press) maupun scroll PageView induk.
+/// Pembungkus PageView yang menembakkan [onSettleDoubleTapLike] HANYA bila
+/// ketukan PERTAMA dari pasangan double-tap terjadi saat scroll sedang
+/// ballistic-settle.
+///
+/// KENAPA di luar PageView: selama settle, [ScrollableState] mengaktifkan
+/// IgnorePointer atas seluruh viewport (BallisticScrollActivity
+/// .shouldIgnorePointer == true) sehingga hit-test tidak pernah mencapai
+/// widget APA PUN di dalam halaman — termasuk GestureDetector media dan raw
+/// Listener. Level ini (ancestor Scrollable) tetap menerima semua event.
+///
+/// KENAPA gating "ketukan pertama saat settle": saat diam, jalur double-tap
+/// lama di dalam FeedVideoPostView yang menangani (tahu area media, tombol
+/// aman). Ketukan pertama saat settle mustahil dilihat jalur dalam → wajib
+/// ditangani di sini; saat itu semua tombol di dalam halaman juga mati,
+/// jadi ketukan bukan pencetan tombol. Dua jalur mutually-exclusive.
 class DoubleTapLikePointerDetector extends StatefulWidget {
   const DoubleTapLikePointerDetector({
     super.key,
-    required this.onDoubleTapDetected,
+    required this.onSettleDoubleTapLike,
     required this.child,
   });
 
-  /// Dipanggil TEPAT saat ketukan kedua turun-naik lengkap; argumen = posisi
-  /// LOKAL ketukan kedua (untuk titik burst heart).
-  final ValueChanged<Offset> onDoubleTapDetected;
+  /// Dipanggil saat double-tap "settle-case" lengkap; argumen = posisi
+  /// GLOBAL ketukan kedua (dikonversi lokal oleh penerima utk heart burst).
+  final ValueChanged<Offset> onSettleDoubleTapLike;
   final Widget child;
 
   @override
@@ -156,21 +183,78 @@ class _DoubleTapLikePointerDetectorState
     extends State<DoubleTapLikePointerDetector> {
   final RawDoubleTapTracker _tracker = RawDoubleTapTracker();
 
+  /// True selama scroll depth-0 (PageView yang kami bungkus) bergerak tanpa
+  /// jari (ballistic). Diperbarui live oleh notifikasi scroll.
+  bool _settling = false;
+
+  /// Snapshot [_settling] "per akhir frame", DIPAKAI oleh [onPointerDown]
+  /// — BUKAN [_settling] langsung.
+  ///
+  /// KENAPA perlu snapshot terpisah (bukan baca `_settling` live): tap YANG
+  /// SAMA yang ingin kita deteksi "terjadi saat settling" juga men-trigger
+  /// [ScrollableState] descendant memanggil `hold()` untuk menghentikan
+  /// ballistic — dan hit-test Flutter mem-dispatch pointer event ke target
+  /// TERDALAM (descendant Scrollable) LEBIH DULU sebelum ke [Listener]
+  /// ancestor kita di frame yang sama. Akibatnya `_settling` sudah keburu
+  /// direset ke false oleh notifikasi ScrollEnd SEBELUM `onPointerDown` kita
+  /// sempat membacanya — race, bukan bug logika. Snapshot "akhir frame
+  /// sebelumnya" kebal terhadap race ini: nilainya dikunci SEBELUM tap yang
+  /// sedang diproses punya kesempatan mengubah `_settling`.
+  bool _settlingSnapshot = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback(_captureSettlingSnapshot);
+  }
+
+  void _captureSettlingSnapshot(Duration _) {
+    _settlingSnapshot = _settling;
+    // Terus rekam tiap frame (ballistic PageView memicu frame terus-menerus
+    // selama settle) selama widget masih hidup.
+    if (mounted) {
+      WidgetsBinding.instance.addPostFrameCallback(_captureSettlingSnapshot);
+    }
+  }
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    // depth 0 = scrollable langsung di bawah kami (PageView vertikal);
+    // scroll lain (mis. carousel foto horizontal di dalam item) diabaikan.
+    if (notification.depth != 0) return false;
+    if (notification is ScrollUpdateNotification &&
+        notification.dragDetails == null) {
+      _settling = true;
+    } else if (notification is ScrollEndNotification) {
+      _settling = false;
+    } else if (notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      // Drag jari asli — bukan settle; tap saat drag bukan kasus kami.
+      _settling = false;
+    }
+    return false; // jangan telan notifikasi milik listener lain.
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (event) => _tracker.onPointerDown(
-          event.pointer, event.localPosition, event.timeStamp),
-      onPointerMove: (event) =>
-          _tracker.onPointerMove(event.pointer, event.localPosition),
-      onPointerUp: (event) {
-        final hit = _tracker.onPointerUp(
-            event.pointer, event.localPosition, event.timeStamp);
-        if (hit != null) widget.onDoubleTapDetected(hit);
-      },
-      onPointerCancel: (event) => _tracker.onPointerCancel(event.pointer),
-      child: widget.child,
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onScrollNotification,
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (event) => _tracker.onPointerDown(
+            event.pointer, event.position, event.timeStamp,
+            settling: _settlingSnapshot),
+        onPointerMove: (event) =>
+            _tracker.onPointerMove(event.pointer, event.position),
+        onPointerUp: (event) {
+          final hit = _tracker.onPointerUp(
+              event.pointer, event.position, event.timeStamp);
+          if (hit != null && hit.firstTapSettling) {
+            widget.onSettleDoubleTapLike(hit.position);
+          }
+        },
+        onPointerCancel: (event) => _tracker.onPointerCancel(event.pointer),
+        child: widget.child,
+      ),
     );
   }
 }
