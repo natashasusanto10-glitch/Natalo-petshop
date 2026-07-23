@@ -64,8 +64,12 @@ void main() {
     await pumpScreen(tester);
 
     expect(find.byTooltip('Buat postingan'), findsOneWidget);
-    expect(find.byTooltip('Postingan tersimpan'), findsOneWidget);
-    expect(find.byTooltip('Pengaturan akun'), findsOneWidget);
+    // Postingan tersimpan & Pengaturan akun pakai AppHeaderIconButton, yang
+    // sejak refactor "Global Icon Clean Interaction" (04c50639) tak lagi
+    // membungkus Tooltip — labelnya kini murni Semantics (spec §10.1: test
+    // find.byTooltip harus migrasi ke semantics-based finder).
+    expect(find.bySemanticsLabel('Postingan tersimpan'), findsOneWidget);
+    expect(find.bySemanticsLabel('Pengaturan akun'), findsOneWidget);
     expect(find.byIcon(Icons.add_rounded), findsOneWidget);
     expect(find.byIcon(Icons.bookmark_border_rounded), findsOneWidget);
     expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
