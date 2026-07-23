@@ -15,7 +15,9 @@ import 'package:natalo_petshop_flutter/features/feed/video/feed_video_observatio
 import 'package:natalo_petshop_flutter/features/feed/video/social_video_session_observer.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/video_playback_health_monitor.dart';
 import 'package:natalo_petshop_flutter/features/feed/video/video_player_session.dart';
+import 'package:natalo_petshop_flutter/features/feed/widgets/double_tap_like_pointer_detector.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_action_rail.dart';
+import 'package:natalo_petshop_flutter/features/feed/widgets/feed_post_shared_widgets.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_post_view.dart';
 import 'package:natalo_petshop_flutter/features/feed/widgets/feed_video_scrubber.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
@@ -447,13 +449,16 @@ void _registerLegacyFrameOutputRecoveryTests() {
       WidgetTester tester, {
       VideoPlayerController? preloaded,
       bool managed = false,
+      bool isActive = true,
       FrameOutputHeartbeatService? heartbeatService,
       SocialVideoSessionObserver? observationObserver,
+      ExternalDoubleTapLike? externalDoubleTapLike,
+      String postId = 'post-1',
     }) async {
       await tester.pumpWidget(MaterialApp(
         home: FeedVideoPostView(
-          post: _fakeVideoPost(hls: true),
-          isActive: true,
+          post: _fakeVideoPost(id: postId, hls: true),
+          isActive: isActive,
           preloadedController: preloaded,
           playbackManagedExternally: managed,
           ownsController: !managed,
@@ -462,6 +467,7 @@ void _registerLegacyFrameOutputRecoveryTests() {
           healthMonitorFactory: monitorFactory(),
           onOverlayStateChanged: (_) {},
           onMediaZoomChanged: (_) {},
+          externalDoubleTapLike: externalDoubleTapLike,
         ),
       ));
       await tester.pump();
@@ -954,6 +960,52 @@ void _registerLegacyFrameOutputRecoveryTests() {
       );
       expect(platform.createCount, 1);
       expect(platform.callsAfterDispose, 0);
+    });
+
+    testWidgets(
+        'ExternalDoubleTapLike.fire saat isActive → like + heart burst '
+        '(jalur settle dari detector luar)', (tester) async {
+      final bridge = ExternalDoubleTapLike();
+      const postId = 'external-double-tap-like-post';
+      await pumpLegacy(tester,
+          isActive: true, externalDoubleTapLike: bridge, postId: postId);
+
+      final center = tester.getCenter(find.byType(FeedVideoPostView));
+      expect(bridge.fire(center), isTrue,
+          reason: 'view aktif harus attach handler');
+      // NB (lihat member_post_detail_double_tap_test.dart): like-count/rail
+      // TIDAK dipakai sebagai sinyal — _onLikePressed round-trip lewat
+      // feedStore.toggleLike → http client asli, yang di bawah
+      // flutter_test's synthetic HttpOverrides SELALU gagal cepat (400),
+      // jadi flip optimistis di-rollback pada pump yang sama. Heart-burst
+      // overlay (FeedPostBurstHeart) murni lokal (tak bergantung network)
+      // jadi itu sinyal yang reliable bahwa jalur like ter-trigger.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150));
+
+      expect(find.byType(FeedPostBurstHeart), findsOneWidget,
+          reason: 'ExternalDoubleTapLike.fire harus memicu heart burst sama '
+              'seperti double-tap internal');
+
+      // isActive → false: view lama wajib detach → bridge tak lagi punya
+      // handler aktif.
+      await pumpLegacy(tester,
+          isActive: false, externalDoubleTapLike: bridge, postId: postId);
+      expect(bridge.fire(center), isFalse,
+          reason: 'view non-aktif tidak boleh menangani like eksternal');
+
+      // Dispose sepenuhnya → bridge tetap tak ada handler.
+      // NB: flip optimistis gagal (network 400 di test env) memicu
+      // AppToast dengan Timer dismiss ~2.35s (lihat
+      // member_post_detail_double_tap_test.dart) — biarkan self-dismiss
+      // SEBELUM swap tree, atau invariant "Timer still pending" trip.
+      for (var i = 0; i < 24; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(bridge.fire(center), isFalse,
+          reason: 'view yang sudah dispose tidak boleh menangani like');
     });
   });
 }

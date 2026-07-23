@@ -41,6 +41,7 @@ import '../../../widgets/app_toast.dart';
 import '../../../widgets/feed_comment_sheet.dart';
 import '../../../widgets/moderation_action_sheet.dart';
 import 'double_tap_burst_guard.dart';
+import 'double_tap_like_pointer_detector.dart';
 import 'feed_action_rail.dart';
 import 'feed_accessibility_overlay.dart';
 import 'feed_creator_overlay.dart';
@@ -206,6 +207,10 @@ class FeedVideoPostView extends StatefulWidget {
   /// framing so this visual change cannot leak into scoped fullscreen.
   final FeedVideoFraming framing;
 
+  /// Jembatan like eksternal dari detector settle di level layar (lihat
+  /// DoubleTapLikePointerDetector). Null = layar tanpa detector luar.
+  final ExternalDoubleTapLike? externalDoubleTapLike;
+
   const FeedVideoPostView({
     super.key,
     required this.post,
@@ -230,6 +235,7 @@ class FeedVideoPostView extends StatefulWidget {
     this.observationObserver,
     this.beforeObserveInitialized,
     this.framing = FeedVideoFraming.immersive,
+    this.externalDoubleTapLike,
   });
 
   @override
@@ -590,6 +596,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       unawaited(_claimOrInitOnActivation(allowLocalInit: widget.isActive));
     }
     _syncProductRotation();
+    _syncExternalDoubleTapLike();
   }
 
   @override
@@ -1401,6 +1408,13 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       _featuredProductIndex = 0;
       _syncProductRotation();
     }
+    // Pergantian instance bridge (jarang, tapi mungkin saat re-parent) —
+    // lepas dari yang lama dulu supaya tidak nyangkut attached di bridge
+    // yang sudah tidak dipakai layar.
+    if (oldWidget.externalDoubleTapLike != widget.externalDoubleTapLike) {
+      oldWidget.externalDoubleTapLike?.detach(_onExternalDoubleTapLike);
+    }
+    _syncExternalDoubleTapLike();
   }
 
   Future<void> _maybeInitVideo({bool userInitiated = false}) async {
@@ -1933,6 +1947,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
   @override
   void dispose() {
+    // Lepas dari bridge like eksternal SEBELUM super.dispose() — kalau
+    // widget ini yang sedang attach dan tak dilepas, bridge akan
+    // memanggil handler pada state yang sudah dibuang (leak/crash).
+    widget.externalDoubleTapLike?.detach(_onExternalDoubleTapLike);
     // Managed: teardown selagi gesture aktif → akhiri lease TANPA resume
     // (widget lenyap, tak boleh ada resume/speed nyangkut). Coordinator tetap
     // pemilik sesi; ini cuma melepas gesture, bukan dispose sesi.
@@ -2244,6 +2262,37 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     }
     _heartBurstTarget = _resolveLikeCenter();
     _heartBurstController.forward(from: 0);
+  }
+
+  /// Attach/detach handler ke [ExternalDoubleTapLike] mengikuti `isActive` —
+  /// hanya view yang sedang aktif boleh menangani like dari detector settle
+  /// di level layar (jembatan handler tunggal, lihat kelasnya).
+  void _syncExternalDoubleTapLike() {
+    final bridge = widget.externalDoubleTapLike;
+    if (bridge == null) return;
+    if (widget.isActive) {
+      bridge.attach(_onExternalDoubleTapLike);
+    } else {
+      bridge.detach(_onExternalDoubleTapLike);
+    }
+  }
+
+  /// Jalur like dari detector settle di layar (posisi GLOBAL ketukan kedua).
+  /// Konversi ke lokal utk titik heart burst; _onDoubleTapLike juga
+  /// me-register DoubleTapBurstGuard sehingga single-tap "ekor" yang sempat
+  /// dilihat jalur dalam (play/pause) ikut tertekan.
+  void _onExternalDoubleTapLike(Offset globalPosition) {
+    if (!mounted) return;
+    final box = context.findRenderObject();
+    if (box is RenderBox && box.attached) {
+      _heartBurstPosition = box.globalToLocal(globalPosition);
+    } else {
+      // Fallback: box belum ter-attach — pakai pusat tombol like rail
+      // (bila sudah ter-render) supaya burst tidak jatuh ke pusat layar
+      // generik.
+      _heartBurstPosition = _resolveLikeCenter();
+    }
+    _onDoubleTapLike();
   }
 
   Future<void> _onComment() async {

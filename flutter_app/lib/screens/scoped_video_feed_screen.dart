@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../features/feed/video/adaptive_video_preload_policy.dart';
 import '../features/feed/video/post_video_coordinator.dart';
+import '../features/feed/widgets/double_tap_like_pointer_detector.dart';
 import '../features/feed/video/social_video_session_observer.dart';
 import '../features/feed/video/video_player_session.dart';
 import '../features/feed/widgets/feed_video_post_view.dart';
@@ -127,6 +128,10 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
   static const int _maxPaginationPagesPerViewer = 100;
 
   late final PageController _pageController;
+
+  /// Jembatan like settle → FeedVideoPostView aktif (lihat
+  /// DoubleTapLikePointerDetector utk kenapa detector di level layar).
+  final ExternalDoubleTapLike _externalDoubleTapLike = ExternalDoubleTapLike();
   late List<FeedPost> _posts;
   late final AnimationController _horizontalDismissController;
   late int _activeIndex;
@@ -693,6 +698,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
         onMediaZoomChanged: _setMediaZoomActive,
         onBufferAheadChanged: (ahead) =>
             _onActiveBufferAheadChanged(post.id, ahead),
+        externalDoubleTapLike: _externalDoubleTapLike,
       );
     }
 
@@ -711,6 +717,7 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
       coordinator: coordinator,
       preloadedController: null,
       preloadedCachedPlayer: null,
+      externalDoubleTapLike: _externalDoubleTapLike,
       onOverlayStateChanged: _setOverlayActive,
       onMediaZoomChanged: _setMediaZoomActive,
       onBufferAheadChanged: (ahead) =>
@@ -766,18 +773,25 @@ class _ScopedVideoFeedScreenState extends State<ScopedVideoFeedScreen>
                 children: [
                   NotificationListener<ScrollNotification>(
                     onNotification: _onScrollNotification,
-                    child: PageView.builder(
-                      key: const ValueKey('scoped-video-page-view'),
-                      controller: _pageController,
-                      scrollDirection: Axis.vertical,
-                      physics: _interactionLocked
-                          ? const NeverScrollableScrollPhysics()
-                          : const PageScrollPhysics(
-                              parent: BouncingScrollPhysics(),
-                            ),
-                      itemCount: _posts.length,
-                      onPageChanged: _onPageChanged,
-                      itemBuilder: (context, index) => _buildItem(index),
+                    child: DoubleTapLikePointerDetector(
+                      // Detector di level layar (bukan per-item) supaya
+                      // double-tap yang "settle" tepat setelah swipe page
+                      // tetap kena item yang BARU aktif, bukan yang lama.
+                      onSettleDoubleTapLike: (globalPos) =>
+                          _externalDoubleTapLike.fire(globalPos),
+                      child: PageView.builder(
+                        key: const ValueKey('scoped-video-page-view'),
+                        controller: _pageController,
+                        scrollDirection: Axis.vertical,
+                        physics: _interactionLocked
+                            ? const NeverScrollableScrollPhysics()
+                            : const PageScrollPhysics(
+                                parent: BouncingScrollPhysics(),
+                              ),
+                        itemCount: _posts.length,
+                        onPageChanged: _onPageChanged,
+                        itemBuilder: (context, index) => _buildItem(index),
+                      ),
                     ),
                   ),
                   const IgnorePointer(
