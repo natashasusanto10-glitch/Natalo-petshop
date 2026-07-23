@@ -889,7 +889,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
         onCompleted: () async {
           feedStore.incrementShareCount(post.id);
           final serverCount = await feedService.trackShare(post.id);
-          if (serverCount != null) feedStore.setShareCount(post.id, serverCount);
+          if (serverCount != null)
+            feedStore.setShareCount(post.id, serverCount);
         },
       );
     } catch (_) {
@@ -2089,9 +2090,11 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
     required this.authorInitiallyFollowing,
   });
 
-  // Ketebalan frosted — SANGAT tipis (konten tembus, sekadar melembutkan
-  // supaya teks gelap kebaca). Satu angka, gampang di-tune saat device-verify.
-  static const double _frostedSigma = 0.5;
+  // Blur frosted — konten di belakang header di-blur halus (kaca es tipis).
+  // Dipasangkan dgn tint rendah (0.08) supaya lapisan tetap tembus tapi media
+  // di belakang teks tampak buram, bukan tajam. Satu angka, gampang di-tune
+  // saat device-verify.
+  static const double _frostedSigma = 8;
   // Warna teks/ikon header: GELAP. Saat pertama buka header duduk di atas
   // latar putih (media mulai di bawahnya); saat discroll media lewat di
   // belakang frosted-tipis yang melembutkannya → gelap tetap kebaca di
@@ -2105,7 +2108,7 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
     // Tint putih tipis di atas blur — cukup menjaga keterbacaan teks gelap,
     // tetap tembus. reducedMotion: blur dimatikan, tint dinaikkan agar teks
     // tetap kebaca tanpa efek kaca.
-    final tint = Colors.white.withValues(alpha: reducedMotion ? 0.86 : 0.14);
+    final tint = Colors.white.withValues(alpha: reducedMotion ? 0.86 : 0.08);
 
     final bar = Container(
       color: tint,
@@ -2950,8 +2953,9 @@ class _PostCaptionState extends State<PostCaption>
       final suffixIndex =
           truncated == null ? -1 : text.lastIndexOf('... selengkapnya');
       final canTapName = widget.author?.hasUsername ?? false;
-      final truncatedBody =
-          suffixIndex >= 0 && !expanded ? text.substring(0, suffixIndex + 4) : text;
+      final truncatedBody = suffixIndex >= 0 && !expanded
+          ? text.substring(0, suffixIndex + 4)
+          : text;
       _disposeMentionRecognizers();
       final mentionSpans = buildMentionSpans(
         truncatedBody,
