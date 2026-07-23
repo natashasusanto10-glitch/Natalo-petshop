@@ -12,6 +12,7 @@ import 'package:visibility_detector/visibility_detector.dart';
 
 import '../config/api_config.dart';
 import '../theme/natalo_text.dart';
+import '../features/feed/widgets/double_tap_like_pointer_detector.dart';
 import '../features/feed/widgets/feed_action_rail.dart';
 import '../features/feed/video/adaptive_video_preload_policy.dart';
 import '../features/feed/video/feed_video_observation.dart';
@@ -206,6 +207,10 @@ class FeedScreen extends StatefulWidget {
 class _FeedScreenState extends State<FeedScreen>
     with WidgetsBindingObserver, RouteAware {
   final PageController _pageController = PageController();
+
+  /// Jembatan like settle → FeedVideoPostView aktif (lihat
+  /// DoubleTapLikePointerDetector utk kenapa detector di level layar).
+  final ExternalDoubleTapLike _externalDoubleTapLike = ExternalDoubleTapLike();
 
   // ── Migrasi Feed→PostVideoCoordinator (Opsi D) ────────────────────────
   // Coordinator dimiliki screen (lifecycle app + route push/pop →
@@ -797,7 +802,13 @@ class _FeedScreenState extends State<FeedScreen>
                       if (velocity != null) _lastFlingVelocity = velocity;
                       return false;
                     },
-                    child: PageView.builder(
+                    child: DoubleTapLikePointerDetector(
+                      // Detector di level layar (bukan per-item) supaya
+                      // double-tap yang "settle" tepat setelah swipe page
+                      // tetap kena item yang BARU aktif, bukan yang lama.
+                      onSettleDoubleTapLike: (globalPos) =>
+                          _externalDoubleTapLike.fire(globalPos),
+                      child: PageView.builder(
                       controller: _pageController,
                       scrollDirection: Axis.vertical,
                       physics: (_interactionLocked || _mediaZooming)
@@ -847,6 +858,7 @@ class _FeedScreenState extends State<FeedScreen>
                           playbackManagedExternally: true,
                           coordinator: coordinator,
                           preloadedController: null,
+                          externalDoubleTapLike: _externalDoubleTapLike,
                           onBufferAheadChanged: (ahead) =>
                               _onActiveBufferAheadChanged(postId, ahead),
                           onOverlayStateChanged: _setFeedInteractionLocked,
@@ -868,6 +880,7 @@ class _FeedScreenState extends State<FeedScreen>
                           onRequestPause: (_) => coordinator.pauseAll(),
                         );
                       },
+                      ),
                     ),
                   );
                 }),
