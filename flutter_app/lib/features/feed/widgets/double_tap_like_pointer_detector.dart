@@ -123,7 +123,54 @@ class RawDoubleTapTracker {
       _movedPastSlop = false;
     }
     _multiTouch = false;
-    _firstTapDown = null;
-    _firstTapUpTime = null;
+    // FALLBACK PageView settle: jangan reset _firstTapDown/Up saat cancel
+    // karena cancel adalah sinyal arena (scroll menang), bukan pembatalan OS.
+    // Biarkan double-tap deteksi tetap jalan walau PageView halangi arena.
+    // _firstTapDown = null;
+    // _firstTapUpTime = null;
+  }
+}
+
+/// Pembungkus media yang menembakkan [onDoubleTapDetected] dari raw pointer
+/// (lihat [RawDoubleTapTracker] untuk alasan & kriteria). Behavior
+/// translucent: TIDAK ikut arena, TIDAK menghalangi GestureDetector anak
+/// (single-tap play/pause, long-press) maupun scroll PageView induk.
+class DoubleTapLikePointerDetector extends StatefulWidget {
+  const DoubleTapLikePointerDetector({
+    super.key,
+    required this.onDoubleTapDetected,
+    required this.child,
+  });
+
+  /// Dipanggil TEPAT saat ketukan kedua turun-naik lengkap; argumen = posisi
+  /// LOKAL ketukan kedua (untuk titik burst heart).
+  final ValueChanged<Offset> onDoubleTapDetected;
+  final Widget child;
+
+  @override
+  State<DoubleTapLikePointerDetector> createState() =>
+      _DoubleTapLikePointerDetectorState();
+}
+
+class _DoubleTapLikePointerDetectorState
+    extends State<DoubleTapLikePointerDetector> {
+  final RawDoubleTapTracker _tracker = RawDoubleTapTracker();
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (event) => _tracker.onPointerDown(
+          event.pointer, event.localPosition, event.timeStamp),
+      onPointerMove: (event) =>
+          _tracker.onPointerMove(event.pointer, event.localPosition),
+      onPointerUp: (event) {
+        final hit = _tracker.onPointerUp(
+            event.pointer, event.localPosition, event.timeStamp);
+        if (hit != null) widget.onDoubleTapDetected(hit);
+      },
+      onPointerCancel: (event) => _tracker.onPointerCancel(event.pointer),
+      child: widget.child,
+    );
   }
 }
