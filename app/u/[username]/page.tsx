@@ -19,72 +19,31 @@ import { notFound } from "next/navigation";
 import { resolveUserByUsername } from "@/lib/username";
 import { prisma } from "@/lib/prisma";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
+import {
+  buildProfileShareMetadata,
+  buildUnavailableProfileShareMetadata,
+  getPublicShareProfile,
+} from "@/lib/share/profile-share-data";
 
 const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://natalopetshop.com";
+  process.env.NEXT_PUBLIC_SITE_URL || "https://www.natalopetshop.com";
 
 type PageProps = {
   params: Promise<{ username: string }>;
 };
 
+// The metadata carries an object version. Only the corresponding OG image is
+// long-lived in the CDN cache, so a profile change cannot retain a stale card.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { username } = await params;
-  const user = await resolveUserByUsername(username);
-  if (!user) {
-    return {
-      title: "User tidak ditemukan | Natalo Petshop",
-      description: "Halaman yang Anda cari tidak tersedia.",
-      robots: { index: false, follow: false },
-    };
-  }
-
-  const handle = user.username ?? username.toLowerCase();
-  // Akun official (admin) → brand name + foto null; nama asli/foto pemilik
-  // tidak boleh bocor di metadata/OG halaman web.
-  const safeName = brandDisplayName(user.role, user.name);
-  const safePhoto = brandPhotoUrl(user.role, user.profilePhotoUrl);
-  // Title handle bare (no `@`) — IG/TikTok pattern, identity label gak
-  // pakai `@`. `@` cuma untuk mention di dalam body text.
-  const titleHandle = user.username ?? safeName;
-  const description = user.bio
-    ? user.bio.replace(/\s+/g, " ").trim().slice(0, 160)
-    : `Lihat profil ${safeName} di Natalo Petshop — komunitas pet lovers Medan.`;
-
-  const canonical = `${siteUrl}/u/${handle}`;
-  const ogImage = safePhoto
-    ? (safePhoto.startsWith("http")
-      ? safePhoto
-      : `${siteUrl}${safePhoto}`)
-    : `${siteUrl}/icon.svg`;
-
-  return {
-    title: `${titleHandle} di Natalo Petshop`,
-    description,
-    alternates: { canonical },
-    openGraph: {
-      type: "profile",
-      title: `${titleHandle} di Natalo Petshop`,
-      description,
-      url: canonical,
-      siteName: "Natalo Petshop",
-      images: [
-        {
-          url: ogImage,
-          width: 600,
-          height: 600,
-          alt: titleHandle,
-        },
-      ],
-    },
-    twitter: {
-      card: "summary",
-      title: `${titleHandle} di Natalo Petshop`,
-      description,
-      images: [ogImage],
-    },
-  };
+  const profile = await getPublicShareProfile(username);
+  if (!profile) return buildUnavailableProfileShareMetadata();
+  return buildProfileShareMetadata(profile, siteUrl);
 }
 
 export default async function PublicProfilePage({ params }: PageProps) {
