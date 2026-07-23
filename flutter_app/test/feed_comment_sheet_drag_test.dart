@@ -39,6 +39,17 @@ void main() {
       );
     });
 
+    test('size 0.40 slow release closes (below dismiss 0.45, IG-sensitive)',
+        () {
+      // Ambang dismiss dinaikkan ke 0.45 supaya tarikan turun yang wajar
+      // (dari initial 0.60) langsung menutup, seperti IG Reels — tidak perlu
+      // menyeret sheet sampai nyaris habis.
+      expect(
+        commentSnapTargetFor(size: 0.40, velocity: 0, maxExtent: 0.93),
+        CommentSnapTarget.close,
+      );
+    });
+
     test('size 0.5 snaps to initial', () {
       expect(
         commentSnapTargetFor(size: 0.5, velocity: 0, maxExtent: 0.93),
@@ -67,9 +78,9 @@ void main() {
       );
     });
 
-    test('size just above dismiss (0.31) snaps to initial', () {
+    test('size just above dismiss (0.46) snaps to initial', () {
       expect(
-        commentSnapTargetFor(size: 0.31, velocity: 0, maxExtent: 0.93),
+        commentSnapTargetFor(size: 0.46, velocity: 0, maxExtent: 0.93),
         CommentSnapTarget.initial,
       );
     });

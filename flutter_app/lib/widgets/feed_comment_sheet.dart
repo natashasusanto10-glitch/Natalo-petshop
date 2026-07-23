@@ -29,7 +29,15 @@ import 'profile_avatar.dart';
 /// Shared detents and gesture policy for both comment drawer presentation
 /// adapters: the modal drawer and the embedded video-linked drawer.
 const double feedCommentInitialExtent = 0.60;
-const double feedCommentDismissExtent = 0.30;
+const double feedCommentDismissExtent = 0.45;
+
+/// Fisika daftar komentar: clamping di SEMUA platform. Bouncing bawaan iOS
+/// menelan OverscrollNotification tepi atas (list memantul sendiri), sehingga
+/// pull-to-dismiss ala IG (sheet ikut jari saat list mentok atas) mati total
+/// di iOS. Clamping menghentikan list mati di tepi atas dan meneruskan tarikan
+/// sebagai overscroll → sheet mengikuti jari, konsisten Android/iOS.
+const ScrollPhysics feedCommentListPhysics =
+    AlwaysScrollableScrollPhysics(parent: ClampingScrollPhysics());
 const double feedCommentFlingVelocity = 520;
 const Duration feedCommentSnapDuration = Duration(milliseconds: 220);
 
@@ -235,7 +243,7 @@ class CommentErrorRetryView extends StatelessWidget {
       controller: scrollController,
       // Selalu scrollable supaya tarik-bawah tetap memicu overscroll →
       // pull-to-dismiss (tutup) walau konten error pendek. Konsisten dgn AC.
-      physics: const AlwaysScrollableScrollPhysics(),
+      physics: feedCommentListPhysics,
       padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 32),
       children: [
         Center(
@@ -2153,7 +2161,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         controller: _listController,
         // Selalu scrollable supaya tarik-bawah di state kosong tetap memicu
         // pull-to-dismiss (tutup), konsisten dengan state populated.
-        physics: const AlwaysScrollableScrollPhysics(),
+        physics: feedCommentListPhysics,
         padding: EdgeInsets.zero,
         children: [
           if (emptyCaptionText.isNotEmpty)
@@ -2214,7 +2222,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     return ListView.builder(
       controller: _listController,
       padding: const EdgeInsets.fromLTRB(0, 8, 0, 24),
-      physics: const AlwaysScrollableScrollPhysics(),
+      physics: feedCommentListPhysics,
       itemCount: totalCount,
       itemBuilder: (context, index) {
         // Caption header — index 0 kalau hasCaption.
@@ -3169,6 +3177,7 @@ class _CommentListSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       controller: controller,
+      physics: feedCommentListPhysics,
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: List.generate(
         5,
