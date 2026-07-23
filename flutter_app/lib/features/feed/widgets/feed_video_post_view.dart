@@ -3569,24 +3569,42 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 /// feed_screen.dart karena terikat langsung ke model FeedAuthor & service
 /// layer, bukan bagian widget presentasional yang di-share.
 
-/// Fit lapisan media untuk framing "feed" (mainFeed / fullscreenFeed).
-///
-/// Semua orientasi → [BoxFit.contain] (letterbox, bar hitam mengisi sisa
-/// ruang) supaya video tampil UTUH — `cover` memotong sisi yang kelebihan
-/// (landscape: kiri-kanan; portrait/persegi non-9:16: atas-bawah, mis.
-/// creative iklan brand yang bukan native 9:16). Paritas IG: grid & viewer
-/// IG tidak pernah cover-crop video (dibuktikan screenshot device), dan
-/// Postingan sudah dibetulkan ke prinsip sama — Beranda & fullscreen feed
-/// menyusul supaya konsisten satu app, bukan cuma di landscape.
+/// Ambang crop cover feed (Opsi C): video portrait di-`cover` (full-bleed)
+/// hanya bila cover memotong ≤ ~22% total (≈11% per sisi). 9:16 & lebih tinggi
+/// lolos (crop ~18% di iPhone 15 Pro); 4:5/1:1 (crop ≳ 42%) di-letterbox.
+const double feedCoverMaxCropFraction = 0.22;
+
+/// Fit lapisan media untuk framing "feed" (mainFeed / fullscreenFeed) — paritas
+/// IG (dibuktikan screenshot device):
+///  - LANDSCAPE → selalu [BoxFit.contain] (letterbox, video utuh) — TAK berubah.
+///  - PORTRAIT dekat/≥ 9:16 → [BoxFit.cover] rata atas (full-bleed dari tepi
+///    atas layar persis IG; hanya tepi kiri-kanan ter-crop tipis).
+///  - PORTRAIT jauh dari 9:16 (4:5/1:1, creative iklan) → [BoxFit.contain]
+///    (letterbox utuh) — TAK berubah.
+/// Keputusan cover-vs-letterbox pakai crop aktual relatif viewport (bukan cuma
+/// orientasi): lihat [feedCoverMaxCropFraction]. [mediaAspectRatio] &
+/// [viewportAspectRatio] = lebar/tinggi.
 BoxFit resolveFeedCoverFit({
   required FeedVideoFraming framing,
-  required bool isLandscape,
+  required double mediaAspectRatio,
+  required double viewportAspectRatio,
 }) {
-  if (framing == FeedVideoFraming.mainFeed ||
-      framing == FeedVideoFraming.fullscreenFeed) {
+  if (framing != FeedVideoFraming.mainFeed &&
+      framing != FeedVideoFraming.fullscreenFeed) {
+    return BoxFit.cover;
+  }
+  // Landscape (lebih lebar dari tinggi) → letterbox, tak pernah crop.
+  if (mediaAspectRatio > 1) return BoxFit.contain;
+  if (mediaAspectRatio <= 0 || viewportAspectRatio <= 0) {
     return BoxFit.contain;
   }
-  return BoxFit.cover;
+  // Fraksi video yang dipotong `cover` = 1 − rasio-kecil/rasio-besar.
+  final lo = math.min(mediaAspectRatio, viewportAspectRatio);
+  final hi = math.max(mediaAspectRatio, viewportAspectRatio);
+  final croppedFraction = 1 - (lo / hi);
+  return croppedFraction <= feedCoverMaxCropFraction
+      ? BoxFit.cover
+      : BoxFit.contain;
 }
 
 class _MediaBackground extends StatelessWidget {
@@ -3631,6 +3649,17 @@ class _MediaBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     final ctrl = videoController;
 
+    // Rasio viewport (lebar/tinggi) untuk keputusan cover-vs-letterbox Opsi C.
+    // Layar penuh (fullscreen) atau ~layar (mainFeed dikurangi inset bawah —
+    // approx aman: layar penuh sedikit lebih tinggi → estimasi crop lebih besar
+    // → konservatif). Fallback 9:16 bila MediaQuery tak ada (mis. sebagian test)
+    // → 9:16 tetap dianggap full-bleed.
+    final screenSize = MediaQuery.maybeOf(context)?.size;
+    final viewportAspect =
+        (screenSize == null || screenSize.height <= 0 || screenSize.width <= 0)
+            ? 9 / 16
+            : screenSize.width / screenSize.height;
+
     if (ctrl != null && ctrl.value.isInitialized) {
       final size = ctrl.value.size;
       // Preview kompak (drawer komentar minimized): pertahankan contain
@@ -3670,10 +3699,12 @@ class _MediaBackground extends StatelessWidget {
           framing == FeedVideoFraming.fullscreenFeed) {
         final fit = resolveFeedCoverFit(
           framing: framing,
-          isLandscape: size.width > size.height,
+          mediaAspectRatio: size.height <= 0 ? 1 : size.width / size.height,
+          viewportAspectRatio: viewportAspect,
         );
-        // Contain (landscape fullscreen) rata tengah supaya bar hitam terbagi
-        // atas-bawah; cover tetap rata atas (ala IG).
+        // Cover (portrait ~9:16) rata ATAS → video mulai dari tepi atas layar
+        // persis IG, crop hanya kiri-kanan. Contain (landscape / 4:5 / 1:1)
+        // rata tengah supaya bar hitam terbagi simetris.
         return _mediaStack(
           videoLayer(
             fit,
@@ -3705,11 +3736,13 @@ class _MediaBackground extends StatelessWidget {
       if (framing == FeedVideoFraming.mainFeed ||
           framing == FeedVideoFraming.fullscreenFeed) {
         // Samakan fit dgn video (pakai aspect post — thumbnail tampil sebelum
-        // controller siap) supaya tak ada lompatan cover→contain saat player
-        // ready untuk video landscape.
+        // controller siap) supaya tak ada lompatan saat player ready.
         final fit = resolveFeedCoverFit(
           framing: framing,
-          isLandscape: post.aspectWidthInt > post.aspectHeightInt,
+          mediaAspectRatio: post.aspectHeightInt <= 0
+              ? 1
+              : post.aspectWidthInt / post.aspectHeightInt,
+          viewportAspectRatio: viewportAspect,
         );
         return _mediaStack(
           CachedNetworkImage(

@@ -674,8 +674,8 @@ class FeedPost {
     // aspectWidth/aspectHeight pair (my-posts shape); else fallback ke
     // width/height media item pertama — beberapa shape (mis. my-posts lama)
     // taruh dimensi video di mediaItems, bukan di post-level. Tanpa fallback
-    // ini video landscape jatuh ke default 9/16 (portrait) → grid gagal
-    // letterbox (lihat gridShowsLetterbox di gallery_post_tile.dart).
+    // ini video landscape jatuh ke default 9/16 (portrait) → grid salah fit
+    // (lihat gridThumbnailFit di gallery_post_tile.dart).
     final firstMedia = mediaItems.isNotEmpty ? mediaItems.first : null;
     final aspectRatio = (json['aspectRatio'] as num?)?.toDouble() ??
         _aspectFromIntPair(

@@ -5,13 +5,20 @@ import '../../../models/feed_post.dart';
 import '../../../theme/natalo_text.dart';
 import '../transition/post_hero.dart';
 
-/// Video (semua orientasi) → letterbox di grid (video utuh, bar hitam
-/// mengisi sisa ruang) — paritas IG: grid IG tidak pernah cover-crop video,
-/// termasuk portrait/persegi yang rasio-nya meleset dari tile 4:5 (dibuktikan
-/// screenshot device — video ads non-9:16 tetap tampil utuh berletterbox di
-/// grid IG, bukan di-zoom/dipotong). Foto/carousel tetap cover-crop penuh
-/// (tak berubah — grid foto IG masih crop).
-bool gridShowsLetterbox(FeedPost post) => post.isVideo;
+/// Fit thumbnail grid — paritas IG (dibuktikan screenshot device). Video SELALU
+/// `fitWidth`: lebar tile terisi penuh, lalu:
+///  - portrait (9:16 dst, lebih tinggi dari tile) → ter-crop tipis atas-bawah,
+///    tampil PENUH tanpa bar kiri-kanan (dulu `contain` → bar samping, salah);
+///  - landscape (lebih pendek dari tile) → letterbox atas-bawah (video utuh);
+///  - persegi → hampir penuh, crop minimal.
+/// Foto/carousel tetap `cover` (grid foto IG memang crop). Latar tile video
+/// hitam supaya bar letterbox rapi (tak terlihat saat portrait memenuhi tile).
+BoxFit gridThumbnailFit(FeedPost post) =>
+    post.isVideo ? BoxFit.fitWidth : BoxFit.cover;
+
+/// Latar hitam untuk tile video (mengisi bar letterbox landscape/persegi);
+/// foto pakai latar netral.
+bool gridVideoUsesBlackBackground(FeedPost post) => post.isVideo;
 
 /// Tile grid foto/video 1:1 full-bleed — dipakai bersama halaman Postingan
 /// Saya, profil, dan Postingan Tersimpan. Badge tipe media (video/carousel)
@@ -101,10 +108,9 @@ class _PostThumbnail extends StatelessWidget {
     final imageUrl = _thumbnailUrlForPost(post);
     if (imageUrl == null) return const _PostThumbnailFallback();
 
-    final letterbox = gridShowsLetterbox(post);
     final image = CachedNetworkImage(
       imageUrl: imageUrl,
-      fit: letterbox ? BoxFit.contain : BoxFit.cover,
+      fit: gridThumbnailFit(post),
       fadeInDuration: const Duration(milliseconds: 180),
       placeholder: (_, __) => const _PostThumbnailFallback(),
       errorWidget: (_, __, ___) => const _PostThumbnailFallback(),

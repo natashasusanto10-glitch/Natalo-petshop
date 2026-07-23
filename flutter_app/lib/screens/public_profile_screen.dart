@@ -15,7 +15,7 @@ import '../features/feed/transition/post_viewer_route.dart';
 import '../features/feed/transition/profile_tile_visibility.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../features/feed/widgets/gallery_post_tile.dart'
-    show gridShowsLetterbox;
+    show gridThumbnailFit, gridVideoUsesBlackBackground;
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
 import '../services/follow_service.dart';
@@ -1207,15 +1207,16 @@ class _PostTile extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 if (isValidImageUrl)
-                  // Video LANDSCAPE → letterbox (contain + latar hitam,
-                  // video utuh) paritas IG & GalleryPostTile. Foto/carousel
-                  // + video portrait/persegi tetap cover-crop.
+                  // Video → fitWidth (paritas IG & GalleryPostTile): portrait
+                  // penuh tanpa bar samping, landscape letterbox atas-bawah.
+                  // Foto/carousel tetap cover-crop.
                   PostHero(
                     scope: heroScope,
                     postId: post.id,
                     child: _SafeNetworkImage(
                       url: thumb,
-                      letterbox: gridShowsLetterbox(post),
+                      fit: gridThumbnailFit(post),
+                      blackBg: gridVideoUsesBlackBackground(post),
                     ),
                   )
                 else
@@ -1327,9 +1328,16 @@ class _PostTile extends StatelessWidget {
 class _SafeNetworkImage extends StatelessWidget {
   final String url;
 
-  /// Video landscape → contain (letterbox, latar hitam). Default cover.
-  final bool letterbox;
-  const _SafeNetworkImage({required this.url, this.letterbox = false});
+  /// Fit gambar. Video → `fitWidth` (paritas IG); foto → `cover`.
+  final BoxFit fit;
+
+  /// Latar hitam di belakang gambar (mengisi bar letterbox video). Default off.
+  final bool blackBg;
+  const _SafeNetworkImage({
+    required this.url,
+    this.fit = BoxFit.cover,
+    this.blackBg = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1337,7 +1345,7 @@ class _SafeNetworkImage extends StatelessWidget {
     try {
       final image = CachedNetworkImage(
         imageUrl: url,
-        fit: letterbox ? BoxFit.contain : BoxFit.cover,
+        fit: fit,
         placeholder: (_, __) => ColoredBox(color: cs.surfaceContainerHighest),
         // Error → ikon broken-image (BUKAN kotak polos yang tak bisa
         // dibedakan dari placeholder loading) + log debug. Investigasi
@@ -1357,9 +1365,9 @@ class _SafeNetworkImage extends StatelessWidget {
           );
         },
       );
-      // Letterbox: sisa ruang bar hitam (video utuh di tengah), konsisten
-      // dgn GalleryPostTile. Cover-crop tak butuh latar karena penuhi tile.
-      return letterbox ? ColoredBox(color: Colors.black, child: image) : image;
+      // Latar hitam mengisi bar letterbox video (landscape/persegi); portrait
+      // fitWidth memenuhi tile jadi latar tak terlihat. Foto tak butuh latar.
+      return blackBg ? ColoredBox(color: Colors.black, child: image) : image;
     } catch (_) {
       return ColoredBox(color: cs.surfaceContainerHighest);
     }
