@@ -45,6 +45,22 @@
 
 - `b1bb82ca fix(deep-link): queue and deduplicate public share links`
 
+## Review fix: path-only routes and foreground dispatch lifecycle
+
+- RED: new path-only regressions proved that `/feed/<id>`,
+  `/products/<slug>`, and `/u/<username>` were no longer classified as legacy
+  internal routes. A dispatcher whose first route completion never resolved
+  also proved that the second foreground target stayed blocked.
+- GREEN: path-only routes now reach the legacy handler only when they have no
+  scheme or authority; HTTPS still requires an official Natalo host. Public
+  dispatch releases its acceptance lock as soon as work starts, observes later
+  completion errors, and uses a generation guard so a stale Feed/product fetch
+  cannot navigate over a newer foreground link.
+- Verification: `flutter test test/services/deep_link_router_test.dart
+  test/services/deep_link_service_test.dart
+  test/services/deep_link_service_navigator_race_test.dart` passed (12 tests).
+  Focused `flutter analyze` passed with no issues; `git diff --check` passed.
+
 ## Device gates still required
 
 - Deploy the AASA route before mobile builds, then verify apex and `www` serve
