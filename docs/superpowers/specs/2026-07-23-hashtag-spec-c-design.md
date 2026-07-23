@@ -45,11 +45,11 @@ Referensi perilaku: IG 2024–2026 (riset web): follow-hashtag sudah DIHAPUS IG 
 
 ### Aturan parsing — SATU sumber aturan, mirror server ↔ client
 
-- Regex: `#([a-z0-9_]+)` case-insensitive **dengan boundary**: `#` hanya valid jika didahului awal-teks atau whitespace (lookbehind). `harga#promo` dan URL `natalo.com/#promo` TIDAK menghasilkan tag.
+- Regex: `#([a-z0-9_]+)` case-insensitive **dengan boundary**: `#` hanya valid jika didahului awal-teks atau whitespace. `harga#promo` dan URL `natalo.com/#promo` TIDAK menghasilkan tag. (Teknik bebas — lookbehind ATAU grup awal `(^|\s)` — asal hasilnya identik di server & Flutter.)
 - Filter di fungsi extract (kedua sisi, ala `extractMentionHandles` yang filter 3–30): panjang nama **2–50**; duplikat dalam satu caption dihitung sekali; normalisasi **lowercase** untuk simpan/query.
 - **Maks 5 hashtag unik per post** — server tolak `400` "Maksimal 5 hashtag per postingan". Composer memvalidasi hal yang sama sebelum submit (400 = jaring pengaman).
-- Parse **server-side dari caption** (server sumber kebenaran; client TIDAK mengirim daftar tag terpisah), di kedua jalur create: `POST /api/feed/posts` (foto) dan `POST /api/feed/bunny/upload-url` (video), **dalam transaksi yang sama** dengan create post: upsert `Hashtag` by name → create junction → increment `postCount`.
-- Hapus post (jalur delete existing) → cascade hapus junction + decrement `postCount`.
+- Parse **server-side dari caption** (server sumber kebenaran; client TIDAK mengirim daftar tag terpisah), di **SEMUA jalur create post**: `POST /api/feed/posts` (foto client), `POST /api/feed/bunny/upload-url` (video client), **dan jalur create admin "Buat Post Feed"** (verifikasi route konkretnya saat planning — kalau admin pakai route terpisah, parse di sana juga; caption hasil AI generator tunduk aturan yang sama termasuk limit 5). Semua **dalam transaksi yang sama** dengan create post: upsert `Hashtag` by name → create junction → increment `postCount`.
+- Hapus post (jalur delete existing): kalau hard-delete → cascade hapus junction + decrement `postCount`; kalau ternyata soft-delete (ubah status — verifikasi saat planning) → junction dibiarkan, aman karena halaman hashtag ter-filter status dan `postCount` memang aproksimatif.
 - Edit caption belum ada di app → tidak ada pipeline re-index (catatan: kalau edit post dibuat kelak, wajib re-parse + diff junction).
 
 ### `postCount` = sinyal aproksimatif (keputusan sadar)
@@ -83,7 +83,7 @@ Semua di **editor caption existing** (`feed_caption_edit_screen.dart`) — dipak
 
 ### Render tappable
 
-- `buildMentionSpans()` (`mention_text.dart`) diperluas mengenali dua pola satu pass: `@mention` (existing, tap → `/u/<handle>`) + `#hashtag` (baru, tap → halaman hashtag). Berlaku otomatis di caption feed + komentar (kedua tempat sudah pakai fungsi ini).
+- **Satu inti parser bersama** di `mention_text.dart` yang mengenali dua pola satu pass: `@mention` (existing, tap → `/u/<handle>`) + `#hashtag` (baru, tap → halaman hashtag). PENTING: `MentionText` (dipakai sheet komentar & detail post) adalah widget "self-managed recognizer" dengan jalur parse sendiri — inti parser baru WAJIB dipakai oleh `buildMentionSpans` DAN `MentionText`, supaya caption feed, komentar, dan detail post semuanya kebagian. Memperluas `buildMentionSpans` saja = komentar bolong.
 - **Regex render = mirror persis extractor server** (boundary + panjang) — `natalo.com/#promo` tidak boleh biru.
 - Style hashtag: biru sama mention (`0xFF0B7FEA`) tapi **w600** (token strong NataloWeight), bukan w800 mention — orang tegas, topik lebih ringan, tanpa warna baru.
 - **Tap → navigasi dengan nama lowercase** (caption boleh menampilkan `#KucingLucu`, query pakai `kucinglucu`). Judul halaman menampilkan bentuk lowercase kanonik.
@@ -99,8 +99,8 @@ Semua di **editor caption existing** (`feed_caption_edit_screen.dart`) — dipak
 
 ## 4. Testing
 
-- **Backend**: extractor (boundary `harga#promo` & `/#promo` ditolak; panjang 2–50; dedup; lowercase; >5 → error), transaksi create (upsert + junction + increment; foto & video), delete post (decrement), endpoint page (visibilitas feed; multi-author brand-safe; hitungan akurat; param invalid → 400; cursor), autocomplete (prefix, urut postCount, maks 8, q kosong → list kosong tanpa error).
-- **Flutter**: unit regex mirror (kasus identik dengan server), widget render caption (`#tag` biru w600 tappable; `@mention` tetap; `/#promo` tidak tappable; kombinasi mention+hashtag satu caption), halaman hashtag (grid multi-author, judul+hitungan, empty state), `HashtagPicker` (muncul saat `#`+huruf; tap sisip+spasi; tanpa hasil tanpa overlay), validasi limit 5 editor.
+- **Backend**: extractor (boundary `harga#promo` & `/#promo` ditolak; panjang 2–50; dedup; lowercase; >5 → error), transaksi create (upsert + junction + increment; foto, video, DAN jalur admin), delete post (sesuai temuan hard/soft), endpoint page (visibilitas feed; multi-author brand-safe; hitungan akurat; param invalid → 400; cursor), autocomplete (prefix, urut postCount, maks 8, q kosong → list kosong tanpa error).
+- **Flutter**: unit regex mirror (kasus identik dengan server), widget render caption DAN komentar/detail via `MentionText` (`#tag` biru w600 tappable; `@mention` tetap; `/#promo` tidak tappable; kombinasi mention+hashtag satu caption), halaman hashtag (grid multi-author, judul+hitungan, empty state), `HashtagPicker` (muncul saat `#`+huruf; tap sisip+spasi; tanpa hasil tanpa overlay), validasi limit 5 editor.
 - Golden hanya bila layout berubah (kemungkinan tidak — reuse).
 
 ## Keputusan & trade-off tercatat
