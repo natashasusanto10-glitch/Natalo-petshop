@@ -8,6 +8,7 @@ import '../../models/new_post_user_tag.dart';
 import '../../services/api_client.dart';
 import '../../theme/natalo_colors.dart';
 import '../../utils/haptics.dart';
+import '../../utils/motion_prefs.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/feed_user_tag_pill.dart';
 import '../../widgets/profile_avatar.dart';
@@ -246,15 +247,23 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
                 child: GestureDetector(
                   onTap: _onDone,
                   behavior: HitTestBehavior.opaque,
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: const BoxDecoration(
-                      color: NataloColors.primary,
-                      shape: BoxShape.circle,
+                  // Hit target 44dp (checklist tap-target) — lingkaran
+                  // visual tetap 36px, ter-pusat (audit polish lanjutan).
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Center(
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: const BoxDecoration(
+                          color: NataloColors.primary,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.check,
+                            color: Colors.white, size: 20),
+                      ),
                     ),
-                    child:
-                        const Icon(Icons.check, color: Colors.white, size: 20),
                   ),
                 ),
               ),
@@ -482,7 +491,10 @@ class _TagPillOverlay extends StatelessWidget {
         onPanUpdate: onDragUpdate,
         child: TweenAnimationBuilder<double>(
           tween: Tween(begin: 0.6, end: 1),
-          duration: const Duration(milliseconds: 220),
+          // Reduced-motion (OS atau toggle Settings) → animasi pop di-skip,
+          // pill langsung tampil final (audit polish Spec B lanjutan).
+          duration:
+              MotionPrefs.effective(context, const Duration(milliseconds: 220)),
           curve: Curves.easeOutCubic,
           builder: (context, v, child) => Opacity(
             opacity: v.clamp(0, 1),

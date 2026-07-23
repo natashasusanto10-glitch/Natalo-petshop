@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/motion_prefs.dart';
+
 /// Opasitas latar gelap pill — satu sumber dipakai badan pill DAN panah
 /// pointer supaya keduanya tidak drift kalau diubah (audit polish Spec B).
 const double _kPillBgAlpha = 0.82;
@@ -103,6 +105,52 @@ Rect fittedPhotoRect(Size container, double aspectRatio, BoxFit fit) {
   return Rect.fromLTWH(dx, dy, width, height);
 }
 
+/// Wrapper tap feedback ala IG — scale-down + fade tipis selama ditekan
+/// (80-150ms), tanpa menggeser bounds layout (checklist UI Pro Max: "Stable
+/// Interaction States"). Respect [MotionPrefs.shouldReduce] — reduced-motion
+/// ON → tap langsung tanpa animasi (audit polish Spec B lanjutan).
+class _PressableTag extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+
+  const _PressableTag({required this.child, this.onTap});
+
+  @override
+  State<_PressableTag> createState() => _PressableTagState();
+}
+
+class _PressableTagState extends State<_PressableTag> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MotionPrefs.shouldReduce(context);
+    final pressed = _pressed && !reduceMotion;
+    return GestureDetector(
+      onTap: widget.onTap,
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _setPressed(true),
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      child: AnimatedScale(
+        scale: pressed ? 0.94 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        curve: Curves.easeOut,
+        child: AnimatedOpacity(
+          opacity: pressed ? 0.85 : 1.0,
+          duration: const Duration(milliseconds: 100),
+          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+
 /// Pill gelap username putih + panah pointer, ala IG. Muncul dengan pop
 /// scale-fade easeOutCubic (dibungkus caller via animasi implicit di sini).
 class FeedUserTagPill extends StatelessWidget {
@@ -130,7 +178,7 @@ class FeedUserTagPill extends StatelessWidget {
     final body = Semantics(
       button: true,
       label: 'Akun ditandai: $username',
-      child: GestureDetector(
+      child: _PressableTag(
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -166,9 +214,8 @@ class FeedUserTagPill extends StatelessWidget {
                 Semantics(
                   button: true,
                   label: 'Hapus tag $username',
-                  child: GestureDetector(
+                  child: _PressableTag(
                     onTap: onRemove,
-                    behavior: HitTestBehavior.opaque,
                     child: const SizedBox(
                       width: 24,
                       height: 24,
