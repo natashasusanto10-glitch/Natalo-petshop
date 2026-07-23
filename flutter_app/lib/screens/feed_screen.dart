@@ -40,6 +40,7 @@ import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/android_back_overlays.dart';
 import '../widgets/feed_tagged_users_overlay.dart';
+import '../widgets/feed_tag_options_sheet.dart';
 import '../utils/app_route_observer.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
@@ -1437,6 +1438,10 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   late final PageController _photoPageController;
   int _photoIndex = 0;
   bool _showTagPills = false;
+  // Salinan lokal tag orang (Task 12) — supaya "Hapus saya dari post"
+  // bisa optimistic-remove tanpa menunggu server/parent rebuild.
+  late List<FeedTaggedUser> _tags;
+  bool _selfTagHidden = false;
   bool _liked = false;
   bool _saved = false;
   int _likeCount = 0;
@@ -1489,6 +1494,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   @override
   void initState() {
     super.initState();
+    _tags = List.of(widget.post.taggedUsers);
     _photoPageController = PageController();
     // Seed store dengan post saat ini supaya feedStore.get always returns
     // non-null. Idempotent — kalau store sudah punya, NoOp.
@@ -1557,6 +1563,11 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   @override
   void didUpdateWidget(covariant _PhotoCarouselPostView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.post.id != widget.post.id) {
+      // Post lain (PageView pindah item) — reset salinan lokal tag.
+      _tags = List.of(widget.post.taggedUsers);
+      _selfTagHidden = false;
+    }
     // Re-sync rotation kalau post berubah (PageView ke post lain) atau
     // tagged products length berubah (admin edit tag dari background).
     if (oldWidget.post.id != widget.post.id ||
@@ -1742,12 +1753,12 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
 
   /// Tag orang pada slide foto aktif (Spec B viewer, Task 11).
   List<FeedTaggedUser> get _tagsForCurrentPhoto =>
-      widget.post.taggedUsers.where((t) => t.mediaIndex == _photoIndex).toList();
+      _tags.where((t) => t.mediaIndex == _photoIndex).toList();
 
-  bool get _hasTags => widget.post.taggedUsers.isNotEmpty;
+  bool get _hasTags => _tags.isNotEmpty;
 
   void _toggleTagPills() {
-    if (widget.post.taggedUsers.isEmpty) return;
+    if (_tags.isEmpty) return;
     setState(() => _showTagPills = !_showTagPills);
   }
 
@@ -1755,12 +1766,37 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
       tag.userId.isNotEmpty && tag.userId == accountOwnerId();
 
   void _onTapTaggedUser(FeedTaggedUser tag) {
-    final username = tag.username;
-    if (username == null || username.isEmpty) return;
     if (_isSelfTag(tag)) {
-      // Nama sendiri → Opsi Tag (Task 12). Stub no-op sampai diimplementasikan.
+      // Nama sendiri → sheet Opsi Tag (Task 12): hapus tag / sembunyikan.
+      showFeedTagOptionsSheet(
+        context,
+        postId: widget.post.id,
+        hidden: _selfTagHidden,
+        onRemoved: () {
+          if (!mounted) return;
+          setState(() {
+            _tags = _tags.where((t) => t.userId != tag.userId).toList();
+            _showTagPills = _tags.any((t) => t.mediaIndex == _photoIndex);
+          });
+        },
+        onRemoveFailed: () {
+          // Rollback — request gagal, kembalikan tag yang tadi dibuang.
+          if (!mounted) return;
+          setState(() {
+            if (!_tags.any((t) => t.userId == tag.userId)) {
+              _tags = [..._tags, tag];
+            }
+          });
+        },
+        onHiddenChanged: (value) {
+          if (!mounted) return;
+          setState(() => _selfTagHidden = value);
+        },
+      );
       return;
     }
+    final username = tag.username;
+    if (username == null || username.isEmpty) return;
     Navigator.of(context).pushNamed('/u', arguments: username);
   }
 
@@ -2263,8 +2299,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                   child: IgnorePointer(
                     ignoring: !_showTagPills,
                     child: LayoutBuilder(
-                      builder: (context, constraints) =>
-                          FeedTaggedUsersOverlay(
+                      builder: (context, constraints) => FeedTaggedUsersOverlay(
                         tags: _tagsForCurrentPhoto,
                         visible: _showTagPills,
                         photoSize: constraints.biggest,

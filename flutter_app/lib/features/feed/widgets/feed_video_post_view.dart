@@ -20,6 +20,7 @@ import '../../../services/product_service.dart';
 import '../../../services/report_service.dart';
 import '../../../services/share_sheet_launcher.dart';
 import '../../../services/video_quality_service.dart';
+import '../../../state/account_scope.dart';
 import '../../../state/feed_comment_session_store.dart';
 import '../../../state/feed_local_store.dart';
 import '../../../state/feed_store.dart';
@@ -39,6 +40,8 @@ import '../video/video_player_session.dart';
 import '../video/video_playback_health_monitor.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/feed_comment_sheet.dart';
+import '../../../widgets/feed_tag_options_sheet.dart';
+import '../../../widgets/feed_tagged_users_overlay.dart';
 import '../../../widgets/moderation_action_sheet.dart';
 import 'double_tap_burst_guard.dart';
 import 'double_tap_like_pointer_detector.dart';
@@ -381,6 +384,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   bool _isPaused = false;
   bool _videoLoadFailed = false;
 
+  // Tag orang (Spec B Task 12) — salinan lokal supaya sheet "Ditandai dalam
+  // video ini" bisa optimistic-remove baris tanpa menunggu server/parent.
+  late List<FeedTaggedUser> _tags;
+  bool _selfTagHidden = false;
+
   /// D4 legacy — override URL playback segar hasil refresh signed-URL
   /// (init gagal + URL bertanda-tangan basi → re-fetch post). Null = pakai
   /// data widget.post apa adanya. Di-reset di didUpdateWidget kalau parent
@@ -470,6 +478,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   @override
   void initState() {
     super.initState();
+    _tags = List.of(widget.post.taggedUsers);
     final metricContext = <String, Object>{
       'surface': 'feed',
       'media_type': widget.post.videoUrl.contains('.m3u8') ? 'hls' : 'mp4',
@@ -1345,6 +1354,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   @override
   void didUpdateWidget(covariant FeedVideoPostView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.post.id != widget.post.id) {
+      // Post lain — reset salinan lokal tag (Task 12).
+      _tags = List.of(widget.post.taggedUsers);
+      _selfTagHidden = false;
+    }
     if (oldWidget.post.id != widget.post.id && _commentDrawerMounted) {
       _forceDeactivateCommentDrawer(deferOverlayNotification: true);
     }
@@ -2239,6 +2253,46 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
         kind: ToastKind.warning,
       );
     }
+  }
+
+  /// Badge tag orang → sheet "Ditandai dalam video ini" (Task 12, satu-
+  /// satunya surface tag untuk video). Baris nama sendiri membuka sheet
+  /// Opsi Tag yang sama dengan foto (hapus/sembunyikan, optimistic).
+  void _openTaggedUsersSheet() {
+    if (_tags.isEmpty) return;
+    final selfId = accountOwnerId();
+    FeedTaggedUser? selfTagSnapshot;
+    for (final t in _tags) {
+      if (t.userId == selfId) {
+        selfTagSnapshot = t;
+        break;
+      }
+    }
+    showFeedTaggedUsersSheet(
+      context,
+      post: widget.post.copyWith(taggedUsers: _tags),
+      selfUserId: selfId,
+      onSelfRemoved: () {
+        if (!mounted) return;
+        setState(() {
+          _tags = _tags.where((t) => t.userId != selfId).toList();
+        });
+      },
+      onSelfRemoveFailed: () {
+        // Rollback — request gagal, kembalikan tag yang tadi dibuang.
+        if (!mounted || selfTagSnapshot == null) return;
+        setState(() {
+          if (!_tags.any((t) => t.userId == selfId)) {
+            _tags = [..._tags, selfTagSnapshot!];
+          }
+        });
+      },
+      onSelfHiddenChanged: (value) {
+        if (!mounted) return;
+        setState(() => _selfTagHidden = value);
+      },
+      selfHidden: _selfTagHidden,
+    );
   }
 
   /// Double-tap → like (kalau belum) + heart burst di posisi jari.
@@ -3468,6 +3522,31 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                                     }
                                     setState(() => _isScrubbing = scrubbing);
                                   },
+                                ),
+                              ),
+                            ),
+                          ),
+                        // Badge tag orang — pojok kiri-bawah, sejajar action
+                        // rail (mirror _PhotoCarouselPostView). Video adalah
+                        // satu-satunya surface tag lewat sheet "Ditandai
+                        // dalam video ini" (Task 12, spec §3, wajib ada —
+                        // video tidak punya overlay pill in-place seperti
+                        // foto karena taggedUsers video tanpa koordinat x/y).
+                        if (_tags.isNotEmpty)
+                          Positioned(
+                            left: 16,
+                            bottom: actionRailInset,
+                            child: AnimatedOpacity(
+                              opacity: (_hideOverlayForLongPress ||
+                                      _hideOverlayForPinchZoom)
+                                  ? 0
+                                  : 1,
+                              duration: const Duration(milliseconds: 200),
+                              child: IgnorePointer(
+                                ignoring: _hideOverlayForLongPress ||
+                                    _hideOverlayForPinchZoom,
+                                child: FeedTaggedBadge(
+                                  onTap: _openTaggedUsersSheet,
                                 ),
                               ),
                             ),
