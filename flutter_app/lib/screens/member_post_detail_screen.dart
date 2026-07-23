@@ -426,6 +426,10 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
         );
       },
     );
+    // Warm-up video berikutnya begitu satu video jadi aktif (lihat
+    // _updatePreloadWindow) — head-start buffering ala Feed supaya video
+    // tak "terkesan tidak play" saat baru discroll masuk viewport.
+    _videoCoordinator.playbackListenable.addListener(_updatePreloadWindow);
     final warmHandoff = widget.warmVideoHandoff;
     final warmSession = warmHandoff?.claim(
       postId: widget.post.id,
@@ -682,6 +686,35 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
   /// Dipanggil inline saat hendak attach — mendaftarkan URL sessionId supaya
   /// factory coordinator bisa membuat sesi (dipakai item carousel dengan
   /// compound id; video utama sudah diprapopulasi di initState).
+  /// Begitu satu post video jadi aktif (mulai play), siapkan sesi video
+  /// berikutnya lebih awal: [PostVideoCoordinator.setPreloadWindow] membuat
+  /// sesi dalam keadaan paused+muted dan langsung mulai buffer HLS. Jadi saat
+  /// user scroll ke video itu, playback mulai instan alih-alih baru fetch dari
+  /// nol setelah menembus ambang 60% terlihat (akar rasa "video tidak play").
+  ///
+  /// Scoped ke post video tunggal (sessionId == post.id). Carousel dilewati
+  /// karena sessionId-nya compound `${id}-idx`. Konservatif: hanya SATU video
+  /// ke depan (arah scroll umum) supaya hemat bandwidth.
+  void _updatePreloadWindow() {
+    if (!mounted) return;
+    // Hormati hemat data: mode data_saver/off TIDAK preload — samakan konvensi
+    // Feed/scoped feed (adaptiveVideoPreloadPolicy mengembalikan window kosong
+    // untuk kedua mode ini). Postingan tetap autoplay video aktif, tapi tak
+    // mem-buffer video lain lebih awal saat user menghemat kuota.
+    final quality = appSettingsStore.feedVideoQuality;
+    if (quality == 'data_saver' || quality == 'off') return;
+    final activeId = _videoCoordinator.activePostId;
+    if (activeId == null) return;
+    final activeIndex = _posts.indexWhere((post) => post.id == activeId);
+    if (activeIndex < 0) return;
+    for (var i = activeIndex + 1; i < _posts.length; i++) {
+      if (_posts[i].contentType == FeedContentType.video) {
+        _videoCoordinator.setPreloadWindow([_posts[i].id]);
+        return;
+      }
+    }
+  }
+
   void _registerVideoUrl(String sessionId, String url) {
     _videoUrls[sessionId] = url;
   }
@@ -776,6 +809,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     feedStore.removeListener(_onFeedStoreChanged);
     appRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
+    _videoCoordinator.playbackListenable.removeListener(_updatePreloadWindow);
     _videoCoordinator.dispose();
     _scrollController.dispose();
     _heroPostId.dispose();
