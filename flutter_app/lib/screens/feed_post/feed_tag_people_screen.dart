@@ -111,7 +111,7 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
         opaque: true,
         transitionDuration: const Duration(milliseconds: 180),
         pageBuilder: (_, __, ___) =>
-            _TagUserSearchPanel(searchUsers: widget.searchUsers),
+            TagUserSearchPanel(searchUsers: widget.searchUsers),
         transitionsBuilder: (_, anim, __, child) =>
             FadeTransition(opacity: anim, child: child),
       ),
@@ -409,15 +409,18 @@ class _TagPillOverlay extends StatelessWidget {
 /// Panel pencarian akun fullscreen ala `feed_user_search_screen.dart` —
 /// saran akun tampil SEBELUM user mengetik (`suggested=1`), debounce 300ms
 /// saat mengetik.
-class _TagUserSearchPanel extends StatefulWidget {
+///
+/// Dipakai bersama oleh varian foto ([FeedTagPeopleScreen]) dan video
+/// ([FeedTagPeopleVideoScreen]) — jangan buat salinan lain.
+class TagUserSearchPanel extends StatefulWidget {
   final TagUserSearchFn searchUsers;
-  const _TagUserSearchPanel({required this.searchUsers});
+  const TagUserSearchPanel({super.key, required this.searchUsers});
 
   @override
-  State<_TagUserSearchPanel> createState() => _TagUserSearchPanelState();
+  State<TagUserSearchPanel> createState() => _TagUserSearchPanelState();
 }
 
-class _TagUserSearchPanelState extends State<_TagUserSearchPanel> {
+class _TagUserSearchPanelState extends State<TagUserSearchPanel> {
   final TextEditingController _controller = TextEditingController();
   Timer? _debounce;
   List<TagSearchUser> _results = const [];
