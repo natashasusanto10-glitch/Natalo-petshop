@@ -12,6 +12,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../models/feed_create_post_draft.dart';
 import '../services/app_analytics.dart';
+import '../utils/card_modal_route.dart';
 import '../utils/fade_route.dart';
 import '../utils/haptics.dart';
 import '../widgets/photo_crop/photo_crop_export.dart';
@@ -98,10 +99,7 @@ class FeedMediaPickerScreen extends StatefulWidget {
   /// Entry point flow posting — pengganti FeedUploadSheet.show() (dihapus).
   static Future<bool?> open(BuildContext context) {
     return Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => const FeedMediaPickerScreen(),
-        fullscreenDialog: true,
-      ),
+      cardModalRoute((_) => const FeedMediaPickerScreen()),
     );
   }
 

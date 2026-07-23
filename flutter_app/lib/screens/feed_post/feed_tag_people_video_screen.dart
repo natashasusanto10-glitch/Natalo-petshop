@@ -47,10 +47,17 @@ class _FeedTagPeopleVideoScreenState extends State<FeedTagPeopleVideoScreen> {
       );
       return;
     }
+    // Fade halus (sama seperti panel serupa di varian foto,
+    // feed_tag_people_screen.dart) — dulu MaterialPageRoute fullscreenDialog
+    // polos, satu-satunya jalur "Tandai Orang" yang belum konsisten.
     final picked = await Navigator.of(context).push<TagSearchUser>(
-      MaterialPageRoute(
-        builder: (_) => TagUserSearchPanel(searchUsers: widget.searchUsers),
-        fullscreenDialog: true,
+      PageRouteBuilder(
+        opaque: true,
+        transitionDuration: const Duration(milliseconds: 180),
+        pageBuilder: (_, __, ___) =>
+            TagUserSearchPanel(searchUsers: widget.searchUsers),
+        transitionsBuilder: (_, anim, __, child) =>
+            FadeTransition(opacity: anim, child: child),
       ),
     );
     if (picked == null || !mounted) return;
