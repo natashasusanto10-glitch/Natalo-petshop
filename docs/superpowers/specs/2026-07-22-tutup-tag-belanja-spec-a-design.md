@@ -1,7 +1,7 @@
 # Spec A — Tutup tag belanja + tab "Ditandai" (shell) — Design
 
 Tanggal: 2026-07-22
-Status: Menunggu review spec
+Status: Disetujui — siap implementasi (subagent-driven)
 
 Ini spec pertama dari rencana besar 5 bagian (A–E) untuk mengganti fitur tag belanja di alur posting dengan Tag People + Hashtag + Lokasi ala Instagram. Bagian lain (B: Tag People, C: Hashtag, D: Add Lokasi, E: sisa poles Profil seperti tombol "Pet Profile") dikerjakan sebagai spec terpisah, satu per satu, setelah Spec A ini selesai diimplementasi.
 
@@ -26,7 +26,7 @@ Saat ini pengguna bisa menandai produk yang pernah dibeli saat membuat postingan
 - Tidak mengubah backend/model sama sekali: `FeedPostProduct`, endpoint `app/api/feed/posts/route.ts`, dan `app/api/feed/pinnable-products/route.ts` tetap seperti sekarang.
 - Tidak mengubah `FeedPost.products`/`taggedProducts` (model Flutter) atau logic pill produk di kartu feed (`FeedProductPill`, `showFeedProductLinksSheet`) — itu tetap tampil di postingan lama yang sudah punya produk tertaut, di luar konteks tab profil.
 - **Trade-off yang disadari**: karena slot tab ke-3 sekarang permanen berisi "Ditandai" (bukan sekadar disembunyikan), membalikkan flag `kShopTagEnabled` ke `true` nanti HANYA menghidupkan lagi input di New Post — tab Profil TIDAK otomatis kembali jadi "Belanja". Kalau itu benar-benar diinginkan lagi, perlu perubahan manual terpisah.
-- Badge kecil ikon tas belanja pada thumbnail grid "Postingan" untuk post lama yang punya produk tertaut ([member_screen.dart:958](../../../flutter_app/lib/screens/member_screen.dart)) **diusulkan dihapus** sekalian (tidak ada lagi jejak visual "tag belanja" di Profil). Ini keputusan kecil yang masih terbuka — kalau saat review Anda ingin badge itu dipertahankan (murni indikator historis, tidak mengganggu), beri tahu dan bagian ini di-skip.
+- **Diputuskan dihapus**: badge kecil ikon tas belanja pada thumbnail grid "Postingan" untuk post lama yang punya produk tertaut ([member_screen.dart](../../../flutter_app/lib/screens/member_screen.dart), sekitar baris 960 pasca-rebase) — supaya tidak ada lagi jejak visual "tag belanja" di Profil. Badge play video (untuk post video) tetap ada.
 
 ## Pendekatan
 
@@ -50,7 +50,7 @@ Konsisten dengan folder `lib/config/` yang sudah ada (`api_config.dart`, `natalo
 - Ukuran ikon: turunkan dari `lerpDouble(27, 23, pillOpacity)` jadi tetap 24 di ketiga tab (match bottom nav `size: 25`, dibulatkan biar konsisten lintas komponen — detail final di plan implementasi).
 - **Perbaiki gap yang ditemukan saat brainstorming**: saat ini di mode "selalu expanded" (`pillOpacity: 0`, dipakai `MemberScreen`), variabel `foreground` di `_PublicProfileTab` dihitung dari `Color.lerp(expandedForeground, collapsedForeground, pillOpacity)` — karena `pillOpacity` selalu 0 di mode ini, `foreground` selalu = `expandedForeground` (konstan), TIDAK PERNAH ikut nilai `emphasis`. Akibatnya tab aktif/nonaktif sama warnanya, cuma dibedakan garis bawah tipis. Ini perlu diperbaiki supaya warna ikon benar-benar melebur abu→biru brand mengikuti `emphasis`, di kedua mode (expanded icon-only maupun collapsed pill).
 - Tambahkan swap ikon outline↔filled: dua `Icon` ditumpuk (`Stack`), opacity masing-masing = fungsi `emphasis` (crossfade, bukan snap), supaya transisi tetap mulus saat swipe antar tab (`controller.animation.value` kontinu, sama seperti indikator garis yang sudah ada).
-- Tambahkan `Transform.translate(offset: Offset(0, lerp(0, -2.5, emphasis)))` pada ikon aktif — gerak naik tipis, dikombinasi dengan crossfade warna di atas. Ini BEDA dari animasi bounce-scale yang dipakai `bottom_nav.dart` (`_NavBounce`) — sengaja dipilih user supaya kesan tab profil lebih halus/kalem dibanding bottom nav yang lebih "pop".
+- Tambahkan `Transform.translate(offset: Offset(0, lerp(0, -3, curvedEmphasis)))` pada ikon aktif (`curvedEmphasis` = `easeOutCubic` atas `emphasis`) — gerak naik tipis ~3px, dikombinasi dengan crossfade warna di atas. Ini BEDA dari animasi bounce-scale yang dipakai `bottom_nav.dart` (`_NavBounce`) — sengaja dipilih user supaya kesan tab profil lebih halus/kalem dibanding bottom nav yang lebih "pop".
 - Perubahan ini otomatis berlaku untuk kedua pemakai (`MemberScreen` via `_AccountTabHeaderDelegate`, dan `PublicProfileScreen` termasuk mode pinned-pill — lihat `2026-07-17-public-profile-pinned-tabbar-design.md` untuk mekanisme `pillOpacity`/`labelOpacity` yang sudah ada dan TIDAK diubah oleh spec ini, hanya diisi treatment ikon baru di atasnya).
 
 ### 4. Konten tab "Ditandai" (empty state statis)
