@@ -48,6 +48,10 @@ import {
 } from "@/lib/feed/bunny";
 import { parseFeedAccessibilityMetadata } from "@/lib/feed/accessibility";
 import { resolveInitialPostStatus } from "@/lib/feed/post-moderation";
+import {
+  parseTaggedUsersInput,
+  type TaggedUserInput,
+} from "@/lib/feed/tagged-users";
 
 export const dynamic = "force-dynamic";
 
@@ -109,6 +113,7 @@ export async function POST(request: NextRequest) {
     petType?: string | null;
     petName?: string;
     productIds?: unknown;
+    taggedUsers?: unknown;
     thumbnailUrl?: string | null;
     videoDurationSec?: number | null;
     videoAltText?: string | null;
@@ -192,6 +197,27 @@ export async function POST(request: NextRequest) {
           error:
             "Produk yang di-tag tidak ditemukan. Refresh app lalu coba lagi.",
         },
+        { status: 400 },
+      );
+    }
+  }
+
+  const taggedParse = parseTaggedUsersInput(body.taggedUsers, {
+    mediaCount: 0,
+    isVideo: true,
+  });
+  if (!taggedParse.ok) {
+    return NextResponse.json({ error: taggedParse.error }, { status: 400 });
+  }
+  let taggedUsers: TaggedUserInput[] = taggedParse.tags;
+  if (taggedUsers.length > 0) {
+    const found = await prisma.user.findMany({
+      where: { id: { in: taggedUsers.map((t) => t.userId) } },
+      select: { id: true },
+    });
+    if (found.length !== taggedUsers.length) {
+      return NextResponse.json(
+        { error: "Ada akun yang ditandai tapi tidak ditemukan." },
         { status: 400 },
       );
     }
@@ -350,6 +376,18 @@ export async function POST(request: NextRequest) {
         skipDuplicates: true,
       });
     }
+    if (taggedUsers.length > 0) {
+      await tx.feedTaggedUser.createMany({
+        data: taggedUsers.map((tag) => ({
+          feedPostId: created.id,
+          taggedUserId: tag.userId,
+          mediaId: null,
+          x: null,
+          y: null,
+        })),
+        skipDuplicates: true,
+      });
+    }
     return created;
     });
   } catch (err) {
@@ -370,6 +408,18 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+
+  // Tag People notif — SENGAJA TIDAK dikirim di sini (final review Spec B
+  // fix). Provision time = row masih encodingStatus "uploading", video BELUM
+  // playable. Mengirim notif di sini (perilaku lama) bikin user yang
+  // ditandai dapat notif phantom kalau upload dibatalkan/encoding gagal
+  // sebelum video pernah tayang, dan deep-link bisa resolve ke post dengan
+  // videoUrl masih null. Notif dipicu nanti persis saat encodingStatus
+  // bertransisi ke "ready" — lihat notifyTaggedUsersOnVideoReady di
+  // lib/feed/activity-notifications.ts, dipanggil dari lib/feed/reconcile.ts
+  // dan app/api/feed/bunny/webhook/route.ts (kedua tempat yang menandai
+  // ready). FeedTaggedUser rows tetap dibuat di transaction di atas — cuma
+  // dispatch notifikasinya yang ditunda.
 
   // TUS resumable upload — SATU-SATUNYA path sekarang. Pakai signature
   // scoped per-video (generateBunnyTusCredentials), bukan master key.

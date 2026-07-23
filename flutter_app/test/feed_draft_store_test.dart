@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:natalo_petshop_flutter/models/new_post_user_tag.dart';
 import 'package:natalo_petshop_flutter/state/feed_draft_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -44,6 +45,21 @@ void main() {
         originalDurationMs: 12000,
         userPickedCover: true,
         savedAtMs: 1720000000000,
+        taggedUsers: const [
+          NewPostUserTag(
+            userId: 'u-photo',
+            username: 'budi',
+            name: 'Budi',
+            mediaIndex: 0,
+            x: 0.25,
+            y: 0.75,
+          ),
+          NewPostUserTag(
+            userId: 'u-video',
+            username: 'siti',
+            name: 'Siti',
+          ),
+        ],
       );
 
       await store.save(draft);
@@ -63,6 +79,22 @@ void main() {
       expect(restored.userPickedCover, true);
       expect(restored.savedAtMs, 1720000000000);
       expect(restored.broken, false);
+
+      expect(restored.taggedUsers, hasLength(2));
+      expect(
+        restored.taggedUsers.map((t) => t.toJson()).toList(),
+        draft.taggedUsers.map((t) => t.toJson()).toList(),
+      );
+      final restoredPhotoTag = restored.taggedUsers[0];
+      expect(restoredPhotoTag.userId, 'u-photo');
+      expect(restoredPhotoTag.mediaIndex, 0);
+      expect(restoredPhotoTag.x, 0.25);
+      expect(restoredPhotoTag.y, 0.75);
+      final restoredVideoTag = restored.taggedUsers[1];
+      expect(restoredVideoTag.userId, 'u-video');
+      expect(restoredVideoTag.mediaIndex, isNull);
+      expect(restoredVideoTag.x, isNull);
+      expect(restoredVideoTag.y, isNull);
     });
 
     test('upsert by id — save draft dengan id sama menimpa, bukan duplikat',

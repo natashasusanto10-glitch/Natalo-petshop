@@ -87,7 +87,13 @@ export async function POST(request: NextRequest) {
     // authorRole dipakai untuk pilih duration limit yang benar. Bug
     // sebelumnya: webhook pakai USER_VIDEO_CONFIG untuk semua post, jadi
     // saat limit admin berbeda video bisa salah di-mark "failed".
-    select: { id: true, encodingStatus: true, authorRole: true, status: true },
+    select: {
+      id: true,
+      encodingStatus: true,
+      authorRole: true,
+      status: true,
+      authorId: true,
+    },
   });
   if (!post) {
     return NextResponse.json({ ok: true, skipped: "unknown-guid" });
@@ -183,6 +189,21 @@ export async function POST(request: NextRequest) {
   // sudah ACTIVE (helper early-return kalau status != PENDING_REVIEW), jadi
   // aman dipanggil untuk video customer yang kini auto-approve.
   await sendFeedPendingReviewNotification({ postId: post.id });
+
+  // Tag People VIDEO fix (final review Spec B) — notif tagged-user dipindah
+  // ke SINI (ready-transition), BUKAN provision time
+  // (app/api/feed/bunny/upload-url/route.ts tidak lagi kirim notif ini).
+  // Lihat notifyTaggedUsersOnVideoReady di lib/feed/activity-notifications.ts
+  // untuk alasan lengkap (notif phantom kalau upload dibatalkan/encoding
+  // gagal sebelum video pernah tayang). WAJIB await — alasan sama dgn
+  // publish-push di bawah.
+  const { notifyTaggedUsersOnVideoReady } = await import(
+    "@/lib/feed/activity-notifications"
+  );
+  await notifyTaggedUsersOnVideoReady({
+    postId: post.id,
+    actorUserId: post.authorId,
+  });
 
   // Video customer auto-approve (ACTIVE sejak create, tapi baru visible saat
   // ready sekarang) → beri tahu follower author. Analog dengan foto/carousel

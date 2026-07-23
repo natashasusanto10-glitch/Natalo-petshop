@@ -9,6 +9,7 @@ import 'package:video_compress/video_compress.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../models/feed_create_post_draft.dart';
+import '../models/new_post_user_tag.dart';
 import '../services/api_client.dart';
 import '../services/app_analytics.dart';
 import '../services/video_compress_gate.dart';
@@ -57,6 +58,7 @@ class FeedUploadTask {
   // ── Shared ──
   final String caption;
   final List<String> productIds;
+  final List<NewPostUserTag> taggedUsers;
 
   // ── Mutable status ──
   final FeedUploadStatus status;
@@ -76,6 +78,7 @@ class FeedUploadTask {
     this.videoDraft,
     this.caption = '',
     this.productIds = const [],
+    this.taggedUsers = const [],
     required this.status,
     this.progress = 0,
     this.errorMessage,
@@ -98,6 +101,7 @@ class FeedUploadTask {
       videoDraft: videoDraft,
       caption: caption,
       productIds: productIds,
+      taggedUsers: taggedUsers,
       status: status ?? this.status,
       progress: progress ?? this.progress,
       errorMessage: errorMessage,
@@ -219,6 +223,7 @@ class FeedUploadStore extends ChangeNotifier {
     required List<File> files,
     required String caption,
     List<String> productIds = const [],
+    List<NewPostUserTag> taggedUsers = const [],
     String? localId,
   }) async {
     if (_uploading) return;
@@ -228,6 +233,7 @@ class FeedUploadStore extends ChangeNotifier {
         kind: FeedUploadKind.photo,
         caption: caption,
         productIds: productIds,
+        taggedUsers: taggedUsers,
         photoFiles: files,
         status: FeedUploadStatus.failed,
         errorMessage: 'Pilih 1-8 foto untuk posting.',
@@ -244,6 +250,7 @@ class FeedUploadStore extends ChangeNotifier {
       kind: FeedUploadKind.photo,
       caption: caption,
       productIds: productIds,
+      taggedUsers: taggedUsers,
       photoFiles: files,
       status: FeedUploadStatus.preparing,
       createdAt: DateTime.now(),
@@ -300,6 +307,7 @@ class FeedUploadStore extends ChangeNotifier {
             : caption.substring(0, math.min(80, caption.length)),
         description: caption.isEmpty ? null : caption,
         productIds: task.productIds,
+        taggedUsers: task.taggedUsers,
       );
 
       AppHaptics.success();
@@ -348,6 +356,7 @@ class FeedUploadStore extends ChangeNotifier {
       kind: FeedUploadKind.video,
       caption: draft.caption,
       productIds: draft.taggedProductIds,
+      taggedUsers: draft.taggedUsers,
       videoDraft: draft,
       status: FeedUploadStatus.preparing,
       createdAt: DateTime.now(),
@@ -468,6 +477,7 @@ class FeedUploadStore extends ChangeNotifier {
         description: caption.isEmpty ? null : caption,
         videoDurationSec: draft.finalDuration?.inSeconds,
         productIds: task.productIds,
+        taggedUsers: task.taggedUsers,
         thumbnailUrl: thumbnailUrl,
       );
       // Update persist dengan provision final (postId/tus creds) supaya
@@ -629,12 +639,14 @@ class FeedUploadStore extends ChangeNotifier {
       final files = task.photoFiles;
       final caption = task.caption;
       final productIds = task.productIds;
+      final taggedUsers = task.taggedUsers;
       _task = null;
       notifyListeners();
       await startPhotoUpload(
         files: files,
         caption: caption,
         productIds: productIds,
+        taggedUsers: taggedUsers,
       );
     } else {
       final draft = task.videoDraft;
@@ -699,6 +711,10 @@ class FeedUploadStore extends ChangeNotifier {
       final productIds = ((json['productIds'] as List?) ?? const [])
           .whereType<String>()
           .toList();
+      final taggedUsers = ((json['taggedUsers'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(NewPostUserTag.fromJson)
+          .toList();
       final provisionRaw = json['provision'];
       final provision = provisionRaw is Map
           ? BunnyUploadProvision.fromJson(Map<String, dynamic>.from(provisionRaw))
@@ -740,6 +756,7 @@ class FeedUploadStore extends ChangeNotifier {
             originalFilename: json['originalFilename']?.toString(),
             caption: caption,
             taggedProductIds: productIds,
+            taggedUsers: taggedUsers,
           );
         }
       }
@@ -757,6 +774,7 @@ class FeedUploadStore extends ChangeNotifier {
         videoDraft: draft,
         caption: caption,
         productIds: productIds,
+        taggedUsers: taggedUsers,
         status: FeedUploadStatus.resumable,
         createdAt: DateTime.now(),
       );
@@ -784,6 +802,7 @@ class FeedUploadStore extends ChangeNotifier {
       final files = task.photoFiles;
       final caption = task.caption;
       final productIds = task.productIds;
+      final taggedUsers = task.taggedUsers;
       final localId = task.localId;
       _pendingProvision = null;
       _task = null;
@@ -792,6 +811,7 @@ class FeedUploadStore extends ChangeNotifier {
         files: files,
         caption: caption,
         productIds: productIds,
+        taggedUsers: taggedUsers,
         localId: localId,
       );
       return;
@@ -813,6 +833,7 @@ class FeedUploadStore extends ChangeNotifier {
       kind: FeedUploadKind.video,
       caption: task.caption,
       productIds: task.productIds,
+      taggedUsers: task.taggedUsers,
       videoDraft: draft,
       status: FeedUploadStatus.preparing,
       createdAt: DateTime.now(),
@@ -845,6 +866,7 @@ class FeedUploadStore extends ChangeNotifier {
         'kind': task.kind == FeedUploadKind.video ? 'video' : 'photo',
         'caption': task.caption,
         'productIds': task.productIds,
+        'taggedUsers': task.taggedUsers.map((t) => t.toJson()).toList(),
         'mediaPaths': task.photoFiles.map((f) => f.path).toList(),
         'thumbnailPath': draft?.thumbnailPath,
         'localVideoPath': draft?.localVideoPath,

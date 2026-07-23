@@ -32,12 +32,16 @@ import '../services/product_service.dart';
 import '../services/report_service.dart';
 import '../services/share_sheet_launcher.dart';
 import '../services/video_quality_service.dart';
+import '../state/account_scope.dart';
 import '../state/cart_store.dart';
 import '../state/feed_local_store.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/android_back_overlays.dart';
+import '../widgets/feed_tagged_users_overlay.dart';
+import '../widgets/feed_tag_options_sheet.dart';
+import '../widgets/feed_user_tag_pill.dart';
 import '../utils/app_route_observer.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
@@ -1434,6 +1438,11 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     with SingleTickerProviderStateMixin {
   late final PageController _photoPageController;
   int _photoIndex = 0;
+  bool _showTagPills = false;
+  // Salinan lokal tag orang (Task 12) — supaya "Hapus saya dari post"
+  // bisa optimistic-remove tanpa menunggu server/parent rebuild.
+  late List<FeedTaggedUser> _tags;
+  bool _selfTagHidden = false;
   bool _liked = false;
   bool _saved = false;
   int _likeCount = 0;
@@ -1486,6 +1495,11 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   @override
   void initState() {
     super.initState();
+    _tags = List.of(widget.post.taggedUsers);
+    // Seed dari nilai server (final review Spec B fix) — bukan hardcoded
+    // false, supaya "un-hide" tetap reachable setelah app restart (server
+    // adalah sumber kebenaran untuk tag milik viewer sendiri).
+    _selfTagHidden = widget.post.viewerTagHidden ?? false;
     _photoPageController = PageController();
     // Seed store dengan post saat ini supaya feedStore.get always returns
     // non-null. Idempotent — kalau store sudah punya, NoOp.
@@ -1554,6 +1568,12 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   @override
   void didUpdateWidget(covariant _PhotoCarouselPostView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.post.id != widget.post.id) {
+      // Post lain (PageView pindah item) — reset salinan lokal tag, seed
+      // hidden dari nilai server post yang baru (bukan hardcoded false).
+      _tags = List.of(widget.post.taggedUsers);
+      _selfTagHidden = widget.post.viewerTagHidden ?? false;
+    }
     // Re-sync rotation kalau post berubah (PageView ke post lain) atau
     // tagged products length berubah (admin edit tag dari background).
     if (oldWidget.post.id != widget.post.id ||
@@ -1735,6 +1755,55 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     }
     _heartBurstTarget = _resolveLikeCenter();
     _heartBurstController.forward(from: 0);
+  }
+
+  /// Tag orang pada slide foto aktif (Spec B viewer, Task 11).
+  List<FeedTaggedUser> get _tagsForCurrentPhoto =>
+      _tags.where((t) => t.mediaIndex == _photoIndex).toList();
+
+  bool get _hasTags => _tags.isNotEmpty;
+
+  void _toggleTagPills() {
+    if (_tags.isEmpty) return;
+    setState(() => _showTagPills = !_showTagPills);
+  }
+
+  bool _isSelfTag(FeedTaggedUser tag) =>
+      tag.userId.isNotEmpty && tag.userId == accountOwnerId();
+
+  void _onTapTaggedUser(FeedTaggedUser tag) {
+    if (_isSelfTag(tag)) {
+      // Nama sendiri → sheet Opsi Tag (Task 12): hapus tag / sembunyikan.
+      showFeedTagOptionsSheet(
+        context,
+        postId: widget.post.id,
+        hidden: _selfTagHidden,
+        onRemoved: () {
+          if (!mounted) return;
+          setState(() {
+            _tags = _tags.where((t) => t.userId != tag.userId).toList();
+            _showTagPills = _tags.any((t) => t.mediaIndex == _photoIndex);
+          });
+        },
+        onRemoveFailed: () {
+          // Rollback — request gagal, kembalikan tag yang tadi dibuang.
+          if (!mounted) return;
+          setState(() {
+            if (!_tags.any((t) => t.userId == tag.userId)) {
+              _tags = [..._tags, tag];
+            }
+          });
+        },
+        onHiddenChanged: (value) {
+          if (!mounted) return;
+          setState(() => _selfTagHidden = value);
+        },
+      );
+      return;
+    }
+    final username = tag.username;
+    if (username == null || username.isEmpty) return;
+    Navigator.of(context).pushNamed('/u', arguments: username);
   }
 
   Future<void> _onComment() async {
@@ -2165,6 +2234,27 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                 ),
               ),
             ),
+            // Badge tag orang — pojok kiri-bawah, sejajar action rail
+            // (mirror mute badge video di kanan-bawah). Hidup di layer
+            // [overlay] (bukan di dalam Stack media) supaya z-order & inset
+            // konsisten dengan rail/caption dan tidak ketiban chrome lain.
+            if (_hasTags)
+              Positioned(
+                left: 16,
+                bottom: actionRailInset,
+                child: AnimatedOpacity(
+                  opacity:
+                      (_hideOverlayForLongPress || _hideOverlayForPinchZoom)
+                          ? 0
+                          : 1,
+                  duration: const Duration(milliseconds: 200),
+                  child: IgnorePointer(
+                    ignoring:
+                        _hideOverlayForLongPress || _hideOverlayForPinchZoom,
+                    child: FeedTaggedBadge(onTap: _toggleTagPills),
+                  ),
+                ),
+              ),
           ],
         ),
         child: ColoredBox(
@@ -2175,38 +2265,100 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
             behavior: HitTestBehavior.opaque,
             onDoubleTapDown: _rememberHeartBurstPosition,
             onDoubleTap: _onDoubleTapLike,
+            onTap: _hasTags ? _toggleTagPills : null,
             onLongPressStart: _onLongPressStart,
             onLongPressEnd: _onLongPressEnd,
-            child: PageView.builder(
-              controller: _photoPageController,
-              itemCount: photos.length,
-              onPageChanged: (idx) => setState(() => _photoIndex = idx),
-              itemBuilder: (context, index) {
-                final photo = photos[index];
-                // Pinch-zoom sementara: begitu gesture selesai, foto
-                // snap back ke ukuran asli supaya feed tidak nyangkut
-                // dalam state zoom.
-                return SizedBox.expand(
-                  child: FeedPostSnapBackZoomMedia(
-                    clipBehavior: Clip.none,
-                    minScale: 1,
-                    maxScale: 4,
-                    onZoomingChanged: _onMediaZoomChanged,
-                    child: CachedNetworkImage(
-                      imageUrl: photo.url,
-                      fit: BoxFit.contain,
-                      placeholder: (_, __) => const SizedBox.shrink(),
-                      errorWidget: (_, __, ___) => const Center(
-                        child: Icon(
-                          Icons.broken_image_outlined,
-                          color: Colors.white54,
-                          size: 48,
+            child: Stack(
+              children: [
+                PageView.builder(
+                  controller: _photoPageController,
+                  itemCount: photos.length,
+                  onPageChanged: (idx) => setState(() => _photoIndex = idx),
+                  itemBuilder: (context, index) {
+                    final photo = photos[index];
+                    // Pinch-zoom sementara: begitu gesture selesai, foto
+                    // snap back ke ukuran asli supaya feed tidak nyangkut
+                    // dalam state zoom.
+                    return SizedBox.expand(
+                      child: FeedPostSnapBackZoomMedia(
+                        clipBehavior: Clip.none,
+                        minScale: 1,
+                        maxScale: 4,
+                        onZoomingChanged: _onMediaZoomChanged,
+                        child: CachedNetworkImage(
+                          imageUrl: photo.url,
+                          fit: BoxFit.contain,
+                          placeholder: (_, __) => const SizedBox.shrink(),
+                          errorWidget: (_, __, ___) => const Center(
+                            child: Icon(
+                              Icons.broken_image_outlined,
+                              color: Colors.white54,
+                              size: 48,
+                            ),
+                          ),
                         ),
                       ),
+                    );
+                  },
+                ),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    ignoring: !_showTagPills,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        // Final review Spec B fix — koordinat tag drift:
+                        // foto dirender BoxFit.contain, jadi kalau aspect
+                        // ratio foto != container ada letterbox bar. Hitung
+                        // rect foto yang BENAR-BENAR ter-render via
+                        // fittedPhotoRect, lalu bungkus overlay pill di
+                        // Positioned sesuai rect itu (bukan container
+                        // mentah) supaya placeTagPill (di
+                        // FeedTaggedUsersOverlay) clamp relatif foto.
+                        final container = constraints.biggest;
+                        final currentPhoto = _photoIndex < photos.length
+                            ? photos[_photoIndex]
+                            : null;
+                        final containerAspect = container.height > 0
+                            ? container.width / container.height
+                            : 1.0;
+                        // width/height bisa null untuk post lama (belum
+                        // backfill) — fallback ke aspect container sendiri
+                        // (fittedPhotoRect jadi no-op, setara perilaku lama)
+                        // daripada menebak/crash.
+                        final hasKnownDims = currentPhoto != null &&
+                            currentPhoto.width != null &&
+                            currentPhoto.height != null &&
+                            currentPhoto.width! > 0 &&
+                            currentPhoto.height! > 0;
+                        final effectiveAspect = hasKnownDims
+                            ? currentPhoto.aspectRatio
+                            : containerAspect;
+                        final photoRect = fittedPhotoRect(
+                          container,
+                          effectiveAspect,
+                          BoxFit.contain,
+                        );
+                        return Stack(
+                          children: [
+                            Positioned(
+                              left: photoRect.left,
+                              top: photoRect.top,
+                              width: photoRect.width,
+                              height: photoRect.height,
+                              child: FeedTaggedUsersOverlay(
+                                tags: _tagsForCurrentPhoto,
+                                visible: _showTagPills,
+                                photoSize: photoRect.size,
+                                onTapUser: _onTapTaggedUser,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
-                );
-              },
+                ),
+              ],
             ),
           ),
         ),

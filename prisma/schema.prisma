@@ -149,6 +149,7 @@ model User {
   // Feed relations — admin post & user community video, plus engagement.
   feedPosts              FeedPost[]           @relation("FeedAuthor")
   moderatedFeedPosts     FeedPost[]           @relation("FeedModerator")
+  feedTaggedIn           FeedTaggedUser[]     @relation("FeedTaggedIn")
   feedComments           FeedComment[]        @relation("FeedCommentAuthor")
   hiddenComments         FeedComment[]        @relation("FeedCommentModerator")
   feedLikes              FeedLike[]
@@ -1359,6 +1360,8 @@ model FeedPost {
   // FeedPost.productId tetap dipertahankan untuk legacy + primary product
   // display. taggedProducts adalah source of truth untuk multi-tag carousel.
   taggedProducts FeedPostProduct[]
+  // Tag People (Spec B) — user yang ditandai di post ini.
+  taggedUsers    FeedTaggedUser[]
   // PHOTO_CAROUSEL kind: 1-8 image media. Untuk video kind, field ini
   // empty (video tetap stored di FeedPost.videoUrl / thumbnailUrl /
   // videoGuid sebagai single-asset legacy fields).
@@ -1408,6 +1411,7 @@ model FeedMedia {
   width          Int?
   height         Int?
   createdAt      DateTime @default(now())
+  taggedUsers    FeedTaggedUser[]
 
   @@index([postId, sortOrder])
 }
@@ -1434,6 +1438,31 @@ model FeedPostProduct {
   // query: WHERE productId=X JOIN FeedPost sorted by createdAt desc.
   @@index([productId])
   @@index([feedPostId, position])
+}
+
+// Tag People (Spec B) — user lain yang ditandai di post, ala Instagram.
+// Foto: mediaId + koordinat x/y (pecahan 0-1 dari dimensi foto).
+// Video: mediaId/x/y null — tag berupa daftar nama saja.
+// hidden: user yang ditandai menyembunyikan post ini dari tab Ditandai
+// profilnya (berlaku global — profil publik juga exclude).
+model FeedTaggedUser {
+  id           String     @id @default(cuid())
+  feedPostId   String
+  feedPost     FeedPost   @relation(fields: [feedPostId], references: [id], onDelete: Cascade)
+  mediaId      String?
+  media        FeedMedia? @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  taggedUserId String
+  taggedUser   User       @relation("FeedTaggedIn", fields: [taggedUserId], references: [id], onDelete: Cascade)
+  x            Float?
+  y            Float?
+  hidden       Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+
+  // Satu orang satu tag per post (sesuai IG).
+  @@unique([feedPostId, taggedUserId])
+  // Query tab Ditandai: WHERE taggedUserId=X AND hidden=false.
+  @@index([taggedUserId, hidden])
+  @@index([feedPostId])
 }
 
 // Audit trail untuk semua moderation transition di FeedPost. Append-only —

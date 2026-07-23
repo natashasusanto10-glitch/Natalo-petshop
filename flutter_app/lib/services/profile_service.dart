@@ -7,7 +7,19 @@ import 'api_client.dart';
 enum PublicProfileContentFilter {
   all('all'),
   video('video'),
-  shoppable('shoppable');
+  // Nama enum tetap `shoppable` (dipakai luas sejak Spec A, label UI sudah
+  // "Ditandai") — hanya apiValue yang berubah ke `tagged` (Spec B, Task 4:
+  // tab ini sekarang menampilkan post yang menandai user, bukan post
+  // shopping). PENTING: server `content=shoppable` dan `content=tagged`
+  // BUKAN alias — dua query BEDA (diverifikasi langsung di
+  // app/api/u/[username]/route.ts + task-4-report.md, yang eksplisit
+  // membantah klaim "alias" ini). `shoppable` di server tetap filter produk
+  // lama (productId/taggedProducts, author-scoped); `tagged` adalah query
+  // baru Spec B (taggedUsers.some, TIDAK author-scoped). Aman diganti ke
+  // `tagged` karena tab ini sebelumnya di-short-circuit klien (Spec A) —
+  // TIDAK PERNAH benar-benar mengirim `content=shoppable` ke server, jadi
+  // tak ada app lama yang bergantung pada nilai lama ini.
+  shoppable('tagged');
 
   final String apiValue;
 
@@ -18,7 +30,7 @@ enum PublicProfileContentFilter {
 ///   - PublicProfileScreen (deep link / tap @username di feed/komentar)
 ///   - share preview kalau ada featured CTA "view profile"
 ///
-/// Endpoint: `GET /api/u/{username}?content=all|video|shoppable&cursor=...`
+/// Endpoint: `GET /api/u/{username}?content=all|video|tagged&cursor=...`
 /// Tidak butuh login (public endpoint), tapi kalau ada session, server
 /// set `isOwner: true` saat session.sub == target.id supaya screen
 /// bisa tampilkan tombol "Edit Profil" alih-alih "Bagikan".

@@ -26,6 +26,11 @@ import { bunnyThumbnailUrl, signBunnyUrl } from "@/lib/feed/bunny";
 import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 import { getViewerSavedPostIds } from "@/lib/feed/queries";
+import {
+  resolveViewerTagHidden,
+  TAGGED_USERS_SELECT,
+  serializeTaggedUsers,
+} from "@/lib/feed/tagged-users";
 import { feedAccessibilityPayload } from "@/lib/feed/accessibility";
 
 export async function GET(request: NextRequest) {
@@ -113,6 +118,7 @@ export async function GET(request: NextRequest) {
             altText: true,
           },
         },
+        taggedUsers: TAGGED_USERS_SELECT,
         // Author post — WAJIB dikirim supaya tap nama/avatar di header &
         // caption bisa buka profil (butuh author.username). Tanpa ini
         // FeedPost.author di Flutter jatuh ke default kosong → tak tappable.
@@ -339,6 +345,15 @@ export async function GET(request: NextRequest) {
             avgRating: t.product!.avgRating ?? 0,
             reviewCount: t.product!.reviewCount ?? 0,
           })),
+        taggedUsers: serializeTaggedUsers(
+          post.taggedUsers,
+          new Map(post.media.map((m, i) => [m.id, i]))
+        ),
+        // Tag People (final review Spec B fix) — viewer di sini SELALU
+        // session.sub (my-posts = post milik sendiri), tapi self-tag di
+        // post sendiri tetap mungkin (mis. re-post yang menandai diri
+        // sendiri di antara orang lain). Lihat lib/feed/queries.ts.
+        viewerTagHidden: resolveViewerTagHidden(post.taggedUsers, session.sub),
       };
     }),
     filter,

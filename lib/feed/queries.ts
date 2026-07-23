@@ -20,6 +20,11 @@ import { signBunnyUrl } from "./bunny";
 import { buildFeedVideoPlaybackUrls } from "./video-playback-urls";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 import {
+  resolveViewerTagHidden,
+  TAGGED_USERS_SELECT,
+  serializeTaggedUsers,
+} from "@/lib/feed/tagged-users";
+import {
   stripEphemeralUrlQuery,
 } from "@/lib/share/share-version";
 import { buildFeedShareVersion } from "@/lib/share/feed-share-data";
@@ -327,6 +332,7 @@ export async function listFeedPosts({
         },
         orderBy: { sortOrder: "asc" },
       },
+      taggedUsers: TAGGED_USERS_SELECT,
       likes: {
         orderBy: { createdAt: "desc" },
         take: 3,
@@ -575,6 +581,16 @@ export async function listFeedPosts({
               : null,
           };
         }),
+      taggedUsers: serializeTaggedUsers(
+        p.taggedUsers,
+        new Map(p.media.map((m, index) => [m.id, index])),
+      ),
+      // Tag People (final review Spec B fix) — "apakah tag milik VIEWER
+      // ini disembunyikan", null kalau viewer tidak ditandai di post ini.
+      // Dipakai seed sheet Opsi Tag supaya "un-hide" tetap reachable
+      // setelah app restart (server jadi sumber kebenaran, bukan
+      // session-local state).
+      viewerTagHidden: resolveViewerTagHidden(p.taggedUsers, viewerUserId ?? null),
       promo:
         p.kind === "PROMO" &&
         p.promoOriginalPrice != null &&

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
@@ -8,7 +9,49 @@ import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 
 import '../config/api_config.dart';
+import '../models/new_post_user_tag.dart';
 import '../state/member_store.dart';
+
+/// EXIF orientation values that represent a 90°/270° rotation (with or
+/// without an additional mirror). For these, the raw decoded pixel
+/// buffer's width/height are transposed relative to what will actually be
+/// displayed — orientations 1-4 (identity, mirrors, 180° rotation) never
+/// swap width/height.
+const _kTransposedExifOrientations = {5, 6, 7, 8};
+
+/// Returns the visually-correct (oriented) width/height given a decoded
+/// image's raw pixel-buffer dimensions and its EXIF orientation tag value
+/// (1-8 per spec, or null when absent/unrecognized).
+///
+/// Why this exists (final review Spec B — Fix 4): the tag-people composer
+/// (`feed_tag_people_screen.dart`) derives photo aspect ratio via
+/// `ui.instantiateImageCodec`, which — like the `Image.file` /
+/// `CachedNetworkImage` pipelines used by viewers — auto-applies EXIF
+/// orientation when decoding. `_readImageSize` below instead uses the
+/// `image` package's `img.decodeImage`, which does NOT auto-apply EXIF
+/// orientation and returns raw (potentially reciprocal-aspect) dimensions.
+/// `FlutterImageCompress` (photos >1.5MB) bakes orientation via
+/// `autoCorrectionAngle`, masking the mismatch — but `_compressForUpload`
+/// skips compression for photos ≤1.5MB, so for those a 90°/270°-rotated
+/// photo would report raw dimensions while the composer captured tag
+/// coordinates against the oriented dimensions, causing tag pills to
+/// drift on the viewer.
+///
+/// Pure + synchronous (no `dart:ui`/decoding dependency) so it can be
+/// unit-tested exhaustively across all 8 EXIF orientation values without
+/// needing a real EXIF-tagged JPEG fixture.
+@visibleForTesting
+({int width, int height}) orientedImageSize(
+  int rawWidth,
+  int rawHeight,
+  int? exifOrientation,
+) {
+  if (exifOrientation != null &&
+      _kTransposedExifOrientations.contains(exifOrientation)) {
+    return (width: rawHeight, height: rawWidth);
+  }
+  return (width: rawWidth, height: rawHeight);
+}
 
 /// Service untuk fitur Posting Foto di Feed (1-8 foto carousel).
 ///
@@ -80,7 +123,17 @@ class FeedPhotoService {
       final bytes = await file.readAsBytes();
       final image = img.decodeImage(bytes);
       if (image == null) return (width: null, height: null);
-      return (width: image.width, height: image.height);
+      // img.decodeImage does NOT auto-apply EXIF orientation (unlike the
+      // composer's ui.instantiateImageCodec) — swap width/height here for
+      // 90°/270° rotated photos so reported dimensions match what will
+      // actually be displayed. See orientedImageSize doc for full context.
+      final exifOrientation =
+          image.hasExif && image.exif.imageIfd.hasOrientation
+              ? image.exif.imageIfd.orientation
+              : null;
+      final oriented =
+          orientedImageSize(image.width, image.height, exifOrientation);
+      return (width: oriented.width, height: oriented.height);
     } catch (_) {
       return (width: null, height: null);
     }
@@ -220,6 +273,7 @@ class FeedPhotoService {
     required String title,
     String? description,
     List<String> productIds = const [],
+    List<NewPostUserTag> taggedUsers = const [],
   }) async {
     if (images.isEmpty) {
       throw const FeedPhotoUploadException(
@@ -247,6 +301,8 @@ class FeedPhotoService {
               })
           .toList(),
       if (productIds.isNotEmpty) 'productIds': productIds,
+      if (taggedUsers.isNotEmpty)
+        'taggedUsers': taggedUsers.map((t) => t.toApiJson()).toList(),
     };
 
     final res = await http

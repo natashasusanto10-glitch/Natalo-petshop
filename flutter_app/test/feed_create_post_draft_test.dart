@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/feed_create_post_draft.dart';
+import 'package:natalo_petshop_flutter/models/new_post_user_tag.dart';
 
 void main() {
   test('compressRangeOf: tanpa trimStart → kompres penuh', () {
@@ -47,5 +48,14 @@ void main() {
     final picked = d.copyWith(userPickedCover: true);
     expect(picked.userPickedCover, isTrue);
     expect(picked.copyWith(caption: 'x').userPickedCover, isTrue);
+  });
+
+  test('copyWith membawa taggedUsers', () {
+    const draft = FeedCreatePostDraft(caption: 'x');
+    final tagged = draft.copyWith(taggedUsers: const [
+      NewPostUserTag(userId: 'u1', username: 'budi', name: 'Budi'),
+    ]);
+    expect(tagged.taggedUsers, hasLength(1));
+    expect(tagged.copyWith(caption: 'y').taggedUsers, hasLength(1));
   });
 }

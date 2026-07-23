@@ -6,6 +6,7 @@ import 'package:video_player/video_player.dart';
 
 import '../config/feature_flags.dart';
 import '../models/feed_create_post_draft.dart';
+import '../models/new_post_user_tag.dart';
 import '../models/product.dart';
 import '../services/app_analytics.dart';
 import '../services/feed_service.dart';
@@ -18,6 +19,8 @@ import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
 import 'feed_caption_edit_screen.dart';
 import 'feed_post/feed_cover_picker_screen.dart';
+import 'feed_post/feed_tag_people_screen.dart';
+import 'feed_post/feed_tag_people_video_screen.dart';
 import 'feed_post/feed_post_preview_screen.dart'
     show FeedPostPreviewScreen, FeedPreviewResult;
 
@@ -111,6 +114,10 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   String? _error;
   int _photoIndex = 0;
 
+  /// Tag orang yang sedang disusun (Spec B) — layar penempatan datang di
+  /// Task 9 (foto)/10 (video); di sini baru entry row + plumbing upload.
+  List<NewPostUserTag> _userTags = [];
+
   /// Foto carousel — mutable copy dari `widget.draft.photoFiles` (yang
   /// immutable) supaya user bisa urutkan (drag) & hapus slide di layar
   /// Bagikan (Task 5 / 2C-3). Foto sudah pre-cropped final JPEG dari
@@ -148,6 +155,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
     );
     _videoDraft = widget.draft.videoDraft;
     _draftId = widget.resumeDraftId;
+    _userTags = List.of(_videoDraft?.taggedUsers ?? const []);
     // Restore caption + tagged products dari draft (kalau ada).
     if (widget.prefilledCaption != null &&
         widget.prefilledCaption!.isNotEmpty) {
@@ -188,6 +196,28 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       // setState dihandle via _captionController listener (sudah ada di
       // initState — auto rebuild trigger preview text).
     }
+  }
+
+  /// Buka layar penempatan Tag People — foto (Task 9) atau video (Task 10).
+  /// Kedua layar saat ini masih stub (mengembalikan `initialTags` apa
+  /// adanya) sampai Task 9/10 diisi.
+  Future<void> _openTagPeople() async {
+    AppHaptics.tap();
+    final result = _isVideo
+        ? await Navigator.of(context).push<List<NewPostUserTag>>(
+            MaterialPageRoute(
+              builder: (_) => FeedTagPeopleVideoScreen(initialTags: _userTags),
+            ),
+          )
+        : await Navigator.of(context).push<List<NewPostUserTag>>(
+            MaterialPageRoute(
+              builder: (_) => FeedTagPeopleScreen(
+                photoFiles: _photoFiles,
+                initialTags: _userTags,
+              ),
+            ),
+          );
+    if (result != null && mounted) setState(() => _userTags = result);
   }
 
   Future<void> _loadPurchasedProducts() async {
@@ -417,6 +447,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       final readyDraft = draft.copyWith(
         caption: caption,
         taggedProductIds: productIds,
+        taggedUsers: _userTags,
       );
       feedUploadStore.startVideoUpload(draft: readyDraft);
       unawaited(AppAnalytics.logEvent('feed_post_submitted', {
@@ -441,6 +472,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       files: files,
       caption: caption,
       productIds: productIds,
+      taggedUsers: _userTags,
     );
     unawaited(AppAnalytics.logEvent('feed_post_submitted', {
       'type': files.length > 1 ? 'carousel' : 'photo',
@@ -472,6 +504,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       type: _isVideo ? 'video' : 'image',
       caption: _captionController.text.trim(),
       productIds: _selectedProductIds.toList(),
+      taggedUsers: _userTags,
       mediaPaths: _isVideo
           ? [_videoDraft?.finalVideoPath].whereType<String>().toList()
           : _photoFiles.map((file) => file.path).toList(),
@@ -606,6 +639,11 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                     _CaptionTrigger(
                       captionText: _captionController.text,
                       onTap: _editCaption,
+                    ),
+                    const SizedBox(height: 26),
+                    _TagPeopleRow(
+                      tags: _userTags,
+                      onTap: _openTagPeople,
                     ),
                     if (kShopTagEnabled) ...[
                       const SizedBox(height: 26),
@@ -1055,6 +1093,55 @@ class _CaptionTrigger extends StatelessWidget {
                   hasCaption ? FontWeight.w600 : FontWeight.w500,
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Baris entry "Tandai Orang" (Spec B) — area bekas Tag Produk. Subtitle
+/// ringkasan: 1 orang → username, >1 → "N orang".
+class _TagPeopleRow extends StatelessWidget {
+  final List<NewPostUserTag> tags;
+  final VoidCallback onTap;
+
+  const _TagPeopleRow({required this.tags, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final subtitle = tags.isEmpty
+        ? null
+        : tags.length == 1
+            ? tags.first.username
+            : '${tags.length} orang';
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            Icon(Icons.person_pin_outlined, size: 22, color: cs.onSurface),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Tandai Orang',
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w400,
+                          color: cs.onSurface)),
+                  if (subtitle != null)
+                    Text(subtitle,
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: cs.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 22, color: cs.onSurfaceVariant),
+          ],
         ),
       ),
     );

@@ -290,6 +290,18 @@ class FeedPost {
   final List<FeedProductLink> products;
   final List<FeedProductLink> productsInVideo;
   final List<FeedProductLink> taggedProducts;
+
+  /// Tag People (Spec B) — daftar user yang ditandai di post ini.
+  final List<FeedTaggedUser> taggedUsers;
+
+  /// Tag People (final review Spec B fix) — apakah tag milik VIEWER YANG
+  /// SEDANG LOGIN (bukan per-tag lain) disembunyikan dari profilnya sendiri.
+  /// `null` kalau viewer tidak ditandai di post ini / anon. Server-computed
+  /// (lib/feed/tagged-users.ts resolveViewerTagHidden) — sumber kebenaran
+  /// untuk seed toggle "Sembunyikan/Tampilkan dari profil saya" di sheet
+  /// Opsi Tag, supaya un-hide tetap reachable setelah app restart (dulu
+  /// sheet selalu mulai dari `false` session-local, bukan state server).
+  final bool? viewerTagHidden;
   final int likeCount;
   final int commentCount;
   final int viewCount;
@@ -340,6 +352,8 @@ class FeedPost {
     this.products = const [],
     this.productsInVideo = const [],
     this.taggedProducts = const [],
+    this.taggedUsers = const [],
+    this.viewerTagHidden,
     this.likeCount = 0,
     this.commentCount = 0,
     this.viewCount = 0,
@@ -548,6 +562,8 @@ class FeedPost {
     List<FeedProductLink>? products,
     List<FeedProductLink>? productsInVideo,
     List<FeedProductLink>? taggedProducts,
+    List<FeedTaggedUser>? taggedUsers,
+    bool? viewerTagHidden,
     int? likeCount,
     int? commentCount,
     int? viewCount,
@@ -590,6 +606,8 @@ class FeedPost {
       products: products ?? this.products,
       productsInVideo: productsInVideo ?? this.productsInVideo,
       taggedProducts: taggedProducts ?? this.taggedProducts,
+      taggedUsers: taggedUsers ?? this.taggedUsers,
+      viewerTagHidden: viewerTagHidden ?? this.viewerTagHidden,
       likeCount: likeCount ?? this.likeCount,
       commentCount: commentCount ?? this.commentCount,
       viewCount: viewCount ?? this.viewCount,
@@ -639,6 +657,11 @@ class FeedPost {
                   ? p['product'] as Map<String, dynamic>
                   : p,
             ))
+        .toList();
+    final taggedUsersJson = (json['taggedUsers'] as List?) ?? const [];
+    final taggedUsers = taggedUsersJson
+        .whereType<Map<String, dynamic>>()
+        .map(FeedTaggedUser.fromJson)
         .toList();
     final liked = json['isLikedByMe'] as bool? ??
         json['viewerLiked'] as bool? ??
@@ -746,6 +769,8 @@ class FeedPost {
       products: products,
       productsInVideo: productsInVideo,
       taggedProducts: taggedProducts,
+      taggedUsers: taggedUsers,
+      viewerTagHidden: json['viewerTagHidden'] as bool?,
       likeCount: (json['likeCount'] as num?)?.toInt() ?? 0,
       commentCount: (json['commentCount'] as num?)?.toInt() ?? 0,
       viewCount: (json['viewCount'] as num?)?.toInt() ?? 0,
@@ -808,6 +833,8 @@ class FeedPost {
                 'isActive': p.isActive
               })
           .toList(),
+      'taggedUsers': taggedUsers.map((t) => t.toJson()).toList(),
+      'viewerTagHidden': viewerTagHidden,
       'likeCount': likeCount,
       'commentCount': commentCount,
       'viewCount': viewCount,
@@ -860,6 +887,54 @@ bool _looksLikeVideoUrl(String url) {
       lower.endsWith('.webm') ||
       lower.endsWith('.m3u8') ||
       lower.contains('/video/');
+}
+
+/// Tag People (Spec B) — 1 user yang ditandai di post. Foto: mediaIndex +
+/// koordinat pecahan 0-1; video: semuanya null (daftar nama saja).
+class FeedTaggedUser {
+  final String userId;
+  final String? username;
+  final String name;
+  final String? profilePhotoUrl;
+  final String? mediaId;
+  final int? mediaIndex;
+  final double? x;
+  final double? y;
+
+  const FeedTaggedUser({
+    required this.userId,
+    this.username,
+    this.name = '',
+    this.profilePhotoUrl,
+    this.mediaId,
+    this.mediaIndex,
+    this.x,
+    this.y,
+  });
+
+  factory FeedTaggedUser.fromJson(Map<String, dynamic> json) {
+    return FeedTaggedUser(
+      userId: (json['userId'] as String?) ?? '',
+      username: json['username'] as String?,
+      name: (json['name'] as String?) ?? '',
+      profilePhotoUrl: json['profilePhotoUrl'] as String?,
+      mediaId: json['mediaId'] as String?,
+      mediaIndex: (json['mediaIndex'] as num?)?.toInt(),
+      x: (json['x'] as num?)?.toDouble(),
+      y: (json['y'] as num?)?.toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'userId': userId,
+        'username': username,
+        'name': name,
+        'profilePhotoUrl': profilePhotoUrl,
+        'mediaId': mediaId,
+        'mediaIndex': mediaIndex,
+        'x': x,
+        'y': y,
+      };
 }
 
 /// 1 row dari FeedMedia table. Untuk feed post, PHOTO_CAROUSEL berisi 1-8

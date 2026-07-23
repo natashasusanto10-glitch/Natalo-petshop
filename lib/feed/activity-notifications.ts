@@ -17,6 +17,7 @@
  * action that triggered them.
  */
 
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   isAdminRole,
@@ -29,6 +30,7 @@ import {
 } from "@/lib/social/brand-user";
 import {
   buildCommentNotificationText,
+  buildTaggedNotificationTitle,
   createFeedNotification,
   feedPostOwnerUrl,
   quoteFeedTitle,
@@ -36,6 +38,7 @@ import {
   truncateFeedText,
 } from "@/lib/feed/notification-center";
 import { feedNotificationThumbnail } from "@/lib/feed/notification-thumbnail";
+import { taggedUserIdsFromRows } from "@/lib/feed/tagged-users";
 
 // Milestone helper remains available for bulk/broadcast-style summaries.
 // Per-like Notification Center entries are batched below.
@@ -275,6 +278,126 @@ export async function sendMentionNotifications(params: {
     );
   } catch (err) {
     console.warn("[feed-activity] sendMentionNotifications:", err);
+  }
+}
+
+/**
+ * Tag People (Spec B) — notif ke user yang ditandai di post baru.
+ * Dipanggil dari POST create SETELAH transaksi sukses. Self-tag di-skip.
+ * Deep-link: /feed/<postId> (case `feed` sudah ada di deep_link_service).
+ */
+export async function sendTaggedUserNotifications(params: {
+  actorUserId: string;
+  recipientUserIds: string[];
+  postId: string;
+}) {
+  if (params.recipientUserIds.length === 0) return;
+  try {
+    const [actor, post] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: params.actorUserId },
+        select: { name: true, username: true, role: true, profilePhotoUrl: true },
+      }),
+      prisma.feedPost.findUnique({
+        where: { id: params.postId },
+        select: {
+          id: true,
+          title: true,
+          thumbnailUrl: true,
+          media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
+        },
+      }),
+    ]);
+    if (!post) return;
+    const actorName = isAdminRole(actor?.role)
+      ? OFFICIAL_BRAND_NAME
+      : actor?.username && actor.username.length > 0
+        ? actor.username
+        : actor?.name?.trim() || "Seseorang";
+    const actorFields = notificationActorFields(
+      actor?.role,
+      actor?.name,
+      actor?.profilePhotoUrl,
+    );
+
+    // Tidak ada notifikasi ke diri sendiri (self-tag boleh, tanpa notif).
+    const recipients = params.recipientUserIds.filter(
+      (id) => id !== params.actorUserId,
+    );
+
+    await Promise.allSettled(
+      recipients.map((recipientUserId) =>
+        createFeedNotification({
+          userId: recipientUserId,
+          eventType: "feed_tagged",
+          title: buildTaggedNotificationTitle(actorName),
+          message: truncateFeedText(post.title) || "Lihat postingannya sekarang.",
+          feedPostId: post.id,
+          thumbnailUrl: feedNotificationThumbnail(post),
+          url: `/feed/${encodeURIComponent(post.id)}`,
+          ctaLabel: "Lihat Postingan",
+          tag: `feed-tagged-${params.postId}-${recipientUserId}`,
+          data: { post_id: params.postId },
+          surface: SOCIAL_NOTIFICATION_SOURCE,
+          actor: {
+            avatarUrl: actorFields.actorAvatarUrl,
+            name: actorFields.actorName,
+          },
+        }),
+      ),
+    );
+  } catch (err) {
+    console.warn("[feed-activity] sendTaggedUserNotifications:", err);
+  }
+}
+
+/**
+ * Tag People VIDEO fix (final review Spec B) — dispatch notif tagged-user
+ * persis saat video post bertransisi ke `encodingStatus: "ready"` (video
+ * benar-benar playable), BUKAN saat provision time
+ * (app/api/feed/bunny/upload-url/route.ts TIDAK LAGI memanggil
+ * sendTaggedUserNotifications langsung). Sebelumnya notif dikirim begitu
+ * row FeedPost dibuat dengan encodingStatus "uploading" — kalau upload
+ * dibatalkan atau encoding gagal, tagged user tetap dapat notif phantom
+ * yang mengarah ke post yang tak pernah tayang (videoUrl masih null).
+ *
+ * Dipanggil dari 2 hook point yang sama-sama menandai ready:
+ *   - lib/feed/reconcile.ts (cron/manual reconcile)
+ *   - app/api/feed/bunny/webhook/route.ts (webhook Bunny)
+ *
+ * Re-derive recipient dari baris FeedTaggedUser TERSIMPAN di DB (query
+ * fresh di sini), bukan dari data provisioning-time yang sudah basi — kalau
+ * tag berubah selagi video masih encoding, notif tetap akurat.
+ *
+ * `db`/`notify` injectable untuk test (default: prisma asli +
+ * sendTaggedUserNotifications asli) — pola sama dengan
+ * lib/feed/queries.ts getFeedCommentDetail. Errors ditelan (konsisten
+ * dengan semua helper notif lain di file ini) — kegagalan notif tidak
+ * boleh menggagalkan transisi ready itu sendiri.
+ */
+export async function notifyTaggedUsersOnVideoReady(
+  params: { postId: string; actorUserId: string },
+  deps: {
+    db?: Pick<Prisma.TransactionClient, "feedTaggedUser">;
+    notify?: typeof sendTaggedUserNotifications;
+  } = {},
+) {
+  const db = deps.db ?? prisma;
+  const notify = deps.notify ?? sendTaggedUserNotifications;
+  try {
+    const rows = await db.feedTaggedUser.findMany({
+      where: { feedPostId: params.postId },
+      select: { taggedUserId: true },
+    });
+    const recipientUserIds = taggedUserIdsFromRows(rows);
+    if (recipientUserIds.length === 0) return;
+    await notify({
+      actorUserId: params.actorUserId,
+      recipientUserIds,
+      postId: params.postId,
+    });
+  } catch (err) {
+    console.warn("[feed-activity] notifyTaggedUsersOnVideoReady:", err);
   }
 }
 

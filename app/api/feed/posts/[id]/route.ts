@@ -13,6 +13,11 @@ import {
   resolveFeedProductDiscount,
 } from "@/lib/feed/queries";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
+import {
+  resolveViewerTagHidden,
+  TAGGED_USERS_SELECT,
+  serializeTaggedUsers,
+} from "@/lib/feed/tagged-users";
 import { buildFeedShareVersion } from "@/lib/share/feed-share-data";
 import {
   feedAccessibilityPayload,
@@ -134,6 +139,7 @@ export async function GET(
           altText: true,
         },
       },
+      taggedUsers: TAGGED_USERS_SELECT,
       likes: {
         orderBy: { createdAt: "desc" },
         take: 3,
@@ -245,6 +251,13 @@ export async function GET(
     viewerSaved,
     products,
     taggedProducts: products,
+    taggedUsers: serializeTaggedUsers(
+      post.taggedUsers,
+      new Map(post.media.map((m, index) => [m.id, index]))
+    ),
+    // Tag People (final review Spec B fix) — lihat lib/feed/queries.ts
+    // untuk penjelasan lengkap. null kalau viewer bukan tag di post ini.
+    viewerTagHidden: resolveViewerTagHidden(post.taggedUsers, session?.sub ?? null),
     author: {
       id: post.author.id,
       // Akun official (admin) → brand name + foto null (klien render logo).

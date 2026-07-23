@@ -1,9 +1,12 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/models/member_profile.dart';
+import 'package:natalo_petshop_flutter/models/public_profile.dart';
 import 'package:natalo_petshop_flutter/screens/member_screen.dart';
+import 'package:natalo_petshop_flutter/services/profile_service.dart';
 import 'package:natalo_petshop_flutter/state/member_store.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_expanded_header.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -29,6 +32,11 @@ void main() {
   });
 
   tearDown(() async {
+    // Reset SEMUA seam test di tearDown (bukan akhir badan test) supaya
+    // tidak leak ke test berikutnya kalau ada `expect` yang throw duluan —
+    // fix Minor Spec A yang tercatat di sdd/progress-spec-a.md (Task 4).
+    debugMyPostsFetcher = null;
+    debugTaggedPostsFetcher = null;
     await memberStore.logout();
   });
 
@@ -99,16 +107,29 @@ void main() {
     expect(find.byKey(const Key('public_tab_tagged_pill')), findsOneWidget);
   });
 
-  testWidgets('tab Ditandai selalu kosong dengan copy baru', (tester) async {
-    // Mock fetcher untuk mengembalikan empty page tanpa error
+  testWidgets(
+      'tab Ditandai kosong genuinely (fetch sukses tanpa hasil) tetap tampilkan copy Spec A',
+      (tester) async {
+    // Spec B (Task 13): tab ini sekarang fetch sungguhan lewat
+    // `_loadTaggedPosts` (endpoint profil publik milik sendiri,
+    // `content=tagged`) — bukan lagi getter `const []` hardcoded (Spec A).
+    // Mock KEDUA fetcher supaya deterministik & tanpa network nyata.
     debugMyPostsFetcher = ({String filter = 'all', String? cursor}) async {
       return const FeedPage(items: [], nextCursor: null);
+    };
+    debugTaggedPostsFetcher = (username) async {
+      expect(username, 'natasha_s'); // sumber sama dengan header (@username)
+      return const PublicProfileResult(
+        profile: PublicProfile(id: 'owner-1', name: 'Natasha'),
+        posts: [],
+      );
     };
 
     await pumpScreen(tester);
     await tester.tap(find.byKey(const Key('public_tab_tagged_pill')));
     await tester.pumpAndSettle();
 
+    // Genuinely-empty case: teks empty-state Spec A DIPERTAHANKAN persis.
     expect(
       find.text('Belum ada postingan yang menandaimu'),
       findsOneWidget,
@@ -119,7 +140,42 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
 
-    debugMyPostsFetcher = null;
+  testWidgets(
+      'tab Ditandai menampilkan post sungguhan dari fetch (Spec B — bukan lagi selalu-kosong)',
+      (tester) async {
+    debugMyPostsFetcher = ({String filter = 'all', String? cursor}) async {
+      return const FeedPage(items: [], nextCursor: null);
+    };
+    final taggedPost = FeedPost.fromJson({
+      'id': 'tagged-1',
+      'slug': 'tagged-1',
+      'kind': 'PHOTO',
+      'mediaUrl': 'https://example.com/tagged-1.jpg',
+      'author': {'id': 'other-user', 'name': 'Teman'},
+      'createdAt': DateTime(2026).toIso8601String(),
+    });
+    debugTaggedPostsFetcher = (username) async {
+      return PublicProfileResult(
+        profile: const PublicProfile(id: 'owner-1', name: 'Natasha'),
+        posts: [taggedPost],
+      );
+    };
+
+    await pumpScreen(tester);
+    await tester.tap(find.byKey(const Key('public_tab_tagged_pill')));
+    await tester.pumpAndSettle();
+
+    // Empty-state TIDAK muncul lagi — grid terisi post sungguhan.
+    expect(find.text('Belum ada postingan yang menandaimu'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is CachedNetworkImage &&
+            w.imageUrl == 'https://example.com/tagged-1.jpg',
+      ),
+      findsOneWidget,
+    );
   });
 }

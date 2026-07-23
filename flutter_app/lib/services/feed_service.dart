@@ -576,6 +576,21 @@ class FeedService {
     }
     return const FeedUploadResult(url: '');
   }
+
+  /// Tag People (Spec B) — hapus tag diri sendiri dari post.
+  Future<void> removeMyTag(String postId) async {
+    await apiClient.deleteJson(
+      '/api/feed/posts/${Uri.encodeComponent(postId)}/tags/me',
+    );
+  }
+
+  /// Sembunyikan/tampilkan post ber-tag dari tab Ditandai profil sendiri.
+  Future<void> setMyTagHidden(String postId, bool hidden) async {
+    await apiClient.patchJson(
+      '/api/feed/posts/${Uri.encodeComponent(postId)}/tags/me',
+      body: {'hidden': hidden},
+    );
+  }
 }
 
 /// Hasil upload — kalau sukses, `url` berisi resource URL hasil upload.

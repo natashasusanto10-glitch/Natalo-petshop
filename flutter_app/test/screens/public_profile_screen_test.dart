@@ -305,7 +305,7 @@ void main() {
   });
 
   testWidgets(
-      'tab Ditandai di profil publik langsung kosong tanpa network call',
+      'tab Ditandai di profil publik kini memicu fetch network sungguhan (Spec B — short-circuit Spec A dilepas)',
       (tester) async {
     const result = PublicProfileResult(
       profile: PublicProfile(
@@ -338,24 +338,32 @@ void main() {
     // (yang menetapkan start-time animasi, elapsed=0) — baru pump kedua
     // dengan durasi 400ms (> 300ms) bisa menghitung elapsed time yang benar
     // dan membawa animasi tab sampai selesai, hingga halaman "Ditandai"
-    // ter-mount. 400ms tetap jauh lebih pendek dari network round-trip
-    // nyata. Ini penting: pumpAndSettle akan ikut menunggu fetch nyata
-    // selesai/timeout kalau guard "jangan fetch" untuk filter shoppable
-    // dilepas, sehingga assertion di bawah tidak lagi membuktikan apa-apa.
-    // Dengan bounded pump, checkpoint ini bisa membedakan kedua kasus secara
-    // deterministik: guard branch untuk shoppable di _activateContent tidak
-    // pernah menyentuh contentState.loading, sedangkan _loadSelectedContent
-    // (fetch asli) set loading = true secara sinkron sebelum await pertama.
+    // ter-mount.
+    //
+    // Spec B (Task 13): guard "jangan fetch" untuk filter shoppable sudah
+    // DILEPAS — `_activateContent` sekarang SELALU memanggil
+    // `_loadSelectedContent` (fetch network sungguhan lewat
+    // `profileService`, TIDAK di-mock di test widget ini — tidak ada seam
+    // seperti `debugMyPostsFetcher`) untuk filter ini juga, persis seperti
+    // filter 'video'. Bounded pump (bukan pumpAndSettle, yang akan ikut
+    // menunggu request nyata selesai/timeout tanpa batas jelas) membuktikan
+    // SATU hal spesifik: begitu tab settle, `_loadSelectedContent` men-set
+    // `contentState.loading = true` secara SINKRON sebelum await pertama —
+    // jadi grid TIDAK PERNAH LAGI menampilkan teks "kosong" secara instan
+    // (perilaku short-circuit Spec A yang barusan dihapus). Teks itu hanya
+    // bisa muncul lagi kalau fetch ASLI selesai sukses dgn 0 post — mustahil
+    // terjadi dalam jendela pump singkat ini tanpa backend/mock nyata.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(
       find.text('Belum ada postingan yang menandai akun ini'),
-      findsOneWidget,
+      findsNothing,
     );
   });
 
-  testWidgets('refresh saat tab Ditandai aktif tidak ikut memicu network fetch',
+  testWidgets(
+      'refresh saat tab Ditandai aktif kini ikut ke jalur fetch (tak ada guard khusus lagi)',
       (tester) async {
     const result = PublicProfileResult(
       profile: PublicProfile(
@@ -376,16 +384,14 @@ void main() {
     await tester.pump();
 
     // Pindah ke tab Ditandai dulu — sama pola dengan test tab-tap di atas.
-    // Guard _activateContent sudah dibuktikan benar di test itu; di sini kita
-    // hanya butuh BERADA di tab tsb supaya bisa memicu _refresh() (dipanggil
-    // pull-to-refresh) saat _selectedContent == shoppable.
+    // Guard lama sudah dibuktikan tidak ada lagi di test itu; di sini kita
+    // hanya butuh BERADA di tab tsb, lalu biarkan fetch pertamanya settle
+    // (real network tanpa mock — hasil akhirnya sukses/gagal tidak relevan
+    // untuk test ini) supaya `_refresh()` (dipanggil pull-to-refresh) punya
+    // state awal yang stabil sebelum dipicu ulang.
     await tester.tap(find.byKey(const Key('public_tab_tagged_pill')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    expect(
-      find.text('Belum ada postingan yang menandai akun ini'),
-      findsOneWidget,
-    );
 
     // Trigger refresh dengan memanggil langsung callback `onRefresh` milik
     // NataloPawRefreshIndicator, bukan simulasi drag/fling fisik. Ini PERSIS
@@ -395,34 +401,23 @@ void main() {
     // menggabungkan BouncingScrollPhysics (pixel negatif) + threshold
     // akumulasi + ScrollConfiguration custom yang sulit direplikasi presisi
     // via tester.fling/drag di widget test bersarang (NestedScrollView >
-    // CustomScrollView), dan physics gesture itu sendiri tidak relevan dengan
-    // guard yang sedang diuji (guard-nya ada di `_load`, bukan di deteksi
-    // gesture). Memanggil callback langsung menguji persis yang ingin
-    // dibuktikan — refresh apa pun pemicunya tidak boleh fetch saat shoppable.
+    // CustomScrollView).
     final refreshIndicator = tester.widget<NataloPawRefreshIndicator>(
       find.byType(NataloPawRefreshIndicator),
     );
     unawaited(refreshIndicator.onRefresh());
 
-    // Bounded pump (bukan pumpAndSettle) — alasan sama persis dengan test
-    // tab-tap di atas: contentState.loading di-set true SECARA SINKRON di
-    // awal _load(), sebelum await pertama (network call), begitu guard
-    // dilepas. pumpAndSettle akan ikut menunggu request nyata (atau timeout
-    // di ApiClient.getJson) kalau guard hilang, sehingga tidak bisa lagi
-    // membedakan "guard fired" dari "fetch asli fired" secara deterministik.
+    // Bounded pump (bukan pumpAndSettle, yang akan ikut menunggu request
+    // nyata tanpa batas jelas kalau guard sudah tidak ada). `_load()` untuk
+    // filter shoppable sekarang SERAGAM dengan filter lain — tidak ada lagi
+    // cabang guard terpisah yang bisa membuat refresh diam-diam skip fetch
+    // (atau sebaliknya, crash karena state desync). Assertion utama di sini
+    // adalah TIDAK ADA exception — regresi paling berharga untuk dijaga
+    // karena `_load()`/`_refresh()` kini identik untuk SEMUA filter,
+    // termasuk shoppable.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    // Empty state Ditandai TETAP tampil setelah refresh — bukti tidak ada
-    // fetch yang mengubah state. Slivers di `_buildContentPage` bersifat
-    // if/else-if/else (loading skeleton XOR error XOR empty XOR grid), jadi
-    // text kosong ini hanya bisa tetap ada kalau cabang loading skeleton
-    // TIDAK aktif dan grid TIDAK terisi ulang — satu assertion ini sekaligus
-    // membuktikan keduanya.
-    expect(
-      find.text('Belum ada postingan yang menandai akun ini'),
-      findsOneWidget,
-    );
     expect(tester.takeException(), isNull);
   });
 }

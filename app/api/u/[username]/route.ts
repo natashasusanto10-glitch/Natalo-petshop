@@ -34,6 +34,11 @@ import {
   brandDisplayName,
   brandPhotoUrl,
 } from "@/lib/social/brand-user";
+import {
+  resolveViewerTagHidden,
+  TAGGED_USERS_SELECT,
+  serializeTaggedUsers,
+} from "@/lib/feed/tagged-users";
 import { loadMutualFollowers } from "@/lib/social/profile-mutual-followers";
 import { feedAccessibilityPayload } from "@/lib/feed/accessibility";
 import {
@@ -61,7 +66,7 @@ const OFFICIAL_BRAND_BIO = "Akun resmi Natalo Petshop & Aquarium 🐾";
 const MAX_LIMIT = 50;
 const DEFAULT_LIMIT = 20;
 
-type ProfileContentFilter = "all" | "video" | "shoppable";
+type ProfileContentFilter = "all" | "video" | "shoppable" | "tagged";
 
 function profileProductSelect(now: Date) {
   return {
@@ -97,7 +102,7 @@ function profileProductSelect(now: Date) {
 }
 
 function normalizeContentFilter(raw: string | null): ProfileContentFilter {
-  return raw === "video" || raw === "shoppable" ? raw : "all";
+  return raw === "video" || raw === "shoppable" || raw === "tagged" ? raw : "all";
 }
 
 export async function GET(
@@ -157,9 +162,17 @@ export async function GET(
           OR: [{ productId: { not: null } }, { taggedProducts: { some: {} } }],
         }
       : {};
-  const listingWhere: Prisma.FeedPostWhereInput = {
-    AND: [baseWhere, contentWhere],
+  // Tab Ditandai (Spec B): post siapa pun yang menandai target user,
+  // exclude yang user itu sembunyikan (hidden berlaku global).
+  const taggedWhere: Prisma.FeedPostWhereInput = {
+    taggedUsers: { some: { taggedUserId: target.id, hidden: false } },
+    kind: { in: [...new Set([...VISIBLE_KINDS, ...ADMIN_VISIBLE_KINDS])] },
+    status: "ACTIVE",
+    deletedAt: null,
+    encodingStatus: "ready",
   };
+  const listingWhere: Prisma.FeedPostWhereInput =
+    content === "tagged" ? taggedWhere : { AND: [baseWhere, contentWhere] };
 
   const [rawPosts, totalCount, likedCount, viewerFollow, mutualFollowers] =
     await Promise.all([
@@ -208,6 +221,7 @@ export async function GET(
             altText: true,
           },
         },
+        taggedUsers: TAGGED_USERS_SELECT,
         likes: {
           orderBy: { createdAt: "desc" },
           take: 3,
@@ -223,6 +237,21 @@ export async function GET(
             },
           },
         },
+        // Tab Ditandai: post bisa milik orang lain, jadi kartu grid butuh
+        // author asli (bukan pemilik profil yang sedang dilihat).
+        ...(content === "tagged"
+          ? {
+              author: {
+                select: {
+                  id: true,
+                  name: true,
+                  username: true,
+                  role: true,
+                  profilePhotoUrl: true,
+                },
+              },
+            }
+          : {}),
       },
     }),
     // Total post count untuk header stats. Konsisten dengan findMany —
@@ -352,15 +381,46 @@ export async function GET(
         // dikirim supaya tap nama/avatar di header & caption bisa buka
         // profil (Flutter butuh author.username). Official → brand-safe
         // (nama+foto pemilik tak bocor, username brand tetap terkirim).
-        author: {
-          id: target.id,
-          name: profileDisplayName,
-          username: target.username,
-          role: isOfficial ? "ADMIN" : "CUSTOMER",
-          profilePhotoUrl: profilePhoto,
-          avatarUrl: profilePhoto,
-          isOfficial,
-        },
+        author: (() => {
+          // Tab Ditandai: kartu grid render author ASLI post (bukan
+          // pemilik profil yang sedang dilihat).
+          const postAuthor = (p as { author?: (typeof p)["author"] }).author;
+          if (content === "tagged" && postAuthor) {
+            const authorIsOfficial = postAuthor.role === "ADMIN";
+            return {
+              id: postAuthor.id,
+              name: brandDisplayName(postAuthor.role, postAuthor.name),
+              username: postAuthor.username,
+              role: authorIsOfficial ? "ADMIN" : "CUSTOMER",
+              profilePhotoUrl: brandPhotoUrl(
+                postAuthor.role,
+                postAuthor.profilePhotoUrl
+              ),
+              avatarUrl: brandPhotoUrl(
+                postAuthor.role,
+                postAuthor.profilePhotoUrl
+              ),
+              isOfficial: authorIsOfficial,
+            };
+          }
+          return {
+            id: target.id,
+            name: profileDisplayName,
+            username: target.username,
+            role: isOfficial ? "ADMIN" : "CUSTOMER",
+            profilePhotoUrl: profilePhoto,
+            avatarUrl: profilePhoto,
+            isOfficial,
+          };
+        })(),
+        taggedUsers: serializeTaggedUsers(
+          p.taggedUsers,
+          new Map(p.media.map((m, index) => [m.id, index]))
+        ),
+        // Tag People (final review Spec B fix) — lihat lib/feed/queries.ts
+        // untuk penjelasan lengkap. null kalau viewerUserId bukan tag di
+        // post ini (termasuk anon / null viewer).
+        viewerTagHidden: resolveViewerTagHidden(p.taggedUsers, viewerUserId),
         recentLikers: p.likes.map((like) => ({
           id: like.user.id,
           name: brandDisplayName(like.user.role, like.user.name),
