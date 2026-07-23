@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/feed_post.dart';
+import '../utils/motion_prefs.dart';
 import 'feed_user_tag_pill.dart';
 
 /// Badge ikon orang (siluet putih, lingkaran semi-transparan) pojok
@@ -90,7 +91,10 @@ class FeedTaggedUsersOverlay extends StatelessWidget {
       top: placement.topLeft.dy,
       child: TweenAnimationBuilder<double>(
         tween: Tween(begin: 0.6, end: 1),
-        duration: const Duration(milliseconds: 220),
+        // Reduced-motion (OS atau toggle Settings) → animasi pop di-skip,
+        // pill langsung tampil final (audit polish Spec B lanjutan).
+        duration:
+            MotionPrefs.effective(context, const Duration(milliseconds: 220)),
         curve: Curves.easeOutCubic,
         builder: (context, v, child) => Opacity(
           opacity: v.clamp(0, 1),

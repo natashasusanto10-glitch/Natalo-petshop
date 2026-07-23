@@ -89,16 +89,30 @@ class _FeedTagPeopleVideoScreenState extends State<FeedTagPeopleVideoScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: Center(
-              child: GestureDetector(
-                onTap: _onDone,
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: const BoxDecoration(
-                    color: NataloColors.primary,
-                    shape: BoxShape.circle,
+              child: Semantics(
+                button: true,
+                label: 'Selesai menandai',
+                child: GestureDetector(
+                  onTap: _onDone,
+                  behavior: HitTestBehavior.opaque,
+                  // Hit target 44dp (checklist tap-target) — lingkaran
+                  // visual tetap 36px, ter-pusat (audit polish lanjutan).
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Center(
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: const BoxDecoration(
+                          color: NataloColors.primary,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.check,
+                            color: Colors.white, size: 20),
+                      ),
+                    ),
                   ),
-                  child: const Icon(Icons.check, color: Colors.white, size: 20),
                 ),
               ),
             ),
