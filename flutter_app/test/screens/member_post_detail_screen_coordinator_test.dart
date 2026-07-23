@@ -329,6 +329,62 @@ void main() {
   );
 
   testWidgets(
+    'video aktif memicu preload video berikutnya (head-start buffering)',
+    (tester) async {
+      // appSettingsStore singleton bisa membawa 'data_saver' dari test lain di
+      // isolate yang sama — setel eksplisit supaya preload tak terlewati.
+      await appSettingsStore.setFeedVideoQuality('auto');
+      final posts = [
+        _fakeVideoPost(id: 'post-1'),
+        _fakeVideoPost(id: 'post-2'),
+      ];
+      await pumpScreen(tester, posts: posts);
+
+      final state =
+          tester.state(find.byType(MemberPostDetailScreen)) as dynamic;
+      final coordinator = state.debugVideoCoordinator as PostVideoCoordinator;
+
+      expect(coordinator.activePostId, 'post-1',
+          reason: 'post pertama harus jadi aktif setelah terbuka');
+      expect(coordinator.preloadPostIds, contains('post-2'),
+          reason: 'begitu post-1 aktif, post-2 di-preload (warm buffering)');
+      // Sesi post-2 sudah dibuat lebih awal walau belum menembus ambang 60%
+      // terlihat — inilah head-start yang menghilangkan rasa "video tak play".
+      expect(sessions.containsKey('post-2'), isTrue,
+          reason: 'preload membuat sesi post-2 lebih awal');
+      expect(sessions['post-2']!.playing, isFalse,
+          reason: 'sesi preload dibuat paused+muted, bukan diputar');
+
+      await disposeTree(tester);
+    },
+  );
+
+  testWidgets(
+    'mode hemat data (data_saver) MELEWATI preload video berikutnya',
+    (tester) async {
+      await appSettingsStore.setFeedVideoQuality('data_saver');
+      addTearDown(() => appSettingsStore.setFeedVideoQuality('auto'));
+      final posts = [
+        _fakeVideoPost(id: 'post-1'),
+        _fakeVideoPost(id: 'post-2'),
+      ];
+      await pumpScreen(tester, posts: posts);
+
+      final state =
+          tester.state(find.byType(MemberPostDetailScreen)) as dynamic;
+      final coordinator = state.debugVideoCoordinator as PostVideoCoordinator;
+
+      expect(coordinator.activePostId, 'post-1');
+      expect(coordinator.preloadPostIds, isEmpty,
+          reason: 'hemat data tak boleh mem-buffer video lain lebih awal');
+      expect(sessions.containsKey('post-2'), isFalse,
+          reason: 'sesi post-2 tak dibuat sampai benar-benar terlihat');
+
+      await disposeTree(tester);
+    },
+  );
+
+  testWidgets(
     'Postingan tetap autoplay saat global feed autoplay OFF tanpa center play',
     (tester) async {
       await appSettingsStore.setFeedAutoplay(false);

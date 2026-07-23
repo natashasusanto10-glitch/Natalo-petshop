@@ -6,21 +6,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/natalo_colors.dart';
 import '../theme/natalo_text.dart';
-import 'package:share_plus/share_plus.dart';
 
-import '../config/api_config.dart';
 import '../models/feed_post.dart';
+import '../models/share_content.dart';
 import '../features/feed/transition/post_hero.dart';
 import '../features/feed/transition/post_viewer_route.dart';
 import '../features/feed/transition/profile_tile_visibility.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../features/feed/widgets/gallery_post_tile.dart'
-    show gridShowsLetterbox;
+    show gridThumbnailFit, gridVideoUsesBlackBackground;
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
 import '../services/follow_service.dart';
 import '../services/profile_service.dart';
 import '../services/report_service.dart';
+import '../services/share_sheet_launcher.dart';
 import '../services/video_quality_service.dart';
 import '../state/chat_store.dart';
 import '../state/feed_store.dart';
@@ -29,15 +29,16 @@ import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../constants/official_brand.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/calm_scroll_physics.dart';
-import '../widgets/collapsing_header_delegate.dart';
 import '../widgets/moderation_action_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
+import '../widgets/official_brand_avatar.dart';
 import '../widgets/profile_grid_geometry.dart';
-import '../widgets/public_profile_chrome_overlay.dart';
-import '../widgets/public_profile_identity_tab_header.dart';
+import '../widgets/public_profile_content_tab_bar.dart';
+import '../widgets/public_profile_expanded_header.dart';
 import 'member_post_detail_screen.dart';
 import 'public_profile_follow_list_screen.dart';
 
@@ -828,25 +829,20 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   }
 
   /// Share link profil publik `/u/{username}` via native share sheet.
-  /// Konsisten dgn pola share feed (title + url). Kalau username null
-  /// (user lama belum set), fallback share link app base.
   Future<void> _shareProfile() async {
     final profile = _profile;
     if (profile == null) return;
     AppHaptics.tap();
     try {
-      final username = profile.username;
-      final url = (username != null && username.isNotEmpty)
-          ? ApiConfig.uri('/u/$username').toString()
-          : ApiConfig.uri('/').toString();
-      final label = profile.isOfficial ? profile.name : profile.displayHandle;
-      // sharePositionOrigin WAJIB untuk iOS (popover anchor); tanpa ini share
-      // gagal/senyap di iOS. Di Android tak berpengaruh.
-      final box = context.findRenderObject() as RenderBox?;
-      await Share.share(
-        'Lihat profil $label di Natalo\n$url',
-        sharePositionOrigin:
-            box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+      final username = profile.username?.trim();
+      if (username == null || username.isEmpty) return;
+      await ShareSheetLauncher().launch(
+        ProfileShareContent(
+          username: username,
+          displayName: profile.isOfficial ? profile.name : profile.displayHandle,
+          shareVersion: profile.shareVersion,
+        ),
+        origin: shareOriginFor(context),
       );
     } catch (_) {
       // Cancel / share fail — silent.
@@ -877,9 +873,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // Satu layout IG-style putih untuk SEMUA akun — mode hero navy
-    // official (plus seluruh workaround seam/gap-nya) sudah dihapus.
-    // Official dibedakan lewat badge + chip di dalam header.
+    // Satu layout IG-style putih untuk SEMUA akun. Bar atas STATIS (back +
+    // username + menu) — pola sama dengan profil sendiri (member_screen).
+    // Mesin collapse + chrome overlay glass lama dibuang: header identitas
+    // ikut ter-scroll keluar seperti konten biasa, hanya tab yang pinned.
     final profile = _profile;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: Theme.of(context).brightness == Brightness.dark
@@ -887,21 +884,65 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
           : SystemUiOverlayStyle.dark,
       child: Scaffold(
         backgroundColor: cs.surface,
-        // Loading/error routes retain a conventional back affordance. Once
-        // profile data exists, navigation is owned by the collapsing sliver.
-        appBar: profile == null
-            ? AppBar(
-                backgroundColor: cs.surface,
-                surfaceTintColor: cs.surface,
-                elevation: 0,
-                leading: IconButton(
-                  onPressed: () => Navigator.maybePop(context),
-                  icon: const Icon(Icons.arrow_back_rounded),
-                  tooltip: 'Kembali',
-                ),
-                title: Text(widget.username),
-              )
-            : null,
+        appBar: AppBar(
+          backgroundColor: cs.surface,
+          surfaceTintColor: cs.surface,
+          elevation: 0,
+          titleSpacing: 0,
+          leading: IconButton(
+            onPressed: () => Navigator.maybePop(context),
+            icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: 'Kembali',
+          ),
+          title: profile == null
+              ? Text(widget.username)
+              : profile.isOfficial
+                  ? const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            kOfficialBrandName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        SizedBox(width: 5),
+                        OfficialVerifiedBadge(size: 16),
+                      ],
+                    )
+                  : Text(
+                      profile.displayHandle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+          actions: [
+            if (profile != null)
+              PopupMenuButton<_PublicProfileMenuAction>(
+                tooltip: 'Opsi lainnya',
+                icon: const Icon(Icons.more_horiz_rounded),
+                onSelected: (action) {
+                  switch (action) {
+                    case _PublicProfileMenuAction.share:
+                      _shareProfile();
+                    case _PublicProfileMenuAction.moderate:
+                      _openModeration();
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: _PublicProfileMenuAction.share,
+                    child: Text('Bagikan profil'),
+                  ),
+                  if (!profile.isOwner && !profile.isOfficial)
+                    const PopupMenuItem(
+                      value: _PublicProfileMenuAction.moderate,
+                      child: Text('Laporkan atau blokir'),
+                    ),
+                ],
+              ),
+          ],
+        ),
         body: _buildBody(),
       ),
     );
@@ -918,84 +959,40 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
       return AppErrorState(description: _errorText!, onRetry: _load);
     }
     final profile = _profile!;
-    final metrics = PublicProfileHeaderMetrics.resolve(context, profile);
-    final headerLeadInset = metrics.topPadding + metrics.toolbarHeight;
-    // Header hanya boleh melipat kalau konten tab aktif benar-benar
-    // memerlukan scroll. Akun sepi (1-2 post) tak punya apa pun untuk
-    // digulir di bawah header penuh — biarkan diam daripada melipat
-    // "kosong" (lipat + pill mengambang tanpa konten baru yang terungkap).
-    // Syarat nextCursor == null: freeze cuma setelah kita YAKIN semua
-    // halaman sudah termuat, supaya header tidak "meleleh" mid-scroll
-    // begitu load-more datang.
-    final activeContentState = _contentStates[_selectedContent]!;
-    final gridWidth = MediaQuery.sizeOf(context).width;
-    final gridHeight = profileGridExtentForWidth(
-      gridWidth,
-      itemCount: activeContentState.posts.length,
-    );
-    final availableBodyHeight =
-        MediaQuery.sizeOf(context).height - metrics.scrollSpaceHeight;
-    final freezeHeader = activeContentState.loaded &&
-        !activeContentState.loading &&
-        activeContentState.nextCursor == null &&
-        gridHeight <= availableBodyHeight;
     final nestedScrollView = NestedScrollView(
       controller: _scrollController,
       // Fling diredam ala IG — lihat CalmScrollPhysics.
       physics: const CalmScrollPhysics(),
       headerSliverBuilder: (context, innerBoxIsScrolled) => [
-        // PINNED spacer (bukan SliverToBoxAdapter biasa) — sengaja. Sliver
-        // pinned lain di bawahnya (tab bar) selalu menempel ke Y=0 viewport
-        // begitu scroll penuh, TERLEPAS dari tinggi konten non-pinned di
-        // atasnya (mekanisme pinning Flutter: header pinned "nempel" ke tepi
-        // viewport, bukan ke posisi setelah sliver sebelumnya). Supaya tab
-        // bar berhenti TEPAT di bawah toolbar overlay (bukan di y=0 balik
-        // lagi), spacer ini juga harus pinned dgn minExtent==maxExtent —
-        // jadi ia sendiri yang "duduk" permanen di y=0..H, dan sliver
-        // pinned berikutnya otomatis bertumpuk tepat di bawahnya.
-        SliverPersistentHeader(
-          pinned: true,
-          delegate: CollapsingHeaderDelegate(
-            minHeight: headerLeadInset,
-            maxHeight: headerLeadInset,
-            builder: (context, t) => SizedBox(
-              height: headerLeadInset,
+        // Header identitas = sliver BIASA yang ikut ter-scroll keluar,
+        // persis pola profil sendiri (member_screen) dan IG asli. Tanpa
+        // mesin collapse: tak ada lipatan kosong di akun sepi, tak ada
+        // chrome overlay BackdropFilter yang bisa glitch.
+        SliverToBoxAdapter(
+          child: AnimatedBuilder(
+            animation: chatStore,
+            builder: (context, _) => PublicProfileExpandedHeader(
+              profile: profile,
+              followBusy: _followBusy,
+              chatEnabled: chatStore.chatEnabled,
+              onFollowToggle: profile.isOwner ? null : _toggleFollow,
+              onFollowersTap: () => _openFollowList(FollowListKind.followers),
+              onFollowingTap: () => _openFollowList(FollowListKind.following),
+              onEditProfile: profile.isOwner
+                  ? () => Navigator.pushNamed(context, '/member/profile')
+                  : null,
+              onShareProfile: _shareProfile,
+              onMessage: profile.isOfficial && !profile.isOwner
+                  ? () => Navigator.pushNamed(context, '/chat')
+                  : null,
             ),
           ),
         ),
         SliverPersistentHeader(
           pinned: true,
-          delegate: CollapsingHeaderDelegate(
-            minHeight: freezeHeader
-                ? metrics.identityHeight + metrics.tabHeight
-                : metrics.tabHeight,
-            maxHeight: metrics.identityHeight + metrics.tabHeight,
-            builder: (context, t) => AnimatedBuilder(
-              animation: chatStore,
-              builder: (context, child) => PublicProfileIdentityTabHeader(
-                profile: profile,
-                followBusy: _followBusy,
-                chatEnabled: chatStore.chatEnabled,
-                tabController: _tabController,
-                identityHeight: metrics.identityHeight,
-                tabHeight: metrics.tabHeight,
-                t: t,
-                onFollowToggle: profile.isOwner ? null : _toggleFollow,
-                onFollowersTap: () => _openFollowList(FollowListKind.followers),
-                onFollowingTap: () => _openFollowList(FollowListKind.following),
-                onEditProfile: profile.isOwner
-                    ? () => Navigator.pushNamed(
-                          context,
-                          '/member/profile',
-                        )
-                    : null,
-                onShareProfile: _shareProfile,
-                onMessage: profile.isOfficial && !profile.isOwner
-                    ? () => Navigator.pushNamed(context, '/chat')
-                    : null,
-                onTabTap: _onTabTapped,
-              ),
-            ),
+          delegate: _ContentTabHeaderDelegate(
+            controller: _tabController,
+            onTap: _onTabTapped,
           ),
         ),
       ],
@@ -1004,7 +1001,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
         children: _profileContentTabs.map(_buildContentPage).toList(),
       ),
     );
-    final refreshedContent = NataloPawRefreshIndicator(
+    return NataloPawRefreshIndicator(
       onRefresh: _refresh,
       triggerOffset: 96,
       requireFullPull: true,
@@ -1014,49 +1011,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
       indicatorColor: _brandBlue,
       refreshBackdropColor: Theme.of(context).colorScheme.surface,
       child: nestedScrollView,
-    );
-    return Stack(
-      children: [
-        RepaintBoundary(
-          key: const Key('public_profile_grid_underlay'),
-          child: refreshedContent,
-        ),
-        AnimatedBuilder(
-          animation: _scrollController,
-          builder: (context, child) {
-            // Sliver leading (pinned spacer topPadding+toolbarHeight) kini
-            // mendahului sliver identity+tab, jadi ia ikut memakan
-            // scrollExtent sebelum identity mulai menyusut. Kurangi dulu
-            // supaya `t` di sini (crossfade chrome) tetap SAMA PERSIS dengan
-            // `t` yang dihitung CollapsingHeaderDelegate dari shrinkOffset
-            // lokal sliver identity — tanpa ini, chrome akan tampak "selesai"
-            // collapse jauh sebelum identity di bawahnya benar-benar habis.
-            final shrinkOffset = _scrollController.hasClients
-                ? (_scrollController.offset - headerLeadInset)
-                    .clamp(0.0, metrics.identityHeight)
-                    .toDouble()
-                : 0.0;
-            // Frozen: paksa t=0 supaya overlay (back button, judul, pill)
-            // tetap dalam mode expanded, terlepas dari overscroll/bounce
-            // kecil yang bisa menggeser _scrollController.offset.
-            final t = freezeHeader
-                ? 0.0
-                : metrics.identityHeight > 0
-                    ? shrinkOffset / metrics.identityHeight
-                    : 1.0;
-            return PublicProfileChromeOverlay(
-              profile: profile,
-              t: t,
-              metrics: metrics,
-              onBack: () => Navigator.maybePop(context),
-              onShareProfile: _shareProfile,
-              onOverflow: !profile.isOwner && !profile.isOfficial
-                  ? _openModeration
-                  : null,
-            );
-          },
-        ),
-      ],
     );
   }
 
@@ -1133,6 +1087,50 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
         ],
       ),
     );
+  }
+}
+
+enum _PublicProfileMenuAction { share, moderate }
+
+/// Pinned tab header — mirror `_AccountTabHeaderDelegate` (member_screen):
+/// tampilan selalu "expanded" (ikon + indikator pendek di bawah tab aktif),
+/// tanpa pill/label. minExtent == maxExtent = tidak pernah melipat.
+class _ContentTabHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final TabController controller;
+  final ValueChanged<int>? onTap;
+
+  const _ContentTabHeaderDelegate({
+    required this.controller,
+    this.onTap,
+  });
+
+  @override
+  double get minExtent => PublicProfileContentTabBar.height;
+
+  @override
+  double get maxExtent => PublicProfileContentTabBar.height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return ColoredBox(
+      color: Theme.of(context).colorScheme.surface,
+      child: PublicProfileContentTabBar(
+        controller: controller,
+        labelOpacity: 0,
+        pillOpacity: 0,
+        underlineOpacity: 1,
+        onTap: onTap,
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _ContentTabHeaderDelegate oldDelegate) {
+    return oldDelegate.controller != controller || oldDelegate.onTap != onTap;
   }
 }
 
@@ -1230,15 +1228,16 @@ class _PostTile extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 if (isValidImageUrl)
-                  // Video LANDSCAPE → letterbox (contain + latar hitam,
-                  // video utuh) paritas IG & GalleryPostTile. Foto/carousel
-                  // + video portrait/persegi tetap cover-crop.
+                  // Video → fitWidth (paritas IG & GalleryPostTile): portrait
+                  // penuh tanpa bar samping, landscape letterbox atas-bawah.
+                  // Foto/carousel tetap cover-crop.
                   PostHero(
                     scope: heroScope,
                     postId: post.id,
                     child: _SafeNetworkImage(
                       url: thumb,
-                      letterbox: gridShowsLetterbox(post),
+                      fit: gridThumbnailFit(post),
+                      blackBg: gridVideoUsesBlackBackground(post),
                     ),
                   )
                 else
@@ -1350,9 +1349,16 @@ class _PostTile extends StatelessWidget {
 class _SafeNetworkImage extends StatelessWidget {
   final String url;
 
-  /// Video landscape → contain (letterbox, latar hitam). Default cover.
-  final bool letterbox;
-  const _SafeNetworkImage({required this.url, this.letterbox = false});
+  /// Fit gambar. Video → `fitWidth` (paritas IG); foto → `cover`.
+  final BoxFit fit;
+
+  /// Latar hitam di belakang gambar (mengisi bar letterbox video). Default off.
+  final bool blackBg;
+  const _SafeNetworkImage({
+    required this.url,
+    this.fit = BoxFit.cover,
+    this.blackBg = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1360,7 +1366,7 @@ class _SafeNetworkImage extends StatelessWidget {
     try {
       final image = CachedNetworkImage(
         imageUrl: url,
-        fit: letterbox ? BoxFit.contain : BoxFit.cover,
+        fit: fit,
         placeholder: (_, __) => ColoredBox(color: cs.surfaceContainerHighest),
         // Error → ikon broken-image (BUKAN kotak polos yang tak bisa
         // dibedakan dari placeholder loading) + log debug. Investigasi
@@ -1380,9 +1386,9 @@ class _SafeNetworkImage extends StatelessWidget {
           );
         },
       );
-      // Letterbox: sisa ruang bar hitam (video utuh di tengah), konsisten
-      // dgn GalleryPostTile. Cover-crop tak butuh latar karena penuhi tile.
-      return letterbox ? ColoredBox(color: Colors.black, child: image) : image;
+      // Latar hitam mengisi bar letterbox video (landscape/persegi); portrait
+      // fitWidth memenuhi tile jadi latar tak terlihat. Foto tak butuh latar.
+      return blackBg ? ColoredBox(color: Colors.black, child: image) : image;
     } catch (_) {
       return ColoredBox(color: cs.surfaceContainerHighest);
     }

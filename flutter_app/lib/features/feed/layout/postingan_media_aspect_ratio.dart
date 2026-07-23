@@ -1,6 +1,9 @@
 import '../../../models/feed_post.dart';
 
-const double postinganVideoMinAspectRatio = 9 / 16;
+// Batas potret video di halaman Postingan disamakan dengan Instagram feed
+// (diukur dari screenshot iPhone 15 Pro: frame video IG ≈ 0.60 lebar/tinggi,
+// yakni 3:5 — bukan 9:16). Video yang lebih tinggi dari 3:5 di-crop `cover`.
+const double postinganVideoMinAspectRatio = 3 / 5;
 const double postinganPhotoMinAspectRatio = 3 / 4;
 const double postinganMaxAspectRatio = 1.91;
 

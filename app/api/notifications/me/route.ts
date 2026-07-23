@@ -250,6 +250,28 @@ export async function GET() {
       for (const follow of follows) followingActorIds.add(follow.followingId);
     }
 
+    // Keberadaan postingan untuk notif ber-feedPostId (Postingan baru,
+    // komentar, like, mention, dll). Baris FeedPost HILANG = postingan
+    // dihapus → app redupkan baris + label "Sudah dihapus" + matikan tap
+    // (Lapisan 2, notifications_screen.dart). Cek keberadaan saja (bukan
+    // status ACTIVE): post hidden/pending masih ADA (tak "dihapus"),
+    // visibilitasnya diurus jalur buka-postingan (Lapisan 1 toast).
+    const feedPostIds = Array.from(
+      new Set(
+        mapped
+          .map((item) => item.feedPostId)
+          .filter((id): id is string => Boolean(id && id.trim())),
+      ),
+    );
+    const existingPostIds = new Set<string>();
+    if (feedPostIds.length > 0) {
+      const posts = await prisma.feedPost.findMany({
+        where: { id: { in: feedPostIds } },
+        select: { id: true },
+      });
+      for (const post of posts) existingPostIds.add(post.id);
+    }
+
     const itemsWithReviewSummary = mapped.map((item) => {
       const orderNumber = extractOrderNumberFromNotification(item);
       return {
@@ -260,6 +282,10 @@ export async function GET() {
           item.eventType === "user_followed" && item.actorId
             ? followingActorIds.has(item.actorId)
             : null,
+        postDeleted:
+          item.feedPostId && item.feedPostId.trim()
+            ? !existingPostIds.has(item.feedPostId)
+            : false,
       };
     });
     const unreadCount = itemsWithReviewSummary.filter((i) => !i.read).length;

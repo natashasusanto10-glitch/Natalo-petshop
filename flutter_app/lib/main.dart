@@ -259,6 +259,13 @@ class NataloPetshopApp extends StatelessWidget {
           // kembali fitur ini nanti, tapi diabaikan di sini.
           themeMode: ThemeMode.light,
           builder: (context, child) {
+            // DeepLinkService may receive the cold-start URI before this
+            // Navigator exists. Flush its one pending public share target on
+            // the first mounted frame; duplicate stream delivery is handled
+            // inside the service by its normalized target key.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              deepLinkService.onNavigatorReady();
+            });
             // Solid background dari ThemeData.scaffoldBackgroundColor —
             // no gradient overlay. Faster rendering di HP murah, better
             // readability outdoor, familiar pattern untuk user Indonesia

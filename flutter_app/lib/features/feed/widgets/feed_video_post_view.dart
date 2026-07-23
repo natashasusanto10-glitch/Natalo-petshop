@@ -6,19 +6,19 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
-import '../../../config/api_config.dart';
 import '../../../theme/natalo_text.dart';
 import '../../../models/feed_post.dart';
 import '../../../models/product.dart';
+import '../../../models/share_content.dart';
 import '../../../services/api_client.dart';
 import '../../../services/block_service.dart';
 import '../../../services/feed_service.dart';
 import '../../../services/product_service.dart';
 import '../../../services/report_service.dart';
+import '../../../services/share_sheet_launcher.dart';
 import '../../../services/video_quality_service.dart';
 import '../../../state/feed_comment_session_store.dart';
 import '../../../state/feed_local_store.dart';
@@ -41,6 +41,7 @@ import '../../../widgets/app_toast.dart';
 import '../../../widgets/feed_comment_sheet.dart';
 import '../../../widgets/moderation_action_sheet.dart';
 import 'double_tap_burst_guard.dart';
+import 'double_tap_like_pointer_detector.dart';
 import 'feed_action_rail.dart';
 import 'feed_accessibility_overlay.dart';
 import 'feed_creator_overlay.dart';
@@ -206,6 +207,10 @@ class FeedVideoPostView extends StatefulWidget {
   /// framing so this visual change cannot leak into scoped fullscreen.
   final FeedVideoFraming framing;
 
+  /// Jembatan like eksternal dari detector settle di level layar (lihat
+  /// DoubleTapLikePointerDetector). Null = layar tanpa detector luar.
+  final ExternalDoubleTapLike? externalDoubleTapLike;
+
   const FeedVideoPostView({
     super.key,
     required this.post,
@@ -230,6 +235,7 @@ class FeedVideoPostView extends StatefulWidget {
     this.observationObserver,
     this.beforeObserveInitialized,
     this.framing = FeedVideoFraming.immersive,
+    this.externalDoubleTapLike,
   });
 
   @override
@@ -590,6 +596,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       unawaited(_claimOrInitOnActivation(allowLocalInit: widget.isActive));
     }
     _syncProductRotation();
+    _syncExternalDoubleTapLike();
   }
 
   @override
@@ -1401,6 +1408,13 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
       _featuredProductIndex = 0;
       _syncProductRotation();
     }
+    // Pergantian instance bridge (jarang, tapi mungkin saat re-parent) —
+    // lepas dari yang lama dulu supaya tidak nyangkut attached di bridge
+    // yang sudah tidak dipakai layar.
+    if (oldWidget.externalDoubleTapLike != widget.externalDoubleTapLike) {
+      oldWidget.externalDoubleTapLike?.detach(_onExternalDoubleTapLike);
+    }
+    _syncExternalDoubleTapLike();
   }
 
   Future<void> _maybeInitVideo({bool userInitiated = false}) async {
@@ -1933,6 +1947,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 
   @override
   void dispose() {
+    // Lepas dari bridge like eksternal SEBELUM super.dispose() — kalau
+    // widget ini yang sedang attach dan tak dilepas, bridge akan
+    // memanggil handler pada state yang sudah dibuang (leak/crash).
+    widget.externalDoubleTapLike?.detach(_onExternalDoubleTapLike);
     // Managed: teardown selagi gesture aktif → akhiri lease TANPA resume
     // (widget lenyap, tak boleh ada resume/speed nyangkut). Coordinator tetap
     // pemilik sesi; ini cuma melepas gesture, bukan dispose sesi.
@@ -2244,6 +2262,37 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     }
     _heartBurstTarget = _resolveLikeCenter();
     _heartBurstController.forward(from: 0);
+  }
+
+  /// Attach/detach handler ke [ExternalDoubleTapLike] mengikuti `isActive` —
+  /// hanya view yang sedang aktif boleh menangani like dari detector settle
+  /// di level layar (jembatan handler tunggal, lihat kelasnya).
+  void _syncExternalDoubleTapLike() {
+    final bridge = widget.externalDoubleTapLike;
+    if (bridge == null) return;
+    if (widget.isActive) {
+      bridge.attach(_onExternalDoubleTapLike);
+    } else {
+      bridge.detach(_onExternalDoubleTapLike);
+    }
+  }
+
+  /// Jalur like dari detector settle di layar (posisi GLOBAL ketukan kedua).
+  /// Konversi ke lokal utk titik heart burst; _onDoubleTapLike juga
+  /// me-register DoubleTapBurstGuard sehingga single-tap "ekor" yang sempat
+  /// dilihat jalur dalam (play/pause) ikut tertekan.
+  void _onExternalDoubleTapLike(Offset globalPosition) {
+    if (!mounted) return;
+    final box = context.findRenderObject();
+    if (box is RenderBox && box.attached) {
+      _heartBurstPosition = box.globalToLocal(globalPosition);
+    } else {
+      // Fallback: box belum ter-attach — pakai pusat tombol like rail
+      // (bila sudah ter-render) supaya burst tidak jatuh ke pusat layar
+      // generik.
+      _heartBurstPosition = _resolveLikeCenter();
+    }
+    _onDoubleTapLike();
   }
 
   Future<void> _onComment() async {
@@ -2649,24 +2698,23 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     if (_shareInFlight) return;
     _shareInFlight = true;
     AppHaptics.tap();
-    final url =
-        '${ApiConfig.publicSiteUrl}/feed/${Uri.encodeComponent(widget.post.id)}';
-    final caption = widget.post.title.isNotEmpty
-        ? '${widget.post.title}\n$url'
-        : 'Lihat di Natalo Petshop:\n$url';
-    final box = context.findRenderObject() as RenderBox?;
     try {
-      final result = await Share.share(
-        caption,
-        sharePositionOrigin:
-            box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+      await ShareSheetLauncher().launch(
+        FeedShareContent(
+          postId: widget.post.id,
+          authorName: widget.post.author.displayName,
+          caption: widget.post.caption ?? widget.post.title,
+          shareVersion: widget.post.shareVersion,
+        ),
+        origin: shareOriginFor(context),
+        onCompleted: () async {
+          feedStore.incrementShareCount(widget.post.id);
+          final serverCount = await feedService.trackShare(widget.post.id);
+          if (serverCount != null) {
+            feedStore.setShareCount(widget.post.id, serverCount);
+          }
+        },
       );
-      if (result.status != ShareResultStatus.success || !mounted) return;
-      feedStore.incrementShareCount(widget.post.id);
-      final serverCount = await feedService.trackShare(widget.post.id);
-      if (serverCount != null) {
-        feedStore.setShareCount(widget.post.id, serverCount);
-      }
     } catch (_) {
       // Native share dibatalkan/gagal.
     } finally {
@@ -3569,24 +3617,42 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
 /// feed_screen.dart karena terikat langsung ke model FeedAuthor & service
 /// layer, bukan bagian widget presentasional yang di-share.
 
-/// Fit lapisan media untuk framing "feed" (mainFeed / fullscreenFeed).
-///
-/// Semua orientasi → [BoxFit.contain] (letterbox, bar hitam mengisi sisa
-/// ruang) supaya video tampil UTUH — `cover` memotong sisi yang kelebihan
-/// (landscape: kiri-kanan; portrait/persegi non-9:16: atas-bawah, mis.
-/// creative iklan brand yang bukan native 9:16). Paritas IG: grid & viewer
-/// IG tidak pernah cover-crop video (dibuktikan screenshot device), dan
-/// Postingan sudah dibetulkan ke prinsip sama — Beranda & fullscreen feed
-/// menyusul supaya konsisten satu app, bukan cuma di landscape.
+/// Ambang crop cover feed (Opsi C): video portrait di-`cover` (full-bleed)
+/// hanya bila cover memotong ≤ ~22% total (≈11% per sisi). 9:16 & lebih tinggi
+/// lolos (crop ~18% di iPhone 15 Pro); 4:5/1:1 (crop ≳ 42%) di-letterbox.
+const double feedCoverMaxCropFraction = 0.22;
+
+/// Fit lapisan media untuk framing "feed" (mainFeed / fullscreenFeed) — paritas
+/// IG (dibuktikan screenshot device):
+///  - LANDSCAPE → selalu [BoxFit.contain] (letterbox, video utuh) — TAK berubah.
+///  - PORTRAIT dekat/≥ 9:16 → [BoxFit.cover] rata atas (full-bleed dari tepi
+///    atas layar persis IG; hanya tepi kiri-kanan ter-crop tipis).
+///  - PORTRAIT jauh dari 9:16 (4:5/1:1, creative iklan) → [BoxFit.contain]
+///    (letterbox utuh) — TAK berubah.
+/// Keputusan cover-vs-letterbox pakai crop aktual relatif viewport (bukan cuma
+/// orientasi): lihat [feedCoverMaxCropFraction]. [mediaAspectRatio] &
+/// [viewportAspectRatio] = lebar/tinggi.
 BoxFit resolveFeedCoverFit({
   required FeedVideoFraming framing,
-  required bool isLandscape,
+  required double mediaAspectRatio,
+  required double viewportAspectRatio,
 }) {
-  if (framing == FeedVideoFraming.mainFeed ||
-      framing == FeedVideoFraming.fullscreenFeed) {
+  if (framing != FeedVideoFraming.mainFeed &&
+      framing != FeedVideoFraming.fullscreenFeed) {
+    return BoxFit.cover;
+  }
+  // Landscape (lebih lebar dari tinggi) → letterbox, tak pernah crop.
+  if (mediaAspectRatio > 1) return BoxFit.contain;
+  if (mediaAspectRatio <= 0 || viewportAspectRatio <= 0) {
     return BoxFit.contain;
   }
-  return BoxFit.cover;
+  // Fraksi video yang dipotong `cover` = 1 − rasio-kecil/rasio-besar.
+  final lo = math.min(mediaAspectRatio, viewportAspectRatio);
+  final hi = math.max(mediaAspectRatio, viewportAspectRatio);
+  final croppedFraction = 1 - (lo / hi);
+  return croppedFraction <= feedCoverMaxCropFraction
+      ? BoxFit.cover
+      : BoxFit.contain;
 }
 
 class _MediaBackground extends StatelessWidget {
@@ -3631,6 +3697,17 @@ class _MediaBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     final ctrl = videoController;
 
+    // Rasio viewport (lebar/tinggi) untuk keputusan cover-vs-letterbox Opsi C.
+    // Layar penuh (fullscreen) atau ~layar (mainFeed dikurangi inset bawah —
+    // approx aman: layar penuh sedikit lebih tinggi → estimasi crop lebih besar
+    // → konservatif). Fallback 9:16 bila MediaQuery tak ada (mis. sebagian test)
+    // → 9:16 tetap dianggap full-bleed.
+    final screenSize = MediaQuery.maybeOf(context)?.size;
+    final viewportAspect =
+        (screenSize == null || screenSize.height <= 0 || screenSize.width <= 0)
+            ? 9 / 16
+            : screenSize.width / screenSize.height;
+
     if (ctrl != null && ctrl.value.isInitialized) {
       final size = ctrl.value.size;
       // Preview kompak (drawer komentar minimized): pertahankan contain
@@ -3670,10 +3747,12 @@ class _MediaBackground extends StatelessWidget {
           framing == FeedVideoFraming.fullscreenFeed) {
         final fit = resolveFeedCoverFit(
           framing: framing,
-          isLandscape: size.width > size.height,
+          mediaAspectRatio: size.height <= 0 ? 1 : size.width / size.height,
+          viewportAspectRatio: viewportAspect,
         );
-        // Contain (landscape fullscreen) rata tengah supaya bar hitam terbagi
-        // atas-bawah; cover tetap rata atas (ala IG).
+        // Cover (portrait ~9:16) rata ATAS → video mulai dari tepi atas layar
+        // persis IG, crop hanya kiri-kanan. Contain (landscape / 4:5 / 1:1)
+        // rata tengah supaya bar hitam terbagi simetris.
         return _mediaStack(
           videoLayer(
             fit,
@@ -3705,11 +3784,13 @@ class _MediaBackground extends StatelessWidget {
       if (framing == FeedVideoFraming.mainFeed ||
           framing == FeedVideoFraming.fullscreenFeed) {
         // Samakan fit dgn video (pakai aspect post — thumbnail tampil sebelum
-        // controller siap) supaya tak ada lompatan cover→contain saat player
-        // ready untuk video landscape.
+        // controller siap) supaya tak ada lompatan saat player ready.
         final fit = resolveFeedCoverFit(
           framing: framing,
-          isLandscape: post.aspectWidthInt > post.aspectHeightInt,
+          mediaAspectRatio: post.aspectHeightInt <= 0
+              ? 1
+              : post.aspectWidthInt / post.aspectHeightInt,
+          viewportAspectRatio: viewportAspect,
         );
         return _mediaStack(
           CachedNetworkImage(

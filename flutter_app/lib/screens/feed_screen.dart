@@ -4,14 +4,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
-import '../config/api_config.dart';
 import '../theme/natalo_text.dart';
+import '../features/feed/widgets/double_tap_like_pointer_detector.dart';
 import '../features/feed/widgets/feed_action_rail.dart';
 import '../features/feed/video/adaptive_video_preload_policy.dart';
 import '../features/feed/video/feed_video_observation.dart';
@@ -24,12 +23,14 @@ import '../features/feed/widgets/feed_product_links_sheet.dart';
 import '../features/feed/widgets/feed_video_post_view.dart';
 import '../models/feed_post.dart';
 import '../models/product.dart';
+import '../models/share_content.dart';
 import '../screens/feed_user_search_screen.dart';
 import '../services/api_client.dart';
 import '../services/block_service.dart';
 import '../services/feed_service.dart';
 import '../services/product_service.dart';
 import '../services/report_service.dart';
+import '../services/share_sheet_launcher.dart';
 import '../services/video_quality_service.dart';
 import '../state/cart_store.dart';
 import '../state/feed_local_store.dart';
@@ -206,6 +207,10 @@ class FeedScreen extends StatefulWidget {
 class _FeedScreenState extends State<FeedScreen>
     with WidgetsBindingObserver, RouteAware {
   final PageController _pageController = PageController();
+
+  /// Jembatan like settle → FeedVideoPostView aktif (lihat
+  /// DoubleTapLikePointerDetector utk kenapa detector di level layar).
+  final ExternalDoubleTapLike _externalDoubleTapLike = ExternalDoubleTapLike();
 
   // ── Migrasi Feed→PostVideoCoordinator (Opsi D) ────────────────────────
   // Coordinator dimiliki screen (lifecycle app + route push/pop →
@@ -797,77 +802,85 @@ class _FeedScreenState extends State<FeedScreen>
                       if (velocity != null) _lastFlingVelocity = velocity;
                       return false;
                     },
-                    child: PageView.builder(
-                      controller: _pageController,
-                      scrollDirection: Axis.vertical,
-                      physics: (_interactionLocked || _mediaZooming)
-                          ? const NeverScrollableScrollPhysics()
-                          // BouncingScrollPhysics di parent untuk rubber-band
-                          // overscroll di Android (iOS default sudah elastic).
-                          // PageScrollPhysics di-keep untuk page snap behavior
-                          // (TikTok-style snap per post).
-                          : const PageScrollPhysics(
-                              parent: BouncingScrollPhysics(),
-                            ),
-                      itemCount: visible.length,
-                      onPageChanged: _onPageChanged,
-                      itemBuilder: (context, index) {
-                        final post = visible[index];
-                        // Branch by kind: PHOTO_CAROUSEL render carousel
-                        // PageView horizontal 1-8 foto; video kind render
-                        // FeedVideoPostView dengan VideoPlayerController.
-                        // ValueKey(post.id) WAJIB — tanpa key, Flutter match
-                        // State by posisi list. Saat _visiblePosts bergeser
-                        // (block/unblock user), State di index i menerima post
-                        // BERBEDA dan controller video lama tetap memutar klip
-                        // lama di bawah post baru (audio nyasar).
-                        if (post.isPhotoCarousel) {
-                          return _PhotoCarouselPostView(
-                            key: ValueKey('feed-photo-${post.id}'),
+                    child: DoubleTapLikePointerDetector(
+                      // Detector di level layar (bukan per-item) supaya
+                      // double-tap yang "settle" tepat setelah swipe page
+                      // tetap kena item yang BARU aktif, bukan yang lama.
+                      onSettleDoubleTapLike: (globalPos) =>
+                          _externalDoubleTapLike.fire(globalPos),
+                      child: PageView.builder(
+                        controller: _pageController,
+                        scrollDirection: Axis.vertical,
+                        physics: (_interactionLocked || _mediaZooming)
+                            ? const NeverScrollableScrollPhysics()
+                            // BouncingScrollPhysics di parent untuk rubber-band
+                            // overscroll di Android (iOS default sudah elastic).
+                            // PageScrollPhysics di-keep untuk page snap behavior
+                            // (TikTok-style snap per post).
+                            : const PageScrollPhysics(
+                                parent: BouncingScrollPhysics(),
+                              ),
+                        itemCount: visible.length,
+                        onPageChanged: _onPageChanged,
+                        itemBuilder: (context, index) {
+                          final post = visible[index];
+                          // Branch by kind: PHOTO_CAROUSEL render carousel
+                          // PageView horizontal 1-8 foto; video kind render
+                          // FeedVideoPostView dengan VideoPlayerController.
+                          // ValueKey(post.id) WAJIB — tanpa key, Flutter match
+                          // State by posisi list. Saat _visiblePosts bergeser
+                          // (block/unblock user), State di index i menerima post
+                          // BERBEDA dan controller video lama tetap memutar klip
+                          // lama di bawah post baru (audio nyasar).
+                          if (post.isPhotoCarousel) {
+                            return _PhotoCarouselPostView(
+                              key: ValueKey('feed-photo-${post.id}'),
+                              post: post,
+                              isActive: index == _activeIndex,
+                              onOverlayStateChanged: _setFeedInteractionLocked,
+                              onMediaZoomChanged: _setFeedMediaZooming,
+                            );
+                          }
+                          // Coordinator (Opsi D) pemilik controller (dispose) +
+                          // pengendali playback. Widget hanya merender + melapor
+                          // intent lewat callback; coordinator yang eksekusi
+                          // (attach/setActive/detach sudah diurus
+                          // `_managePreloadWindow` di atas). Pola identik
+                          // `scoped_video_feed_screen._buildItem`.
+                          final coordinator = _videoCoordinator!;
+                          final postId = post.id;
+                          return FeedVideoPostView(
+                            key: ValueKey('feed-video-$postId'),
                             post: post,
                             isActive: index == _activeIndex,
+                            framing: FeedVideoFraming.mainFeed,
+                            ownsController: false,
+                            playbackManagedExternally: true,
+                            coordinator: coordinator,
+                            preloadedController: null,
+                            externalDoubleTapLike: _externalDoubleTapLike,
+                            onBufferAheadChanged: (ahead) =>
+                                _onActiveBufferAheadChanged(postId, ahead),
                             onOverlayStateChanged: _setFeedInteractionLocked,
                             onMediaZoomChanged: _setFeedMediaZooming,
+                            // Visibilitas → resume/pause sesi yang MEMANG aktif;
+                            // setActive authoritative di `_managePreloadWindow` —
+                            // di sini tidak setActive supaya urutan transisi tetap
+                            // deterministik.
+                            onVisibleChanged: (visible) {
+                              if (coordinator.activePostId != postId) return;
+                              if (visible) {
+                                coordinator.reportVisible(postId);
+                              } else {
+                                coordinator.reportHidden(postId);
+                              }
+                            },
+                            onRequestUserTogglePlay: coordinator.userTogglePlay,
+                            onRequestPlay: coordinator.resumeAll,
+                            onRequestPause: (_) => coordinator.pauseAll(),
                           );
-                        }
-                        // Coordinator (Opsi D) pemilik controller (dispose) +
-                        // pengendali playback. Widget hanya merender + melapor
-                        // intent lewat callback; coordinator yang eksekusi
-                        // (attach/setActive/detach sudah diurus
-                        // `_managePreloadWindow` di atas). Pola identik
-                        // `scoped_video_feed_screen._buildItem`.
-                        final coordinator = _videoCoordinator!;
-                        final postId = post.id;
-                        return FeedVideoPostView(
-                          key: ValueKey('feed-video-$postId'),
-                          post: post,
-                          isActive: index == _activeIndex,
-                          framing: FeedVideoFraming.mainFeed,
-                          ownsController: false,
-                          playbackManagedExternally: true,
-                          coordinator: coordinator,
-                          preloadedController: null,
-                          onBufferAheadChanged: (ahead) =>
-                              _onActiveBufferAheadChanged(postId, ahead),
-                          onOverlayStateChanged: _setFeedInteractionLocked,
-                          onMediaZoomChanged: _setFeedMediaZooming,
-                          // Visibilitas → resume/pause sesi yang MEMANG aktif;
-                          // setActive authoritative di `_managePreloadWindow` —
-                          // di sini tidak setActive supaya urutan transisi tetap
-                          // deterministik.
-                          onVisibleChanged: (visible) {
-                            if (coordinator.activePostId != postId) return;
-                            if (visible) {
-                              coordinator.reportVisible(postId);
-                            } else {
-                              coordinator.reportHidden(postId);
-                            }
-                          },
-                          onRequestUserTogglePlay: coordinator.userTogglePlay,
-                          onRequestPlay: coordinator.resumeAll,
-                          onRequestPause: (_) => coordinator.pauseAll(),
-                        );
-                      },
+                        },
+                      ),
                     ),
                   );
                 }),
@@ -1804,16 +1817,22 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     _shareInFlight = true;
     AppHaptics.tap();
     try {
-      final url = ApiConfig.uri('/feed/${widget.post.id}').toString();
-      final result = await Share.share(
-        widget.post.title.isNotEmpty ? '${widget.post.title}\n$url' : url,
+      await ShareSheetLauncher().launch(
+        FeedShareContent(
+          postId: widget.post.id,
+          authorName: widget.post.author.displayName,
+          caption: widget.post.caption ?? widget.post.title,
+          shareVersion: widget.post.shareVersion,
+        ),
+        origin: shareOriginFor(context),
+        onCompleted: () async {
+          feedStore.incrementShareCount(widget.post.id);
+          final serverCount = await feedService.trackShare(widget.post.id);
+          if (serverCount != null) {
+            feedStore.setShareCount(widget.post.id, serverCount);
+          }
+        },
       );
-      if (result.status != ShareResultStatus.success || !mounted) return;
-      feedStore.incrementShareCount(widget.post.id);
-      final serverCount = await feedService.trackShare(widget.post.id);
-      if (serverCount != null) {
-        feedStore.setShareCount(widget.post.id, serverCount);
-      }
     } catch (_) {
       // Cancel atau share fail — silent.
     } finally {

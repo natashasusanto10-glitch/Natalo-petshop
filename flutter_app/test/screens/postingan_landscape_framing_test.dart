@@ -63,44 +63,84 @@ void main() {
     });
   });
 
-  group('resolveFeedCoverFit — letterbox fullscreen landscape', () {
-    test('fullscreen + landscape → contain (letterbox)', () {
+  group('resolveFeedCoverFit — Opsi C (fill 9:16, letterbox sisanya)', () {
+    // Viewport iPhone 15 Pro (lebar/tinggi) — layar tinggi 19.5:9.
+    const viewport = 393 / 852; // ≈ 0.461
+
+    test('fullscreen + landscape 16:9 → contain (letterbox, tak berubah)', () {
       expect(
         resolveFeedCoverFit(
           framing: FeedVideoFraming.fullscreenFeed,
-          isLandscape: true,
+          mediaAspectRatio: 1920 / 1080,
+          viewportAspectRatio: viewport,
         ),
         BoxFit.contain,
       );
     });
 
-    test('fullscreen + portrait → contain juga (paritas IG, tak crop)', () {
+    test('fullscreen + portrait 9:16 → cover (full-bleed ala IG)', () {
       expect(
         resolveFeedCoverFit(
           framing: FeedVideoFraming.fullscreenFeed,
-          isLandscape: false,
+          mediaAspectRatio: 1080 / 1920,
+          viewportAspectRatio: viewport,
+        ),
+        BoxFit.cover,
+      );
+    });
+
+    test('fullscreen + portrait 4:5 → contain (crop terlalu banyak)', () {
+      expect(
+        resolveFeedCoverFit(
+          framing: FeedVideoFraming.fullscreenFeed,
+          mediaAspectRatio: 1080 / 1350,
+          viewportAspectRatio: viewport,
         ),
         BoxFit.contain,
       );
     });
 
-    test('mainFeed + landscape → contain (letterbox, paritas fullscreen)', () {
+    test('fullscreen + persegi 1:1 → contain (letterbox)', () {
       expect(
         resolveFeedCoverFit(
-          framing: FeedVideoFraming.mainFeed,
-          isLandscape: true,
+          framing: FeedVideoFraming.fullscreenFeed,
+          mediaAspectRatio: 1,
+          viewportAspectRatio: viewport,
         ),
         BoxFit.contain,
       );
     });
 
-    test('mainFeed + portrait → contain juga (paritas IG, tak crop)', () {
+    test('mainFeed + landscape → contain (tak berubah)', () {
       expect(
         resolveFeedCoverFit(
           framing: FeedVideoFraming.mainFeed,
-          isLandscape: false,
+          mediaAspectRatio: 1920 / 1080,
+          viewportAspectRatio: viewport,
         ),
         BoxFit.contain,
+      );
+    });
+
+    test('mainFeed + portrait 9:16 → cover (full-bleed ala IG)', () {
+      expect(
+        resolveFeedCoverFit(
+          framing: FeedVideoFraming.mainFeed,
+          mediaAspectRatio: 1080 / 1920,
+          viewportAspectRatio: viewport,
+        ),
+        BoxFit.cover,
+      );
+    });
+
+    test('immersive → cover (jalur lama, tak lewat kebijakan feed)', () {
+      expect(
+        resolveFeedCoverFit(
+          framing: FeedVideoFraming.immersive,
+          mediaAspectRatio: 1080 / 1920,
+          viewportAspectRatio: viewport,
+        ),
+        BoxFit.cover,
       );
     });
   });

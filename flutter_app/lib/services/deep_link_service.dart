@@ -8,10 +8,21 @@ import '../models/feed_post.dart';
 import '../screens/member_post_detail_screen.dart';
 import '../screens/scoped_video_feed_screen.dart';
 import '../state/member_store.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/scaled_video_feed_route.dart';
 import 'feed_service.dart';
 import 'order_service.dart';
 import 'product_service.dart';
+import 'deep_link_router.dart';
+
+/// Test seam for the public share-link lifecycle. Production navigation still
+/// goes through the root [NavigatorState], while tests can prove pending and
+/// dedupe behavior without mounting product or Feed screens.
+abstract interface class DeepLinkTargetDispatcher {
+  bool get isReady;
+
+  Future<void> dispatch(NataloDeepLinkTarget target);
+}
 
 /// Buka satu postingan feed dengan tujuan yang TEPAT sesuai jenis kontennya
 /// — video langsung ke player fullscreen (bukan berhenti di layar detail
@@ -74,19 +85,41 @@ Future<void> openFeedPostSmart(
 ///   /u/<username>          → public profile (PublicProfileScreen)
 ///   /chat, /chat/<chatId>  → /chat (room spesifik kalau ada chatId)
 class DeepLinkService {
-  DeepLinkService._();
+  DeepLinkService._()
+      : _appLinks = AppLinks(),
+        _now = DateTime.now,
+        _dedupeWindow = _defaultDedupeWindow,
+        _testDispatcher = null;
 
   /// Instance TERPISAH dari singleton [deepLinkService] — dipakai test untuk
   /// reproduksi race navigator tanpa terikat guard `_initialized` singleton
   /// (yang cuma boleh initialize() sekali seumur proses) atau plugin channel
   /// `AppLinks()` asli.
   @visibleForTesting
-  DeepLinkService.test();
+  DeepLinkService.test({
+    DeepLinkTargetDispatcher? dispatcher,
+    DateTime Function()? now,
+    Duration dedupeWindow = _defaultDedupeWindow,
+  })  : _appLinks = AppLinks(),
+        _testDispatcher = dispatcher,
+        _now = now ?? DateTime.now,
+        _dedupeWindow = dedupeWindow;
 
-  final AppLinks _appLinks = AppLinks();
+  static const _defaultDedupeWindow = Duration(seconds: 2);
+
+  final AppLinks _appLinks;
+  final DeepLinkTargetDispatcher? _testDispatcher;
+  final DateTime Function() _now;
+  final Duration _dedupeWindow;
   StreamSubscription<Uri>? _sub;
   bool _initialized = false;
   GlobalKey<NavigatorState>? _navigatorKey;
+  NataloDeepLinkTarget? _pendingPublicTarget;
+  String? _lastDispatchedKey;
+  DateTime? _lastDispatchedAt;
+  bool _isPublicDispatching = false;
+  int _publicDispatchGeneration = 0;
+  bool _navigatorRetryScheduled = false;
 
   /// Set langsung tanpa lewat [initialize] — test bisa attach [GlobalKey]
   /// yang BELUM ter-mount ke widget tree apa pun (`currentState == null`)
@@ -141,7 +174,143 @@ class DeepLinkService {
     return _navigatorKey?.currentState;
   }
 
+  /// Called immediately after the root navigator is mounted. This is the
+  /// deterministic cold-start handoff; the bounded navigator retry remains a
+  /// fallback for embeds/tests that cannot call this lifecycle point.
+  Future<void> onNavigatorReady() => _flushPendingPublicTarget();
+
   Future<void> _handle(Uri uri) async {
+    final publicTarget = parseNataloDeepLink(uri);
+    if (publicTarget != null) {
+      _enqueuePublicTarget(publicTarget);
+      return;
+    }
+
+    // Legacy notification/deferred routes are intentionally path-only.
+    // Handle them before public-URL validation so /feed/<id>,
+    // /products/<slug>, and /u/<username> keep their historical behavior.
+    if (isPathOnlyNataloInternalUri(uri)) {
+      await _handleLegacy(uri);
+      return;
+    }
+
+    // Never let a similar-looking external host drive internal navigation.
+    if (!isOfficialNataloHttpsUrl(uri)) return;
+
+    // A malformed canonical public URL must be a no-op, not a surprising
+    // fallback to Feed or Home. Keep `/feed` and `/products` entry routes.
+    final segments = uri.pathSegments;
+    if (_isMalformedPublicSharePath(segments)) return;
+
+    await _handleLegacy(uri);
+  }
+
+  bool _isMalformedPublicSharePath(List<String> segments) {
+    if (segments.isEmpty) return false;
+    final first = segments.first;
+    if (first == 'u') return true;
+    return (first == 'feed' || first == 'products') && segments.length > 1;
+  }
+
+  void _enqueuePublicTarget(NataloDeepLinkTarget target) {
+    if (_isDuplicatePublicTarget(target)) return;
+    _pendingPublicTarget = target;
+    _publicDispatchGeneration++;
+    unawaited(_flushPendingPublicTarget());
+    _scheduleNavigatorRetry();
+  }
+
+  bool _isDuplicatePublicTarget(NataloDeepLinkTarget target) {
+    if (_pendingPublicTarget?.dedupeKey == target.dedupeKey) return true;
+    final lastAt = _lastDispatchedAt;
+    return lastAt != null &&
+        _lastDispatchedKey == target.dedupeKey &&
+        _now().isBefore(lastAt.add(_dedupeWindow));
+  }
+
+  void _scheduleNavigatorRetry() {
+    if (_testDispatcher != null ||
+        _navigatorKey?.currentState != null ||
+        _navigatorRetryScheduled) {
+      return;
+    }
+    _navigatorRetryScheduled = true;
+    unawaited(() async {
+      await _waitForNavigator();
+      _navigatorRetryScheduled = false;
+      await _flushPendingPublicTarget();
+    }());
+  }
+
+  Future<void> _flushPendingPublicTarget() async {
+    if (_isPublicDispatching) return;
+    final target = _pendingPublicTarget;
+    if (target == null) return;
+
+    final dispatcher = _testDispatcher;
+    final nav = dispatcher == null ? _navigatorKey?.currentState : null;
+    if (dispatcher != null && !dispatcher.isReady) return;
+    if (dispatcher == null && nav == null) return;
+
+    _pendingPublicTarget = null;
+    _isPublicDispatching = true;
+    final dispatchGeneration = _publicDispatchGeneration;
+    _lastDispatchedKey = target.dedupeKey;
+    _lastDispatchedAt = _now();
+    try {
+      // Starting a route and that route later being popped are different
+      // lifecycles. Waiting for the latter blocks fresh foreground links.
+      final completion = dispatcher != null
+          ? dispatcher.dispatch(target)
+          : _dispatchPublicTarget(nav!, target, dispatchGeneration);
+      _observeDispatchCompletion(completion);
+    } catch (error, stackTrace) {
+      _logDispatchFailure(error, stackTrace);
+    } finally {
+      _isPublicDispatching = false;
+    }
+
+    if (_pendingPublicTarget != null) {
+      unawaited(_flushPendingPublicTarget());
+    }
+  }
+
+  bool _isCurrentPublicDispatch(int generation) =>
+      generation == _publicDispatchGeneration;
+
+  void _observeDispatchCompletion(Future<void> completion) {
+    unawaited(() async {
+      try {
+        await completion;
+      } catch (error, stackTrace) {
+        _logDispatchFailure(error, stackTrace);
+      }
+    }());
+  }
+
+  void _logDispatchFailure(Object error, StackTrace stackTrace) {
+    if (kDebugMode) {
+      debugPrint('[DeepLink] dispatch failed: $error\n$stackTrace');
+    }
+  }
+
+  Future<void> _dispatchPublicTarget(
+    NavigatorState nav,
+    NataloDeepLinkTarget target,
+    int dispatchGeneration,
+  ) async {
+    bool isCurrent() => _isCurrentPublicDispatch(dispatchGeneration);
+    switch (target) {
+      case FeedPostDeepLink(:final postId):
+        await _openPostById(nav, postId, isCurrent: isCurrent);
+      case ProductDeepLink(:final slug):
+        await _openProductBySlug(nav, slug, isCurrent: isCurrent);
+      case ProfileDeepLink(:final username):
+        if (isCurrent()) nav.pushNamed('/u', arguments: username);
+    }
+  }
+
+  Future<void> _handleLegacy(Uri uri) async {
     final nav = await _waitForNavigator();
     if (nav == null) return;
     final segments = uri.pathSegments;
@@ -255,7 +424,7 @@ class DeepLinkService {
         }
         break;
       default:
-        nav.pushNamed('/');
+        if (kDebugMode) debugPrint('[DeepLink] ignored unknown path: $uri');
     }
   }
 
@@ -265,23 +434,45 @@ class DeepLinkService {
   /// notif aktivitas di postingannya sendiri tetap dapat menu edit/hapus —
   /// paritas dgn jalur bell (_openFeedPostInApp). Fallback ke /feed kalau
   /// post tidak ada (dihapus / belum tayang) atau fetch gagal.
-  Future<void> _openPostById(NavigatorState nav, String postId) async {
+  Future<void> _openPostById(
+    NavigatorState nav,
+    String postId, {
+    bool Function()? isCurrent,
+  }) async {
+    final stillCurrent = isCurrent ?? () => true;
     try {
       final post = await feedService.fetchPostById(postId);
+      if (!stillCurrent()) return;
       if (post == null) {
+        // Postingan dihapus / belum tayang. Beda dgn jalur bell in-app (yang
+        // TETAP di layar notifikasi), di sini user datang dari LUAR app (tap
+        // push saat app tertutup/background) → tetap butuh landing, jadi ke
+        // /feed TAPI dengan toast jelas, bukan pindah diam-diam.
         nav.pushNamed('/feed');
+        if (nav.mounted) {
+          AppToast.show(
+            nav.context,
+            'Postingan ini sudah dihapus.',
+            kind: ToastKind.info,
+            icon: Icons.delete_outline_rounded,
+          );
+        }
         return;
       }
       // `nav` = State<Navigator> — `mounted` guard SEBELUM pakai `nav.context`
       // lagi setelah await (fetchPostById), cegah lint use_build_context_
       // synchronously (route/navigator bisa saja sudah di-dispose selama fetch).
-      if (!nav.mounted) return;
+      if (!nav.mounted || !stillCurrent()) return;
       final myId = memberStore.profile?.id;
       final isOwner = myId != null && myId == post.author.id;
-      await openFeedPostSmart(nav.context, post, isOwner: isOwner);
-    } catch (e) {
-      if (kDebugMode) debugPrint('[DeepLink] fetchPostById failed: $e');
-      nav.pushNamed('/feed');
+      // The returned Future completes only when the viewer closes the route.
+      // Observe its error, but do not make later foreground links wait for it.
+      _observeDispatchCompletion(
+        openFeedPostSmart(nav.context, post, isOwner: isOwner),
+      );
+    } catch (error, stackTrace) {
+      _logDispatchFailure(error, stackTrace);
+      if (stillCurrent() && nav.mounted) nav.pushNamed('/feed');
     }
   }
 
@@ -290,17 +481,21 @@ class DeepLinkService {
   /// user tetap bisa cari manual instead of dump ke home.
   Future<void> _openProductBySlug(
     NavigatorState nav,
-    String slug,
-  ) async {
+    String slug, {
+    bool Function()? isCurrent,
+  }) async {
+    final stillCurrent = isCurrent ?? () => true;
     try {
       final product = await productService.fetchProductBySlug(slug);
-      if (product != null) {
+      if (!stillCurrent()) return;
+      if (product != null && nav.mounted) {
         nav.pushNamed('/product-detail', arguments: product);
         return;
       }
-    } catch (e) {
-      if (kDebugMode) debugPrint('[DeepLink] fetchProductBySlug failed: $e');
+    } catch (error, stackTrace) {
+      _logDispatchFailure(error, stackTrace);
     }
+    if (!stillCurrent() || !nav.mounted) return;
     // Slug-to-keyword fallback — replace dash dengan spasi sebagai
     // search query hint (mis. `royal-canin-kitten` → `royal canin kitten`).
     final keyword = slug.replaceAll('-', ' ').trim();

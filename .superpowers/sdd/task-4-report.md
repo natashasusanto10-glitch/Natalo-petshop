@@ -1,67 +1,68 @@
-# Task 4 — Final verification
+# Task 4 - Public Feed share page and metadata
 
-Status: complete. No production code or generated artifacts were changed.
+## Status
 
-## Analyzer
+Complete. Follow-up review found and resolved cache, title-contract, and
+defense-in-depth visibility issues.
 
-Command (from `flutter_app`):
+## Implementation
 
-```powershell
-flutter analyze lib/features/feed/widgets/feed_video_post_view.dart lib/features/feed/widgets/feed_post_shared_widgets.dart
-```
+- Added `getPublicShareFeedPost()` with the same public visibility gate as the existing Feed list: `ACTIVE`, not deleted, encoded, and renderable media kinds only.
+- Added deterministic Feed `shareVersion` reuse so API and browser preview URLs stay aligned.
+- Added `buildFeedShareMetadata()` with a canonical Feed URL that omits `v`, a versioned explicit Task 5 OG image URL, safe fallback copy, public robots, Open Graph, and Twitter large-image metadata.
+- Added `/feed/[id]` server page with a cache-safe poster, author identity, caption, and store CTA. Missing or non-public posts use `notFound()` and no private data is selected.
+- Added a canonical `/feed` alternate URL.
+- Made `/feed/[id]` dynamic (`revalidate = 0`) so metadata for a newly
+  versioned share URL cannot be served from the prior 60-second page cache.
+- Locked Feed title metadata to `<authorName> di Natalo` for document, Open
+  Graph, and Twitter metadata.
+- Added a final visibility gate after the Prisma query. Even if a future query
+  regression returns a draft, rejected, deleted, or not-ready row, no author,
+  caption, or media can be serialized.
+- Shared unavailable metadata so non-public posts consistently remain noindex.
 
-Result: exit code 1 because the analyzer reports six existing informational `use_key_in_widget_constructors` issues in `feed_post_shared_widgets.dart` (lines 200, 401, 549, 646, 1264, and 1538). No errors or warnings related to the audited Feed playback behavior were reported.
+## Validation
 
-## Focused tests
+- RED: strengthened non-public Feed tests deliberately returned private rows;
+  `npx tsx --test tests/share-feed-data.test.ts tests/share-metadata.test.ts`
+  failed for draft, rejected, deleted, and not-ready media before the final
+  visibility gate was added.
+- GREEN: `npx tsx --test tests/share-feed-data.test.ts tests/share-metadata.test.ts`
+  - 10 passed, including the direct Next 404 regression for the public page.
+- Targeted source typecheck: `npx tsc --noEmit -p tsconfig.task4.json` - passed. The temporary config was removed after verification.
+- `git diff --check` - passed.
+- Root `npx tsc --noEmit` still fails only on six pre-existing test imports for missing `vitest`; Task 4-specific type errors were fixed and no longer appear.
 
-Command:
+## Commit
 
-```powershell
-flutter test test/features/feed/widgets/feed_video_post_view_test.dart
-```
+`2b3b38f5 feat(web): add public Feed share pages`
 
-Result: `00:05 +40: All tests passed!` Existing API 400 analytics/service logs are test-environment noise and did not fail tests.
+`14f2475a fix(share): harden Feed preview metadata`
 
-## Final diff review
+## Concerns
 
-Commands:
+The explicit Feed OG image endpoint is intentionally only referenced here; it is implemented in Task 5.
 
-```powershell
-git diff --check
-git status --short
-git diff origin/main...HEAD --stat
-```
+## Final review follow-up
 
-`git diff --check` passed. The worktree is clean after this report is committed. The branch diff contains only audit/spec/report documents; no production source, version bump, generated artifacts, or stale direct Feed playback path was added.
+- The preview poster selection is now shared by the rendered Feed poster and
+  `buildFeedShareVersion()`. A carousel with no post thumbnail therefore hashes
+  its first media thumbnail, or its first media URL when no thumbnail exists.
+- Signed or expiring query parameters are stripped before hashing, while a real
+  replacement of the first carousel image produces a new versioned share URL.
+- RED: the carousel regression failed because two distinct first-media URLs
+  produced the same token.
+- GREEN: `npx tsx --test tests/share-feed-data.test.ts tests/share-metadata.test.ts`
+  passed 11/11; targeted TypeScript validation passed; `git diff --check` passed.
 
-## Review follow-up: fresh baseline
+## Detail API follow-up
 
-No production code was modified. The review package requested a fresh remote baseline and explicit wording that equivalence is behavioral through the newer architecture, not textual identity with the old branch.
-
-Command:
-
-```powershell
-$ts = Get-Date -Format o
-git fetch origin --prune
-git rev-parse origin/main
-```
-
-Recorded result:
-
-- Timestamp: `2026-07-16T09:50:01.0401898+07:00`
-- Fetch exit code: `0`
-- `origin/main`: `82a78e7fc59ee066bbbb311e4529324f6436f110`
-
-The equivalence audit now names that fetched SHA as its baseline and clarifies that the observed behavior is preserved through `main`'s newer state-machine/coordinator/audio-claim architecture.
-
-Validation command:
-
-```powershell
-git diff --check
-```
-
-Result: passed with no whitespace errors.
-
-## Conclusion
-
-All ten matrix scenarios are behaviorally equivalent on current `main`, with the newer coordinator/audio-claim architecture preserved. No gap fix or rebase/cherry-pick is required. The legacy `claude/feed-profile-race-recover` branch can be deleted after explicit user confirmation; branch cleanup was not performed by this task.
+- The viewer-facing single-post endpoint now delegates `shareVersion` to
+  `buildFeedShareVersion(post)` and selects `authorRole` plus carousel media
+  in `sortOrder: asc` order. This makes detail/postingan shares use the exact
+  same preview-poster precedence as the public Feed page.
+- RED: a regression asserted that the detail route imports the shared helper,
+  invokes it with the queried post, and keeps deterministic media ordering;
+  it failed while the route calculated a thumbnail-only version locally.
+- GREEN: the focused Feed data and metadata suite passed 12/12, targeted
+  TypeScript validation passed, and `git diff --check` passed.

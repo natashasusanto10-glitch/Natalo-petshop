@@ -16,95 +16,46 @@ import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 
-import { resolveUserByUsername } from "@/lib/username";
 import { prisma } from "@/lib/prisma";
-import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
+import {
+  buildPublicProfilePageViewModel,
+  buildProfileShareMetadata,
+  buildUnavailableProfileShareMetadata,
+  getPublicShareProfile,
+} from "@/lib/share/profile-share-data";
 
 const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://natalopetshop.com";
+  process.env.NEXT_PUBLIC_SITE_URL || "https://www.natalopetshop.com";
 
 type PageProps = {
   params: Promise<{ username: string }>;
 };
 
+// The metadata carries an object version. Only the corresponding OG image is
+// long-lived in the CDN cache, so a profile change cannot retain a stale card.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { username } = await params;
-  const user = await resolveUserByUsername(username);
-  if (!user) {
-    return {
-      title: "User tidak ditemukan | Natalo Petshop",
-      description: "Halaman yang Anda cari tidak tersedia.",
-      robots: { index: false, follow: false },
-    };
-  }
-
-  const handle = user.username ?? username.toLowerCase();
-  // Akun official (admin) → brand name + foto null; nama asli/foto pemilik
-  // tidak boleh bocor di metadata/OG halaman web.
-  const safeName = brandDisplayName(user.role, user.name);
-  const safePhoto = brandPhotoUrl(user.role, user.profilePhotoUrl);
-  // Title handle bare (no `@`) — IG/TikTok pattern, identity label gak
-  // pakai `@`. `@` cuma untuk mention di dalam body text.
-  const titleHandle = user.username ?? safeName;
-  const description = user.bio
-    ? user.bio.replace(/\s+/g, " ").trim().slice(0, 160)
-    : `Lihat profil ${safeName} di Natalo Petshop — komunitas pet lovers Medan.`;
-
-  const canonical = `${siteUrl}/u/${handle}`;
-  const ogImage = safePhoto
-    ? (safePhoto.startsWith("http")
-      ? safePhoto
-      : `${siteUrl}${safePhoto}`)
-    : `${siteUrl}/icon.svg`;
-
-  return {
-    title: `${titleHandle} di Natalo Petshop`,
-    description,
-    alternates: { canonical },
-    openGraph: {
-      type: "profile",
-      title: `${titleHandle} di Natalo Petshop`,
-      description,
-      url: canonical,
-      siteName: "Natalo Petshop",
-      images: [
-        {
-          url: ogImage,
-          width: 600,
-          height: 600,
-          alt: titleHandle,
-        },
-      ],
-    },
-    twitter: {
-      card: "summary",
-      title: `${titleHandle} di Natalo Petshop`,
-      description,
-      images: [ogImage],
-    },
-  };
+  const profile = await getPublicShareProfile(username);
+  if (!profile) return buildUnavailableProfileShareMetadata();
+  return buildProfileShareMetadata(profile, siteUrl);
 }
 
 export default async function PublicProfilePage({ params }: PageProps) {
   const { username } = await params;
-  const user = await resolveUserByUsername(username);
-  if (!user) notFound();
+  const profile = await getPublicShareProfile(username);
+  if (!profile) notFound();
+  const view = buildPublicProfilePageViewModel(profile);
 
-  const [postCount, likedCount, posts] = await Promise.all([
-    prisma.feedPost.count({
-      where: {
-        authorId: user.id,
-        kind: { in: ["COMMUNITY", "PHOTO_CAROUSEL"] },
-        status: "ACTIVE",
-        deletedAt: null,
-      },
-    }),
-    prisma.feedLike.count({ where: { userId: user.id } }),
+  const [likedCount, posts] = await Promise.all([
+    prisma.feedLike.count({ where: { userId: view.id } }),
     prisma.feedPost.findMany({
       where: {
-        authorId: user.id,
+        authorId: view.id,
         kind: { in: ["COMMUNITY", "PHOTO_CAROUSEL"] },
         status: "ACTIVE",
         deletedAt: null,
@@ -126,21 +77,18 @@ export default async function PublicProfilePage({ params }: PageProps) {
     }),
   ]);
 
-  const handle = user.username ?? username.toLowerCase();
-  // Brand-safe identity — akun official tak boleh bocorkan nama/foto asli.
-  const safeName = brandDisplayName(user.role, user.name);
-  const safePhoto = brandPhotoUrl(user.role, user.profilePhotoUrl);
-  const initial = safeName.trim().charAt(0).toUpperCase() || "N";
+  const handle = view.username;
+  const initial = view.displayName.trim().charAt(0).toUpperCase() || "N";
 
   return (
     <div className="mx-auto min-h-screen w-full max-w-3xl px-4 pb-16 pt-6 sm:px-6">
       {/* Header */}
       <header className="flex flex-col items-start gap-5 sm:flex-row sm:items-center">
         <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-blue-100 to-blue-200 ring-4 ring-white shadow-md sm:h-28 sm:w-28">
-          {safePhoto ? (
+          {view.avatarUrl ? (
             <Image
-              src={safePhoto}
-              alt={safeName}
+              src={view.avatarUrl}
+              alt={view.displayName}
               fill
               sizes="112px"
               className="object-cover"
@@ -157,20 +105,20 @@ export default async function PublicProfilePage({ params }: PageProps) {
             <h1 className="text-2xl font-black text-slate-900">
               {handle}
             </h1>
-            {user.username && safeName !== user.username && (
+            {view.displayName !== view.username && (
               <span className="text-sm font-medium text-slate-500">
-                {safeName}
+                {view.displayName}
               </span>
             )}
           </div>
-          {user.bio && (
+          {view.bio && (
             <p className="mt-1.5 max-w-md text-sm text-slate-600">
-              {user.bio}
+              {view.bio}
             </p>
           )}
           <dl className="mt-3 flex gap-6 text-sm">
             <div>
-              <dd className="font-black text-slate-900">{postCount}</dd>
+              <dd className="font-black text-slate-900">{view.postCount}</dd>
               <dt className="text-slate-500">Postingan</dt>
             </div>
             <div>

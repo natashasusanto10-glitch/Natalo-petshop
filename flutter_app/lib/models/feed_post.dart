@@ -192,8 +192,10 @@ class FeedProductLink {
       avgRating: (json['avgRating'] as num?)?.toDouble() ?? 0,
       reviewCount: (json['reviewCount'] as num?)?.toInt() ?? 0,
       soldCount: (json['soldCount'] as num?)?.toInt() ?? 0,
-      shippingVoucher: FeedProductVoucherBadge.fromJson(json['shippingVoucher']),
-      discountVoucher: FeedProductVoucherBadge.fromJson(json['discountVoucher']),
+      shippingVoucher:
+          FeedProductVoucherBadge.fromJson(json['shippingVoucher']),
+      discountVoucher:
+          FeedProductVoucherBadge.fromJson(json['discountVoucher']),
     );
   }
 }
@@ -257,6 +259,7 @@ enum FeedContentType { photo, carousel, video }
 class FeedPost {
   final String id;
   final String slug;
+  final String? shareVersion;
 
   /// Non-nullable — default '' supaya screen yang akses `.isNotEmpty` aman.
   final String title;
@@ -315,6 +318,7 @@ class FeedPost {
   const FeedPost({
     required this.id,
     required this.slug,
+    this.shareVersion,
     this.title = '',
     this.description = '',
     this.caption,
@@ -522,6 +526,7 @@ class FeedPost {
   FeedPost copyWith({
     String? id,
     String? slug,
+    String? shareVersion,
     String? title,
     String? description,
     String? caption,
@@ -563,6 +568,7 @@ class FeedPost {
     return FeedPost(
       id: id ?? this.id,
       slug: slug ?? this.slug,
+      shareVersion: shareVersion ?? this.shareVersion,
       title: title ?? this.title,
       description: description ?? this.description,
       caption: caption ?? this.caption,
@@ -674,8 +680,8 @@ class FeedPost {
     // aspectWidth/aspectHeight pair (my-posts shape); else fallback ke
     // width/height media item pertama — beberapa shape (mis. my-posts lama)
     // taruh dimensi video di mediaItems, bukan di post-level. Tanpa fallback
-    // ini video landscape jatuh ke default 9/16 (portrait) → grid gagal
-    // letterbox (lihat gridShowsLetterbox di gallery_post_tile.dart).
+    // ini video landscape jatuh ke default 9/16 (portrait) → grid salah fit
+    // (lihat gridThumbnailFit di gallery_post_tile.dart).
     final firstMedia = mediaItems.isNotEmpty ? mediaItems.first : null;
     final aspectRatio = (json['aspectRatio'] as num?)?.toDouble() ??
         _aspectFromIntPair(
@@ -703,6 +709,7 @@ class FeedPost {
     return FeedPost(
       id: id,
       slug: (json['slug'] ?? json['id']) as String? ?? id,
+      shareVersion: _firstNonEmpty([json['shareVersion'] as String?]),
       title: (json['title'] as String?) ?? '',
       description: (json['description'] as String?) ?? '',
       // Fallback chain — backend TIDAK kirim field `caption` (cuma
@@ -763,6 +770,7 @@ class FeedPost {
     return {
       'id': id,
       'slug': slug,
+      'shareVersion': shareVersion,
       'title': title,
       'description': description,
       'caption': caption,

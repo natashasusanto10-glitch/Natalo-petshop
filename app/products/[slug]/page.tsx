@@ -20,14 +20,19 @@ import { prisma } from "@/lib/prisma";
 import { ReviewForm } from "@/components/ReviewForm";
 import { ReviewList } from "@/components/ReviewList";
 import { PageStatusBar } from "@/components/PageStatusBar";
+import {
+  buildProductShareMetadata,
+  buildUnavailableProductShareMetadata,
+  getPublicShareProduct,
+} from "@/lib/share/product-share-data";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.natalopetshop.com";
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 
-// Cache HTML 60 detik di Vercel CDN — page lebih dingin & cepat. Voucher
-// member yang per-user di-load client-side oleh <VoucherCard /> via fetch
-// /api/products/[slug]/vouchers (session cookie ikut).
-export const revalidate = 60;
+// The HTML carries a versioned OG image URL. Cache that endpoint by `v`, not
+// an old metadata document after public price or stock changes.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 function discountPercent(price: number, discountPrice: number | null) {
   if (discountPrice === null || discountPrice >= price) return null;
@@ -40,34 +45,9 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const product = await getProductBySlug(slug);
-  if (!product) return { title: "Produk tidak ditemukan" };
-
-  const metadataPrice =
-    product.discountPrice !== null && product.discountPrice < product.price
-      ? product.discountPrice
-      : product.price;
-  const shortDescription = product.description.replace(/\s+/g, " ").trim().slice(0, 140);
-  const productImage = product.imageUrl
-    ? product.imageUrl.startsWith("http")
-      ? product.imageUrl
-      : `${siteUrl}${product.imageUrl}`
-    : `${siteUrl}/icon.svg`;
-
-  return {
-    title: `${product.name} | Natalo Petshop Medan`,
-    description: `Beli ${product.name} di Natalo Petshop Medan. ${shortDescription} Kirim same-day via Gojek. Harga ${formatRupiah(metadataPrice)}.`,
-    alternates: {
-      canonical: `${siteUrl}/products/${slug}`,
-    },
-    openGraph: {
-      title: `${product.name} | Natalo Petshop Medan`,
-      description: `Beli ${product.name} di Natalo Petshop Medan.`,
-      url: `${siteUrl}/products/${slug}`,
-      images: [{ url: productImage, alt: product.name }],
-      type: "website",
-    },
-  };
+  const product = await getPublicShareProduct(slug);
+  if (!product) return buildUnavailableProductShareMetadata();
+  return buildProductShareMetadata(product, siteUrl);
 }
 
 export default async function ProductDetailPage({
@@ -76,8 +56,13 @@ export default async function ProductDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const product = await getProductBySlug(slug);
-  if (!product) return notFound();
+  const [product, shareProduct] = await Promise.all([
+    getProductBySlug(slug),
+    getPublicShareProduct(slug),
+  ]);
+  // Do not render product details for a product that cannot be shared
+  // publicly. Metadata and visible HTML must use the same visibility gate.
+  if (!product || !shareProduct) return notFound();
 
   // Voucher load di-pindah ke client-side (VoucherCard fetch sendiri)
   // supaya halaman ini bisa cacheable di Vercel CDN. getSession() yg dulu

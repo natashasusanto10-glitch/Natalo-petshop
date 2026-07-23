@@ -98,6 +98,8 @@ export type FeedPostTaggedProduct = {
 
 export type FeedPostListItem = {
   id: string;
+  /** Deterministic cache-buster for public share-preview URLs. */
+  shareVersion: string;
   kind: FeedPostKind;
   tab: FeedPostTab;
   status: FeedPostStatus;

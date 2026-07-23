@@ -14,7 +14,7 @@ import '../features/feed/transition/profile_tile_visibility.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../features/feed/video/video_media_cache.dart';
 import '../features/feed/widgets/gallery_post_tile.dart'
-    show gridShowsLetterbox;
+    show gridThumbnailFit, gridVideoUsesBlackBackground;
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
@@ -900,10 +900,10 @@ class _PostThumbnail extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Video LANDSCAPE → latar hitam (bar letterbox). Selain itu
-            // latar netral biasa. gridShowsLetterbox: video landscape saja.
+            // Video → latar hitam (mengisi bar letterbox landscape/persegi;
+            // tak terlihat saat portrait memenuhi tile). Foto → latar netral.
             Container(
-              color: gridShowsLetterbox(post)
+              color: gridVideoUsesBlackBackground(post)
                   ? Colors.black
                   : cs.surfaceContainerHighest,
             ),
@@ -928,9 +928,9 @@ class _PostThumbnail extends StatelessWidget {
                   // KEDIP ABU-ABU (gejala device: glitch back di Profil sendiri;
                   // foto URL stabil jadi tak kena). Sama seperti videoMediaCacheKey
                   // dipakai player video.
-                  // Video landscape → contain (letterbox, utuh); sisanya
-                  // cover-crop penuh (foto/carousel/portrait, tak berubah).
-                  fit: gridShowsLetterbox(post) ? BoxFit.contain : BoxFit.cover,
+                  // Video → fitWidth (paritas IG): portrait penuh tanpa bar
+                  // samping, landscape letterbox atas-bawah. Foto → cover.
+                  fit: gridThumbnailFit(post),
                   fadeInDuration: const Duration(milliseconds: 180),
                   placeholder: (_, __) =>
                       Container(color: cs.surfaceContainerHigh),

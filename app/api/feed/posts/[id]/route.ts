@@ -13,6 +13,7 @@ import {
   resolveFeedProductDiscount,
 } from "@/lib/feed/queries";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
+import { buildFeedShareVersion } from "@/lib/share/feed-share-data";
 import {
   feedAccessibilityPayload,
   parseFeedAccessibilityMetadata,
@@ -102,6 +103,7 @@ export async function GET(
       likeCount: true,
       commentCount: true,
       viewCount: true,
+      authorRole: true,
       product: { select: productSelect },
       taggedProducts: {
         orderBy: { position: "asc" },
@@ -180,6 +182,11 @@ export async function GET(
     videoUrl: post.videoUrl,
     videoGuid: post.videoGuid,
   });
+  const authorDisplayName = brandDisplayName(post.author.role, post.author.name);
+  const authorPhoto = brandPhotoUrl(
+    post.author.role,
+    post.author.profilePhotoUrl
+  );
   const products = [
     ...post.taggedProducts,
     ...(post.product
@@ -218,6 +225,7 @@ export async function GET(
 
   return NextResponse.json({
     id: post.id,
+    shareVersion: buildFeedShareVersion(post),
     kind: post.kind,
     title: post.title,
     description: post.description,
@@ -240,13 +248,10 @@ export async function GET(
     author: {
       id: post.author.id,
       // Akun official (admin) → brand name + foto null (klien render logo).
-      name: brandDisplayName(post.author.role, post.author.name),
+      name: authorDisplayName,
       username: post.author.username,
       role: post.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
-      profilePhotoUrl: brandPhotoUrl(
-        post.author.role,
-        post.author.profilePhotoUrl
-      ),
+      profilePhotoUrl: authorPhoto,
     },
     media: post.media.map((m) => {
       const mediaPlaybackUrls = buildFeedVideoPlaybackUrls({ videoUrl: m.url });

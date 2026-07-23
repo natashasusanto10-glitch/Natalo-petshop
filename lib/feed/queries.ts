@@ -19,6 +19,10 @@ import { extractMentionHandles } from "./mentions";
 import { signBunnyUrl } from "./bunny";
 import { buildFeedVideoPlaybackUrls } from "./video-playback-urls";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
+import {
+  stripEphemeralUrlQuery,
+} from "@/lib/share/share-version";
+import { buildFeedShareVersion } from "@/lib/share/feed-share-data";
 import { feedAccessibilityPayload } from "./accessibility";
 import { visibleFeedCommentRootWhere } from "./comment-sync";
 import type {
@@ -471,8 +475,15 @@ export async function listFeedPosts({
       videoUrl: p.videoUrl,
       videoGuid: p.videoGuid,
     });
+    const authorDisplayName = brandDisplayName(p.author.role, p.author.name);
+    const authorPhoto = brandPhotoUrl(
+      p.author.role,
+      p.author.profilePhotoUrl
+    );
+    const isOfficial = p.authorRole === "ADMIN";
     return {
       id: p.id,
+      shareVersion: buildFeedShareVersion(p),
       kind: p.kind,
       tab: p.tab,
       status: p.status,
@@ -603,12 +614,12 @@ export async function listFeedPosts({
         id: p.author.id,
         // Akun official (admin) → brand "Natalo Petshop" + foto null (klien
         // render logo). Nama asli/foto pemilik tidak boleh bocor.
-        name: brandDisplayName(p.author.role, p.author.name),
+        name: authorDisplayName,
         username: p.author.username ?? null,
         role: (p.authorRole === "ADMIN" ? "ADMIN" : "CUSTOMER") as
           | "ADMIN"
           | "CUSTOMER",
-        profilePhotoUrl: brandPhotoUrl(p.author.role, p.author.profilePhotoUrl),
+        profilePhotoUrl: authorPhoto,
         // Chip "Ikuti/Mengikuti" di feed app — snapshot saat fetch; toggle
         // selanjutnya di-track client-side (followOverrides).
         isFollowing: viewerFollowedAuthorIds.has(p.author.id),

@@ -5,24 +5,26 @@ import 'package:natalo_petshop_flutter/models/feed_post.dart';
 void main() {
   group('resolvePostinganMediaAspectRatio', () {
     group('video', () {
-      test('clamps video taller than 9:16 to the portrait limit', () {
+      test('clamps video taller than 3:5 to the portrait limit', () {
         final ratio = resolvePostinganMediaAspectRatio(
           width: 1080,
           height: 2160,
           type: FeedContentType.video,
         );
 
-        expect(ratio, closeTo(9 / 16, 0.000001));
+        expect(ratio, closeTo(3 / 5, 0.000001));
       });
 
       test('preserves video ratios inside the supported range', () {
+        // 9:16 (0.5625) kini lebih tinggi dari batas IG 3:5 (0.6), jadi
+        // di-clamp ke 3:5.
         expect(
           resolvePostinganMediaAspectRatio(
             width: 1080,
             height: 1920,
             type: FeedContentType.video,
           ),
-          closeTo(9 / 16, 0.000001),
+          closeTo(3 / 5, 0.000001),
         );
         expect(
           resolvePostinganMediaAspectRatio(
@@ -50,7 +52,7 @@ void main() {
         );
       });
 
-      test('clamps overly wide video and uses 9:16 for invalid metadata', () {
+      test('clamps overly wide video and uses 3:5 for invalid metadata', () {
         expect(
           resolvePostinganMediaAspectRatio(
             width: 2000,
@@ -65,7 +67,7 @@ void main() {
             height: 0,
             type: FeedContentType.video,
           ),
-          closeTo(9 / 16, 0.000001),
+          closeTo(3 / 5, 0.000001),
         );
       });
     });

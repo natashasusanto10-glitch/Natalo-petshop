@@ -651,6 +651,70 @@ void main() {
     });
   });
 
+  group('postingan dihapus (Lapisan 2 ala IG)', () {
+    AppNotification postNotif({bool postDeleted = false}) =>
+        AppNotification.fromApiJson({
+          'id': 'pd1',
+          'title': 'Postingan baru',
+          'body': 'sri_manik posting video baru',
+          'type': 'feed',
+          'eventType': 'followed_user_posted',
+          'feedPostId': 'post-123',
+          'url': '/feed/post-123',
+          'ctaLabel': 'Lihat Postingan',
+          'imageUrl': 'https://example.com/thumb.jpg',
+          'createdAt': DateTime.now().toIso8601String(),
+          'read': false,
+          'postDeleted': postDeleted,
+        });
+
+    testWidgets('postDeleted:true → label "Sudah dihapus", tap mati',
+        (tester) async {
+      var tapped = false;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(
+            notification: postNotif(postDeleted: true),
+            onTap: () => tapped = true,
+          ),
+        ),
+      ));
+      expect(
+          find.byKey(const ValueKey('notification-post-deleted-label')),
+          findsOneWidget);
+      expect(find.text('Sudah dihapus'), findsOneWidget);
+      expect(find.text('Lihat Postingan'), findsNothing);
+      // Thumbnail diganti placeholder, bukan Image.network asli.
+      expect(find.byKey(const ValueKey('notification-thumb-deleted')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('notification-thumb')), findsNothing);
+
+      await tester.tap(find.byType(NotificationRow));
+      await tester.pump();
+      expect(tapped, isFalse);
+    });
+
+    testWidgets('postDeleted:false → CTA normal, tap jalan', (tester) async {
+      var tapped = false;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(
+            notification: postNotif(postDeleted: false),
+            onTap: () => tapped = true,
+          ),
+        ),
+      ));
+      expect(find.text('Sudah dihapus'), findsNothing);
+      expect(find.text('Lihat Postingan'), findsOneWidget);
+      expect(find.byKey(const ValueKey('notification-thumb-deleted')),
+          findsNothing);
+
+      await tester.tap(find.byType(NotificationRow).first);
+      await tester.pump();
+      expect(tapped, isTrue);
+    });
+  });
+
   group('aksi komentar (♡ + Balas)', () {
     AppNotification commentNotif({
       String? commentId = 'c1',
