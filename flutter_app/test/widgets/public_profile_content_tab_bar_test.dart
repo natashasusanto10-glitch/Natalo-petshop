@@ -4,7 +4,9 @@ import 'package:natalo_petshop_flutter/theme/natalo_colors.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_content_tab_bar.dart';
 
 void main() {
-  testWidgets('expanded public tabs are icon-only and neutral', (tester) async {
+  testWidgets('expanded tabs: tab aktif jadi biru brand, lainnya netral', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       tabHarness(
         labelOpacity: 0,
@@ -20,7 +22,26 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(BackdropFilter), findsNothing);
-    _expectNeutralForegrounds(tester);
+
+    // TabController default index 0 → "Postingan" aktif.
+    for (final icon in tester.widgetList<Icon>(
+      find.descendant(
+        of: find.byKey(const Key('public_tab_posts_pill')),
+        matching: find.byType(Icon),
+      ),
+    )) {
+      expect(icon.color, NataloColors.primary);
+    }
+    for (final key in ['public_tab_video_pill', 'public_tab_tagged_pill']) {
+      for (final icon in tester.widgetList<Icon>(
+        find.descendant(
+          of: find.byKey(Key(key)),
+          matching: find.byType(Icon),
+        ),
+      )) {
+        expect(icon.color, isNot(NataloColors.primary));
+      }
+    }
   });
 
   testWidgets('collapsed tabs render three individual neutral pills', (
@@ -36,10 +57,10 @@ void main() {
 
     expect(find.text('Postingan'), findsOneWidget);
     expect(find.text('Video'), findsOneWidget);
-    expect(find.text('Belanja'), findsOneWidget);
+    expect(find.text('Ditandai'), findsOneWidget);
     expect(find.byKey(const Key('public_tab_posts_pill')), findsOneWidget);
     expect(find.byKey(const Key('public_tab_video_pill')), findsOneWidget);
-    expect(find.byKey(const Key('public_tab_shop_pill')), findsOneWidget);
+    expect(find.byKey(const Key('public_tab_tagged_pill')), findsOneWidget);
     expect(find.byKey(const Key('public_tab_shared_surface')), findsNothing);
     expect(
       find.byKey(const Key('public_tab_sliding_underline')),
@@ -81,15 +102,15 @@ void main() {
         ),
       );
 
-      for (final (label, selected) in <(String, bool)>[
-        ('Postingan', true),
-        ('Video', false),
-        ('Belanja', false),
+      for (final (label, pillKey, selected) in <(String, String, bool)>[
+        ('Postingan', 'public_tab_posts_pill', true),
+        ('Video', 'public_tab_video_pill', false),
+        ('Ditandai', 'public_tab_tagged_pill', false),
       ]) {
         final semantics = tester.widget<Semantics>(
           find
               .ancestor(
-                of: find.byTooltip(label),
+                of: find.byKey(Key(pillKey)),
                 matching: find.byType(Semantics),
               )
               .first,
@@ -99,7 +120,7 @@ void main() {
         expect(semantics.properties.selected, selected);
       }
 
-      for (final label in const ['Postingan', 'Video', 'Belanja']) {
+      for (final label in const ['Postingan', 'Video', 'Ditandai']) {
         expect(
           tester.widget<Text>(find.text(label)).textScaler,
           const TextScaler.linear(1.3),
@@ -133,7 +154,7 @@ void main() {
 
     await tester.drag(find.byType(TabBarView), const Offset(-400, 0));
     await tester.pumpAndSettle();
-    expect(find.text('Belanja page'), findsOneWidget);
+    expect(find.text('Ditandai page'), findsOneWidget);
   });
 
   testWidgets('tab bar draws no full-width Material divider', (tester) async {
@@ -187,6 +208,54 @@ void main() {
     final tab1Center = 300 / 3 * 1.5; // slot width * (1 + 0.5)
     expect(midway, greaterThan(atTab0), reason: 'indikator harus bergeser, bukan snap');
     expect(midway, lessThan(tab1Center), reason: 'belum sampai tab 1 di tengah transisi');
+
+    await tester.pump(const Duration(milliseconds: 400)); // selesaikan animasi
+  });
+
+  testWidgets(
+      'reduced motion: ikon tab tidak ikut animasi lift, snap ke Offset.zero',
+      (tester) async {
+    final controller = TabController(length: 3, vsync: const TestVSync());
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 300,
+          child: PublicProfileContentTabBar(
+            controller: controller,
+            labelOpacity: 0,
+            pillOpacity: 0,
+            underlineOpacity: 1,
+            reducedMotion: true,
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+
+    // Mulai transisi ke tab 1, pump SEBAGIAN (belum selesai) — pola sama
+    // dengan test 'active tab indicator slides between tabs (no snap)' di
+    // atas. Titik tengah swipe adalah titik paling rawan untuk bug ini:
+    // kalau reducedMotion tidak dihormati, `emphasis` tiap tab benar-benar
+    // fractional (0 < emphasis < 1) di sini, sehingga Transform.translate
+    // punya offset non-zero.
+    controller.animateTo(1);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Setiap Transform yang membungkus ikon tab (satu per tab, lihat
+    // _PublicProfileTab.build) HARUS Offset.zero saat reducedMotion — tidak
+    // ada lift 3px di titik manapun sepanjang transisi.
+    final transforms = tester.widgetList<Transform>(
+      find.descendant(
+        of: find.byType(PublicProfileContentTabBar),
+        matching: find.byType(Transform),
+      ),
+    );
+    expect(transforms, isNotEmpty);
+    for (final transform in transforms) {
+      expect(transform.transform.getTranslation().y, 0.0);
+    }
 
     await tester.pump(const Duration(milliseconds: 400)); // selesaikan animasi
   });
@@ -279,7 +348,7 @@ class _PublicTabsHarnessState extends State<_PublicTabsHarness>
             children: const [
               Center(child: Text('Postingan page')),
               Center(child: Text('Video page')),
-              Center(child: Text('Belanja page')),
+              Center(child: Text('Ditandai page')),
             ],
           ),
         ),

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import '../config/feature_flags.dart';
 import '../models/feed_create_post_draft.dart';
 import '../models/product.dart';
 import '../services/app_analytics.dart';
@@ -158,7 +159,9 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
     _captionController.addListener(() {
       if (mounted) setState(() {});
     });
-    _loadPurchasedProducts();
+    if (kShopTagEnabled) {
+      _loadPurchasedProducts();
+    }
   }
 
   @override
@@ -604,23 +607,25 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                       captionText: _captionController.text,
                       onTap: _editCaption,
                     ),
-                    const SizedBox(height: 26),
-                    const _SectionTitle('Tag Produk Pernah Dibeli'),
-                    const SizedBox(height: 12),
-                    _PurchasedProductSearch(
-                      controller: _productSearchController,
-                      onChanged: _searchPurchasedProducts,
-                    ),
-                    const SizedBox(height: 14),
-                    _PurchasedProducts(
-                      products: _visibleProducts,
-                      loading: _loadingProducts,
-                      selectedIds: _selectedProductIds,
-                      onTap: _toggleProduct,
-                    ),
-                    if (_error != null) ...[
+                    if (kShopTagEnabled) ...[
+                      const SizedBox(height: 26),
+                      const _SectionTitle('Tag Produk Pernah Dibeli'),
+                      const SizedBox(height: 12),
+                      _PurchasedProductSearch(
+                        controller: _productSearchController,
+                        onChanged: _searchPurchasedProducts,
+                      ),
                       const SizedBox(height: 14),
-                      _ErrorBox(message: _error!),
+                      _PurchasedProducts(
+                        products: _visibleProducts,
+                        loading: _loadingProducts,
+                        selectedIds: _selectedProductIds,
+                        onTap: _toggleProduct,
+                      ),
+                      if (_error != null) ...[
+                        const SizedBox(height: 14),
+                        _ErrorBox(message: _error!),
+                      ],
                     ],
                   ],
                 ),
