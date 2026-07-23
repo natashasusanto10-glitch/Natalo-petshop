@@ -293,6 +293,15 @@ class FeedPost {
 
   /// Tag People (Spec B) — daftar user yang ditandai di post ini.
   final List<FeedTaggedUser> taggedUsers;
+
+  /// Tag People (final review Spec B fix) — apakah tag milik VIEWER YANG
+  /// SEDANG LOGIN (bukan per-tag lain) disembunyikan dari profilnya sendiri.
+  /// `null` kalau viewer tidak ditandai di post ini / anon. Server-computed
+  /// (lib/feed/tagged-users.ts resolveViewerTagHidden) — sumber kebenaran
+  /// untuk seed toggle "Sembunyikan/Tampilkan dari profil saya" di sheet
+  /// Opsi Tag, supaya un-hide tetap reachable setelah app restart (dulu
+  /// sheet selalu mulai dari `false` session-local, bukan state server).
+  final bool? viewerTagHidden;
   final int likeCount;
   final int commentCount;
   final int viewCount;
@@ -344,6 +353,7 @@ class FeedPost {
     this.productsInVideo = const [],
     this.taggedProducts = const [],
     this.taggedUsers = const [],
+    this.viewerTagHidden,
     this.likeCount = 0,
     this.commentCount = 0,
     this.viewCount = 0,
@@ -553,6 +563,7 @@ class FeedPost {
     List<FeedProductLink>? productsInVideo,
     List<FeedProductLink>? taggedProducts,
     List<FeedTaggedUser>? taggedUsers,
+    bool? viewerTagHidden,
     int? likeCount,
     int? commentCount,
     int? viewCount,
@@ -596,6 +607,7 @@ class FeedPost {
       productsInVideo: productsInVideo ?? this.productsInVideo,
       taggedProducts: taggedProducts ?? this.taggedProducts,
       taggedUsers: taggedUsers ?? this.taggedUsers,
+      viewerTagHidden: viewerTagHidden ?? this.viewerTagHidden,
       likeCount: likeCount ?? this.likeCount,
       commentCount: commentCount ?? this.commentCount,
       viewCount: viewCount ?? this.viewCount,
@@ -758,6 +770,7 @@ class FeedPost {
       productsInVideo: productsInVideo,
       taggedProducts: taggedProducts,
       taggedUsers: taggedUsers,
+      viewerTagHidden: json['viewerTagHidden'] as bool?,
       likeCount: (json['likeCount'] as num?)?.toInt() ?? 0,
       commentCount: (json['commentCount'] as num?)?.toInt() ?? 0,
       viewCount: (json['viewCount'] as num?)?.toInt() ?? 0,
@@ -821,6 +834,7 @@ class FeedPost {
               })
           .toList(),
       'taggedUsers': taggedUsers.map((t) => t.toJson()).toList(),
+      'viewerTagHidden': viewerTagHidden,
       'likeCount': likeCount,
       'commentCount': commentCount,
       'viewCount': viewCount,

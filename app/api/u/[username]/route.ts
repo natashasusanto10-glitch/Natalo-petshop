@@ -34,7 +34,11 @@ import {
   brandDisplayName,
   brandPhotoUrl,
 } from "@/lib/social/brand-user";
-import { TAGGED_USERS_SELECT, serializeTaggedUsers } from "@/lib/feed/tagged-users";
+import {
+  resolveViewerTagHidden,
+  TAGGED_USERS_SELECT,
+  serializeTaggedUsers,
+} from "@/lib/feed/tagged-users";
 import { loadMutualFollowers } from "@/lib/social/profile-mutual-followers";
 import { feedAccessibilityPayload } from "@/lib/feed/accessibility";
 import {
@@ -413,6 +417,10 @@ export async function GET(
           p.taggedUsers,
           new Map(p.media.map((m, index) => [m.id, index]))
         ),
+        // Tag People (final review Spec B fix) — lihat lib/feed/queries.ts
+        // untuk penjelasan lengkap. null kalau viewerUserId bukan tag di
+        // post ini (termasuk anon / null viewer).
+        viewerTagHidden: resolveViewerTagHidden(p.taggedUsers, viewerUserId),
         recentLikers: p.likes.map((like) => ({
           id: like.user.id,
           name: brandDisplayName(like.user.role, like.user.name),

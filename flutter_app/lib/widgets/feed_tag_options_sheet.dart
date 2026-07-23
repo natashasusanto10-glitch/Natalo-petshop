@@ -133,9 +133,11 @@ Future<void> showFeedTaggedUsersSheet(
   required VoidCallback onSelfRemoved,
   required ValueChanged<bool> onSelfHiddenChanged,
   VoidCallback? onSelfRemoveFailed,
-  // Server belum kirim flag hidden per-viewer di payload post — pemanggil
-  // yang melacak state lokal (dari toggle sebelumnya di sesi ini) meneruskan
-  // nilai terkini supaya label sheet Opsi Tag akurat saat dibuka ulang.
+  // Server kirim state hidden per-viewer via FeedPost.viewerTagHidden
+  // (final review Spec B fix) — pemanggil seed dari situ di initState
+  // (bukan hardcoded false), lalu melacak toggle in-session di atasnya
+  // supaya label sheet Opsi Tag akurat baik di initial build maupun
+  // setelah toggle.
   bool selfHidden = false,
 }) {
   return showModalBottomSheet<void>(

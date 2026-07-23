@@ -1495,6 +1495,10 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   void initState() {
     super.initState();
     _tags = List.of(widget.post.taggedUsers);
+    // Seed dari nilai server (final review Spec B fix) — bukan hardcoded
+    // false, supaya "un-hide" tetap reachable setelah app restart (server
+    // adalah sumber kebenaran untuk tag milik viewer sendiri).
+    _selfTagHidden = widget.post.viewerTagHidden ?? false;
     _photoPageController = PageController();
     // Seed store dengan post saat ini supaya feedStore.get always returns
     // non-null. Idempotent — kalau store sudah punya, NoOp.
@@ -1564,9 +1568,10 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   void didUpdateWidget(covariant _PhotoCarouselPostView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.post.id != widget.post.id) {
-      // Post lain (PageView pindah item) — reset salinan lokal tag.
+      // Post lain (PageView pindah item) — reset salinan lokal tag, seed
+      // hidden dari nilai server post yang baru (bukan hardcoded false).
       _tags = List.of(widget.post.taggedUsers);
-      _selfTagHidden = false;
+      _selfTagHidden = widget.post.viewerTagHidden ?? false;
     }
     // Re-sync rotation kalau post berubah (PageView ke post lain) atau
     // tagged products length berubah (admin edit tag dari background).

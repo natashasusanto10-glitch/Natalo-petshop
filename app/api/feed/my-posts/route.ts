@@ -26,7 +26,11 @@ import { bunnyThumbnailUrl, signBunnyUrl } from "@/lib/feed/bunny";
 import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 import { getViewerSavedPostIds } from "@/lib/feed/queries";
-import { TAGGED_USERS_SELECT, serializeTaggedUsers } from "@/lib/feed/tagged-users";
+import {
+  resolveViewerTagHidden,
+  TAGGED_USERS_SELECT,
+  serializeTaggedUsers,
+} from "@/lib/feed/tagged-users";
 import { feedAccessibilityPayload } from "@/lib/feed/accessibility";
 
 export async function GET(request: NextRequest) {
@@ -345,6 +349,11 @@ export async function GET(request: NextRequest) {
           post.taggedUsers,
           new Map(post.media.map((m, i) => [m.id, i]))
         ),
+        // Tag People (final review Spec B fix) — viewer di sini SELALU
+        // session.sub (my-posts = post milik sendiri), tapi self-tag di
+        // post sendiri tetap mungkin (mis. re-post yang menandai diri
+        // sendiri di antara orang lain). Lihat lib/feed/queries.ts.
+        viewerTagHidden: resolveViewerTagHidden(post.taggedUsers, session.sub),
       };
     }),
     filter,

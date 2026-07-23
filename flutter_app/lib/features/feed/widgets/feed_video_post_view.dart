@@ -479,6 +479,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   void initState() {
     super.initState();
     _tags = List.of(widget.post.taggedUsers);
+    // Seed dari nilai server (final review Spec B fix) — bukan hardcoded
+    // false, supaya "un-hide" tetap reachable setelah app restart (server
+    // adalah sumber kebenaran untuk tag milik viewer sendiri).
+    _selfTagHidden = widget.post.viewerTagHidden ?? false;
     final metricContext = <String, Object>{
       'surface': 'feed',
       'media_type': widget.post.videoUrl.contains('.m3u8') ? 'hls' : 'mp4',
@@ -1355,9 +1359,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
   void didUpdateWidget(covariant FeedVideoPostView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.post.id != widget.post.id) {
-      // Post lain — reset salinan lokal tag (Task 12).
+      // Post lain — reset salinan lokal tag (Task 12), seed hidden dari
+      // nilai server post yang baru (final review Spec B fix) — bukan
+      // hardcoded false.
       _tags = List.of(widget.post.taggedUsers);
-      _selfTagHidden = false;
+      _selfTagHidden = widget.post.viewerTagHidden ?? false;
     }
     if (oldWidget.post.id != widget.post.id && _commentDrawerMounted) {
       _forceDeactivateCommentDrawer(deferOverlayNotification: true);
