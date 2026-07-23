@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show Size;
 
 import '../../../models/feed_post.dart';
@@ -52,13 +53,14 @@ double resolvePostinganVideoBoxAspectRatio({
 }) {
   if (liveSize != null && liveSize.width > 0 && liveSize.height > 0) {
     // Hitung rasio dari ukuran asli. Jangan clamp minimum (3:5) karena ukuran
-    // controller sudah terbukti benar; hanya clamp maksimum untuk landscape
-    // yang terlalu lebar.
+    // controller sudah terbukti benar; hanya cap maksimum untuk landscape
+    // yang terlalu lebar (math.min, bukan clamp — batas bawah tak diperlukan
+    // karena rasio sudah dijamin > 0 oleh guard di atas).
     final sourceAspectRatio = liveSize.width / liveSize.height;
     if (!sourceAspectRatio.isFinite || sourceAspectRatio <= 0) {
       return fallbackAspectRatio;
     }
-    return sourceAspectRatio.clamp(0, postinganMaxAspectRatio).toDouble();
+    return math.min(sourceAspectRatio, postinganMaxAspectRatio);
   }
   return fallbackAspectRatio;
 }

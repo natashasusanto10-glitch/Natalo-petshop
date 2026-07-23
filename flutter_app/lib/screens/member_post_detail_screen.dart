@@ -3325,6 +3325,40 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
 
 // ─── Kotak aspect ratio video Postingan — ikut ukuran asli controller ─
 
+/// Mixin State: bind ke [VideoPlayerSession] milik satu post di
+/// [PostVideoCoordinator] lalu rebuild saat sesinya init/berubah (revision).
+/// Dipakai bersama [_VideoAspectBoxState] & [_HeroVideoFlightSurfaceState]
+/// supaya pola bind/lepas-listener tidak terduplikasi (drift risk bila
+/// kontrak coordinator berubah). CATATAN: mixin ini HANYA mengurus listener
+/// `revision` sesi; SIAPA yang memberitahu sesi baru muncul (mis.
+/// `registryListenable`) tetap tanggung jawab tiap State.
+mixin _CoordinatorVideoSessionBinder<T extends StatefulWidget> on State<T> {
+  VideoPlayerSession? _boundSession;
+
+  /// Sesi video yang sedang terikat (null bila belum ada / bukan sesi nyata).
+  VideoPlayerSession? get boundSession => _boundSession;
+
+  /// Re-cek `sessionFor(postId)` dan tukar listener revision bila sesinya
+  /// berganti. Aman dipanggil berulang (guard identical).
+  void bindVideoSession(PostVideoCoordinator coordinator, String postId) {
+    final session = coordinator.sessionFor(postId);
+    final next = session is VideoPlayerSession ? session : null;
+    if (identical(next, _boundSession)) return;
+    _boundSession?.revision.removeListener(_handleBoundSessionRevision);
+    _boundSession = next;
+    _boundSession?.revision.addListener(_handleBoundSessionRevision);
+  }
+
+  /// Lepas listener sesi. Panggil di `dispose` SEBELUM super.dispose().
+  void unbindVideoSession() {
+    _boundSession?.revision.removeListener(_handleBoundSessionRevision);
+  }
+
+  void _handleBoundSessionRevision() {
+    if (mounted) setState(() {});
+  }
+}
+
 /// Membungkus media video Postingan dengan [AspectRatio] yang MENGIKUTI ukuran
 /// video ASLI (`controller.value.size`) begitu controller siap; sebelum itu
 /// pakai [fallbackAspectRatio] (metadata tersimpan).
@@ -3352,14 +3386,13 @@ class _VideoAspectBox extends StatefulWidget {
   State<_VideoAspectBox> createState() => _VideoAspectBoxState();
 }
 
-class _VideoAspectBoxState extends State<_VideoAspectBox> {
-  VideoPlayerSession? _session;
-
+class _VideoAspectBoxState extends State<_VideoAspectBox>
+    with _CoordinatorVideoSessionBinder<_VideoAspectBox> {
   @override
   void initState() {
     super.initState();
     widget.coordinator.registryListenable.addListener(_onRegistry);
-    _bind();
+    bindVideoSession(widget.coordinator, widget.postId);
   }
 
   @override
@@ -3371,39 +3404,26 @@ class _VideoAspectBoxState extends State<_VideoAspectBox> {
     }
     if (oldWidget.postId != widget.postId ||
         oldWidget.coordinator != widget.coordinator) {
-      _bind();
+      bindVideoSession(widget.coordinator, widget.postId);
     }
   }
 
   /// Sesi terdaftar/berubah → re-cek sessionFor (sesi bisa baru muncul).
   void _onRegistry() {
-    _bind();
-    if (mounted) setState(() {});
-  }
-
-  void _bind() {
-    final session = widget.coordinator.sessionFor(widget.postId);
-    final next = session is VideoPlayerSession ? session : null;
-    if (identical(next, _session)) return;
-    _session?.revision.removeListener(_onRevision);
-    _session = next;
-    _session?.revision.addListener(_onRevision);
-  }
-
-  void _onRevision() {
+    bindVideoSession(widget.coordinator, widget.postId);
     if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     widget.coordinator.registryListenable.removeListener(_onRegistry);
-    _session?.revision.removeListener(_onRevision);
+    unbindVideoSession();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = _session?.controller;
+    final controller = boundSession?.controller;
     final liveSize = (controller != null && controller.value.isInitialized)
         ? controller.value.size
         : null;
@@ -3453,16 +3473,16 @@ class _HeroVideoFlightSurface extends StatefulWidget {
       _HeroVideoFlightSurfaceState();
 }
 
-class _HeroVideoFlightSurfaceState extends State<_HeroVideoFlightSurface> {
-  VideoPlayerSession? _session;
-
+class _HeroVideoFlightSurfaceState extends State<_HeroVideoFlightSurface>
+    with _CoordinatorVideoSessionBinder<_HeroVideoFlightSurface> {
   @override
   void initState() {
     super.initState();
     // Sinkron, TANPA VisibilityDetector/throttle — origin sudah attach sesi
     // ini sebelum flight ada alasan untuk mulai (video harus sudah main
-    // untuk user bisa lihat lalu tap back).
-    _bind();
+    // untuk user bisa lihat lalu tap back). Tak perlu registryListenable:
+    // sesi dijamin sudah ada saat flight dimulai.
+    bindVideoSession(widget.coordinator, widget.postId);
   }
 
   @override
@@ -3470,32 +3490,19 @@ class _HeroVideoFlightSurfaceState extends State<_HeroVideoFlightSurface> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.postId != widget.postId ||
         oldWidget.coordinator != widget.coordinator) {
-      _bind();
+      bindVideoSession(widget.coordinator, widget.postId);
     }
-  }
-
-  void _bind() {
-    final session = widget.coordinator.sessionFor(widget.postId);
-    final next = session is VideoPlayerSession ? session : null;
-    if (identical(next, _session)) return;
-    _session?.revision.removeListener(_onRevision);
-    _session = next;
-    _session?.revision.addListener(_onRevision);
-  }
-
-  void _onRevision() {
-    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
-    _session?.revision.removeListener(_onRevision);
+    unbindVideoSession();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = _session?.controller;
+    final controller = boundSession?.controller;
     final ready = controller != null && controller.value.isInitialized;
     return ColoredBox(
       color: Colors.black,
