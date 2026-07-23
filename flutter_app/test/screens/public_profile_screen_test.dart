@@ -182,7 +182,7 @@ void main() {
     final videoSelected = tester.widget<Semantics>(
       find
           .ancestor(
-            of: find.byTooltip('Video'),
+            of: find.byKey(const Key('public_tab_video_pill')),
             matching: find.byType(Semantics),
           )
           .first,
@@ -207,7 +207,7 @@ void main() {
     final selected = tester.widget<Semantics>(
       find
           .ancestor(
-            of: find.byTooltip('Video'),
+            of: find.byKey(const Key('public_tab_video_pill')),
             matching: find.byType(Semantics),
           )
           .first,
@@ -219,14 +219,14 @@ void main() {
     final reversedSelected = tester.widget<Semantics>(
       find
           .ancestor(
-            of: find.byTooltip('Video'),
+            of: find.byKey(const Key('public_tab_video_pill')),
             matching: find.byType(Semantics),
           )
           .first,
     );
     expect(reversedSelected.properties.selected, isTrue);
 
-    await tester.tap(find.byTooltip('Postingan'));
+    await tester.tap(find.byKey(const Key('public_tab_posts_pill')));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.byKey(const ValueKey('profile-post-post-1')), findsOneWidget);

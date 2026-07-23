@@ -4,7 +4,9 @@ import 'package:natalo_petshop_flutter/theme/natalo_colors.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_content_tab_bar.dart';
 
 void main() {
-  testWidgets('expanded public tabs are icon-only and neutral', (tester) async {
+  testWidgets('expanded tabs: tab aktif jadi biru brand, lainnya netral', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       tabHarness(
         labelOpacity: 0,
@@ -20,7 +22,26 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(BackdropFilter), findsNothing);
-    _expectNeutralForegrounds(tester);
+
+    // TabController default index 0 → "Postingan" aktif.
+    for (final icon in tester.widgetList<Icon>(
+      find.descendant(
+        of: find.byKey(const Key('public_tab_posts_pill')),
+        matching: find.byType(Icon),
+      ),
+    )) {
+      expect(icon.color, NataloColors.primary);
+    }
+    for (final key in ['public_tab_video_pill', 'public_tab_tagged_pill']) {
+      for (final icon in tester.widgetList<Icon>(
+        find.descendant(
+          of: find.byKey(Key(key)),
+          matching: find.byType(Icon),
+        ),
+      )) {
+        expect(icon.color, isNot(NataloColors.primary));
+      }
+    }
   });
 
   testWidgets('collapsed tabs render three individual neutral pills', (
@@ -81,15 +102,15 @@ void main() {
         ),
       );
 
-      for (final (label, selected) in <(String, bool)>[
-        ('Postingan', true),
-        ('Video', false),
-        ('Ditandai', false),
+      for (final (label, pillKey, selected) in <(String, String, bool)>[
+        ('Postingan', 'public_tab_posts_pill', true),
+        ('Video', 'public_tab_video_pill', false),
+        ('Ditandai', 'public_tab_tagged_pill', false),
       ]) {
         final semantics = tester.widget<Semantics>(
           find
               .ancestor(
-                of: find.byTooltip(label),
+                of: find.byKey(Key(pillKey)),
                 matching: find.byType(Semantics),
               )
               .first,

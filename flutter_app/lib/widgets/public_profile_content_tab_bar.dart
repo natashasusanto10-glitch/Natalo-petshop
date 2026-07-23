@@ -2,6 +2,7 @@ import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 
+import '../theme/natalo_colors.dart';
 import '../theme/natalo_text.dart';
 import 'liquid_glass.dart';
 
@@ -64,6 +65,7 @@ class PublicProfileContentTabBar extends StatelessWidget {
                 controller: controller,
                 index: 0,
                 icon: Icons.grid_on_rounded,
+                activeIcon: Icons.grid_on_rounded,
                 label: 'Postingan',
                 labelOpacity: labelOpacity,
                 pillOpacity: pillOpacity,
@@ -80,6 +82,7 @@ class PublicProfileContentTabBar extends StatelessWidget {
                 // Samakan glyph dgn bottom nav (Icons.play_circle_outline_
                 // rounded) supaya konsep "Video" konsisten sepanjang app.
                 icon: Icons.play_circle_outline_rounded,
+                activeIcon: Icons.play_circle_fill_rounded,
                 label: 'Video',
                 labelOpacity: labelOpacity,
                 pillOpacity: pillOpacity,
@@ -94,6 +97,7 @@ class PublicProfileContentTabBar extends StatelessWidget {
                 controller: controller,
                 index: 2,
                 icon: Icons.people_outline_rounded,
+                activeIcon: Icons.people_rounded,
                 label: 'Ditandai',
                 labelOpacity: labelOpacity,
                 pillOpacity: pillOpacity,
@@ -159,6 +163,7 @@ class _PublicProfileTab extends StatelessWidget {
   final TabController controller;
   final int index;
   final IconData icon;
+  final IconData activeIcon;
   final String label;
   final double labelOpacity;
   final double pillOpacity;
@@ -173,6 +178,7 @@ class _PublicProfileTab extends StatelessWidget {
     required this.controller,
     required this.index,
     required this.icon,
+    required this.activeIcon,
     required this.label,
     required this.labelOpacity,
     required this.pillOpacity,
@@ -194,13 +200,29 @@ class _PublicProfileTab extends StatelessWidget {
           final position = controller.animation?.value ?? controller.index;
           final emphasis =
               (1 - (position - index).abs()).clamp(0.0, 1.0).toDouble();
+          // PREMIUM: emphasis mentah linear terhadap posisi jari saat swipe —
+          // terasa "menempel" ke gerakan. Bungkus dengan easeOutCubic supaya
+          // treatment visual (warna, gerak naik, crossfade) MENGENDAP di
+          // ujung transisi, bukan tracking 1:1. Underline geser TIDAK pakai
+          // ini (mekanismenya sendiri, sudah mulus).
+          final curvedEmphasis = Curves.easeOutCubic.transform(emphasis);
+          // Mode expanded (pillOpacity 0, dipakai MemberScreen & profil
+          // publik sebelum scroll): dulu foreground SELALU = expandedForeground
+          // konstan (bug — tidak pernah ikut emphasis). Sekarang warna
+          // melebur abu→biru brand mengikuti curvedEmphasis, sama seperti mode
+          // pill di bawahnya.
+          final expandedDynamic = Color.lerp(
+            expandedForeground,
+            NataloColors.primary,
+            curvedEmphasis,
+          )!;
           final collapsedForeground = Color.lerp(
             inactiveForeground,
             activeForeground,
-            emphasis,
+            curvedEmphasis,
           )!;
           final foreground = Color.lerp(
-            expandedForeground,
+            expandedDynamic,
             collapsedForeground,
             pillOpacity,
           )!;
@@ -212,7 +234,7 @@ class _PublicProfileTab extends StatelessWidget {
             activeSurface,
             pillOpacity * emphasis,
           )!;
-          final iconSize = lerpDouble(27, 23, pillOpacity)!;
+          const iconSize = 24.0;
           final scale = MediaQuery.textScalerOf(context).scale(1);
           final labelScaler = TextScaler.linear(scale.clamp(1.0, 1.3));
 
@@ -228,7 +250,31 @@ class _PublicProfileTab extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(icon, color: foreground, size: iconSize),
+                  Transform.translate(
+                    // Gerak naik 3px di-ease supaya terasa "terangkat lalu
+                    // mengendap", bukan meluncur linear. Crossfade outline↔
+                    // filled memakai kurva yang sama supaya bentuk & posisi
+                    // berubah serempak (premium: satu gerakan, bukan dua
+                    // animasi yang balapan).
+                    offset: Offset(0, lerpDouble(0, -3, curvedEmphasis)!),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Opacity(
+                          opacity: (1 - curvedEmphasis).clamp(0.0, 1.0),
+                          child: Icon(icon, color: foreground, size: iconSize),
+                        ),
+                        Opacity(
+                          opacity: curvedEmphasis.clamp(0.0, 1.0),
+                          child: Icon(
+                            activeIcon,
+                            color: foreground,
+                            size: iconSize,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   if (labelOpacity > 0.001) ...[
                     SizedBox(width: 5 * labelOpacity),
                     Flexible(
@@ -264,28 +310,28 @@ class _PublicProfileTab extends StatelessWidget {
             button: true,
             selected: emphasis > 0.5,
             excludeSemantics: true,
-            child: Tooltip(
-              message: label,
-              excludeFromSemantics: true,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 7,
-                    ),
-                    child: LiquidGlass(
-                      // Glass memudar saat pill aktif jadi solid gelap —
-                      // opacity kaca mengikuti seberapa "inactive" pill.
-                      opacity: pillOpacity * (1 - emphasis),
-                      reducedMotion: reducedMotion,
-                      borderRadius: BorderRadius.circular(19),
-                      child: pillContent,
-                    ),
+            // Tooltip long-press SENGAJA dihapus mengikuti kebijakan
+            // "Global Icon Clean Interaction" — nama tetap terbaca screen
+            // reader lewat Semantics.label di atas. Lihat
+            // docs/superpowers/specs/2026-07-22-tutup-tag-belanja-spec-a-design.md.
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 7,
                   ),
-                ],
-              ),
+                  child: LiquidGlass(
+                    // Glass memudar saat pill aktif jadi solid gelap —
+                    // opacity kaca mengikuti seberapa "inactive" pill.
+                    opacity: pillOpacity * (1 - emphasis),
+                    reducedMotion: reducedMotion,
+                    borderRadius: BorderRadius.circular(19),
+                    child: pillContent,
+                  ),
+                ),
+              ],
             ),
           );
         },
