@@ -19,6 +19,7 @@ import { extractMentionHandles } from "./mentions";
 import { signBunnyUrl } from "./bunny";
 import { buildFeedVideoPlaybackUrls } from "./video-playback-urls";
 import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
+import { TAGGED_USERS_SELECT, serializeTaggedUsers } from "@/lib/feed/tagged-users";
 import {
   stripEphemeralUrlQuery,
 } from "@/lib/share/share-version";
@@ -327,6 +328,7 @@ export async function listFeedPosts({
         },
         orderBy: { sortOrder: "asc" },
       },
+      taggedUsers: TAGGED_USERS_SELECT,
       likes: {
         orderBy: { createdAt: "desc" },
         take: 3,
@@ -575,6 +577,10 @@ export async function listFeedPosts({
               : null,
           };
         }),
+      taggedUsers: serializeTaggedUsers(
+        p.taggedUsers,
+        new Map(p.media.map((m, index) => [m.id, index])),
+      ),
       promo:
         p.kind === "PROMO" &&
         p.promoOriginalPrice != null &&
