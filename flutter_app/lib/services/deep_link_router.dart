@@ -74,6 +74,15 @@ NataloDeepLinkTarget? parseNataloDeepLink(Uri uri) {
 
 bool isOfficialNataloHttpsUrl(Uri uri) => _isOfficialHttpsUrl(uri);
 
+/// Internal notification/deferred links are path-only. Keep this separate
+/// from public HTTPS parsing so `//host/path` can never impersonate one.
+bool isPathOnlyNataloInternalUri(Uri uri) {
+  return uri.scheme.isEmpty &&
+      !uri.hasAuthority &&
+      uri.host.isEmpty &&
+      uri.path.startsWith('/');
+}
+
 bool _isOfficialHttpsUrl(Uri uri) {
   return uri.scheme.toLowerCase() == 'https' &&
       _officialHosts.contains(uri.host.toLowerCase()) &&

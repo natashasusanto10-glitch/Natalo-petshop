@@ -60,4 +60,30 @@ void main() {
       }
     });
   });
+
+  group('isPathOnlyNataloInternalUri', () {
+    test(
+        'preserves path-only Feed, product, and profile links for legacy routing',
+        () {
+      expect(isPathOnlyNataloInternalUri(Uri.parse('/feed/post-1')), isTrue);
+      expect(
+        isPathOnlyNataloInternalUri(Uri.parse('/products/royal-canin')),
+        isTrue,
+      );
+      expect(isPathOnlyNataloInternalUri(Uri.parse('/u/natalo')), isTrue);
+    });
+
+    test('does not treat authority or production HTTPS URLs as path-only', () {
+      expect(
+        isPathOnlyNataloInternalUri(Uri.parse('//evil.test/feed/post-1')),
+        isFalse,
+      );
+      expect(
+        isPathOnlyNataloInternalUri(
+          Uri.parse('https://www.natalopetshop.com/feed/post-1'),
+        ),
+        isFalse,
+      );
+    });
+  });
 }
