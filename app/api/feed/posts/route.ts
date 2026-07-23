@@ -31,6 +31,10 @@ import {
 } from "@/lib/feed/mentions";
 import { listFeedPosts } from "@/lib/feed/queries";
 import { resolveInitialPostStatus } from "@/lib/feed/post-moderation";
+import {
+  parseTaggedUsersInput,
+  type TaggedUserInput,
+} from "@/lib/feed/tagged-users";
 import { ADMIN_VIDEO_CONFIG, USER_VIDEO_CONFIG } from "@/lib/feed/video-config";
 import {
   parseFeedAccessibilityMetadata,
@@ -122,6 +126,14 @@ type CreatePostBody = {
     width?: number | null;
     height?: number | null;
     altText?: string | null;
+  }>;
+  // Tag People (Spec B): user lain yang ditandai. Foto: mediaIndex +
+  // koordinat 0-1. Video: cukup userId (mediaIndex/x/y diabaikan).
+  taggedUsers?: Array<{
+    userId?: string;
+    mediaIndex?: number | null;
+    x?: number | null;
+    y?: number | null;
   }>;
 };
 
@@ -477,6 +489,29 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // ── Tag People (Spec B) ───────────────────────────────────────────
+  const taggedParse = parseTaggedUsersInput(body.taggedUsers, {
+    mediaCount: kind === "PHOTO_CAROUSEL" ? photoInputs.length : 0,
+    isVideo: kind !== "PHOTO_CAROUSEL",
+  });
+  if (!taggedParse.ok) {
+    return NextResponse.json({ error: taggedParse.error }, { status: 400 });
+  }
+  let taggedUsers: TaggedUserInput[] = taggedParse.tags;
+  if (taggedUsers.length > 0) {
+    // Validasi user benar-benar ada (dan punya username → bisa dinavigasi).
+    const found = await prisma.user.findMany({
+      where: { id: { in: taggedUsers.map((t) => t.userId) } },
+      select: { id: true },
+    });
+    if (found.length !== taggedUsers.length) {
+      return NextResponse.json(
+        { error: "Ada akun yang ditandai tapi tidak ditemukan." },
+        { status: 400 },
+      );
+    }
+  }
+
   // ── Status workflow ───────────────────────────────────────────────
   // Sumber kebenaran tunggal di lib/feed/post-moderation.ts: admin & customer
   // PHOTO_CAROUSEL → ACTIVE (auto-approve); video customer (COMMUNITY) →
@@ -586,6 +621,30 @@ export async function POST(request: NextRequest) {
           altText: photo.altText,
           sortOrder: index,
         })),
+      });
+    }
+
+    // Tag People — map mediaIndex → FeedMedia.id yang baru dibuat.
+    // WAJIB dalam transaksi yang sama dengan feedMedia.createMany.
+    if (taggedUsers.length > 0) {
+      const mediaRows =
+        kind === "PHOTO_CAROUSEL"
+          ? await tx.feedMedia.findMany({
+              where: { postId: created.id },
+              orderBy: { sortOrder: "asc" },
+              select: { id: true },
+            })
+          : [];
+      await tx.feedTaggedUser.createMany({
+        data: taggedUsers.map((tag) => ({
+          feedPostId: created.id,
+          taggedUserId: tag.userId,
+          mediaId:
+            tag.mediaIndex != null ? mediaRows[tag.mediaIndex]?.id ?? null : null,
+          x: tag.x,
+          y: tag.y,
+        })),
+        skipDuplicates: true,
       });
     }
 
