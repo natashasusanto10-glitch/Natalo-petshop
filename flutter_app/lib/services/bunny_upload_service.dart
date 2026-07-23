@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:path_provider/path_provider.dart';
 import 'package:tus_client_dart/tus_client_dart.dart';
 
+import '../models/new_post_user_tag.dart';
 import 'api_client.dart';
 import 'feed_service.dart';
 import 'video_quality_service.dart';
@@ -121,6 +122,7 @@ class BunnyUploadService {
     String? petType,
     int? videoDurationSec,
     List<String> productIds = const [],
+    List<NewPostUserTag> taggedUsers = const [],
     String? thumbnailUrl,
   }) async {
     final data = await apiClient.postJson(
@@ -132,6 +134,8 @@ class BunnyUploadService {
         if (petType != null && petType.isNotEmpty) 'petType': petType,
         if (videoDurationSec != null) 'videoDurationSec': videoDurationSec,
         'productIds': productIds,
+        if (taggedUsers.isNotEmpty)
+          'taggedUsers': taggedUsers.map((t) => t.toApiJson()).toList(),
         if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
           'thumbnailUrl': thumbnailUrl,
       },

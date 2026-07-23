@@ -8,6 +8,7 @@ import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 
 import '../config/api_config.dart';
+import '../models/new_post_user_tag.dart';
 import '../state/member_store.dart';
 
 /// Service untuk fitur Posting Foto di Feed (1-8 foto carousel).
@@ -220,6 +221,7 @@ class FeedPhotoService {
     required String title,
     String? description,
     List<String> productIds = const [],
+    List<NewPostUserTag> taggedUsers = const [],
   }) async {
     if (images.isEmpty) {
       throw const FeedPhotoUploadException(
@@ -247,6 +249,8 @@ class FeedPhotoService {
               })
           .toList(),
       if (productIds.isNotEmpty) 'productIds': productIds,
+      if (taggedUsers.isNotEmpty)
+        'taggedUsers': taggedUsers.map((t) => t.toApiJson()).toList(),
     };
 
     final res = await http

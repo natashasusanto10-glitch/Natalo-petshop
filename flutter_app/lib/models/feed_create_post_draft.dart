@@ -1,3 +1,5 @@
+import 'new_post_user_tag.dart';
+
 class FeedCreatePostDraft {
   final String? originalVideoPath;
   final String? localVideoPath;
@@ -13,6 +15,7 @@ class FeedCreatePostDraft {
   final int? fileSizeBytes;
   final String caption;
   final List<String> taggedProductIds;
+  final List<NewPostUserTag> taggedUsers;
   final String? originalFilename;
   final String? mimeType;
 
@@ -31,6 +34,7 @@ class FeedCreatePostDraft {
     this.fileSizeBytes,
     this.caption = '',
     this.taggedProductIds = const [],
+    this.taggedUsers = const [],
     this.originalFilename,
     this.mimeType,
     this.userPickedCover = false,
@@ -51,6 +55,7 @@ class FeedCreatePostDraft {
     int? fileSizeBytes,
     String? caption,
     List<String>? taggedProductIds,
+    List<NewPostUserTag>? taggedUsers,
     String? originalFilename,
     String? mimeType,
     bool? userPickedCover,
@@ -66,6 +71,7 @@ class FeedCreatePostDraft {
       fileSizeBytes: fileSizeBytes ?? this.fileSizeBytes,
       caption: caption ?? this.caption,
       taggedProductIds: taggedProductIds ?? this.taggedProductIds,
+      taggedUsers: taggedUsers ?? this.taggedUsers,
       originalFilename: originalFilename ?? this.originalFilename,
       mimeType: mimeType ?? this.mimeType,
       userPickedCover: userPickedCover ?? this.userPickedCover,

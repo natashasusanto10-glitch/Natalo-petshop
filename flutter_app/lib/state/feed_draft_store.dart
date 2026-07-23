@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/new_post_user_tag.dart';
+
 /// Key baru — daftar draft (JSON array), maks [FeedDraftStore.maxDrafts].
 /// Menggantikan slot tunggal lama [_legacyDraftKey] (migrasi otomatis saat
 /// load pertama — lihat [FeedDraftStore.load]).
@@ -21,6 +23,7 @@ class FeedDraft {
   final String type; // 'video' | 'image'
   final String caption;
   final List<String> productIds;
+  final List<NewPostUserTag> taggedUsers;
 
   /// video: `[finalVideoPath]` (1 entry). image: semua path foto carousel.
   final List<String> mediaPaths;
@@ -44,6 +47,7 @@ class FeedDraft {
     required this.type,
     required this.caption,
     required this.productIds,
+    this.taggedUsers = const [],
     required this.mediaPaths,
     this.thumbnailPath,
     this.trimStartMs,
@@ -60,6 +64,7 @@ class FeedDraft {
       type: type,
       caption: caption,
       productIds: productIds,
+      taggedUsers: taggedUsers,
       mediaPaths: mediaPaths,
       thumbnailPath: thumbnailPath,
       trimStartMs: trimStartMs,
@@ -76,6 +81,7 @@ class FeedDraft {
         'type': type,
         'caption': caption,
         'productIds': productIds,
+        'taggedUsers': taggedUsers.map((t) => t.toJson()).toList(),
         'mediaPaths': mediaPaths,
         'thumbnailPath': thumbnailPath,
         'trimStartMs': trimStartMs,
@@ -92,6 +98,10 @@ class FeedDraft {
       caption: (json['caption'] as String?) ?? '',
       productIds:
           (json['productIds'] as List?)?.cast<String>() ?? const <String>[],
+      taggedUsers: ((json['taggedUsers'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(NewPostUserTag.fromJson)
+          .toList(),
       mediaPaths:
           (json['mediaPaths'] as List?)?.cast<String>() ?? const <String>[],
       thumbnailPath: json['thumbnailPath'] as String?,
@@ -242,6 +252,10 @@ class FeedDraftStore {
         productIds:
             (payload['productIds'] as List?)?.cast<String>() ??
                 const <String>[],
+        taggedUsers: ((payload['taggedUsers'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(NewPostUserTag.fromJson)
+            .toList(),
         mediaPaths:
             (payload['media'] as List?)?.cast<String>() ?? const <String>[],
         thumbnailPath: payload['thumbnailPath'] as String?,

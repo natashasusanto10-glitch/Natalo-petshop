@@ -334,6 +334,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
           : null,
       caption: draft.caption,
       taggedProductIds: draft.productIds,
+      taggedUsers: draft.taggedUsers,
       userPickedCover: draft.userPickedCover,
     );
     await Navigator.push<bool>(
