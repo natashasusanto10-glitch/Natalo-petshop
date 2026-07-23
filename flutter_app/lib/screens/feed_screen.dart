@@ -32,12 +32,14 @@ import '../services/product_service.dart';
 import '../services/report_service.dart';
 import '../services/share_sheet_launcher.dart';
 import '../services/video_quality_service.dart';
+import '../state/account_scope.dart';
 import '../state/cart_store.dart';
 import '../state/feed_local_store.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/android_back_overlays.dart';
+import '../widgets/feed_tagged_users_overlay.dart';
 import '../utils/app_route_observer.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
@@ -1434,6 +1436,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     with SingleTickerProviderStateMixin {
   late final PageController _photoPageController;
   int _photoIndex = 0;
+  bool _showTagPills = false;
   bool _liked = false;
   bool _saved = false;
   int _likeCount = 0;
@@ -1735,6 +1738,30 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     }
     _heartBurstTarget = _resolveLikeCenter();
     _heartBurstController.forward(from: 0);
+  }
+
+  /// Tag orang pada slide foto aktif (Spec B viewer, Task 11).
+  List<FeedTaggedUser> get _tagsForCurrentPhoto =>
+      widget.post.taggedUsers.where((t) => t.mediaIndex == _photoIndex).toList();
+
+  bool get _hasTags => widget.post.taggedUsers.isNotEmpty;
+
+  void _toggleTagPills() {
+    if (widget.post.taggedUsers.isEmpty) return;
+    setState(() => _showTagPills = !_showTagPills);
+  }
+
+  bool _isSelfTag(FeedTaggedUser tag) =>
+      tag.userId.isNotEmpty && tag.userId == accountOwnerId();
+
+  void _onTapTaggedUser(FeedTaggedUser tag) {
+    final username = tag.username;
+    if (username == null || username.isEmpty) return;
+    if (_isSelfTag(tag)) {
+      // Nama sendiri → Opsi Tag (Task 12). Stub no-op sampai diimplementasikan.
+      return;
+    }
+    Navigator.of(context).pushNamed('/u', arguments: username);
   }
 
   Future<void> _onComment() async {
@@ -2165,6 +2192,27 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                 ),
               ),
             ),
+            // Badge tag orang — pojok kiri-bawah, sejajar action rail
+            // (mirror mute badge video di kanan-bawah). Hidup di layer
+            // [overlay] (bukan di dalam Stack media) supaya z-order & inset
+            // konsisten dengan rail/caption dan tidak ketiban chrome lain.
+            if (_hasTags)
+              Positioned(
+                left: 16,
+                bottom: actionRailInset,
+                child: AnimatedOpacity(
+                  opacity:
+                      (_hideOverlayForLongPress || _hideOverlayForPinchZoom)
+                          ? 0
+                          : 1,
+                  duration: const Duration(milliseconds: 200),
+                  child: IgnorePointer(
+                    ignoring:
+                        _hideOverlayForLongPress || _hideOverlayForPinchZoom,
+                    child: FeedTaggedBadge(onTap: _toggleTagPills),
+                  ),
+                ),
+              ),
           ],
         ),
         child: ColoredBox(
@@ -2175,38 +2223,57 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
             behavior: HitTestBehavior.opaque,
             onDoubleTapDown: _rememberHeartBurstPosition,
             onDoubleTap: _onDoubleTapLike,
+            onTap: _hasTags ? _toggleTagPills : null,
             onLongPressStart: _onLongPressStart,
             onLongPressEnd: _onLongPressEnd,
-            child: PageView.builder(
-              controller: _photoPageController,
-              itemCount: photos.length,
-              onPageChanged: (idx) => setState(() => _photoIndex = idx),
-              itemBuilder: (context, index) {
-                final photo = photos[index];
-                // Pinch-zoom sementara: begitu gesture selesai, foto
-                // snap back ke ukuran asli supaya feed tidak nyangkut
-                // dalam state zoom.
-                return SizedBox.expand(
-                  child: FeedPostSnapBackZoomMedia(
-                    clipBehavior: Clip.none,
-                    minScale: 1,
-                    maxScale: 4,
-                    onZoomingChanged: _onMediaZoomChanged,
-                    child: CachedNetworkImage(
-                      imageUrl: photo.url,
-                      fit: BoxFit.contain,
-                      placeholder: (_, __) => const SizedBox.shrink(),
-                      errorWidget: (_, __, ___) => const Center(
-                        child: Icon(
-                          Icons.broken_image_outlined,
-                          color: Colors.white54,
-                          size: 48,
+            child: Stack(
+              children: [
+                PageView.builder(
+                  controller: _photoPageController,
+                  itemCount: photos.length,
+                  onPageChanged: (idx) => setState(() => _photoIndex = idx),
+                  itemBuilder: (context, index) {
+                    final photo = photos[index];
+                    // Pinch-zoom sementara: begitu gesture selesai, foto
+                    // snap back ke ukuran asli supaya feed tidak nyangkut
+                    // dalam state zoom.
+                    return SizedBox.expand(
+                      child: FeedPostSnapBackZoomMedia(
+                        clipBehavior: Clip.none,
+                        minScale: 1,
+                        maxScale: 4,
+                        onZoomingChanged: _onMediaZoomChanged,
+                        child: CachedNetworkImage(
+                          imageUrl: photo.url,
+                          fit: BoxFit.contain,
+                          placeholder: (_, __) => const SizedBox.shrink(),
+                          errorWidget: (_, __, ___) => const Center(
+                            child: Icon(
+                              Icons.broken_image_outlined,
+                              color: Colors.white54,
+                              size: 48,
+                            ),
+                          ),
                         ),
+                      ),
+                    );
+                  },
+                ),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    ignoring: !_showTagPills,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) =>
+                          FeedTaggedUsersOverlay(
+                        tags: _tagsForCurrentPhoto,
+                        visible: _showTagPills,
+                        photoSize: constraints.biggest,
+                        onTapUser: _onTapTaggedUser,
                       ),
                     ),
                   ),
-                );
-              },
+                ),
+              ],
             ),
           ),
         ),
