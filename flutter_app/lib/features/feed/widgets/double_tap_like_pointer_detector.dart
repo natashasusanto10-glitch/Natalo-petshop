@@ -1,14 +1,9 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
-/// Deteksi double-tap dari RAW pointer event — di luar gesture arena.
-///
-/// KENAPA: selama PageView masih ballistic-settle sesudah swipe, pointer-down
-/// pertama diklaim scrollable untuk menghentikan animasi, sehingga
-/// [DoubleTapGestureRecognizer] di media tidak pernah menang arena → user
-/// harus mengetuk berkali-kali sebelum like masuk. [Listener] menerima semua
-/// event yang hit-test ke area-nya terlepas siapa pemenang arena, jadi
-/// deteksi manual di sini tetap jalan saat arena "macet".
+/// Deteksi double-tap dari RAW pointer event, untuk kasus "double-tap like
+/// saat PageView masih ballistic-settle sesudah swipe" (bug: user harus
+/// mengetuk berkali-kali sebelum like masuk).
 ///
 /// KENAPA tracker ini dipasang MEMBUNGKUS PageView (bukan di dalam tiap
 /// halaman): selama settle, [ScrollableState] mengaktifkan
