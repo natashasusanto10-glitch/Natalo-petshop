@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/feed_create_post_draft.dart';
+import 'package:natalo_petshop_flutter/models/new_post_user_tag.dart';
 import 'package:natalo_petshop_flutter/services/video_compress_gate.dart';
 import 'package:natalo_petshop_flutter/state/feed_upload_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -268,11 +269,19 @@ void main() {
       ).create();
       addTearDown(() => tmp.delete());
 
+      const taggedUsers = [
+        NewPostUserTag(
+          userId: 'u-video-resume',
+          username: 'resume_user',
+          name: 'Resume User',
+        ),
+      ];
       final payload = {
         'localId': 'upl-resume-1',
         'kind': 'video',
         'caption': 'Halo dari resume',
         'productIds': <String>['p1', 'p2'],
+        'taggedUsers': taggedUsers.map((t) => t.toJson()).toList(),
         'mediaPaths': <String>[],
         'thumbnailPath': null,
         'localVideoPath': tmp.path,
@@ -298,6 +307,9 @@ void main() {
       expect(store.activeTask?.caption, 'Halo dari resume');
       expect(store.activeTask?.productIds, ['p1', 'p2']);
       expect(store.activeTask?.videoDraft?.localVideoPath, tmp.path);
+      expect(store.activeTask?.taggedUsers, hasLength(1));
+      expect(store.activeTask?.taggedUsers.single.userId, 'u-video-resume');
+      expect(store.activeTask?.taggedUsers.single.mediaIndex, isNull);
       store.clear();
     });
 
