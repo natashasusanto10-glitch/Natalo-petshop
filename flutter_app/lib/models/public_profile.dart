@@ -96,6 +96,7 @@ bool _sameMutualItems(
 class PublicProfile {
   final String id;
   final String name;
+  final String? shareVersion;
   final String? username;
   final String? profilePhotoUrl;
   final String? bio;
@@ -115,6 +116,7 @@ class PublicProfile {
   const PublicProfile({
     required this.id,
     required this.name,
+    this.shareVersion,
     this.username,
     this.profilePhotoUrl,
     this.bio,
@@ -146,6 +148,7 @@ class PublicProfile {
     return PublicProfile(
       id: (json['id'] ?? '').toString(),
       name: (json['name'] ?? '').toString(),
+      shareVersion: _nullableString(json['shareVersion']),
       username: _nullableString(json['username']),
       profilePhotoUrl: _nullableString(
         json['profilePhotoUrl'] ?? json['profile_photo_url'],
@@ -166,6 +169,7 @@ class PublicProfile {
   }
 
   PublicProfile copyWith({
+    String? shareVersion,
     int? postCount,
     int? likedCount,
     int? followersCount,
@@ -178,6 +182,7 @@ class PublicProfile {
     return PublicProfile(
       id: id,
       name: name,
+      shareVersion: shareVersion ?? this.shareVersion,
       username: username,
       profilePhotoUrl: profilePhotoUrl,
       bio: bio,

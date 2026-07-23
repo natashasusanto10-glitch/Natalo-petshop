@@ -7,6 +7,7 @@ export const metadata: Metadata = {
   title: "Feed",
   description:
     "Feed Natalo Petshop — video produk, promo, edukasi pet care, dan konten komunitas pet lover.",
+  alternates: { canonical: "/feed" },
 };
 
 // Catatan: page ini sengaja simple — semua fetching + state ada di FeedClient

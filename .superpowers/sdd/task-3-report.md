@@ -1,39 +1,36 @@
-# Task 3 — Port Only Verified Gaps
+# Task 3 Report: Flutter share surface migration
 
-## Decision
+## Status
 
-No production gap was confirmed. All ten rows in the approved equivalence matrix are already covered by the current `main` implementation and its focused tests. Therefore no regression test, production-code port, rebase conflict resolution, or synthetic coverage was added for Task 3.
+Complete and self-reviewed.
 
-The direct `.play()` audit also found no stale Feed autoplay bypass: the remaining Feed call is inside `_playLegacy`, after autoplay and audio-claim gates; fullscreen cinema calls are explicit user navigation paths.
+## TDD
 
-## Matrix review
+- RED: `flutter test test/services/share_sheet_launcher_test.dart` failed because `share_sheet_launcher.dart`, `PlatformShareGateway`, and its result API did not exist.
+- GREEN: added a platform gateway seam and launcher; success invokes the callback once, while dismissed and unavailable results never invoke it.
 
-| Matrix row | Decision | Evidence |
-|---|---|---|
-| Controller-loading navigation to Profile | Covered | `_routeCovered` is set before init completion; init listener gates playback. Existing race test passes. |
-| Opaque route | Covered | Opaque-aware `didPushNext`/`didPopNext` state machine and existing opaque tests. |
-| Nested route | Covered | Coverage remains until the adjacent Feed route is uncovered; nested navigation test passes. |
-| Transparent bottom sheet | Covered | Transparent routes do not mark Feed covered; transparent-sheet foreground test passes. |
-| Background/foreground | Covered | `_appBackgrounded` lifecycle gate and resume state machine; background tests pass. |
-| Mute restoration | Covered | Resume derives volume from `feedMuted`; active claim listener handles live mute updates. |
-| Controller-null uncover | Covered | Uncover/resume uses `forceIfUncovered`; GAP #4 test passes. |
-| Legacy play paths | Covered | `_playLegacy` is the gated legacy primitive; no stale direct-play path remains. |
-| Managed coordinator resume | Covered | `VideoAudioClaim` and coordinator callbacks own managed resume. |
-| Lifecycle/listener cleanup | Covered | Observers and controller listeners are removed in `dispose`; cleanup/race tests pass. |
+## Migrated call sites
 
-## Verification commands
+- Feed image/carousel: `flutter_app/lib/screens/feed_screen.dart`
+- Feed video: `flutter_app/lib/features/feed/widgets/feed_video_post_view.dart`
+- Postingan detail: `flutter_app/lib/screens/member_post_detail_screen.dart`
+- Product detail: `flutter_app/lib/screens/product_detail_screen.dart`
+- My profile: `flutter_app/lib/screens/member_posts_screen.dart`
+- Public profile: `flutter_app/lib/screens/public_profile_screen.dart`
 
-Executed from `flutter_app` in this audit worktree:
+All use `ShareContent` plus `ShareLinkBuilder` via `ShareSheetLauncher`; Feed links now use `post.id`, optional `shareVersion`, and production HTTPS paths. Feed share count and server tracking run only from the successful result callback. iPad popover origins continue to be passed via `shareOriginFor(context)`.
 
-```powershell
-flutter test test/features/feed/widgets/feed_video_post_view_test.dart
-```
+## Analytics
 
-Result: `00:05 +40: All tests passed!`
+Added privacy-safe `share_sheet_opened`, `share_completed`, and `share_dismissed` events. They include only content type, opaque content identifier, OS, and result; no caption, contact, destination app, or media URL. Events do not block the native share sheet.
 
-The command also resolved dependencies successfully. Existing API 400 analytics/service logs are expected test-environment noise; they did not fail any test.
+## Verification
+
+- `flutter test test/services/share_sheet_launcher_test.dart test/state/feed_store_share_test.dart test/features/feed/widgets/feed_video_post_view_test.dart test/screens/member_post_detail_screen_caption_test.dart` -> 78 passed.
+- `flutter analyze` over all changed Task 3 services/screens/widgets -> no issues.
+- `git diff --check` -> clean.
+- Share-call audit confirms direct platform calls remain only in explicitly out-of-scope in-app-browser and profile-QR screens.
 
 ## Concerns
 
-- This task intentionally did not rebase or merge the legacy branch because its behavior is already represented by the newer `main` architecture.
-- A future change to playback ownership, route opacity detection, or lifecycle handling should rerun this focused suite and repeat the matrix audit.
+No known Task 3 issues. Root/full Flutter suite was intentionally not run in this task; baseline had one pre-existing flaky notification failure and the task requires focused verification.

@@ -1,7 +1,20 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/services/product_service.dart';
+import 'package:natalo_petshop_flutter/models/product.dart';
 
 void main() {
+  test('Product parses shareVersion while keeping older payloads valid', () {
+    final product = Product.fromJson({
+      'id': 'product-1',
+      'slug': 'product-1',
+      'name': 'Produk Natalo',
+      'price': 10000,
+      'shareVersion': 'product-preview',
+    });
+    expect(product.shareVersion, 'product-preview');
+    expect(Product.fromJson(product.toJson()).shareVersion, 'product-preview');
+  });
+
   group('extractRawList', () {
     test('map dengan key pertama berisi list', () {
       final result = extractRawList(

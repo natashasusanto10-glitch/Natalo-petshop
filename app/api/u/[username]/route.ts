@@ -31,12 +31,15 @@ import {
   resolveFeedProductDiscount,
 } from "@/lib/feed/queries";
 import {
-  OFFICIAL_BRAND_NAME,
   brandDisplayName,
   brandPhotoUrl,
 } from "@/lib/social/brand-user";
 import { loadMutualFollowers } from "@/lib/social/profile-mutual-followers";
 import { feedAccessibilityPayload } from "@/lib/feed/accessibility";
+import {
+  buildShareVersion,
+  stripEphemeralUrlQuery,
+} from "@/lib/share/share-version";
 
 // Postingan customer biasa: video komunitas + foto carousel.
 const VISIBLE_KINDS: FeedPostKind[] = ["COMMUNITY", "PHOTO_CAROUSEL"];
@@ -117,6 +120,9 @@ export async function GET(
   // Akun official (admin) → branding "Natalo Petshop" + tampilkan
   // postingan admin (ADMIN_VISIBLE_KINDS), bukan COMMUNITY/PHOTO user.
   const isOfficial = target.role === "ADMIN";
+  const profileDisplayName = brandDisplayName(target.role, target.name);
+  const profilePhoto = brandPhotoUrl(target.role, target.profilePhotoUrl);
+  const profileBio = isOfficial ? OFFICIAL_BRAND_BIO : target.bio;
   const visibleKinds = isOfficial ? ADMIN_VISIBLE_KINDS : VISIBLE_KINDS;
 
   const cursor = request.nextUrl.searchParams.get("cursor") || null;
@@ -274,12 +280,22 @@ export async function GET(
       id: target.id,
       // Official → brand name "Natalo Petshop", hide nama asli pemilik +
       // foto/bio pribadi (privacy). Flutter render badge + logo brand.
-      name: isOfficial ? OFFICIAL_BRAND_NAME : target.name,
+      name: profileDisplayName,
       username: target.username,
-      profilePhotoUrl: isOfficial ? null : target.profilePhotoUrl,
-      bio: isOfficial ? OFFICIAL_BRAND_BIO : target.bio,
+      profilePhotoUrl: profilePhoto,
+      bio: profileBio,
       memberSince: target.createdAt.toISOString(),
       isOfficial,
+      shareVersion: buildShareVersion([
+        target.username,
+        profileDisplayName,
+        stripEphemeralUrlQuery(profilePhoto),
+        profileBio,
+        isOfficial,
+        totalCount,
+        target.followersCount,
+        target.followingCount,
+      ]),
     },
     stats: {
       postCount: totalCount,
@@ -305,6 +321,16 @@ export async function GET(
       });
       return {
         id: p.id,
+        shareVersion: buildShareVersion([
+          p.id,
+          p.title,
+          p.description,
+          stripEphemeralUrlQuery(p.thumbnailUrl),
+          p.videoDurationSec,
+          profileDisplayName,
+          stripEphemeralUrlQuery(profilePhoto),
+          isOfficial,
+        ]),
         kind: p.kind,
         title: p.title,
         description: p.description,
@@ -328,11 +354,11 @@ export async function GET(
         // (nama+foto pemilik tak bocor, username brand tetap terkirim).
         author: {
           id: target.id,
-          name: isOfficial ? OFFICIAL_BRAND_NAME : target.name,
+          name: profileDisplayName,
           username: target.username,
           role: isOfficial ? "ADMIN" : "CUSTOMER",
-          profilePhotoUrl: isOfficial ? null : target.profilePhotoUrl,
-          avatarUrl: isOfficial ? null : target.profilePhotoUrl,
+          profilePhotoUrl: profilePhoto,
+          avatarUrl: profilePhoto,
           isOfficial,
         },
         recentLikers: p.likes.map((like) => ({

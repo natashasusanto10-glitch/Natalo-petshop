@@ -6,12 +6,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
-import '../config/api_config.dart';
 import '../features/feed/layout/postingan_media_aspect_ratio.dart';
 import '../features/feed/transition/post_hero.dart';
 import '../features/feed/widgets/double_tap_burst_guard.dart';
@@ -20,6 +18,7 @@ import '../features/feed/video/post_video_coordinator.dart';
 import '../features/feed/video/post_video_warm_handoff.dart';
 import '../features/feed/video/video_player_session.dart';
 import '../models/feed_post.dart';
+import '../models/share_content.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
 import '../services/follow_service.dart';
@@ -36,6 +35,7 @@ import '../utils/app_route_observer.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../utils/mention_text.dart';
+import '../services/share_sheet_launcher.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/calm_scroll_physics.dart';
 import '../widgets/feed_comment_sheet.dart';
@@ -843,21 +843,21 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
     final post = _posts[index];
     if (!_shareInFlight.add(post.id)) return;
     AppHaptics.tap();
-    final url = '${ApiConfig.publicSiteUrl}/feed/${post.slug}';
-    final captionSnippet = (post.caption ?? '').trim();
-    final text =
-        captionSnippet.isEmpty ? url : '${truncate(captionSnippet, 120)}\n$url';
     try {
-      final box = context.findRenderObject() as RenderBox?;
-      final result = await Share.share(
-        text,
-        sharePositionOrigin:
-            box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+      await ShareSheetLauncher().launch(
+        FeedShareContent(
+          postId: post.id,
+          authorName: post.author.displayName,
+          caption: post.caption ?? post.title,
+          shareVersion: post.shareVersion,
+        ),
+        origin: shareOriginFor(context),
+        onCompleted: () async {
+          feedStore.incrementShareCount(post.id);
+          final serverCount = await feedService.trackShare(post.id);
+          if (serverCount != null) feedStore.setShareCount(post.id, serverCount);
+        },
       );
-      if (result.status != ShareResultStatus.success || !mounted) return;
-      feedStore.incrementShareCount(post.id);
-      final serverCount = await feedService.trackShare(post.id);
-      if (serverCount != null) feedStore.setShareCount(post.id, serverCount);
     } catch (_) {
       // Fail silent — user cancelled / share sheet error.
     } finally {

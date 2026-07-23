@@ -1,6 +1,6 @@
 # Share Preview dan Deep Link Natalo Petshop
 
-Tanggal: 22 Juli 2026  
+Tanggal: 22 Juli 2026
 Status: Ditinjau setelah audit implementasi
 Platform: Flutter Android, Flutter iOS, Next.js web, WhatsApp dan system share sheet
 

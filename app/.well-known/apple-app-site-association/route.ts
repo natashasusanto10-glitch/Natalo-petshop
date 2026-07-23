@@ -29,6 +29,7 @@ const aasa = {
         appIDs: [`${TEAM_ID}.${BUNDLE_ID}`],
         components: [
           // Halaman yang harus dibuka di app native (bukan Safari)
+          { "/": "/feed/*", comment: "Public Feed post pages" },
           { "/": "/products/*", comment: "Product detail pages" },
           { "/": "/produk/*", comment: "Product detail aliases" },
           { "/": "/kategori/*", comment: "Category pages" },

@@ -4,13 +4,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
-import '../config/api_config.dart';
 import '../theme/natalo_text.dart';
 import '../features/feed/widgets/feed_action_rail.dart';
 import '../features/feed/video/adaptive_video_preload_policy.dart';
@@ -24,12 +22,14 @@ import '../features/feed/widgets/feed_product_links_sheet.dart';
 import '../features/feed/widgets/feed_video_post_view.dart';
 import '../models/feed_post.dart';
 import '../models/product.dart';
+import '../models/share_content.dart';
 import '../screens/feed_user_search_screen.dart';
 import '../services/api_client.dart';
 import '../services/block_service.dart';
 import '../services/feed_service.dart';
 import '../services/product_service.dart';
 import '../services/report_service.dart';
+import '../services/share_sheet_launcher.dart';
 import '../services/video_quality_service.dart';
 import '../state/cart_store.dart';
 import '../state/feed_local_store.dart';
@@ -1804,16 +1804,22 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     _shareInFlight = true;
     AppHaptics.tap();
     try {
-      final url = ApiConfig.uri('/feed/${widget.post.id}').toString();
-      final result = await Share.share(
-        widget.post.title.isNotEmpty ? '${widget.post.title}\n$url' : url,
+      await ShareSheetLauncher().launch(
+        FeedShareContent(
+          postId: widget.post.id,
+          authorName: widget.post.author.displayName,
+          caption: widget.post.caption ?? widget.post.title,
+          shareVersion: widget.post.shareVersion,
+        ),
+        origin: shareOriginFor(context),
+        onCompleted: () async {
+          feedStore.incrementShareCount(widget.post.id);
+          final serverCount = await feedService.trackShare(widget.post.id);
+          if (serverCount != null) {
+            feedStore.setShareCount(widget.post.id, serverCount);
+          }
+        },
       );
-      if (result.status != ShareResultStatus.success || !mounted) return;
-      feedStore.incrementShareCount(widget.post.id);
-      final serverCount = await feedService.trackShare(widget.post.id);
-      if (serverCount != null) {
-        feedStore.setShareCount(widget.post.id, serverCount);
-      }
     } catch (_) {
       // Cancel atau share fail — silent.
     } finally {

@@ -6,10 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/natalo_colors.dart';
 import '../theme/natalo_text.dart';
-import 'package:share_plus/share_plus.dart';
 
-import '../config/api_config.dart';
 import '../models/feed_post.dart';
+import '../models/share_content.dart';
 import '../features/feed/transition/post_hero.dart';
 import '../features/feed/transition/post_viewer_route.dart';
 import '../features/feed/transition/profile_tile_visibility.dart';
@@ -21,6 +20,7 @@ import '../services/api_client.dart';
 import '../services/follow_service.dart';
 import '../services/profile_service.dart';
 import '../services/report_service.dart';
+import '../services/share_sheet_launcher.dart';
 import '../services/video_quality_service.dart';
 import '../state/chat_store.dart';
 import '../state/feed_store.dart';
@@ -806,25 +806,20 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   }
 
   /// Share link profil publik `/u/{username}` via native share sheet.
-  /// Konsisten dgn pola share feed (title + url). Kalau username null
-  /// (user lama belum set), fallback share link app base.
   Future<void> _shareProfile() async {
     final profile = _profile;
     if (profile == null) return;
     AppHaptics.tap();
     try {
-      final username = profile.username;
-      final url = (username != null && username.isNotEmpty)
-          ? ApiConfig.uri('/u/$username').toString()
-          : ApiConfig.uri('/').toString();
-      final label = profile.isOfficial ? profile.name : profile.displayHandle;
-      // sharePositionOrigin WAJIB untuk iOS (popover anchor); tanpa ini share
-      // gagal/senyap di iOS. Di Android tak berpengaruh.
-      final box = context.findRenderObject() as RenderBox?;
-      await Share.share(
-        'Lihat profil $label di Natalo\n$url',
-        sharePositionOrigin:
-            box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+      final username = profile.username?.trim();
+      if (username == null || username.isEmpty) return;
+      await ShareSheetLauncher().launch(
+        ProfileShareContent(
+          username: username,
+          displayName: profile.isOfficial ? profile.name : profile.displayHandle,
+          shareVersion: profile.shareVersion,
+        ),
+        origin: shareOriginFor(context),
       );
     } catch (_) {
       // Cancel / share fail — silent.

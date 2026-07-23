@@ -15,6 +15,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getProductBySlug } from "@/lib/products";
 import { getSession } from "@/lib/auth";
+import {
+  buildShareVersion,
+  stripEphemeralUrlQuery,
+} from "@/lib/share/share-version";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +38,8 @@ export async function GET(
       { status: 404 },
     );
   }
+
+  const effectivePrice = product.discountPrice ?? product.price;
 
   // Untuk consistency, ambil sold count + brand info — TypeScript-side
   // append. Pure read, no mutation.
@@ -72,6 +78,14 @@ export async function GET(
     {
       product: {
         ...product,
+        shareVersion: buildShareVersion([
+          product.slug,
+          product.name,
+          stripEphemeralUrlQuery(product.imageUrl),
+          effectivePrice,
+          product.price,
+          product.stock,
+        ]),
         soldCount: soldSummary._sum.quantity ?? 0,
         // Object tetap dikirim untuk web/kompat lama, TAPI Flutter butuh
         // field flat — model client fallback ke `brand`/`category` object

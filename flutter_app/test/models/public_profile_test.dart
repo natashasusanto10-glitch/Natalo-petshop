@@ -2,6 +2,24 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/public_profile.dart';
 
 void main() {
+  test(
+      'shareVersion parses when provided and remains optional for older payloads',
+      () {
+    expect(
+      PublicProfile.fromJson({
+        'id': 'profile-1',
+        'name': 'Natalo Petshop',
+        'shareVersion': 'profile-preview',
+      }).shareVersion,
+      'profile-preview',
+    );
+    expect(
+      PublicProfile.fromJson({'id': 'profile-1', 'name': 'Natalo'})
+          .shareVersion,
+      isNull,
+    );
+  });
+
   test('parses mutual follower summary defensively', () {
     final summary = PublicProfileMutualSummary.fromJson({
       'items': [
