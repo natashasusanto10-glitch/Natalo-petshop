@@ -123,6 +123,16 @@ export function serializeTaggedUsers(
  * Validasi body PATCH self-service tag ("Sembunyikan/Tampilkan dari
  * profil saya"). Hanya menerima { hidden: boolean }.
  */
+/**
+ * Where-clause "caller owns row" untuk self-service tag/me (DELETE+PATCH).
+ * taggedUserId WAJIB berasal dari session (sessionUserId), tidak pernah
+ * dari body/params — helper ini jadi satu-satunya sumber kebenaran supaya
+ * properti keamanan ini terkunci & bisa di-unit-test.
+ */
+export function buildMyTagWhere(postId: string, sessionUserId: string) {
+  return { feedPostId: postId, taggedUserId: sessionUserId };
+}
+
 export function parseHiddenBody(
   raw: unknown,
 ): { ok: true; hidden: boolean } | { ok: false; error: string } {

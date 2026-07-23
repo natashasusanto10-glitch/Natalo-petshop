@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
-import { parseHiddenBody } from "@/lib/feed/tagged-users";
+import { buildMyTagWhere, parseHiddenBody } from "@/lib/feed/tagged-users";
 
 async function requireSession(request: NextRequest) {
   const csrfReject = assertSameOrigin(request);
@@ -36,7 +36,7 @@ export async function DELETE(
   if (reject || !session) return reject;
 
   const deleted = await prisma.feedTaggedUser.deleteMany({
-    where: { feedPostId: id, taggedUserId: session.sub },
+    where: buildMyTagWhere(id, session.sub),
   });
   if (deleted.count === 0) {
     return NextResponse.json(
@@ -62,7 +62,7 @@ export async function PATCH(
   }
 
   const updated = await prisma.feedTaggedUser.updateMany({
-    where: { feedPostId: id, taggedUserId: session.sub },
+    where: buildMyTagWhere(id, session.sub),
     data: { hidden: parsed.hidden },
   });
   if (updated.count === 0) {
