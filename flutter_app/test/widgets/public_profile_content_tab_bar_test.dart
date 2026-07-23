@@ -211,6 +211,54 @@ void main() {
 
     await tester.pump(const Duration(milliseconds: 400)); // selesaikan animasi
   });
+
+  testWidgets(
+      'reduced motion: ikon tab tidak ikut animasi lift, snap ke Offset.zero',
+      (tester) async {
+    final controller = TabController(length: 3, vsync: const TestVSync());
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 300,
+          child: PublicProfileContentTabBar(
+            controller: controller,
+            labelOpacity: 0,
+            pillOpacity: 0,
+            underlineOpacity: 1,
+            reducedMotion: true,
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+
+    // Mulai transisi ke tab 1, pump SEBAGIAN (belum selesai) — pola sama
+    // dengan test 'active tab indicator slides between tabs (no snap)' di
+    // atas. Titik tengah swipe adalah titik paling rawan untuk bug ini:
+    // kalau reducedMotion tidak dihormati, `emphasis` tiap tab benar-benar
+    // fractional (0 < emphasis < 1) di sini, sehingga Transform.translate
+    // punya offset non-zero.
+    controller.animateTo(1);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Setiap Transform yang membungkus ikon tab (satu per tab, lihat
+    // _PublicProfileTab.build) HARUS Offset.zero saat reducedMotion — tidak
+    // ada lift 3px di titik manapun sepanjang transisi.
+    final transforms = tester.widgetList<Transform>(
+      find.descendant(
+        of: find.byType(PublicProfileContentTabBar),
+        matching: find.byType(Transform),
+      ),
+    );
+    expect(transforms, isNotEmpty);
+    for (final transform in transforms) {
+      expect(transform.transform.getTranslation().y, 0.0);
+    }
+
+    await tester.pump(const Duration(milliseconds: 400)); // selesaikan animasi
+  });
 }
 
 void _expectNeutralForegrounds(WidgetTester tester) {

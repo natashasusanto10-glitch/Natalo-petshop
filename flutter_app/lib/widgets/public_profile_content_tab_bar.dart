@@ -238,6 +238,21 @@ class _PublicProfileTab extends StatelessWidget {
           final scale = MediaQuery.textScalerOf(context).scale(1);
           final labelScaler = TextScaler.linear(scale.clamp(1.0, 1.3));
 
+          // Reduced motion: LiquidGlass di bawah sudah mematikan blur/gerak
+          // untuk pengguna ini (lihat LiquidGlass.reducedMotion) — ikon tab
+          // ikut kebijakan yang sama. Warna (foreground) TETAP boleh lerp
+          // karena itu bukan gerak, tapi lift 3px + crossfade outline↔filled
+          // adalah gerak murni, jadi di-snap ke hard cutover di titik tengah
+          // swipe tanpa offset sama sekali saat reducedMotion.
+          final iconLiftOffset =
+              reducedMotion ? 0.0 : lerpDouble(0, -3, curvedEmphasis)!;
+          final outlineIconOpacity = reducedMotion
+              ? (emphasis > 0.5 ? 0.0 : 1.0)
+              : (1 - curvedEmphasis).clamp(0.0, 1.0);
+          final activeIconOpacity = reducedMotion
+              ? (emphasis > 0.5 ? 1.0 : 0.0)
+              : curvedEmphasis.clamp(0.0, 1.0);
+
           final pillContent = DecoratedBox(
             key: pillKey,
             decoration: BoxDecoration(
@@ -256,16 +271,16 @@ class _PublicProfileTab extends StatelessWidget {
                     // filled memakai kurva yang sama supaya bentuk & posisi
                     // berubah serempak (premium: satu gerakan, bukan dua
                     // animasi yang balapan).
-                    offset: Offset(0, lerpDouble(0, -3, curvedEmphasis)!),
+                    offset: Offset(0, iconLiftOffset),
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
                         Opacity(
-                          opacity: (1 - curvedEmphasis).clamp(0.0, 1.0),
+                          opacity: outlineIconOpacity,
                           child: Icon(icon, color: foreground, size: iconSize),
                         ),
                         Opacity(
-                          opacity: curvedEmphasis.clamp(0.0, 1.0),
+                          opacity: activeIconOpacity,
                           child: Icon(
                             activeIcon,
                             color: foreground,
