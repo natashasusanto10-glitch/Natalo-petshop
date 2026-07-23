@@ -79,3 +79,16 @@ The product and profile HTML metadata is intentionally dynamic because the
 versioned OG URL must reflect current public price, stock, profile, and stats.
 Only the immutable `v` image endpoints receive CDN caching. Task 7 was not
 started.
+
+## Follow-up security fix
+
+The public `/u/[username]` HTML page now builds its displayed identity from
+`PublicShareProfile`, through `buildPublicProfilePageViewModel`, instead of
+reading the resolved user record directly. Official accounts therefore render
+only the public brand name, `/logo.png`, and no staff bio in HTML, metadata, or
+the OG card. Customer name, avatar, and sanitized bio remain unchanged.
+
+Validation: `npx tsx --test tests/share-product-profile.test.ts` passed 7/7;
+isolated TypeScript validation and targeted ESLint passed; `git diff --check`
+passed. Root typecheck remains blocked only by the six existing tests that
+import unavailable `vitest` declarations.

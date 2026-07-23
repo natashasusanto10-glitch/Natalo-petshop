@@ -9,6 +9,7 @@ import {
 } from "@/lib/share/product-share-data";
 import {
   buildProfileShareMetadata,
+  buildPublicProfilePageViewModel,
   buildPublicShareProfile,
   buildUnavailableProfileShareMetadata,
   getPublicShareProfile,
@@ -83,6 +84,12 @@ test("official profile share preview keeps the brand identity, normalized userna
     typeof image === "string" ? image : image instanceof URL ? image.toString() : image?.url,
     `${siteUrl}/api/share/og/profile/natalopetshop?v=${profile.shareVersion}`,
   );
+
+  const page = buildPublicProfilePageViewModel(profile);
+  assert.equal(page.displayName, OFFICIAL_BRAND_NAME);
+  assert.equal(page.avatarUrl, "/logo.png");
+  assert.equal(page.bio, null);
+  assert.doesNotMatch(JSON.stringify(page), /Private Administrator|Private bio|private-admin\.jpg/);
 });
 
 test("profile bio strips control characters and missing resources resolve to no preview", () => {
@@ -92,6 +99,32 @@ test("profile bio strips control characters and missing resources resolve to no 
   );
   assert.equal(buildPublicShareProfile(null), null);
   assert.equal(buildPublicShareProduct(null), null);
+});
+
+test("public profile page view model preserves sanitized customer identity", () => {
+  const profile = buildPublicShareProfile({
+    id: "customer-1",
+    username: "pet lover",
+    name: "Pet Lover",
+    role: "CUSTOMER",
+    profilePhotoUrl: "https://vz-natalo.b-cdn.net/avatars/pet-lover.png?token=temporary",
+    bio: "  Pecinta\n kucing  ",
+    followersCount: 1,
+    followingCount: 2,
+    postCount: 3,
+  });
+
+  assert.ok(profile);
+  if (!profile) return;
+  assert.deepEqual(buildPublicProfilePageViewModel(profile), {
+    id: "customer-1",
+    username: "pet lover",
+    displayName: "Pet Lover",
+    avatarUrl: "https://vz-natalo.b-cdn.net/avatars/pet-lover.png",
+    bio: "Pecinta kucing",
+    isOfficial: false,
+    postCount: 3,
+  });
 });
 
 test("missing public records become null and unavailable metadata is noindex", async () => {

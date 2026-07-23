@@ -16,10 +16,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 
-import { resolveUserByUsername } from "@/lib/username";
 import { prisma } from "@/lib/prisma";
-import { brandDisplayName, brandPhotoUrl } from "@/lib/social/brand-user";
 import {
+  buildPublicProfilePageViewModel,
   buildProfileShareMetadata,
   buildUnavailableProfileShareMetadata,
   getPublicShareProfile,
@@ -48,22 +47,15 @@ export async function generateMetadata({
 
 export default async function PublicProfilePage({ params }: PageProps) {
   const { username } = await params;
-  const user = await resolveUserByUsername(username);
-  if (!user) notFound();
+  const profile = await getPublicShareProfile(username);
+  if (!profile) notFound();
+  const view = buildPublicProfilePageViewModel(profile);
 
-  const [postCount, likedCount, posts] = await Promise.all([
-    prisma.feedPost.count({
-      where: {
-        authorId: user.id,
-        kind: { in: ["COMMUNITY", "PHOTO_CAROUSEL"] },
-        status: "ACTIVE",
-        deletedAt: null,
-      },
-    }),
-    prisma.feedLike.count({ where: { userId: user.id } }),
+  const [likedCount, posts] = await Promise.all([
+    prisma.feedLike.count({ where: { userId: view.id } }),
     prisma.feedPost.findMany({
       where: {
-        authorId: user.id,
+        authorId: view.id,
         kind: { in: ["COMMUNITY", "PHOTO_CAROUSEL"] },
         status: "ACTIVE",
         deletedAt: null,
@@ -85,21 +77,18 @@ export default async function PublicProfilePage({ params }: PageProps) {
     }),
   ]);
 
-  const handle = user.username ?? username.toLowerCase();
-  // Brand-safe identity — akun official tak boleh bocorkan nama/foto asli.
-  const safeName = brandDisplayName(user.role, user.name);
-  const safePhoto = brandPhotoUrl(user.role, user.profilePhotoUrl);
-  const initial = safeName.trim().charAt(0).toUpperCase() || "N";
+  const handle = view.username;
+  const initial = view.displayName.trim().charAt(0).toUpperCase() || "N";
 
   return (
     <div className="mx-auto min-h-screen w-full max-w-3xl px-4 pb-16 pt-6 sm:px-6">
       {/* Header */}
       <header className="flex flex-col items-start gap-5 sm:flex-row sm:items-center">
         <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-blue-100 to-blue-200 ring-4 ring-white shadow-md sm:h-28 sm:w-28">
-          {safePhoto ? (
+          {view.avatarUrl ? (
             <Image
-              src={safePhoto}
-              alt={safeName}
+              src={view.avatarUrl}
+              alt={view.displayName}
               fill
               sizes="112px"
               className="object-cover"
@@ -116,20 +105,20 @@ export default async function PublicProfilePage({ params }: PageProps) {
             <h1 className="text-2xl font-black text-slate-900">
               {handle}
             </h1>
-            {user.username && safeName !== user.username && (
+            {view.displayName !== view.username && (
               <span className="text-sm font-medium text-slate-500">
-                {safeName}
+                {view.displayName}
               </span>
             )}
           </div>
-          {user.bio && (
+          {view.bio && (
             <p className="mt-1.5 max-w-md text-sm text-slate-600">
-              {user.bio}
+              {view.bio}
             </p>
           )}
           <dl className="mt-3 flex gap-6 text-sm">
             <div>
-              <dd className="font-black text-slate-900">{postCount}</dd>
+              <dd className="font-black text-slate-900">{view.postCount}</dd>
               <dt className="text-slate-500">Postingan</dt>
             </div>
             <div>

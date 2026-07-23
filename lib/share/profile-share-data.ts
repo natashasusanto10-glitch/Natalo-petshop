@@ -36,6 +36,30 @@ export type PublicShareProfile = {
   shareVersion: string;
 };
 
+/**
+ * Identity fields permitted in the public HTML profile page. Keeping this
+ * derived from PublicShareProfile prevents official staff fields from
+ * accidentally bypassing the share sanitizer.
+ */
+export type PublicProfilePageViewModel = Pick<
+  PublicShareProfile,
+  "id" | "username" | "displayName" | "avatarUrl" | "bio" | "isOfficial" | "postCount"
+>;
+
+export function buildPublicProfilePageViewModel(
+  profile: PublicShareProfile,
+): PublicProfilePageViewModel {
+  return {
+    id: profile.id,
+    username: profile.username,
+    displayName: profile.displayName,
+    avatarUrl: profile.avatarUrl,
+    bio: profile.bio,
+    isOfficial: profile.isOfficial,
+    postCount: profile.postCount,
+  };
+}
+
 export function sanitizePublicProfileBio(value: string | null | undefined) {
   const clean = (value ?? "")
     .replace(/[\u0000-\u001F\u007F]/g, " ")
