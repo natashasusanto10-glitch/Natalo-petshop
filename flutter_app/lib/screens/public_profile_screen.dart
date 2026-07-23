@@ -324,6 +324,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   Future<void> _load({bool showInitialLoading = true}) async {
     final requestViewerGeneration = memberStore.viewerGeneration;
     final content = _selectedContent;
+    if (_shortCircuitTaggedContent(content)) return;
     final contentState = _contentStates[content]!;
     setState(() {
       // Saat pull-to-refresh, pertahankan profil lama di layar. Loading penuh
@@ -477,24 +478,30 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
 
   Future<void> _refresh() async => _load(showInitialLoading: false);
 
+  /// Tab "Ditandai" (enum lama: shoppable) sengaja selalu kosong sampai Spec B
+  /// membangun data tag-orang — jangan pernah memanggil network fetch untuk
+  /// filter ini, dari jalur manapun (tap/swipe MAUPUN refresh/reload). Return
+  /// true kalau content ini di-short-circuit (state sudah diset kosong,
+  /// caller HARUS berhenti, tidak lanjut fetch). Lihat
+  /// docs/superpowers/specs/2026-07-22-tutup-tag-belanja-spec-a-design.md.
+  bool _shortCircuitTaggedContent(PublicProfileContentFilter content) {
+    if (content != PublicProfileContentFilter.shoppable) return false;
+    final contentState = _contentStates[content]!;
+    if (!contentState.loaded) {
+      setState(() {
+        contentState
+          ..loaded = true
+          ..posts = const [];
+      });
+    }
+    return true;
+  }
+
   void _activateContent(PublicProfileContentFilter content) {
     if (content == _selectedContent) return;
     setState(() => _selectedContent = content);
+    if (_shortCircuitTaggedContent(content)) return;
     final contentState = _contentStates[content]!;
-    // Tab "Ditandai" (enum lama: shoppable) sengaja selalu kosong sampai
-    // Spec B membangun data tag-orang — jangan pernah memanggil network
-    // fetch untuk filter ini. Lihat
-    // docs/superpowers/specs/2026-07-22-tutup-tag-belanja-spec-a-design.md.
-    if (content == PublicProfileContentFilter.shoppable) {
-      if (!contentState.loaded) {
-        setState(() {
-          contentState
-            ..loaded = true
-            ..posts = const [];
-        });
-      }
-      return;
-    }
     if (!contentState.loaded && !contentState.loading) {
       unawaited(_loadSelectedContent(content));
     }

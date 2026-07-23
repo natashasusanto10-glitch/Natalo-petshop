@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/transition/post_viewer_route.dart';
@@ -9,6 +11,7 @@ import 'package:natalo_petshop_flutter/screens/member_post_detail_screen.dart';
 import 'package:natalo_petshop_flutter/screens/public_profile_screen.dart';
 import 'package:natalo_petshop_flutter/services/profile_service.dart';
 import 'package:natalo_petshop_flutter/widgets/liquid_glass.dart';
+import 'package:natalo_petshop_flutter/widgets/natalo_paw_refresh_indicator.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_chrome_overlay.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
@@ -384,6 +387,77 @@ void main() {
       find.text('Belum ada postingan yang menandai akun ini'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('refresh saat tab Ditandai aktif tidak ikut memicu network fetch',
+      (tester) async {
+    const result = PublicProfileResult(
+      profile: PublicProfile(
+        id: 'creator-1',
+        name: 'Creator',
+        username: 'creator',
+        isOwner: false,
+      ),
+      posts: [],
+    );
+    await tester.pumpWidget(const MaterialApp(
+      home: PublicProfileScreen(
+        username: 'creator',
+        initialResult: result,
+        fetchChatConfig: _noOpFetch,
+      ),
+    ));
+    await tester.pump();
+
+    // Pindah ke tab Ditandai dulu — sama pola dengan test tab-tap di atas.
+    // Guard _activateContent sudah dibuktikan benar di test itu; di sini kita
+    // hanya butuh BERADA di tab tsb supaya bisa memicu _refresh() (dipanggil
+    // pull-to-refresh) saat _selectedContent == shoppable.
+    await tester.tap(find.byKey(const Key('public_tab_tagged_pill')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      find.text('Belum ada postingan yang menandai akun ini'),
+      findsOneWidget,
+    );
+
+    // Trigger refresh dengan memanggil langsung callback `onRefresh` milik
+    // NataloPawRefreshIndicator, bukan simulasi drag/fling fisik. Ini PERSIS
+    // callback yang sama yang dipanggil gesture pull-to-refresh nyata (widget
+    // itu, saat armed & dilepas, melakukan `await widget.onRefresh()` di
+    // `_doRefresh()`) — dipilih karena mekanisme overscroll widget ini
+    // menggabungkan BouncingScrollPhysics (pixel negatif) + threshold
+    // akumulasi + ScrollConfiguration custom yang sulit direplikasi presisi
+    // via tester.fling/drag di widget test bersarang (NestedScrollView >
+    // CustomScrollView), dan physics gesture itu sendiri tidak relevan dengan
+    // guard yang sedang diuji (guard-nya ada di `_load`, bukan di deteksi
+    // gesture). Memanggil callback langsung menguji persis yang ingin
+    // dibuktikan — refresh apa pun pemicunya tidak boleh fetch saat shoppable.
+    final refreshIndicator = tester.widget<NataloPawRefreshIndicator>(
+      find.byType(NataloPawRefreshIndicator),
+    );
+    unawaited(refreshIndicator.onRefresh());
+
+    // Bounded pump (bukan pumpAndSettle) — alasan sama persis dengan test
+    // tab-tap di atas: contentState.loading di-set true SECARA SINKRON di
+    // awal _load(), sebelum await pertama (network call), begitu guard
+    // dilepas. pumpAndSettle akan ikut menunggu request nyata (atau timeout
+    // di ApiClient.getJson) kalau guard hilang, sehingga tidak bisa lagi
+    // membedakan "guard fired" dari "fetch asli fired" secara deterministik.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // Empty state Ditandai TETAP tampil setelah refresh — bukti tidak ada
+    // fetch yang mengubah state. Slivers di `_buildContentPage` bersifat
+    // if/else-if/else (loading skeleton XOR error XOR empty XOR grid), jadi
+    // text kosong ini hanya bisa tetap ada kalau cabang loading skeleton
+    // TIDAK aktif dan grid TIDAK terisi ulang — satu assertion ini sekaligus
+    // membuktikan keduanya.
+    expect(
+      find.text('Belum ada postingan yang menandai akun ini'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
   });
 }
 
