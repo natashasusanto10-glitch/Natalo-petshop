@@ -45,7 +45,18 @@ Future<List<TagSearchUser>> defaultTagUserSearch(
         ? {'suggested': '1', 'limit': '8'}
         : {'q': query, 'limit': '8'},
   );
-  final users = (data is Map ? data['users'] as List? : null) ?? const [];
+  return parseTagSearchUsers(data);
+}
+
+/// Parse body /api/users/search → daftar akun untuk picker tag.
+///
+/// Backend membalikkan `{ items: [...] }` (sama seperti mention_picker &
+/// follow_service). Sebelumnya kode di sini baca `data['users']` yang tidak
+/// pernah ada → hasil SELALU kosong saat menandai orang. Diekstrak jadi
+/// fungsi murni supaya kontrak key-nya bisa diuji regresi tanpa jaringan.
+@visibleForTesting
+List<TagSearchUser> parseTagSearchUsers(dynamic data) {
+  final users = (data is Map ? data['items'] as List? : null) ?? const [];
   return users
       .whereType<Map>()
       .map((raw) {
