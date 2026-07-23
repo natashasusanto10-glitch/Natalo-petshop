@@ -27,6 +27,7 @@ import {
 } from "@/lib/social/brand-user";
 import {
   buildCommentNotificationText,
+  buildTaggedNotificationTitle,
   createFeedNotification,
   feedPostOwnerUrl,
   quoteFeedTitle,
@@ -272,6 +273,76 @@ export async function sendMentionNotifications(params: {
     );
   } catch (err) {
     console.warn("[feed-activity] sendMentionNotifications:", err);
+  }
+}
+
+/**
+ * Tag People (Spec B) — notif ke user yang ditandai di post baru.
+ * Dipanggil dari POST create SETELAH transaksi sukses. Self-tag di-skip.
+ * Deep-link: /feed/<postId> (case `feed` sudah ada di deep_link_service).
+ */
+export async function sendTaggedUserNotifications(params: {
+  actorUserId: string;
+  recipientUserIds: string[];
+  postId: string;
+}) {
+  if (params.recipientUserIds.length === 0) return;
+  try {
+    const [actor, post] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: params.actorUserId },
+        select: { name: true, username: true, role: true, profilePhotoUrl: true },
+      }),
+      prisma.feedPost.findUnique({
+        where: { id: params.postId },
+        select: {
+          id: true,
+          title: true,
+          thumbnailUrl: true,
+          media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
+        },
+      }),
+    ]);
+    if (!post) return;
+    const actorName = isAdminRole(actor?.role)
+      ? OFFICIAL_BRAND_NAME
+      : actor?.username && actor.username.length > 0
+        ? actor.username
+        : actor?.name?.trim() || "Seseorang";
+    const actorFields = notificationActorFields(
+      actor?.role,
+      actor?.name,
+      actor?.profilePhotoUrl,
+    );
+
+    // Tidak ada notifikasi ke diri sendiri (self-tag boleh, tanpa notif).
+    const recipients = params.recipientUserIds.filter(
+      (id) => id !== params.actorUserId,
+    );
+
+    await Promise.allSettled(
+      recipients.map((recipientUserId) =>
+        createFeedNotification({
+          userId: recipientUserId,
+          eventType: "feed_tagged",
+          title: buildTaggedNotificationTitle(actorName),
+          message: truncateFeedText(post.title) || "Lihat postingannya sekarang.",
+          feedPostId: post.id,
+          thumbnailUrl: feedNotificationThumbnail(post),
+          url: `/feed/${encodeURIComponent(post.id)}`,
+          ctaLabel: "Lihat Postingan",
+          tag: `feed-tagged-${params.postId}-${recipientUserId}`,
+          data: { post_id: params.postId },
+          surface: SOCIAL_NOTIFICATION_SOURCE,
+          actor: {
+            avatarUrl: actorFields.actorAvatarUrl,
+            name: actorFields.actorName,
+          },
+        }),
+      ),
+    );
+  } catch (err) {
+    console.warn("[feed-activity] sendTaggedUserNotifications:", err);
   }
 }
 

@@ -709,5 +709,21 @@ export async function POST(request: NextRequest) {
     }
   })();
 
+  // Tag People notif — WAJIB await (Vercel void-promise freeze).
+  if (taggedUsers.length > 0) {
+    try {
+      const { sendTaggedUserNotifications } = await import(
+        "@/lib/feed/activity-notifications"
+      );
+      await sendTaggedUserNotifications({
+        actorUserId: session.sub,
+        recipientUserIds: taggedUsers.map((t) => t.userId),
+        postId: post.id,
+      });
+    } catch (err) {
+      console.warn("[posts] tagged notif failed:", err);
+    }
+  }
+
   return NextResponse.json({ ok: true, post });
 }

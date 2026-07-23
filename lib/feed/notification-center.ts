@@ -18,7 +18,8 @@ export type FeedNotificationEventType =
   | "feed_new_comment"
   | "feed_new_like"
   | "feed_new_share"
-  | "feed_mention";
+  | "feed_mention"
+  | "feed_tagged";
 
 export type FeedNotificationStatus = "pending" | "approved" | "rejected";
 
@@ -67,6 +68,7 @@ function derivePrefCategory(
     case "feed_new_like":
     case "feed_new_share":
     case "feed_mention":
+    case "feed_tagged":
       return "feed";
     default:
       return null;
@@ -99,6 +101,16 @@ export function quoteFeedTitle(title: string | null | undefined) {
   const safeTitle = truncateFeedText(title, 60) || "Postingan kamu";
   return `"${safeTitle}"`;
 }
+
+/**
+ * Teks notif Tag People (Spec B): "[Nama] menandai Anda dalam postingan".
+ * Penandai official → nama brand (caller yang resolve actorName).
+ */
+export function buildTaggedNotificationTitle(actorName: string): string {
+  return `${actorName} menandai Anda dalam postingan`;
+}
+
+export const derivePrefCategoryForTest = derivePrefCategory;
 
 export async function createFeedNotification(params: {
   userId: string;
