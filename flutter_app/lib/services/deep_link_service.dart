@@ -366,6 +366,11 @@ class DeepLinkService {
           // buka postingannya langsung (komentar sejangkauan satu tap),
           // sama perilaku dengan tap notif dari bell dalam app.
           await _openPostById(nav, segments[2]);
+        } else if (segments.length > 1 && segments[1] == 'followers') {
+          // /akun/followers — notif follow agregat ("X dan N lainnya mulai
+          // mengikuti kamu") → daftar follower milik sendiri. WAJIB case
+          // eksplisit (gotcha PR #137: tanpa ini jatuh ke /member).
+          nav.pushNamed('/akun/followers');
         } else {
           nav.pushNamed('/member');
         }
