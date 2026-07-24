@@ -26,10 +26,31 @@ class NotificationService: UNNotificationServiceExtension {
       return
     }
 
+    // Kalau payload bawa actor_avatar_url (foto aktor tag/komentar/like),
+    // unduh & attach itu duluan. Kalau tidak ada, fallback ke perilaku lama:
     // Firebase parse fcmOptions.imageUrl dari payload, unduh gambarnya,
     // lalu attach sebagai UNNotificationAttachment sebelum contentHandler
     // dipanggil. Kalau unduh gagal (URL kedaluwarsa/403/timeout), fallback
     // otomatis ke notifikasi teks biasa — tidak pernah crash/hang.
+    if let avatarUrlString = request.content.userInfo["actor_avatar_url"] as? String,
+       let avatarUrl = URL(string: avatarUrlString) {
+      let task = URLSession.shared.downloadTask(with: avatarUrl) { tempUrl, _, _ in
+        defer { contentHandler(bestAttemptContent) }
+        guard let tempUrl = tempUrl else { return }
+        let target = FileManager.default.temporaryDirectory
+          .appendingPathComponent(UUID().uuidString)
+          .appendingPathExtension(avatarUrl.pathExtension.isEmpty ? "jpg" : avatarUrl.pathExtension)
+        do {
+          try FileManager.default.moveItem(at: tempUrl, to: target)
+          let attachment = try UNNotificationAttachment(identifier: "actor-avatar", url: target)
+          bestAttemptContent.attachments = [attachment]
+        } catch {
+          // Gagal attach → notifikasi tetap tampil polos (contentHandler di defer).
+        }
+      }
+      task.resume()
+      return
+    }
     FIRMessagingExtensionHelper().populateNotificationContent(
       bestAttemptContent,
       withContentHandler: contentHandler
