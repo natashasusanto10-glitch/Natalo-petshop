@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../models/feed_comment.dart';
 import '../models/feed_post.dart';
+import '../models/new_post_user_tag.dart';
 import '../state/member_store.dart';
 import 'api_client.dart';
 
@@ -537,6 +538,19 @@ class FeedService {
     }
   }
 
+  /// Konversi NewPostUserTag ke JSON API — hanya include field non-null.
+  static List<Map<String, dynamic>> taggedUsersToJson(
+      List<NewPostUserTag> tags) {
+    return tags
+        .map((t) => <String, dynamic>{
+              'userId': t.userId,
+              if (t.mediaIndex != null) 'mediaIndex': t.mediaIndex,
+              if (t.x != null) 'x': t.x,
+              if (t.y != null) 'y': t.y,
+            })
+        .toList();
+  }
+
   /// Update metadata post milik user sendiri.
   ///
   /// Edit TIDAK lagi men-trigger review ulang — semua konten (foto & video)
@@ -547,6 +561,7 @@ class FeedService {
     required String title,
     String? description,
     List<String>? productIds,
+    List<NewPostUserTag>? taggedUsers,
   }) async {
     final data = await apiClient.patchJson(
       '/api/feed/posts/$postId',
@@ -554,6 +569,7 @@ class FeedService {
         'title': title,
         'description': description,
         if (productIds != null) 'productIds': productIds,
+        if (taggedUsers != null) 'taggedUsers': taggedUsersToJson(taggedUsers),
       },
       timeout: const Duration(seconds: 15),
     );

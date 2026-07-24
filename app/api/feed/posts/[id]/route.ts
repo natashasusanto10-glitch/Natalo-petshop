@@ -23,6 +23,8 @@ import {
   resolveViewerTagHidden,
   TAGGED_USERS_SELECT,
   serializeTaggedUsers,
+  parseTaggedUsersInput,
+  buildTaggedUserRows,
 } from "@/lib/feed/tagged-users";
 import { buildFeedShareVersion } from "@/lib/share/feed-share-data";
 import {
@@ -369,7 +371,7 @@ export async function PATCH(
       description: true,
       productId: true,
       kind: true,
-      media: { select: { id: true } },
+      media: { orderBy: { sortOrder: "asc" }, select: { id: true } },
     },
   });
 
@@ -396,6 +398,7 @@ export async function PATCH(
     subtitleUrl?: string | null;
     subtitleLanguage?: string | null;
     media?: unknown;
+    taggedUsers?: unknown;
   };
 
   const accessibility = parseFeedAccessibilityMetadata(
@@ -626,6 +629,61 @@ export async function PATCH(
     }
   }
 
+  // Spec D: edit tagged users — full replace, validasi reuse parser create.
+  // isVideo: customer kind COMMUNITY = video, PHOTO_CAROUSEL = foto; admin
+  // post video juga bukan PHOTO_CAROUSEL. Konsisten dgn create routes.
+  let newTaggedUserRows:
+    | ReturnType<typeof buildTaggedUserRows>
+    | null = null;
+  // Diff terhadap tag lama dipakai dua kali: (1) carry-forward flag `hidden`
+  // per user (Finding 1 — full-replace tidak boleh un-hide diam-diam), dan
+  // (2) hitung userId yang net-new untuk notifikasi (Finding 2 — jangan
+  // re-notify tag yang sudah ada sebelumnya). Dibaca SEBELUM deleteMany di
+  // transaction supaya datanya masih pre-edit.
+  let addedTaggedUserIds: string[] = [];
+  if (typeof body.taggedUsers !== "undefined") {
+    const parsedTags = parseTaggedUsersInput(body.taggedUsers, {
+      mediaCount: post.media.length,
+      isVideo: post.kind !== "PHOTO_CAROUSEL",
+    });
+    if (!parsedTags.ok) {
+      return NextResponse.json({ error: parsedTags.error }, { status: 400 });
+    }
+    if (parsedTags.tags.length > 0) {
+      // Validasi user benar-benar ada (dan punya username → bisa dinavigasi).
+      const found = await prisma.user.findMany({
+        where: { id: { in: parsedTags.tags.map((t) => t.userId) } },
+        select: { id: true },
+      });
+      if (found.length !== parsedTags.tags.length) {
+        return NextResponse.json(
+          { error: "Ada akun yang ditandai tapi tidak ditemukan." },
+          { status: 400 },
+        );
+      }
+    }
+    const prevRows = await prisma.feedTaggedUser.findMany({
+      where: { feedPostId: post.id },
+      select: { taggedUserId: true, hidden: true },
+    });
+    const prevHiddenByUserId = new Map(
+      prevRows.map((row) => [row.taggedUserId, row.hidden]),
+    );
+    addedTaggedUserIds = [
+      ...new Set(
+        parsedTags.tags
+          .map((t) => t.userId)
+          .filter((userId) => !prevHiddenByUserId.has(userId)),
+      ),
+    ];
+    newTaggedUserRows = buildTaggedUserRows(
+      parsedTags.tags,
+      post.id,
+      post.media.map((m) => m.id),
+      prevHiddenByUserId,
+    );
+  }
+
   // Apply update + replace taggedProducts (Shop the Look) di transaction.
   await prisma.$transaction(async (tx) => {
     await tx.feedPost.update({
@@ -640,6 +698,13 @@ export async function PATCH(
     if (captionChanged) {
       // Reconcile FeedPostHashtag junction rows dari caption baru.
       await resyncPostHashtags(tx, post.id, newCaptionText);
+    }
+
+    if (newTaggedUserRows !== null) {
+      await tx.feedTaggedUser.deleteMany({ where: { feedPostId: post.id } });
+      if (newTaggedUserRows.length > 0) {
+        await tx.feedTaggedUser.createMany({ data: newTaggedUserRows });
+      }
     }
 
     if (newProductIds !== null) {
@@ -708,6 +773,24 @@ export async function PATCH(
       },
     });
   });
+
+  // Tag People notif — HANYA userId net-new (bukan yang sudah ter-tag
+  // sebelumnya) supaya edit caption/produk lain tidak re-notify tag lama.
+  // Di luar transaction (mirror pola app/api/feed/posts/route.ts).
+  if (addedTaggedUserIds.length > 0) {
+    try {
+      const { sendTaggedUserNotifications } = await import(
+        "@/lib/feed/activity-notifications"
+      );
+      await sendTaggedUserNotifications({
+        actorUserId: session.sub,
+        recipientUserIds: addedTaggedUserIds,
+        postId: post.id,
+      });
+    } catch (err) {
+      console.warn("[feed posts PATCH] tagged notif failed:", err);
+    }
+  }
 
   return NextResponse.json({ ok: true });
 }
