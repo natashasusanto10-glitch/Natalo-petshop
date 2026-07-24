@@ -37,6 +37,12 @@ export type PushPayload = {
    *  switch OFF), push di-skip di server. JANGAN set untuk notif kritikal
    *  (keamanan) yang harus selalu terkirim. */
   prefCategory?: NotificationCategory | null;
+  /** Passthrough — dipakai FCM (lib/fcm.ts) untuk shaping data-only pada
+   *  token capable. Web push tidak berubah perilaku (diabaikan). */
+  renderClientSide?: boolean;
+  /** Passthrough — dipakai FCM (lib/fcm.ts). Web push tidak berubah
+   *  perilaku (diabaikan). */
+  actorAvatarUrl?: string | null;
 };
 
 export async function sendPushToUser(userId: string, payload: PushPayload) {
