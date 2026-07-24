@@ -410,6 +410,9 @@ model Product {
   flashSaleEndsAt       DateTime?
   stock                 Int                         @default(0)
   weightGram            Int                         @default(500)
+  careCategory          String? // 'deworm' | 'flea' | null
+  targetSpecies         String[]                    @default([]) // subset kPetTypes; [] = semua spesies
+  dosageRules           Json? // DosageRule[] — lihat lib/product-dosage.ts
   imageUrl              String?
   // Galeri tambahan (max 4 gambar). imageUrl tetap jadi thumbnail utama,
   // gallery dipakai di halaman detail produk untuk carousel.
@@ -1126,24 +1129,44 @@ model Pet {
   vaccineReminderAt  DateTime?
   groomingReminderAt DateTime?
   notes              String?
+  weightKg           Float?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   careRecords        PetCareRecord[]
+  weightLogs         PetWeightLog[]
 
   @@index([userId])
 }
 
 model PetCareRecord {
-  id        String    @id @default(cuid())
-  petId     String
-  pet       Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
-  category  String // grooming | deworm | flea | vaccine | vet | other
-  doneAt    DateTime
-  note      String?
-  nextDueAt DateTime?
-  createdAt DateTime  @default(now())
+  id          String    @id @default(cuid())
+  petId       String
+  pet         Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
+  category    String // grooming | deworm | flea | vaccine | vet | other
+  doneAt      DateTime
+  note        String?
+  nextDueAt   DateTime?
+  productId   String?
+  brandText   String?
+  dosageNote  String?
+  weightKg    Float?
+  place       String?
+  vaccineName String?
+  complaint   String?
+  createdAt   DateTime  @default(now())
 
   @@index([petId, doneAt])
+}
+
+model PetWeightLog {
+  id           String   @id @default(cuid())
+  petId        String
+  pet          Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+  weightKg     Float
+  recordedAt   DateTime @default(now())
+  careRecordId String? // asal record perawatan (opsional)
+
+  @@index([petId, recordedAt])
 }
 
 /// Pengumuman yang muncul di notification center (bell icon). 2 jenis:
