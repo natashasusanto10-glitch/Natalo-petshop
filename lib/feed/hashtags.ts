@@ -5,6 +5,8 @@
  * Boundary: '#' hanya valid di awal teks atau setelah whitespace —
  * "harga#promo" dan "natalo.com/#promo" BUKAN tag (spec §1).
  */
+import { PUBLIC_FEED_POST_WHERE } from "./queries";
+
 const HASHTAG_SOURCE = /(^|\s)#([a-z0-9_]+)/gi;
 
 export const MAX_HASHTAGS_PER_POST = 5;
@@ -108,4 +110,12 @@ export async function decrementHashtagCounts(
     where: { id: { in: rows.map((r) => r.hashtagId) }, postCount: { gt: 0 } },
     data: { postCount: { decrement: 1 } },
   });
+}
+
+/** Where-clause halaman hashtag: visibilitas feed penuh + relasi tag. */
+export function hashtagPostsWhere(name: string) {
+  return {
+    ...PUBLIC_FEED_POST_WHERE,
+    hashtags: { some: { hashtag: { name } } },
+  };
 }

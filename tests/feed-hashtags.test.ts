@@ -7,6 +7,7 @@ import {
   HASHTAG_LIMIT_MESSAGE,
   syncPostHashtags,
   decrementHashtagCounts,
+  hashtagPostsWhere,
 } from "../lib/feed/hashtags";
 
 test("extractHashtags: dasar — lowercase, urutan kemunculan", () => {
@@ -124,4 +125,14 @@ test("decrementHashtagCounts: baca junction lalu decrement tiap hashtagId", asyn
   assert.deepEqual(upd.where.id.in, ["h0", "h1"]);
   assert.equal(upd.where.postCount.gt, 0); // guard: jangan minus
   assert.equal(upd.data.postCount.decrement, 1);
+});
+
+test("hashtagPostsWhere: gabungkan PUBLIC_FEED_POST_WHERE + relasi tag", () => {
+  const where = hashtagPostsWhere("kucing");
+  assert.equal(where.status, "ACTIVE");
+  assert.equal(where.deletedAt, null);
+  assert.equal(where.encodingStatus, "ready");
+  assert.deepEqual(where.hashtags, {
+    some: { hashtag: { name: "kucing" } },
+  });
 });
