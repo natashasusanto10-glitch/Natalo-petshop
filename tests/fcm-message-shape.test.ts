@@ -69,4 +69,23 @@ describe("buildFcmMulticastMessage", () => {
       body: "Budi mulai mengikuti kamu.",
     });
   });
+  test("apns-collapse-id = tag di KEDUA shape; >64 byte terpotong; tanpa tag absen", () => {
+    const capable: any = buildFcmMulticastMessage(
+      { ...base, renderClientSide: true },
+      { clientRender: true },
+    );
+    assert.equal(capable.apns.headers["apns-collapse-id"], base.tag);
+    const legacy: any = buildFcmMulticastMessage(base, { clientRender: false });
+    assert.equal(legacy.apns.headers["apns-collapse-id"], base.tag);
+    const longTag = "x".repeat(100);
+    const long: any = buildFcmMulticastMessage(
+      { ...base, tag: longTag },
+      { clientRender: false },
+    );
+    assert.equal(long.apns.headers["apns-collapse-id"], "x".repeat(64));
+    assert.equal(Buffer.byteLength(long.apns.headers["apns-collapse-id"]), 64);
+    const { tag: _drop, ...noTagBase } = base;
+    const noTag: any = buildFcmMulticastMessage(noTagBase, { clientRender: false });
+    assert.equal(noTag.apns.headers["apns-collapse-id"], undefined);
+  });
 });

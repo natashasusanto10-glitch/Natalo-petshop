@@ -109,6 +109,16 @@ export type FcmPayload = {
 };
 
 /**
+ * APNs `apns-collapse-id` — iOS REPLACE notif di tray yang punya collapse-id
+ * sama (padanan `android.notification.tag`). Batas keras Apple: 64 byte;
+ * lebih dari itu APNs REJECT seluruh push, jadi WAJIB dipotong. Tag kita
+ * ASCII (eventType-id-id) → slice per-karakter == per-byte, aman.
+ */
+export function apnsCollapseId(tag: string): string {
+  return tag.slice(0, 64);
+}
+
+/**
  * Bangun objek pesan FCM multicast (TANPA `tokens`) — pure & testable.
  *
  * Dua bentuk:
@@ -152,6 +162,9 @@ export function buildFcmMulticastMessage(
         headers: {
           "apns-priority": "10",
           "apns-push-type": "alert",
+          ...(payload.tag
+            ? { "apns-collapse-id": apnsCollapseId(payload.tag) }
+            : {}),
         },
         payload: {
           aps: {
@@ -207,6 +220,9 @@ export function buildFcmMulticastMessage(
         // pushType "alert" = visible banner (vs "background" = silent).
         // Wajib iOS 13+ untuk visible notification.
         "apns-push-type": "alert",
+        ...(payload.tag
+          ? { "apns-collapse-id": apnsCollapseId(payload.tag) }
+          : {}),
       },
       payload: {
         aps: {
