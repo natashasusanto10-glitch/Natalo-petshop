@@ -22,6 +22,7 @@ import { sendFeedModerationNotification } from "@/lib/feed/notifications";
 import { sendNewPostToFollowersNotification } from "@/lib/social/notifications";
 import { deleteFeedAssets } from "@/lib/feed/cleanup";
 import { reconcileFeedPost } from "@/lib/feed/reconcile";
+import { decrementHashtagCounts } from "@/lib/feed/hashtags";
 
 // Notif moderasi + fan-out follower kini di-await di handler — beri ruang
 // seperti broadcast route (default bisa kurang saat follower banyak).
@@ -298,7 +299,13 @@ export async function DELETE(
     // Hard delete: remove row (FK cascade clears comments/likes/reports/
     // audit log) and free storage. Audit trail is lost — only use when
     // truly purging.
-    await prisma.feedPost.delete({ where: { id: postId } });
+    await prisma.$transaction(async (tx) => {
+      // Spec C: kurangi postCount hashtag SEBELUM delete — cascade di
+      // bawah menghapus baris junction FeedPostHashtag yang jadi sumber
+      // decrementHashtagCounts. Satu transaksi supaya atomik dgn delete.
+      await decrementHashtagCounts(tx, postId);
+      await tx.feedPost.delete({ where: { id: postId } });
+    });
     // Di-await — alasan sama dengan cleanup di PATCH (freeze → orphan).
     await deleteFeedAssets({
       videoUrl: existing.videoUrl,
