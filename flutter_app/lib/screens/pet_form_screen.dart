@@ -448,6 +448,7 @@ class _GenderChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -457,7 +458,11 @@ class _GenderChip extends StatelessWidget {
           height: 44,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: selected ? NataloColors.primarySoft : null,
+            color: selected
+                ? (isDark
+                    ? _brandBlue.withValues(alpha: 0.20)
+                    : NataloColors.primarySoft)
+                : null,
             border: Border.all(
               color: selected ? _brandBlue : cs.outlineVariant,
             ),

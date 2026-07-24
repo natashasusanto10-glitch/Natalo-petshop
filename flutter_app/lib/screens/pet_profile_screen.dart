@@ -84,6 +84,7 @@ class _ProfileHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final subtitle = [
       pet.type,
       if (pet.breed != null && pet.breed!.trim().isNotEmpty) pet.breed!.trim(),
@@ -92,7 +93,12 @@ class _ProfileHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(height: 40, color: NataloColors.primarySoft),
+        Container(
+          height: 40,
+          color: isDark
+              ? _brandBlue.withValues(alpha: 0.18)
+              : NataloColors.primarySoft,
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
           child: Column(
@@ -194,10 +200,13 @@ class _GenderPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: NataloColors.primarySoft,
+        color: isDark
+            ? _brandBlue.withValues(alpha: 0.22)
+            : NataloColors.primarySoft,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -257,7 +266,7 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
-        color: NataloColors.grey100,
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -294,7 +303,7 @@ class _ComingSoonCard extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         decoration: BoxDecoration(
-          color: NataloColors.grey100,
+          color: cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Column(
