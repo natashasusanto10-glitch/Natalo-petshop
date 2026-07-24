@@ -40,3 +40,72 @@ export function extractHashtags(text: string): string[] {
   }
   return result;
 }
+
+/** Subset TransactionClient yang dipakai — injectable untuk unit test. */
+export type HashtagTx = {
+  hashtag: {
+    upsert: (args: {
+      where: { name: string };
+      create: { name: string; postCount: number };
+      update: { postCount: { increment: number } };
+    }) => Promise<{ id: string }>;
+    updateMany: (args: {
+      where: { id: { in: string[] }; postCount: { gt: number } };
+      data: { postCount: { decrement: number } };
+    }) => Promise<unknown>;
+  };
+  feedPostHashtag: {
+    createMany: (args: {
+      data: { feedPostId: string; hashtagId: string }[];
+    }) => Promise<unknown>;
+    findMany: (args: {
+      where: { feedPostId: string };
+      select: { hashtagId: true };
+    }) => Promise<{ hashtagId: string }[]>;
+  };
+};
+
+/**
+ * Panggil DI DALAM $transaction create post (foto & video — dua-duanya jalur
+ * client DAN admin; tidak ada route create lain). captionText = gabungan
+ * `${title} ${description ?? ""}` — sumber yang sama dengan gate mention.
+ */
+export async function syncPostHashtags(
+  tx: HashtagTx,
+  feedPostId: string,
+  captionText: string,
+): Promise<void> {
+  const names = extractHashtags(captionText);
+  if (names.length === 0) return;
+  const rows: { feedPostId: string; hashtagId: string }[] = [];
+  for (const name of names) {
+    const tag = await tx.hashtag.upsert({
+      where: { name },
+      create: { name, postCount: 1 },
+      update: { postCount: { increment: 1 } },
+    });
+    rows.push({ feedPostId, hashtagId: tag.id });
+  }
+  await tx.feedPostHashtag.createMany({ data: rows });
+}
+
+/**
+ * HANYA untuk jalur HARD delete (admin ?hard=1). Soft delete (deletedAt)
+ * TIDAK men-decrement — postCount memang aproksimatif (spec §1), halaman
+ * hashtag ter-filter PUBLIC_FEED_POST_WHERE jadi tetap benar.
+ * Panggil SEBELUM prisma.feedPost.delete (cascade menghapus junction-nya).
+ */
+export async function decrementHashtagCounts(
+  tx: HashtagTx,
+  feedPostId: string,
+): Promise<void> {
+  const rows = await tx.feedPostHashtag.findMany({
+    where: { feedPostId },
+    select: { hashtagId: true },
+  });
+  if (rows.length === 0) return;
+  await tx.hashtag.updateMany({
+    where: { id: { in: rows.map((r) => r.hashtagId) }, postCount: { gt: 0 } },
+    data: { postCount: { decrement: 1 } },
+  });
+}
