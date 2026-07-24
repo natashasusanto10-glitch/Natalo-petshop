@@ -9,6 +9,8 @@ export const PET_TYPES = new Set([
 const MAX_NAME_LENGTH = 40;
 const MAX_BREED_LENGTH = 60;
 const MAX_BIO_LENGTH = 150;
+const MAX_ALLERGY_LENGTH = 100;
+const MAX_HEALTH_NOTE_LENGTH = 150;
 const PET_GENDERS = new Set(["male", "female"]);
 
 export type ValidatedPetPayload = {
@@ -18,6 +20,9 @@ export type ValidatedPetPayload = {
   birthDate: Date | null;
   gender: string | null;
   bio: string | null;
+  sterilized: boolean | null;
+  allergy: string | null;
+  healthNote: string | null;
 };
 
 export function validatePetPayload(
@@ -26,7 +31,7 @@ export function validatePetPayload(
   if (typeof body !== "object" || body === null) {
     return { error: "Payload tidak valid." };
   }
-  const { name, type, breed, birthDate, gender, bio } =
+  const { name, type, breed, birthDate, gender, bio, sterilized, allergy, healthNote } =
     body as Record<string, unknown>;
 
   const trimmedName = typeof name === "string" ? name.trim() : "";
@@ -62,6 +67,18 @@ export function validatePetPayload(
   if (trimmedBio.length > MAX_BIO_LENGTH) {
     return { error: `Bio maksimal ${MAX_BIO_LENGTH} karakter.` };
   }
+  let parsedSterilized: boolean | null = null;
+  if (typeof sterilized === "boolean") {
+    parsedSterilized = sterilized;
+  }
+  const trimmedAllergy = typeof allergy === "string" ? allergy.trim() : "";
+  if (trimmedAllergy.length > MAX_ALLERGY_LENGTH) {
+    return { error: `Alergi maksimal ${MAX_ALLERGY_LENGTH} karakter.` };
+  }
+  const trimmedHealthNote = typeof healthNote === "string" ? healthNote.trim() : "";
+  if (trimmedHealthNote.length > MAX_HEALTH_NOTE_LENGTH) {
+    return { error: `Kondisi khusus maksimal ${MAX_HEALTH_NOTE_LENGTH} karakter.` };
+  }
 
   return {
     data: {
@@ -71,6 +88,9 @@ export function validatePetPayload(
       birthDate: parsedBirthDate,
       gender: parsedGender,
       bio: trimmedBio || null,
+      sterilized: parsedSterilized,
+      allergy: trimmedAllergy || null,
+      healthNote: trimmedHealthNote || null,
     },
   };
 }
