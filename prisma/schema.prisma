@@ -1120,13 +1120,30 @@ model Pet {
   birthDate          DateTime?
   gender             String? // 'male' | 'female', opsional
   bio                String?
+  sterilized         Boolean?
+  allergy            String?
+  healthNote         String?
   vaccineReminderAt  DateTime?
   groomingReminderAt DateTime?
   notes              String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
+  careRecords        PetCareRecord[]
 
   @@index([userId])
+}
+
+model PetCareRecord {
+  id        String    @id @default(cuid())
+  petId     String
+  pet       Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
+  category  String // grooming | deworm | flea | vaccine | vet | other
+  doneAt    DateTime
+  note      String?
+  nextDueAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([petId, doneAt])
 }
 
 /// Pengumuman yang muncul di notification center (bell icon). 2 jenis:
