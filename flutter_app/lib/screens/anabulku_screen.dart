@@ -217,7 +217,8 @@ class _PetTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              _PetAvatar(pet: pet),
+              // Shared-element ke PetProfileScreen — avatar morph mulus.
+              Hero(tag: 'pet-photo-${pet.id}', child: _PetAvatar(pet: pet)),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
