@@ -49,4 +49,10 @@ export const createProductSchema = z.object({
     })
     .nullable()
     .optional(),
+  // Obat cacing/kutu — Task 9. careCategory null/"" berarti bukan obat;
+  // targetSpecies+dosageRules divalidasi manual di route (bukan di sini)
+  // supaya pesan error lebih spesifik dan konsisten dengan PATCH route.
+  careCategory: z.string().trim().max(20).optional().nullable(),
+  targetSpecies: z.array(z.string()).optional(),
+  dosageRules: z.array(z.any()).optional().nullable(),
 });

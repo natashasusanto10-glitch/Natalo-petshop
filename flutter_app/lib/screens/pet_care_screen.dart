@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../models/pet.dart';
 import '../models/pet_care_record.dart';
 import '../services/pet_care_photo_store.dart';
 import '../services/pet_service.dart';
@@ -16,9 +17,8 @@ import 'pet_care_form_screen.dart';
 const _brandBlue = NataloColors.primary;
 
 class PetCareScreen extends StatefulWidget {
-  final String petId;
-  final String petName;
-  const PetCareScreen({super.key, required this.petId, required this.petName});
+  final Pet pet;
+  const PetCareScreen({super.key, required this.pet});
 
   @override
   State<PetCareScreen> createState() => _PetCareScreenState();
@@ -44,7 +44,7 @@ class _PetCareScreenState extends State<PetCareScreen> {
       _error = null;
     });
     try {
-      final res = await petService.fetchCare(widget.petId);
+      final res = await petService.fetchCare(widget.pet.id);
       if (!mounted) return;
       setState(() {
         _records = res.records;
@@ -64,7 +64,7 @@ class _PetCareScreenState extends State<PetCareScreen> {
     AppHaptics.tap();
     final created = await Navigator.of(context).push<PetCareRecord>(
       MaterialPageRoute(
-          builder: (_) => PetCareFormScreen(petId: widget.petId)),
+          builder: (_) => PetCareFormScreen(pet: widget.pet)),
     );
     if (created != null) await _load();
   }
@@ -78,7 +78,7 @@ class _PetCareScreenState extends State<PetCareScreen> {
     if (!mounted) return;
     try {
       await petService.createCare(
-        widget.petId,
+        widget.pet.id,
         category: schedule.category,
         doneAt: now,
         nextDueAt: nextDue,
@@ -203,7 +203,7 @@ class _PetCareScreenState extends State<PetCareScreen> {
     );
     if (ok != true) return;
     try {
-      await petService.deleteCare(widget.petId, record.id);
+      await petService.deleteCare(widget.pet.id, record.id);
       await petCarePhotoStore.delete(record.id);
       await _load();
     } catch (_) {
@@ -226,7 +226,7 @@ class _PetCareScreenState extends State<PetCareScreen> {
           icon: const Icon(Icons.arrow_back_rounded),
           tooltip: 'Kembali',
         ),
-        title: Text('Perawatan ${widget.petName}'),
+        title: Text('Perawatan ${widget.pet.name}'),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openForm(),
@@ -436,6 +436,21 @@ class _HistoryTile extends StatelessWidget {
       if (record.note != null && record.note!.trim().isNotEmpty)
         record.note!.trim(),
     ].join(' • ');
+    String? extra;
+    if (record.category == PetCareCategory.deworm ||
+        record.category == PetCareCategory.flea) {
+      if (record.brandText != null && record.brandText!.trim().isNotEmpty) {
+        extra = record.brandText!.trim();
+      } else if (record.productId != null) {
+        extra = 'Produk Natalo';
+      }
+    } else if (record.category == PetCareCategory.grooming ||
+        record.category == PetCareCategory.vaccine ||
+        record.category == PetCareCategory.vet) {
+      if (record.place != null && record.place!.trim().isNotEmpty) {
+        extra = record.place!.trim();
+      }
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 9),
       child: Row(
@@ -466,6 +481,14 @@ class _HistoryTile extends StatelessWidget {
                         fontSize: 11.5,
                         fontWeight: NataloWeight.body,
                         color: cs.onSurfaceVariant)),
+                if (extra != null) ...[
+                  const SizedBox(height: 2),
+                  Text(extra,
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: NataloWeight.body,
+                          color: cs.onSurfaceVariant)),
+                ],
                 _CarePhotoThumb(recordId: record.id),
               ],
             ),

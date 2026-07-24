@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { normalizeProductFormPayload } from "@/lib/product/admin-product-form";
 import { putVariantsPayloadSchema } from "@/lib/validators/variant-schema";
+import { validateCareFields } from "@/lib/product-dosage";
 
 /**
  * GET /api/admin/products/[id]
@@ -111,6 +112,13 @@ export async function PATCH(
   if (typeof body.brandId === "string") data.brand = body.brandId.trim() ? { connect: { id: body.brandId.trim() } } : { disconnect: true };
   if (body.brandId === null) data.brand = { disconnect: true };
   if (typeof body.sku === "string") data.sku = body.sku.trim() || null;
+  if (body.careCategory !== undefined || body.targetSpecies !== undefined || body.dosageRules !== undefined) {
+    const careFields = validateCareFields(body);
+    if (!careFields.ok) return NextResponse.json({ error: careFields.error }, { status: 400 });
+    data.careCategory = careFields.careCategory;
+    data.targetSpecies = careFields.targetSpecies;
+    data.dosageRules = careFields.dosageRules === null ? Prisma.JsonNull : (careFields.dosageRules as unknown as Prisma.InputJsonValue);
+  }
   if (body.video && typeof body.video === "object") {
     const video = body.video as Record<string, unknown>;
     if (typeof video.guid === "string" || video.guid === null) data.videoGuid = video.guid as string | null;

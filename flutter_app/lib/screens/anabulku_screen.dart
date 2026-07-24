@@ -79,7 +79,7 @@ class _AnabulkuScreenState extends State<AnabulkuScreen> {
     AppHaptics.tap();
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => PetCareScreen(petId: pet.id, petName: pet.name),
+        builder: (_) => PetCareScreen(pet: pet),
       ),
     );
     await _load();

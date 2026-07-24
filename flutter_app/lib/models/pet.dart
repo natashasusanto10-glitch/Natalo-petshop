@@ -46,6 +46,7 @@ class Pet {
   final String? healthNote;
   final int careCount;
   final PetSchedule? nearestDue;
+  final double? weightKg;
 
   const Pet({
     required this.id,
@@ -61,6 +62,7 @@ class Pet {
     this.healthNote,
     this.careCount = 0,
     this.nearestDue,
+    this.weightKg,
   });
 
   factory Pet.fromJson(Map<String, dynamic> json) {
@@ -89,6 +91,7 @@ class Pet {
                   DateTime.now(),
             )
           : null,
+      weightKg: (json['weightKg'] as num?)?.toDouble(),
     );
   }
 
@@ -105,6 +108,7 @@ class Pet {
     String? healthNote,
     int? careCount,
     PetSchedule? nearestDue,
+    double? weightKg,
   }) {
     return Pet(
       id: id,
@@ -120,6 +124,7 @@ class Pet {
       healthNote: healthNote ?? this.healthNote,
       careCount: careCount ?? this.careCount,
       nearestDue: nearestDue ?? this.nearestDue,
+      weightKg: weightKg ?? this.weightKg,
     );
   }
 

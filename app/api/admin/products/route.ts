@@ -4,8 +4,9 @@ import { getSession } from "@/lib/auth";
 import { syncProduct, productSearchWhere } from "@/lib/search";
 import { putVariantsPayloadSchema } from "@/lib/validators/variant-schema";
 import { createProductSchema } from "@/lib/validators/product-schema";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { normalizeProductFormPayload } from "@/lib/product/admin-product-form";
+import { validateCareFields } from "@/lib/product-dosage";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 50;
@@ -146,6 +147,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const careFields = validateCareFields(body as unknown as Record<string, unknown>);
+  if (!careFields.ok) {
+    return NextResponse.json({ error: careFields.error }, { status: 400 });
+  }
+
   // Slugify nama → lowercase, hyphen, alphanumeric only.
   const baseSlug = body.name
     .trim()
@@ -201,6 +207,9 @@ export async function POST(request: NextRequest) {
         videoUrl: normalized.video?.url ?? null,
         videoStatus: normalized.video?.status ?? null,
         hasVariants: body.hasVariants,
+        careCategory: careFields.careCategory,
+        targetSpecies: careFields.targetSpecies,
+        dosageRules: careFields.dosageRules === null ? Prisma.JsonNull : (careFields.dosageRules as unknown as Prisma.InputJsonValue),
         // Produk baru dianggap "baru disentuh admin" → tampil di atas admin list.
         lastEditedAt: new Date(),
       },

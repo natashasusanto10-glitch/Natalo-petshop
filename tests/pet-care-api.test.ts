@@ -67,3 +67,33 @@ describe("computeUpcoming (supersede rule)", () => {
     assert.deepEqual(computeUpcoming(rows), []);
   });
 });
+
+describe("validateCarePayload — new optional fields", () => {
+  const okBase = { category: "deworm", doneAt: "2026-07-24T00:00:00.000Z" };
+
+  test("accepts and normalizes new fields", () => {
+    const r = validateCarePayload({
+      ...okBase, weightKg: 4.5, productId: "prod1", place: "  Natalo  ",
+      vaccineName: "", complaint: "  Gatal  ",
+    });
+    assert.equal("data" in r, true);
+    if ("data" in r) {
+      assert.equal(r.data.weightKg, 4.5);
+      assert.equal(r.data.productId, "prod1");
+      assert.equal(r.data.place, "Natalo");
+      assert.equal(r.data.vaccineName, null);
+      assert.equal(r.data.complaint, "Gatal");
+    }
+  });
+
+  test("rejects negative or absurd weight", () => {
+    assert.equal("error" in validateCarePayload({ ...okBase, weightKg: -1 }), true);
+    assert.equal("error" in validateCarePayload({ ...okBase, weightKg: 999 }), true);
+  });
+
+  test("keeps working with no new fields (Tahap 3 payload)", () => {
+    const r = validateCarePayload({ category: "grooming", doneAt: okBase.doneAt });
+    assert.equal("data" in r, true);
+    if ("data" in r) assert.equal(r.data.weightKg, null);
+  });
+});
