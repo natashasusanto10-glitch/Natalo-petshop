@@ -253,6 +253,11 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         shadowColor: Colors.transparent,
+        // appBarTheme global set `shape` (hairline border) untuk header
+        // putih di seluruh app — TIDAK ikut ke-null-kan oleh elevation/
+        // surfaceTint di atas. Wajib override eksplisit di sini, atau
+        // hairline itu tetap tampil sebagai garis terang di layar hitam ini.
+        shape: const Border(),
         centerTitle: true,
         // Back bawaan tenggelam di app bar hitam (feedback device: "tombol
         // back tidak terlihat"). Ganti bubble kaca putih tipis — konsisten
@@ -283,6 +288,16 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
               ),
             ),
           ),
+        ),
+        // appBarTheme global set titleTextStyle dengan warna eksplisit
+        // (untuk header putih) — warna itu MENANG atas `foregroundColor`
+        // di atas untuk Text judul, jadi harus di-override di sini juga
+        // supaya judul putih benar-benar terbaca di latar hitam.
+        titleTextStyle: const TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.3,
         ),
         title: const Text('Tandai Orang'),
         actions: [
