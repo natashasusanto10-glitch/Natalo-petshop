@@ -130,6 +130,13 @@ class PetService {
     required DateTime doneAt,
     String? note,
     DateTime? nextDueAt,
+    String? productId,
+    String? brandText,
+    String? dosageNote,
+    double? weightKg,
+    String? place,
+    String? vaccineName,
+    String? complaint,
   }) async {
     readOnlyMode.assertWritable('createCare');
     final data = await apiClient.postJson(
@@ -139,6 +146,13 @@ class PetService {
         'doneAt': doneAt.toIso8601String(),
         if (note != null) 'note': note,
         if (nextDueAt != null) 'nextDueAt': nextDueAt.toIso8601String(),
+        if (productId != null) 'productId': productId,
+        if (brandText != null) 'brandText': brandText,
+        if (dosageNote != null) 'dosageNote': dosageNote,
+        if (weightKg != null) 'weightKg': weightKg,
+        if (place != null) 'place': place,
+        if (vaccineName != null) 'vaccineName': vaccineName,
+        if (complaint != null) 'complaint': complaint,
       },
     );
     return PetCareRecord.fromJson(
@@ -148,6 +162,25 @@ class PetService {
   Future<void> deleteCare(String petId, String recordId) async {
     readOnlyMode.assertWritable('deleteCare');
     await apiClient.deleteJson('/api/member/pets/$petId/care/$recordId');
+  }
+
+  Future<List<CareProduct>> fetchCareRecommendation({
+    required PetCareCategory category,
+    required String species,
+    double? weightKg,
+  }) async {
+    final data = await apiClient.getJson(
+      '/api/products/care-recommendation',
+      query: {
+        'category': category.apiValue,
+        'species': species,
+        if (weightKg != null) 'weightKg': weightKg.toString(),
+      },
+    );
+    final list = (data as Map<String, dynamic>)['products'] as List<dynamic>? ?? [];
+    return list
+        .map((e) => CareProduct.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 }
 
