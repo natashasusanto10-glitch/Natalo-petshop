@@ -53,14 +53,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   List<AppNotification>? _cachedVisibleItems;
 
   Timer? _tickDebounce;
+
   // Debounce 500ms — hindari refetch beruntun kalau beberapa push masuk
   // berdekatan; _load(silent:true) tak reset scroll/spinner.
-  late final VoidCallback _tickListener = () {
+  void _tickListener() {
     _tickDebounce?.cancel();
     _tickDebounce = Timer(const Duration(milliseconds: 500), () {
       if (mounted) _load(silent: true);
     });
-  };
+  }
 
   @override
   void initState() {
