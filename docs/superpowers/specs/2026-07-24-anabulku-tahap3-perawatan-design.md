@@ -8,7 +8,7 @@ Fitur Perawatan untuk pet (Anabulku): **riwayat lengkap** perawatan per pet + **
 
 Keputusan user:
 - Model data: **riwayat lengkap** (tabel baru `PetCareRecord`), bukan sekadar 2 field tanggal.
-- Kategori (urutan prioritas): **Grooming, Obat Cacing, Obat Kutu, Vaksin, Periksa Dokter**. Periksa Dokter insidental (di Indonesia tidak rutin) — tanpa tekanan jadwal; field "jadwal berikutnya" opsional per catatan.
+- Kategori (urutan prioritas): **Grooming, Obat Cacing, Obat Kutu, Vaksin, Periksa Dokter, Lainnya**. Periksa Dokter insidental (di Indonesia tidak rutin) — tanpa tekanan jadwal; field "jadwal berikutnya" opsional per catatan. "Lainnya" menampung operasi/lab/tes/dll.
 - Reminder: in-app saja (badge status), tanpa push.
 - Layout: **Desain C** — banner jadwal terdekat + kartu mini hitung-mundur + riwayat list; **banner merah saat terlambat, biru brand saat normal**.
 
@@ -21,7 +21,7 @@ model PetCareRecord {
   id        String    @id @default(cuid())
   petId     String
   pet       Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
-  category  String    // 'grooming' | 'deworm' | 'flea' | 'vaccine' | 'vet'
+  category  String    // 'grooming' | 'deworm' | 'flea' | 'vaccine' | 'vet' | 'other'
   doneAt    DateTime  // tanggal perawatan dilakukan
   note      String?   // catatan bebas, max 200 char (trim, kosong -> null)
   nextDueAt DateTime? // jadwal berikutnya, opsional
@@ -32,6 +32,7 @@ model PetCareRecord {
 ```
 
 - Field lama `Pet.vaccineReminderAt` / `Pet.groomingReminderAt` **tidak dipakai** (tetap di schema, tidak dihapus di tahap ini — tidak ada konsumen).
+- Field baru di `Pet` (info kesehatan statis, hasil banding referensi): `sterilized Boolean?` (null = belum diisi), `allergy String?` (max 100), `healthNote String?` ("kondisi khusus", max 150). Diedit lewat form Edit Pet, ikut `validatePetPayload`.
 - "Jadwal terdekat" = record dengan `nextDueAt` terkecil yang belum di-supersede. Aturan supersede: `nextDueAt` sebuah record dianggap aktif selama **belum ada record lain kategori sama dengan `doneAt` >= record itu**. (Contoh: catat grooming baru → jadwal grooming lama otomatis dianggap selesai.)
 - Migration: `CREATE TABLE IF NOT EXISTS`-style migration standar Prisma.
 
@@ -45,9 +46,14 @@ Semua ber-auth member + cek kepemilikan pet (pola sama endpoint pets yang ada).
 - Edit record: **tidak ada di Tahap 3** (hapus + catat ulang; YAGNI).
 - `GET /api/member/pets` (list) ditambah `careCount` per pet (untuk stat "Perawatan" di profil) + `nearestDue` (kategori+tanggal+overdue) untuk section ringkas — satu query agregat, tanpa N+1.
 
-## Flutter — 3 permukaan
+## Flutter — 4 permukaan
 
 Font/spacing/warna WAJIB identik pola Anabulku yang ada: appBar ikut `appBarTheme` global (tanpa override), judul/nama `NataloWeight.strong`, caption `NataloWeight.body`, kartu `cs.surfaceContainerHighest` atau `cs.surface`+outlineVariant, radius 12–14, padding horizontal 20, brand `NataloColors.primary`.
+
+### 0. Halaman list Anabulku (AnabulkuScreen, update)
+
+- **Chip jadwal di kartu pet**: tile pet menampilkan chip tambahan bila punya jadwal (`nearestDue` dari endpoint list): "Obat Cacing • 4 hari lagi" (netral/biru) atau merah bila terlambat. Tanpa jadwal → tanpa chip (tampilan sekarang).
+- **Section "Jadwal Terdekat"** di bawah daftar pet (hanya bila ada minimal 1 jadwal, gabungan semua pet): baris `{NamaPet} — {Kategori}` + tanggal + badge hari-lagi/terlambat, urut `nextDueAt` asc, maks 3 + "Lihat semua" tidak perlu (tap baris → PetCareScreen pet terkait). Gaya baris sama dengan riwayat (ikon kotak 30).
 
 ### 1. Section "Perawatan" di PetProfileScreen
 
@@ -57,6 +63,7 @@ Menggantikan bagian kartu "Segera hadir" (kartu segera-hadir tetap ada tapi teks
 - "TERAKHIR DICATAT": 2 baris riwayat terakhir polos (ikon 15 + teks 11/body).
 - Stat "Perawatan" di `_StatsRow` menampilkan `careCount` dan bisa di-tap → halaman Perawatan.
 - Kosong total (belum ada record): section menampilkan satu kartu ajakan "Catat perawatan pertama {nama}" (netral, ikon + teks 12) → buka form.
+- **Baris info kesehatan** (di bawah bio, hanya field yang terisi): "Steril: Ya/Belum", "Alergi: {allergy}", "Kondisi: {healthNote}" — teks 12/body dengan label 12/strong, gaya baris ringkas (bukan kartu). Diedit lewat form Edit Pet (toggle Steril + 2 TextField opsional).
 
 ### 2. Halaman "Perawatan {nama}" (PetCareScreen, baru)
 
@@ -68,13 +75,13 @@ Menggantikan bagian kartu "Segera hadir" (kartu segera-hadir tetap ada tapi teks
 - **Kartu mini** (baris horizontal, maks 2-3): jadwal aktif lain per kategori — ikon + label kategori 10/body + "N hari lagi" 12.5/strong. Terlambat → angka merah.
 - **Riwayat**: label kecil "RIWAYAT" + list kronologis desc — tile ikon kotak 30 (bg primarySoft / brandBlue-alpha di dark) + judul kategori 13/strong + tanggal • note (11.5/body, onSurfaceVariant). Long-press / tombol titik-tiga → hapus (dialog konfirmasi pola app).
 - **FAB** brand `+` → form Catat Perawatan.
-- Chip filter kategori di bawah appBar: Semua (default) + 5 kategori urutan prioritas. Filter client-side.
+- Chip filter kategori di bawah appBar: Semua (default) + 6 kategori urutan prioritas (…, Periksa Dokter, Lainnya). Filter client-side.
 - Empty state (tanpa record & tanpa jadwal): ilustrasi ikon + teks ajakan + tombol "Catat perawatan" (pola empty state Anabulku).
 - Loading: shimmer pola app; error: error-view unify pola app.
 
 ### 3. Form "Catat Perawatan" (bottom sheet penuh atau layar, ikut pola PetFormScreen)
 
-- Jenis perawatan: 5 chip pilih-satu (urutan: Grooming, Obat Cacing, Obat Kutu, Vaksin, Periksa Dokter), tinggi ≥44 tap target, gaya `_GenderChip` yang ada.
+- Jenis perawatan: 6 chip pilih-satu (urutan: Grooming, Obat Cacing, Obat Kutu, Vaksin, Periksa Dokter, Lainnya), tinggi ≥44 tap target, gaya `_GenderChip` yang ada.
 - Tanggal dilakukan: date picker (default hari ini, tidak boleh masa depan).
 - Catatan: TextField opsional max 200 (perhatikan gotcha fillColor global: filled:false/transparent bila di atas permukaan berwarna).
 - Jadwal berikutnya (opsional): chip shortcut `+1 bulan`, `+3 bulan`, `Pilih tanggal`, bisa dikosongkan (khusus Periksa Dokter memang biasanya kosong).
@@ -104,4 +111,4 @@ Menggantikan bagian kartu "Segera hadir" (kartu segera-hadir tetap ada tapi teks
 
 ## Di luar scope Tahap 3
 
-Push notification/cron (Tahap 3b), edit record, upload foto record ke server (foto lokal-only per keputusan user; bisa di-upgrade sinkron nanti), Journey/Belanja (Tahap 4-5), route publik.
+Push notification/cron (Tahap 3b), edit record, upload foto record ke server (foto lokal-only per keputusan user; bisa di-upgrade sinkron nanti), Journey/Belanja (Tahap 4-5), route publik. Hasil banding referensi yang **sengaja tidak dimasukkan** (keputusan user): Dokumen Kesehatan, Grafik Berat Badan; ditunda: detail terstruktur per catatan (klinik/dokter/batch — cukup catatan bebas), tampilan kalender bulanan.
