@@ -248,13 +248,23 @@ class FeedVideoPostView extends StatefulWidget {
   });
 
   /// Predikat render badge "Ditandai dalam video ini" — badge tampil hanya
-  /// jika flag diaktifkan DAN ada tagged users. Digunakan untuk guard render
-  /// di state: `if (shouldShowTaggedBadge(...)) { ... }`
+  /// jika flag diaktifkan DAN ada tagged users DAN framing BUKAN
+  /// immersive/fullscreenFeed. Viewer imersif (swipe vertikal fullscreen,
+  /// dipakai `ScopedVideoFeedScreen` utk "video ditandai produk"/"video
+  /// milik user") sengaja TANPA badge — permukaan itu murni menonton video
+  /// (mirror TikTok/Reels: nol chrome sekunder), beda dari halaman Postingan
+  /// (list scroll biasa, badge tetap tampil lewat implementasi terpisahnya
+  /// sendiri di member_post_detail_screen.dart, tak lewat widget ini).
+  /// Digunakan untuk guard render di state: `if (shouldShowTaggedBadge(...))`.
   static bool shouldShowTaggedBadge({
     required bool showTaggedBadge,
     required bool hasTags,
+    required FeedVideoFraming framing,
   }) =>
-      showTaggedBadge && hasTags;
+      showTaggedBadge &&
+      hasTags &&
+      framing != FeedVideoFraming.immersive &&
+      framing != FeedVideoFraming.fullscreenFeed;
 
   @override
   State<FeedVideoPostView> createState() => _FeedVideoPostViewState();
@@ -3625,6 +3635,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                                   if (FeedVideoPostView.shouldShowTaggedBadge(
                                     showTaggedBadge: widget.showTaggedBadge,
                                     hasTags: _tags.isNotEmpty,
+                                    framing: widget.framing,
                                   )) ...[
                                     FeedTaggedBadge(
                                       onTap: _openTaggedUsersSheet,

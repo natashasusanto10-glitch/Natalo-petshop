@@ -115,6 +115,12 @@ Widget _hostVideo(FeedPost post) {
         playbackManagedExternally: false,
         onOverlayStateChanged: (_) {},
         onMediaZoomChanged: (_) {},
+        // Framing non-immersive: test ini soal sheet "Opsi Tag" (fitur),
+        // bukan soal viewer fullscreen — default `immersive` kini
+        // menyembunyikan badge (viewer imersif sengaja nol chrome
+        // sekunder), jadi host di sini butuh framing lain supaya badge
+        // tetap tampil untuk diuji.
+        framing: FeedVideoFraming.mainFeed,
       ),
     ),
   );
@@ -209,6 +215,39 @@ void main() {
 
     expect(find.text('Sembunyikan dari profil saya'), findsOneWidget);
     expect(find.text('Tampilkan di profil saya'), findsNothing);
+  });
+
+  testWidgets(
+      'framing fullscreenFeed (ScopedVideoFeedScreen, viewer imersif) → '
+      'badge tag TIDAK dirender walau ada tag', (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    debugSetAccountOwnerId(() => 'self1');
+    addTearDown(debugResetAccountOwnerId);
+
+    final post = _fakeVideoPostWithSelfTag(
+      viewerTagHidden: false,
+      selfUserId: 'self1',
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: FeedVideoPostView(
+          post: post,
+          isActive: true,
+          preloadedController: null,
+          ownsController: true,
+          playbackManagedExternally: false,
+          onOverlayStateChanged: (_) {},
+          onMediaZoomChanged: (_) {},
+          framing: FeedVideoFraming.fullscreenFeed,
+        ),
+      ),
+    ));
+    await pumpUntil(tester, () => true, maxIterations: 20);
+
+    expect(find.byType(FeedTaggedBadge), findsNothing);
   });
 
   testWidgets(
