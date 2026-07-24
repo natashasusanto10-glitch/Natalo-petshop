@@ -91,6 +91,8 @@ export async function sendFollowNotification(params: {
       url,
       tag: `${eventType}-${params.followerId}-${params.followingId}`,
       imageUrl: actorPhoto,
+      renderClientSide: true,
+      actorAvatarUrl: actorPhoto,
       data: {
         source: SOCIAL_NOTIFICATION_SOURCE,
         type: eventType,

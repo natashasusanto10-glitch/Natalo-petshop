@@ -40,4 +40,26 @@ describe("buildFcmMulticastMessage", () => {
     assert.equal(m.notification.title, base.title);
     assert.equal(m.data.actor_avatar_url, undefined);
   });
+  test("user_followed + token capable → Android data-only, actor avatar terkirim", () => {
+    const m: any = buildFcmMulticastMessage(
+      {
+        title: "Pengikut baru",
+        body: "Budi mulai mengikuti kamu.",
+        url: "/u/budi",
+        tag: "user_followed-u1-u2",
+        data: { type: "user_followed", url: "/u/budi" },
+        imageUrl: "https://cdn/ava.jpg",
+        renderClientSide: true,
+        actorAvatarUrl: "https://cdn/ava.jpg",
+      },
+      { clientRender: true },
+    );
+    assert.equal(m.notification, undefined);
+    assert.equal(m.android.notification, undefined);
+    assert.equal(m.data.actor_avatar_url, "https://cdn/ava.jpg");
+    assert.deepEqual(m.apns.payload.aps.alert, {
+      title: "Pengikut baru",
+      body: "Budi mulai mengikuti kamu.",
+    });
+  });
 });

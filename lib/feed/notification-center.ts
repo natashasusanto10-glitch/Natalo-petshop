@@ -7,6 +7,15 @@ export const FEED_NOTIFICATION_CATEGORY = "feed";
 export const FEED_NOTIFICATION_SOURCE = "feed";
 export const SOCIAL_NOTIFICATION_SOURCE = "social";
 
+/** Event beraktor yang dirender klien (avatar bulat) — spec §2, review A2.
+ *  JANGAN pakai kategori: feed_encoding_failed dkk harus tetap andal. */
+const RENDER_CLIENT_EVENTS = new Set([
+  "feed_new_comment",
+  "feed_new_like",
+  "feed_mention",
+  "feed_tagged",
+]);
+
 export type NotificationSurface =
   | typeof FEED_NOTIFICATION_SOURCE
   | typeof SOCIAL_NOTIFICATION_SOURCE;
@@ -193,6 +202,8 @@ export async function createFeedNotification(params: {
       // Engagement (komentar/like/share/mention) di-gate; status upload
       // milik user sendiri tidak.
       prefCategory: derivePrefCategory(params.eventType),
+      renderClientSide: RENDER_CLIENT_EVENTS.has(params.eventType),
+      actorAvatarUrl: params.actor?.avatarUrl ?? null,
     };
 
     // 2 channel (web + FCM) — sendApnsToUser dihapus, lihat komentar di
