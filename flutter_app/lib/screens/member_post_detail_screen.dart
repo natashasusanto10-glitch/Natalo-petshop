@@ -1655,6 +1655,13 @@ class _PostFeedItemState extends State<_PostFeedItem>
   // onTap milik _InlineVideoPlayer, supaya single & double tap satu detector).
   GlobalKey? _videoAnchorKey;
 
+  // Tag orang (IG-style di halaman Postingan): single-tap foto → toggle pill
+  // nama ditandai (mirror perilaku tap fullscreen). [_tagsOpen] dibagi antara
+  // outer detector (tap foto) + badge ikon + layer pill; [_carouselIndex]
+  // dilaporkan _CarouselSurface supaya pill difilter per-slide.
+  final ValueNotifier<bool> _tagsOpen = ValueNotifier<bool>(false);
+  final ValueNotifier<int> _carouselIndex = ValueNotifier<int>(0);
+
   bool _saved = false;
 
   @override
@@ -1750,6 +1757,8 @@ class _PostFeedItemState extends State<_PostFeedItem>
     _heartScaleController.dispose();
     _heartBurstController.dispose();
     _doubleTapBurstGuard.dispose();
+    _tagsOpen.dispose();
+    _carouselIndex.dispose();
     // Prune fraction bookkeeping di layar induk — item ini sudah tidak ada,
     // jangan biarkan fraction basi-nya ikut menang di _onPostVisibilityChanged.
     widget.onVisibilityDisposed?.call(widget.post.id);
@@ -1820,6 +1829,14 @@ class _PostFeedItemState extends State<_PostFeedItem>
       _handleLikeTap();
     }
     _showFlyingHeart();
+  }
+
+  /// Single-tap foto/carousel → toggle pill orang ditandai (IG-style). No-op
+  /// kalau post tak punya tag (biar tap di foto tanpa tag tidak "berisik").
+  void _toggleTags() {
+    if (widget.post.taggedUsers.isEmpty) return;
+    AppHaptics.tap();
+    _tagsOpen.value = !_tagsOpen.value;
   }
 
   void _showFlyingHeart() {
@@ -1921,6 +1938,10 @@ class _PostFeedItemState extends State<_PostFeedItem>
           // di-forward balik ke handler _PostFeedItem via callback di bawah.
           GestureDetector(
             behavior: HitTestBehavior.opaque,
+            // Single-tap foto/carousel → toggle pill tag orang (IG-style;
+            // mirror single-tap fullscreen video). Video: single-tap ditangani
+            // di dalam _InlineVideoPlayer (fullscreen), jadi outer tak set.
+            onTap: post.isVideo ? null : _toggleTags,
             onDoubleTapDown: post.isVideo ? null : _rememberHeartBurstPosition,
             onDoubleTap: post.isVideo ? null : _handleDoubleTap,
             child: Stack(
@@ -1936,6 +1957,8 @@ class _PostFeedItemState extends State<_PostFeedItem>
                   onVideoMediaDoubleTap: _handleDoubleTap,
                   heroScope: widget.heroScope,
                   heroPostId: widget.heroPostId,
+                  tagsOpen: _tagsOpen,
+                  carouselIndex: _carouselIndex,
                 ),
                 if (postVideoUsesOverlay(post))
                   Positioned(
@@ -3072,11 +3095,19 @@ class _PostMediaSurface extends StatelessWidget {
   /// (perilaku sama seperti heroScope null: media polos, tanpa Hero).
   final ValueNotifier<String>? heroPostId;
 
+  /// Toggle pill tag orang (IG-style) — dibagi dgn outer detector (tap foto)
+  /// + badge ikon. [carouselIndex] = slide aktif carousel (foto tunggal
+  /// selalu 0), dipakai filter tag per-slide.
+  final ValueNotifier<bool> tagsOpen;
+  final ValueNotifier<int> carouselIndex;
+
   const _PostMediaSurface({
     required this.post,
     required this.coordinator,
     required this.registerVideoUrl,
     required this.handoffSessionId,
+    required this.tagsOpen,
+    required this.carouselIndex,
     this.onVideoAnchorReady,
     this.onVideoMediaSingleTap,
     this.onVideoMediaDoubleTapDown,
@@ -3189,9 +3220,15 @@ class _PostMediaSurface extends StatelessWidget {
                   coordinator: coordinator,
                   registerVideoUrl: registerVideoUrl,
                   handoffSessionId: handoffSessionId,
+                  onPageChanged: (i) => carouselIndex.value = i,
                 ),
               ),
-              _PostinganTaggedPeopleLayer(post: post),
+              _PostinganTaggedPeopleLayer(
+                post: post,
+                open: tagsOpen,
+                pageIndex: carouselIndex,
+                isCarousel: true,
+              ),
             ],
           ),
         ),
@@ -3207,7 +3244,12 @@ class _PostMediaSurface extends StatelessWidget {
                   placeholderIcon: Icons.image_outlined,
                 ),
               ),
-              _PostinganTaggedPeopleLayer(post: post),
+              _PostinganTaggedPeopleLayer(
+                post: post,
+                open: tagsOpen,
+                pageIndex: carouselIndex,
+                isCarousel: false,
+              ),
             ],
           ),
         ),
@@ -3215,17 +3257,29 @@ class _PostMediaSurface extends StatelessWidget {
   }
 }
 
-/// Indikator "orang ditandai" khusus halaman Postingan (detail). Menggantikan
-/// badge tag di Feed yang menimpa baris "Disukai oleh" — di sini ikon 👥 kecil
-/// di pojok kiri-bawah media, tap → panel berisi pill username yang ditandai.
-/// Tap pill sendiri → sheet Opsi Tag (hapus saya / sembunyikan); pill orang
-/// lain → buka profil publik. Tidak memakai koordinat titik (media Postingan
-/// BoxFit.cover bisa meng-crop, jadi dot bisa meleset) — pakai daftar pill
-/// yang robust dan selalu terbaca.
+/// Indikator "orang ditandai" khusus halaman Postingan (detail), IG-style:
+/// ikon orang kecil pojok kiri-bawah sebagai penanda, DAN single-tap foto →
+/// toggle pill nama ditandai muncul/hilang di titik koordinatnya (mirror
+/// perilaku tap fullscreen video). Pakai `FeedTaggedUsersOverlay` +
+/// `FeedUserTagPill` yang sama dengan composer (pill kecil ber-ekor), bukan
+/// bar melintang. Tap pill sendiri → sheet Opsi Tag; pill orang lain → profil.
+///
+/// [open]/[pageIndex] dibagi dengan outer detector + `_CarouselSurface`
+/// (lihat _PostMediaSurface). Media Postingan render `BoxFit.cover`; karena
+/// kotak aspect di-clamp ke aspect foto ([resolvePostinganMediaAspectRatio]),
+/// untuk mayoritas foto tak ada crop → posisi pill = fraksi × ukuran kotak.
 class _PostinganTaggedPeopleLayer extends StatefulWidget {
   final FeedPost post;
+  final ValueNotifier<bool> open;
+  final ValueNotifier<int> pageIndex;
+  final bool isCarousel;
 
-  const _PostinganTaggedPeopleLayer({required this.post});
+  const _PostinganTaggedPeopleLayer({
+    required this.post,
+    required this.open,
+    required this.pageIndex,
+    required this.isCarousel,
+  });
 
   @override
   State<_PostinganTaggedPeopleLayer> createState() =>
@@ -3237,7 +3291,6 @@ class _PostinganTaggedPeopleLayerState
   // Salinan lokal supaya "Hapus saya dari post" bisa optimistic-remove tanpa
   // menunggu parent rebuild.
   late List<FeedTaggedUser> _tags;
-  bool _open = false;
   bool _selfHidden = false;
 
   @override
@@ -3253,12 +3306,18 @@ class _PostinganTaggedPeopleLayerState
     if (oldWidget.post.id != widget.post.id) {
       _tags = List.of(widget.post.taggedUsers);
       _selfHidden = widget.post.viewerTagHidden ?? false;
-      _open = false;
+      widget.open.value = false;
     }
   }
 
   bool _isSelf(FeedTaggedUser tag) =>
       tag.userId.isNotEmpty && tag.userId == accountOwnerId();
+
+  /// Tag untuk slide aktif. Foto tunggal → semua tag (mediaIndex 0/null).
+  List<FeedTaggedUser> _tagsFor(int index) {
+    if (!widget.isCarousel) return _tags;
+    return _tags.where((t) => (t.mediaIndex ?? 0) == index).toList();
+  }
 
   void _onTapUser(FeedTaggedUser tag) {
     AppHaptics.tap();
@@ -3271,9 +3330,7 @@ class _PostinganTaggedPeopleLayerState
           if (!mounted) return;
           setState(() {
             _tags = _tags.where((t) => t.userId != tag.userId).toList();
-            if (_tags.isEmpty) {
-              _open = false;
-            }
+            if (_tags.isEmpty) widget.open.value = false;
           });
         },
         onRemoveFailed: () {
@@ -3302,74 +3359,44 @@ class _PostinganTaggedPeopleLayerState
     return Positioned.fill(
       child: Stack(
         children: [
+          // Layer pill koordinat — toggle lewat [open]; per-slide utk carousel.
+          Positioned.fill(
+            child: ValueListenableBuilder<bool>(
+              valueListenable: widget.open,
+              builder: (context, open, _) {
+                if (!open) return const SizedBox.shrink();
+                return ValueListenableBuilder<int>(
+                  valueListenable: widget.pageIndex,
+                  builder: (context, index, __) {
+                    final tags = _tagsFor(index);
+                    if (tags.isEmpty) return const SizedBox.shrink();
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        return FeedTaggedUsersOverlay(
+                          tags: tags,
+                          visible: true,
+                          photoSize: constraints.biggest,
+                          onTapUser: _onTapUser,
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          // Ikon penanda pojok kiri-bawah — SELALU tampil kalau ada tag; tap
+          // juga men-toggle (selain tap foto), paritas IG.
           Positioned(
             left: 12,
             bottom: 12,
             child: FeedTaggedBadge(
               onTap: () {
                 AppHaptics.tap();
-                setState(() => _open = !_open);
+                widget.open.value = !widget.open.value;
               },
             ),
           ),
-          if (_open)
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 56,
-              child: _TaggedPeoplePanel(
-                tags: _tags,
-                onTapUser: _onTapUser,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Panel gelap berisi pill username yang ditandai — muncul saat badge di-tap.
-class _TaggedPeoplePanel extends StatelessWidget {
-  final List<FeedTaggedUser> tags;
-  final ValueChanged<FeedTaggedUser> onTapUser;
-
-  const _TaggedPeoplePanel({required this.tags, required this.onTapUser});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.62),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          for (final tag in tags)
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => onTapUser(tag),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  tag.username != null && tag.username!.isNotEmpty
-                      ? '@${tag.username}'
-                      : tag.name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: NataloWeight.onMedia,
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );
@@ -3382,6 +3409,8 @@ class _CarouselSurface extends StatefulWidget {
   final PostVideoCoordinator coordinator;
   final void Function(String sessionId, String url) registerVideoUrl;
   final String? handoffSessionId;
+  // Lapor slide aktif ke layer tag orang (filter pill per-slide).
+  final ValueChanged<int>? onPageChanged;
 
   const _CarouselSurface({
     required this.post,
@@ -3389,6 +3418,7 @@ class _CarouselSurface extends StatefulWidget {
     required this.coordinator,
     required this.registerVideoUrl,
     required this.handoffSessionId,
+    this.onPageChanged,
   });
 
   @override
@@ -3430,7 +3460,10 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
       children: [
         PageView.builder(
           itemCount: items.length,
-          onPageChanged: (i) => setState(() => _index = i),
+          onPageChanged: (i) {
+            setState(() => _index = i);
+            widget.onPageChanged?.call(i);
+          },
           itemBuilder: (context, index) {
             final item = items[index];
             if (item.isVideo) {
