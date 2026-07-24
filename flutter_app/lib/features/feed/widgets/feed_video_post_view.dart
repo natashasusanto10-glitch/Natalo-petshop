@@ -214,6 +214,11 @@ class FeedVideoPostView extends StatefulWidget {
   /// DoubleTapLikePointerDetector). Null = layar tanpa detector luar.
   final ExternalDoubleTapLike? externalDoubleTapLike;
 
+  /// Kontrol tampilan badge "Ditandai dalam video ini" di pojok kiri-bawah.
+  /// `true` (default) → badge tampil jika ada tagged users. `false` → badge
+  /// tersembunyi (untuk feed utama agar tidak menumpuk dengan action rail).
+  final bool showTaggedBadge;
+
   const FeedVideoPostView({
     super.key,
     required this.post,
@@ -239,7 +244,17 @@ class FeedVideoPostView extends StatefulWidget {
     this.beforeObserveInitialized,
     this.framing = FeedVideoFraming.immersive,
     this.externalDoubleTapLike,
+    this.showTaggedBadge = true,
   });
+
+  /// Predikat render badge "Ditandai dalam video ini" — badge tampil hanya
+  /// jika flag diaktifkan DAN ada tagged users. Digunakan untuk guard render
+  /// di state: `if (shouldShowTaggedBadge(...)) { ... }`
+  static bool shouldShowTaggedBadge({
+    required bool showTaggedBadge,
+    required bool hasTags,
+  }) =>
+      showTaggedBadge && hasTags;
 
   @override
   State<FeedVideoPostView> createState() => _FeedVideoPostViewState();
@@ -3538,7 +3553,10 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                         // dalam video ini" (Task 12, spec §3, wajib ada —
                         // video tidak punya overlay pill in-place seperti
                         // foto karena taggedUsers video tanpa koordinat x/y).
-                        if (_tags.isNotEmpty)
+                        if (FeedVideoPostView.shouldShowTaggedBadge(
+                          showTaggedBadge: widget.showTaggedBadge,
+                          hasTags: _tags.isNotEmpty,
+                        ))
                           Positioned(
                             left: 16,
                             bottom: actionRailInset,

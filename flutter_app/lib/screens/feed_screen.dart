@@ -863,6 +863,7 @@ class _FeedScreenState extends State<FeedScreen>
                                 _onActiveBufferAheadChanged(postId, ahead),
                             onOverlayStateChanged: _setFeedInteractionLocked,
                             onMediaZoomChanged: _setFeedMediaZooming,
+                            showTaggedBadge: false,
                             // Visibilitas → resume/pause sesi yang MEMANG aktif;
                             // setActive authoritative di `_managePreloadWindow` —
                             // di sini tidak setActive supaya urutan transisi tetap
