@@ -58,9 +58,32 @@ export async function POST(
     return NextResponse.json({ error: validated.error }, { status: 400 });
   }
 
+  const data = validated.data;
   const record = await prisma.petCareRecord.create({
-    data: { ...validated.data, petId: id },
+    data: {
+      petId: id,
+      category: data.category,
+      doneAt: data.doneAt,
+      note: data.note,
+      nextDueAt: data.nextDueAt,
+      productId: data.productId,
+      brandText: data.brandText,
+      dosageNote: data.dosageNote,
+      weightKg: data.weightKg,
+      place: data.place,
+      vaccineName: data.vaccineName,
+      complaint: data.complaint,
+    },
   });
+
+  if (data.weightKg !== null && (data.category === "deworm" || data.category === "flea")) {
+    await prisma.$transaction([
+      prisma.pet.update({ where: { id }, data: { weightKg: data.weightKg } }),
+      prisma.petWeightLog.create({
+        data: { petId: id, weightKg: data.weightKg, careRecordId: record.id },
+      }),
+    ]);
+  }
 
   return NextResponse.json({ record }, { status: 201 });
 }
