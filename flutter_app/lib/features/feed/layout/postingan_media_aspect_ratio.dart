@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:ui' show Size;
 
 import '../../../models/feed_post.dart';
@@ -47,20 +46,25 @@ double resolvePostinganMediaAspectRatio({
 /// portrait — sisa bug rotasi Bunny). Membangun kotak dari metadata itu bikin
 /// video portrait masuk kotak lebar → bar hitam kiri-kanan. Ukuran asli
 /// controller selalu benar, jadi jadikan itu sumber saat ada.
+///
+/// Rasio live HARUS di-clamp ke batas [postinganVideoMinAspectRatio] yang
+/// sama dengan fallback (bukan cuma cap maksimum) — video 9:16 asli (0.5625)
+/// lebih kurus dari batas IG 3:5 (0.6); tanpa clamp minimum ini, kotak
+/// melompat lebih tinggi tepat saat controller siap (~saat autoplay mulai),
+/// karena tinggi kotak = lebar/rasio. IG meng-crop `cover` video vertikal
+/// penuh ke bingkai 3:5 — kotak tidak pernah berubah ukuran saat play.
 double resolvePostinganVideoBoxAspectRatio({
   required double fallbackAspectRatio,
   Size? liveSize,
 }) {
   if (liveSize != null && liveSize.width > 0 && liveSize.height > 0) {
-    // Hitung rasio dari ukuran asli. Jangan clamp minimum (3:5) karena ukuran
-    // controller sudah terbukti benar; hanya cap maksimum untuk landscape
-    // yang terlalu lebar (math.min, bukan clamp — batas bawah tak diperlukan
-    // karena rasio sudah dijamin > 0 oleh guard di atas).
     final sourceAspectRatio = liveSize.width / liveSize.height;
     if (!sourceAspectRatio.isFinite || sourceAspectRatio <= 0) {
       return fallbackAspectRatio;
     }
-    return math.min(sourceAspectRatio, postinganMaxAspectRatio);
+    return sourceAspectRatio
+        .clamp(postinganVideoMinAspectRatio, postinganMaxAspectRatio)
+        .toDouble();
   }
   return fallbackAspectRatio;
 }

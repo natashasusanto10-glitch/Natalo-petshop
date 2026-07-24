@@ -3181,37 +3181,44 @@ class _PostMediaSurface extends StatelessWidget {
           fallbackAspectRatio: aspectRatio,
           builder: (context, liveAspectRatio) => AspectRatio(
             aspectRatio: liveAspectRatio,
-            child: _wrapHero(
-              context,
-              _InlineVideoPlayer(
-                postId: post.id,
-                coordinator: coordinator,
-                registerVideoUrl: registerVideoUrl,
-                dormant: handoffSessionId == post.id,
-                // videoPlaybackUrl (videoUrl-first), BUKAN previewMediaUrl
-                // (yang thumbnail-first → JPG → player gagal initialize).
-                mediaUrl: videoQualityService.resolvePlaybackUrl(
-                  post.videoPlaybackUrl,
-                  dataSaverUrl: post.videoDataSaverUrl,
-                  userPreference: appSettingsStore.feedVideoQuality,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _wrapHero(
+                  context,
+                  _InlineVideoPlayer(
+                    postId: post.id,
+                    coordinator: coordinator,
+                    registerVideoUrl: registerVideoUrl,
+                    dormant: handoffSessionId == post.id,
+                    // videoPlaybackUrl (videoUrl-first), BUKAN previewMediaUrl
+                    // (yang thumbnail-first → JPG → player gagal initialize).
+                    mediaUrl: videoQualityService.resolvePlaybackUrl(
+                      post.videoPlaybackUrl,
+                      dataSaverUrl: post.videoDataSaverUrl,
+                      userPreference: appSettingsStore.feedVideoQuality,
+                    ),
+                    thumbnailUrl: post.thumbnailUrl,
+                    aspectRatio: liveAspectRatio,
+                    onAnchorReady: onVideoAnchorReady,
+                    onMediaSingleTap: onVideoMediaSingleTap,
+                    onMediaDoubleTapDown: onVideoMediaDoubleTapDown,
+                    onMediaDoubleTap: onVideoMediaDoubleTap,
+                  ),
+                  // Hero flight: TIDAK pakai _InlineVideoPlayer segar (state
+                  // baru = unbound sampai VisibilityDetector menembak,
+                  // throttle lebih lambat dari durasi flight → placeholder/
+                  // kosong sekilas alih-alih video hidup, lihat komentar
+                  // PostHero.flightChild). Surface ringan ini baca controller
+                  // yang SUDAH hidup secara sinkron.
+                  flightChild: _HeroVideoFlightSurface(
+                    postId: post.id,
+                    coordinator: coordinator,
+                    thumbnailUrl: post.thumbnailUrl,
+                  ),
                 ),
-                thumbnailUrl: post.thumbnailUrl,
-                aspectRatio: liveAspectRatio,
-                onAnchorReady: onVideoAnchorReady,
-                onMediaSingleTap: onVideoMediaSingleTap,
-                onMediaDoubleTapDown: onVideoMediaDoubleTapDown,
-                onMediaDoubleTap: onVideoMediaDoubleTap,
-              ),
-              // Hero flight: TIDAK pakai _InlineVideoPlayer segar (state baru
-              // = unbound sampai VisibilityDetector menembak, throttle lebih
-              // lambat dari durasi flight → placeholder/kosong sekilas alih-
-              // alih video hidup, lihat komentar PostHero.flightChild). Surface
-              // ringan ini baca controller yang SUDAH hidup secara sinkron.
-              flightChild: _HeroVideoFlightSurface(
-                postId: post.id,
-                coordinator: coordinator,
-                thumbnailUrl: post.thumbnailUrl,
-              ),
+                _PostinganVideoTaggedBadge(post: post),
+              ],
             ),
           ),
         ),
@@ -3328,7 +3335,6 @@ class _PostinganTaggedPeopleLayerState
   }
 
   void _onTapUser(FeedTaggedUser tag) {
-    AppHaptics.tap();
     if (_isSelf(tag)) {
       showFeedTagOptionsSheet(
         context,
@@ -3400,13 +3406,94 @@ class _PostinganTaggedPeopleLayerState
             bottom: 12,
             child: FeedTaggedBadge(
               onTap: () {
-                AppHaptics.tap();
                 widget.open.value = !widget.open.value;
               },
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Indikator "orang ditandai" untuk VIDEO di halaman Postingan (detail),
+/// paritas IG "In this reel": ikon kecil pojok kiri-bawah, tap → sheet daftar
+/// (BUKAN pin koordinat seperti foto/carousel — taggedUsers video tak punya
+/// x/y, sama seperti alasan di feed_video_post_view.dart). Reuse
+/// [showFeedTaggedUsersSheet] yang sama dengan sheet "Ditandai dalam video
+/// ini" di feed (satu-satunya surface tag video, spec §3).
+class _PostinganVideoTaggedBadge extends StatefulWidget {
+  final FeedPost post;
+
+  const _PostinganVideoTaggedBadge({required this.post});
+
+  @override
+  State<_PostinganVideoTaggedBadge> createState() =>
+      _PostinganVideoTaggedBadgeState();
+}
+
+class _PostinganVideoTaggedBadgeState
+    extends State<_PostinganVideoTaggedBadge> {
+  late List<FeedTaggedUser> _tags;
+  bool _selfHidden = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tags = List.of(widget.post.taggedUsers);
+    _selfHidden = widget.post.viewerTagHidden ?? false;
+  }
+
+  @override
+  void didUpdateWidget(covariant _PostinganVideoTaggedBadge oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.post.id != widget.post.id) {
+      _tags = List.of(widget.post.taggedUsers);
+      _selfHidden = widget.post.viewerTagHidden ?? false;
+    }
+  }
+
+  void _openSheet() {
+    if (_tags.isEmpty) return;
+    final selfId = accountOwnerId();
+    FeedTaggedUser? selfTagSnapshot;
+    for (final t in _tags) {
+      if (t.userId == selfId) {
+        selfTagSnapshot = t;
+        break;
+      }
+    }
+    showFeedTaggedUsersSheet(
+      context,
+      post: widget.post.copyWith(taggedUsers: _tags),
+      selfUserId: selfId,
+      onSelfRemoved: () {
+        if (!mounted) return;
+        setState(() => _tags = _tags.where((t) => t.userId != selfId).toList());
+      },
+      onSelfRemoveFailed: () {
+        if (!mounted || selfTagSnapshot == null) return;
+        setState(() {
+          if (!_tags.any((t) => t.userId == selfId)) {
+            _tags = [..._tags, selfTagSnapshot!];
+          }
+        });
+      },
+      onSelfHiddenChanged: (value) {
+        if (!mounted) return;
+        setState(() => _selfHidden = value);
+      },
+      selfHidden: _selfHidden,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_tags.isEmpty) return const SizedBox.shrink();
+    return Positioned(
+      left: 12,
+      bottom: 12,
+      child: FeedTaggedBadge(onTap: _openSheet),
     );
   }
 }
@@ -4239,12 +4326,11 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
                 if (ready)
                   ClipRect(
                     child: FittedBox(
-                      // contain — frame sudah AspectRatio(clamp source), jadi
-                      // no-op utk video rasio normal; utk rasio ekstrem (di
-                      // luar 9:16..1.91) contain menampilkan video UTUH
-                      // (pillarbox/letterbox) alih-alih cover memotongnya.
-                      // Paritas IG: video tak pernah di-crop di viewer post.
-                      fit: BoxFit.contain,
+                      // cover — paritas IG: video mengisi penuh kotak, TANPA
+                      // bar hitam kiri-kanan/atas-bawah. Untuk video di luar
+                      // rentang 3:5..1.91, sisi yang kelebihan dipotong
+                      // (bukan pillarbox/letterbox) — sama seperti IG.
+                      fit: BoxFit.cover,
                       child: SizedBox(
                         width: controller.value.size.width > 0
                             ? controller.value.size.width
