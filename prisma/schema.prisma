@@ -856,12 +856,13 @@ model VoucherUsage {
 }
 
 model PushSubscription {
-  id        String   @id @default(cuid())
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
-  userId    String?
-  createdAt DateTime @default(now())
+  id                  String   @id @default(cuid())
+  endpoint            String   @unique
+  p256dh              String
+  auth                String
+  userId              String?
+  clientRenderVersion Int?
+  createdAt           DateTime @default(now())
 }
 
 model CustomerPoint {
