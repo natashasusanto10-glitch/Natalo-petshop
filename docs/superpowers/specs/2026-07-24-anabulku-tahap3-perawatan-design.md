@@ -82,9 +82,9 @@ Menggantikan bagian kartu "Segera hadir" (kartu segera-hadir tetap ada tapi teks
 ### 2. Halaman "Perawatan {nama}" (PetCareScreen, baru)
 
 - AppBar global, judul `Perawatan {nama}`.
-- **Banner jadwal terdekat** (hanya jika ada jadwal): kartu besar radius 14, isi label kecil "JADWAL TERDEKAT", judul kategori 20/strong, badge status + tanggal + aksi "Tandai selesai".
-  - Normal/Segera: bg `NataloColors.primary`, teks putih (dark mode: sama, brand tetap terbaca).
-  - **Terlambat: bg merah** (`NataloColors`/theme error solid), teks putih, badge "Terlambat N hari".
+- **Banner jadwal terdekat** (hanya jika ada jadwal): kartu besar radius 14, judul kategori 20/strong, badge status + tanggal + aksi "Tandai selesai". Label kecil di atas judul mengikuti status:
+  - Normal/Segera: label "JADWAL TERDEKAT", bg `NataloColors.primary`, teks putih (dark mode: sama, brand tetap terbaca).
+  - **Terlambat**: label **"SUDAH LEWAT JADWAL"**, bg merah (`NataloColors`/theme error solid), teks putih, badge "Terlambat N hari".
   - "Tandai selesai": membuat record baru kategori sama dengan `doneAt` = hari ini (note kosong), lalu bottom-sheet ringan menawarkan jadwal berikutnya (+1 bulan / +3 bulan / pilih tanggal / lewati). Jadwal lama otomatis tersupersede.
 - **Kartu mini** (baris horizontal, maks 2-3): jadwal aktif lain per kategori — ikon + label kategori 10/body + "N hari lagi" 12.5/strong. Terlambat → angka merah.
 - **Riwayat**: label kecil "RIWAYAT" + list kronologis desc — tile ikon kotak 30 (bg primarySoft / brandBlue-alpha di dark) + judul kategori 13/strong + tanggal • note (11.5/body, onSurfaceVariant). Long-press / tombol titik-tiga → hapus (dialog konfirmasi pola app).
