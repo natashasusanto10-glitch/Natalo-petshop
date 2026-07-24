@@ -77,7 +77,10 @@ export async function GET(request: Request) {
     const byId = new Map(rows.map((r) => [r.id, r]));
     products = ordered.map((o) => mapProductToReco(byId.get(o.id)!, weightKg));
   } else {
-    products = rows.map((r) => mapProductToReco(r, null));
+    const speciesFiltered = rows.filter(
+      (r) => !r.targetSpecies?.length || r.targetSpecies.includes(species)
+    );
+    products = speciesFiltered.map((r) => mapProductToReco(r, null));
   }
 
   return NextResponse.json({ products });

@@ -69,6 +69,7 @@ class CareProductPicker extends StatefulWidget {
 class _CareProductPickerState extends State<CareProductPicker> {
   List<CareProduct> _products = [];
   bool _loading = false;
+  bool _weightMatched = false;
   String? _selectedId;
   bool _manual = false;
   final _brandCtrl = TextEditingController();
@@ -110,20 +111,35 @@ class _CareProductPickerState extends State<CareProductPicker> {
     try {
       final fetch = widget.recommendationFetcher ??
           petService.fetchCareRecommendation;
-      final products = await fetch(
+      final weightKg = widget.weightKg;
+      var products = await fetch(
         category: category,
         species: species,
-        weightKg: widget.weightKg,
+        weightKg: weightKg,
       );
+      var weightMatched = weightKg != null && products.isNotEmpty;
+      if (products.isEmpty && weightKg != null) {
+        // Fallback: no product matched the entered weight — fall back to
+        // the full unfiltered category list so we never show an empty
+        // list, only the manual-entry link.
+        products = await fetch(
+          category: category,
+          species: species,
+          weightKg: null,
+        );
+        weightMatched = false;
+      }
       if (!mounted) return;
       setState(() {
         _products = products;
+        _weightMatched = weightMatched;
         _loading = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _products = [];
+        _weightMatched = false;
         _loading = false;
       });
     }
@@ -190,7 +206,7 @@ class _CareProductPickerState extends State<CareProductPicker> {
                   product: _products[i],
                   selected: _selectedId == _products[i].id,
                   showBadge:
-                      i == 0 && (widget._isDebug || widget.weightKg != null),
+                      i == 0 && (widget._isDebug || _weightMatched),
                   onTap: () => _selectProduct(_products[i]),
                 ),
               ],

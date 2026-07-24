@@ -92,4 +92,37 @@ void main() {
     expect(find.text('Drontal'), findsOneWidget);
     expect(find.text('Paling sesuai'), findsNothing);
   });
+
+  testWidgets(
+      'falls back to unfiltered category list when weighted fetch returns empty',
+      (tester) async {
+    final unfiltered = [
+      const CareProduct(
+          id: 'p1',
+          name: 'Combantrin Kucing',
+          effectivePrice: 30000,
+          inStock: true,
+          instruction: 'Sesuai berat'),
+    ];
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: CareProductPicker(
+          category: PetCareCategory.deworm,
+          species: 'cat',
+          weightKg: 4.0,
+          onChanged: (_) {},
+          recommendationFetcher: ({
+            required PetCareCategory category,
+            required String species,
+            double? weightKg,
+          }) async =>
+              weightKg != null ? <CareProduct>[] : unfiltered,
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(find.text('Combantrin Kucing'), findsOneWidget);
+    expect(find.text('Paling sesuai'), findsNothing);
+    expect(find.textContaining('Ketik manual'), findsOneWidget);
+  });
 }
