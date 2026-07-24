@@ -39,6 +39,9 @@ import {
 } from "@/lib/feed/notification-center";
 import { feedNotificationThumbnail } from "@/lib/feed/notification-thumbnail";
 import { taggedUserIdsFromRows } from "@/lib/feed/tagged-users";
+import { shouldRePush } from "@/lib/social/follow-aggregation";
+import { sendFcmToUser } from "@/lib/fcm";
+import { sendPushToUser, type PushPayload } from "@/lib/push";
 
 // Milestone helper remains available for bulk/broadcast-style summaries.
 // Per-like Notification Center entries are batched below.
@@ -503,7 +506,7 @@ export async function sendLikeNotification(params: {
         createdAt: { gte: since },
         reads: { none: { userId: post.authorId } },
       },
-      select: { id: true },
+      select: { id: true, lastPushedAt: true },
       orderBy: { createdAt: "desc" },
     });
 
@@ -516,19 +519,54 @@ export async function sendLikeNotification(params: {
       });
       const avatarUrls = topLikerAvatars(topLikers.map((l) => l.user));
 
+      const aggTitle = `${params.likeCount} orang menyukai Feed kamu`;
+      const aggBody = `Postingan ${quoteFeedTitle(
+        post.title
+      )} mendapat beberapa like baru.`;
+      const nowDate = new Date();
+      const doPush = shouldRePush(recentUnread.lastPushedAt, nowDate);
+
       await prisma.announcement.update({
         where: { id: recentUnread.id },
         data: {
-          title: `${params.likeCount} orang menyukai Feed kamu`,
-          body: `Postingan ${quoteFeedTitle(
-            post.title
-          )} mendapat beberapa like baru.`,
+          title: aggTitle,
+          body: aggBody,
           thumbnailUrl: thumb,
           ...likeRowActorFields(true, actorFields),
           actorAvatarUrls: avatarUrls,
-          publishedAt: new Date(),
+          aggregatedCount: params.likeCount,
+          publishedAt: nowDate,
+          ...(doPush ? { lastPushedAt: nowDate } : {}),
         },
       });
+
+      // Re-push ter-throttle (Keputusan 2 spec agregasi): tray ikut segar
+      // ala IG — Android replace via tag, iOS via apns-collapse-id. Maks
+      // 1 push per 5 menit per baris; di antaranya in-app saja (real-time
+      // list menangkap gratis).
+      if (doPush) {
+        const likePayload: PushPayload = {
+          title: aggTitle,
+          body: aggBody,
+          url: feedPostOwnerUrl(post.id),
+          tag: `feed-like-${post.id}`,
+          imageUrl: thumb,
+          prefCategory: "feed",
+          renderClientSide: true,
+          actorAvatarUrl: actorFields.actorAvatarUrl,
+          data: {
+            source: SOCIAL_NOTIFICATION_SOURCE,
+            type: "feed_new_like",
+            post_id: post.id,
+            like_count: String(params.likeCount),
+            url: feedPostOwnerUrl(post.id),
+          },
+        };
+        await Promise.allSettled([
+          sendPushToUser(post.authorId, likePayload),
+          sendFcmToUser(post.authorId, likePayload),
+        ]);
+      }
       return;
     }
 
