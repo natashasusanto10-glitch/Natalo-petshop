@@ -77,7 +77,7 @@ void main() {
     expect(find.text('AKUN RESMI'), findsNothing);
   });
 
-  testWidgets('official owner gets edit and never follow or message',
+  testWidgets('official owner gets Pets Profile and never follow or message',
       (tester) async {
     await tester.pumpWidget(headerHarness(
       profile: const PublicProfile(
@@ -89,7 +89,7 @@ void main() {
       chatEnabled: true,
       onEditProfile: () {},
     ));
-    expect(find.text('Edit Profil'), findsOneWidget);
+    expect(find.text('Pets Profile'), findsOneWidget);
     expect(find.text('Ikuti'), findsNothing);
     expect(find.text('Pesan'), findsNothing);
   });
@@ -121,7 +121,7 @@ void main() {
       ),
       width: 320,
     ));
-    expect(find.text('Edit Profil'), findsNothing);
+    expect(find.text('Pets Profile'), findsNothing);
     expect(find.text('Ikuti'), findsNothing);
   });
 

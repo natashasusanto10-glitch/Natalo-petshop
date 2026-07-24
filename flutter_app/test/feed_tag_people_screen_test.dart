@@ -29,7 +29,7 @@ void main() {
   testWidgets('judul, tombol selesai, dan hint tampil', (tester) async {
     await pump(tester);
     expect(find.text('Tandai Orang'), findsOneWidget);
-    expect(find.text('Ketuk foto untuk menandai orang'), findsOneWidget);
+    expect(find.text('Ketuk foto untuk menandai'), findsOneWidget);
     expect(find.byIcon(Icons.check), findsOneWidget);
   });
 
@@ -77,5 +77,40 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(popped, hasLength(1));
+  });
+
+  group('parseTagSearchUsers', () {
+    test('membaca key "items" (kontrak /api/users/search) — bukan "users"', () {
+      // Regresi: dulu parser baca data["users"] yang tidak pernah ada di
+      // response backend ({ items: [...] }) → search tag SELALU kosong.
+      final result = parseTagSearchUsers({
+        'items': [
+          {'id': 'u1', 'username': 'natalo', 'name': 'Natalo Petshop'},
+          {'id': 'u2', 'username': 'budi', 'name': 'Budi'},
+        ],
+      });
+      expect(result, hasLength(2));
+      expect(result.first.username, 'natalo');
+    });
+
+    test('body dengan key lama "users" TIDAK menghasilkan apa-apa', () {
+      final result = parseTagSearchUsers({
+        'users': [
+          {'id': 'u1', 'username': 'natalo'},
+        ],
+      });
+      expect(result, isEmpty);
+    });
+
+    test('entry tanpa id di-skip; non-map aman', () {
+      final result = parseTagSearchUsers({
+        'items': [
+          {'username': 'noid'},
+          {'id': 'u3', 'username': 'ok'},
+        ],
+      });
+      expect(result, hasLength(1));
+      expect(result.first.id, 'u3');
+    });
   });
 }

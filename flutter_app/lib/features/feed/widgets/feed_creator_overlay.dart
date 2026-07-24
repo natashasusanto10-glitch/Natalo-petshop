@@ -299,10 +299,12 @@ class _FeedExpandableCaptionState extends State<FeedExpandableCaption> {
     super.dispose();
   }
 
+  // w400 (bukan w600) — isi caption ala IG: username tebal, badan teks
+  // normal. w600 di seluruh caption bikin blok teks terasa "berteriak".
   static const _baseStyle = TextStyle(
     color: Colors.white,
     fontSize: 13.2,
-    fontWeight: FontWeight.w600,
+    fontWeight: FontWeight.w400,
     height: 1.38,
     shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
   );

@@ -9,28 +9,28 @@ const String _nataloFontFamily = 'PlusJakartaSans';
 const TextTheme _lightTextTheme = TextTheme(
   displayLarge: TextStyle(
     fontSize: 32,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w700,
     height: 1.15,
     letterSpacing: -0.5,
     color: NataloColors.textPrimary,
   ),
   displayMedium: TextStyle(
     fontSize: 28,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w700,
     height: 1.16,
     letterSpacing: -0.5,
     color: NataloColors.textPrimary,
   ),
   displaySmall: TextStyle(
     fontSize: 24,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w700,
     height: 1.18,
     letterSpacing: -0.4,
     color: NataloColors.textPrimary,
   ),
   headlineLarge: TextStyle(
     fontSize: 24,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w700,
     height: 1.20,
     letterSpacing: -0.4,
     color: NataloColors.textPrimary,
@@ -117,28 +117,28 @@ const TextTheme _lightTextTheme = TextTheme(
 const TextTheme _darkTextTheme = TextTheme(
   displayLarge: TextStyle(
     fontSize: 32,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w700,
     height: 1.15,
     letterSpacing: -0.5,
     color: NataloColors.textPrimaryDark,
   ),
   displayMedium: TextStyle(
     fontSize: 28,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w700,
     height: 1.16,
     letterSpacing: -0.5,
     color: NataloColors.textPrimaryDark,
   ),
   displaySmall: TextStyle(
     fontSize: 24,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w700,
     height: 1.18,
     letterSpacing: -0.4,
     color: NataloColors.textPrimaryDark,
   ),
   headlineLarge: TextStyle(
     fontSize: 24,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w700,
     height: 1.20,
     letterSpacing: -0.4,
     color: NataloColors.textPrimaryDark,
@@ -334,7 +334,7 @@ class NataloTheme {
         titleTextStyle: TextStyle(
           fontFamily: fontFamily,
           fontSize: 18,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           height: 1.25,
           letterSpacing: -0.3,
           // EXPLICIT color — jangan rely ke foregroundColor inheritance.
@@ -543,7 +543,7 @@ class NataloTheme {
         titleTextStyle: TextStyle(
           color: darkInk,
           fontSize: 18,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           height: 1.25,
           letterSpacing: -0.3,
         ),

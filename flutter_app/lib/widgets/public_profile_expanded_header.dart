@@ -389,8 +389,13 @@ class _ActionRow extends StatelessWidget {
           Expanded(
             child: _HeaderAction(
               label: profile.isOwner
-                  ? 'Edit Profil'
+                  ? 'Pets Profile'
                   : (profile.isFollowing ? 'Mengikuti' : 'Ikuti'),
+              // Edit profil (nama/foto/username) sudah punya jalur sendiri
+              // lewat ikon gear -> Pengaturan Akun -> Ubah Profil — tombol
+              // utama di header own-profile dialihkan ke Pets Profile
+              // (Anabulku) supaya tidak dobel dengan gear.
+              leadingIcon: profile.isOwner ? Icons.pets_rounded : null,
               onTap: primaryCallback,
               busy: !profile.isOwner && followBusy,
               background: followAccent ? NataloColors.primary : neutralFill,
@@ -447,6 +452,9 @@ class _HeaderAction extends StatelessWidget {
   final String? semanticLabel;
   final String? tooltip;
   final IconData? icon;
+  // Icon kecil di depan [label] (mis. paw utk "Pets Profile") — beda dgn
+  // [icon] yang render icon-ONLY (tanpa label, dipakai tombol share ikon).
+  final IconData? leadingIcon;
   final VoidCallback? onTap;
   final bool busy;
   final Color background;
@@ -458,6 +466,7 @@ class _HeaderAction extends StatelessWidget {
     this.semanticLabel,
     this.tooltip,
     this.icon,
+    this.leadingIcon,
     required this.onTap,
     this.busy = false,
     required this.background,
@@ -508,6 +517,9 @@ class _HeaderAction extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: AppSpacing.sm),
+                          ] else if (leadingIcon != null) ...[
+                            Icon(leadingIcon, color: foreground, size: 16),
+                            const SizedBox(width: 6),
                           ],
                           Flexible(
                             child: Text(

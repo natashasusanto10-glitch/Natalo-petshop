@@ -63,7 +63,7 @@ void main() {
     await pumpScreen(tester);
 
     expect(find.byType(PublicProfileExpandedHeader), findsOneWidget);
-    expect(find.text('Edit Profil'), findsOneWidget);
+    expect(find.text('Pets Profile'), findsOneWidget);
     expect(find.text('Bagikan Profil'), findsOneWidget);
     expect(find.text('Ikuti'), findsNothing);
     expect(find.text('Pesan'), findsNothing);
