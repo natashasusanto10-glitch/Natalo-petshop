@@ -119,7 +119,6 @@ class PushNotificationService {
   PushInitState get initState => _initState;
 
   String? _currentToken;
-  GlobalKey<NavigatorState>? _navigatorKey;
   bool _registrationInFlight = false;
   bool _registrationQueued = false;
   Timer? _registrationRetryTimer;
@@ -195,7 +194,6 @@ class PushNotificationService {
         _initState == PushInitState.ready) {
       return;
     }
-    _navigatorKey = navigatorKey;
     _initState = PushInitState.initializing;
     try {
       // 1) Initialize Firebase pakai DefaultFirebaseOptions (konsisten dengan
@@ -974,6 +972,13 @@ class PushNotificationService {
     }
   }
 
+  /// Seam test — `_handleDeepLink` privat (library-private), test luar butuh
+  /// jalan masuk publik untuk membuktikan tap FCM tetap sampai ke
+  /// `deepLinkService` walau dipanggil sebelum root Navigator ter-mount
+  /// (cold-start race, lihat komentar `_handleDeepLink`).
+  @visibleForTesting
+  void handleDeepLinkForTesting(String url) => _handleDeepLink(url);
+
   /// Cek apakah kategori notifikasi enabled di preferences.
   /// Default semua kategori = true kecuali newsletter (false).
   Future<bool> _isCategoryEnabled(String category) async {
@@ -990,13 +995,18 @@ class PushNotificationService {
   }
 
   void _handleDeepLink(String url) {
-    final nav = _navigatorKey?.currentState;
-    if (nav == null) return;
-    // Reuse deep link service untuk parse path.
+    // TIDAK gate di sini pakai `_navigatorKey?.currentState` — cold-start
+    // (getInitialMessage, lihat initialize()) memproses tap SEBELUM
+    // runApp() tentu selesai mounting root Navigator, jadi currentState
+    // sering masih null di titik ini. Dulu early-return diam-diam di sini
+    // MEMBUANG deep-link tap: app kebuka tapi tak pernah navigasi (gejala
+    // device: notif FCM di-tap, app cold-start, jatuh diam ke Beranda).
+    // `deepLinkService.handleExternalUri` sudah punya bounded-poll retry
+    // (`_waitForNavigator`, 40x50ms) + antrian pending target untuk race
+    // Navigator-belum-mount yang SAMA persis — reuse itu, jangan duplikasi
+    // guard yang lebih lemah (tanpa retry) di sini.
     try {
       final uri = Uri.parse(url);
-      // Forward ke deep link service yang sudah ada — pattern yang sama
-      // dengan tap dari WhatsApp share / native intent.
       deepLinkService.handleExternalUri(uri);
     } catch (_) {}
   }
