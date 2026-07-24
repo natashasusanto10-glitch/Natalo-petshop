@@ -6,7 +6,9 @@ import '../theme/natalo_colors.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/recent_search_entry.dart';
 import '../services/api_client.dart';
+import '../services/feed_service.dart';
 import '../services/follow_service.dart';
 import '../state/account_scope.dart';
 import '../state/follow_override_store.dart';
@@ -26,7 +28,7 @@ const _brandBlue = NataloColors.primary;
 const _recentStorageBaseKey = 'feed_user_search_recent_v1';
 String get _recentStorageKey =>
     OwnerScope.key(_recentStorageBaseKey, accountOwnerId());
-const _maxRecentUsers = 12;
+const _maxRecentEntries = 12;
 
 class FeedUserSearchScreen extends StatefulWidget {
   const FeedUserSearchScreen({super.key});
@@ -47,14 +49,14 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
   String? _error;
   List<FollowUserSummary> _items = const [];
   bool _suggestedLoading = false;
-  List<FollowUserSummary> _recentUsers = const [];
+  List<RecentSearchEntry> _recentEntries = const [];
   List<FollowUserSummary> _suggestedUsers = const [];
 
   @override
   void initState() {
     super.initState();
     _controller.addListener(_onInputChanged);
-    _loadRecentUsers();
+    _loadRecentEntries();
     _loadSuggestedUsers();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focusNode.requestFocus();
@@ -135,28 +137,25 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
     Navigator.pop(context);
   }
 
-  Future<void> _loadRecentUsers() async {
+  Future<void> _loadRecentEntries() async {
     final prefs = await SharedPreferences.getInstance();
     final stored = prefs.getStringList(_recentStorageKey) ?? const <String>[];
-    final users = <FollowUserSummary>[];
+    final entries = <RecentSearchEntry>[];
     for (final raw in stored) {
       try {
         final decoded = jsonDecode(raw);
-        if (decoded is Map<String, dynamic>) {
-          final user = FollowUserSummary.fromJson(decoded);
-          if (user.canOpenProfile) users.add(user);
-        } else if (decoded is Map) {
-          final user = FollowUserSummary.fromJson(
-            Map<String, dynamic>.from(decoded),
-          );
-          if (user.canOpenProfile) users.add(user);
-        }
+        if (decoded is! Map) continue;
+        final entry =
+            RecentSearchEntry.fromJson(Map<String, dynamic>.from(decoded));
+        if (!entry.isHashtag && !(entry.user!.canOpenProfile)) continue;
+        if (entry.isHashtag && entry.hashtag!.name.isEmpty) continue;
+        entries.add(entry);
       } catch (_) {
-        // Abaikan entry lama yang rusak supaya recent tetap bisa tampil.
+        // Abaikan entry rusak supaya recent tetap tampil.
       }
     }
     if (!mounted) return;
-    setState(() => _recentUsers = users.take(_maxRecentUsers).toList());
+    setState(() => _recentEntries = entries.take(_maxRecentEntries).toList());
   }
 
   Future<void> _loadSuggestedUsers() async {
@@ -175,40 +174,54 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
     }
   }
 
-  Future<void> _persistRecentUsers() async {
+  Future<void> _persistRecentEntries() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
       _recentStorageKey,
-      _recentUsers.map((user) => jsonEncode(user.toJson())).toList(),
+      _recentEntries.map((entry) => jsonEncode(entry.toJson())).toList(),
     );
   }
 
   Future<void> _rememberRecentUser(FollowUserSummary user) async {
     if (!user.canOpenProfile) return;
-    setState(() {
-      final next = <FollowUserSummary>[
-        user,
-        ..._recentUsers.where((item) => item.id != user.id),
-      ];
-      _recentUsers = next.take(_maxRecentUsers).toList(growable: false);
-    });
-    await _persistRecentUsers();
+    await _rememberEntry(RecentSearchEntry.user(user));
   }
 
-  Future<void> _removeRecentUser(FollowUserSummary user) async {
+  Future<void> _rememberRecentHashtag(HashtagSuggestion hashtag) async {
+    await _rememberEntry(RecentSearchEntry.hashtag(hashtag));
+  }
+
+  Future<void> _rememberEntry(RecentSearchEntry entry) async {
+    setState(() {
+      final next = <RecentSearchEntry>[
+        entry,
+        ..._recentEntries.where((item) => item.key != entry.key),
+      ];
+      _recentEntries = next.take(_maxRecentEntries).toList(growable: false);
+    });
+    await _persistRecentEntries();
+  }
+
+  Future<void> _removeRecentEntry(RecentSearchEntry entry) async {
     AppHaptics.tap();
     setState(() {
-      _recentUsers = _recentUsers
-          .where((item) => item.id != user.id)
+      _recentEntries = _recentEntries
+          .where((item) => item.key != entry.key)
           .toList(growable: false);
     });
-    await _persistRecentUsers();
+    await _persistRecentEntries();
   }
 
-  Future<void> _clearRecentUsers() async {
+  Future<void> _clearRecentEntries() async {
     AppHaptics.tap();
-    setState(() => _recentUsers = const []);
-    await _persistRecentUsers();
+    setState(() => _recentEntries = const []);
+    await _persistRecentEntries();
+  }
+
+  Future<void> _openHashtag(HashtagSuggestion hashtag) async {
+    AppHaptics.tap();
+    unawaited(_rememberRecentHashtag(hashtag));
+    await Navigator.pushNamed(context, '/hashtag', arguments: hashtag.name);
   }
 
   Future<void> _openProfile(FollowUserSummary user) async {
@@ -228,9 +241,22 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
       }
 
       _items = reconcile(_items);
-      _recentUsers = reconcile(_recentUsers);
+      _recentEntries = _reconcileRecentFollow(_recentEntries);
       _suggestedUsers = reconcile(_suggestedUsers);
     });
+  }
+
+  List<RecentSearchEntry> _reconcileRecentFollow(
+    List<RecentSearchEntry> entries,
+  ) {
+    return entries
+        .map((entry) => entry.isHashtag
+            ? entry
+            : RecentSearchEntry.user(entry.user!.copyWith(
+                isFollowing:
+                    resolveFollowState(entry.user!.id, entry.user!.isFollowing),
+              )))
+        .toList(growable: false);
   }
 
   Future<void> _toggleFollow(FollowUserSummary user) async {
@@ -248,8 +274,8 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
       _replaceUserEverywhere(optimistic);
     });
     setFollowOverride(user.id, !wasFollowing);
-    if (_recentUsers.any((item) => item.id == user.id)) {
-      unawaited(_persistRecentUsers());
+    if (_recentEntries.any((e) => !e.isHashtag && e.user!.id == user.id)) {
+      unawaited(_persistRecentEntries());
     }
     try {
       final state = wasFollowing
@@ -264,8 +290,8 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
       );
       setState(() => _replaceUserEverywhere(updated));
       setFollowOverride(user.id, state.isFollowing);
-      if (_recentUsers.any((item) => item.id == user.id)) {
-        unawaited(_persistRecentUsers());
+      if (_recentEntries.any((e) => !e.isHashtag && e.user!.id == user.id)) {
+        unawaited(_persistRecentEntries());
       }
     } on FollowSessionChangedException {
       // The authenticated viewer changed. The new session owns all follow
@@ -277,8 +303,8 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
           ? optimistic
           : user.copyWith(isFollowing: stableFollowing);
       setState(() => _replaceUserEverywhere(rollback));
-      if (_recentUsers.any((item) => item.id == user.id)) {
-        unawaited(_persistRecentUsers());
+      if (_recentEntries.any((e) => !e.isHashtag && e.user!.id == user.id)) {
+        unawaited(_persistRecentEntries());
       }
       AppToast.show(context, 'Gagal update follow. Coba lagi.');
     } finally {
@@ -290,8 +316,21 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
 
   void _replaceUserEverywhere(FollowUserSummary user) {
     _items = _replaceUser(_items, user);
-    _recentUsers = _replaceUser(_recentUsers, user);
+    _recentEntries = _replaceUserInEntries(_recentEntries, user);
     _suggestedUsers = _replaceUser(_suggestedUsers, user);
+  }
+
+  List<RecentSearchEntry> _replaceUserInEntries(
+    List<RecentSearchEntry> entries,
+    FollowUserSummary user,
+  ) {
+    var changed = false;
+    final next = entries.map((entry) {
+      if (entry.isHashtag || entry.user!.id != user.id) return entry;
+      changed = true;
+      return RecentSearchEntry.user(user);
+    }).toList(growable: false);
+    return changed ? next : entries;
   }
 
   List<FollowUserSummary> _replaceUser(
@@ -407,31 +446,26 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
   Widget _buildDefaultBody() {
     final children = <Widget>[];
 
-    if (_recentUsers.isNotEmpty) {
-      // Recent = rail avatar horizontal ala IG — hemat ruang vertikal
-      // supaya state awal tetap sparse. Tap avatar → profil, × kecil di
-      // pojok → hapus satu, "Hapus" di header → hapus semua.
+    if (_recentEntries.isNotEmpty) {
       children
-        ..add(
-          _SectionHeader(
-            title: 'Baru dilihat',
-            actionLabel: 'Hapus',
-            onAction: () => _clearRecentUsers(),
+        ..add(_SectionHeader(
+          title: 'Baru dilihat',
+          actionLabel: 'Hapus',
+          onAction: () => _clearRecentEntries(),
+        ))
+        ..addAll(_recentEntries.map(
+          (entry) => _RecentEntryTile(
+            entry: entry,
+            onOpen: () => entry.isHashtag
+                ? _openHashtag(entry.hashtag!)
+                : _openProfile(entry.user!),
+            onRemove: () => _removeRecentEntry(entry),
           ),
-        )
-        ..add(
-          _RecentUserRail(
-            users: _recentUsers,
-            onOpen: _openProfile,
-            onRemove: _removeRecentUser,
-          ),
-        )
-        ..add(
-          const Padding(
-            padding: EdgeInsets.fromLTRB(18, 12, 18, 0),
-            child: Divider(height: 1, thickness: 0.5, color: _divider),
-          ),
-        );
+        ))
+        ..add(const Padding(
+          padding: EdgeInsets.fromLTRB(18, 12, 18, 0),
+          child: Divider(height: 1, thickness: 0.5, color: _divider),
+        ));
     }
 
     if (_suggestedLoading && _suggestedUsers.isEmpty) {
@@ -712,117 +746,91 @@ class _UserResultTile extends StatelessWidget {
   }
 }
 
-/// Rail horizontal "Baru dilihat" ala IG — avatar 50 + username di bawah,
-/// badge × kecil di pojok untuk hapus per item. Hemat ruang vertikal
-/// dibanding list (12 recent = 1 baris rail vs 12 baris list).
-class _RecentUserRail extends StatelessWidget {
-  final List<FollowUserSummary> users;
-  final void Function(FollowUserSummary user) onOpen;
-  final void Function(FollowUserSummary user) onRemove;
-
-  const _RecentUserRail({
-    required this.users,
-    required this.onOpen,
-    required this.onRemove,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 84,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 18),
-        itemCount: users.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 14),
-        itemBuilder: (context, index) {
-          final user = users[index];
-          return _RecentUserItem(
-            user: user,
-            onOpen: () => onOpen(user),
-            onRemove: () => onRemove(user),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _RecentUserItem extends StatelessWidget {
-  final FollowUserSummary user;
+/// Baris "Baru dilihat" campur akun+hashtag ala IG — daftar vertikal,
+/// tombol X per-baris untuk hapus satu, "Hapus" di header untuk semua.
+class _RecentEntryTile extends StatelessWidget {
+  final RecentSearchEntry entry;
   final VoidCallback onOpen;
   final VoidCallback onRemove;
 
-  const _RecentUserItem({
-    required this.user,
+  const _RecentEntryTile({
+    required this.entry,
     required this.onOpen,
     required this.onRemove,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    final title = entry.isHashtag
+        ? '#${entry.hashtag!.name}'
+        : (entry.user!.username ?? entry.user!.name);
+    final subtitle = entry.isHashtag
+        ? '${entry.hashtag!.postCount} postingan'
+        : (entry.user!.name.isNotEmpty &&
+                entry.user!.name != entry.user!.username
+            ? entry.user!.name
+            : '${_formatCount(entry.user!.followersCount)} pengikut');
+    return InkWell(
       onTap: onOpen,
-      child: SizedBox(
-        width: 56,
-        child: Column(
+      splashColor: Colors.white.withValues(alpha: 0.06),
+      highlightColor: Colors.white.withValues(alpha: 0.04),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+        child: Row(
           children: [
-            SizedBox(
-              width: 54,
-              height: 54,
-              child: Stack(
-                clipBehavior: Clip.none,
+            if (entry.isHashtag)
+              const _HashtagCircle(size: 44)
+            else
+              _Avatar(user: entry.user!),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Positioned(
-                    left: 2,
-                    top: 2,
-                    child: _Avatar(user: user, size: 50),
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _text,
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w600,
+                      height: 1.15,
+                    ),
                   ),
-                  // Badge × — hit-area 22px (badge visual 18) supaya tetap
-                  // gampang di-tap tanpa membesarkan visualnya.
-                  Positioned(
-                    top: -3,
-                    right: -3,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: onRemove,
-                      child: SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: Center(
-                          child: Container(
-                            width: 18,
-                            height: 18,
-                            decoration: BoxDecoration(
-                              color: _searchFill,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: _bg, width: 1.5),
-                            ),
-                            child: const Icon(
-                              Icons.close_rounded,
-                              color: Color(0xFFC4CCD6),
-                              size: 11,
-                            ),
-                          ),
-                        ),
-                      ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _muted,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w400,
+                      height: 1.15,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 5),
-            Text(
-              user.displayHandle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFFC4CCD6),
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                height: 1.1,
+            const SizedBox(width: 8),
+            // Tombol X per-baris — hit target 44dp (konvensi proyek).
+            Semantics(
+              button: true,
+              label: 'Hapus dari riwayat',
+              child: GestureDetector(
+                key: ValueKey('recent-remove-${entry.key}'),
+                behavior: HitTestBehavior.opaque,
+                onTap: onRemove,
+                child: const SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: Icon(
+                    Icons.close_rounded,
+                    color: _muted,
+                    size: 18,
+                  ),
+                ),
               ),
             ),
           ],
@@ -832,11 +840,34 @@ class _RecentUserItem extends StatelessWidget {
   }
 }
 
+/// Lingkaran ikon '#' — leading entry hashtag, gaya senada leading
+/// HashtagSuggestionsPanel (widgets/hashtag_picker.dart) & screenshot IG.
+class _HashtagCircle extends StatelessWidget {
+  final double size;
+  const _HashtagCircle({required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: _searchFill,
+        shape: BoxShape.circle,
+        border: Border.all(color: _divider, width: 1),
+      ),
+      child: const Center(
+        child: Icon(Icons.tag_rounded, color: _text, size: 20),
+      ),
+    );
+  }
+}
+
 class _Avatar extends StatelessWidget {
   final FollowUserSummary user;
-  final double size;
+  static const double size = 44;
 
-  const _Avatar({required this.user, this.size = 44});
+  const _Avatar({required this.user});
 
   @override
   Widget build(BuildContext context) {
