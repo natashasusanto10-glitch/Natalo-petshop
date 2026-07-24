@@ -2095,10 +2095,10 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
   });
 
   // Blur frosted — konten di belakang header di-blur halus (kaca es tipis).
-  // Dipasangkan dgn tint rendah (0.08) supaya lapisan tetap tembus tapi media
+  // Dipasangkan dgn tint rendah (0.06) supaya lapisan tetap tembus tapi media
   // di belakang teks tampak buram, bukan tajam. Satu angka, gampang di-tune
   // saat device-verify.
-  static const double _frostedSigma = 8;
+  static const double _frostedSigma = 7;
   // Warna teks/ikon header: GELAP. Saat pertama buka header duduk di atas
   // latar putih (media mulai di bawahnya); saat discroll media lewat di
   // belakang frosted-tipis yang melembutkannya → gelap tetap kebaca di
@@ -2112,7 +2112,7 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
     // Tint putih tipis di atas blur — cukup menjaga keterbacaan teks gelap,
     // tetap tembus. reducedMotion: blur dimatikan, tint dinaikkan agar teks
     // tetap kebaca tanpa efek kaca.
-    final tint = Colors.white.withValues(alpha: reducedMotion ? 0.86 : 0.08);
+    final tint = Colors.white.withValues(alpha: reducedMotion ? 0.86 : 0.06);
 
     final bar = Container(
       color: tint,
