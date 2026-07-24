@@ -1,3 +1,4 @@
+import '../services/feed_service.dart';
 import '../services/follow_service.dart';
 
 /// Union-style entry in recent search history: either a user OR a hashtag.
@@ -6,94 +7,36 @@ import '../services/follow_service.dart';
 /// compatibility for legacy entries stored as plain FollowUserSummary.toJson()
 /// blobs (no 'type' field). Legacy entries default to user type.
 class RecentSearchEntry {
-  /// 'user' or 'hashtag'
-  final String type;
+  final FollowUserSummary? user;
+  final HashtagSuggestion? hashtag;
 
-  /// User data (non-null iff type == 'user')
-  final FollowUserSummary? userSummary;
+  const RecentSearchEntry.user(FollowUserSummary this.user) : hashtag = null;
+  const RecentSearchEntry.hashtag(HashtagSuggestion this.hashtag)
+      : user = null;
 
-  /// Hashtag name (non-null iff type == 'hashtag')
-  final String? _hashtagName;
+  bool get isHashtag => hashtag != null;
 
-  /// Post count for hashtag (non-null iff type == 'hashtag')
-  final int? _hashtagPostCount;
+  /// Identity untuk dedupe recent.
+  String get key => isHashtag ? 'hashtag:${hashtag!.name}' : 'user:${user!.id}';
 
-  const RecentSearchEntry._({
-    required this.type,
-    this.userSummary,
-    String? hashtagName,
-    int? hashtagPostCount,
-  })  : _hashtagName = hashtagName,
-        _hashtagPostCount = hashtagPostCount;
+  Map<String, dynamic> toJson() => isHashtag
+      ? {
+          'type': 'hashtag',
+          'name': hashtag!.name,
+          'postCount': hashtag!.postCount,
+        }
+      : {'type': 'user', ...user!.toJson()};
 
-  /// Create a user recent search entry
-  factory RecentSearchEntry.user(FollowUserSummary userSummary) {
-    return RecentSearchEntry._(
-      type: 'user',
-      userSummary: userSummary,
-    );
-  }
-
-  /// Create a hashtag recent search entry
-  factory RecentSearchEntry.hashtag({
-    required String name,
-    required int postCount,
-  }) {
-    return RecentSearchEntry._(
-      type: 'hashtag',
-      hashtagName: name,
-      hashtagPostCount: postCount,
-    );
-  }
-
-  bool get isHashtag => type == 'hashtag';
-
-  bool get isUser => type == 'user';
-
-  /// Hashtag name. Only valid when isHashtag == true.
-  String get name {
-    assert(isHashtag, 'name is only valid for hashtag entries');
-    return _hashtagName ?? '';
-  }
-
-  /// Post count for hashtag. Only valid when isHashtag == true.
-  int get postCount {
-    assert(isHashtag, 'postCount is only valid for hashtag entries');
-    return _hashtagPostCount ?? 0;
-  }
-
-  /// Serialize to JSON with explicit type field for forward compatibility.
-  Map<String, dynamic> toJson() {
-    if (isHashtag) {
-      return {
-        'type': 'hashtag',
-        'name': _hashtagName,
-        'postCount': _hashtagPostCount,
-      };
-    } else {
-      return {
-        'type': 'user',
-        ...userSummary?.toJson() ?? {},
-      };
-    }
-  }
-
-  /// Deserialize from JSON, with backward compatibility for legacy user entries.
-  ///
-  /// If json has no 'type' field or type is unrecognized, assumes it's a
-  /// legacy FollowUserSummary and defaults to user type.
   factory RecentSearchEntry.fromJson(Map<String, dynamic> json) {
-    final type = json['type'] as String?;
-
-    if (type == 'hashtag') {
+    if (json['type'] == 'hashtag') {
       return RecentSearchEntry.hashtag(
-        name: (json['name'] as String?) ?? '',
-        postCount: (json['postCount'] as num?)?.toInt() ?? 0,
+        HashtagSuggestion(
+          name: (json['name'] as String?) ?? '',
+          postCount: (json['postCount'] as num?)?.toInt() ?? 0,
+        ),
       );
     }
-
-    // Default to user type for missing/unrecognized type (backward compat)
-    final userSummary = FollowUserSummary.fromJson(json);
-    return RecentSearchEntry.user(userSummary);
+    // 'user' eksplisit ATAU legacy tanpa 'type' → user.
+    return RecentSearchEntry.user(FollowUserSummary.fromJson(json));
   }
 }
