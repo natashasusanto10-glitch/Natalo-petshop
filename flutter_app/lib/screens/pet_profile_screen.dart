@@ -129,27 +129,40 @@ class _ProfileHeader extends StatelessWidget {
       if (pet.breed != null && pet.breed!.trim().isNotEmpty) pet.breed!.trim(),
       if (pet.ageLabel != null) pet.ageLabel!,
     ].join(' • ');
+    // Avatar overlap ala IG: cover 64px + avatar 88px menumpuk setengah ke
+    // bawah cover (Stack+Positioned, BUKAN Transform.translate — translate
+    // tidak mengurangi ruang layout, jadi hanya boleh dipakai bareng SizedBox
+    // kompensasi di bawah). Menghindari strip cover polos yang terasa kosong.
+    const coverHeight = 64.0;
+    const avatarSize = 88.0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          height: 40,
-          color: isDark
-              ? _brandBlue.withValues(alpha: 0.18)
-              : NataloColors.primarySoft,
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              height: coverHeight,
+              color: isDark
+                  ? _brandBlue.withValues(alpha: 0.18)
+                  : NataloColors.primarySoft,
+            ),
+            Positioned(
+              left: 20,
+              top: coverHeight - avatarSize / 2,
+              child: Hero(
+                tag: 'pet-photo-${pet.id}',
+                child: _PetAvatarLarge(pet: pet, size: avatarSize),
+              ),
+            ),
+          ],
         ),
+        const SizedBox(height: avatarSize / 2 + 10),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Avatar pakai Hero shared-element (morph dari kartu Anabulku).
-              // Hero flight = entrance-nya sendiri; jangan dobel-animasi.
-              Hero(
-                tag: 'pet-photo-${pet.id}',
-                child: _PetAvatarLarge(pet: pet),
-              ),
-              const SizedBox(height: 10),
               _Entrance(
                 controller: entrance,
                 start: 0.14,
@@ -250,11 +263,11 @@ class _Entrance extends StatelessWidget {
 
 class _PetAvatarLarge extends StatelessWidget {
   final Pet pet;
-  const _PetAvatarLarge({required this.pet});
+  final double size;
+  const _PetAvatarLarge({required this.pet, this.size = 88.0});
 
   @override
   Widget build(BuildContext context) {
-    const size = 88.0;
     final url = pet.photoUrl;
     final fallback = Container(
       color: NataloColors.grey400.withValues(alpha: 0.25),
