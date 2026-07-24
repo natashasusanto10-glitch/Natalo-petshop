@@ -308,6 +308,24 @@ class PushNotificationService {
         });
       }
 
+      // Cold start: tap notifikasi app-rendered (local, dari data-only push
+      // sosial di renderDataMessage/renderDataMessageInBackground). Sumber
+      // ini terpisah dari getInitialMessage() (FCM-drawn), jadi tak pernah
+      // tumpang-tindih untuk event yang sama — guard launchedFromColdPush
+      // tetap dipasang berjaga-jaga bila getInitialMessage sudah menang.
+      if (!launchedFromColdPush) {
+        final launchDetails =
+            await _localNotifications.getNotificationAppLaunchDetails();
+        final localPayload = launchDetails?.notificationResponse?.payload;
+        if (launchDetails?.didNotificationLaunchApp == true &&
+            localPayload != null && localPayload.isNotEmpty) {
+          launchedFromColdPush = true;
+          Future<void>.delayed(const Duration(milliseconds: 800), () {
+            _handleDeepLink(localPayload);
+          });
+        }
+      }
+
       // Pasang SEMUA stream listener SETELAH semua operasi fallible di atas
       // selesai — supaya kalau init gagal sebelum titik ini, tidak ada
       // listener setengah-pasang, dan retry tidak menumpuk listener ganda.
