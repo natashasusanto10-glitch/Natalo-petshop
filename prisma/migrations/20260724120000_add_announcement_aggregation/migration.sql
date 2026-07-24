@@ -1,0 +1,5 @@
+ALTER TABLE "Announcement"
+ADD COLUMN IF NOT EXISTS "lastPushedAt" TIMESTAMP(3);
+
+ALTER TABLE "Announcement"
+ADD COLUMN IF NOT EXISTS "aggregatedCount" INTEGER;
