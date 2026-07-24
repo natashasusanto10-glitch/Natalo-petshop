@@ -22,6 +22,11 @@ export async function POST(req: NextRequest) {
   }
   const endpoint = `fcm:${body.token}`;
 
+  const clientRender =
+    typeof body.clientRender === "number" && Number.isInteger(body.clientRender)
+      ? body.clientRender
+      : null;
+
   await prisma.pushSubscription.upsert({
     where: { endpoint },
     update: {
@@ -30,12 +35,14 @@ export async function POST(req: NextRequest) {
       p256dh: "",
       auth: "",
       userId: session.sub,
+      clientRenderVersion: clientRender,
     },
     create: {
       endpoint,
       p256dh: "",
       auth: "",
       userId: session.sub,
+      clientRenderVersion: clientRender,
     },
   });
 

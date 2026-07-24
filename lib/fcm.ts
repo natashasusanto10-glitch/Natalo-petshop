@@ -99,7 +99,138 @@ export type FcmPayload = {
    *  itu (atau master switch OFF), push di-skip di server. JANGAN set untuk
    *  notif kritikal (keamanan). Lihat lib/notification-preferences.ts. */
   prefCategory?: NotificationCategory | null;
+  /** True kalau notif ini boleh dirender client-side (avatar bulat dsb) di
+   *  token yang capable (clientRenderVersion != null). Dipakai bersama
+   *  actorAvatarUrl. Lihat buildFcmMulticastMessage. */
+  renderClientSide?: boolean;
+  /** URL avatar aktor (mis. yang like/comment/follow) — diteruskan ke
+   *  data.actor_avatar_url hanya untuk token capable + renderClientSide. */
+  actorAvatarUrl?: string | null;
 };
+
+/**
+ * Bangun objek pesan FCM multicast (TANPA `tokens`) — pure & testable.
+ *
+ * Dua bentuk:
+ * - clientRender=true (token capable + payload.renderClientSide): Android
+ *   data-only (tanpa `notification`/`android.notification`) supaya app
+ *   custom-render (avatar bulat dsb) via plugin listener. iOS TIDAK PERNAH
+ *   data-only — tetap kirim `apns.payload.aps.alert` + `mutable-content: 1`
+ *   supaya banner tetap tampil.
+ * - selainnya: shape lama (notification + android.notification + apns
+ *   tanpa alert eksplisit) — behavior existing dipertahankan persis.
+ */
+export function buildFcmMulticastMessage(
+  payload: FcmPayload,
+  opts: { clientRender: boolean },
+) {
+  // FCM data payload: semua value harus string.
+  const dataPayload: Record<string, string> = {
+    title: payload.title,
+    body: payload.body,
+    ...(payload.url ? { url: payload.url } : {}),
+    ...(payload.tag ? { tag: payload.tag } : {}),
+    ...(payload.data ?? {}),
+  };
+
+  const clientRender = payload.renderClientSide === true && opts.clientRender;
+
+  // Hanya https:// yang diteruskan — client (Flutter + iOS NSE) fetch URL ini
+  // apa adanya lalu decode sebagai gambar; http:// (MITM-able) tak boleh
+  // sampai ke parser gambar native (review adversarial PR #267, finding #1).
+  if (clientRender && payload.actorAvatarUrl?.startsWith("https://")) {
+    dataPayload.actor_avatar_url = payload.actorAvatarUrl;
+  }
+
+  if (clientRender) {
+    return {
+      data: dataPayload,
+      android: {
+        priority: "high" as const,
+      },
+      apns: {
+        headers: {
+          "apns-priority": "10",
+          "apns-push-type": "alert",
+        },
+        payload: {
+          aps: {
+            alert: { title: payload.title, body: payload.body },
+            sound: "default",
+            badge: 1,
+            // iOS tidak pernah data-only — mutable-content selalu 1 supaya
+            // Notification Service Extension tetap jalan (fetch avatar dsb).
+            "mutable-content": 1,
+            ...(payload.category ? { category: payload.category } : {}),
+          },
+        },
+        ...(payload.imageUrl
+          ? { fcmOptions: { imageUrl: payload.imageUrl } }
+          : {}),
+      },
+    };
+  }
+
+  // Shape LAMA — dipertahankan persis dari sebelum ekstraksi ini.
+  return {
+    notification: {
+      title: payload.title,
+      body: payload.body,
+      // imageUrl di top-level notification — FCM auto-render sebagai
+      // BigPictureStyle di Android saat app background. Required HTTPS.
+      ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
+    },
+    data: dataPayload,
+    android: {
+      priority: "high" as const,
+      notification: {
+        tag: payload.tag,
+        // Click action akan trigger plugin's pushNotificationActionPerformed
+        // listener; app handle navigation ke `data.url` sendiri.
+        clickAction: "FCM_PLUGIN_ACTIVITY",
+        // Android-specific big picture URL — duplikat dari notification.
+        // imageUrl di atas. Beberapa launcher (Samsung One UI) pakai
+        // path ini, lainnya pakai notification.imageUrl.
+        ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
+      },
+    },
+    // iOS via FCM — Firebase forward ke APNs. Tanpa block ini, default
+    // payload aps yang FCM generate cuma punya `alert` (banner), TANPA
+    // sound + badge + mutable-content. Akibatnya iOS user dapat banner
+    // SILENT (no sound), badge counter app icon tidak naik, dan rich
+    // image attachment tidak trigger Notification Service Extension.
+    apns: {
+      headers: {
+        // Priority 10 = immediate delivery (vs 5 = throttled).
+        // Wajib untuk alert push iOS 13+.
+        "apns-priority": "10",
+        // pushType "alert" = visible banner (vs "background" = silent).
+        // Wajib iOS 13+ untuk visible notification.
+        "apns-push-type": "alert",
+      },
+      payload: {
+        aps: {
+          sound: "default",
+          badge: 1,
+          // mutable-content=1 → iOS deliver notif ke Notification Service
+          // Extension dulu. NSE bisa fetch image + attach sebagai preview
+          // di banner. Hanya set kalau ada imageUrl supaya text-only notif
+          // tidak overhead extension launch.
+          "mutable-content": payload.imageUrl ? 1 : 0,
+          // category → trigger action buttons (mis. admin moderation
+          // "Lihat"/"Tolak"). Match UNNotificationCategory di AppDelegate.
+          ...(payload.category ? { category: payload.category } : {}),
+        },
+      },
+      // fcm_options.image → Firebase iOS SDK NSE auto-fetch image dan
+      // attach ke notif. Bundled di pod 'Firebase/Messaging' — tidak
+      // butuh extra NSE target di Xcode (Firebase iOS handles it).
+      ...(payload.imageUrl
+        ? { fcmOptions: { imageUrl: payload.imageUrl } }
+        : {}),
+    },
+  };
+}
 
 /**
  * Send FCM push ke semua Android device tokens user ini.
@@ -122,115 +253,60 @@ export async function sendFcmToUser(userId: string, payload: FcmPayload) {
   const subs = await prisma.pushSubscription
     .findMany({
       where: { userId, endpoint: { startsWith: "fcm:" } },
+      select: { id: true, endpoint: true, clientRenderVersion: true },
     })
     .catch(() => []);
 
   if (subs.length === 0) return;
 
-  const tokens = subs.map((s) => s.endpoint.replace(/^fcm:/, ""));
+  // Bagi token per-kapabilitas: token yang sudah pernah lapor
+  // clientRenderVersion (app versi baru, bisa custom-render avatar dsb)
+  // dapat shape data-only; token lama (belum pernah lapor) tetap dapat
+  // shape lama (notification block) — lihat buildFcmMulticastMessage.
+  const wantsClientRender = payload.renderClientSide === true;
+  const capable = wantsClientRender
+    ? subs.filter((s) => s.clientRenderVersion != null)
+    : [];
+  const legacy = wantsClientRender
+    ? subs.filter((s) => s.clientRenderVersion == null)
+    : subs;
+  const groups = [
+    { subs: capable, clientRender: true },
+    { subs: legacy, clientRender: false },
+  ].filter((g) => g.subs.length > 0);
 
-  // FCM data payload: semua value harus string. Kita pakai data-only message
-  // (bukan notification) supaya Android app bisa custom-render via plugin's
-  // pushNotificationReceived listener. Plugin handle native notification
-  // display saat app di background — payload `data` di-forward ke listener.
-  //
-  // Untuk konsistensi dengan web push (yang punya title/body terlihat saat
-  // app killed), kita kirim BOTH notification + data:
-  // - `notification` → ditampilkan native saat app background/killed
-  // - `data` → di-forward ke app saat foreground untuk in-app handling
-  const dataPayload: Record<string, string> = {
-    title: payload.title,
-    body: payload.body,
-    ...(payload.url ? { url: payload.url } : {}),
-    ...(payload.tag ? { tag: payload.tag } : {}),
-    ...(payload.data ?? {}),
-  };
+  for (const g of groups) {
+    try {
+      const res = await messaging.sendEachForMulticast({
+        tokens: g.subs.map((s) => s.endpoint.replace(/^fcm:/, "")),
+        ...buildFcmMulticastMessage(payload, { clientRender: g.clientRender }),
+      });
 
-  try {
-    const res = await messaging.sendEachForMulticast({
-      tokens,
-      notification: {
-        title: payload.title,
-        body: payload.body,
-        // imageUrl di top-level notification — FCM auto-render sebagai
-        // BigPictureStyle di Android saat app background. Required HTTPS.
-        ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
-      },
-      data: dataPayload,
-      android: {
-        priority: "high",
-        notification: {
-          tag: payload.tag,
-          // Click action akan trigger plugin's pushNotificationActionPerformed
-          // listener; app handle navigation ke `data.url` sendiri.
-          clickAction: "FCM_PLUGIN_ACTIVITY",
-          // Android-specific big picture URL — duplikat dari notification.
-          // imageUrl di atas. Beberapa launcher (Samsung One UI) pakai
-          // path ini, lainnya pakai notification.imageUrl.
-          ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
-        },
-      },
-      // iOS via FCM — Firebase forward ke APNs. Tanpa block ini, default
-      // payload aps yang FCM generate cuma punya `alert` (banner), TANPA
-      // sound + badge + mutable-content. Akibatnya iOS user dapat banner
-      // SILENT (no sound), badge counter app icon tidak naik, dan rich
-      // image attachment tidak trigger Notification Service Extension.
-      apns: {
-        headers: {
-          // Priority 10 = immediate delivery (vs 5 = throttled).
-          // Wajib untuk alert push iOS 13+.
-          "apns-priority": "10",
-          // pushType "alert" = visible banner (vs "background" = silent).
-          // Wajib iOS 13+ untuk visible notification.
-          "apns-push-type": "alert",
-        },
-        payload: {
-          aps: {
-            sound: "default",
-            badge: 1,
-            // mutable-content=1 → iOS deliver notif ke Notification Service
-            // Extension dulu. NSE bisa fetch image + attach sebagai preview
-            // di banner. Hanya set kalau ada imageUrl supaya text-only notif
-            // tidak overhead extension launch.
-            "mutable-content": payload.imageUrl ? 1 : 0,
-            // category → trigger action buttons (mis. admin moderation
-            // "Lihat"/"Tolak"). Match UNNotificationCategory di AppDelegate.
-            ...(payload.category ? { category: payload.category } : {}),
-          },
-        },
-        // fcm_options.image → Firebase iOS SDK NSE auto-fetch image dan
-        // attach ke notif. Bundled di pod 'Firebase/Messaging' — tidak
-        // butuh extra NSE target di Xcode (Firebase iOS handles it).
-        ...(payload.imageUrl
-          ? { fcmOptions: { imageUrl: payload.imageUrl } }
-          : {}),
-      },
-    });
-
-    // Cleanup invalid tokens (UNREGISTERED, INVALID_ARGUMENT, etc).
-    if (res.failureCount > 0) {
-      await Promise.all(
-        res.responses.map(async (r, idx) => {
-          if (r.success) return;
-          const code = r.error?.code;
-          // Errors yang berarti token sudah tidak valid lagi → hapus dari DB.
-          // Codes dari firebase-admin/messaging:
-          // - messaging/registration-token-not-registered
-          // - messaging/invalid-registration-token
-          // - messaging/invalid-argument
-          if (
-            code === "messaging/registration-token-not-registered" ||
-            code === "messaging/invalid-registration-token" ||
-            code === "messaging/invalid-argument"
-          ) {
-            await prisma.pushSubscription
-              .delete({ where: { id: subs[idx].id } })
-              .catch(() => {});
-          }
-        }),
-      );
+      // Cleanup invalid tokens (UNREGISTERED, INVALID_ARGUMENT, etc).
+      if (res.failureCount > 0) {
+        await Promise.all(
+          res.responses.map(async (r, idx) => {
+            if (r.success) return;
+            const code = r.error?.code;
+            // Errors yang berarti token sudah tidak valid lagi → hapus dari DB.
+            // Codes dari firebase-admin/messaging:
+            // - messaging/registration-token-not-registered
+            // - messaging/invalid-registration-token
+            // - messaging/invalid-argument
+            if (
+              code === "messaging/registration-token-not-registered" ||
+              code === "messaging/invalid-registration-token" ||
+              code === "messaging/invalid-argument"
+            ) {
+              await prisma.pushSubscription
+                .delete({ where: { id: g.subs[idx].id } })
+                .catch(() => {});
+            }
+          }),
+        );
+      }
+    } catch (err) {
+      console.warn("FCM send failed:", err);
     }
-  } catch (err) {
-    console.warn("FCM send failed:", err);
   }
 }

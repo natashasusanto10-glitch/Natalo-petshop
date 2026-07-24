@@ -26,10 +26,47 @@ class NotificationService: UNNotificationServiceExtension {
       return
     }
 
+    // Batas ukuran avatar (bytes) — NSE punya memori ketat (~24MB); avatar
+    // kegedean/lambat bisa bikin extension di-kill OS di tengah proses
+    // sebelum sempat fallback rapi (review adversarial PR #267, finding #3).
+    let maxAvatarBytes = 3 * 1024 * 1024
+
+    // Kalau payload bawa actor_avatar_url (foto aktor tag/komentar/like),
+    // unduh & attach itu duluan. Kalau tidak ada, fallback ke perilaku lama:
     // Firebase parse fcmOptions.imageUrl dari payload, unduh gambarnya,
     // lalu attach sebagai UNNotificationAttachment sebelum contentHandler
     // dipanggil. Kalau unduh gagal (URL kedaluwarsa/403/timeout), fallback
     // otomatis ke notifikasi teks biasa — tidak pernah crash/hang.
+    // https:// wajib — server sudah filter (lib/fcm.ts), ini pagar kedua
+    // di client supaya URL non-https tak pernah diunduh sama sekali.
+    if let avatarUrlString = request.content.userInfo["actor_avatar_url"] as? String,
+       let avatarUrl = URL(string: avatarUrlString),
+       avatarUrl.scheme == "https" {
+      let task = URLSession.shared.downloadTask(with: avatarUrl) { tempUrl, response, _ in
+        defer { contentHandler(bestAttemptContent) }
+        guard let tempUrl = tempUrl else { return }
+        if let expected = response?.expectedContentLength, expected > 0,
+           expected > Int64(maxAvatarBytes) {
+          return
+        }
+        do {
+          let attrs = try FileManager.default.attributesOfItem(atPath: tempUrl.path)
+          if let fileSize = attrs[.size] as? Int, fileSize > maxAvatarBytes {
+            return
+          }
+          let target = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(avatarUrl.pathExtension.isEmpty ? "jpg" : avatarUrl.pathExtension)
+          try FileManager.default.moveItem(at: tempUrl, to: target)
+          let attachment = try UNNotificationAttachment(identifier: "actor-avatar", url: target)
+          bestAttemptContent.attachments = [attachment]
+        } catch {
+          // Gagal attach → notifikasi tetap tampil polos (contentHandler di defer).
+        }
+      }
+      task.resume()
+      return
+    }
     FIRMessagingExtensionHelper().populateNotificationContent(
       bestAttemptContent,
       withContentHandler: contentHandler

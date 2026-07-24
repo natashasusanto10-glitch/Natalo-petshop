@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/natalo_colors.dart';
@@ -16,6 +18,7 @@ import '../services/notification_service.dart';
 import '../services/order_service.dart';
 import '../services/product_service.dart';
 import '../services/profile_service.dart';
+import '../services/push_notification_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_login_gate.dart';
@@ -49,10 +52,31 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   // Diinvalidasi (set null) saat _result atau _tab berubah.
   List<AppNotification>? _cachedVisibleItems;
 
+  Timer? _tickDebounce;
+
+  // Debounce 500ms — hindari refetch beruntun kalau beberapa push masuk
+  // berdekatan; _load(silent:true) tak reset scroll/spinner.
+  void _tickListener() {
+    _tickDebounce?.cancel();
+    _tickDebounce = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) _load(silent: true);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     _load();
+    pushNotificationService.notificationRefreshTick.addListener(_tickListener);
+  }
+
+  @override
+  void dispose() {
+    pushNotificationService.notificationRefreshTick.removeListener(
+      _tickListener,
+    );
+    _tickDebounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _load({bool silent = false}) async {
@@ -1860,6 +1884,13 @@ class _NotificationVisual {
         icon: Icons.check_circle_rounded,
         color: Color(0xFF7C3AED),
         label: 'Feed',
+      );
+    }
+    if (ev == 'feed_tagged') {
+      return const _NotificationVisual(
+        icon: Icons.person_pin_rounded,
+        color: _brandBlue,
+        label: 'Ditandai',
       );
     }
     if (ev == 'feed_new_comment') {
