@@ -70,13 +70,18 @@ class _PetCareScreenState extends State<PetCareScreen> {
   }
 
   Future<void> _markDone(PetSchedule schedule) async {
-    // "Tandai selesai": catat record baru kategori sama, doneAt = hari ini.
+    // "Tandai selesai": tawarkan jadwal berikutnya dulu, lalu catat SATU
+    // record baru kategori sama (doneAt = hari ini, nextDueAt opsional).
     AppHaptics.tap();
+    final now = DateTime.now();
+    final nextDue = await _pickFollowUpSchedule(now);
+    if (!mounted) return;
     try {
       await petService.createCare(
         widget.petId,
         category: schedule.category,
-        doneAt: DateTime.now(),
+        doneAt: now,
+        nextDueAt: nextDue,
       );
       await _load();
       if (!mounted) return;
@@ -85,6 +90,98 @@ class _PetCareScreenState extends State<PetCareScreen> {
       if (!mounted) return;
       AppToast.show(context, 'Gagal. Coba lagi.', kind: ToastKind.error);
     }
+  }
+
+  /// Bottom-sheet ringan setelah "Tandai selesai": tawarkan jadwal
+  /// berikutnya (+1 bulan / +3 bulan / pilih tanggal / lewati).
+  Future<DateTime?> _pickFollowUpSchedule(DateTime doneAt) async {
+    return showModalBottomSheet<DateTime?>(
+      context: context,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        final cs = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Atur jadwal berikutnya?',
+                    style: TextStyle(
+                        fontSize: 15, fontWeight: NataloWeight.strong)),
+                const SizedBox(height: 4),
+                Text('Opsional — bisa dilewati kapan saja.',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: NataloWeight.body,
+                        color: cs.onSurfaceVariant)),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(sheetContext)
+                            .pop(doneAt.add(const Duration(days: 30))),
+                        child: const Text('+1 bulan'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(sheetContext)
+                            .pop(doneAt.add(const Duration(days: 90))),
+                        child: const Text('+3 bulan'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: sheetContext,
+                        initialDate: doneAt.add(const Duration(days: 30)),
+                        firstDate: doneAt.add(const Duration(days: 1)),
+                        lastDate: DateTime(doneAt.year + 5),
+                        builder: (context, child) => Theme(
+                          data: Theme.of(context).copyWith(
+                            colorScheme: ColorScheme.light(
+                              primary: _brandBlue,
+                              onPrimary: Colors.white,
+                              onSurface: Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
+                          child: child!,
+                        ),
+                      );
+                      if (picked != null && sheetContext.mounted) {
+                        Navigator.of(sheetContext).pop(picked);
+                      }
+                    },
+                    child: const Text('Pilih tanggal'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(sheetContext).pop(null),
+                    child: Text('Lewati',
+                        style: TextStyle(color: cs.onSurfaceVariant)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _confirmDelete(PetCareRecord record) async {
