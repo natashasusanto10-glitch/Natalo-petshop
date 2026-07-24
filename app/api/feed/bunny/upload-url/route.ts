@@ -52,6 +52,12 @@ import {
   parseTaggedUsersInput,
   type TaggedUserInput,
 } from "@/lib/feed/tagged-users";
+import {
+  extractHashtags,
+  MAX_HASHTAGS_PER_POST,
+  HASHTAG_LIMIT_MESSAGE,
+  syncPostHashtags,
+} from "@/lib/feed/hashtags";
 
 export const dynamic = "force-dynamic";
 
@@ -151,6 +157,13 @@ export async function POST(request: NextRequest) {
       { error: `Deskripsi maksimal ${MAX_DESC_LENGTH} karakter.` },
       { status: 400 },
     );
+  }
+  // Spec C: max 5 hashtag unik per post. Route ini tidak punya gate mention
+  // caption sendiri (beda dari app/api/feed/posts/route.ts) — cek hashtag
+  // berdiri sendiri, sumber caption sama (title + description).
+  const captionHashtags = extractHashtags(`${title} ${description ?? ""}`);
+  if (captionHashtags.length > MAX_HASHTAGS_PER_POST) {
+    return NextResponse.json({ error: HASHTAG_LIMIT_MESSAGE }, { status: 400 });
   }
   const accessibility = parseFeedAccessibilityMetadata(
     body as Record<string, unknown>,
@@ -388,6 +401,11 @@ export async function POST(request: NextRequest) {
         skipDuplicates: true,
       });
     }
+    // Spec C: tulis relasi hashtag dalam transaksi yang sama dengan create
+    // post. Provision time (encodingStatus="uploading") sengaja tetap ditulis
+    // di sini — PUBLIC_FEED_POST_WHERE filter encodingStatus:"ready" jadi
+    // post video baru tampil di halaman hashtag setelah playable (spec §1).
+    await syncPostHashtags(tx, created.id, `${title} ${description ?? ""}`);
     return created;
     });
   } catch (err) {

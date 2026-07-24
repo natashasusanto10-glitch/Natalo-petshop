@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/feed_create_post_draft.dart';
 import 'package:natalo_petshop_flutter/screens/feed_new_post_screen.dart';
+import 'package:natalo_petshop_flutter/state/feed_upload_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -16,6 +17,10 @@ void main() {
 
   tearDown(() {
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+    // feedUploadStore adalah singleton global — reset supaya test lain
+    // (dalam file ini atau ditambah nanti) tidak kebawa state upload dari
+    // test hashtag-limit di bawah.
+    feedUploadStore.clear();
   });
 
   List<File> makePhotoFiles(int count) {
@@ -139,5 +144,42 @@ void main() {
       (tester) async {
     await pumpScreen(tester);
     expect(find.text('Tag Produk Pernah Dibeli'), findsNothing);
+  });
+
+  testWidgets(
+      'caption 6 hashtag (prefilled, tanpa lewat editor): tap Bagikan '
+      'blokir upload + tampilkan error limit', (tester) async {
+    // prefilledCaption meniru jalur "resume draft" — caption masuk ke
+    // controller TANPA lewat FeedCaptionEditScreen (yang sudah house
+    // validasi layer 1-nya sendiri). Ini persis skenario yang dijaga
+    // recheck submit-time (layer 2) di `_upload()`.
+    await tester.pumpWidget(const MaterialApp(
+      home: FeedNewPostScreen(
+        draft: NewPostMediaDraft.video(videoDraft),
+        prefilledCaption: '#aa #bb #cc #dd #ee #ff',
+      ),
+    ));
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    // Tombol masih enabled (belum ada error) sebelum tap pertama.
+    // skipOffstage: false — pesan error letaknya di bawah `_TagPeopleRow`
+    // dalam ListView, di luar viewport test default, jadi harus dicari
+    // termasuk elemen yang belum di-scroll ke layar.
+    expect(
+        find.text('Maksimal 5 hashtag per postingan.', skipOffstage: false),
+        findsNothing);
+
+    await tester.tap(find.text('Bagikan'));
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(
+        find.text('Maksimal 5 hashtag per postingan.', skipOffstage: false),
+        findsOneWidget);
+    expect(feedUploadStore.isUploading, isFalse);
+    expect(feedUploadStore.activeTask, isNull);
   });
 }

@@ -33,6 +33,7 @@ import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { deleteFeedAssets } from "@/lib/feed/cleanup";
+import { decrementHashtagCounts } from "@/lib/feed/hashtags";
 import { sendNewPostToFollowersNotification } from "@/lib/social/notifications";
 
 // Cleanup asset + fan-out follower dijadwalkan via after() per item —
@@ -171,7 +172,14 @@ export async function POST(request: NextRequest) {
 
     try {
       if (action === "hard-delete") {
-        await prisma.feedPost.delete({ where: { id: postId } });
+        // Spec C: kurangi postCount hashtag SEBELUM delete (satu transaksi
+        // dengan delete) — cascade menghapus baris junction FeedPostHashtag
+        // yang jadi sumber decrementHashtagCounts. Sama pattern dengan
+        // app/api/admin/feed/posts/[id]/route.ts (single hard-delete).
+        await prisma.$transaction(async (tx) => {
+          await decrementHashtagCounts(tx, postId);
+          await tx.feedPost.delete({ where: { id: postId } });
+        });
         // Via after() (bukan void) — void promise bisa dibekukan Vercel
         // sebelum jalan → orphan asset; after() dijamin eksekusi tanpa
         // menahan respons bulk.

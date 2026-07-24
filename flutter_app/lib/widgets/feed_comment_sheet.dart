@@ -1305,6 +1305,13 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     unawaited(_navigateAfterClose('/u', arguments: normalized));
   }
 
+  void _openHashtag(String name) {
+    final normalized = name.trim().toLowerCase();
+    if (normalized.isEmpty) return;
+    AppHaptics.tap();
+    unawaited(_navigateAfterClose('/hashtag', arguments: normalized));
+  }
+
   void _openLogin() {
     unawaited(_navigateAfterClose('/member/login'));
   }
@@ -2170,6 +2177,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
               captionText: emptyCaptionText,
               onAuthorTap: _openAuthorProfile,
               onMentionTap: _openMentionProfile,
+              onHashtagTap: _openHashtag,
             ),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 50, horizontal: 32),
@@ -2232,6 +2240,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
             captionText: captionText,
             onAuthorTap: _openAuthorProfile,
             onMentionTap: _openMentionProfile,
+            onHashtagTap: _openHashtag,
           );
         }
         final adjustedIndex = index - captionOffset;
@@ -2292,6 +2301,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       onReply: () => _setReplyTarget(comment),
       onAuthorTap: _openAuthorProfile,
       onMentionTap: _openMentionProfile,
+      onHashtagTap: _openHashtag,
       canDelete: isOwn,
       onDelete: isOwn ? () => _deleteComment(comment) : null,
     );
@@ -2669,12 +2679,14 @@ class _CaptionTile extends StatelessWidget {
   final String captionText;
   final ValueChanged<FeedAuthor> onAuthorTap;
   final ValueChanged<String> onMentionTap;
+  final ValueChanged<String> onHashtagTap;
 
   const _CaptionTile({
     required this.post,
     required this.captionText,
     required this.onAuthorTap,
     required this.onMentionTap,
+    required this.onHashtagTap,
   });
 
   @override
@@ -2768,6 +2780,7 @@ class _CaptionTile extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                     ),
                     onMentionTap: onMentionTap,
+                    onHashtagTap: onHashtagTap,
                   ),
                   const SizedBox(height: 5),
                   Text(
@@ -2796,6 +2809,7 @@ class _CommentTile extends StatelessWidget {
   final VoidCallback onReply;
   final ValueChanged<FeedAuthor> onAuthorTap;
   final ValueChanged<String> onMentionTap;
+  final ValueChanged<String> onHashtagTap;
 
   /// Callback delete dari parent — return Future<bool> ok/fail.
   /// Parent yang panggil feedService.deleteComment + optimistic remove
@@ -2814,6 +2828,7 @@ class _CommentTile extends StatelessWidget {
     required this.onReply,
     required this.onAuthorTap,
     required this.onMentionTap,
+    required this.onHashtagTap,
     this.onDelete,
     this.canDelete = false,
   });
@@ -2952,6 +2967,7 @@ class _CommentTile extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                     ),
                     onMentionTap: onMentionTap,
+                    onHashtagTap: onHashtagTap,
                   ),
                   const SizedBox(height: 4),
                   Row(

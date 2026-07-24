@@ -185,6 +185,12 @@ class FeedExpandableCaption extends StatefulWidget {
   final String text;
   final void Function(String username)? onMentionTap;
 
+  /// Callback saat user tap `#hashtag` di caption (lihat
+  /// `buildMentionSpans`/`onHashtagTap`). Null (default) ⇒ hashtag tetap
+  /// render sebagai teks polos, tidak tappable — dipakai di layar yang
+  /// belum siap navigasi hashtag (mis. preview posting sebelum publish).
+  final void Function(String name)? onHashtagTap;
+
   /// Waktu posting — bila diisi, saat expanded tampil timestamp relatif
   /// ("2 hari lalu") di bawah caption, ala IG.
   final DateTime? createdAt;
@@ -200,6 +206,7 @@ class FeedExpandableCaption extends StatefulWidget {
     super.key,
     required this.text,
     this.onMentionTap,
+    this.onHashtagTap,
     this.createdAt,
     this.expanded,
     this.onExpandedChanged,
@@ -401,6 +408,7 @@ class _FeedExpandableCaptionState extends State<FeedExpandableCaption> {
           defaultStyle: _baseStyle,
           mentionStyle: _mentionStyle,
           collectRecognizers: _recognizers,
+          onHashtagTap: widget.onHashtagTap,
         );
 
         final richText = Text.rich(

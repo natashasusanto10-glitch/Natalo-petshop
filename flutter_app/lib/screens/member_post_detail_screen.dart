@@ -2889,6 +2889,13 @@ class _PostCaptionState extends State<PostCaption>
     Navigator.pushNamed(context, '/u', arguments: normalized);
   }
 
+  void _openHashtag(String name) {
+    final normalized = name.trim().toLowerCase();
+    if (normalized.isEmpty) return;
+    AppHaptics.tap();
+    Navigator.pushNamed(context, '/hashtag', arguments: normalized);
+  }
+
   void _onSessionChanged() {
     if (mounted) setState(() {});
   }
@@ -2989,6 +2996,7 @@ class _PostCaptionState extends State<PostCaption>
         onMentionTap: _openMentionProfile,
         defaultStyle: style,
         collectRecognizers: _mentionRecognizers,
+        onHashtagTap: _openHashtag,
       );
       final span = TextSpan(children: [
         TextSpan(
