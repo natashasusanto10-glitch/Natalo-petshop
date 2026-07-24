@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../models/pet.dart';
+import '../models/pet_care_record.dart';
 import '../services/pet_service.dart';
 import '../theme/natalo_colors.dart';
 import '../theme/natalo_text.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
+import 'pet_care_screen.dart';
 import 'pet_form_screen.dart';
 import 'pet_profile_screen.dart';
 
@@ -73,6 +75,16 @@ class _AnabulkuScreenState extends State<AnabulkuScreen> {
     if (changed == true) await _load();
   }
 
+  Future<void> _openCareFor(Pet pet) async {
+    AppHaptics.tap();
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => PetCareScreen(petId: pet.id, petName: pet.name),
+      ),
+    );
+    await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -107,6 +119,7 @@ class _AnabulkuScreenState extends State<AnabulkuScreen> {
                           pets: _pets,
                           onTapPet: _openProfile,
                           onAdd: _openAddForm,
+                          onTapSchedule: _openCareFor,
                         ),
         ),
       ),
@@ -118,11 +131,13 @@ class _PetList extends StatelessWidget {
   final List<Pet> pets;
   final ValueChanged<Pet> onTapPet;
   final VoidCallback onAdd;
+  final ValueChanged<Pet> onTapSchedule;
 
   const _PetList({
     required this.pets,
     required this.onTapPet,
     required this.onAdd,
+    required this.onTapSchedule,
   });
 
   @override
@@ -155,6 +170,7 @@ class _PetList extends StatelessWidget {
           const SizedBox(height: 10),
         ],
         _AddPetCard(onTap: onAdd),
+        _JadwalTerdekatSection(pets: pets, onTap: onTapSchedule),
       ],
     );
   }
@@ -229,7 +245,8 @@ class _PetTile extends StatelessWidget {
       pet.type,
       if (pet.breed != null && pet.breed!.trim().isNotEmpty) pet.breed!.trim(),
     ].join(' • ');
-    final hasChips = pet.gender != null || pet.ageLabel != null;
+    final hasChips =
+        pet.gender != null || pet.ageLabel != null || pet.nearestDue != null;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -293,6 +310,11 @@ class _PetTile extends StatelessWidget {
                             const SizedBox(width: 5),
                           if (pet.ageLabel != null)
                             _NeutralChip(label: pet.ageLabel!),
+                          if (pet.nearestDue != null) ...[
+                            if (pet.gender != null || pet.ageLabel != null)
+                              const SizedBox(width: 5),
+                            _ScheduleChip(schedule: pet.nearestDue!),
+                          ],
                         ],
                       ),
                     ],
@@ -586,6 +608,128 @@ class _EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Chip jadwal terdekat di kartu pet — merah bila terlambat, biru bila segera,
+/// netral bila normal.
+class _ScheduleChip extends StatelessWidget {
+  final PetSchedule schedule;
+  const _ScheduleChip({required this.schedule});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final status = scheduleStatusOf(schedule.nextDueAt);
+    final overdue = status == ScheduleStatus.overdue;
+    final soon = status == ScheduleStatus.soon;
+    final Color bg;
+    final Color fg;
+    if (overdue) {
+      bg = isDark
+          ? NataloColors.danger.withValues(alpha: 0.22)
+          : NataloColors.dangerSoft;
+      fg = NataloColors.dangerDark;
+    } else if (soon) {
+      bg = isDark ? _brandBlue.withValues(alpha: 0.22) : NataloColors.primarySoft;
+      fg = _brandBlue;
+    } else {
+      bg = cs.surfaceContainerHighest;
+      fg = cs.onSurfaceVariant;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+      child: Text(
+        '${schedule.category.label} • ${scheduleCountdownLabel(schedule.nextDueAt)}',
+        style: TextStyle(
+            fontSize: 10, fontWeight: NataloWeight.strong, color: fg),
+      ),
+    );
+  }
+}
+
+/// Gabungan jadwal terdekat semua pet (maks 3), diurutkan paling dekat dulu.
+class _JadwalTerdekatSection extends StatelessWidget {
+  final List<Pet> pets;
+  final ValueChanged<Pet> onTap;
+  const _JadwalTerdekatSection({required this.pets, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final entries = <({Pet pet, PetSchedule schedule})>[];
+    for (final p in pets) {
+      final due = p.nearestDue;
+      if (due != null) entries.add((pet: p, schedule: due));
+    }
+    if (entries.isEmpty) return const SizedBox.shrink();
+    entries.sort(
+        (a, b) => a.schedule.nextDueAt.compareTo(b.schedule.nextDueAt));
+    final top = entries.take(3).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 18),
+        const Text('Jadwal Terdekat',
+            style: TextStyle(fontSize: 13, fontWeight: NataloWeight.strong)),
+        const SizedBox(height: 8),
+        for (final e in top)
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => onTap(e.pet),
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 9),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Icon(e.schedule.category.icon,
+                          size: 15, color: cs.onSurfaceVariant),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${e.pet.name} — ${e.schedule.category.label}',
+                              style: const TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: NataloWeight.strong)),
+                          const SizedBox(height: 2),
+                          Text(_fmtDate(e.schedule.nextDueAt),
+                              style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: NataloWeight.body,
+                                  color: cs.onSurfaceVariant)),
+                        ],
+                      ),
+                    ),
+                    _ScheduleChip(schedule: e.schedule),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+String _fmtDate(DateTime d) {
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+    'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
+  ];
+  return '${d.day} ${months[d.month - 1]} ${d.year}';
 }
 
 class _ErrorState extends StatelessWidget {
