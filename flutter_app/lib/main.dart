@@ -20,6 +20,7 @@ import 'screens/cart_screen.dart';
 import 'screens/checkout_screen.dart';
 import 'screens/chat_room_screen.dart';
 import 'screens/feed_screen.dart';
+import 'screens/hashtag_screen.dart';
 import 'screens/help_center_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
@@ -418,6 +419,12 @@ class NataloPetshopApp extends StatelessWidget {
               // tap @mention nanti dispatch ke route ini.
               '/u' when settings.arguments is String =>
                 PublicProfileScreen(username: settings.arguments as String),
+              // Halaman hashtag (Spec C) — tap #hashtag di caption/komentar
+              // mana pun (lihat mention_text.dart buildMentionSpans) dispatch
+              // ke sini. Arg = nama hashtag tanpa '#' (boleh campur kasus;
+              // HashtagScreen normalize sendiri ke lowercase).
+              '/hashtag' when settings.arguments is String =>
+                HashtagScreen(name: settings.arguments as String),
               '/member/addresses' => const MemberAddressesScreen(),
               '/member/orders' =>
                 MemberOrdersScreen(initialFilterArgument: settings.arguments),

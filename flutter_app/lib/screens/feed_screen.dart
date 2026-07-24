@@ -2227,6 +2227,8 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                         onExpandedChanged: _setCaptionExpanded,
                         onMentionTap: (handle) => Navigator.of(context)
                             .pushNamed('/u', arguments: handle),
+                        onHashtagTap: (name) => Navigator.of(context)
+                            .pushNamed('/hashtag', arguments: name),
                       ),
                       FeedPostSocialProof(post: post),
                     ],

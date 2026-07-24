@@ -3676,6 +3676,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                                     onMentionTap: (handle) => Navigator.of(
                                       context,
                                     ).pushNamed('/u', arguments: handle),
+                                    onHashtagTap: (name) => Navigator.of(
+                                      context,
+                                    ).pushNamed('/hashtag', arguments: name),
                                   ),
                                   FeedPostSocialProof(post: post),
                                 ],
