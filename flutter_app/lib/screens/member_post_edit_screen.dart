@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../models/feed_post.dart';
+import '../models/new_post_user_tag.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
 import '../state/feed_store.dart';
@@ -11,6 +12,8 @@ import '../theme/natalo_text.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
+import 'feed_post/feed_tag_people_screen.dart';
+import 'feed_post/feed_tag_people_video_screen.dart';
 
 /// Apakah edit ini akan mengembalikan post ke antrian review admin?
 ///
@@ -42,6 +45,18 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
   bool _saving = false;
   bool _loadingProducts = false;
   String? _productError;
+  late List<NewPostUserTag> _taggedUsers = widget.post.taggedUsers
+      .map((t) => NewPostUserTag(
+            userId: t.userId,
+            username: t.username ?? '',
+            name: t.name,
+            profilePhotoUrl: t.profilePhotoUrl,
+            mediaIndex: t.mediaIndex,
+            x: t.x,
+            y: t.y,
+          ))
+      .toList();
+  bool _taggedUsersEdited = false;
 
   static const _maxCaptionLength = 2000;
   static const _maxTaggedProducts = 3;
@@ -70,6 +85,7 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
         title: _titleFromCaption(caption),
         description: caption.isEmpty ? null : caption,
         productIds: _selectedProductIds.toList(),
+        taggedUsers: _taggedUsersEdited ? _taggedUsers : null,
       );
       if (!mounted) return;
       final wasActive = widget.post.statusInfo == FeedPostStatus.active;
@@ -93,6 +109,20 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
         caption: caption.isEmpty ? null : caption,
         description: caption.isEmpty ? '' : caption,
         status: needsReview ? 'PENDING_REVIEW' : base.status,
+        taggedUsers: _taggedUsersEdited
+            ? _taggedUsers
+                .map((t) => FeedTaggedUser(
+                      userId: t.userId,
+                      username: t.username,
+                      name: t.name,
+                      profilePhotoUrl: t.profilePhotoUrl,
+                      mediaId: null,
+                      mediaIndex: t.mediaIndex,
+                      x: t.x,
+                      y: t.y,
+                    ))
+                .toList()
+            : null,
       ));
       AppToast.show(
         context,
@@ -187,6 +217,36 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
         ..clear()
         ..addAll(result.selectedIds);
       _taggableProducts = result.products;
+    });
+  }
+
+  Future<void> _openTagPeople() async {
+    AppHaptics.tap();
+    final List<NewPostUserTag>? result;
+    if (widget.post.isVideo) {
+      result = await Navigator.of(context).push<List<NewPostUserTag>>(
+        MaterialPageRoute(
+          builder: (_) => FeedTagPeopleVideoScreen(initialTags: _taggedUsers),
+        ),
+      );
+    } else {
+      final images = widget.post.mediaItems
+          .map<ImageProvider>((m) => CachedNetworkImageProvider(m.mediaUrl))
+          .toList();
+      if (images.isEmpty) return; // defensive: foto tanpa media, jangan crash
+      result = await Navigator.of(context).push<List<NewPostUserTag>>(
+        MaterialPageRoute(
+          builder: (_) => FeedTagPeopleScreen(
+            photoImages: images,
+            initialTags: _taggedUsers,
+          ),
+        ),
+      );
+    }
+    if (result == null || !mounted) return;
+    setState(() {
+      _taggedUsers = result!;
+      _taggedUsersEdited = true;
     });
   }
 
@@ -310,6 +370,40 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
                               ),
                             ],
                           ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Divider(height: 1, color: cs.outlineVariant),
+                  // Baris "Orang ditandai" (Spec D).
+                  InkWell(
+                    onTap: _saving ? null : _openTagPeople,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Orang ditandai',
+                              style: TextStyle(
+                                color: cs.onSurface,
+                                fontSize: 15,
+                                fontWeight: NataloWeight.body,
+                              )),
+                          Row(mainAxisSize: MainAxisSize.min, children: [
+                            Text(
+                              _taggedUsers.isEmpty
+                                  ? 'Tambah'
+                                  : '${_taggedUsers.length} dipilih',
+                              style: TextStyle(
+                                color: cs.onSurfaceVariant,
+                                fontSize: 13,
+                                fontWeight: NataloWeight.body,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(Icons.chevron_right_rounded,
+                                color: cs.onSurfaceVariant),
+                          ]),
                         ],
                       ),
                     ),
