@@ -14,6 +14,13 @@ export type ValidatedCarePayload = {
   doneAt: Date;
   note: string | null;
   nextDueAt: Date | null;
+  productId: string | null;
+  brandText: string | null;
+  dosageNote: string | null;
+  weightKg: number | null;
+  place: string | null;
+  vaccineName: string | null;
+  complaint: string | null;
 };
 
 export function validateCarePayload(
@@ -53,12 +60,35 @@ export function validateCarePayload(
     parsedNext = parsed;
   }
 
+  const b = body as Record<string, unknown>;
+  const str = (v: unknown): string | null => {
+    if (typeof v !== "string") return null;
+    const t = v.trim();
+    return t ? t : null;
+  };
+
+  let weightKg: number | null = null;
+  if (b.weightKg !== undefined && b.weightKg !== null && b.weightKg !== "") {
+    const w = typeof b.weightKg === "number" ? b.weightKg : Number(b.weightKg);
+    if (Number.isNaN(w) || w <= 0 || w > 200) {
+      return { error: "Berat badan tidak valid." };
+    }
+    weightKg = w;
+  }
+
   return {
     data: {
       category,
       doneAt: parsedDone,
       note: trimmedNote || null,
       nextDueAt: parsedNext,
+      productId: str(b.productId),
+      brandText: str(b.brandText),
+      dosageNote: str(b.dosageNote),
+      weightKg,
+      place: str(b.place),
+      vaccineName: str(b.vaccineName),
+      complaint: str(b.complaint),
     },
   };
 }
