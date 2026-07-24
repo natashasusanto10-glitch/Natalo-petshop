@@ -25,11 +25,18 @@ class CareSelection {
 
 /// Widget pemilih produk obat cacing/kutu + kartu dosis, dengan fallback
 /// mode manual bila produk dibeli di luar Natalo.
+typedef CareRecommendationFetcher = Future<List<CareProduct>> Function({
+  required PetCareCategory category,
+  required String species,
+  double? weightKg,
+});
+
 class CareProductPicker extends StatefulWidget {
   final PetCareCategory? category;
   final String? species;
   final double? weightKg;
   final void Function(CareSelection selection) onChanged;
+  final CareRecommendationFetcher? recommendationFetcher;
   final List<CareProduct>? _debugProducts;
 
   const CareProductPicker({
@@ -38,6 +45,7 @@ class CareProductPicker extends StatefulWidget {
     required this.species,
     required this.weightKg,
     required this.onChanged,
+    this.recommendationFetcher,
   }) : _debugProducts = null;
 
   /// Konstruktor khusus test: menyuntik daftar produk langsung tanpa
@@ -49,6 +57,7 @@ class CareProductPicker extends StatefulWidget {
   })  : category = null,
         species = null,
         weightKg = null,
+        recommendationFetcher = null,
         _debugProducts = products;
 
   bool get _isDebug => _debugProducts != null;
@@ -99,7 +108,9 @@ class _CareProductPickerState extends State<CareProductPicker> {
     if (category == null || species == null) return;
     setState(() => _loading = true);
     try {
-      final products = await petService.fetchCareRecommendation(
+      final fetch = widget.recommendationFetcher ??
+          petService.fetchCareRecommendation;
+      final products = await fetch(
         category: category,
         species: species,
         weightKg: widget.weightKg,
@@ -189,7 +200,7 @@ class _CareProductPickerState extends State<CareProductPicker> {
           const SizedBox(height: 8),
           InkWell(
             onTap: _toggleManual,
-            child: Text(
+            child: const Text(
               'Beli di luar Natalo? Ketik manual',
               style: TextStyle(
                 fontSize: 12,
@@ -280,7 +291,7 @@ class _ProductTile extends StatelessWidget {
                                   : NataloColors.primarySoft,
                               borderRadius: BorderRadius.circular(999),
                             ),
-                            child: Text(
+                            child: const Text(
                               'Paling sesuai',
                               style: TextStyle(
                                 fontSize: 10,
