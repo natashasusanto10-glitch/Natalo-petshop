@@ -15,6 +15,7 @@ import 'models/product.dart';
 import 'screens/account_security_screen.dart';
 import 'screens/account_settings_screen.dart';
 import 'screens/all_brands_screen.dart';
+import 'screens/anabulku_screen.dart';
 import 'screens/announcement_detail_screen.dart';
 import 'screens/cart_screen.dart';
 import 'screens/checkout_screen.dart';
@@ -412,6 +413,7 @@ class NataloPetshopApp extends StatelessWidget {
               '/member/register' => const RegisterScreen(),
               '/member/forgot-password' => const ForgotPasswordScreen(),
               '/member/profile' => const MemberProfileScreen(),
+              '/member/pets' => const AnabulkuScreen(),
               '/member/username' => const UsernameSetupScreen(),
               // Public profile target untuk deep link /u/{username}.
               // Arg = handle string (lowercase). Deep link service +
