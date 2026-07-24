@@ -14,12 +14,37 @@ final RegExp _kMentionPattern = RegExp(
 /// MIRROR persis lib/feed/hashtags.ts (server). Boundary: '#' hanya valid
 /// di awal teks atau setelah whitespace. Panjang 2-50 di-filter di kode
 /// (bukan regex) — sama seperti server. Ubah di sini ⇒ ubah di sana.
-final RegExp _kHashtagPattern = RegExp(
+///
+/// Public (bukan `_`-prefixed) supaya `hashtag_picker.dart` (Task 12) bisa
+/// reuse pattern yang SAMA untuk boundary check trigger `#partial` — jangan
+/// bikin copy/regex baru di sana.
+final RegExp kHashtagPattern = RegExp(
   r'(^|\s)#([a-z0-9_]+)',
   caseSensitive: false,
 );
-const int _kHashtagMinLength = 2;
-const int _kHashtagMaxLength = 50;
+const int kHashtagMinLength = 2;
+const int kHashtagMaxLength = 50;
+
+/// Extract hashtag dari teks caption: lowercase, dedup (sekali hitung,
+/// urutan kemunculan pertama), filter panjang 2-50 (filter di kode, bukan
+/// regex). MIRROR persis `extractHashtags` di `lib/feed/hashtags.ts`
+/// (server) — dipakai validasi limit 5 hashtag di editor caption (Task 12).
+/// REUSE [kHashtagPattern]/[kHashtagMinLength]/[kHashtagMaxLength] — jangan
+/// tulis ulang regex/filter di caller.
+List<String> extractHashtagsFromText(String text) {
+  final seen = <String>{};
+  final result = <String>[];
+  for (final match in kHashtagPattern.allMatches(text)) {
+    final name = match.group(2)!.toLowerCase();
+    if (name.length < kHashtagMinLength || name.length > kHashtagMaxLength) {
+      continue;
+    }
+    if (seen.contains(name)) continue;
+    seen.add(name);
+    result.add(name);
+  }
+  return result;
+}
 
 /// Style hashtag: biru sama mention, w600 (mention w800) — topik lebih
 /// ringan dari orang (spec §3).
@@ -130,9 +155,9 @@ List<InlineSpan> buildMentionSpans(
   }
 
   if (onHashtagTap != null) {
-    for (final match in _kHashtagPattern.allMatches(text)) {
+    for (final match in kHashtagPattern.allMatches(text)) {
       final name = match.group(2)!.toLowerCase();
-      if (name.length < _kHashtagMinLength || name.length > _kHashtagMaxLength) {
+      if (name.length < kHashtagMinLength || name.length > kHashtagMaxLength) {
         // Panjang di luar 2-50: bukan hashtag valid, biarkan jadi teks
         // polos (sama seperti server — filter di kode, bukan di regex).
         continue;

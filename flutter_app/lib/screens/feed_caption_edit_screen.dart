@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/feed_service.dart';
+import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
+import '../utils/mention_text.dart';
+import '../widgets/hashtag_picker.dart';
 import '../widgets/mention_picker.dart';
 
 const _captionBlue = Color(0xFF1E5BFF);
@@ -41,13 +45,24 @@ class FeedCaptionEditScreen extends StatefulWidget {
 class _FeedCaptionEditScreenState extends State<FeedCaptionEditScreen> {
   late final TextEditingController _controller;
   late final MentionPickerController _mentionCtrl;
+  late final HashtagPickerController _hashtagCtrl;
   final FocusNode _focusNode = FocusNode();
+
+  /// Pesan error inline saat Simpan diblokir (>5 hashtag). Null = tidak ada
+  /// error tampil. Reset otomatis saat caption berubah (lihat
+  /// `_clearHashtagLimitError`).
+  String? _hashtagLimitError;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialCaption);
     _mentionCtrl = MentionPickerController(textController: _controller);
+    _hashtagCtrl = HashtagPickerController(
+      textController: _controller,
+      searchFn: feedService.searchHashtags,
+    );
+    _controller.addListener(_clearHashtagLimitError);
     // Auto-focus caption field dengan slight delay supaya keyboard tidak
     // race dengan fade-in transition (180ms). Smoother UX.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -57,13 +72,34 @@ class _FeedCaptionEditScreenState extends State<FeedCaptionEditScreen> {
 
   @override
   void dispose() {
+    _hashtagCtrl.dispose();
     _mentionCtrl.dispose();
+    _controller.removeListener(_clearHashtagLimitError);
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
   }
 
+  /// Reset error limit hashtag begitu user mengetik lagi (spec Task 12:
+  /// "reset error saat teks berubah") — supaya pesan tidak nyangkut stale
+  /// setelah user mulai memperbaiki caption.
+  void _clearHashtagLimitError() {
+    if (_hashtagLimitError != null) {
+      setState(() => _hashtagLimitError = null);
+    }
+  }
+
+  /// Commit (Save) + pop. Dipanggil dari tombol OK, back arrow, tap dim
+  /// area, DAN system back (lihat PopScope di build) — semua jalur keluar
+  /// layar ini setara dengan "Simpan" (BACK = SAVE, per dokumentasi kelas
+  /// ini). Validasi limit 5 hashtag WAJIB blokir SEMUA jalur itu, bukan
+  /// cuma satu tombol — kalau tidak, user tinggal pencet back/tap luar utk
+  /// bypass validasi.
   void _commitAndPop() {
+    if (extractHashtagsFromText(_controller.text).length > 5) {
+      setState(() => _hashtagLimitError = 'Maksimal 5 hashtag per postingan.');
+      return;
+    }
     AppHaptics.tap();
     Navigator.of(context).pop(_controller.text);
   }
@@ -76,7 +112,10 @@ class _FeedCaptionEditScreenState extends State<FeedCaptionEditScreen> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        Navigator.of(context).pop(_controller.text);
+        // Route lewat _commitAndPop (bukan pop langsung) supaya validasi
+        // limit hashtag juga menjaga jalur system-back/gesture-back —
+        // konsisten dengan OK/back-arrow/tap-dim di bawah.
+        _commitAndPop();
       },
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -178,15 +217,42 @@ class _FeedCaptionEditScreenState extends State<FeedCaptionEditScreen> {
                           ),
                           ),
                         ),
-                        // @mention suggestions panel — light theme cocok
-                        // dengan white caption sheet. Maxheight 180 supaya
-                        // tidak nutupin TextField terlalu banyak.
+                        // Error inline limit hashtag (Task 12) — tampil di
+                        // atas panel saran saat Simpan diblokir (>5 tag).
+                        if (_hashtagLimitError != null)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                            child: Text(
+                              _hashtagLimitError!,
+                              style: const TextStyle(
+                                color: NataloColors.danger,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        // @mention + #hashtag suggestions panel — light
+                        // theme cocok dengan white caption sheet. Maxheight
+                        // 180 supaya tidak nutupin TextField terlalu
+                        // banyak. Ditumpuk dalam satu Column — hanya satu
+                        // yang pernah aktif sekaligus karena trigger char
+                        // beda (`@` vs `#`), jadi tidak akan tumpang tindih
+                        // visual.
                         Padding(
                           padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
-                          child: MentionSuggestionsPanel(
-                            controller: _mentionCtrl,
-                            darkTheme: false,
-                            maxHeight: 180,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              MentionSuggestionsPanel(
+                                controller: _mentionCtrl,
+                                darkTheme: false,
+                                maxHeight: 180,
+                              ),
+                              HashtagSuggestionsPanel(
+                                controller: _hashtagCtrl,
+                                darkTheme: false,
+                                maxHeight: 180,
+                              ),
+                            ],
                           ),
                         ),
                       ],
