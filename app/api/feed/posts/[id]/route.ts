@@ -643,6 +643,19 @@ export async function PATCH(
     if (!parsedTags.ok) {
       return NextResponse.json({ error: parsedTags.error }, { status: 400 });
     }
+    if (parsedTags.tags.length > 0) {
+      // Validasi user benar-benar ada (dan punya username → bisa dinavigasi).
+      const found = await prisma.user.findMany({
+        where: { id: { in: parsedTags.tags.map((t) => t.userId) } },
+        select: { id: true },
+      });
+      if (found.length !== parsedTags.tags.length) {
+        return NextResponse.json(
+          { error: "Ada akun yang ditandai tapi tidak ditemukan." },
+          { status: 400 },
+        );
+      }
+    }
     newTaggedUserRows = buildTaggedUserRows(
       parsedTags.tags,
       post.id,

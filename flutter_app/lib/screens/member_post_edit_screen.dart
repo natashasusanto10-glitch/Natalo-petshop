@@ -233,7 +233,15 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
       final images = widget.post.mediaItems
           .map<ImageProvider>((m) => CachedNetworkImageProvider(m.mediaUrl))
           .toList();
-      if (images.isEmpty) return; // defensive: foto tanpa media, jangan crash
+      if (images.isEmpty) {
+        // defensive: foto tanpa media, jangan crash
+        AppToast.show(
+          context,
+          'Foto belum bisa dimuat. Coba lagi.',
+          kind: ToastKind.info,
+        );
+        return;
+      }
       result = await Navigator.of(context).push<List<NewPostUserTag>>(
         MaterialPageRoute(
           builder: (_) => FeedTagPeopleScreen(
