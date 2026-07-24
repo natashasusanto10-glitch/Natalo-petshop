@@ -69,6 +69,13 @@ class PetCareRecord {
   final DateTime doneAt;
   final String? note;
   final DateTime? nextDueAt;
+  final String? productId;
+  final String? brandText;
+  final String? dosageNote;
+  final double? weightKg;
+  final String? place;
+  final String? vaccineName;
+  final String? complaint;
 
   const PetCareRecord({
     required this.id,
@@ -76,6 +83,13 @@ class PetCareRecord {
     required this.doneAt,
     this.note,
     this.nextDueAt,
+    this.productId,
+    this.brandText,
+    this.dosageNote,
+    this.weightKg,
+    this.place,
+    this.vaccineName,
+    this.complaint,
   });
 
   factory PetCareRecord.fromJson(Map<String, dynamic> json) {
@@ -87,8 +101,42 @@ class PetCareRecord {
           DateTime.now(),
       note: json['note'] as String?,
       nextDueAt: next == null ? null : DateTime.tryParse(next),
+      productId: json['productId'] as String?,
+      brandText: json['brandText'] as String?,
+      dosageNote: json['dosageNote'] as String?,
+      weightKg: (json['weightKg'] as num?)?.toDouble(),
+      place: json['place'] as String?,
+      vaccineName: json['vaccineName'] as String?,
+      complaint: json['complaint'] as String?,
     );
   }
+}
+
+class CareProduct {
+  final String id;
+  final String name;
+  final String? imageUrl;
+  final int effectivePrice;
+  final bool inStock;
+  final String? instruction;
+
+  const CareProduct({
+    required this.id,
+    required this.name,
+    this.imageUrl,
+    required this.effectivePrice,
+    required this.inStock,
+    this.instruction,
+  });
+
+  factory CareProduct.fromJson(Map<String, dynamic> json) => CareProduct(
+        id: json['id'] as String? ?? '',
+        name: json['name'] as String? ?? '',
+        imageUrl: json['imageUrl'] as String?,
+        effectivePrice: (json['effectivePrice'] as num?)?.toInt() ?? 0,
+        inStock: json['inStock'] as bool? ?? false,
+        instruction: json['instruction'] as String?,
+      );
 }
 
 class PetSchedule {
