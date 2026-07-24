@@ -218,9 +218,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
     }
   }
 
-  /// Buka layar penempatan Tag People — foto (Task 9) atau video (Task 10).
-  /// Kedua layar saat ini masih stub (mengembalikan `initialTags` apa
-  /// adanya) sampai Task 9/10 diisi.
+  /// Buka layar penempatan Tag People — foto atau video.
   Future<void> _openTagPeople() async {
     AppHaptics.tap();
     final result = _isVideo
