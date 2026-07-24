@@ -40,6 +40,20 @@ import type {
 const FEED_PAGE_SIZE = 10;
 const COMMENT_PAGE_SIZE = 20;
 
+/**
+ * Subset of the Prisma client the feed READ path touches, injectable so the
+ * pagination/batch contract can be unit-tested without a database (same
+ * `db = prisma` seam already used by listFeedComments/getFeedCommentDetail
+ * below). Product voucher + soldCount aggregation still use the module client
+ * directly — they only run when a post carries products, and the batch
+ * (saved-post) path passes product-less ids, so they are never exercised
+ * through an injected client.
+ */
+export type FeedReadDb = Pick<
+  typeof prisma,
+  "feedPost" | "feedLike" | "feedSave" | "userFollow"
+>;
+
 export const PUBLIC_FEED_POST_WHERE = {
   status: "ACTIVE",
   deletedAt: null,
@@ -55,11 +69,12 @@ export const PUBLIC_FEED_POST_WHERE = {
 /** Resolve saved state for a whole page in one query. */
 export async function getViewerSavedPostIds(
   viewerUserId: string | null | undefined,
-  postIds: readonly string[]
+  postIds: readonly string[],
+  db: Pick<typeof prisma, "feedSave"> = prisma
 ): Promise<Set<string>> {
   if (!viewerUserId || postIds.length === 0) return new Set<string>();
 
-  const saves = await prisma.feedSave.findMany({
+  const saves = await db.feedSave.findMany({
     where: {
       userId: viewerUserId,
       postId: { in: [...new Set(postIds)] },
@@ -155,6 +170,8 @@ type FeedListOptions = {
   productSlug?: string | null;
   /** Internal batch filter used by the saved-post listing. */
   postIds?: readonly string[];
+  /** Injectable Prisma seam (defaults to the module client) — see FeedReadDb. */
+  db?: FeedReadDb;
 };
 
 /**
@@ -168,6 +185,7 @@ export async function listFeedPosts({
   viewerUserId,
   productSlug,
   postIds,
+  db = prisma,
 }: FeedListOptions): Promise<FeedListResponse> {
   // Resolve product slug → id sekali, supaya WHERE clause bisa pakai
   // productId match (lebih efisien dari nested slug lookup di setiap row).
@@ -189,7 +207,14 @@ export async function listFeedPosts({
   // supaya tidak ada drift antara filter query dan resolve.
   const now = new Date();
 
-  const posts = await prisma.feedPost.findMany({
+  // Batch fetch by explicit ids (saved-post listing) — the caller already
+  // paginated, so we must return EVERY requested id. Sizing the internal
+  // window to postIds.length stops the LIMIT/slice from silently dropping ids
+  // past FEED_PAGE_SIZE (the saved-feed vanishing bug). The primary
+  // (non-postIds) feed path keeps its FEED_PAGE_SIZE cursor window unchanged.
+  const pageSize = postIds ? postIds.length : FEED_PAGE_SIZE;
+
+  const posts = await db.feedPost.findMany({
     where: {
       ...PUBLIC_FEED_POST_WHERE,
       ...(postIds ? { id: { in: [...postIds] } } : {}),
@@ -211,7 +236,7 @@ export async function listFeedPosts({
         : {}),
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: FEED_PAGE_SIZE + 1,
+    take: pageSize + 1,
     ...(cursor
       ? {
           cursor: { id: cursor },
@@ -354,7 +379,7 @@ export async function listFeedPosts({
   // Fetch viewer's like state batch-style (1 query) supaya tidak N+1.
   let viewerLikedIds = new Set<string>();
   if (viewerUserId && posts.length > 0) {
-    const likes = await prisma.feedLike.findMany({
+    const likes = await db.feedLike.findMany({
       where: {
         userId: viewerUserId,
         postId: { in: posts.map((p) => p.id) },
@@ -366,7 +391,8 @@ export async function listFeedPosts({
 
   const viewerSavedIds = await getViewerSavedPostIds(
     viewerUserId,
-    posts.map((post) => post.id)
+    posts.map((post) => post.id),
+    db
   );
 
   // Follow state viewer→author, batch 1 query (pola sama dgn viewerLikedIds,
@@ -374,7 +400,7 @@ export async function listFeedPosts({
   // feed app (IG parity). Anon viewer → semua false.
   let viewerFollowedAuthorIds = new Set<string>();
   if (viewerUserId && posts.length > 0) {
-    const follows = await prisma.userFollow.findMany({
+    const follows = await db.userFollow.findMany({
       where: {
         followerId: viewerUserId,
         followingId: { in: [...new Set(posts.map((p) => p.authorId))] },
@@ -473,8 +499,8 @@ export async function listFeedPosts({
     }
   }
 
-  const hasMore = posts.length > FEED_PAGE_SIZE;
-  const sliced = hasMore ? posts.slice(0, FEED_PAGE_SIZE) : posts;
+  const hasMore = posts.length > pageSize;
+  const sliced = hasMore ? posts.slice(0, pageSize) : posts;
 
   const items: FeedPostListItem[] = sliced.map((p) => {
     const playbackUrls = buildFeedVideoPlaybackUrls({
@@ -670,12 +696,14 @@ export async function listSavedFeedPosts({
   userId,
   cursor,
   limit = FEED_PAGE_SIZE,
+  db = prisma,
 }: {
   userId: string;
   cursor?: string | null;
   limit?: number;
+  db?: FeedReadDb;
 }): Promise<FeedListResponse> {
-  const saves = await prisma.feedSave.findMany({
+  const saves = await db.feedSave.findMany({
     where: {
       userId,
       post: { is: PUBLIC_FEED_POST_WHERE },
@@ -699,6 +727,7 @@ export async function listSavedFeedPosts({
   const serialized = await listFeedPosts({
     viewerUserId: userId,
     postIds,
+    db,
   });
 
   return {
