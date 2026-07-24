@@ -25,6 +25,10 @@ final RegExp kHashtagPattern = RegExp(
 const int kHashtagMinLength = 2;
 const int kHashtagMaxLength = 50;
 
+/// Batas jumlah hashtag per postingan (Spec C) — MIRROR server.
+const int kMaxHashtagsPerPost = 5;
+const String kHashtagLimitMessage = 'Maksimal 5 hashtag per postingan.';
+
 /// Extract hashtag dari teks caption: lowercase, dedup (sekali hitung,
 /// urutan kemunculan pertama), filter panjang 2-50 (filter di kode, bukan
 /// regex). MIRROR persis `extractHashtags` di `lib/feed/hashtags.ts`

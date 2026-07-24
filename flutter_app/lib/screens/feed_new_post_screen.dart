@@ -36,7 +36,7 @@ const _newPostSoft = Color(0xFFF5F8FF);
 /// `feed_caption_edit_screen.dart` (`_commitAndPop`) ke-bypass). Sama persis
 /// dengan pesan layer 1. Konstanta di-share antara `_upload()` (set) dan
 /// listener caption (clear) supaya keduanya tidak pernah out-of-sync.
-const _hashtagLimitError = 'Maksimal 5 hashtag per postingan.';
+const _hashtagLimitError = kHashtagLimitMessage;
 
 /// Loop playback dalam rentang trim draft (Approach B: file belum
 /// terpotong secara fisik sampai upload). Return timer guard — cancel
@@ -182,7 +182,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
         // karena caption berubah.
         if (_error == _hashtagLimitError &&
             extractHashtagsFromText(_captionController.text.trim()).length <=
-                5) {
+                kMaxHashtagsPerPost) {
           _error = null;
         }
       });
@@ -436,7 +436,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   Future<void> _upload() async {
     if (_error != null) return;
     final caption = _captionController.text.trim();
-    if (extractHashtagsFromText(caption).length > 5) {
+    if (extractHashtagsFromText(caption).length > kMaxHashtagsPerPost) {
       // Layer 2 (submit-time recheck, spec §2) — layer 1 (caption editor)
       // sudah blokir Save duluan di jalur normal, dan layer 3 (server 400)
       // tetap jadi penjaga terakhir data integrity. Recheck ini menangkap
