@@ -21,6 +21,40 @@ class FeedLikeResult {
   });
 }
 
+class HashtagSuggestion {
+  final String name;
+  final int postCount;
+  const HashtagSuggestion({required this.name, required this.postCount});
+  factory HashtagSuggestion.fromJson(Map<String, dynamic> json) =>
+      HashtagSuggestion(
+        name: (json['name'] as String?) ?? '',
+        postCount: (json['postCount'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class HashtagPageResult {
+  final String name;
+  final int postCount;
+  final List<FeedPost> posts;
+  final String? nextCursor;
+  const HashtagPageResult({
+    required this.name,
+    required this.postCount,
+    required this.posts,
+    this.nextCursor,
+  });
+  factory HashtagPageResult.fromJson(Map<String, dynamic> json) =>
+      HashtagPageResult(
+        name: (json['name'] as String?) ?? '',
+        postCount: (json['postCount'] as num?)?.toInt() ?? 0,
+        posts: ((json['posts'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((raw) => FeedPost.fromJson(Map<String, dynamic>.from(raw)))
+            .toList(),
+        nextCursor: json['nextCursor'] as String?,
+      );
+}
+
 enum FeedDesiredStateVerb { put, delete }
 
 FeedDesiredStateVerb feedDesiredStateVerb(bool desiredActive) =>
@@ -590,6 +624,26 @@ class FeedService {
       '/api/feed/posts/${Uri.encodeComponent(postId)}/tags/me',
       body: {'hidden': hidden},
     );
+  }
+
+  Future<HashtagPageResult> fetchHashtagPosts(String name, {String? cursor}) async {
+    final data = await apiClient.getJson(
+      '/api/feed/hashtags/${Uri.encodeComponent(name)}',
+      query: cursor == null ? null : {'cursor': cursor},
+    );
+    return HashtagPageResult.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  Future<List<HashtagSuggestion>> searchHashtags(String q) async {
+    final data = await apiClient.getJson(
+      '/api/feed/hashtags/search',
+      query: {'q': q},
+    );
+    final rows = (data is Map ? data['hashtags'] as List? : null) ?? const [];
+    return rows
+        .whereType<Map>()
+        .map((r) => HashtagSuggestion.fromJson(Map<String, dynamic>.from(r)))
+        .toList();
   }
 }
 
