@@ -30,8 +30,21 @@ String get _recentStorageKey =>
     OwnerScope.key(_recentStorageBaseKey, accountOwnerId());
 const _maxRecentEntries = 12;
 
+typedef SearchHashtagsFn = Future<List<HashtagSuggestion>> Function(String q);
+typedef SearchUsersFn = Future<List<FollowUserSummary>> Function(
+  String q, {
+  int limit,
+});
+
 class FeedUserSearchScreen extends StatefulWidget {
-  const FeedUserSearchScreen({super.key});
+  final SearchHashtagsFn? searchHashtagsOverride;
+  final SearchUsersFn? searchUsersOverride;
+
+  const FeedUserSearchScreen({
+    super.key,
+    this.searchHashtagsOverride,
+    this.searchUsersOverride,
+  });
 
   @override
   State<FeedUserSearchScreen> createState() => _FeedUserSearchScreenState();
@@ -51,6 +64,10 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
   bool _suggestedLoading = false;
   List<RecentSearchEntry> _recentEntries = const [];
   List<FollowUserSummary> _suggestedUsers = const [];
+  List<HashtagSuggestion> _hashtagResults = const [];
+  bool _hashtagLoading = false;
+  String? _hashtagError;
+  String _lastRunHashtagQuery = '';
 
   @override
   void initState() {
@@ -72,25 +89,84 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
     super.dispose();
   }
 
+  /// Mode hashtag aktif kalau teks (trimmed) diawali '#' ala IG.
+  bool get _isHashtagMode => _controller.text.trim().startsWith('#');
+
+  /// Teks setelah '#' — bisa kosong kalau user baru ketik '#' saja.
+  String get _hashtagQuery {
+    final trimmed = _controller.text.trim();
+    return trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+  }
+
   void _onInputChanged() {
     final next = _controller.text.trim();
     if (next == _query) return;
     _debounce?.cancel();
+    final hashtagMode = next.startsWith('#');
+    final hashtagQuery = hashtagMode ? next.substring(1) : '';
     setState(() {
       _query = next;
       _error = null;
       _loginRequired = false;
-      if (next.length < 2) {
+      if (hashtagMode) {
+        if (hashtagQuery.isEmpty) {
+          _lastRunHashtagQuery = '';
+          _hashtagResults = const [];
+          _hashtagLoading = false;
+          _hashtagError = null;
+        }
+      } else if (next.length < 2) {
         _lastRunQuery = '';
         _items = const [];
         _loading = false;
       }
     });
+    if (hashtagMode) {
+      if (hashtagQuery.isEmpty) return;
+      _debounce = Timer(const Duration(milliseconds: 250), () {
+        _runHashtagSearch(hashtagQuery);
+      });
+      return;
+    }
     if (next.length < 2) return;
     _debounce = Timer(const Duration(milliseconds: 250), () {
       _runSearch(next);
     });
   }
+
+  Future<void> _runHashtagSearch(String raw) async {
+    final q = raw.trim().toLowerCase();
+    if (q.isEmpty) return;
+    _lastRunHashtagQuery = q;
+    setState(() {
+      _hashtagLoading = true;
+      _hashtagError = null;
+    });
+    try {
+      final search = widget.searchHashtagsOverride ?? feedService.searchHashtags;
+      final items = await search(q);
+      if (!mounted || _lastRunHashtagQuery != q || _hashtagNormalizedQuery != q) {
+        return;
+      }
+      setState(() => _hashtagResults = items);
+    } catch (_) {
+      if (!mounted || _lastRunHashtagQuery != q || _hashtagNormalizedQuery != q) {
+        return;
+      }
+      setState(() {
+        _hashtagError = 'Pencarian belum berhasil. Coba lagi.';
+        _hashtagResults = const [];
+      });
+    } finally {
+      if (mounted &&
+          _lastRunHashtagQuery == q &&
+          _hashtagNormalizedQuery == q) {
+        setState(() => _hashtagLoading = false);
+      }
+    }
+  }
+
+  String get _hashtagNormalizedQuery => _hashtagQuery.trim().toLowerCase();
 
   Future<void> _runSearch(String raw) async {
     final q = raw.trim().toLowerCase();
@@ -102,7 +178,8 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
       _loginRequired = false;
     });
     try {
-      final items = await followService.searchUsers(q, limit: 20);
+      final search = widget.searchUsersOverride ?? followService.searchUsers;
+      final items = await search(q, limit: 20);
       if (!mounted || _lastRunQuery != q || _normalizedQuery != q) return;
       setState(() => _items = items);
     } catch (error) {
@@ -379,6 +456,9 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
   }
 
   Widget _buildBody() {
+    if (_isHashtagMode) {
+      return _buildHashtagBody();
+    }
     if (_query.length < 2) {
       return _buildDefaultBody();
     }
@@ -426,6 +506,61 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
             onFollowTap: null,
           ),
         if (_loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 18),
+            child: Center(
+              child: SizedBox(
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white70,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildHashtagBody() {
+    if (_hashtagQuery.isEmpty) {
+      return const _MessageState(
+        icon: Icons.tag_rounded,
+        title: 'Cari hashtag',
+        body: 'Ketik nama hashtag untuk mencari postingan.',
+      );
+    }
+    if (_hashtagError != null) {
+      return _MessageState(
+        icon: Icons.search_off_rounded,
+        title: 'Pencarian gagal',
+        body: _hashtagError!,
+        actionLabel: 'Coba lagi',
+        onAction: () => _runHashtagSearch(_hashtagQuery),
+      );
+    }
+    if (_hashtagLoading && _hashtagResults.isEmpty) {
+      return const _SearchSkeletonList();
+    }
+    if (!_hashtagLoading && _hashtagResults.isEmpty) {
+      return _MessageState(
+        icon: Icons.tag_rounded,
+        title: 'Hashtag tidak ditemukan',
+        body: 'Coba kata kunci lain.',
+        query: _hashtagQuery,
+      );
+    }
+    return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      children: [
+        for (final hashtag in _hashtagResults)
+          _HashtagResultTile(
+            hashtag: hashtag,
+            onTap: () => _openHashtag(hashtag),
+          ),
+        if (_hashtagLoading)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 18),
             child: Center(
@@ -557,7 +692,7 @@ class _SearchHeader extends StatelessWidget {
                   focusedBorder: InputBorder.none,
                   disabledBorder: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                  hintText: 'Cari akun',
+                  hintText: 'Cari akun atau #hashtag',
                   hintStyle: const TextStyle(
                     color: _muted,
                     fontSize: 14,
@@ -831,6 +966,66 @@ class _RecentEntryTile extends StatelessWidget {
                     size: 18,
                   ),
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Baris hasil pencarian hashtag ala IG — polos, TANPA tombol X (bukan
+/// riwayat). Layout senada _RecentEntryTile varian hashtag.
+class _HashtagResultTile extends StatelessWidget {
+  final HashtagSuggestion hashtag;
+  final VoidCallback onTap;
+
+  const _HashtagResultTile({
+    required this.hashtag,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      splashColor: Colors.white.withValues(alpha: 0.06),
+      highlightColor: Colors.white.withValues(alpha: 0.04),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+        child: Row(
+          children: [
+            const _HashtagCircle(size: 44),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '#${hashtag.name}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _text,
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w600,
+                      height: 1.15,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${hashtag.postCount} postingan',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _muted,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w400,
+                      height: 1.15,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
