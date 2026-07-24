@@ -5,6 +5,7 @@ import 'package:shimmer/shimmer.dart';
 import '../models/pet.dart';
 import '../services/pet_service.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
@@ -135,7 +136,7 @@ class _PetList extends StatelessWidget {
           'Pet Saya',
           style: TextStyle(
             fontSize: 17,
-            fontWeight: FontWeight.w800,
+            fontWeight: NataloWeight.strong,
             letterSpacing: -0.3,
           ),
         ),
@@ -144,7 +145,7 @@ class _PetList extends StatelessWidget {
           '${pets.length} anabul terdaftar',
           style: TextStyle(
             fontSize: 12,
-            fontWeight: FontWeight.w600,
+            fontWeight: NataloWeight.body,
             color: cs.onSurfaceVariant,
           ),
         ),
@@ -203,7 +204,7 @@ class _AddPetCard extends StatelessWidget {
                   style: TextStyle(
                     color: _brandBlue,
                     fontSize: 13,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
               ],
@@ -268,7 +269,7 @@ class _PetTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 15,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: NataloWeight.strong,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -279,7 +280,7 @@ class _PetTile extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11.5,
                         color: cs.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: NataloWeight.body,
                       ),
                     ),
                     if (hasChips) ...[
@@ -340,7 +341,7 @@ class _GenderChipMini extends StatelessWidget {
             gender.label,
             style: const TextStyle(
               fontSize: 10,
-              fontWeight: FontWeight.w600,
+              fontWeight: NataloWeight.strong,
               color: _brandBlue,
             ),
           ),
@@ -368,7 +369,7 @@ class _NeutralChip extends StatelessWidget {
         label,
         style: TextStyle(
           fontSize: 10,
-          fontWeight: FontWeight.w600,
+          fontWeight: NataloWeight.strong,
           color: cs.onSurfaceVariant,
         ),
       ),
@@ -546,7 +547,7 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 16),
             const Text(
               'Belum ada pet',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+              style: TextStyle(fontSize: 15, fontWeight: NataloWeight.strong),
             ),
             const SizedBox(height: 6),
             Text(
@@ -555,7 +556,7 @@ class _EmptyState extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
+                fontWeight: NataloWeight.body,
                 height: 1.4,
               ),
             ),
@@ -575,7 +576,8 @@ class _EmptyState extends StatelessWidget {
                 icon: const Icon(Icons.add_rounded, size: 18),
                 label: const Text(
                   'Tambah Pet Pertama',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                  style:
+                      TextStyle(fontWeight: NataloWeight.strong, fontSize: 13),
                 ),
               ),
             ),
@@ -609,7 +611,7 @@ class _ErrorState extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
+                fontWeight: NataloWeight.body,
                 height: 1.4,
               ),
             ),

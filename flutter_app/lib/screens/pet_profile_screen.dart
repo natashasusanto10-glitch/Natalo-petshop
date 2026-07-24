@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../models/pet.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 import '../utils/haptics.dart';
 import 'pet_form_screen.dart';
 
@@ -190,7 +191,7 @@ class _ProfileHeader extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 19,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: NataloWeight.strong,
                         ),
                       ),
                     ),
@@ -345,7 +346,7 @@ class _GenderPill extends StatelessWidget {
             gender.label,
             style: const TextStyle(
               fontSize: 12,
-              fontWeight: FontWeight.w700,
+              fontWeight: NataloWeight.strong,
               color: _brandBlue,
             ),
           ),
@@ -394,14 +395,15 @@ class _StatCard extends StatelessWidget {
         children: [
           Text(
             value,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+            style:
+                const TextStyle(fontSize: 15, fontWeight: NataloWeight.strong),
           ),
           const SizedBox(height: 2),
           Text(
             label,
             style: TextStyle(
               fontSize: 11,
-              fontWeight: FontWeight.w600,
+              fontWeight: NataloWeight.body,
               color: cs.onSurfaceVariant,
             ),
           ),
@@ -434,7 +436,7 @@ class _ComingSoonCard extends StatelessWidget {
             const SizedBox(height: 8),
             const Text(
               'Segera hadir',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+              style: TextStyle(fontSize: 13, fontWeight: NataloWeight.strong),
             ),
             const SizedBox(height: 4),
             Text(

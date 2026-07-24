@@ -7,6 +7,7 @@ import '../models/pet.dart';
 import '../services/api_client.dart';
 import '../services/pet_service.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 import '../utils/haptics.dart';
 import '../utils/read_only_mode.dart';
 import '../widgets/app_toast.dart';
@@ -262,7 +263,7 @@ class _PetFormScreenState extends State<PetFormScreen> {
                     'Simpan',
                     style: TextStyle(
                       color: _brandBlue,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
           ),
@@ -366,7 +367,7 @@ class _PetFormScreenState extends State<PetFormScreen> {
                     : const Icon(Icons.delete_outline_rounded, size: 18),
                 label: const Text(
                   'Hapus Pet',
-                  style: TextStyle(fontWeight: FontWeight.w800),
+                  style: TextStyle(fontWeight: NataloWeight.strong),
                 ),
               ),
             ),
@@ -390,7 +391,7 @@ class _FieldLabel extends StatelessWidget {
         text,
         style: TextStyle(
           fontSize: 12,
-          fontWeight: FontWeight.w700,
+          fontWeight: NataloWeight.body,
           color: cs.onSurfaceVariant,
         ),
       ),
@@ -487,7 +488,7 @@ class _GenderChip extends StatelessWidget {
                 label,
                 style: TextStyle(
                   fontSize: 13,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: NataloWeight.strong,
                   color: selected ? _brandBlue : cs.onSurfaceVariant,
                 ),
               ),
