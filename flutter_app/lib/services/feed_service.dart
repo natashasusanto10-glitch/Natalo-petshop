@@ -47,10 +47,12 @@ class HashtagPageResult {
       HashtagPageResult(
         name: (json['name'] as String?) ?? '',
         postCount: (json['postCount'] as num?)?.toInt() ?? 0,
-        posts: ((json['posts'] as List?) ?? const [])
-            .whereType<Map>()
-            .map((raw) => FeedPost.fromJson(Map<String, dynamic>.from(raw)))
-            .toList(),
+        posts: json['posts'] is List
+            ? (json['posts'] as List)
+                .whereType<Map>()
+                .map((raw) => FeedPost.fromJson(Map<String, dynamic>.from(raw)))
+                .toList()
+            : const <FeedPost>[],
         nextCursor: json['nextCursor'] as String?,
       );
 }
@@ -631,7 +633,10 @@ class FeedService {
       '/api/feed/hashtags/${Uri.encodeComponent(name)}',
       query: cursor == null ? null : {'cursor': cursor},
     );
-    return HashtagPageResult.fromJson(Map<String, dynamic>.from(data as Map));
+    if (data is! Map) {
+      return HashtagPageResult(name: name, postCount: 0, posts: const [], nextCursor: null);
+    }
+    return HashtagPageResult.fromJson(Map<String, dynamic>.from(data));
   }
 
   Future<List<HashtagSuggestion>> searchHashtags(String q) async {
