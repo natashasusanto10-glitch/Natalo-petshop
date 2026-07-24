@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../models/pet.dart';
 import '../models/pet_care_record.dart';
 import '../services/api_client.dart';
 import '../services/pet_care_photo_store.dart';
@@ -11,14 +12,15 @@ import '../theme/natalo_text.dart';
 import '../utils/haptics.dart';
 import '../utils/read_only_mode.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/care_product_picker.dart';
 import 'profile_photo_picker_screen.dart';
 
 const _brandBlue = NataloColors.primary;
 
 /// Form "Catat Perawatan" — pop `PetCareRecord` saat sukses, `null` saat batal.
 class PetCareFormScreen extends StatefulWidget {
-  final String petId;
-  const PetCareFormScreen({super.key, required this.petId});
+  final Pet pet;
+  const PetCareFormScreen({super.key, required this.pet});
 
   @override
   State<PetCareFormScreen> createState() => _PetCareFormScreenState();
@@ -29,12 +31,35 @@ class _PetCareFormScreenState extends State<PetCareFormScreen> {
   DateTime _doneAt = DateTime.now();
   DateTime? _nextDueAt;
   final _noteController = TextEditingController();
+  final _placeController = TextEditingController();
+  final _vaccineNameController = TextEditingController();
+  final _complaintController = TextEditingController();
+  late final _weightController = TextEditingController(
+      text: widget.pet.weightKg != null
+          ? _fmtWeight(widget.pet.weightKg!)
+          : '');
   File? _pickedPhoto;
   bool _saving = false;
+
+  double? _weightKg;
+  String? _place;
+  String? _vaccineName;
+  String? _complaint;
+  CareSelection? _selection;
+
+  @override
+  void initState() {
+    super.initState();
+    _weightKg = widget.pet.weightKg;
+  }
 
   @override
   void dispose() {
     _noteController.dispose();
+    _placeController.dispose();
+    _vaccineNameController.dispose();
+    _complaintController.dispose();
+    _weightController.dispose();
     super.dispose();
   }
 
@@ -92,12 +117,21 @@ class _PetCareFormScreenState extends State<PetCareFormScreen> {
     setState(() => _saving = true);
     try {
       final note = _noteController.text.trim();
+      final isDewormOrFlea =
+          _category == PetCareCategory.deworm || _category == PetCareCategory.flea;
       final record = await petService.createCare(
-        widget.petId,
+        widget.pet.id,
         category: _category,
         doneAt: _doneAt,
         note: note.isEmpty ? null : note,
         nextDueAt: _nextDueAt,
+        weightKg: isDewormOrFlea ? _weightKg : null,
+        productId: isDewormOrFlea ? _selection?.productId : null,
+        brandText: isDewormOrFlea ? _selection?.brandText : null,
+        dosageNote: isDewormOrFlea ? _selection?.dosageNote : null,
+        place: _place,
+        vaccineName: _vaccineName,
+        complaint: _complaint,
       );
       if (_pickedPhoto != null) {
         try {
@@ -172,6 +206,7 @@ class _PetCareFormScreenState extends State<PetCareFormScreen> {
             ],
           ),
           const SizedBox(height: 18),
+          ..._buildCategoryFields(),
           const _Label('Tanggal dilakukan'),
           const SizedBox(height: 6),
           _PickerField(
@@ -244,6 +279,187 @@ class _PetCareFormScreenState extends State<PetCareFormScreen> {
     );
   }
 
+  List<Widget> _buildCategoryFields() {
+    switch (_category) {
+      case PetCareCategory.deworm:
+      case PetCareCategory.flea:
+        return [
+          const _Label('Berat saat ini (kg)'),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _weightController,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Theme.of(context).colorScheme.surface,
+              hintText: widget.pet.weightKg != null
+                  ? 'Terakhir: ${_fmtWeight(widget.pet.weightKg!)} kg'
+                  : 'Mis. 4.2',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide:
+                    BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide:
+                    BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+            ),
+            onChanged: (v) => setState(() => _weightKg = double.tryParse(v.trim())),
+          ),
+          const SizedBox(height: 12),
+          CareProductPicker(
+            category: _category,
+            species: widget.pet.type,
+            weightKg: _weightKg,
+            onChanged: (s) => setState(() => _selection = s),
+          ),
+          const SizedBox(height: 18),
+        ];
+      case PetCareCategory.grooming:
+        return [
+          const _Label('Tempat grooming (opsional)'),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _placeController,
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Theme.of(context).colorScheme.surface,
+              hintText: 'Mis. Natalo Petshop',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide:
+                    BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide:
+                    BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+            ),
+            onChanged: (v) => setState(() => _place = v.trim().isEmpty ? null : v.trim()),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final suggestion in const ['Natalo Petshop', 'Di rumah'])
+                _NextChip(
+                  label: suggestion,
+                  selected: _place == suggestion,
+                  onTap: () => setState(() {
+                    _place = suggestion;
+                    _placeController.text = suggestion;
+                  }),
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
+        ];
+      case PetCareCategory.vaccine:
+        return [
+          const _Label('Nama vaksin (opsional)'),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _vaccineNameController,
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Theme.of(context).colorScheme.surface,
+              hintText: 'Mis. Rabies',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide:
+                    BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide:
+                    BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+            ),
+            onChanged: (v) =>
+                setState(() => _vaccineName = v.trim().isEmpty ? null : v.trim()),
+          ),
+          const SizedBox(height: 8),
+          const _Label('Dokter hewan/tempat (opsional)'),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _placeController,
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Theme.of(context).colorScheme.surface,
+              hintText: 'Mis. Klinik Sehat',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide:
+                    BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide:
+                    BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+            ),
+            onChanged: (v) => setState(() => _place = v.trim().isEmpty ? null : v.trim()),
+          ),
+          const SizedBox(height: 18),
+        ];
+      case PetCareCategory.vet:
+        return [
+          const _Label('Keluhan/tujuan kunjungan (opsional)'),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _complaintController,
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Theme.of(context).colorScheme.surface,
+              hintText: 'Mis. Cek rutin',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide:
+                    BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide:
+                    BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+            ),
+            onChanged: (v) =>
+                setState(() => _complaint = v.trim().isEmpty ? null : v.trim()),
+          ),
+          const SizedBox(height: 8),
+          const _Label('Dokter hewan/tempat (opsional)'),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _placeController,
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Theme.of(context).colorScheme.surface,
+              hintText: 'Mis. Klinik Sehat',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide:
+                    BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide:
+                    BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+            ),
+            onChanged: (v) => setState(() => _place = v.trim().isEmpty ? null : v.trim()),
+          ),
+          const SizedBox(height: 18),
+        ];
+      case PetCareCategory.other:
+        return const [];
+    }
+  }
+
   bool _isPreset() =>
       _isNext(const Duration(days: 30)) || _isNext(const Duration(days: 90));
 
@@ -255,6 +471,11 @@ class _PetCareFormScreenState extends State<PetCareFormScreen> {
         n.month == expected.month &&
         n.day == expected.day;
   }
+}
+
+String _fmtWeight(double w) {
+  final s = w.toStringAsFixed(1);
+  return s.endsWith('.0') ? s.substring(0, s.length - 2) : s;
 }
 
 String _fmtDate(DateTime d) {
@@ -376,7 +597,7 @@ class _PhotoField extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: Image.file(picked!,
-                width: 64, height: 64, fit: BoxFit.cover),
+                width: 56, height: 56, fit: BoxFit.cover),
           ),
           const SizedBox(width: 12),
           TextButton(onPressed: onTap, child: const Text('Ganti foto')),
@@ -389,24 +610,15 @@ class _PhotoField extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          width: 56,
+          height: 56,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             border: Border.all(color: cs.outlineVariant),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Column(
-            children: [
-              Icon(Icons.add_a_photo_outlined,
-                  size: 20, color: cs.onSurfaceVariant),
-              const SizedBox(height: 4),
-              Text('Tambah foto',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: NataloWeight.body,
-                      color: cs.onSurfaceVariant)),
-            ],
-          ),
+          child: Icon(Icons.add_a_photo_outlined,
+              size: 18, color: cs.onSurfaceVariant),
         ),
       ),
     );

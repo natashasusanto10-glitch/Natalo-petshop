@@ -144,7 +144,7 @@ class _PetProfileScreenState extends State<PetProfileScreen>
     AppHaptics.tap();
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => PetCareScreen(petId: _pet.id, petName: _pet.name),
+        builder: (_) => PetCareScreen(pet: _pet),
       ),
     );
     _dirty = true;
