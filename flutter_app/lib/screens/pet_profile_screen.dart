@@ -1,10 +1,16 @@
+import 'dart:async';
+import 'dart:ui' as ui;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/pet.dart';
+import '../models/pet_care_record.dart';
+import '../services/pet_service.dart';
 import '../theme/natalo_colors.dart';
 import '../theme/natalo_text.dart';
 import '../utils/haptics.dart';
+import 'pet_care_screen.dart';
 import 'pet_form_screen.dart';
 
 const _brandBlue = NataloColors.primary;
@@ -30,6 +36,11 @@ class _PetProfileScreenState extends State<PetProfileScreen>
   // True kalau pet di-edit in-place — dikembalikan ke AnabulkuScreen saat
   // back supaya list-nya refresh (nama/foto terbaru).
   bool _dirty = false;
+  List<PetCareRecord> _careRecords = const [];
+  List<PetSchedule> _careUpcoming = const [];
+  // Warna dominan foto pet — dipakai sebagai tint cover (Opsi B).
+  // Null = foto belum ada / gagal diekstrak → cover fallback biru brand.
+  Color? _photoTint;
 
   @override
   void initState() {
@@ -39,6 +50,57 @@ class _PetProfileScreenState extends State<PetProfileScreen>
       vsync: this,
       duration: const Duration(milliseconds: 520),
     );
+    _loadCare();
+    _extractPhotoTint();
+  }
+
+  /// Ambil warna rata-rata foto pet (sampling piksel) untuk tint cover.
+  /// Best-effort: gagal apa pun → diamkan, cover tetap fallback brand.
+  Future<void> _extractPhotoTint() async {
+    final url = _pet.photoUrl;
+    if (url == null || url.isEmpty) {
+      if (mounted && _photoTint != null) setState(() => _photoTint = null);
+      return;
+    }
+    try {
+      final stream = CachedNetworkImageProvider(url)
+          .resolve(ImageConfiguration.empty);
+      final completer = Completer<ui.Image>();
+      late final ImageStreamListener listener;
+      listener = ImageStreamListener(
+        (info, _) {
+          if (!completer.isCompleted) completer.complete(info.image);
+          stream.removeListener(listener);
+        },
+        onError: (error, _) {
+          if (!completer.isCompleted) completer.completeError(error);
+          stream.removeListener(listener);
+        },
+      );
+      stream.addListener(listener);
+      final image = await completer.future;
+      final data =
+          await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (data == null) return;
+      final bytes = data.buffer.asUint8List();
+      // Sampling ±400 piksel merata — cukup untuk warna dominan, murah.
+      final pixelCount = bytes.length ~/ 4;
+      final stride = (pixelCount ~/ 400).clamp(1, pixelCount) * 4;
+      var r = 0, g = 0, b = 0, n = 0;
+      for (var i = 0; i + 3 < bytes.length; i += stride) {
+        if (bytes[i + 3] < 128) continue; // abaikan piksel transparan
+        r += bytes[i];
+        g += bytes[i + 1];
+        b += bytes[i + 2];
+        n++;
+      }
+      if (n == 0 || !mounted) return;
+      setState(() {
+        _photoTint = Color.fromARGB(255, r ~/ n, g ~/ n, b ~/ n);
+      });
+    } catch (_) {
+      // Gagal memuat/mengekstrak — cover pakai fallback biru brand.
+    }
   }
 
   @override
@@ -64,6 +126,31 @@ class _PetProfileScreenState extends State<PetProfileScreen>
     super.dispose();
   }
 
+  Future<void> _loadCare() async {
+    try {
+      final res = await petService.fetchCare(_pet.id);
+      if (!mounted) return;
+      setState(() {
+        _careRecords = res.records;
+        _careUpcoming = res.upcoming;
+        _pet = _pet.copyWith(careCount: res.records.length);
+      });
+    } catch (_) {
+      // Diamkan — section perawatan sekadar tak terisi kalau gagal muat.
+    }
+  }
+
+  Future<void> _openCare() async {
+    AppHaptics.tap();
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => PetCareScreen(petId: _pet.id, petName: _pet.name),
+      ),
+    );
+    _dirty = true;
+    await _loadCare();
+  }
+
   Future<void> _openEdit() async {
     AppHaptics.tap();
     final result = await Navigator.of(context).push<Object>(
@@ -80,6 +167,8 @@ class _PetProfileScreenState extends State<PetProfileScreen>
         _pet = result;
         _dirty = true;
       });
+      // Foto bisa berubah saat edit — segarkan tint cover.
+      _extractPhotoTint();
     }
   }
 
@@ -112,15 +201,26 @@ class _PetProfileScreenState extends State<PetProfileScreen>
       body: ListView(
         padding: EdgeInsets.zero,
         children: [
-          _ProfileHeader(pet: pet, entrance: _entrance),
+          _ProfileHeader(pet: pet, entrance: _entrance, tint: _photoTint),
           _Entrance(
             controller: _entrance,
             start: 0.28,
-            child: _StatsRow(pet: pet),
+            child: _StatsRow(pet: pet, onCareTap: _openCare),
           ),
           _Entrance(
             controller: _entrance,
             start: 0.42,
+            child: _CareSection(
+              records: _careRecords,
+              upcoming: _careUpcoming,
+              petName: _pet.name,
+              onSeeAll: _openCare,
+              onAddFirst: _openCare,
+            ),
+          ),
+          _Entrance(
+            controller: _entrance,
+            start: 0.5,
             child: _ComingSoonCard(petName: pet.name),
           ),
           const SizedBox(height: 24),
@@ -134,7 +234,12 @@ class _PetProfileScreenState extends State<PetProfileScreen>
 class _ProfileHeader extends StatelessWidget {
   final Pet pet;
   final Animation<double> entrance;
-  const _ProfileHeader({required this.pet, required this.entrance});
+  final Color? tint;
+  const _ProfileHeader({
+    required this.pet,
+    required this.entrance,
+    this.tint,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -151,17 +256,37 @@ class _ProfileHeader extends StatelessWidget {
     // kompensasi di bawah). Menghindari strip cover polos yang terasa kosong.
     const coverHeight = 64.0;
     const avatarSize = 88.0;
+    // Cover diperhalus (Opsi B): tint dari warna dominan foto pet, dilembutkan
+    // (pastel di light, samar di dark), lalu meluruh vertikal ke background —
+    // batas dua-blok jadi menyatu. Tanpa foto/tint → fallback biru brand.
+    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+    final Color coverBase;
+    if (tint != null) {
+      coverBase = isDark
+          ? Color.alphaBlend(tint!.withValues(alpha: 0.22), scaffoldBg)
+          : Color.lerp(tint!, Colors.white, 0.72)!;
+    } else {
+      coverBase = isDark
+          ? Color.alphaBlend(_brandBlue.withValues(alpha: 0.18), scaffoldBg)
+          : NataloColors.primarySoft;
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Stack(
           clipBehavior: Clip.none,
           children: [
-            Container(
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeOut,
               height: coverHeight,
-              color: isDark
-                  ? _brandBlue.withValues(alpha: 0.18)
-                  : NataloColors.primarySoft,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [coverBase, scaffoldBg],
+                ),
+              ),
             ),
             Positioned(
               left: 20,
@@ -231,6 +356,14 @@ class _ProfileHeader extends StatelessWidget {
                   ),
                 ),
               ],
+              if (_hasHealthInfo(pet)) ...[
+                const SizedBox(height: 8),
+                _Entrance(
+                  controller: entrance,
+                  start: 0.32,
+                  child: _HealthInfoRows(pet: pet),
+                ),
+              ],
               const SizedBox(height: 12),
             ],
           ),
@@ -239,6 +372,11 @@ class _ProfileHeader extends StatelessWidget {
     );
   }
 }
+
+bool _hasHealthInfo(Pet pet) =>
+    pet.sterilized != null ||
+    (pet.allergy != null && pet.allergy!.trim().isNotEmpty) ||
+    (pet.healthNote != null && pet.healthNote!.trim().isNotEmpty);
 
 /// Fade + slide-up halus, di-stagger via [start] (0..1) di sepanjang
 /// [controller]. Otomatis "no-op" saat reduced-motion (controller sudah
@@ -358,19 +496,25 @@ class _GenderPill extends StatelessWidget {
 
 class _StatsRow extends StatelessWidget {
   final Pet pet;
-  const _StatsRow({required this.pet});
+  final VoidCallback onCareTap;
+  const _StatsRow({required this.pet, required this.onCareTap});
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(20, 4, 20, 0),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
       child: Row(
         children: [
-          Expanded(child: _StatCard(value: '0', label: 'Momen')),
-          SizedBox(width: 8),
-          Expanded(child: _StatCard(value: '0', label: 'Perawatan')),
-          SizedBox(width: 8),
-          Expanded(child: _StatCard(value: '0', label: 'Belanja')),
+          const Expanded(child: _StatCard(value: '0', label: 'Momen')),
+          const SizedBox(width: 8),
+          Expanded(
+            child: GestureDetector(
+              onTap: onCareTap,
+              child: _StatCard(value: '${pet.careCount}', label: 'Perawatan'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Expanded(child: _StatCard(value: '0', label: 'Belanja')),
         ],
       ),
     );
@@ -440,7 +584,7 @@ class _ComingSoonCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Journey, Perawatan, dan Belanja untuk $petName akan muncul di sini.',
+              'Journey dan Belanja untuk $petName akan muncul di sini.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 12,
@@ -453,4 +597,238 @@ class _ComingSoonCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CareSection extends StatelessWidget {
+  final List<PetCareRecord> records;
+  final List<PetSchedule> upcoming;
+  final String petName;
+  final VoidCallback onSeeAll;
+  final VoidCallback onAddFirst;
+  const _CareSection({
+    required this.records,
+    required this.upcoming,
+    required this.petName,
+    required this.onSeeAll,
+    required this.onAddFirst,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    if (records.isEmpty && upcoming.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onAddFirst,
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.medical_services_outlined,
+                      color: _brandBlue, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text('Catat perawatan pertama $petName',
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: NataloWeight.strong)),
+                  ),
+                  Icon(Icons.chevron_right_rounded, color: cs.outline),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    final nearest = upcoming.isNotEmpty ? upcoming.first : null;
+    final lastTwo = records.take(2).toList();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('Perawatan',
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: NataloWeight.strong)),
+              const Spacer(),
+              GestureDetector(
+                onTap: onSeeAll,
+                child: const Text('Lihat semua',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: NataloWeight.strong,
+                        color: _brandBlue)),
+              ),
+            ],
+          ),
+          if (nearest != null) ...[
+            const SizedBox(height: 8),
+            _NearestCard(schedule: nearest),
+          ],
+          if (lastTwo.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text('TERAKHIR DICATAT',
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: NataloWeight.strong,
+                    letterSpacing: 0.3,
+                    color: cs.onSurfaceVariant)),
+            const SizedBox(height: 4),
+            for (final r in lastTwo)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(
+                  children: [
+                    Icon(r.category.icon, size: 15, color: cs.onSurfaceVariant),
+                    const SizedBox(width: 8),
+                    Text('${r.category.label} — ${_fmtDate(r.doneAt)}',
+                        style: const TextStyle(
+                            fontSize: 11.5, fontWeight: NataloWeight.body)),
+                  ],
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _NearestCard extends StatelessWidget {
+  final PetSchedule schedule;
+  const _NearestCard({required this.schedule});
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final overdue =
+        scheduleStatusOf(schedule.nextDueAt) == ScheduleStatus.overdue;
+    final soon = scheduleStatusOf(schedule.nextDueAt) == ScheduleStatus.soon;
+    final bg = overdue
+        ? (isDark ? NataloColors.dangerDark.withValues(alpha: 0.18) : NataloColors.dangerSoft)
+        : cs.surfaceContainerHighest;
+    final border = overdue
+        ? NataloColors.danger.withValues(alpha: 0.5)
+        : Colors.transparent;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(schedule.category.icon,
+              size: 17,
+              color: overdue ? NataloColors.dangerDark : _brandBlue),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(schedule.category.label,
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: NataloWeight.strong,
+                        color: overdue ? NataloColors.dangerDark : null)),
+                const SizedBox(height: 2),
+                Text(
+                    '${_fmtDate(schedule.nextDueAt)} • ${scheduleCountdownLabel(schedule.nextDueAt)}',
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: NataloWeight.body,
+                        color: overdue
+                            ? NataloColors.danger
+                            : cs.onSurfaceVariant)),
+              ],
+            ),
+          ),
+          _StatusBadge(overdue: overdue, soon: soon),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  final bool overdue;
+  final bool soon;
+  const _StatusBadge({required this.overdue, required this.soon});
+  @override
+  Widget build(BuildContext context) {
+    if (!overdue && !soon) return const SizedBox.shrink();
+    final bg = overdue ? NataloColors.danger : _brandBlue;
+    final label = overdue ? 'Terlambat' : 'Segera';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(label,
+          style: const TextStyle(
+              fontSize: 9.5,
+              fontWeight: NataloWeight.strong,
+              color: Colors.white)),
+    );
+  }
+}
+
+class _HealthInfoRows extends StatelessWidget {
+  final Pet pet;
+  const _HealthInfoRows({required this.pet});
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final items = <(String, String)>[
+      if (pet.sterilized != null)
+        ('Steril', pet.sterilized! ? 'Ya' : 'Belum'),
+      if (pet.allergy != null && pet.allergy!.trim().isNotEmpty)
+        ('Alergi', pet.allergy!.trim()),
+      if (pet.healthNote != null && pet.healthNote!.trim().isNotEmpty)
+        ('Kondisi', pet.healthNote!.trim()),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final (label, value) in items)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Text.rich(TextSpan(children: [
+              TextSpan(
+                  text: '$label: ',
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: NataloWeight.strong)),
+              TextSpan(
+                  text: value,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: NataloWeight.body,
+                      color: cs.onSurfaceVariant)),
+            ])),
+          ),
+      ],
+    );
+  }
+}
+
+String _fmtDate(DateTime d) {
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+    'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
+  ];
+  return '${d.day} ${months[d.month - 1]} ${d.year}';
 }

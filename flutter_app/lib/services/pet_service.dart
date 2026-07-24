@@ -1,4 +1,5 @@
 import '../models/pet.dart';
+import '../models/pet_care_record.dart';
 import '../utils/read_only_mode.dart';
 import 'api_client.dart';
 
@@ -27,6 +28,9 @@ class PetService {
     DateTime? birthDate,
     PetGender? gender,
     String? bio,
+    bool? sterilized,
+    String? allergy,
+    String? healthNote,
   }) async {
     readOnlyMode.assertWritable('pet_create');
     final data = await apiClient.postJson(
@@ -38,6 +42,9 @@ class PetService {
         if (birthDate != null) 'birthDate': birthDate.toIso8601String(),
         if (gender != null) 'gender': gender.apiValue,
         if (bio != null) 'bio': bio,
+        if (sterilized != null) 'sterilized': sterilized,
+        if (allergy != null) 'allergy': allergy,
+        if (healthNote != null) 'healthNote': healthNote,
       },
     );
     return Pet.fromJson((data as Map<String, dynamic>)['pet']);
@@ -51,6 +58,9 @@ class PetService {
     DateTime? birthDate,
     PetGender? gender,
     String? bio,
+    bool? sterilized,
+    String? allergy,
+    String? healthNote,
   }) async {
     readOnlyMode.assertWritable('pet_update');
     final data = await apiClient.patchJson(
@@ -62,6 +72,9 @@ class PetService {
         if (birthDate != null) 'birthDate': birthDate.toIso8601String(),
         if (gender != null) 'gender': gender.apiValue,
         if (bio != null) 'bio': bio,
+        if (sterilized != null) 'sterilized': sterilized,
+        if (allergy != null) 'allergy': allergy,
+        if (healthNote != null) 'healthNote': healthNote,
       },
     );
     return Pet.fromJson((data as Map<String, dynamic>)['pet']);
@@ -88,6 +101,53 @@ class PetService {
               : 'image/jpeg',
     );
     return Pet.fromJson((data as Map<String, dynamic>)['pet']);
+  }
+
+  Future<({List<PetCareRecord> records, List<PetSchedule> upcoming})>
+      fetchCare(String petId) async {
+    final data = await apiClient.getJson('/api/member/pets/$petId/care');
+    final map = data as Map<String, dynamic>;
+    final recordsRaw = map['records'];
+    final upcomingRaw = map['upcoming'];
+    final records = recordsRaw is List
+        ? recordsRaw
+            .whereType<Map<String, dynamic>>()
+            .map(PetCareRecord.fromJson)
+            .toList()
+        : <PetCareRecord>[];
+    final upcoming = upcomingRaw is List
+        ? upcomingRaw
+            .whereType<Map<String, dynamic>>()
+            .map(PetSchedule.fromJson)
+            .toList()
+        : <PetSchedule>[];
+    return (records: records, upcoming: upcoming);
+  }
+
+  Future<PetCareRecord> createCare(
+    String petId, {
+    required PetCareCategory category,
+    required DateTime doneAt,
+    String? note,
+    DateTime? nextDueAt,
+  }) async {
+    readOnlyMode.assertWritable('createCare');
+    final data = await apiClient.postJson(
+      '/api/member/pets/$petId/care',
+      body: {
+        'category': category.apiValue,
+        'doneAt': doneAt.toIso8601String(),
+        if (note != null) 'note': note,
+        if (nextDueAt != null) 'nextDueAt': nextDueAt.toIso8601String(),
+      },
+    );
+    return PetCareRecord.fromJson(
+        (data as Map<String, dynamic>)['record'] as Map<String, dynamic>);
+  }
+
+  Future<void> deleteCare(String petId, String recordId) async {
+    readOnlyMode.assertWritable('deleteCare');
+    await apiClient.deleteJson('/api/member/pets/$petId/care/$recordId');
   }
 }
 

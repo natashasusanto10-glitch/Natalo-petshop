@@ -1,3 +1,5 @@
+import 'pet_care_record.dart';
+
 /// Jenis pet — WAJIB sinkron dengan `PET_TYPES` di
 /// `lib/pets-api.ts` (backend). Urutan dipakai sebagai opsi dropdown form.
 const List<String> kPetTypes = [
@@ -39,6 +41,11 @@ class Pet {
   final DateTime? birthDate;
   final PetGender? gender;
   final String? bio;
+  final bool? sterilized;
+  final String? allergy;
+  final String? healthNote;
+  final int careCount;
+  final PetSchedule? nearestDue;
 
   const Pet({
     required this.id,
@@ -49,10 +56,16 @@ class Pet {
     this.birthDate,
     this.gender,
     this.bio,
+    this.sterilized,
+    this.allergy,
+    this.healthNote,
+    this.careCount = 0,
+    this.nearestDue,
   });
 
   factory Pet.fromJson(Map<String, dynamic> json) {
     final birthDateRaw = json['birthDate'] as String?;
+    final nearestRaw = json['nearestDue'];
     return Pet(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
@@ -63,6 +76,19 @@ class Pet {
           birthDateRaw == null ? null : DateTime.tryParse(birthDateRaw),
       gender: PetGender.fromApi(json['gender'] as String?),
       bio: json['bio'] as String?,
+      sterilized: json['sterilized'] as bool?,
+      allergy: json['allergy'] as String?,
+      healthNote: json['healthNote'] as String?,
+      careCount: (json['careCount'] as num?)?.toInt() ?? 0,
+      nearestDue: nearestRaw is Map<String, dynamic>
+          ? PetSchedule(
+              recordId: '',
+              category: PetCareCategory.fromApi(nearestRaw['category'] as String?),
+              nextDueAt: DateTime.tryParse(
+                      nearestRaw['nextDueAt'] as String? ?? '') ??
+                  DateTime.now(),
+            )
+          : null,
     );
   }
 
@@ -74,6 +100,11 @@ class Pet {
     DateTime? birthDate,
     PetGender? gender,
     String? bio,
+    bool? sterilized,
+    String? allergy,
+    String? healthNote,
+    int? careCount,
+    PetSchedule? nearestDue,
   }) {
     return Pet(
       id: id,
@@ -84,6 +115,11 @@ class Pet {
       birthDate: birthDate ?? this.birthDate,
       gender: gender ?? this.gender,
       bio: bio ?? this.bio,
+      sterilized: sterilized ?? this.sterilized,
+      allergy: allergy ?? this.allergy,
+      healthNote: healthNote ?? this.healthNote,
+      careCount: careCount ?? this.careCount,
+      nearestDue: nearestDue ?? this.nearestDue,
     );
   }
 
