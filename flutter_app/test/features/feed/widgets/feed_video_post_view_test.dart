@@ -1192,12 +1192,21 @@ void main() {
     expect(find.byType(FeedCommentSheet), findsOneWidget);
     final initialTop = tester.getTopLeft(find.byType(FeedCommentSheet)).dy;
 
-    // Tarik handle turun ~15% layar (extent ~0.45 — band terlarang), TAHAN.
+    // Tarik handle turun ~12.5% layar (extent ~0.475 — band terlarang: di
+    // antara initial 0.60 dan dismiss 0.45, TIDAK persis di salah satu
+    // detent), TAHAN. Sengaja diberi margin dari batas dismiss (0.45) —
+    // 6 iterasi (0.15) mendarat TEPAT di 0.45 tapi representasi floating
+    // point-nya (0.60 - 0.15) jadi 0.44999999999999984, sedikit DI BAWAH
+    // dismissExtent akibat rounding, jadi commentSnapTargetFor membaca ini
+    // sebagai CommentSnapTarget.close (bukan initial seperti yang
+    // diharapkan test) — bukan bug produksi, murni drag jarak test yang
+    // presisi pas di ambang float. 5 iterasi (0.125) mendarat di 0.475,
+    // cukup jauh dari 0.45 supaya robust terhadap floating point.
     final handle = find.byKey(const ValueKey('feed-comment-drag-handle'));
     final screenHeight =
         tester.view.physicalSize.height / tester.view.devicePixelRatio;
     final gesture = await tester.startGesture(tester.getCenter(handle));
-    for (var i = 0; i < 6; i++) {
+    for (var i = 0; i < 5; i++) {
       await gesture.moveBy(Offset(0, screenHeight * 0.025));
       await tester.pump(const Duration(milliseconds: 16));
     }
