@@ -649,6 +649,72 @@ void main() {
       expect(find.byKey(const ValueKey('notification-follow-back-pill')),
           findsNothing);
     });
+
+    testWidgets('follow agregat (aggregatedCount 2) → pill Ikuti HILANG',
+        (tester) async {
+      final notif = AppNotification(
+        id: 'n1',
+        title: 'sinta dan 1 lainnya mulai mengikuti kamu',
+        body: '',
+        type: 'social',
+        eventType: 'user_followed',
+        url: '/akun/followers',
+        aggregatedCount: 2,
+        createdAt: DateTime(2026, 7, 24),
+        read: false,
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(notification: notif, onTap: () {}),
+        ),
+      ));
+      expect(find.text('Ikuti'), findsNothing);
+      expect(find.text('Mengikuti'), findsNothing);
+    });
+
+    testWidgets('follow tunggal (aggregatedCount null) → pill tetap tampil',
+        (tester) async {
+      final notif = AppNotification(
+        id: 'n2',
+        title: 'Pengikut baru',
+        body: 'sinta mulai mengikuti kamu.',
+        type: 'social',
+        eventType: 'user_followed',
+        url: '/u/sinta',
+        createdAt: DateTime(2026, 7, 24),
+        read: false,
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(notification: notif, onTap: () {}),
+        ),
+      ));
+      expect(find.text('Ikuti'), findsOneWidget);
+    });
+
+    testWidgets(
+        'agregat dgn actorAvatarUrls KOSONG (follower tanpa foto) → layout tetap benar (tanpa pill, tanpa crash)',
+        (tester) async {
+      final notif = AppNotification(
+        id: 'n3',
+        title: 'budi dan 3 lainnya mulai mengikuti kamu',
+        body: '',
+        type: 'social',
+        eventType: 'user_followed',
+        url: '/akun/followers',
+        aggregatedCount: 4,
+        actorAvatarUrls: const [],
+        createdAt: DateTime(2026, 7, 24),
+        read: false,
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: NotificationRow(notification: notif, onTap: () {}),
+        ),
+      ));
+      expect(tester.takeException(), isNull);
+      expect(find.text('Ikuti'), findsNothing);
+    });
   });
 
   group('postingan dihapus (Lapisan 2 ala IG)', () {

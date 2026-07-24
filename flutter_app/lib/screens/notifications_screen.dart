@@ -182,6 +182,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     // fallback ke AnnouncementDetailScreen karena tidak ada handler `/u/`
     // di chain — sekarang explicit route ke PublicProfileScreen.
     if (eventType == 'user_followed') {
+      // Baris agregat → daftar follower milik SENDIRI (bukan profil 1
+      // follower) — server sudah set url /akun/followers, tapi route by
+      // intent lebih kokoh dari substring URL.
+      if (item.isAggregated) {
+        await _openOwnFollowers();
+        return;
+      }
       final username = extractProfileUsername(item.url);
       if (username != null) {
         await Navigator.pushNamed(context, '/u', arguments: username);
@@ -344,6 +351,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         builder: (_) => AnnouncementDetailScreen(notification: item),
       ),
     );
+  }
+
+  /// Buka daftar follower milik sendiri (tap notif follow agregat).
+  /// Reuse named-route `/akun/followers` (OwnFollowersScreen) — satu
+  /// sumber kebenaran, sama dgn jalur deep-link push notification.
+  Future<void> _openOwnFollowers() async {
+    await Navigator.pushNamed(context, '/akun/followers');
   }
 
   /// Fetch postingan by ID lalu buka tujuan yang tepat — video langsung ke
@@ -952,8 +966,13 @@ class NotificationRow extends StatelessWidget {
             : (isFollow ? imageUrl : null);
     final showLikeBadge =
         notification.eventType?.trim().toLowerCase() == 'feed_new_like';
+    // Baris agregat (>=2 orang) kehilangan pill follow-back — tak ada 1
+    // orang untuk di-follow-balik; tap baris → daftar follower sendiri
+    // (spec agregasi Keputusan 3). Gate WAJIB via aggregatedCount, bukan
+    // panjang actorAvatarUrls (follower tanpa foto → array kosong).
     final followBackUsername =
-        notification.eventType?.toLowerCase() == 'user_followed'
+        notification.eventType?.toLowerCase() == 'user_followed' &&
+                !notification.isAggregated
             ? extractProfileUsername(notification.url)
             : null;
     final feedPostIdTrim = notification.feedPostId?.trim() ?? '';

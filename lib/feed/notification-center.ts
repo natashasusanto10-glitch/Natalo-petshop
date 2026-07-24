@@ -231,6 +231,7 @@ export async function createFeedNotification(params: {
           actorId: params.actorId ?? null,
           publishedAt: new Date(),
           targetUserId: params.userId,
+          lastPushedAt: new Date(),
         },
       }),
     ]);

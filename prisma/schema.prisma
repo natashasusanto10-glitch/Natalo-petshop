@@ -1221,6 +1221,14 @@ model Announcement {
   /// "Ikuti"/"Mengikuti" di app benar sejak render pertama, bukan nunggu
   /// tap. Null untuk notif non-follow / baris lama pra-migration.
   actorId        String?
+  /// Waktu push terakhir baris ini (throttle re-push agregat 5 menit).
+  /// Null = belum pernah / baris pra-migration → boleh push.
+  lastPushedAt   DateTime?
+  /// Jumlah orang di baris agregat (follow: count UserFollow sejak
+  /// createdAt baris). Null / 1 = baris tunggal (pill follow-back tampil).
+  /// Client WAJIB gate agregasi pakai field ini, BUKAN panjang
+  /// actorAvatarUrls (follower tanpa foto → array kosong).
+  aggregatedCount Int?
   createdAt    DateTime           @default(now())
   reads        AnnouncementRead[]
 

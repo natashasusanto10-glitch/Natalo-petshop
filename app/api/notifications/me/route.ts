@@ -56,6 +56,7 @@ function mapAnnouncement(a: {
   actorName: string | null;
   actorAvatarUrls: string[];
   actorId: string | null;
+  aggregatedCount: number | null;
   feedStatus: string | null;
   commentId: string | null;
   ctaLabel: string | null;
@@ -80,6 +81,7 @@ function mapAnnouncement(a: {
     actorName: a.actorName,
     actorAvatarUrls: a.actorAvatarUrls,
     actorId: a.actorId,
+    aggregatedCount: a.aggregatedCount,
     status: a.feedStatus,
     commentId: a.commentId,
     ctaLabel: a.ctaLabel,
@@ -342,7 +344,12 @@ export async function GET() {
         actorId: item.actorId,
         // Baris agregat like membawa avatar bertumpuk di actorAvatarUrls;
         // identitas aktor tunggal memang null → jangan diisi 1 avatar live.
-        isAggregate: (item.actorAvatarUrls?.length ?? 0) > 0,
+        // Kontrak agregat = aggregatedCount (spec Keputusan 9). Fallback
+        // panjang actorAvatarUrls utk baris like LAMA pra-migration yang
+        // aggregatedCount-nya null tapi sudah agregat.
+        isAggregate:
+          (item.aggregatedCount ?? 0) > 1 ||
+          (item.actorAvatarUrls?.length ?? 0) > 0,
         snapshot: { actorName: item.actorName, actorAvatarUrl: item.actorAvatarUrl },
         liveUser,
       });

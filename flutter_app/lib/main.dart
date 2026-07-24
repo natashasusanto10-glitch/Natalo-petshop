@@ -27,6 +27,7 @@ import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/login_otp_screen.dart';
 import 'screens/member_addresses_screen.dart';
+import 'screens/own_followers_screen.dart';
 import 'screens/member_loyalty_history_screen.dart';
 import 'screens/member_loyalty_screen.dart';
 import 'screens/refund_balance_screen.dart';
@@ -428,6 +429,9 @@ class NataloPetshopApp extends StatelessWidget {
               '/hashtag' when settings.arguments is String =>
                 HashtagScreen(name: settings.arguments as String),
               '/member/addresses' => const MemberAddressesScreen(),
+              // Notif follow agregat ("X dan N lainnya mulai mengikuti
+              // kamu") → daftar follower milik sendiri (Task 7).
+              '/akun/followers' => const OwnFollowersScreen(),
               '/member/orders' =>
                 MemberOrdersScreen(initialFilterArgument: settings.arguments),
               '/member/reviews' => const MemberReviewsScreen(),

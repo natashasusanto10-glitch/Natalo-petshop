@@ -7,9 +7,17 @@ import {
   notificationActorFields,
   NOTIF_ACTOR_USERNAME_TOKEN,
   OFFICIAL_BRAND_NAME,
+  topLikerAvatars,
 } from "@/lib/social/brand-user";
 import { feedNotificationThumbnail } from "@/lib/feed/notification-thumbnail";
 import { signBunnyUrl } from "@/lib/feed/bunny";
+import {
+  AGG_PUSH_THROTTLE_MS,
+  buildFollowAggTitle,
+  FOLLOW_AGG_WINDOW_MS,
+  followAggTag,
+  shouldRePush,
+} from "@/lib/social/follow-aggregation";
 
 export const SOCIAL_NOTIFICATION_SOURCE = "social";
 
@@ -26,14 +34,25 @@ function displayName(user: { name: string | null; username: string | null }) {
   return user.username || user.name || "Seseorang";
 }
 
-export async function sendFollowNotification(params: {
-  followerId: string;
-  followingId: string;
-}) {
+type FollowNotifDeps = {
+  db?: typeof prisma;
+  push?: typeof sendPushToUser;
+  fcm?: typeof sendFcmToUser;
+  now?: () => Date;
+};
+
+export async function sendFollowNotification(
+  params: { followerId: string; followingId: string },
+  deps: FollowNotifDeps = {},
+) {
+  const db = deps.db ?? prisma;
+  const push = deps.push ?? sendPushToUser;
+  const fcm = deps.fcm ?? sendFcmToUser;
+  const now = deps.now ? deps.now() : new Date();
   try {
     if (params.followerId === params.followingId) return;
 
-    const follower = await prisma.user.findUnique({
+    const follower = await db.user.findUnique({
       where: { id: params.followerId },
       select: {
         id: true,
@@ -71,18 +90,103 @@ export async function sendFollowNotification(params: {
     // "/notifications" yang collide antar user, jadi skip dedup supaya
     // tidak over-suppress notif dari follower berbeda.
     if (follower.username) {
-      const recent = await prisma.announcement.findFirst({
+      const recent = await db.announcement.findFirst({
         where: {
           targetUserId: params.followingId,
           eventType,
           url,
           createdAt: {
-            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+            gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
           },
         },
         select: { id: true },
       });
       if (recent) return;
+    }
+
+    // ── Agregasi ala IG (spec 2026-07-24) ─────────────────────────────
+    // Cari baris follow HIDUP (unread, dalam window) — tunggal ATAU sudah
+    // agregat — untuk di-upgrade/di-update, alih-alih membuat baris baru.
+    const liveRow = await db.announcement.findFirst({
+      where: {
+        targetUserId: params.followingId,
+        source: SOCIAL_NOTIFICATION_SOURCE,
+        eventType,
+        createdAt: { gte: new Date(now.getTime() - FOLLOW_AGG_WINDOW_MS) },
+        reads: { none: { userId: params.followingId } },
+      },
+      select: { id: true, createdAt: true, lastPushedAt: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (liveRow) {
+      // N per-ORANG: unique(followerId, followingId) di UserFollow menjamin
+      // follow-unfollow-follow = 1 baris. Patokan TETAP createdAt baris
+      // (bukan rolling now-30m) supaya 1 orang tak terhitung di 2 baris
+      // (Keputusan 10). `1 +` = follower pembuat baris (follow-nya terjadi
+      // sebelum baris dibuat, di luar gte).
+      const sinceRow = await db.userFollow.count({
+        where: {
+          followingId: params.followingId,
+          createdAt: { gte: liveRow.createdAt },
+        },
+      });
+      const total = 1 + sinceRow;
+
+      // ≤3 avatar follower terbaru, brand-safe (admin & tanpa-foto di-drop
+      // oleh topLikerAvatars) — ambil 5 supaya drop masih bisa isi 3.
+      const recentFollowers = await db.userFollow.findMany({
+        where: { followingId: params.followingId },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: { follower: { select: { role: true, profilePhotoUrl: true } } },
+      });
+      const avatarUrls = topLikerAvatars(recentFollowers.map((r) => r.follower));
+
+      const aggTitle = buildFollowAggTitle(actorName, total);
+      const aggBody = "Lihat siapa saja yang baru mengikutimu.";
+      const aggUrl = "/akun/followers";
+      const doPush = shouldRePush(liveRow.lastPushedAt, now);
+
+      await db.announcement.update({
+        where: { id: liveRow.id },
+        data: {
+          title: aggTitle,
+          body: aggBody,
+          url: aggUrl,
+          aggregatedCount: total,
+          // Aktor tunggal hilang di baris agregat (pola likeRowActorFields).
+          actorName: null,
+          actorAvatarUrl: null,
+          actorId: null,
+          actorAvatarUrls: avatarUrls,
+          publishedAt: now,
+          ...(doPush ? { lastPushedAt: now } : {}),
+        },
+      });
+
+      if (doPush) {
+        const aggPayload: PushPayload = {
+          title: aggTitle,
+          body: aggBody,
+          url: aggUrl,
+          tag: followAggTag(params.followingId),
+          imageUrl: actorPhoto,
+          renderClientSide: true,
+          actorAvatarUrl: actorPhoto,
+          data: {
+            source: SOCIAL_NOTIFICATION_SOURCE,
+            type: eventType,
+            aggregated_count: String(total),
+            url: aggUrl,
+          },
+        };
+        await Promise.allSettled([
+          push(params.followingId, aggPayload),
+          fcm(params.followingId, aggPayload),
+        ]);
+      }
+      return;
     }
 
     const payload: PushPayload = {
@@ -105,9 +209,9 @@ export async function sendFollowNotification(params: {
     // 2 channel (web + FCM) — sendApnsToUser dihapus, lihat komentar di
     // lib/fcm.ts (dobel notif iOS).
     await Promise.allSettled([
-      sendPushToUser(params.followingId, payload),
-      sendFcmToUser(params.followingId, payload),
-      prisma.announcement.create({
+      push(params.followingId, payload),
+      fcm(params.followingId, payload),
+      db.announcement.create({
         data: {
           title,
           body,
@@ -121,7 +225,9 @@ export async function sendFollowNotification(params: {
           actorAvatarUrl: actorPhoto,
           actorId: params.followerId,
           ctaLabel: "Lihat Profil",
-          publishedAt: new Date(),
+          publishedAt: now,
+          lastPushedAt: now,
+          aggregatedCount: null,
           targetUserId: params.followingId,
         },
       }),

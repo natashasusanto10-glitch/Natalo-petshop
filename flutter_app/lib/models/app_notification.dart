@@ -20,6 +20,11 @@ class AppNotification {
   final String? actorAvatarUrl;
   final String? actorName;
   final List<String> actorAvatarUrls;
+
+  /// Jumlah orang di baris agregat (server: Announcement.aggregatedCount).
+  /// Null / 1 = baris tunggal. KONTRAK gating pill/tap agregat — JANGAN
+  /// pakai actorAvatarUrls.length (follower tanpa foto → array kosong).
+  final int? aggregatedCount;
   final DateTime createdAt;
   final bool read;
 
@@ -62,6 +67,7 @@ class AppNotification {
     this.actorAvatarUrl,
     this.actorName,
     this.actorAvatarUrls = const [],
+    this.aggregatedCount,
     required this.createdAt,
     required this.read,
     this.commentLiked = false,
@@ -108,6 +114,7 @@ class AppNotification {
               ?.map((e) => e.toString())
               .toList() ??
           const [],
+      aggregatedCount: (json['aggregatedCount'] as num?)?.toInt(),
       createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString()) ??
           DateTime.now(),
       read: json['read'] == true,
@@ -142,6 +149,7 @@ class AppNotification {
       actorAvatarUrl: actorAvatarUrl,
       actorName: actorName,
       actorAvatarUrls: actorAvatarUrls,
+      aggregatedCount: aggregatedCount,
       createdAt: createdAt,
       read: read ?? this.read,
       commentLiked: commentLiked,
@@ -149,4 +157,6 @@ class AppNotification {
       postDeleted: postDeleted,
     );
   }
+
+  bool get isAggregated => (aggregatedCount ?? 0) > 1;
 }
