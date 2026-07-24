@@ -177,9 +177,11 @@ class PetService {
         if (weightKg != null) 'weightKg': weightKg.toString(),
       },
     );
-    final list = (data as Map<String, dynamic>)['products'] as List<dynamic>? ?? [];
+    final list = data is Map<String, dynamic> ? data['products'] : null;
+    if (list is! List) return [];
     return list
-        .map((e) => CareProduct.fromJson(e as Map<String, dynamic>))
+        .whereType<Map<String, dynamic>>()
+        .map((e) => CareProduct.fromJson(e))
         .toList();
   }
 }
