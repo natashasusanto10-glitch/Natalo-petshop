@@ -11,6 +11,7 @@ const HASHTAG_SOURCE = /(^|\s)#([a-z0-9_]+)/gi;
 
 export const MAX_HASHTAGS_PER_POST = 5;
 export const HASHTAG_LIMIT_MESSAGE = "Maksimal 5 hashtag per postingan.";
+export const MAX_HASHTAG_SUGGESTIONS = 8;
 
 const MIN_NAME_LENGTH = 2;
 const MAX_NAME_LENGTH = 50;
@@ -64,6 +65,9 @@ export type HashtagTx = {
       where: { feedPostId: string };
       select: { hashtagId: true };
     }) => Promise<{ hashtagId: string }[]>;
+    deleteMany: (args: {
+      where: { feedPostId: string };
+    }) => Promise<unknown>;
   };
 };
 
@@ -89,6 +93,23 @@ export async function syncPostHashtags(
     rows.push({ feedPostId, hashtagId: tag.id });
   }
   await tx.feedPostHashtag.createMany({ data: rows });
+}
+
+/**
+ * Reconcile FeedPostHashtag junction rows saat caption post yang SUDAH ADA
+ * di-edit (PATCH /api/feed/posts/[id]) — beda dari syncPostHashtags (create
+ * path) yang cuma nambah, ini clear semua junction lama (+ decrement
+ * postCount-nya) baru re-create dari caption baru. Panggil DI DALAM
+ * $transaction yang sama dengan update FeedPost.title/description.
+ */
+export async function resyncPostHashtags(
+  tx: HashtagTx,
+  feedPostId: string,
+  newCaptionText: string,
+): Promise<void> {
+  await decrementHashtagCounts(tx, feedPostId);
+  await tx.feedPostHashtag.deleteMany({ where: { feedPostId } });
+  await syncPostHashtags(tx, feedPostId, newCaptionText);
 }
 
 /**
@@ -141,7 +162,7 @@ export async function searchHashtags(
   return db.hashtag.findMany({
     where: { name: { startsWith: prefix } },
     orderBy: { postCount: "desc" },
-    take: 8,
+    take: MAX_HASHTAG_SUGGESTIONS,
     select: { name: true, postCount: true },
   });
 }

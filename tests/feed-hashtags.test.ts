@@ -4,8 +4,10 @@ import {
   extractHashtags,
   isValidHashtagName,
   MAX_HASHTAGS_PER_POST,
+  MAX_HASHTAG_SUGGESTIONS,
   HASHTAG_LIMIT_MESSAGE,
   syncPostHashtags,
+  resyncPostHashtags,
   decrementHashtagCounts,
   hashtagPostsWhere,
   searchHashtags,
@@ -57,14 +59,23 @@ test("konstanta limit & pesan sesuai spec", () => {
   assert.equal(HASHTAG_LIMIT_MESSAGE, "Maksimal 5 hashtag per postingan.");
 });
 
-function makeFakeTx() {
+function makeFakeTx(existingJunctionHashtagIds: string[] = ["h0", "h1"]) {
   const calls: { method: string; args: unknown }[] = [];
+  const nameToId = new Map<string, string>();
   let nextId = 0;
+  // Junction rows currently persisted for the post — deleteMany empties it,
+  // createMany appends. Lets resync tests assert the end state, bukan cuma
+  // urutan panggilan.
+  let junction: { hashtagId: string }[] = existingJunctionHashtagIds.map(
+    (id) => ({ hashtagId: id }),
+  );
   const tx = {
     hashtag: {
       upsert: async (args: { where: { name: string } }) => {
         calls.push({ method: "hashtag.upsert", args });
-        return { id: `h${nextId++}`, name: args.where.name };
+        const name = args.where.name;
+        if (!nameToId.has(name)) nameToId.set(name, `h${nextId++}`);
+        return { id: nameToId.get(name)!, name };
       },
       updateMany: async (args: unknown) => {
         calls.push({ method: "hashtag.updateMany", args });
@@ -72,13 +83,22 @@ function makeFakeTx() {
       },
     },
     feedPostHashtag: {
-      createMany: async (args: unknown) => {
+      createMany: async (args: { data: { hashtagId: string }[] }) => {
         calls.push({ method: "feedPostHashtag.createMany", args });
-        return { count: 1 };
+        junction = junction.concat(
+          args.data.map((d) => ({ hashtagId: d.hashtagId })),
+        );
+        return { count: args.data.length };
       },
       findMany: async (args: unknown) => {
         calls.push({ method: "feedPostHashtag.findMany", args });
-        return [{ hashtagId: "h0" }, { hashtagId: "h1" }];
+        return junction;
+      },
+      deleteMany: async (args: unknown) => {
+        calls.push({ method: "feedPostHashtag.deleteMany", args });
+        const count = junction.length;
+        junction = [];
+        return { count };
       },
     },
   };
@@ -169,4 +189,76 @@ test("searchHashtags: q kosong/whitespace → [] tanpa sentuh db", async () => {
     },
   };
   assert.deepEqual(await searchHashtags(fakeDb, "  "), []);
+});
+
+test("searchHashtags: take pakai MAX_HASHTAG_SUGGESTIONS (8)", () => {
+  assert.equal(MAX_HASHTAG_SUGGESTIONS, 8);
+});
+
+// --- resyncPostHashtags: dipakai PATCH /api/feed/posts/[id] saat caption
+// post yang sudah ada di-edit. Coverage untuk finding review #1 (hashtag
+// desync on post edit).
+
+test("resyncPostHashtags: tambah hashtag baru via edit — junction jadi berisi tag baru", async () => {
+  const { tx, calls } = makeFakeTx([]); // post lama tanpa hashtag sama sekali
+  await resyncPostHashtags(tx, "post1", "Caption baru #kucing");
+  const cm = calls.find((c) => c.method === "feedPostHashtag.createMany")!
+    .args as { data: { feedPostId: string; hashtagId: string }[] };
+  assert.equal(cm.data.length, 1);
+  assert.equal(cm.data[0].feedPostId, "post1");
+  const finalJunction = await tx.feedPostHashtag.findMany({
+    where: { feedPostId: "post1" },
+    select: { hashtagId: true },
+  });
+  assert.equal(finalJunction.length, 1);
+});
+
+test("resyncPostHashtags: hapus hashtag via edit — junction lama dikosongkan, decrement dipanggil", async () => {
+  const { tx, calls } = makeFakeTx(["h0", "h1"]); // post lama punya 2 tag
+  // Caption baru tanpa hashtag sama sekali.
+  await resyncPostHashtags(tx, "post1", "Caption polos tanpa tag lagi");
+  assert.equal(
+    calls.filter((c) => c.method === "feedPostHashtag.deleteMany").length,
+    1,
+  );
+  const decrement = calls.find((c) => c.method === "hashtag.updateMany")!
+    .args as { where: { id: { in: string[] } } };
+  assert.deepEqual(decrement.where.id.in, ["h0", "h1"]);
+  // createMany tidak pernah dipanggil karena caption baru tidak punya tag.
+  assert.equal(
+    calls.some((c) => c.method === "feedPostHashtag.createMany"),
+    false,
+  );
+});
+
+test("resyncPostHashtags: ganti satu tag jadi tag lain — junction akhir cuma berisi tag baru", async () => {
+  const { tx } = makeFakeTx(["h0"]); // post lama tag-nya "#anjing" (id h0)
+  await resyncPostHashtags(tx, "post1", "Ganti caption jadi #kucing");
+  const finalJunction = await tx.feedPostHashtag.findMany({
+    where: { feedPostId: "post1" },
+    select: { hashtagId: true },
+  });
+  // Junction lama (h0) sudah di-clear, digantikan hashtagId baru untuk
+  // "kucing" (nextId mulai dari 0 lagi di fake tx ini karena nameToId map
+  // terpisah dari existing junction seed).
+  assert.equal(finalJunction.length, 1);
+  assert.notEqual(finalJunction[0].hashtagId, undefined);
+});
+
+test("cap 5 hashtag: caption edit dengan >5 tag harus ditolak (recheck sesuai HASHTAG_LIMIT_MESSAGE)", () => {
+  // Mirrors validasi PATCH /api/feed/posts/[id]: extractHashtags(newCaption)
+  // dibanding MAX_HASHTAGS_PER_POST sebelum resyncPostHashtags dipanggil.
+  const newCaption = "#a1 #a2 #a3 #a4 #a5 #a6";
+  const tags = extractHashtags(newCaption);
+  assert.equal(tags.length, 6);
+  assert.ok(tags.length > MAX_HASHTAGS_PER_POST);
+  // Pesan error yang harus dikembalikan route (400).
+  assert.equal(HASHTAG_LIMIT_MESSAGE, "Maksimal 5 hashtag per postingan.");
+});
+
+test("cap 5 hashtag: tepat 5 tag via edit tetap lolos (batas inklusif)", () => {
+  const newCaption = "#a1 #a2 #a3 #a4 #a5";
+  const tags = extractHashtags(newCaption);
+  assert.equal(tags.length, 5);
+  assert.ok(tags.length <= MAX_HASHTAGS_PER_POST);
 });

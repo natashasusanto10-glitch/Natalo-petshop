@@ -31,11 +31,11 @@ const _newPostMuted = Color(0xFF667085);
 const _newPostBorder = Color(0xFFE0E7F0);
 const _newPostSoft = Color(0xFFF5F8FF);
 
-/// Pesan error submit-time recheck limit hashtag (Spec C layer 2 — lihat
-/// `sdd/final-review-fix-brief.md`). Sama persis dengan pesan layer 1 di
-/// `feed_caption_edit_screen.dart` (`_commitAndPop`). Konstanta di-share
-/// antara `_upload()` (set) dan listener caption (clear) supaya keduanya
-/// tidak pernah out-of-sync.
+/// Pesan error submit-time recheck limit hashtag (Spec C layer 2 — recheck
+/// terakhir sebelum upload, jaga-jaga kalau layer 1 di
+/// `feed_caption_edit_screen.dart` (`_commitAndPop`) ke-bypass). Sama persis
+/// dengan pesan layer 1. Konstanta di-share antara `_upload()` (set) dan
+/// listener caption (clear) supaya keduanya tidak pernah out-of-sync.
 const _hashtagLimitError = 'Maksimal 5 hashtag per postingan.';
 
 /// Loop playback dalam rentang trim draft (Approach B: file belum

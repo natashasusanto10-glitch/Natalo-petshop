@@ -9,6 +9,12 @@ import { signBunnyUrl } from "@/lib/feed/bunny";
 import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
 import { editReTriggersModeration } from "@/lib/feed/post-moderation";
 import {
+  extractHashtags,
+  MAX_HASHTAGS_PER_POST,
+  HASHTAG_LIMIT_MESSAGE,
+  resyncPostHashtags,
+} from "@/lib/feed/hashtags";
+import {
   getViewerSavedPostIds,
   resolveFeedProductDiscount,
 } from "@/lib/feed/queries";
@@ -588,6 +594,38 @@ export async function PATCH(
     updates.status = "PENDING_REVIEW";
   }
 
+  // Spec C follow-up: caption edit harus re-sync hashtag junction rows,
+  // sama seperti create routes (app/api/feed/posts/route.ts +
+  // app/api/feed/bunny/upload-url/route.ts) — sebelumnya PATCH tidak
+  // pernah menyentuh FeedPostHashtag sama sekali, jadi post yang caption-nya
+  // diedit jadi stale di /hashtag/<tag-lama> dan tidak pernah muncul di
+  // /hashtag/<tag-baru>, plus cap 5 tidak pernah ditegakkan di jalur ini.
+  //
+  // Hanya validasi/resync kalau caption BENAR-BENAR berubah dari yang
+  // tersimpan — kalau title/description tidak di-set di body ATAU nilainya
+  // sama persis dengan yang lama, skip. Ini mem-parity-kan behavior fix
+  // Flutter _commitAndPop (textChanged guard) supaya draft lama yang sudah
+  // over-limit (dibuat sebelum cap 5 ada) tidak mendadak gagal di-save saat
+  // user cuma edit field lain (mis. productIds) tanpa menyentuh caption.
+  const finalTitle =
+    typeof updates.title !== "undefined" ? updates.title : post.title;
+  const finalDescription =
+    typeof updates.description !== "undefined"
+      ? updates.description
+      : post.description;
+  const oldCaptionText = `${post.title} ${post.description ?? ""}`;
+  const newCaptionText = `${finalTitle} ${finalDescription ?? ""}`;
+  const captionChanged = newCaptionText !== oldCaptionText;
+  if (captionChanged) {
+    const newHashtags = extractHashtags(newCaptionText);
+    if (newHashtags.length > MAX_HASHTAGS_PER_POST) {
+      return NextResponse.json(
+        { error: HASHTAG_LIMIT_MESSAGE },
+        { status: 400 }
+      );
+    }
+  }
+
   // Apply update + replace taggedProducts (Shop the Look) di transaction.
   await prisma.$transaction(async (tx) => {
     await tx.feedPost.update({
@@ -598,6 +636,11 @@ export async function PATCH(
         moderatedAt: new Date(),
       },
     });
+
+    if (captionChanged) {
+      // Reconcile FeedPostHashtag junction rows dari caption baru.
+      await resyncPostHashtags(tx, post.id, newCaptionText);
+    }
 
     if (newProductIds !== null) {
       // Replace all FeedPostProduct rows (simpler than diff). FK cascade

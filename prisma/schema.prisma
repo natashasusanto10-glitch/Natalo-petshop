@@ -1477,6 +1477,11 @@ model Hashtag {
   postCount Int      @default(0)
   createdAt DateTime @default(now())
   posts     FeedPostHashtag[]
+
+  // Prefix-search index (text_pattern_ops, supports `startsWith`/LIKE
+  // 'prefix%' index scans) added via raw SQL migration
+  // 20260724000000_hashtag_search_indexes — Prisma's declarative @@index
+  // doesn't support text_pattern_ops, so it isn't expressed here.
 }
 
 model FeedPostHashtag {
@@ -1489,6 +1494,7 @@ model FeedPostHashtag {
 
   @@unique([feedPostId, hashtagId])
   @@index([hashtagId])
+  @@index([hashtagId, createdAt(sort: Desc)])
 }
 
 // Audit trail untuk semua moderation transition di FeedPost. Append-only —

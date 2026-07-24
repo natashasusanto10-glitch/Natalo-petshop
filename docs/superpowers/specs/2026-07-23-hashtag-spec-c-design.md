@@ -1,7 +1,7 @@
 # Spec C — Hashtag di Caption ala Instagram
 
 **Tanggal:** 2026-07-23
-**Status:** Draft — menunggu review user
+**Status:** Implemented
 **Bagian dari:** rencana 5 bagian (A–E) mengganti tag belanja dengan Tag People + Hashtag + Lokasi. Spec A (PR #245) & Spec B (PR #250 + polish #252) sudah merged ke main.
 
 ## Tujuan
