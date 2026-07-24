@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 
@@ -72,24 +73,17 @@ class _AnabulkuScreenState extends State<AnabulkuScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: cs.surface,
-        surfaceTintColor: cs.surface,
-        elevation: 0,
-        scrolledUnderElevation: 1,
-        shadowColor: Colors.black.withValues(alpha: 0.08),
+        // Header ikut standar global (appBarTheme): title 18/w700, flat +
+        // hairline border, tanpa shadow-on-scroll. Konsisten dgn halaman lain.
         leading: IconButton(
           onPressed: () => Navigator.maybePop(context),
           icon: const Icon(Icons.arrow_back_rounded),
           tooltip: 'Kembali',
         ),
-        title: const Text(
-          'Anabulku',
-          style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
-        ),
+        title: const Text('Anabulku'),
       ),
       body: NataloPawRefreshIndicator(
         onRefresh: _load,
@@ -275,14 +269,36 @@ class _PetAvatar extends StatelessWidget {
         width: size,
         height: size,
         child: url == null || url.isEmpty
-            ? Container(
-                color: NataloColors.grey400.withValues(alpha: 0.25),
-                alignment: Alignment.center,
-                child: const Icon(Icons.pets_rounded,
-                    color: _brandBlue, size: 22),
-              )
-            : Image.network(url, fit: BoxFit.cover),
+            ? const _PetAvatarFallback(iconSize: 22)
+            : CachedNetworkImage(
+                imageUrl: url,
+                fit: BoxFit.cover,
+                width: size,
+                height: size,
+                fadeInDuration: const Duration(milliseconds: 180),
+                placeholder: (_, __) => Container(
+                  color: NataloColors.grey400.withValues(alpha: 0.25),
+                ),
+                errorWidget: (_, __, ___) =>
+                    const _PetAvatarFallback(iconSize: 22),
+              ),
       ),
+    );
+  }
+}
+
+/// Fallback bulat abu + ikon paws — dipakai saat pet belum punya foto atau
+/// gambar gagal dimuat.
+class _PetAvatarFallback extends StatelessWidget {
+  final double iconSize;
+  const _PetAvatarFallback({required this.iconSize});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: NataloColors.grey400.withValues(alpha: 0.25),
+      alignment: Alignment.center,
+      child: Icon(Icons.pets_rounded, color: _brandBlue, size: iconSize),
     );
   }
 }

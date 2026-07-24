@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/pet.dart';
@@ -218,20 +219,14 @@ class _PetFormScreenState extends State<PetFormScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: cs.surface,
-        surfaceTintColor: cs.surface,
-        elevation: 0,
-        scrolledUnderElevation: 1,
-        shadowColor: Colors.black.withValues(alpha: 0.08),
+        // Header ikut standar global (appBarTheme): title 18/w700, flat +
+        // hairline border. Konsisten dgn halaman lain.
         leading: IconButton(
           onPressed: busy ? null : () => Navigator.maybePop(context),
           icon: const Icon(Icons.close_rounded),
           tooltip: 'Tutup',
         ),
-        title: Text(
-          _isEdit ? 'Edit Pet' : 'Tambah Pet',
-          style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
-        ),
+        title: Text(_isEdit ? 'Edit Pet' : 'Tambah Pet'),
         actions: [
           TextButton(
             onPressed: busy ? null : _save,
@@ -377,17 +372,28 @@ class _PhotoPicker extends StatelessWidget {
   Widget build(BuildContext context) {
     const size = 88.0;
     final url = pet?.photoUrl;
+    final fallback = Container(
+      color: NataloColors.grey400.withValues(alpha: 0.25),
+      alignment: Alignment.center,
+      child: const Icon(Icons.pets_rounded, color: _brandBlue, size: 34),
+    );
     Widget content;
     if (file != null) {
       content = Image.file(file!, fit: BoxFit.cover, width: size, height: size);
     } else if (url != null && url.isNotEmpty) {
-      content = Image.network(url, fit: BoxFit.cover, width: size, height: size);
-    } else {
-      content = Container(
-        color: NataloColors.grey400.withValues(alpha: 0.25),
-        alignment: Alignment.center,
-        child: const Icon(Icons.pets_rounded, color: _brandBlue, size: 34),
+      content = CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        width: size,
+        height: size,
+        fadeInDuration: const Duration(milliseconds: 180),
+        placeholder: (_, __) => Container(
+          color: NataloColors.grey400.withValues(alpha: 0.25),
+        ),
+        errorWidget: (_, __, ___) => fallback,
       );
+    } else {
+      content = fallback;
     }
     return GestureDetector(
       onTap: onTap,
