@@ -587,8 +587,11 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
                       _openFollowList(FollowListKind.followers),
                   onFollowingTap: () =>
                       _openFollowList(FollowListKind.following),
+                  // Sama seperti header Akun (member_screen.dart): tombol
+                  // utama = Pets Profile (Anabulku), bukan edit profil —
+                  // edit profil tetap lewat gear -> Pengaturan Akun.
                   onEditProfile: () =>
-                      Navigator.pushNamed(context, '/member/profile'),
+                      Navigator.pushNamed(context, '/member/pets'),
                   onShareProfile: _shareProfile,
                 ),
               ),

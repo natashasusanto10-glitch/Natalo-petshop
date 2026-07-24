@@ -31,12 +31,17 @@ const _tileBg = Color(0xFF1F2937);
 /// batal. Upload + toast + error handling ditangani caller (sheet), bukan di
 /// sini — screen ini murni pilih + crop.
 class ProfilePhotoPickerScreen extends StatefulWidget {
-  const ProfilePhotoPickerScreen({super.key});
+  final String title;
 
-  static Future<File?> open(BuildContext context) {
+  const ProfilePhotoPickerScreen({super.key, this.title = 'Foto profil baru'});
+
+  static Future<File?> open(
+    BuildContext context, {
+    String title = 'Foto profil baru',
+  }) {
     return Navigator.of(context).push<File>(
       MaterialPageRoute(
-        builder: (_) => const ProfilePhotoPickerScreen(),
+        builder: (_) => ProfilePhotoPickerScreen(title: title),
         fullscreenDialog: true,
       ),
     );
@@ -196,6 +201,7 @@ class _ProfilePhotoPickerScreenState extends State<ProfilePhotoPickerScreen> {
         child: Column(
           children: [
             _Header(
+              title: widget.title,
               canConfirm: _previewAsset != null && !_busy,
               onClose: () => Navigator.of(context).pop(),
               onConfirm: _confirm,
@@ -487,11 +493,13 @@ class _GalleryTileState extends State<_GalleryTile> {
 // ─── Header ────────────────────────────────────────────────────────────
 
 class _Header extends StatelessWidget {
+  final String title;
   final bool canConfirm;
   final VoidCallback onClose;
   final VoidCallback onConfirm;
 
   const _Header({
+    required this.title,
     required this.canConfirm,
     required this.onClose,
     required this.onConfirm,
@@ -509,11 +517,11 @@ class _Header extends StatelessWidget {
             filled: false,
             onTap: onClose,
           ),
-          const Expanded(
+          Expanded(
             child: Text(
-              'Foto profil baru',
+              title,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 color: _textWhite,
                 fontSize: 15.5,
                 fontWeight: FontWeight.w800,

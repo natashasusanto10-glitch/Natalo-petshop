@@ -362,12 +362,13 @@ class _ProfilePageState extends State<_ProfilePage>
     }
   }
 
-  /// Buka halaman edit profil (nama, bio, foto, username). Refresh saat
-  /// balik supaya perubahan langsung terlihat di header.
-  Future<void> _openEditProfile() async {
+  /// Buka "Anabulku" (Pets Profile) — tombol utama header profil sendiri.
+  /// Edit profil (nama/bio/foto/username) tetap dapat diakses lewat ikon
+  /// gear -> Pengaturan Akun -> Ubah Profil, jadi tidak dobel dengan
+  /// tombol ini.
+  Future<void> _openPetsProfile() async {
     AppHaptics.tap();
-    await Navigator.pushNamed(context, '/member/profile');
-    if (mounted) await memberStore.hydrateFromApi();
+    await Navigator.pushNamed(context, '/member/pets');
   }
 
   /// Buka layar kartu QR profil ala IG (Desain C) — QR + Bagikan + Salin
@@ -598,7 +599,7 @@ class _ProfilePageState extends State<_ProfilePage>
                                 _openFollowList(FollowListKind.followers),
                             onFollowingTap: () =>
                                 _openFollowList(FollowListKind.following),
-                            onEditProfile: _openEditProfile,
+                            onEditProfile: _openPetsProfile,
                             onShareProfile: _shareProfile,
                           ),
                         ),

@@ -1116,6 +1116,7 @@ model Pet {
   name               String
   type               String // Kucing, Anjing, Ikan, Burung, Reptil, Lainnya
   breed              String?
+  photoUrl           String?
   birthDate          DateTime?
   vaccineReminderAt  DateTime?
   groomingReminderAt DateTime?
