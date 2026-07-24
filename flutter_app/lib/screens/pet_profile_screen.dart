@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:ui' as ui;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -35,6 +38,9 @@ class _PetProfileScreenState extends State<PetProfileScreen>
   bool _dirty = false;
   List<PetCareRecord> _careRecords = const [];
   List<PetSchedule> _careUpcoming = const [];
+  // Warna dominan foto pet — dipakai sebagai tint cover (Opsi B).
+  // Null = foto belum ada / gagal diekstrak → cover fallback biru brand.
+  Color? _photoTint;
 
   @override
   void initState() {
@@ -45,6 +51,56 @@ class _PetProfileScreenState extends State<PetProfileScreen>
       duration: const Duration(milliseconds: 520),
     );
     _loadCare();
+    _extractPhotoTint();
+  }
+
+  /// Ambil warna rata-rata foto pet (sampling piksel) untuk tint cover.
+  /// Best-effort: gagal apa pun → diamkan, cover tetap fallback brand.
+  Future<void> _extractPhotoTint() async {
+    final url = _pet.photoUrl;
+    if (url == null || url.isEmpty) {
+      if (mounted && _photoTint != null) setState(() => _photoTint = null);
+      return;
+    }
+    try {
+      final stream = CachedNetworkImageProvider(url)
+          .resolve(ImageConfiguration.empty);
+      final completer = Completer<ui.Image>();
+      late final ImageStreamListener listener;
+      listener = ImageStreamListener(
+        (info, _) {
+          if (!completer.isCompleted) completer.complete(info.image);
+          stream.removeListener(listener);
+        },
+        onError: (error, _) {
+          if (!completer.isCompleted) completer.completeError(error);
+          stream.removeListener(listener);
+        },
+      );
+      stream.addListener(listener);
+      final image = await completer.future;
+      final data =
+          await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (data == null) return;
+      final bytes = data.buffer.asUint8List();
+      // Sampling ±400 piksel merata — cukup untuk warna dominan, murah.
+      final pixelCount = bytes.length ~/ 4;
+      final stride = (pixelCount ~/ 400).clamp(1, pixelCount) * 4;
+      var r = 0, g = 0, b = 0, n = 0;
+      for (var i = 0; i + 3 < bytes.length; i += stride) {
+        if (bytes[i + 3] < 128) continue; // abaikan piksel transparan
+        r += bytes[i];
+        g += bytes[i + 1];
+        b += bytes[i + 2];
+        n++;
+      }
+      if (n == 0 || !mounted) return;
+      setState(() {
+        _photoTint = Color.fromARGB(255, r ~/ n, g ~/ n, b ~/ n);
+      });
+    } catch (_) {
+      // Gagal memuat/mengekstrak — cover pakai fallback biru brand.
+    }
   }
 
   @override
@@ -111,6 +167,8 @@ class _PetProfileScreenState extends State<PetProfileScreen>
         _pet = result;
         _dirty = true;
       });
+      // Foto bisa berubah saat edit — segarkan tint cover.
+      _extractPhotoTint();
     }
   }
 
@@ -143,7 +201,7 @@ class _PetProfileScreenState extends State<PetProfileScreen>
       body: ListView(
         padding: EdgeInsets.zero,
         children: [
-          _ProfileHeader(pet: pet, entrance: _entrance),
+          _ProfileHeader(pet: pet, entrance: _entrance, tint: _photoTint),
           _Entrance(
             controller: _entrance,
             start: 0.28,
@@ -176,7 +234,12 @@ class _PetProfileScreenState extends State<PetProfileScreen>
 class _ProfileHeader extends StatelessWidget {
   final Pet pet;
   final Animation<double> entrance;
-  const _ProfileHeader({required this.pet, required this.entrance});
+  final Color? tint;
+  const _ProfileHeader({
+    required this.pet,
+    required this.entrance,
+    this.tint,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -193,17 +256,37 @@ class _ProfileHeader extends StatelessWidget {
     // kompensasi di bawah). Menghindari strip cover polos yang terasa kosong.
     const coverHeight = 64.0;
     const avatarSize = 88.0;
+    // Cover diperhalus (Opsi B): tint dari warna dominan foto pet, dilembutkan
+    // (pastel di light, samar di dark), lalu meluruh vertikal ke background —
+    // batas dua-blok jadi menyatu. Tanpa foto/tint → fallback biru brand.
+    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+    final Color coverBase;
+    if (tint != null) {
+      coverBase = isDark
+          ? Color.alphaBlend(tint!.withValues(alpha: 0.22), scaffoldBg)
+          : Color.lerp(tint!, Colors.white, 0.72)!;
+    } else {
+      coverBase = isDark
+          ? Color.alphaBlend(_brandBlue.withValues(alpha: 0.18), scaffoldBg)
+          : NataloColors.primarySoft;
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Stack(
           clipBehavior: Clip.none,
           children: [
-            Container(
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeOut,
               height: coverHeight,
-              color: isDark
-                  ? _brandBlue.withValues(alpha: 0.18)
-                  : NataloColors.primarySoft,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [coverBase, scaffoldBg],
+                ),
+              ),
             ),
             Positioned(
               left: 20,
