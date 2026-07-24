@@ -385,7 +385,7 @@ class PushNotificationService {
         try {
           await apiClient.postJson(
             '/api/push/subscribe-fcm',
-            body: {'token': fcmToken},
+            body: {'token': fcmToken, 'clientRender': 1},
           );
           if (kDebugMode) {
             debugPrint(
