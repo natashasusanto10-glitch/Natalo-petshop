@@ -30,3 +30,51 @@ export function pickDosageForWeight(
   }
   return null;
 }
+
+export type RecoProductInput = {
+  id: string;
+  name: string;
+  price: number;
+  baseStock: number;
+  variantStocks: number[];
+  variantPrices: number[];
+  targetSpecies: string[];
+  dosageRules: DosageRule[];
+};
+
+export function effectiveStock(p: RecoProductInput): number {
+  if (p.variantStocks.length > 0) return p.variantStocks.reduce((a, b) => a + b, 0);
+  return p.baseStock;
+}
+
+export function effectivePrice(p: RecoProductInput): number {
+  if (p.variantPrices.length > 0) return Math.min(...p.variantPrices);
+  return p.price;
+}
+
+export function matchesRecommendation(
+  p: RecoProductInput,
+  species: string,
+  weightKg: number,
+): boolean {
+  const speciesOk = p.targetSpecies.length === 0 || p.targetSpecies.includes(species);
+  if (!speciesOk) return false;
+  return pickDosageForWeight(p.dosageRules, weightKg) !== null;
+}
+
+export function sortRecommendedProducts(
+  products: RecoProductInput[],
+  species: string,
+  weightKg: number,
+): RecoProductInput[] {
+  return products
+    .filter((p) => matchesRecommendation(p, species, weightKg))
+    .sort((a, b) => {
+      const aIn = effectiveStock(a) > 0 ? 1 : 0;
+      const bIn = effectiveStock(b) > 0 ? 1 : 0;
+      if (aIn !== bIn) return bIn - aIn;
+      const pd = effectivePrice(a) - effectivePrice(b);
+      if (pd !== 0) return pd;
+      return a.name.localeCompare(b.name);
+    });
+}
