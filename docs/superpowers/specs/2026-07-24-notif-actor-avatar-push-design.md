@@ -34,7 +34,7 @@ Saat seseorang menandai/berinteraksi dengan user, notifikasi push menampilkan **
 ### 1. Data contract push (backend → client)
 
 Tambah field ke `data` map push (dibaca Android Dart + iOS NSE):
-- `actor_avatar_url` — URL foto aktor (brand-safe; sudah tersedia di dispatcher). Kosong/absen untuk notif tanpa aktor tunggal (order/promo/milestone) → client render tanpa avatar (ikon kategori).
+- `actor_avatar_url` — URL foto aktor (brand-safe; sudah tersedia di dispatcher). Hanya relevan untuk event sosial ber-render-klien; notif tanpa aktor (order/promo/milestone) tidak membawanya (dan memang tetap digambar OS di Android / fallback thumbnail di iOS).
 - Field tampilan yang sudah ada tetap: `type` (=eventType), `feed_post_id`/`post_id`, `url` (deep link), `thumbnail_url`.
 - Tambah `title`/`body` ke `data` juga (untuk Android yang kini render dari data) — sudah ada di payload tapi kini WAJIB terbaca dari `data` di sisi Android.
 - Tambah `channel`/`pref_category` hint (opsional) supaya Android bisa pilih channel + gating konsisten.
@@ -75,13 +75,13 @@ Semua ini bukan opsional — jadi kriteria di rencana implementasi:
 - **Kuota high-priority:** FCM batasi kuota high-priority data message per-app; like bisa volume tinggi. Andalkan agregasi like yang sudah ada (jendela 30 menit) supaya tidak menghabiskan kuota; jangan naikkan volume push.
 - **Real-time list (#2):** debounce tick (mis. 400–800ms) supaya burst push tidak menghajar endpoint; refresh senyap hanya prepend + anti-jump (anchor offset) — idealnya hanya auto-apply saat list di posisi atas, kalau user sedang scroll ke bawah tampilkan pil "notifikasi baru" alih-alih menggeser. Pastikan `_load()` tidak menaikkan tick (cegah loop).
 
-### 3. Android (Flutter) — render semua notifikasi sendiri
+### 3. Android (Flutter) — render notifikasi SOSIAL sendiri
 
 - **Background handler** (`push_notification_service.dart:32`, kini no-op) → render notifikasi via `flutter_local_notifications` HANYA untuk pesan data-only (yang `message.notification == null`, yakni notif sosial). Init plugin + channel di isolate background, ambil title/body/channel/url/thumbnail/`actor_avatar_url` dari `message.data`. Pesan notification-message (order/promo) tetap digambar OS — handler tak menyentuhnya (tidak dobel).
 - **Foreground** disatukan ke fungsi render yang sama. Gate `shouldDisplayLocally` dialihkan dari `hasNotificationPayload` → render bila **ada data payload yang perlu render-klien** (deteksi via `renderClientSide`/absennya `notification`), supaya notif sosial (kini data-only) tetap tampil di foreground.
 - **Avatar bulat:** helper baru `_circleAvatarBitmap(url)` — download (reuse fetch dari `_buildBigPictureStyle`) → crop lingkaran via `dart:ui` (`Canvas` + `clipPath`/`drawImage` ke kanvas bulat) → `ByteArrayAndroidBitmap` → set `AndroidNotificationDetails.largeIcon`. `bigPicture` = thumbnail post (bila ada) tetap dari `_buildBigPictureStyle`.
 - **Tap routing:** notifikasi lokal → `onDidReceiveNotificationResponse` (+ `getNotificationAppLaunchDetails` untuk terminated) → route via deep-link handler yang ada memakai `url` di payload. Pastikan tidak ada dobel dengan `onMessageOpenedApp` (yang untuk background/terminated tetap dipakai bila OS yang display — kini tidak, jadi routing lokal jadi jalur utama Android).
-- **Channel & gating:** gunakan channel per prefCategory; hormati toggle preferensi (client sudah punya `categoryEnabled`).
+- **Channel:** gunakan channel per prefCategory (definisi identik foreground/background — lihat Hardening "Channel parity"). Gating preferensi TIDAK dilakukan di jalur render (sudah di-gate backend sebelum kirim — lihat Hardening "Gating preferensi = hanya di backend").
 
 ### 4. iOS (native) — NSE lampirkan foto aktor
 
@@ -112,7 +112,7 @@ Hapus komentar doc usang di `feed_new_post_screen.dart` (dekat `_openTagPeople`,
 - Android sosial (data-only): foreground / background / terminated × (tag/komentar/like dgn avatar) — muncul, avatar bulat, tap membuka tujuan, TIDAK dobel.
 - Android non-sosial (notification-message, JANGAN regresi): order (9 status) / promo broadcast tetap tampil andal seperti sebelum, action button ("Lacak Paket"/"Beri Review") utuh, tap membuka tujuan.
 - iOS: tag menampilkan lampiran foto aktor (kotak); order/promo tetap normal; tanpa avatar → fallback thumbnail; tap membuka tujuan.
-- Preferensi: toggle kategori OFF benar-benar membungkam (Android render path hormati gating).
+- Preferensi: toggle kategori OFF benar-benar membungkam — diverifikasi via gating BACKEND (tidak ada push terkirim); jalur render klien tidak ikut gate (sesuai Hardening).
 - In-app: baris `feed_tagged` tampil ikon/label "Ditandai" + foto aktor; tab Aktivitas; layar terbuka auto-refresh saat push masuk.
 
 **Unit test:**
