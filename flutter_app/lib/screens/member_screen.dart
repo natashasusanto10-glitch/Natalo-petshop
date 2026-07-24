@@ -443,6 +443,12 @@ class _ProfilePageState extends State<_ProfilePage>
     AppHaptics.tap();
     final post = posts[initialIndex];
     final handoff = _takePreparedPost(post) ?? _createWarmHandoff(post);
+    // Tab "Ditandai" berisi postingan milik ORANG LAIN yang menandai user
+    // ini (author asli != pemilik profil). WAJIB render identitas per-post
+    // (`authorPerPost`) + BUKAN owner-view, kalau tidak header viewer akan
+    // menimpa author asli dengan nama/foto pemilik profil (bug: post Leonardi
+    // tampil seakan dibuat Natalo). Tab 'all'/'video' tetap owner-view lama.
+    final isTagged = tabScope == 'tagged';
     try {
       await pushPostViewer<void>(
         context,
@@ -450,11 +456,17 @@ class _ProfilePageState extends State<_ProfilePage>
           post: post,
           posts: posts,
           initialIndex: initialIndex,
-          authorIsOfficial: memberStore.profile?.isAdmin ?? false,
+          isOwner: !isTagged,
+          authorPerPost: isTagged,
+          authorIsOfficial: isTagged
+              ? false
+              : (memberStore.profile?.isAdmin ?? false),
           warmVideoHandoff: handoff,
-          initialNextCursor: _postsNextCursor,
-          loadMoreScopedPosts: (cursor) =>
-              feedService.fetchMyPosts(filter: 'all', cursor: cursor),
+          initialNextCursor: isTagged ? null : _postsNextCursor,
+          loadMoreScopedPosts: isTagged
+              ? null
+              : (cursor) =>
+                  feedService.fetchMyPosts(filter: 'all', cursor: cursor),
           heroScope: _heroScopeFor(tabScope),
           onWillClose: (activePostId) => _revealTile(tabScope, activePostId),
         ),

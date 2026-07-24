@@ -23,6 +23,7 @@ import '../services/api_client.dart';
 import '../services/feed_service.dart';
 import '../services/follow_service.dart';
 import '../services/video_quality_service.dart';
+import '../state/account_scope.dart';
 import '../state/feed_local_store.dart';
 import '../state/feed_store.dart';
 import '../state/follow_override_store.dart';
@@ -39,6 +40,8 @@ import '../services/share_sheet_launcher.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/calm_scroll_physics.dart';
 import '../widgets/feed_comment_sheet.dart';
+import '../widgets/feed_tagged_users_overlay.dart';
+import '../widgets/feed_tag_options_sheet.dart';
 import '../widgets/liquid_glass.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/official_brand_avatar.dart';
@@ -889,8 +892,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
         onCompleted: () async {
           feedStore.incrementShareCount(post.id);
           final serverCount = await feedService.trackShare(post.id);
-          if (serverCount != null)
+          if (serverCount != null) {
             feedStore.setShareCount(post.id, serverCount);
+          }
         },
       );
     } catch (_) {
@@ -2091,10 +2095,10 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
   });
 
   // Blur frosted — konten di belakang header di-blur halus (kaca es tipis).
-  // Dipasangkan dgn tint rendah (0.08) supaya lapisan tetap tembus tapi media
+  // Dipasangkan dgn tint rendah (0.06) supaya lapisan tetap tembus tapi media
   // di belakang teks tampak buram, bukan tajam. Satu angka, gampang di-tune
   // saat device-verify.
-  static const double _frostedSigma = 8;
+  static const double _frostedSigma = 7;
   // Warna teks/ikon header: GELAP. Saat pertama buka header duduk di atas
   // latar putih (media mulai di bawahnya); saat discroll media lewat di
   // belakang frosted-tipis yang melembutkannya → gelap tetap kebaca di
@@ -2108,7 +2112,7 @@ class _PostDetailTransparentHeaderBar extends StatelessWidget {
     // Tint putih tipis di atas blur — cukup menjaga keterbacaan teks gelap,
     // tetap tembus. reducedMotion: blur dimatikan, tint dinaikkan agar teks
     // tetap kebaca tanpa efek kaca.
-    final tint = Colors.white.withValues(alpha: reducedMotion ? 0.86 : 0.08);
+    final tint = Colors.white.withValues(alpha: reducedMotion ? 0.86 : 0.06);
 
     final bar = Container(
       color: tint,
@@ -3174,28 +3178,201 @@ class _PostMediaSurface extends StatelessWidget {
         ),
       FeedContentType.carousel => AspectRatio(
           aspectRatio: aspectRatio,
-          child: _wrapHero(
-            context,
-            _CarouselSurface(
-              post: post,
-              aspectRatio: aspectRatio,
-              coordinator: coordinator,
-              registerVideoUrl: registerVideoUrl,
-              handoffSessionId: handoffSessionId,
-            ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _wrapHero(
+                context,
+                _CarouselSurface(
+                  post: post,
+                  aspectRatio: aspectRatio,
+                  coordinator: coordinator,
+                  registerVideoUrl: registerVideoUrl,
+                  handoffSessionId: handoffSessionId,
+                ),
+              ),
+              _PostinganTaggedPeopleLayer(post: post),
+            ],
           ),
         ),
       FeedContentType.photo => AspectRatio(
           aspectRatio: aspectRatio,
-          child: _wrapHero(
-            context,
-            _ImageSurface(
-              imageUrl: post.previewMediaUrl,
-              placeholderIcon: Icons.image_outlined,
-            ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _wrapHero(
+                context,
+                _ImageSurface(
+                  imageUrl: post.previewMediaUrl,
+                  placeholderIcon: Icons.image_outlined,
+                ),
+              ),
+              _PostinganTaggedPeopleLayer(post: post),
+            ],
           ),
         ),
     };
+  }
+}
+
+/// Indikator "orang ditandai" khusus halaman Postingan (detail). Menggantikan
+/// badge tag di Feed yang menimpa baris "Disukai oleh" — di sini ikon 👥 kecil
+/// di pojok kiri-bawah media, tap → panel berisi pill username yang ditandai.
+/// Tap pill sendiri → sheet Opsi Tag (hapus saya / sembunyikan); pill orang
+/// lain → buka profil publik. Tidak memakai koordinat titik (media Postingan
+/// BoxFit.cover bisa meng-crop, jadi dot bisa meleset) — pakai daftar pill
+/// yang robust dan selalu terbaca.
+class _PostinganTaggedPeopleLayer extends StatefulWidget {
+  final FeedPost post;
+
+  const _PostinganTaggedPeopleLayer({required this.post});
+
+  @override
+  State<_PostinganTaggedPeopleLayer> createState() =>
+      _PostinganTaggedPeopleLayerState();
+}
+
+class _PostinganTaggedPeopleLayerState
+    extends State<_PostinganTaggedPeopleLayer> {
+  // Salinan lokal supaya "Hapus saya dari post" bisa optimistic-remove tanpa
+  // menunggu parent rebuild.
+  late List<FeedTaggedUser> _tags;
+  bool _open = false;
+  bool _selfHidden = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tags = List.of(widget.post.taggedUsers);
+    _selfHidden = widget.post.viewerTagHidden ?? false;
+  }
+
+  @override
+  void didUpdateWidget(covariant _PostinganTaggedPeopleLayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.post.id != widget.post.id) {
+      _tags = List.of(widget.post.taggedUsers);
+      _selfHidden = widget.post.viewerTagHidden ?? false;
+      _open = false;
+    }
+  }
+
+  bool _isSelf(FeedTaggedUser tag) =>
+      tag.userId.isNotEmpty && tag.userId == accountOwnerId();
+
+  void _onTapUser(FeedTaggedUser tag) {
+    AppHaptics.tap();
+    if (_isSelf(tag)) {
+      showFeedTagOptionsSheet(
+        context,
+        postId: widget.post.id,
+        hidden: _selfHidden,
+        onRemoved: () {
+          if (!mounted) return;
+          setState(() {
+            _tags = _tags.where((t) => t.userId != tag.userId).toList();
+            if (_tags.isEmpty) {
+              _open = false;
+            }
+          });
+        },
+        onRemoveFailed: () {
+          if (!mounted) return;
+          setState(() {
+            if (!_tags.any((t) => t.userId == tag.userId)) {
+              _tags = [..._tags, tag];
+            }
+          });
+        },
+        onHiddenChanged: (value) {
+          if (!mounted) return;
+          setState(() => _selfHidden = value);
+        },
+      );
+      return;
+    }
+    final username = tag.username;
+    if (username == null || username.isEmpty) return;
+    Navigator.of(context).pushNamed('/u', arguments: username);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_tags.isEmpty) return const SizedBox.shrink();
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          Positioned(
+            left: 12,
+            bottom: 12,
+            child: FeedTaggedBadge(
+              onTap: () {
+                AppHaptics.tap();
+                setState(() => _open = !_open);
+              },
+            ),
+          ),
+          if (_open)
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 56,
+              child: _TaggedPeoplePanel(
+                tags: _tags,
+                onTapUser: _onTapUser,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Panel gelap berisi pill username yang ditandai — muncul saat badge di-tap.
+class _TaggedPeoplePanel extends StatelessWidget {
+  final List<FeedTaggedUser> tags;
+  final ValueChanged<FeedTaggedUser> onTapUser;
+
+  const _TaggedPeoplePanel({required this.tags, required this.onTapUser});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final tag in tags)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => onTapUser(tag),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  tag.username != null && tag.username!.isNotEmpty
+                      ? '@${tag.username}'
+                      : tag.name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: NataloWeight.onMedia,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 
