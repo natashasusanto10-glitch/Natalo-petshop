@@ -99,8 +99,10 @@ class _FeedCaptionEditScreenState extends State<FeedCaptionEditScreen> {
     // Jika text tidak berubah dari awal, skip validasi — user tinggal
     // membuka & menutup draft lama, bukan commit hal baru.
     final textChanged = _controller.text != widget.initialCaption;
-    if (textChanged && extractHashtagsFromText(_controller.text).length > 5) {
-      setState(() => _hashtagLimitError = 'Maksimal 5 hashtag per postingan.');
+    if (textChanged &&
+        extractHashtagsFromText(_controller.text).length >
+            kMaxHashtagsPerPost) {
+      setState(() => _hashtagLimitError = kHashtagLimitMessage);
       return;
     }
     AppHaptics.tap();

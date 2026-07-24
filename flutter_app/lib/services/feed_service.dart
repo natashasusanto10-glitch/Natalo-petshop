@@ -657,10 +657,12 @@ class FeedService {
 
   Future<List<HashtagSuggestion>> searchHashtags(String q) async {
     final data = await apiClient.getJson(
-      '/api/feed/hashtags/search',
+      '/api/feed/hashtag-search',
       query: {'q': q},
     );
-    final rows = (data is Map ? data['hashtags'] as List? : null) ?? const [];
+    final rows = data is Map && data['hashtags'] is List
+        ? data['hashtags'] as List
+        : const [];
     return rows
         .whereType<Map>()
         .map((r) => HashtagSuggestion.fromJson(Map<String, dynamic>.from(r)))
