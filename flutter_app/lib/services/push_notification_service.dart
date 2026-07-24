@@ -911,22 +911,29 @@ class PushNotificationService {
   /// SEMUA kegagalan (timeout, decode error, network error) di-swallow →
   /// return null, notifikasi tetap tampil tanpa largeIcon.
   Future<Uint8List?> _circleAvatarBitmap(String url) async {
+    ui.Image? image;
+    ui.Image? circleImage;
     try {
       final uri = Uri.parse(url);
       final client = HttpClient()
         ..connectionTimeout = const Duration(seconds: 5);
-      final req = await client.getUrl(uri);
-      final resp = await req.close().timeout(const Duration(seconds: 5));
-      if (resp.statusCode < 200 || resp.statusCode >= 300) {
-        client.close();
-        return null;
-      }
-      final builder = BytesBuilder();
-      await for (final chunk in resp) {
-        builder.add(chunk);
-      }
-      client.close();
-      final bytes = builder.takeBytes();
+      final bytes = await () async {
+        try {
+          final req = await client.getUrl(uri);
+          final resp = await req.close().timeout(const Duration(seconds: 5));
+          if (resp.statusCode < 200 || resp.statusCode >= 300) {
+            return null;
+          }
+          final builder = BytesBuilder();
+          await for (final chunk in resp) {
+            builder.add(chunk);
+          }
+          return builder.takeBytes();
+        } finally {
+          client.close(force: true);
+        }
+      }();
+      if (bytes == null) return null;
 
       final codec = await ui.instantiateImageCodec(
         bytes,
@@ -934,7 +941,7 @@ class PushNotificationService {
         targetHeight: 192,
       );
       final frame = await codec.getNextFrame();
-      final image = frame.image;
+      image = frame.image;
       final size = image.width.toDouble();
 
       final recorder = ui.PictureRecorder();
@@ -944,7 +951,7 @@ class PushNotificationService {
       canvas.clipPath(path);
       canvas.drawImage(image, Offset.zero, Paint());
       final picture = recorder.endRecording();
-      final circleImage = await picture.toImage(image.width, image.height);
+      circleImage = await picture.toImage(image.width, image.height);
       final byteData =
           await circleImage.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return null;
@@ -954,6 +961,9 @@ class PushNotificationService {
         debugPrint('[push] Circle avatar build failed: $e');
       }
       return null;
+    } finally {
+      image?.dispose();
+      circleImage?.dispose();
     }
   }
 
