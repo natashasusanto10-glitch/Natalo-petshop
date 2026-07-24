@@ -145,16 +145,18 @@ void main() {
     });
 
     test('KUNCI: liveSize portrait walau fallback landscape → rasio portrait '
-        '(kotak portrait → tak ada bar kiri-kanan)', () {
+        'DI-CLAMP ke batas 3:5 (kotak tak melompat tinggi saat controller '
+        'siap; video 9:16 di-crop cover, sama seperti fallback & IG)', () {
       final r = resolvePostinganVideoBoxAspectRatio(
         fallbackAspectRatio: fallbackLandscape,
         liveSize: const Size(1080, 1920),
       );
-      expect(r, closeTo(9 / 16, 1e-9));
+      expect(r, closeTo(3 / 5, 1e-9));
     });
 
     test('liveSize landscape lebih lebar dari 1.91 → clamp 1.91 '
-        '(letterbox atas-bawah tetap)', () {
+        '(kotak dibatasi; sisi kelebihan video di-crop oleh BoxFit.cover '
+        'di player, bukan letterbox)', () {
       final r = resolvePostinganVideoBoxAspectRatio(
         fallbackAspectRatio: 9 / 16,
         liveSize: const Size(2560, 1080), // 2.37
@@ -172,12 +174,22 @@ void main() {
       );
     });
 
-    test('liveSize portrait normal 9:16 → 9:16', () {
+    test('liveSize portrait normal 9:16, fallback juga sudah 3:5 (biasa) → '
+        'tetap di-clamp ke 3:5, kotak stabil', () {
       final r = resolvePostinganVideoBoxAspectRatio(
-        fallbackAspectRatio: 9 / 16,
+        fallbackAspectRatio: 3 / 5,
         liveSize: const Size(1080, 1920),
       );
-      expect(r, closeTo(9 / 16, 1e-9));
+      expect(r, closeTo(3 / 5, 1e-9));
+    });
+
+    test('liveSize sedikit lebih kurus dari batas min (mis. 0.58) → '
+        'di-clamp ke 3:5, bukan dibiarkan lebih kurus', () {
+      final r = resolvePostinganVideoBoxAspectRatio(
+        fallbackAspectRatio: 3 / 5,
+        liveSize: const Size(1080, 1862), // 0.58...
+      );
+      expect(r, closeTo(3 / 5, 1e-9));
     });
   });
 }
