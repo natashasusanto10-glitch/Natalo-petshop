@@ -25,6 +25,8 @@ class PetService {
     required String type,
     String? breed,
     DateTime? birthDate,
+    PetGender? gender,
+    String? bio,
   }) async {
     readOnlyMode.assertWritable('pet_create');
     final data = await apiClient.postJson(
@@ -34,6 +36,8 @@ class PetService {
         'type': type,
         if (breed != null) 'breed': breed,
         if (birthDate != null) 'birthDate': birthDate.toIso8601String(),
+        if (gender != null) 'gender': gender.apiValue,
+        if (bio != null) 'bio': bio,
       },
     );
     return Pet.fromJson((data as Map<String, dynamic>)['pet']);
@@ -45,6 +49,8 @@ class PetService {
     required String type,
     String? breed,
     DateTime? birthDate,
+    PetGender? gender,
+    String? bio,
   }) async {
     readOnlyMode.assertWritable('pet_update');
     final data = await apiClient.patchJson(
@@ -54,6 +60,8 @@ class PetService {
         'type': type,
         if (breed != null) 'breed': breed,
         if (birthDate != null) 'birthDate': birthDate.toIso8601String(),
+        if (gender != null) 'gender': gender.apiValue,
+        if (bio != null) 'bio': bio,
       },
     );
     return Pet.fromJson((data as Map<String, dynamic>)['pet']);

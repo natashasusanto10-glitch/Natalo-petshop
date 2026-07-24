@@ -8,12 +8,16 @@ export const PET_TYPES = new Set([
 ]);
 const MAX_NAME_LENGTH = 40;
 const MAX_BREED_LENGTH = 60;
+const MAX_BIO_LENGTH = 150;
+const PET_GENDERS = new Set(["male", "female"]);
 
 export type ValidatedPetPayload = {
   name: string;
   type: string;
   breed: string | null;
   birthDate: Date | null;
+  gender: string | null;
+  bio: string | null;
 };
 
 export function validatePetPayload(
@@ -22,7 +26,8 @@ export function validatePetPayload(
   if (typeof body !== "object" || body === null) {
     return { error: "Payload tidak valid." };
   }
-  const { name, type, breed, birthDate } = body as Record<string, unknown>;
+  const { name, type, breed, birthDate, gender, bio } =
+    body as Record<string, unknown>;
 
   const trimmedName = typeof name === "string" ? name.trim() : "";
   if (!trimmedName) {
@@ -46,6 +51,17 @@ export function validatePetPayload(
     }
     parsedBirthDate = parsed;
   }
+  let parsedGender: string | null = null;
+  if (typeof gender === "string" && gender.trim()) {
+    if (!PET_GENDERS.has(gender)) {
+      return { error: "Gender pet tidak valid." };
+    }
+    parsedGender = gender;
+  }
+  const trimmedBio = typeof bio === "string" ? bio.trim() : "";
+  if (trimmedBio.length > MAX_BIO_LENGTH) {
+    return { error: `Bio maksimal ${MAX_BIO_LENGTH} karakter.` };
+  }
 
   return {
     data: {
@@ -53,6 +69,8 @@ export function validatePetPayload(
       type,
       breed: trimmedBreed || null,
       birthDate: parsedBirthDate,
+      gender: parsedGender,
+      bio: trimmedBio || null,
     },
   };
 }

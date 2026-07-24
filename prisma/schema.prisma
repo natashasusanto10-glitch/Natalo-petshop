@@ -1118,6 +1118,8 @@ model Pet {
   breed              String?
   photoUrl           String?
   birthDate          DateTime?
+  gender             String? // 'male' | 'female', opsional
+  bio                String?
   vaccineReminderAt  DateTime?
   groomingReminderAt DateTime?
   notes              String?
