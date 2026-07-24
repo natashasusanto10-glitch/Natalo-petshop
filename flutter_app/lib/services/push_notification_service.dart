@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show BackgroundIsolateBinaryMessenger, RootIsolateToken;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -37,6 +39,26 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     );
   } catch (_) {
     // Firebase belum bisa boot di background isolate — no-op aman.
+  }
+
+  // Data-only social push (mis. "X menandai Anda") tidak punya payload
+  // `notification` — OS tidak auto-render, jadi harus render lokal di sini.
+  // Seluruh percobaan dibungkus try/catch: isolate background TIDAK BOLEH
+  // crash gara-gara render gagal, karena bisa memblokir delivery notif lain.
+  try {
+    ui.DartPluginRegistrant.ensureInitialized();
+    final token = RootIsolateToken.instance;
+    if (token != null) {
+      BackgroundIsolateBinaryMessenger.ensureInitialized(token);
+    }
+    if (PushNotificationService.shouldRenderDataMessage(
+      hasNotificationPayload: message.notification != null,
+      hasDataTitle: (message.data['title'] as String?)?.isNotEmpty == true,
+    )) {
+      await pushNotificationService.renderDataMessageInBackground(message);
+    }
+  } catch (_) {
+    // Jangan crash isolate background — notifikasi lain tak boleh terganggu.
   }
 }
 
@@ -127,6 +149,28 @@ class PushNotificationService {
     if (!categoryEnabled) return false;
     if (!isForeground) return false; // OS already displayed it — jangan dobel
     return hasNotificationPayload;
+  }
+
+  /// Pure decision: apakah pesan ini pesan sosial data-only (mis. "X
+  /// menandai Anda di postingan") yang WAJIB dirender lokal oleh app —
+  /// bedanya dengan pesan `notification` lama (order/promo/status) yang
+  /// OS/existing flow sudah tangani, tidak boleh disentuh di sini.
+  ///
+  /// TIDAK mengecek preferensi notifikasi user — backend sudah gate
+  /// pengiriman via `isPushCategoryEnabled` sebelum memilih kirim data-only.
+  static bool shouldRenderDataMessage({
+    required bool hasNotificationPayload,
+    required bool hasDataTitle,
+  }) {
+    if (hasNotificationPayload) return false;
+    return hasDataTitle;
+  }
+
+  /// Id notifikasi deterministik dari `tag` server (mis. `feed-tagged-<id>`)
+  /// supaya re-delivery pesan logis yang sama tidak membuat entri duplikat
+  /// di tray. Tanpa tag → fallback (mis. `message.hashCode`).
+  static int notificationIdFromTag(String? tag, int fallback) {
+    return tag == null ? fallback : tag.hashCode & 0x7fffffff;
   }
 
   /// True bila app cold-start dipicu tap notifikasi (app tadinya terminated).
@@ -577,6 +621,17 @@ class PushNotificationService {
   }
 
   Future<void> _onForegroundMessage(RemoteMessage message) async {
+    // Pesan sosial data-only (mis. tag/mention) — render sendiri lalu
+    // berhenti di sini. TIDAK cek preferensi: backend sudah gate pengiriman.
+    if (shouldRenderDataMessage(
+      hasNotificationPayload: message.notification != null,
+      hasDataTitle: (message.data['title'] as String?)?.isNotEmpty == true,
+    )) {
+      await renderDataMessage(message);
+      notificationRefreshTick.value++;
+      return;
+    }
+
     final notif = message.notification;
     if (notif == null) return; // no payload → tidak ada yang dirender lokal
     // Filter berdasar user notification preferences. Backend bisa kirim
@@ -693,6 +748,192 @@ class PushNotificationService {
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[push] BigPicture build failed: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Render lokal pesan sosial data-only (mis. "X menandai Anda di
+  /// postingan") — dipakai foreground listener dan (via wrapper terpisah)
+  /// background isolate. Payload `url` diteruskan sebagai `payload`
+  /// notifikasi supaya tap-nya lewat jalur `_handleDeepLink` yang sudah ada.
+  ///
+  /// TIDAK mengecek preferensi notifikasi — backend sudah gate pengiriman
+  /// data-only via `isPushCategoryEnabled`.
+  Future<void> renderDataMessage(RemoteMessage message) async {
+    final data = message.data;
+    final title = (data['title'] as String?) ?? 'Natalo Petshop';
+    final body = (data['body'] as String?) ?? '';
+    final url = data['url'] as String?;
+    final tag = data['tag'] as String?;
+    final thumbnailUrl = data['thumbnail_url'] as String?;
+    final actorAvatarUrl = data['actor_avatar_url'] as String?;
+
+    AndroidBitmap<Object>? largeIcon;
+    if (actorAvatarUrl != null && actorAvatarUrl.isNotEmpty) {
+      try {
+        final avatarBytes = await _circleAvatarBitmap(actorAvatarUrl);
+        if (avatarBytes != null) {
+          largeIcon = ByteArrayAndroidBitmap(avatarBytes);
+        }
+      } catch (_) {
+        // Avatar gagal → notifikasi tetap tampil tanpa largeIcon.
+      }
+    }
+
+    StyleInformation? androidStyle;
+    if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+      androidStyle =
+          await _buildBigPictureStyle(imageUrl: thumbnailUrl, body: body);
+    }
+
+    await _localNotifications.show(
+      notificationIdFromTag(tag, message.hashCode),
+      title,
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          channelDescription: _channelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+          largeIcon: largeIcon,
+          styleInformation: androidStyle,
+        ),
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      ),
+      payload: url,
+    );
+  }
+
+  /// Wrapper untuk isolate background: `_localNotifications` instance milik
+  /// object ini belum ter-initialize di isolate terpisah, jadi buat instance
+  /// lokal + daftarkan channel identik (byte-identik dengan channel utama —
+  /// Android "channel pertama menang", definisi berbeda akan diam-diam
+  /// diabaikan) sebelum render. Kegagalan apa pun didiamkan.
+  Future<void> renderDataMessageInBackground(RemoteMessage message) async {
+    try {
+      final localNotifications = FlutterLocalNotificationsPlugin();
+      const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const iosInit = DarwinInitializationSettings();
+      await localNotifications.initialize(
+        const InitializationSettings(android: androidInit, iOS: iosInit),
+      );
+      await localNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(
+            const AndroidNotificationChannel(
+              _channelId,
+              _channelName,
+              description: _channelDescription,
+              importance: Importance.high,
+            ),
+          );
+
+      final data = message.data;
+      final title = (data['title'] as String?) ?? 'Natalo Petshop';
+      final body = (data['body'] as String?) ?? '';
+      final url = data['url'] as String?;
+      final tag = data['tag'] as String?;
+      final thumbnailUrl = data['thumbnail_url'] as String?;
+      final actorAvatarUrl = data['actor_avatar_url'] as String?;
+
+      AndroidBitmap<Object>? largeIcon;
+      if (actorAvatarUrl != null && actorAvatarUrl.isNotEmpty) {
+        final avatarBytes = await _circleAvatarBitmap(actorAvatarUrl);
+        if (avatarBytes != null) {
+          largeIcon = ByteArrayAndroidBitmap(avatarBytes);
+        }
+      }
+
+      StyleInformation? androidStyle;
+      if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+        androidStyle =
+            await _buildBigPictureStyle(imageUrl: thumbnailUrl, body: body);
+      }
+
+      await localNotifications.show(
+        notificationIdFromTag(tag, message.hashCode),
+        title,
+        body,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            _channelId,
+            _channelName,
+            channelDescription: _channelDescription,
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: '@mipmap/ic_launcher',
+            largeIcon: largeIcon,
+            styleInformation: androidStyle,
+          ),
+          iOS: const DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+          ),
+        ),
+        payload: url,
+      );
+    } catch (_) {
+      // Render di background isolate gagal — diamkan, jangan crash isolate.
+    }
+  }
+
+  /// Download avatar dari `url`, downscale ≤192x192, crop lingkaran, dan
+  /// encode sebagai PNG bytes untuk dipakai sebagai `largeIcon`. Reuse pola
+  /// fetch (HttpClient + timeout 5s) yang sama dengan [_buildBigPictureStyle].
+  /// SEMUA kegagalan (timeout, decode error, network error) di-swallow →
+  /// return null, notifikasi tetap tampil tanpa largeIcon.
+  Future<Uint8List?> _circleAvatarBitmap(String url) async {
+    try {
+      final uri = Uri.parse(url);
+      final client = HttpClient()
+        ..connectionTimeout = const Duration(seconds: 5);
+      final req = await client.getUrl(uri);
+      final resp = await req.close().timeout(const Duration(seconds: 5));
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        client.close();
+        return null;
+      }
+      final builder = BytesBuilder();
+      await for (final chunk in resp) {
+        builder.add(chunk);
+      }
+      client.close();
+      final bytes = builder.takeBytes();
+
+      final codec = await ui.instantiateImageCodec(
+        bytes,
+        targetWidth: 192,
+        targetHeight: 192,
+      );
+      final frame = await codec.getNextFrame();
+      final image = frame.image;
+      final size = image.width.toDouble();
+
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      final path = Path()
+        ..addOval(Rect.fromLTWH(0, 0, size, image.height.toDouble()));
+      canvas.clipPath(path);
+      canvas.drawImage(image, Offset.zero, Paint());
+      final picture = recorder.endRecording();
+      final circleImage = await picture.toImage(image.width, image.height);
+      final byteData =
+          await circleImage.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return null;
+      return byteData.buffer.asUint8List();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[push] Circle avatar build failed: $e');
       }
       return null;
     }
