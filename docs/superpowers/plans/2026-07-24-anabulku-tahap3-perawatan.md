@@ -490,40 +490,51 @@ git commit -m "feat(api): pet care records GET/POST/DELETE routes"
 
 **Files:**
 - Modify: `lib/pets-api.ts`
-- Test: `lib/__tests__/pets-api-health.test.ts`
+- Test: `tests/pets-api-health.test.ts`
+
+> **Repo test convention (confirmed):** this project has NO jest. Tests live in `tests/` and run via `tsx --test tests/*.test.ts` using `node:test` + `node:assert/strict` with a `@/` alias to the repo root. Write the test in that style (see below), NOT jest.
 
 **Interfaces:**
 - Produces: `ValidatedPetPayload` gains `sterilized: boolean | null`, `allergy: string | null`, `healthNote: string | null`.
 
 - [ ] **Step 1: Write failing tests**
 
-Create `lib/__tests__/pets-api-health.test.ts`:
+Create `tests/pets-api-health.test.ts`:
 
 ```ts
+import assert from "node:assert/strict";
+import test, { describe } from "node:test";
 import { validatePetPayload } from "@/lib/pets-api";
 
 const base = { name: "Milo", type: "Kucing" };
 
 describe("validatePetPayload health fields", () => {
-  it("defaults health fields to null when absent", () => {
+  test("defaults health fields to null when absent", () => {
     const r = validatePetPayload(base);
-    expect("data" in r && r.data.sterilized).toBeNull();
-    expect("data" in r && r.data.allergy).toBeNull();
-    expect("data" in r && r.data.healthNote).toBeNull();
+    assert.ok("data" in r);
+    assert.equal(r.data.sterilized, null);
+    assert.equal(r.data.allergy, null);
+    assert.equal(r.data.healthNote, null);
   });
-  it("accepts sterilized boolean", () => {
+  test("accepts sterilized boolean", () => {
     const r = validatePetPayload({ ...base, sterilized: true });
-    expect("data" in r && r.data.sterilized).toBe(true);
+    assert.ok("data" in r);
+    assert.equal(r.data.sterilized, true);
   });
-  it("trims allergy and rejects over 100 chars", () => {
-    expect(validatePetPayload({ ...base, allergy: "x".repeat(101) }))
-      .toEqual({ error: "Alergi maksimal 100 karakter." });
+  test("trims allergy and rejects over 100 chars", () => {
+    assert.deepEqual(
+      validatePetPayload({ ...base, allergy: "x".repeat(101) }),
+      { error: "Alergi maksimal 100 karakter." },
+    );
     const r = validatePetPayload({ ...base, allergy: "  Ayam  " });
-    expect("data" in r && r.data.allergy).toBe("Ayam");
+    assert.ok("data" in r);
+    assert.equal(r.data.allergy, "Ayam");
   });
-  it("rejects healthNote over 150 chars", () => {
-    expect(validatePetPayload({ ...base, healthNote: "x".repeat(151) }))
-      .toEqual({ error: "Kondisi khusus maksimal 150 karakter." });
+  test("rejects healthNote over 150 chars", () => {
+    assert.deepEqual(
+      validatePetPayload({ ...base, healthNote: "x".repeat(151) }),
+      { error: "Kondisi khusus maksimal 150 karakter." },
+    );
   });
 });
 ```
