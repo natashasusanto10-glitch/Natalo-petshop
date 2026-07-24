@@ -15,6 +15,7 @@ import '../state/feed_upload_store.dart';
 import '../utils/formatters.dart';
 import '../utils/fade_route.dart';
 import '../utils/haptics.dart';
+import '../utils/mention_text.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
 import 'feed_caption_edit_screen.dart';
@@ -29,6 +30,13 @@ const _newPostInk = Color(0xFF101828);
 const _newPostMuted = Color(0xFF667085);
 const _newPostBorder = Color(0xFFE0E7F0);
 const _newPostSoft = Color(0xFFF5F8FF);
+
+/// Pesan error submit-time recheck limit hashtag (Spec C layer 2 — lihat
+/// `sdd/final-review-fix-brief.md`). Sama persis dengan pesan layer 1 di
+/// `feed_caption_edit_screen.dart` (`_commitAndPop`). Konstanta di-share
+/// antara `_upload()` (set) dan listener caption (clear) supaya keduanya
+/// tidak pernah out-of-sync.
+const _hashtagLimitError = 'Maksimal 5 hashtag per postingan.';
 
 /// Loop playback dalam rentang trim draft (Approach B: file belum
 /// terpotong secara fisik sampai upload). Return timer guard — cancel
@@ -165,7 +173,19 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       _selectedProductIds.addAll(widget.prefilledProductIds);
     }
     _captionController.addListener(() {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      setState(() {
+        // Reset stale hashtag-limit error begitu caption diedit turun ke
+        // ≤5 hashtag lagi — supaya tombol Bagikan tidak nyangkut disabled
+        // selamanya (lihat `_upload()`). Scoped ke pesan ini SAJA — error
+        // lain (media/produk gagal muat) tidak boleh ikut ke-clear cuma
+        // karena caption berubah.
+        if (_error == _hashtagLimitError &&
+            extractHashtagsFromText(_captionController.text.trim()).length <=
+                5) {
+          _error = null;
+        }
+      });
     });
     if (kShopTagEnabled) {
       _loadPurchasedProducts();
@@ -414,6 +434,16 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   /// / FeedPhotoUploadProgressScreen yang blocking user sampai upload kelar.
   Future<void> _upload() async {
     if (_error != null) return;
+    final caption = _captionController.text.trim();
+    if (extractHashtagsFromText(caption).length > 5) {
+      // Layer 2 (submit-time recheck, spec §2) — layer 1 (caption editor)
+      // sudah blokir Save duluan di jalur normal, dan layer 3 (server 400)
+      // tetap jadi penjaga terakhir data integrity. Recheck ini menangkap
+      // caption yang lolos tanpa lewat editor (mis. resume draft lama)
+      // sebelum request keluar — murni UX, bukan fix korektif.
+      setState(() => _error = _hashtagLimitError);
+      return;
+    }
     if (feedUploadStore.isUploading) {
       // Double-submit guard — kalau ada upload sebelumnya yang masih
       // jalan, kasih tau user lewat snackbar (jangan stack 2 upload).
@@ -425,7 +455,6 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       return;
     }
     AppHaptics.tap();
-    final caption = _captionController.text.trim();
     final productIds = _selectedProductIds.toList();
 
     if (_isVideo) {
@@ -660,10 +689,16 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                         selectedIds: _selectedProductIds,
                         onTap: _toggleProduct,
                       ),
-                      if (_error != null) ...[
-                        const SizedBox(height: 14),
-                        _ErrorBox(message: _error!),
-                      ],
+                    ],
+                    // Di luar `kShopTagEnabled` (flag OFF secara default,
+                    // lihat feature_flags.dart) — kalau tidak, pesan error
+                    // (mis. limit hashtag submit-time) tidak akan pernah
+                    // ke-render sama sekali walau tombol Bagikan sudah
+                    // disabled (uploadEnabled: _error == null di bawah),
+                    // membuat tombol nonaktif tanpa penjelasan ke user.
+                    if (_error != null) ...[
+                      const SizedBox(height: 14),
+                      _ErrorBox(message: _error!),
                     ],
                   ],
                 ),
