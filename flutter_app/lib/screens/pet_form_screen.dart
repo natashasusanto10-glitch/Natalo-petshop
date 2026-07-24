@@ -14,6 +14,15 @@ import 'profile_photo_picker_screen.dart';
 
 const _brandBlue = NataloColors.primary;
 
+/// Sentinel yang di-pop [PetFormScreen] saat pet DIHAPUS — beda dgn `null`
+/// (dibatalkan) atau [Pet] (berhasil disimpan/ditambah), supaya caller bisa
+/// membedakan "refresh data di tempat" vs "data sudah tidak valid, tutup".
+class PetDeleted {
+  const PetDeleted();
+}
+
+const petDeleted = PetDeleted();
+
 /// Form tambah/edit pet ("Anabulku" Tahap 1). Foto di-pick+crop lewat
 /// engine bersama [ProfilePhotoPickerScreen] (sama dengan foto profil
 /// user) — kompresi JPEG otomatis, jadi TIDAK upload file mentah.
@@ -142,7 +151,7 @@ class _PetFormScreenState extends State<PetFormScreen> {
       }
       if (!mounted) return;
       AppHaptics.success();
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop(pet);
       AppToast.show(
         context,
         _isEdit ? 'Profil pet diperbarui.' : 'Pet berhasil ditambahkan.',
@@ -199,7 +208,7 @@ class _PetFormScreenState extends State<PetFormScreen> {
       await petService.deletePet(widget.pet!.id);
       if (!mounted) return;
       AppHaptics.success();
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop(petDeleted);
       AppToast.show(context, 'Pet dihapus.', kind: ToastKind.success);
     } on ApiException catch (error) {
       if (!mounted) return;

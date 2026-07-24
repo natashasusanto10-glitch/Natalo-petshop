@@ -58,10 +58,10 @@ class _AnabulkuScreenState extends State<AnabulkuScreen> {
 
   Future<void> _openAddForm() async {
     AppHaptics.tap();
-    final created = await Navigator.of(context).push<bool>(
+    final created = await Navigator.of(context).push<Object>(
       MaterialPageRoute(builder: (_) => const PetFormScreen()),
     );
-    if (created == true) await _load();
+    if (created != null) await _load();
   }
 
   Future<void> _openProfile(Pet pet) async {

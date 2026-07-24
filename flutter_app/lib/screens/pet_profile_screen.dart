@@ -26,6 +26,9 @@ class _PetProfileScreenState extends State<PetProfileScreen>
   late Pet _pet;
   late final AnimationController _entrance;
   bool _entranceStarted = false;
+  // True kalau pet di-edit in-place — dikembalikan ke AnabulkuScreen saat
+  // back supaya list-nya refresh (nama/foto terbaru).
+  bool _dirty = false;
 
   @override
   void initState() {
@@ -62,22 +65,33 @@ class _PetProfileScreenState extends State<PetProfileScreen>
 
   Future<void> _openEdit() async {
     AppHaptics.tap();
-    final changed = await Navigator.of(context).push<bool>(
+    final result = await Navigator.of(context).push<Object>(
       MaterialPageRoute(builder: (_) => PetFormScreen(pet: _pet)),
     );
-    if (changed == true) {
-      // Pet form pop(true) berarti sukses simpan/hapus; kalau dihapus,
-      // caller (AnabulkuScreen) yang refresh listnya — di sini cukup
-      // tutup profil karena datanya sudah tidak valid untuk ditampilkan.
-      if (!mounted) return;
+    if (result == null || !mounted) return;
+    if (result is PetDeleted) {
+      // Data pet sudah tidak ada — tutup profil, AnabulkuScreen refresh list.
       Navigator.of(context).pop(true);
+    } else if (result is Pet) {
+      // Simpan sukses — tetap di halaman profil, tampilkan data terbaru,
+      // dan tandai dirty supaya list ikut refresh saat back.
+      setState(() {
+        _pet = result;
+        _dirty = true;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final pet = _pet;
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        Navigator.of(context).pop(_dirty);
+      },
+      child: Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         leading: IconButton(
@@ -110,6 +124,7 @@ class _PetProfileScreenState extends State<PetProfileScreen>
           ),
           const SizedBox(height: 24),
         ],
+      ),
       ),
     );
   }
