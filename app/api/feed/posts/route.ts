@@ -162,6 +162,15 @@ const ADMIN_KINDS: ReadonlyArray<FeedPostKind> = [
 const PHOTO_CAROUSEL_MIN_IMAGES = 1;
 const PHOTO_CAROUSEL_MAX_IMAGES = 8;
 
+// Rate limit foto (non-admin), analog "action block" ala IG — sebelumnya
+// PHOTO_CAROUSEL create TIDAK dibatasi sama sekali (beda dari video yang
+// sudah dilimit 10/hari di app/api/feed/bunny/upload-url/route.ts), jadi satu
+// akun bisa script posting foto tanpa batas, tiap post bisa mint sampai 5
+// hashtag row baru. Limit ini generous (30/hari) — bukan gate ketat, cuma
+// jaring pengaman anti-spam/abuse otomatis.
+const PHOTO_RATE_LIMIT_PER_DAY = 30;
+const PHOTO_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 export async function POST(request: NextRequest) {
   const csrfReject = assertSameOrigin(request);
   if (csrfReject) return csrfReject;
@@ -256,6 +265,25 @@ export async function POST(request: NextRequest) {
       kind = "COMMUNITY";
     }
     tab = "KOMUNITAS";
+  }
+
+  // Rate limit — hanya PHOTO_CAROUSEL non-admin (video kind sudah dilimit
+  // terpisah di app/api/feed/bunny/upload-url/route.ts). Admin exempt.
+  if (!isAdmin && kind === "PHOTO_CAROUSEL") {
+    const since = new Date(Date.now() - PHOTO_RATE_LIMIT_WINDOW_MS);
+    const recent = await prisma.feedPost.count({
+      where: {
+        authorId: session.sub,
+        createdAt: { gte: since },
+        kind: "PHOTO_CAROUSEL",
+      },
+    });
+    if (recent >= PHOTO_RATE_LIMIT_PER_DAY) {
+      return NextResponse.json(
+        { error: `Batas posting foto tercapai (${PHOTO_RATE_LIMIT_PER_DAY}/hari). Coba lagi besok.` },
+        { status: 429 },
+      );
+    }
   }
 
   // ── Field-level validation per kind ───────────────────────────────

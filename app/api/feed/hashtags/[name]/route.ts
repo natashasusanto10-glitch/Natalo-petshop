@@ -23,6 +23,11 @@ const PAGE_SIZE = 24;
  * viewerUserId di-resolve persis seperti GET /api/feed/posts: `getSession()`
  * tanpa role (opsional) — anon viewer tetap dapat 200 dengan
  * isLiked/isSaved/isFollowing/viewerTagHidden semua false/null, bukan 401.
+ *
+ * Catatan postCount: nilai di respons ini dihitung LIVE via
+ * `prisma.feedPost.count` (EXACT, di baris `total` di bawah) — beda dengan
+ * `postCount` di GET /api/feed/hashtag-search yang cuma cache
+ * `Hashtag.postCount` (approximate, bisa stale).
  */
 export async function GET(
   req: NextRequest,

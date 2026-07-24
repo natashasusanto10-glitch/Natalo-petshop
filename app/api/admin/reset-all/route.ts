@@ -117,7 +117,16 @@ export async function POST(request: NextRequest) {
       deleted.feedModerationLog = (
         await tx.feedModerationLog.deleteMany({})
       ).count;
+      // FeedPostHashtag cascade dari FeedPost, tapi explicit deleteMany di
+      // sini biar count akurat (sama seperti table feed lain di atas).
+      deleted.feedPostHashtag = (
+        await tx.feedPostHashtag.deleteMany({})
+      ).count;
       deleted.feedPost = (await tx.feedPost.deleteMany({})).count;
+      // Hashtag row TIDAK cascade dari FeedPost (relasi lewat join table
+      // FeedPostHashtag) — sebelumnya reset-all lupa hapus ini, jadi
+      // Hashtag.postCount jadi stale + hashtag mati numpuk di autocomplete.
+      deleted.hashtag = (await tx.hashtag.deleteMany({})).count;
 
       // --- Reviews ---
       deleted.reviewVote = (await tx.reviewVote.deleteMany({})).count;
