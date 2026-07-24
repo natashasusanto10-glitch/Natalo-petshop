@@ -126,62 +126,88 @@ class _PetList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Pet Saya',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-            ),
-            _AddButton(onTap: onAdd),
-          ],
+        const Text(
+          'Pet Saya',
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+          ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 2),
+        Text(
+          '${pets.length} anabul terdaftar',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: cs.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 14),
         for (final pet in pets) ...[
           _PetTile(pet: pet, onTap: () => onTapPet(pet)),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
         ],
+        _AddPetCard(onTap: onAdd),
       ],
     );
   }
 }
 
-class _AddButton extends StatelessWidget {
+/// Kartu "Tambah anabul" bergaris putus — mengisi ruang & ajak aksi jelas.
+class _AddPetCard extends StatelessWidget {
   final VoidCallback onTap;
-  const _AddButton({required this.onTap});
+  const _AddPetCard({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 32),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            border: Border.all(color: _brandBlue),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.add_rounded, size: 16, color: _brandBlue),
-              SizedBox(width: 4),
-              Text(
-                'Tambah',
-                style: TextStyle(
-                  color: _brandBlue,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
+        borderRadius: BorderRadius.circular(16),
+        child: DottedBorderBox(
+          color: isDark
+              ? _brandBlue.withValues(alpha: 0.55)
+              : const Color(0xFFC6D4EA),
+          radius: 16,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 56),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? _brandBlue.withValues(alpha: 0.10)
+                  : NataloColors.primarySoft.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                DecoratedBox(
+                  decoration:
+                      BoxDecoration(color: _brandBlue, shape: BoxShape.circle),
+                  child: Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Icon(Icons.add_rounded,
+                        size: 16, color: Colors.white),
+                  ),
                 ),
-              ),
-            ],
+                SizedBox(width: 8),
+                Text(
+                  'Tambah anabul',
+                  style: TextStyle(
+                    color: _brandBlue,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -201,24 +227,35 @@ class _PetTile extends StatelessWidget {
     final subtitle = [
       pet.type,
       if (pet.breed != null && pet.breed!.trim().isNotEmpty) pet.breed!.trim(),
-      if (pet.ageLabel != null) pet.ageLabel!,
     ].join(' • ');
+    final hasChips = pet.gender != null || pet.ageLabel != null;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 64),
-          padding: const EdgeInsets.all(10),
+          constraints: const BoxConstraints(minHeight: 72),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: NataloColors.primarySoft,
-            borderRadius: BorderRadius.circular(14),
+            color: cs.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: cs.outlineVariant),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 3,
+                offset: const Offset(0, 1),
+              ),
+            ],
           ),
           child: Row(
             children: [
               // Shared-element ke PetProfileScreen — avatar morph mulus.
-              Hero(tag: 'pet-photo-${pet.id}', child: _PetAvatar(pet: pet)),
+              Hero(
+                tag: 'pet-photo-${pet.id}',
+                child: _PetAvatar(pet: pet, size: 56),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -230,7 +267,7 @@ class _PetTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 13,
+                        fontSize: 15,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -240,16 +277,30 @@ class _PetTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 11.5,
                         color: cs.onSurfaceVariant,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (hasChips) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          if (pet.gender != null)
+                            _GenderChipMini(gender: pet.gender!),
+                          if (pet.gender != null && pet.ageLabel != null)
+                            const SizedBox(width: 5),
+                          if (pet.ageLabel != null)
+                            _NeutralChip(label: pet.ageLabel!),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
+              const SizedBox(width: 4),
               Icon(Icons.chevron_right_rounded,
-                  color: cs.onSurfaceVariant, size: 22),
+                  color: cs.outline, size: 22),
             ],
           ),
         ),
@@ -258,13 +309,80 @@ class _PetTile extends StatelessWidget {
   }
 }
 
-class _PetAvatar extends StatelessWidget {
-  final Pet pet;
-  const _PetAvatar({required this.pet});
+/// Chip gender mungil (♂/♀) — theme-aware, dipakai di kartu daftar.
+class _GenderChipMini extends StatelessWidget {
+  final PetGender gender;
+  const _GenderChipMini({required this.gender});
 
   @override
   Widget build(BuildContext context) {
-    const size = 48.0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: isDark
+            ? _brandBlue.withValues(alpha: 0.22)
+            : NataloColors.primarySoft,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            gender == PetGender.male
+                ? Icons.male_rounded
+                : Icons.female_rounded,
+            size: 11,
+            color: _brandBlue,
+          ),
+          const SizedBox(width: 2),
+          Text(
+            gender.label,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: _brandBlue,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Chip netral (mis. umur) — theme-aware surface muted.
+class _NeutralChip extends StatelessWidget {
+  final String label;
+  const _NeutralChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: cs.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
+class _PetAvatar extends StatelessWidget {
+  final Pet pet;
+  final double size;
+  const _PetAvatar({required this.pet, this.size = 48});
+
+  @override
+  Widget build(BuildContext context) {
     final url = pet.photoUrl;
     return ClipOval(
       child: SizedBox(
@@ -303,6 +421,63 @@ class _PetAvatarFallback extends StatelessWidget {
       child: Icon(Icons.pets_rounded, color: _brandBlue, size: iconSize),
     );
   }
+}
+
+/// Kotak dengan border putus-putus (rounded). Flutter tak punya dashed
+/// border bawaan, jadi digambar via CustomPaint di atas [child].
+class DottedBorderBox extends StatelessWidget {
+  final Widget child;
+  final Color color;
+  final double radius;
+
+  const DottedBorderBox({
+    super.key,
+    required this.child,
+    required this.color,
+    required this.radius,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      foregroundPainter: _DashedBorderPainter(color: color, radius: radius),
+      child: child,
+    );
+  }
+}
+
+class _DashedBorderPainter extends CustomPainter {
+  final Color color;
+  final double radius;
+
+  _DashedBorderPainter({required this.color, required this.radius});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+    final rrect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(radius),
+    );
+    final path = Path()..addRRect(rrect);
+    const dash = 5.0;
+    const gap = 4.0;
+    for (final metric in path.computeMetrics()) {
+      var dist = 0.0;
+      while (dist < metric.length) {
+        final len = (dist + dash).clamp(0.0, metric.length);
+        canvas.drawPath(metric.extractPath(dist, len), paint);
+        dist += dash + gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedBorderPainter old) =>
+      old.color != color || old.radius != radius;
 }
 
 class _PetListSkeleton extends StatelessWidget {
