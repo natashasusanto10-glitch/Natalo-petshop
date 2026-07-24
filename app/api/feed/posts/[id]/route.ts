@@ -23,6 +23,8 @@ import {
   resolveViewerTagHidden,
   TAGGED_USERS_SELECT,
   serializeTaggedUsers,
+  parseTaggedUsersInput,
+  buildTaggedUserRows,
 } from "@/lib/feed/tagged-users";
 import { buildFeedShareVersion } from "@/lib/share/feed-share-data";
 import {
@@ -369,7 +371,7 @@ export async function PATCH(
       description: true,
       productId: true,
       kind: true,
-      media: { select: { id: true } },
+      media: { orderBy: { sortOrder: "asc" }, select: { id: true } },
     },
   });
 
@@ -396,6 +398,7 @@ export async function PATCH(
     subtitleUrl?: string | null;
     subtitleLanguage?: string | null;
     media?: unknown;
+    taggedUsers?: unknown;
   };
 
   const accessibility = parseFeedAccessibilityMetadata(
@@ -626,6 +629,27 @@ export async function PATCH(
     }
   }
 
+  // Spec D: edit tagged users — full replace, validasi reuse parser create.
+  // isVideo: customer kind COMMUNITY = video, PHOTO_CAROUSEL = foto; admin
+  // post video juga bukan PHOTO_CAROUSEL. Konsisten dgn create routes.
+  let newTaggedUserRows:
+    | ReturnType<typeof buildTaggedUserRows>
+    | null = null;
+  if (typeof body.taggedUsers !== "undefined") {
+    const parsedTags = parseTaggedUsersInput(body.taggedUsers, {
+      mediaCount: post.media.length,
+      isVideo: post.kind !== "PHOTO_CAROUSEL",
+    });
+    if (!parsedTags.ok) {
+      return NextResponse.json({ error: parsedTags.error }, { status: 400 });
+    }
+    newTaggedUserRows = buildTaggedUserRows(
+      parsedTags.tags,
+      post.id,
+      post.media.map((m) => m.id),
+    );
+  }
+
   // Apply update + replace taggedProducts (Shop the Look) di transaction.
   await prisma.$transaction(async (tx) => {
     await tx.feedPost.update({
@@ -640,6 +664,13 @@ export async function PATCH(
     if (captionChanged) {
       // Reconcile FeedPostHashtag junction rows dari caption baru.
       await resyncPostHashtags(tx, post.id, newCaptionText);
+    }
+
+    if (newTaggedUserRows !== null) {
+      await tx.feedTaggedUser.deleteMany({ where: { feedPostId: post.id } });
+      if (newTaggedUserRows.length > 0) {
+        await tx.feedTaggedUser.createMany({ data: newTaggedUserRows });
+      }
     }
 
     if (newProductIds !== null) {

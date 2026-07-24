@@ -69,6 +69,31 @@ export function parseTaggedUsersInput(
   return { ok: true, tags };
 }
 
+/**
+ * Konversi hasil parseTaggedUsersInput jadi data createMany FeedPostTaggedUser
+ * utk jalur EDIT (PATCH). mediaIndex input dipetakan ke mediaId nyata via
+ * orderedMediaIds (urutan sortOrder asc). Video: mediaId/x/y null semua.
+ */
+export function buildTaggedUserRows(
+  tags: TaggedUserInput[],
+  feedPostId: string,
+  orderedMediaIds: readonly string[],
+): Array<{
+  feedPostId: string;
+  taggedUserId: string;
+  mediaId: string | null;
+  x: number | null;
+  y: number | null;
+}> {
+  return tags.map((tag) => ({
+    feedPostId,
+    taggedUserId: tag.userId,
+    mediaId: tag.mediaIndex != null ? orderedMediaIds[tag.mediaIndex] ?? null : null,
+    x: tag.x,
+    y: tag.y,
+  }));
+}
+
 export type TaggedUserRow = {
   mediaId: string | null;
   x: number | null;
