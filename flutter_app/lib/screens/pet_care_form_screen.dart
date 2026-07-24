@@ -129,9 +129,13 @@ class _PetCareFormScreenState extends State<PetCareFormScreen> {
         productId: isDewormOrFlea ? _selection?.productId : null,
         brandText: isDewormOrFlea ? _selection?.brandText : null,
         dosageNote: isDewormOrFlea ? _selection?.dosageNote : null,
-        place: _place,
-        vaccineName: _vaccineName,
-        complaint: _complaint,
+        place: (_category == PetCareCategory.grooming ||
+                _category == PetCareCategory.vaccine ||
+                _category == PetCareCategory.vet)
+            ? _place
+            : null,
+        vaccineName: _category == PetCareCategory.vaccine ? _vaccineName : null,
+        complaint: _category == PetCareCategory.vet ? _complaint : null,
       );
       if (_pickedPhoto != null) {
         try {
