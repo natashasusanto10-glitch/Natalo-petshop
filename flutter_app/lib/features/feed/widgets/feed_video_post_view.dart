@@ -3547,34 +3547,6 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                               ),
                             ),
                           ),
-                        // Badge tag orang — pojok kiri-bawah, sejajar action
-                        // rail (mirror _PhotoCarouselPostView). Video adalah
-                        // satu-satunya surface tag lewat sheet "Ditandai
-                        // dalam video ini" (Task 12, spec §3, wajib ada —
-                        // video tidak punya overlay pill in-place seperti
-                        // foto karena taggedUsers video tanpa koordinat x/y).
-                        if (FeedVideoPostView.shouldShowTaggedBadge(
-                          showTaggedBadge: widget.showTaggedBadge,
-                          hasTags: _tags.isNotEmpty,
-                        ))
-                          Positioned(
-                            left: 16,
-                            bottom: actionRailInset,
-                            child: AnimatedOpacity(
-                              opacity: (_hideOverlayForLongPress ||
-                                      _hideOverlayForPinchZoom)
-                                  ? 0
-                                  : 1,
-                              duration: const Duration(milliseconds: 200),
-                              child: IgnorePointer(
-                                ignoring: _hideOverlayForLongPress ||
-                                    _hideOverlayForPinchZoom,
-                                child: FeedTaggedBadge(
-                                  onTap: _openTaggedUsersSheet,
-                                ),
-                              ),
-                            ),
-                          ),
                         // ── Right action column (Reels-style: tight + minimal) ──
                         // Sprint 4 #1 — Hide overlays selama long-press
                         // supaya user dapat clean view sementara hold.
@@ -3632,6 +3604,33 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  // Badge tag orang — sekarang bagian dari
+                                  // Column info (bukan Positioned terpisah)
+                                  // supaya tak pernah tumpang-tindih dengan
+                                  // avatar kreator saat caption pendek/kosong
+                                  // membuat Column ini kolaps ke bawah (video
+                                  // adalah satu-satunya surface tag lewat
+                                  // sheet "Ditandai dalam video ini", Task
+                                  // 12, spec §3, wajib ada — video tidak
+                                  // punya overlay pill in-place seperti foto
+                                  // karena taggedUsers video tanpa koordinat
+                                  // x/y). Sama-sama di-gate oleh
+                                  // AnimatedOpacity/IgnorePointer luar
+                                  // (_hideOverlayForLongPress /
+                                  // _hideOverlayForPinchZoom) jadi tak perlu
+                                  // wrapper sendiri; sengaja bukan child
+                                  // AnimatedAlign/AnimatedSlide pill produk
+                                  // supaya tetap terlihat saat caption
+                                  // expand, sama seperti creator identity.
+                                  if (FeedVideoPostView.shouldShowTaggedBadge(
+                                    showTaggedBadge: widget.showTaggedBadge,
+                                    hasTags: _tags.isNotEmpty,
+                                  )) ...[
+                                    FeedTaggedBadge(
+                                      onTap: _openTaggedUsersSheet,
+                                    ),
+                                    const SizedBox(height: 8),
+                                  ],
                                   if (products.isNotEmpty)
                                     // Pill produk "tenggelam ke belakang
                                     // caption" saat panel naik: tinggi
