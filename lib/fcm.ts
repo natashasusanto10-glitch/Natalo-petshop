@@ -135,7 +135,10 @@ export function buildFcmMulticastMessage(
 
   const clientRender = payload.renderClientSide === true && opts.clientRender;
 
-  if (clientRender && payload.actorAvatarUrl) {
+  // Hanya https:// yang diteruskan — client (Flutter + iOS NSE) fetch URL ini
+  // apa adanya lalu decode sebagai gambar; http:// (MITM-able) tak boleh
+  // sampai ke parser gambar native (review adversarial PR #267, finding #1).
+  if (clientRender && payload.actorAvatarUrl?.startsWith("https://")) {
     dataPayload.actor_avatar_url = payload.actorAvatarUrl;
   }
 

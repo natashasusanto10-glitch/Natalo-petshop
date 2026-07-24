@@ -26,6 +26,13 @@ describe("buildFcmMulticastMessage", () => {
     assert.deepEqual(m.apns.payload.aps.alert, { title: base.title, body: base.body });
     assert.equal(m.apns.payload.aps["mutable-content"], 1);
   });
+  test("actorAvatarUrl http:// (non-https) → TIDAK diteruskan ke data", () => {
+    const m: any = buildFcmMulticastMessage(
+      { ...base, renderClientSide: true, actorAvatarUrl: "http://cdn/ava.jpg" },
+      { clientRender: true },
+    );
+    assert.equal(m.data.actor_avatar_url, undefined);
+  });
   test("sosial + token LAMA → shape lama utuh (notification block ada)", () => {
     const m: any = buildFcmMulticastMessage(
       { ...base, renderClientSide: true, actorAvatarUrl: "https://cdn/ava.jpg" },
