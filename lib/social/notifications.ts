@@ -7,6 +7,7 @@ import {
   notificationActorFields,
   NOTIF_ACTOR_USERNAME_TOKEN,
   OFFICIAL_BRAND_NAME,
+  topLikerAvatars,
 } from "@/lib/social/brand-user";
 import { feedNotificationThumbnail } from "@/lib/feed/notification-thumbnail";
 import { signBunnyUrl } from "@/lib/feed/bunny";
@@ -17,7 +18,6 @@ import {
   followAggTag,
   shouldRePush,
 } from "@/lib/social/follow-aggregation";
-import { topLikerAvatars } from "@/lib/social/brand-user";
 
 export const SOCIAL_NOTIFICATION_SOURCE = "social";
 

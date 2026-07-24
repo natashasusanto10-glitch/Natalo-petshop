@@ -534,6 +534,9 @@ export async function sendLikeNotification(params: {
           thumbnailUrl: thumb,
           ...likeRowActorFields(true, actorFields),
           actorAvatarUrls: avatarUrls,
+          // Untuk like, aggregatedCount = jumlah like (bukan jumlah orang
+          // seperti di follow) — dipakai client hanya sbg gate ">1", unit
+          // beda per eventType tapi kontrak >1 tetap valid keduanya.
           aggregatedCount: params.likeCount,
           publishedAt: nowDate,
           ...(doPush ? { lastPushedAt: nowDate } : {}),
