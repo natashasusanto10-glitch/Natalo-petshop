@@ -436,6 +436,21 @@ class _HistoryTile extends StatelessWidget {
       if (record.note != null && record.note!.trim().isNotEmpty)
         record.note!.trim(),
     ].join(' • ');
+    String? extra;
+    if (record.category == PetCareCategory.deworm ||
+        record.category == PetCareCategory.flea) {
+      if (record.brandText != null && record.brandText!.trim().isNotEmpty) {
+        extra = record.brandText!.trim();
+      } else if (record.productId != null) {
+        extra = 'Produk Natalo';
+      }
+    } else if (record.category == PetCareCategory.grooming ||
+        record.category == PetCareCategory.vaccine ||
+        record.category == PetCareCategory.vet) {
+      if (record.place != null && record.place!.trim().isNotEmpty) {
+        extra = record.place!.trim();
+      }
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 9),
       child: Row(
@@ -466,6 +481,14 @@ class _HistoryTile extends StatelessWidget {
                         fontSize: 11.5,
                         fontWeight: NataloWeight.body,
                         color: cs.onSurfaceVariant)),
+                if (extra != null) ...[
+                  const SizedBox(height: 2),
+                  Text(extra,
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: NataloWeight.body,
+                          color: cs.onSurfaceVariant)),
+                ],
                 _CarePhotoThumb(recordId: record.id),
               ],
             ),
