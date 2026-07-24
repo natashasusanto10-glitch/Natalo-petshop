@@ -600,6 +600,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     final post = posts[index];
     final handoff = _videoPrewarmer.take(post) ?? _createWarmHandoff(post);
     AppHaptics.tap();
+    // Tab "Ditandai" (shoppable→content=tagged) berisi postingan milik ORANG
+    // LAIN yang menandai pemilik profil ini. Author asli != pemilik profil,
+    // jadi WAJIB render identitas per-post (server sudah kirim `post.author`
+    // asli utk content=tagged). Tanpa ini, override authorName/photo/official
+    // di bawah menimpa author asli dgn identitas pemilik profil (bug: post
+    // orang lain tampil seakan pemilik profil yang buat). Tab all/video tetap
+    // author = pemilik profil (implisit, item /api/u tidak bawa objek author).
+    final isTagged = content == PublicProfileContentFilter.shoppable;
     try {
       await pushPostViewer<void>(
         context,
@@ -612,22 +620,27 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
           post: post,
           posts: posts,
           initialIndex: index,
-          authorName: profile?.name,
-          authorPhotoUrl: profile?.profilePhotoUrl,
-          authorInitial: profile?.initial,
+          authorPerPost: isTagged,
+          authorName: isTagged ? null : profile?.name,
+          authorPhotoUrl: isTagged ? null : profile?.profilePhotoUrl,
+          authorInitial: isTagged ? null : profile?.initial,
           // Official → detail render identitas brand (logo + emas +
-          // rosette) di author row, caption, dan subtitle AppBar.
-          authorIsOfficial: profile?.isOfficial ?? false,
+          // rosette) di author row, caption, dan subtitle AppBar. Tab tagged:
+          // biar per-post author (post.author.isOfficial) yang menentukan.
+          authorIsOfficial: isTagged ? false : (profile?.isOfficial ?? false),
           // Item /api/u/{username} TIDAK bawa objek author → post.author.id
           // kosong & isFollowing false. Chip "Ikuti/Mengikuti" header butuh
           // identitas dari level profil (yang akurat + key-nya sama dgn
-          // followOverrides yang di-set tombol follow profil).
-          authorId: profile?.id,
-          authorIsFollowing: resolveFollowState(
-            profile?.id ?? '',
-            profile?.isFollowing ?? false,
-          ),
-          isOwner: profile?.isOwner ?? false,
+          // followOverrides yang di-set tombol follow profil). Tab tagged:
+          // per-post author, jadi jangan override dari profil.
+          authorId: isTagged ? null : profile?.id,
+          authorIsFollowing: isTagged
+              ? null
+              : resolveFollowState(
+                  profile?.id ?? '',
+                  profile?.isFollowing ?? false,
+                ),
+          isOwner: isTagged ? false : (profile?.isOwner ?? false),
           warmVideoHandoff: handoff,
           initialNextCursor: _contentStates[content]!.nextCursor,
           loadMoreScopedPosts: (cursor) async {
