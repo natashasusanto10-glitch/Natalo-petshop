@@ -40,6 +40,12 @@ import {
   parseFeedAccessibilityMetadata,
   parseFeedAltText,
 } from "@/lib/feed/accessibility";
+import {
+  extractHashtags,
+  MAX_HASHTAGS_PER_POST,
+  HASHTAG_LIMIT_MESSAGE,
+  syncPostHashtags,
+} from "@/lib/feed/hashtags";
 
 // Make sure the feed list never gets cached at the edge — newly approved
 // posts must appear on the next pull without waiting for a revalidation
@@ -202,6 +208,13 @@ export async function POST(request: NextRequest) {
       },
       { status: 400 },
     );
+  }
+
+  // Spec C: max 5 hashtag unik per post (caption = title + description,
+  // sumber yang sama dengan gate mention di atas).
+  const captionHashtags = extractHashtags(`${title} ${description ?? ""}`);
+  if (captionHashtags.length > MAX_HASHTAGS_PER_POST) {
+    return NextResponse.json({ error: HASHTAG_LIMIT_MESSAGE }, { status: 400 });
   }
 
   const isAdmin = session.role === "ADMIN";
@@ -647,6 +660,9 @@ export async function POST(request: NextRequest) {
         skipDuplicates: true,
       });
     }
+
+    // Spec C: tulis relasi hashtag dalam transaksi yang sama dengan create post.
+    await syncPostHashtags(tx, created.id, `${title} ${description ?? ""}`);
 
     return created;
   });
