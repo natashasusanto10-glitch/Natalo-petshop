@@ -1366,6 +1366,9 @@ model FeedPost {
   // empty (video tetap stored di FeedPost.videoUrl / thumbnailUrl /
   // videoGuid sebagai single-asset legacy fields).
   media          FeedMedia[]
+  // Hashtags — parsed dari caption, dipakai untuk search + trending
+  // (Task 3–8). Back-relation dari FeedPostHashtag.
+  hashtags       FeedPostHashtag[]
 
   // Index utama untuk feed listing (filter by tab + status + sorted).
   @@index([tab, status, publishedAt])
@@ -1463,6 +1466,29 @@ model FeedTaggedUser {
   // Query tab Ditandai: WHERE taggedUserId=X AND hidden=false.
   @@index([taggedUserId, hidden])
   @@index([feedPostId])
+}
+
+model Hashtag {
+  id        String   @id @default(cuid())
+  /// Nama tag TANPA '#', SELALU lowercase (normalisasi di lib/feed/hashtags.ts).
+  name      String   @unique
+  /// Sinyal popularitas APROKSIMATIF — hanya untuk urutan autocomplete.
+  /// Header halaman hashtag pakai hitungan query sungguhan (spec §1).
+  postCount Int      @default(0)
+  createdAt DateTime @default(now())
+  posts     FeedPostHashtag[]
+}
+
+model FeedPostHashtag {
+  id         String   @id @default(cuid())
+  feedPostId String
+  hashtagId  String
+  createdAt  DateTime @default(now())
+  post       FeedPost @relation(fields: [feedPostId], references: [id], onDelete: Cascade)
+  hashtag    Hashtag  @relation(fields: [hashtagId], references: [id], onDelete: Cascade)
+
+  @@unique([feedPostId, hashtagId])
+  @@index([hashtagId])
 }
 
 // Audit trail untuk semua moderation transition di FeedPost. Append-only —
