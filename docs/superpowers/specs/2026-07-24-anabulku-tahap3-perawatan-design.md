@@ -78,6 +78,7 @@ Menggantikan bagian kartu "Segera hadir" (kartu segera-hadir tetap ada tapi teks
 - Tanggal dilakukan: date picker (default hari ini, tidak boleh masa depan).
 - Catatan: TextField opsional max 200 (perhatikan gotcha fillColor global: filled:false/transparent bila di atas permukaan berwarna).
 - Jadwal berikutnya (opsional): chip shortcut `+1 bulan`, `+3 bulan`, `Pilih tanggal`, bisa dikosongkan (khusus Periksa Dokter memang biasanya kosong).
+- Foto (opsional, maks 1): tombol "Tambah foto" — pilih dari galeri/kamera, compress (engine compress yang sama dengan foto pet), lalu **disimpan LOKAL di HP** (keputusan user, bukan server): salin ke `ApplicationDocumentsDirectory/pet_care/{recordId}.jpg` setelah POST sukses (recordId dari respons). Server tidak tahu soal foto (tanpa field baru). Thumbnail kecil di riwayat bila file ada; tap → lihat penuh. Hapus record → file ikut dihapus. Ganti HP/reinstall → foto hilang, record tetap utuh tanpa indikasi error.
 - Simpan → POST, pop dengan hasil, list refresh; snackbar sukses pola app.
 
 ### Motion & aksesibilitas
@@ -103,4 +104,4 @@ Menggantikan bagian kartu "Segera hadir" (kartu segera-hadir tetap ada tapi teks
 
 ## Di luar scope Tahap 3
 
-Push notification/cron (Tahap 3b), edit record, lampiran foto pada record, Journey/Belanja (Tahap 4-5), route publik.
+Push notification/cron (Tahap 3b), edit record, upload foto record ke server (foto lokal-only per keputusan user; bisa di-upgrade sinkron nanti), Journey/Belanja (Tahap 4-5), route publik.
