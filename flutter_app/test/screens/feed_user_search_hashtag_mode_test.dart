@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:natalo_petshop_flutter/screens/feed_user_search_screen.dart';
 import 'package:natalo_petshop_flutter/services/feed_service.dart';
-import 'package:natalo_petshop_flutter/services/follow_service.dart';
 
 Future<void> pumpBounded(WidgetTester tester) async {
   for (var i = 0; i < 20; i++) {
