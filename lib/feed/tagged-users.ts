@@ -78,12 +78,14 @@ export function buildTaggedUserRows(
   tags: TaggedUserInput[],
   feedPostId: string,
   orderedMediaIds: readonly string[],
+  prevHiddenByUserId?: ReadonlyMap<string, boolean>,
 ): Array<{
   feedPostId: string;
   taggedUserId: string;
   mediaId: string | null;
   x: number | null;
   y: number | null;
+  hidden: boolean;
 }> {
   return tags.map((tag) => ({
     feedPostId,
@@ -91,6 +93,11 @@ export function buildTaggedUserRows(
     mediaId: tag.mediaIndex != null ? orderedMediaIds[tag.mediaIndex] ?? null : null,
     x: tag.x,
     y: tag.y,
+    // Full-replace (PATCH edit) tidak boleh menimpa flag privasi "hidden"
+    // yang di-set tagged user sendiri via PATCH .../tags/me (Spec B
+    // self-hide) — carry forward nilai lama kalau user itu masih di-tag,
+    // default false untuk user yang baru ditambahkan.
+    hidden: prevHiddenByUserId?.get(tag.userId) ?? false,
   }));
 }
 
