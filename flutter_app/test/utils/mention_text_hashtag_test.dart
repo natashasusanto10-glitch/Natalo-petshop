@@ -76,4 +76,85 @@ void main() {
       isFalse,
     );
   });
+
+  test('official handle @natalopetshop → "Natalo Petshop Official" + icon, tap fires real handle', () {
+    String? tappedHandle;
+    final spans = buildMentionSpans(
+      'Halo @natalopetshop, apa kabar?',
+      onMentionTap: (h) => tappedHandle = h,
+      officialHandles: {'natalopetshop'},
+    );
+
+    // Assert: "@Natalo Petshop Official" brand-override text present (not raw handle)
+    final textSpans = spans.whereType<TextSpan>();
+    final brandSpan = textSpans.firstWhere(
+      (s) => s.text == '@Natalo Petshop Official',
+      orElse: () => throw 'Brand-override text "@Natalo Petshop Official" not found',
+    );
+    expect(brandSpan.style?.fontWeight, FontWeight.w800);
+    expect(brandSpan.style?.color, const Color(0xFF0B7FEA));
+
+    // Assert: WidgetSpan (verified icon) present in span list
+    final widgetSpans = spans.whereType<WidgetSpan>();
+    expect(widgetSpans.length, greaterThan(0), reason: 'No WidgetSpan found for verified icon');
+
+    // Verify icon is verified_rounded
+    final iconWidget = widgetSpans.first.child;
+    expect(iconWidget, isA<Padding>());
+    final iconInPadding = (iconWidget as Padding).child;
+    expect(iconInPadding, isA<Icon>());
+    final icon = iconInPadding as Icon;
+    expect(icon.icon, Icons.verified_rounded);
+    expect(icon.color, const Color(0xFF0B7FEA));
+
+    // Assert: Tap recognizer fires with REAL underlying handle, not display text
+    (brandSpan.recognizer as TapGestureRecognizer).onTap!();
+    expect(tappedHandle, 'natalopetshop',
+        reason: 'Tap should fire with real handle, not display override text');
+  });
+
+  test('official handle + hashtag satu teks: keduanya render correct', () {
+    String? tappedHandle;
+    String? tappedTag;
+    final spans = buildMentionSpans(
+      'Tanya @natalopetshop tentang #grooming',
+      onMentionTap: (h) => tappedHandle = h,
+      onHashtagTap: (n) => tappedTag = n,
+      officialHandles: {'natalopetshop'},
+    );
+
+    final textSpans = spans.whereType<TextSpan>();
+
+    // Assert: official brand text present
+    expect(
+      textSpans.any((s) => s.text == '@Natalo Petshop Official'),
+      isTrue,
+      reason: 'Brand-override "@Natalo Petshop Official" not found',
+    );
+
+    // Assert: hashtag present and tappable
+    expect(
+      textSpans.any((s) => s.text == '#grooming' && s.recognizer != null),
+      isTrue,
+      reason: 'Hashtag "#grooming" not tappable',
+    );
+
+    // Assert: verified icon widget present
+    expect(
+      spans.whereType<WidgetSpan>().length,
+      greaterThan(0),
+      reason: 'No verified icon WidgetSpan found',
+    );
+
+    // Fire both recognizers and verify correct values
+    for (final s in textSpans) {
+      if (s.text == '@Natalo Petshop Official') {
+        (s.recognizer as TapGestureRecognizer).onTap!();
+      } else if (s.text == '#grooming') {
+        (s.recognizer as TapGestureRecognizer).onTap!();
+      }
+    }
+    expect(tappedHandle, 'natalopetshop');
+    expect(tappedTag, 'grooming');
+  });
 }
