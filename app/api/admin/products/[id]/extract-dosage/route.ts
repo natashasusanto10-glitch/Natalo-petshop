@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { assertSameOrigin } from "@/lib/csrf";
 import { extractDosageRulesFromText, ExtractDosageError } from "@/lib/ai/extract-dosage-rules";
 
 /**
@@ -12,9 +13,12 @@ import { extractDosageRulesFromText, ExtractDosageError } from "@/lib/ai/extract
  * Body: { name: string, description: string }
  */
 export async function POST(
-  request: Request,
+  request: NextRequest,
   _ctx: { params: Promise<{ id: string }> },
 ) {
+  const csrfReject = assertSameOrigin(request);
+  if (csrfReject) return csrfReject;
+
   const session = await getSession("ADMIN");
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
