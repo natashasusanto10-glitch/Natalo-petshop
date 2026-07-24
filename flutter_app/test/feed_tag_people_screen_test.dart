@@ -29,7 +29,7 @@ void main() {
   testWidgets('judul, tombol selesai, dan hint tampil', (tester) async {
     await pump(tester);
     expect(find.text('Tandai Orang'), findsOneWidget);
-    expect(find.text('Ketuk foto untuk menandai orang'), findsOneWidget);
+    expect(find.text('Ketuk foto untuk menandai'), findsOneWidget);
     expect(find.byIcon(Icons.check), findsOneWidget);
   });
 

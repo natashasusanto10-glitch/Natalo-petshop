@@ -246,7 +246,44 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        // elevation + surfaceTint 0/transparan: hilangkan garis putih tipis
+        // (Material 3 menggambar tint/divider di bawah app bar di atas body
+        // hitam) — lihat screenshot device.
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
         centerTitle: true,
+        // Back bawaan tenggelam di app bar hitam (feedback device: "tombol
+        // back tidak terlihat"). Ganti bubble kaca putih tipis — konsisten
+        // dgn bubble centang di kanan.
+        leadingWidth: 56,
+        leading: Center(
+          child: Semantics(
+            button: true,
+            label: 'Kembali',
+            child: GestureDetector(
+              onTap: () => Navigator.maybePop(context),
+              behavior: HitTestBehavior.opaque,
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child: Center(
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.chevron_left_rounded,
+                        color: Colors.white, size: 24),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
         title: const Text('Tandai Orang'),
         actions: [
           Padding(
@@ -282,30 +319,39 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
           ),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: widget.photoFiles.length,
-              onPageChanged: (i) => setState(() => _pageIndex = i),
-              itemBuilder: (context, index) {
-                return _TaggablePhotoPage(
-                  file: widget.photoFiles[index],
-                  tags: _tags.where((t) => t.mediaIndex == index).toList(),
-                  revealRemoveUserId: _revealRemoveUserId,
-                  photoAspectRatio: _photoAspectRatios[index],
-                  onTapUp: _onPhotoTapUp,
-                  onPillDragUpdate: _onPillDragUpdate,
-                  onPillTap: _onPillTap,
-                  onPillRemove: _onPillRemove,
-                );
-              },
-            ),
+          Column(
+            children: [
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  itemCount: widget.photoFiles.length,
+                  onPageChanged: (i) => setState(() => _pageIndex = i),
+                  itemBuilder: (context, index) {
+                    return _TaggablePhotoPage(
+                      file: widget.photoFiles[index],
+                      tags: _tags.where((t) => t.mediaIndex == index).toList(),
+                      revealRemoveUserId: _revealRemoveUserId,
+                      photoAspectRatio: _photoAspectRatios[index],
+                      onTapUp: _onPhotoTapUp,
+                      onPillDragUpdate: _onPillDragUpdate,
+                      onPillTap: _onPillTap,
+                      onPillRemove: _onPillRemove,
+                    );
+                  },
+                ),
+              ),
+              // Ruang bawah untuk dots + hint pill mengambang.
+              SizedBox(height: widget.photoFiles.length > 1 ? 60 : 48),
+            ],
           ),
+          // Dots carousel (multi-foto) — mengambang di atas hint pill.
           if (widget.photoFiles.length > 1)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 58,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(widget.photoFiles.length, (i) {
@@ -326,17 +372,43 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
                 }),
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 20, top: 4),
-            child: Text(
-              'Ketuk foto untuk menandai orang',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.65),
-                fontSize: 13,
-                fontWeight: FontWeight.w400,
+          // Hint pill mengambang di tengah-bawah foto (bukan teks abu redup di
+          // paling bawah). Sembunyi kalau slide aktif sudah punya tag —
+          // guidance tak perlu lagi. IgnorePointer: tap tetap tembus ke foto.
+          if (!_tags.any((t) => t.mediaIndex == _pageIndex))
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 16,
+              child: IgnorePointer(
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.touch_app_outlined,
+                            color: Colors.white, size: 15),
+                        SizedBox(width: 6),
+                        Text(
+                          'Ketuk foto untuk menandai',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -613,9 +685,19 @@ class _TagUserSearchPanelState extends State<TagUserSearchPanel> {
                         controller: _controller,
                         autofocus: true,
                         style: const TextStyle(color: Colors.white),
+                        // filled:false + fillColor transparan WAJIB: tema global
+                        // (inputDecorationTheme) set `filled:true` + fillColor
+                        // PUTIH di light mode → tanpa override ini, TextField
+                        // mengecat putih di atas Container navy = teks putih di
+                        // atas putih (tak terbaca). Container gelap di belakang
+                        // yang jadi latar field.
                         decoration: const InputDecoration(
                           isDense: true,
+                          filled: false,
+                          fillColor: Colors.transparent,
                           border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
                           contentPadding:
                               EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                           hintText: 'Cari akun',
