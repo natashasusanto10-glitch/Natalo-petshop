@@ -8,7 +8,7 @@ export async function DELETE(
 ) {
   const session = await getSession("CUSTOMER");
   if (!session) {
-    return NextResponse.json({ error: "Login member dulu." }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { id, recordId } = await params;
 

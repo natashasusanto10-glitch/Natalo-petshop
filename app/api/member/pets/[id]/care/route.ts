@@ -13,7 +13,7 @@ export async function GET(
 ) {
   const session = await getSession("CUSTOMER");
   if (!session) {
-    return NextResponse.json({ error: "Login member dulu." }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { id } = await params;
   const pet = await getOwnedPet(id, session.sub);
@@ -44,7 +44,7 @@ export async function POST(
 ) {
   const session = await getSession("CUSTOMER");
   if (!session) {
-    return NextResponse.json({ error: "Login member dulu." }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { id } = await params;
   const pet = await getOwnedPet(id, session.sub);
