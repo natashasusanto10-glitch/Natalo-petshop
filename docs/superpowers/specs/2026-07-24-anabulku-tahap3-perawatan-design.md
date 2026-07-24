@@ -48,7 +48,21 @@ Semua ber-auth member + cek kepemilikan pet (pola sama endpoint pets yang ada).
 
 ## Flutter — 4 permukaan
 
-Font/spacing/warna WAJIB identik pola Anabulku yang ada: appBar ikut `appBarTheme` global (tanpa override), judul/nama `NataloWeight.strong`, caption `NataloWeight.body`, kartu `cs.surfaceContainerHighest` atau `cs.surface`+outlineVariant, radius 12–14, padding horizontal 20, brand `NataloColors.primary`.
+Font/spacing/warna WAJIB identik pola Anabulku yang ada (dikunci ke angka aktual di kode, bukan "kira-kira sama"):
+
+| Elemen | Token |
+|---|---|
+| AppBar | `appBarTheme` global saja, tanpa override (18/w700, flat+hairline) |
+| Judul section (mis. "Perawatan", "Pet Saya") | 13–17/`NataloWeight.strong`, sesuai level (lihat per-layar di bawah) |
+| Caption/label/subjudul | 11–12.5/`NataloWeight.body`, warna `cs.onSurfaceVariant` |
+| Nama pet di kartu | 15/`NataloWeight.strong` (padding horizontal 20, sama file `anabulku_screen.dart`) |
+| Kartu list pet | minHeight 72, padding 12, radius 16, `cs.surface`+`Border.all(cs.outlineVariant)`+shadow tipis (black 0.05, blur 3) |
+| Chip kategori/status | 10–11/`NataloWeight.strong`, radius 999, tinggi visual sama `_GenderChipMini`/`_NeutralChip` |
+| Kartu section/jadwal | radius 12–14, `cs.surfaceContainerHighest` (netral) atau tint merah/biru theme-aware (lihat tabel status) |
+| Padding horizontal halaman | 20 (sama semua layar Anabulku) |
+| Brand | `NataloColors.primary` (#1E5FBF) |
+
+Semua nilai di atas diambil langsung dari `anabulku_screen.dart` dan `pet_profile_screen.dart` saat ini — implementasi tidak boleh memperkenalkan ukuran font/weight/radius baru di luar tabel ini tanpa alasan kuat.
 
 ### 0. Halaman list Anabulku (AnabulkuScreen, update)
 
