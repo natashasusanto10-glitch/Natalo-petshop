@@ -146,6 +146,161 @@ export function resolveFeedProductDiscount(
   return { discountPrice: best.effectivePrice, discountSource: best.source };
 }
 
+/**
+ * Prisma `include` shape untuk listFeedPosts — diekstrak supaya handler lain
+ * (mis. GET /api/feed/hashtags/[name]) bisa fetch post dengan shape query
+ * IDENTIK lalu reuse resolveFeedBatchContext/serializeFeedPostRow di bawah
+ * untuk hasilkan JSON yang sama persis dengan feed utama.
+ *
+ * Fungsi (bukan `const` object literal) — BUKAN pilihan sembarang: dua
+ * cabang `discountItems.where` di bawah butuh `now` per-request supaya
+ * filter "discount aktif saat ini" konsisten dengan `now` yang sama dipakai
+ * resolveFeedProductDiscount saat serialize (lihat komentar di
+ * listFeedPosts). Kalau ini jadi top-level const, `now` akan beku di waktu
+ * module pertama di-load (bukan di-refresh tiap request) — discount yang
+ * baru mulai/berakhir setelah itu akan salah ter-filter selamanya. Jadi
+ * dipertahankan sebagai factory function, dipanggil dgn `now` yang sama tiap
+ * request (persis seperti sebelum ekstraksi).
+ */
+export function buildFeedPostInclude(now: Date) {
+  return {
+    author: {
+      select: {
+        id: true,
+        name: true,
+        username: true,
+        role: true,
+        profilePhotoUrl: true,
+      },
+    },
+    product: {
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        price: true,
+        discountPrice: true,
+        // brandId/categoryId — WAJIB untuk hitung voucher scoped (Brand
+        // Eksklusif dkk) via voucherMatchesProduct. Bukan dikirim ke
+        // client mentah; cuma dipakai server-side match lalu diringkas
+        // jadi shippingVoucher/discountVoucher.badgeLabel+isBrandExclusive.
+        brandId: true,
+        categoryId: true,
+        // Flash sale window + Promo Toko (discountItems) — supaya
+        // resolveActiveDiscount bisa tentukan diskon AKTIF + sumbernya.
+        // Tanpa ini feed salah label "Flash Sale" untuk Promo Toko.
+        flashSaleEndsAt: true,
+        discountItems: {
+          where: {
+            isItemActive: true,
+            discount: {
+              isActive: true,
+              startsAt: { lte: now },
+              endsAt: { gt: now },
+            },
+          },
+          select: {
+            variantId: true,
+            discountedPrice: true,
+            discount: { select: { endsAt: true } },
+          },
+        },
+        stock: true,
+        weightGram: true,
+        isActive: true,
+        imageUrl: true,
+        // hasVariants — bedakan quick-add path: kalau false, tap +cart
+        // langsung addItemToCart. Kalau true, harus buka variant picker
+        // dulu (cart tidak boleh skip variant selection).
+        hasVariants: true,
+        // Social proof — dipakai di popup preview + bottom sheet
+        // (Final Lock Spec). avgRating + reviewCount denormalized di
+        // Product table (di-update via review CRUD). soldCount tidak
+        // denormalized — di-hitung batched setelah query utama.
+        avgRating: true,
+        reviewCount: true,
+      },
+    },
+    // Shop the Look — multi-tag carousel dengan per-product promoPrice.
+    taggedProducts: {
+      select: {
+        position: true,
+        promoPrice: true,
+        product: {
+          select: {
+            id: true,
+            slug: true,
+            name: true,
+            price: true,
+            discountPrice: true,
+            brandId: true,
+            categoryId: true,
+            flashSaleEndsAt: true,
+            discountItems: {
+              where: {
+                isItemActive: true,
+                discount: {
+                  isActive: true,
+                  startsAt: { lte: now },
+                  endsAt: { gt: now },
+                },
+              },
+              select: {
+                variantId: true,
+                discountedPrice: true,
+                discount: { select: { endsAt: true } },
+              },
+            },
+            stock: true,
+            weightGram: true,
+            imageUrl: true,
+            isActive: true,
+            hasVariants: true,
+            avgRating: true,
+            reviewCount: true,
+          },
+        },
+      },
+      orderBy: { position: "asc" },
+    },
+    // PHOTO_CAROUSEL media — 1-8 image rows. Empty untuk video posts.
+    media: {
+      select: {
+        id: true,
+        mediaType: true,
+        url: true,
+        thumbnailUrl: true,
+        width: true,
+        height: true,
+        sortOrder: true,
+        altText: true,
+      },
+      orderBy: { sortOrder: "asc" },
+    },
+    taggedUsers: TAGGED_USERS_SELECT,
+    likes: {
+      orderBy: { createdAt: "desc" },
+      take: 3,
+      select: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            role: true,
+            profilePhotoUrl: true,
+          },
+        },
+      },
+    },
+  } satisfies Prisma.FeedPostInclude;
+}
+
+/** Row shape hasil `prisma.feedPost.findMany({ include: buildFeedPostInclude(now) })`. */
+export type FeedPostRow = Prisma.FeedPostGetPayload<{
+  include: ReturnType<typeof buildFeedPostInclude>;
+}>;
+
 type FeedListOptions = {
   tab?: FeedPostTab | null;
   cursor?: string | null;
@@ -218,139 +373,54 @@ export async function listFeedPosts({
           skip: 1,
         }
       : {}),
-    include: {
-      author: {
-        select: {
-          id: true,
-          name: true,
-          username: true,
-          role: true,
-          profilePhotoUrl: true,
-        },
-      },
-      product: {
-        select: {
-          id: true,
-          slug: true,
-          name: true,
-          price: true,
-          discountPrice: true,
-          // brandId/categoryId — WAJIB untuk hitung voucher scoped (Brand
-          // Eksklusif dkk) via voucherMatchesProduct. Bukan dikirim ke
-          // client mentah; cuma dipakai server-side match lalu diringkas
-          // jadi shippingVoucher/discountVoucher.badgeLabel+isBrandExclusive.
-          brandId: true,
-          categoryId: true,
-          // Flash sale window + Promo Toko (discountItems) — supaya
-          // resolveActiveDiscount bisa tentukan diskon AKTIF + sumbernya.
-          // Tanpa ini feed salah label "Flash Sale" untuk Promo Toko.
-          flashSaleEndsAt: true,
-          discountItems: {
-            where: {
-              isItemActive: true,
-              discount: {
-                isActive: true,
-                startsAt: { lte: now },
-                endsAt: { gt: now },
-              },
-            },
-            select: {
-              variantId: true,
-              discountedPrice: true,
-              discount: { select: { endsAt: true } },
-            },
-          },
-          stock: true,
-          weightGram: true,
-          isActive: true,
-          imageUrl: true,
-          // hasVariants — bedakan quick-add path: kalau false, tap +cart
-          // langsung addItemToCart. Kalau true, harus buka variant picker
-          // dulu (cart tidak boleh skip variant selection).
-          hasVariants: true,
-          // Social proof — dipakai di popup preview + bottom sheet
-          // (Final Lock Spec). avgRating + reviewCount denormalized di
-          // Product table (di-update via review CRUD). soldCount tidak
-          // denormalized — di-hitung batched setelah query utama.
-          avgRating: true,
-          reviewCount: true,
-        },
-      },
-      // Shop the Look — multi-tag carousel dengan per-product promoPrice.
-      taggedProducts: {
-        select: {
-          position: true,
-          promoPrice: true,
-          product: {
-            select: {
-              id: true,
-              slug: true,
-              name: true,
-              price: true,
-              discountPrice: true,
-              brandId: true,
-              categoryId: true,
-              flashSaleEndsAt: true,
-              discountItems: {
-                where: {
-                  isItemActive: true,
-                  discount: {
-                    isActive: true,
-                    startsAt: { lte: now },
-                    endsAt: { gt: now },
-                  },
-                },
-                select: {
-                  variantId: true,
-                  discountedPrice: true,
-                  discount: { select: { endsAt: true } },
-                },
-              },
-              stock: true,
-              weightGram: true,
-              imageUrl: true,
-              isActive: true,
-              hasVariants: true,
-              avgRating: true,
-              reviewCount: true,
-            },
-          },
-        },
-        orderBy: { position: "asc" },
-      },
-      // PHOTO_CAROUSEL media — 1-8 image rows. Empty untuk video posts.
-      media: {
-        select: {
-          id: true,
-          mediaType: true,
-          url: true,
-          thumbnailUrl: true,
-          width: true,
-          height: true,
-          sortOrder: true,
-          altText: true,
-        },
-        orderBy: { sortOrder: "asc" },
-      },
-      taggedUsers: TAGGED_USERS_SELECT,
-      likes: {
-        orderBy: { createdAt: "desc" },
-        take: 3,
-        select: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              username: true,
-              role: true,
-              profilePhotoUrl: true,
-            },
-          },
-        },
-      },
-    },
+    include: buildFeedPostInclude(now),
   });
 
+  const ctx = await resolveFeedBatchContext(posts, viewerUserId ?? null, now);
+
+  const hasMore = posts.length > FEED_PAGE_SIZE;
+  const sliced = hasMore ? posts.slice(0, FEED_PAGE_SIZE) : posts;
+
+  const items: FeedPostListItem[] = sliced.map((p) => serializeFeedPostRow(p, ctx));
+
+  return {
+    items,
+    nextCursor: hasMore ? sliced[sliced.length - 1].id : null,
+  };
+}
+
+export type FeedBatchContext = {
+  now: Date;
+  viewerLikedIds: Set<string>;
+  viewerSavedIds: Set<string>;
+  viewerFollowedAuthorIds: Set<string>;
+  soldCountMap: Map<string, number>;
+  voucherPreviewMap: Map<
+    string,
+    { product: ProductVoucherPreview | null; shipping: ProductVoucherPreview | null }
+  >;
+  // Diteruskan apa adanya dari pemanggil listFeedPosts (bukan hasil batch
+  // query) — dipakai serializeFeedPostRow (resolveViewerTagHidden). Disimpan
+  // di ctx (bukan parameter terpisah) supaya serializeFeedPostRow cukup
+  // 1 parameter ctx, konsisten dengan field lain yang page-scoped.
+  viewerUserId: string | null;
+};
+
+/**
+ * Hitung semua nilai batch (1 query per jenis, no N+1) yang dibutuhkan untuk
+ * serialize satu page hasil listFeedPosts. Diekstrak dari body listFeedPosts
+ * (pure mechanical move) — logic SAMA PERSIS, cuma diparameterkan ke
+ * `posts`/`viewerUserId`/`now` alih-alih closure ke local listFeedPosts.
+ * `now` WAJIB parameter (bukan `new Date()` baru di sini) — harus persis
+ * instance yang sama dipakai membangun query include (buildFeedPostInclude),
+ * supaya tidak ada drift antara filter query dan resolveFeedProductDiscount
+ * saat serialize (lihat komentar di listFeedPosts).
+ */
+export async function resolveFeedBatchContext(
+  posts: readonly FeedPostRow[],
+  viewerUserId: string | null,
+  now: Date,
+): Promise<FeedBatchContext> {
   // Fetch viewer's like state batch-style (1 query) supaya tidak N+1.
   let viewerLikedIds = new Set<string>();
   if (viewerUserId && posts.length > 0) {
@@ -473,100 +543,91 @@ export async function listFeedPosts({
     }
   }
 
-  const hasMore = posts.length > FEED_PAGE_SIZE;
-  const sliced = hasMore ? posts.slice(0, FEED_PAGE_SIZE) : posts;
+  return {
+    now,
+    viewerLikedIds,
+    viewerSavedIds,
+    viewerFollowedAuthorIds,
+    soldCountMap,
+    voucherPreviewMap,
+    viewerUserId,
+  };
+}
 
-  const items: FeedPostListItem[] = sliced.map((p) => {
-    const playbackUrls = buildFeedVideoPlaybackUrls({
-      videoUrl: p.videoUrl,
-      videoGuid: p.videoGuid,
-    });
-    const authorDisplayName = brandDisplayName(p.author.role, p.author.name);
-    const authorPhoto = brandPhotoUrl(
-      p.author.role,
-      p.author.profilePhotoUrl
-    );
-    const isOfficial = p.authorRole === "ADMIN";
-    return {
-      id: p.id,
-      shareVersion: buildFeedShareVersion(p),
-      kind: p.kind,
-      tab: p.tab,
-      status: p.status,
-      title: p.title,
-      description: p.description,
-      // Sign URL dengan Bunny CDN token kalau BUNNY_TOKEN_SECURITY_KEY di-set
-      // (defense untuk hotlink protection). Tanpa env, return as-is.
-      videoUrl: playbackUrls.videoUrl,
-      videoDataSaverUrl: playbackUrls.videoDataSaverUrl,
-      thumbnailUrl: signBunnyUrl(p.thumbnailUrl) ?? null,
-      thumbnailBlurhash: p.thumbnailBlurhash,
-      videoDurationSec: p.videoDurationSec,
-      videoWidth: p.videoWidth,
-      videoHeight: p.videoHeight,
-      ...feedAccessibilityPayload(p, signBunnyUrl),
-      product: p.product
-        ? (() => {
-            // discountPrice = harga AKTIF (effectivePrice) hasil
-            // resolveActiveDiscount, BUKAN raw Product.discountPrice. Plus
-            // discountSource supaya app label "Flash Sale" vs "Diskon" benar.
-            const d = resolveFeedProductDiscount(p.product!, now);
-            const voucher = voucherPreviewMap.get(p.product!.id);
-            return {
-              id: p.product!.id,
-              slug: p.product!.slug,
-              name: p.product!.name,
-              price: p.product!.price,
-              discountPrice: d.discountPrice,
-              discountSource: d.discountSource,
-              stock: p.product!.stock,
-              weightGram: p.product!.weightGram,
-              isAvailable: p.product!.isActive,
-              imageUrl: p.product!.imageUrl,
-              hasVariants: p.product!.hasVariants,
-              avgRating: p.product!.avgRating ?? 0,
-              reviewCount: p.product!.reviewCount ?? 0,
-              soldCount: soldCountMap.get(p.product!.id) ?? 0,
-              shippingVoucher: voucher?.shipping
-                ? {
-                    badgeLabel: voucher.shipping.badgeLabel,
-                    isBrandExclusive: voucher.shipping.isBrandExclusive,
-                  }
-                : null,
-              discountVoucher: voucher?.product
-                ? {
-                    badgeLabel: voucher.product.badgeLabel,
-                    isBrandExclusive: voucher.product.isBrandExclusive,
-                  }
-                : null,
-            };
-          })()
-        : null,
-      // Shop the Look: keep inactive tagged products visible for context, but
-      // mark them unavailable so UI can disable commerce safely.
-      taggedProducts: p.taggedProducts
-        .filter((tp) => tp.product)
-        .map((tp) => {
-          // Per-tag promoPrice ikut dipertimbangkan (lowest wins).
-          const d = resolveFeedProductDiscount(tp.product!, now, tp.promoPrice);
-          const voucher = voucherPreviewMap.get(tp.product!.id);
+/**
+ * Serialize satu row FeedPost (hasil query dgn buildFeedPostInclude) jadi
+ * shape JSON publik FeedPostListItem. Diekstrak dari closure `.map()` di
+ * listFeedPosts (pure mechanical move) — logic SAMA PERSIS, referensi ke
+ * closure var lama (now/viewerLikedIds/viewerSavedIds/
+ * viewerFollowedAuthorIds/soldCountMap/voucherPreviewMap/viewerUserId)
+ * diganti jadi ctx.<field>. Reusable oleh handler lain yang butuh JSON post
+ * identik dengan feed utama (mis. GET /api/feed/hashtags/[name]).
+ *
+ * Sengaja TANPA anotasi return type eksplisit `: FeedPostListItem` — body
+ * ini mengirim 2 field (`taggedUsers`, `viewerTagHidden`) yang belum
+ * dideklarasikan di tipe FeedPostListItem (lib/feed/types.ts), gap
+ * pre-existing dari sebelum ekstraksi ini (di luar scope task ini, lihat
+ * lib/feed/types.ts). Closure `.map()` yang lama tidak pernah excess-property
+ * checked terhadap FeedPostListItem (union inference lewat generic `.map<U>`,
+ * lalu assignability biasa ke `FeedPostListItem[]` yang membolehkan field
+ * ekstra) — anotasi return type di sini akan membuat literal ini "fresh"
+ * dan KETAT di-cek, memunculkan error TS baru utk 2 field itu. Membiarkan
+ * TS infer return type mereplikasi persis perilaku type-check yang lama.
+ */
+export function serializeFeedPostRow(
+  p: FeedPostRow,
+  ctx: FeedBatchContext,
+) {
+  const playbackUrls = buildFeedVideoPlaybackUrls({
+    videoUrl: p.videoUrl,
+    videoGuid: p.videoGuid,
+  });
+  const authorDisplayName = brandDisplayName(p.author.role, p.author.name);
+  const authorPhoto = brandPhotoUrl(
+    p.author.role,
+    p.author.profilePhotoUrl
+  );
+  const isOfficial = p.authorRole === "ADMIN";
+  return {
+    id: p.id,
+    shareVersion: buildFeedShareVersion(p),
+    kind: p.kind,
+    tab: p.tab,
+    status: p.status,
+    title: p.title,
+    description: p.description,
+    // Sign URL dengan Bunny CDN token kalau BUNNY_TOKEN_SECURITY_KEY di-set
+    // (defense untuk hotlink protection). Tanpa env, return as-is.
+    videoUrl: playbackUrls.videoUrl,
+    videoDataSaverUrl: playbackUrls.videoDataSaverUrl,
+    thumbnailUrl: signBunnyUrl(p.thumbnailUrl) ?? null,
+    thumbnailBlurhash: p.thumbnailBlurhash,
+    videoDurationSec: p.videoDurationSec,
+    videoWidth: p.videoWidth,
+    videoHeight: p.videoHeight,
+    ...feedAccessibilityPayload(p, signBunnyUrl),
+    product: p.product
+      ? (() => {
+          // discountPrice = harga AKTIF (effectivePrice) hasil
+          // resolveActiveDiscount, BUKAN raw Product.discountPrice. Plus
+          // discountSource supaya app label "Flash Sale" vs "Diskon" benar.
+          const d = resolveFeedProductDiscount(p.product!, ctx.now);
+          const voucher = ctx.voucherPreviewMap.get(p.product!.id);
           return {
-            id: tp.product!.id,
-            slug: tp.product!.slug,
-            name: tp.product!.name,
-            price: tp.product!.price,
+            id: p.product!.id,
+            slug: p.product!.slug,
+            name: p.product!.name,
+            price: p.product!.price,
             discountPrice: d.discountPrice,
             discountSource: d.discountSource,
-            stock: tp.product!.stock,
-            weightGram: tp.product!.weightGram,
-            isAvailable: tp.product!.isActive,
-            imageUrl: tp.product!.imageUrl,
-            position: tp.position,
-            promoPrice: tp.promoPrice ?? null,
-            hasVariants: tp.product!.hasVariants,
-            avgRating: tp.product!.avgRating ?? 0,
-            reviewCount: tp.product!.reviewCount ?? 0,
-            soldCount: soldCountMap.get(tp.product!.id) ?? 0,
+            stock: p.product!.stock,
+            weightGram: p.product!.weightGram,
+            isAvailable: p.product!.isActive,
+            imageUrl: p.product!.imageUrl,
+            hasVariants: p.product!.hasVariants,
+            avgRating: p.product!.avgRating ?? 0,
+            reviewCount: p.product!.reviewCount ?? 0,
+            soldCount: ctx.soldCountMap.get(p.product!.id) ?? 0,
             shippingVoucher: voucher?.shipping
               ? {
                   badgeLabel: voucher.shipping.badgeLabel,
@@ -580,89 +641,123 @@ export async function listFeedPosts({
                 }
               : null,
           };
-        }),
-      taggedUsers: serializeTaggedUsers(
-        p.taggedUsers,
-        new Map(p.media.map((m, index) => [m.id, index])),
-      ),
-      // Tag People (final review Spec B fix) — "apakah tag milik VIEWER
-      // ini disembunyikan", null kalau viewer tidak ditandai di post ini.
-      // Dipakai seed sheet Opsi Tag supaya "un-hide" tetap reachable
-      // setelah app restart (server jadi sumber kebenaran, bukan
-      // session-local state).
-      viewerTagHidden: resolveViewerTagHidden(p.taggedUsers, viewerUserId ?? null),
-      promo:
-        p.kind === "PROMO" &&
-        p.promoOriginalPrice != null &&
-        p.promoDiscountPrice != null
-          ? {
-              originalPrice: p.promoOriginalPrice,
-              discountPrice: p.promoDiscountPrice,
-              startsAt: p.promoStartsAt?.toISOString() ?? null,
-              endsAt: p.promoEndsAt?.toISOString() ?? null,
-            }
-          : null,
-      // PHOTO_CAROUSEL media — 1-8 image entries ordered by sortOrder.
-      // Video posts return empty array (kind != PHOTO_CAROUSEL).
-      media: p.media.map((m) => {
-        const mediaPlaybackUrls = buildFeedVideoPlaybackUrls({
-          videoUrl: m.url,
-        });
+        })()
+      : null,
+    // Shop the Look: keep inactive tagged products visible for context, but
+    // mark them unavailable so UI can disable commerce safely.
+    taggedProducts: p.taggedProducts
+      .filter((tp) => tp.product)
+      .map((tp) => {
+        // Per-tag promoPrice ikut dipertimbangkan (lowest wins).
+        const d = resolveFeedProductDiscount(tp.product!, ctx.now, tp.promoPrice);
+        const voucher = ctx.voucherPreviewMap.get(tp.product!.id);
         return {
-          id: m.id,
-          mediaType: m.mediaType,
-          url: mediaPlaybackUrls.videoUrl ?? m.url,
-          ...(m.mediaType === "video"
-            ? { videoDataSaverUrl: mediaPlaybackUrls.videoDataSaverUrl }
-            : {}),
-          thumbnailUrl: m.thumbnailUrl,
-          width: m.width,
-          height: m.height,
-          sortOrder: m.sortOrder,
-          altText: m.altText,
+          id: tp.product!.id,
+          slug: tp.product!.slug,
+          name: tp.product!.name,
+          price: tp.product!.price,
+          discountPrice: d.discountPrice,
+          discountSource: d.discountSource,
+          stock: tp.product!.stock,
+          weightGram: tp.product!.weightGram,
+          isAvailable: tp.product!.isActive,
+          imageUrl: tp.product!.imageUrl,
+          position: tp.position,
+          promoPrice: tp.promoPrice ?? null,
+          hasVariants: tp.product!.hasVariants,
+          avgRating: tp.product!.avgRating ?? 0,
+          reviewCount: tp.product!.reviewCount ?? 0,
+          soldCount: ctx.soldCountMap.get(tp.product!.id) ?? 0,
+          shippingVoucher: voucher?.shipping
+            ? {
+                badgeLabel: voucher.shipping.badgeLabel,
+                isBrandExclusive: voucher.shipping.isBrandExclusive,
+              }
+            : null,
+          discountVoucher: voucher?.product
+            ? {
+                badgeLabel: voucher.product.badgeLabel,
+                isBrandExclusive: voucher.product.isBrandExclusive,
+              }
+            : null,
         };
       }),
-      likeCount: p.likeCount,
-      commentCount: p.commentCount,
-      viewCount: p.viewCount,
-      shareCount: p.shareCount,
-      author: {
-        id: p.author.id,
-        // Akun official (admin) → brand "Natalo Petshop" + foto null (klien
-        // render logo). Nama asli/foto pemilik tidak boleh bocor.
-        name: authorDisplayName,
-        username: p.author.username ?? null,
-        role: (p.authorRole === "ADMIN" ? "ADMIN" : "CUSTOMER") as
-          | "ADMIN"
-          | "CUSTOMER",
-        profilePhotoUrl: authorPhoto,
-        // Chip "Ikuti/Mengikuti" di feed app — snapshot saat fetch; toggle
-        // selanjutnya di-track client-side (followOverrides).
-        isFollowing: viewerFollowedAuthorIds.has(p.author.id),
-      },
-      recentLikers: p.likes.map((like) => ({
-        id: like.user.id,
-        name: brandDisplayName(like.user.role, like.user.name),
-        username: like.user.username ?? null,
-        role: (like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as
-          | "ADMIN"
-          | "CUSTOMER",
-        profilePhotoUrl: brandPhotoUrl(
-          like.user.role,
-          like.user.profilePhotoUrl
-        ),
-        avatarUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
-      })),
-      publishedAt: p.publishedAt?.toISOString() ?? null,
-      createdAt: p.createdAt.toISOString(),
-      viewerLiked: viewerLikedIds.has(p.id),
-      viewerSaved: viewerSavedIds.has(p.id),
-    };
-  });
-
-  return {
-    items,
-    nextCursor: hasMore ? sliced[sliced.length - 1].id : null,
+    taggedUsers: serializeTaggedUsers(
+      p.taggedUsers,
+      new Map(p.media.map((m, index) => [m.id, index])),
+    ),
+    // Tag People (final review Spec B fix) — "apakah tag milik VIEWER
+    // ini disembunyikan", null kalau viewer tidak ditandai di post ini.
+    // Dipakai seed sheet Opsi Tag supaya "un-hide" tetap reachable
+    // setelah app restart (server jadi sumber kebenaran, bukan
+    // session-local state).
+    viewerTagHidden: resolveViewerTagHidden(p.taggedUsers, ctx.viewerUserId ?? null),
+    promo:
+      p.kind === "PROMO" &&
+      p.promoOriginalPrice != null &&
+      p.promoDiscountPrice != null
+        ? {
+            originalPrice: p.promoOriginalPrice,
+            discountPrice: p.promoDiscountPrice,
+            startsAt: p.promoStartsAt?.toISOString() ?? null,
+            endsAt: p.promoEndsAt?.toISOString() ?? null,
+          }
+        : null,
+    // PHOTO_CAROUSEL media — 1-8 image entries ordered by sortOrder.
+    // Video posts return empty array (kind != PHOTO_CAROUSEL).
+    media: p.media.map((m) => {
+      const mediaPlaybackUrls = buildFeedVideoPlaybackUrls({
+        videoUrl: m.url,
+      });
+      return {
+        id: m.id,
+        mediaType: m.mediaType,
+        url: mediaPlaybackUrls.videoUrl ?? m.url,
+        ...(m.mediaType === "video"
+          ? { videoDataSaverUrl: mediaPlaybackUrls.videoDataSaverUrl }
+          : {}),
+        thumbnailUrl: m.thumbnailUrl,
+        width: m.width,
+        height: m.height,
+        sortOrder: m.sortOrder,
+        altText: m.altText,
+      };
+    }),
+    likeCount: p.likeCount,
+    commentCount: p.commentCount,
+    viewCount: p.viewCount,
+    shareCount: p.shareCount,
+    author: {
+      id: p.author.id,
+      // Akun official (admin) → brand "Natalo Petshop" + foto null (klien
+      // render logo). Nama asli/foto pemilik tidak boleh bocor.
+      name: authorDisplayName,
+      username: p.author.username ?? null,
+      role: (p.authorRole === "ADMIN" ? "ADMIN" : "CUSTOMER") as
+        | "ADMIN"
+        | "CUSTOMER",
+      profilePhotoUrl: authorPhoto,
+      // Chip "Ikuti/Mengikuti" di feed app — snapshot saat fetch; toggle
+      // selanjutnya di-track client-side (followOverrides).
+      isFollowing: ctx.viewerFollowedAuthorIds.has(p.author.id),
+    },
+    recentLikers: p.likes.map((like) => ({
+      id: like.user.id,
+      name: brandDisplayName(like.user.role, like.user.name),
+      username: like.user.username ?? null,
+      role: (like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as
+        | "ADMIN"
+        | "CUSTOMER",
+      profilePhotoUrl: brandPhotoUrl(
+        like.user.role,
+        like.user.profilePhotoUrl
+      ),
+      avatarUrl: brandPhotoUrl(like.user.role, like.user.profilePhotoUrl),
+    })),
+    publishedAt: p.publishedAt?.toISOString() ?? null,
+    createdAt: p.createdAt.toISOString(),
+    viewerLiked: ctx.viewerLikedIds.has(p.id),
+    viewerSaved: ctx.viewerSavedIds.has(p.id),
   };
 }
 
