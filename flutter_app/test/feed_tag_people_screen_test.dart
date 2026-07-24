@@ -17,7 +17,7 @@ void main() {
       {List<NewPostUserTag> initial = const []}) async {
     await tester.pumpWidget(MaterialApp(
       home: FeedTagPeopleScreen(
-        photoFiles: [File('test/assets/placeholder.png')],
+        photoImages: [FileImage(File('test/assets/placeholder.png'))],
         initialTags: initial,
         searchUsers: (q, {suggested = false}) async => const [],
       ),
@@ -59,7 +59,7 @@ void main() {
             popped = await Navigator.of(context).push<List<NewPostUserTag>>(
               MaterialPageRoute(
                 builder: (_) => FeedTagPeopleScreen(
-                  photoFiles: [File('test/assets/placeholder.png')],
+                  photoImages: [FileImage(File('test/assets/placeholder.png'))],
                   initialTags: const [tag],
                   searchUsers: (q, {suggested = false}) async => const [],
                 ),

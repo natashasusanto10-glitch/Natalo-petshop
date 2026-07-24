@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -77,13 +76,13 @@ List<TagSearchUser> parseTagSearchUsers(dynamic data) {
 /// 0-1, per-foto lewat `mediaIndex`). Pill bisa digeser; tap pill membuka
 /// tombol X untuk menghapus. Maksimal `_kMaxTags` tag per postingan.
 class FeedTagPeopleScreen extends StatefulWidget {
-  final List<File> photoFiles;
+  final List<ImageProvider> photoImages;
   final List<NewPostUserTag> initialTags;
   final TagUserSearchFn searchUsers;
 
   const FeedTagPeopleScreen({
     super.key,
-    required this.photoFiles,
+    required this.photoImages,
     this.initialTags = const [],
     this.searchUsers = defaultTagUserSearch,
   });
@@ -100,14 +99,14 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
       PageController(initialPage: _pageIndex);
 
   // Aspect ratio ASLI tiap foto (width/height), keyed by index di
-  // widget.photoFiles (final review Spec B fix — koordinat tag drift).
+  // widget.photoImages (final review Spec B fix — koordinat tag drift).
   // Dipakai fittedPhotoRect supaya fraksi tag dihitung relatif area FOTO
   // yang benar-benar ter-render (BoxFit.contain bisa letterbox kalau
   // aspect ratio foto != container), bukan container mentah. Di-load async
-  // per file via ui.instantiateImageCodec (native, ~50ms — pola sama
-  // dengan feed_media_picker_screen.dart _loadPreviewImageSize). Entry
-  // absen (masih loading / gagal decode) → fallback ke aspect container
-  // sendiri di build() (rect = container penuh, setara perilaku lama).
+  // per ImageProvider via ImageStream.resolve (mendukung FileImage MAUPUN
+  // NetworkImage — persiapan flow edit, Spec D). Entry absen (masih
+  // loading / gagal decode) → fallback ke aspect container sendiri di
+  // build() (rect = container penuh, setara perilaku lama).
   final Map<int, double> _photoAspectRatios = {};
 
   @override
@@ -117,19 +116,35 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
   }
 
   Future<void> _loadPhotoAspectRatios() async {
-    for (var i = 0; i < widget.photoFiles.length; i++) {
+    for (var i = 0; i < widget.photoImages.length; i++) {
       try {
-        final bytes = await widget.photoFiles[i].readAsBytes();
-        final codec = await ui.instantiateImageCodec(bytes);
-        final frame = await codec.getNextFrame();
-        final ratio = frame.image.width / frame.image.height;
-        frame.image.dispose();
+        final image = await _resolveImage(widget.photoImages[i]);
+        final ratio = image.width / image.height;
+        image.dispose();
         if (!mounted) return;
         setState(() => _photoAspectRatios[i] = ratio);
       } catch (_) {
         // Biarkan tanpa entry — fallback ke aspect container di build().
       }
     }
+  }
+
+  Future<ui.Image> _resolveImage(ImageProvider provider) {
+    final completer = Completer<ui.Image>();
+    final stream = provider.resolve(const ImageConfiguration());
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (info, _) {
+        if (!completer.isCompleted) completer.complete(info.image);
+        stream.removeListener(listener);
+      },
+      onError: (error, stack) {
+        if (!completer.isCompleted) completer.completeError(error, stack);
+        stream.removeListener(listener);
+      },
+    );
+    stream.addListener(listener);
+    return completer.future;
   }
 
   @override
@@ -326,11 +341,11 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
               Expanded(
                 child: PageView.builder(
                   controller: _pageController,
-                  itemCount: widget.photoFiles.length,
+                  itemCount: widget.photoImages.length,
                   onPageChanged: (i) => setState(() => _pageIndex = i),
                   itemBuilder: (context, index) {
                     return _TaggablePhotoPage(
-                      file: widget.photoFiles[index],
+                      image: widget.photoImages[index],
                       tags: _tags.where((t) => t.mediaIndex == index).toList(),
                       revealRemoveUserId: _revealRemoveUserId,
                       photoAspectRatio: _photoAspectRatios[index],
@@ -343,18 +358,18 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
                 ),
               ),
               // Ruang bawah untuk dots + hint pill mengambang.
-              SizedBox(height: widget.photoFiles.length > 1 ? 60 : 48),
+              SizedBox(height: widget.photoImages.length > 1 ? 60 : 48),
             ],
           ),
           // Dots carousel (multi-foto) — mengambang di atas hint pill.
-          if (widget.photoFiles.length > 1)
+          if (widget.photoImages.length > 1)
             Positioned(
               left: 0,
               right: 0,
               bottom: 58,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(widget.photoFiles.length, (i) {
+                children: List.generate(widget.photoImages.length, (i) {
                   final active = i == _pageIndex;
                   return AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
@@ -416,7 +431,7 @@ class _FeedTagPeopleScreenState extends State<FeedTagPeopleScreen> {
 }
 
 class _TaggablePhotoPage extends StatelessWidget {
-  final File file;
+  final ImageProvider image;
   final List<NewPostUserTag> tags;
   final String? revealRemoveUserId;
   // Aspect ratio ASLI foto (width/height) — null selama masih loading /
@@ -431,7 +446,7 @@ class _TaggablePhotoPage extends StatelessWidget {
   final void Function(NewPostUserTag tag) onPillRemove;
 
   const _TaggablePhotoPage({
-    required this.file,
+    required this.image,
     required this.tags,
     required this.revealRemoveUserId,
     required this.photoAspectRatio,
@@ -448,7 +463,7 @@ class _TaggablePhotoPage extends StatelessWidget {
         final renderSize =
             Size(constraints.maxWidth, constraints.maxHeight);
         // Rect area yang BENAR-BENAR ditempati foto di dalam renderSize
-        // (Image.file di bawah pakai BoxFit.contain juga) — kalau aspect
+        // (Image di bawah pakai BoxFit.contain juga) — kalau aspect
         // ratio foto belum diketahui (masih loading/gagal), fallback ke
         // aspect container sendiri (fittedPhotoRect jadi no-op, setara
         // perilaku lama).
@@ -471,8 +486,8 @@ class _TaggablePhotoPage extends StatelessWidget {
               // saat pill di-drag tidak ikut me-repaint bitmap foto (audit
               // polish Spec B: sumber jank saat geser tag).
               RepaintBoundary(
-                child: Image.file(
-                  file,
+                child: Image(
+                  image: image,
                   fit: BoxFit.contain,
                   errorBuilder: (context, error, stack) => Container(
                     color: Colors.grey.shade900,

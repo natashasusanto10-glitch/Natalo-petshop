@@ -232,7 +232,8 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
         : await Navigator.of(context).push<List<NewPostUserTag>>(
             MaterialPageRoute(
               builder: (_) => FeedTagPeopleScreen(
-                photoFiles: _photoFiles,
+                photoImages:
+                    _photoFiles.map<ImageProvider>((f) => FileImage(f)).toList(),
                 initialTags: _userTags,
               ),
             ),
