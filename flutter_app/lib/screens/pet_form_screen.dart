@@ -51,6 +51,9 @@ class _PetFormScreenState extends State<PetFormScreen> {
   File? _pickedPhoto;
   bool _saving = false;
   bool _deleting = false;
+  bool? _sterilized;
+  final _allergyController = TextEditingController();
+  final _healthNoteController = TextEditingController();
 
   bool get _isEdit => widget.pet != null;
 
@@ -66,6 +69,9 @@ class _PetFormScreenState extends State<PetFormScreen> {
         : kPetTypes.first;
     _birthDate = pet?.birthDate;
     _gender = pet?.gender;
+    _sterilized = widget.pet?.sterilized;
+    _allergyController.text = widget.pet?.allergy ?? '';
+    _healthNoteController.text = widget.pet?.healthNote ?? '';
   }
 
   @override
@@ -73,6 +79,8 @@ class _PetFormScreenState extends State<PetFormScreen> {
     _nameController.dispose();
     _breedController.dispose();
     _bioController.dispose();
+    _allergyController.dispose();
+    _healthNoteController.dispose();
     super.dispose();
   }
 
@@ -137,6 +145,13 @@ class _PetFormScreenState extends State<PetFormScreen> {
               birthDate: _birthDate,
               gender: _gender,
               bio: bio.isEmpty ? null : bio,
+              sterilized: _sterilized,
+              allergy: _allergyController.text.trim().isEmpty
+                  ? null
+                  : _allergyController.text.trim(),
+              healthNote: _healthNoteController.text.trim().isEmpty
+                  ? null
+                  : _healthNoteController.text.trim(),
             )
           : await petService.createPet(
               name: name,
@@ -145,6 +160,13 @@ class _PetFormScreenState extends State<PetFormScreen> {
               birthDate: _birthDate,
               gender: _gender,
               bio: bio.isEmpty ? null : bio,
+              sterilized: _sterilized,
+              allergy: _allergyController.text.trim().isEmpty
+                  ? null
+                  : _allergyController.text.trim(),
+              healthNote: _healthNoteController.text.trim().isEmpty
+                  ? null
+                  : _healthNoteController.text.trim(),
             );
       final photo = _pickedPhoto;
       if (photo != null) {
@@ -341,6 +363,45 @@ class _PetFormScreenState extends State<PetFormScreen> {
               hintText: 'Ceritakan sedikit tentang pet ini',
             ),
           ),
+          const SizedBox(height: 16),
+          const _FieldLabel('Steril'),
+          Row(
+            children: [
+              Expanded(
+                child: _SterilChip(
+                  label: 'Ya',
+                  selected: _sterilized == true,
+                  onTap: () => setState(() =>
+                      _sterilized = _sterilized == true ? null : true),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _SterilChip(
+                  label: 'Belum',
+                  selected: _sterilized == false,
+                  onTap: () => setState(() =>
+                      _sterilized = _sterilized == false ? null : false),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const _FieldLabel('Alergi (opsional)'),
+          TextField(
+            controller: _allergyController,
+            maxLength: 100,
+            decoration: _healthFieldDecoration(context, 'Mis. Ayam'),
+          ),
+          const SizedBox(height: 8),
+          const _FieldLabel('Kondisi khusus (opsional)'),
+          TextField(
+            controller: _healthNoteController,
+            maxLength: 150,
+            maxLines: 2,
+            minLines: 1,
+            decoration: _healthFieldDecoration(context, 'Mis. Sensitif dingin'),
+          ),
           if (_isEdit) ...[
             const SizedBox(height: 32),
             SizedBox(
@@ -498,6 +559,62 @@ class _GenderChip extends StatelessWidget {
       ),
     );
   }
+}
+
+class _SterilChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _SterilChip(
+      {required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected
+                ? (isDark
+                    ? _brandBlue.withValues(alpha: 0.20)
+                    : NataloColors.primarySoft)
+                : Colors.transparent,
+            border: Border.all(
+                color: selected ? _brandBlue : cs.outlineVariant),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(label,
+              style: TextStyle(
+                  fontWeight: NataloWeight.strong,
+                  color: selected ? _brandBlue : cs.onSurfaceVariant)),
+        ),
+      ),
+    );
+  }
+}
+
+InputDecoration _healthFieldDecoration(BuildContext context, String hint) {
+  final cs = Theme.of(context).colorScheme;
+  return InputDecoration(
+    filled: true,
+    fillColor: cs.surface,
+    hintText: hint,
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: BorderSide(color: cs.outlineVariant),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: BorderSide(color: cs.outlineVariant),
+    ),
+  );
 }
 
 class _PhotoPicker extends StatelessWidget {
