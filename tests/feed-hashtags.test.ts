@@ -8,6 +8,7 @@ import {
   syncPostHashtags,
   decrementHashtagCounts,
   hashtagPostsWhere,
+  searchHashtags,
 } from "../lib/feed/hashtags";
 
 test("extractHashtags: dasar — lowercase, urutan kemunculan", () => {
@@ -135,4 +136,37 @@ test("hashtagPostsWhere: gabungkan PUBLIC_FEED_POST_WHERE + relasi tag", () => {
   assert.deepEqual(where.hashtags, {
     some: { hashtag: { name: "kucing" } },
   });
+});
+
+test("searchHashtags: prefix lowercase, urut postCount desc, maks 8", async () => {
+  const captured: unknown[] = [];
+  const fakeDb = {
+    hashtag: {
+      findMany: async (args: unknown) => {
+        captured.push(args);
+        return [{ name: "kucing", postCount: 24 }];
+      },
+    },
+  };
+  const rows = await searchHashtags(fakeDb, "Ku");
+  assert.deepEqual(rows, [{ name: "kucing", postCount: 24 }]);
+  const args = captured[0] as {
+    where: { name: { startsWith: string } };
+    orderBy: { postCount: "desc" };
+    take: number;
+  };
+  assert.equal(args.where.name.startsWith, "ku"); // di-lowercase
+  assert.equal(args.orderBy.postCount, "desc");
+  assert.equal(args.take, 8);
+});
+
+test("searchHashtags: q kosong/whitespace → [] tanpa sentuh db", async () => {
+  const fakeDb = {
+    hashtag: {
+      findMany: async () => {
+        throw new Error("tidak boleh dipanggil");
+      },
+    },
+  };
+  assert.deepEqual(await searchHashtags(fakeDb, "  "), []);
 });

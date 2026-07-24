@@ -119,3 +119,29 @@ export function hashtagPostsWhere(name: string) {
     hashtags: { some: { hashtag: { name } } },
   };
 }
+
+export type HashtagSearchDb = {
+  hashtag: {
+    findMany: (args: {
+      where: { name: { startsWith: string } };
+      orderBy: { postCount: "desc" };
+      take: number;
+      select: { name: true; postCount: true };
+    }) => Promise<{ name: string; postCount: number }[]>;
+  };
+};
+
+/** Autocomplete: prefix match lowercase, urut postCount desc, maks 8. */
+export async function searchHashtags(
+  db: HashtagSearchDb,
+  q: string,
+): Promise<{ name: string; postCount: number }[]> {
+  const prefix = q.trim().toLowerCase();
+  if (prefix.length === 0) return [];
+  return db.hashtag.findMany({
+    where: { name: { startsWith: prefix } },
+    orderBy: { postCount: "desc" },
+    take: 8,
+    select: { name: true, postCount: true },
+  });
+}
