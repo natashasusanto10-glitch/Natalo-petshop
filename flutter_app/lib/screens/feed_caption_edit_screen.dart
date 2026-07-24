@@ -96,14 +96,16 @@ class _FeedCaptionEditScreenState extends State<FeedCaptionEditScreen> {
   /// cuma satu tombol — kalau tidak, user tinggal pencet back/tap luar utk
   /// bypass validasi.
   void _commitAndPop() {
-    if (extractHashtagsFromText(_controller.text).length > 5) {
+    // Jika text tidak berubah dari awal, skip validasi — user tinggal
+    // membuka & menutup draft lama, bukan commit hal baru.
+    final textChanged = _controller.text != widget.initialCaption;
+    if (textChanged && extractHashtagsFromText(_controller.text).length > 5) {
       setState(() => _hashtagLimitError = 'Maksimal 5 hashtag per postingan.');
       return;
     }
     AppHaptics.tap();
     Navigator.of(context).pop(_controller.text);
   }
-
   @override
   Widget build(BuildContext context) {
     return PopScope(
