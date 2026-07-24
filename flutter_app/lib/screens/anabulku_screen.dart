@@ -9,6 +9,7 @@ import '../utils/haptics.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import 'pet_form_screen.dart';
+import 'pet_profile_screen.dart';
 
 const _brandBlue = NataloColors.primary;
 
@@ -63,10 +64,10 @@ class _AnabulkuScreenState extends State<AnabulkuScreen> {
     if (created == true) await _load();
   }
 
-  Future<void> _openEditForm(Pet pet) async {
+  Future<void> _openProfile(Pet pet) async {
     AppHaptics.tap();
     final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => PetFormScreen(pet: pet)),
+      MaterialPageRoute(builder: (_) => PetProfileScreen(pet: pet)),
     );
     if (changed == true) await _load();
   }
@@ -103,7 +104,7 @@ class _AnabulkuScreenState extends State<AnabulkuScreen> {
                       ? _EmptyState(onAdd: _openAddForm)
                       : _PetList(
                           pets: _pets,
-                          onTapPet: _openEditForm,
+                          onTapPet: _openProfile,
                           onAdd: _openAddForm,
                         ),
         ),

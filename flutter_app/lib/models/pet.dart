@@ -9,6 +9,27 @@ const List<String> kPetTypes = [
   'Lainnya',
 ];
 
+/// Gender pet — 'male' | 'female' | null (belum diisi).
+enum PetGender {
+  male,
+  female;
+
+  static PetGender? fromApi(String? value) {
+    switch (value) {
+      case 'male':
+        return PetGender.male;
+      case 'female':
+        return PetGender.female;
+      default:
+        return null;
+    }
+  }
+
+  String get apiValue => name;
+
+  String get label => this == PetGender.male ? 'Jantan' : 'Betina';
+}
+
 class Pet {
   final String id;
   final String name;
@@ -16,6 +37,8 @@ class Pet {
   final String? breed;
   final String? photoUrl;
   final DateTime? birthDate;
+  final PetGender? gender;
+  final String? bio;
 
   const Pet({
     required this.id,
@@ -24,6 +47,8 @@ class Pet {
     this.breed,
     this.photoUrl,
     this.birthDate,
+    this.gender,
+    this.bio,
   });
 
   factory Pet.fromJson(Map<String, dynamic> json) {
@@ -36,6 +61,8 @@ class Pet {
       photoUrl: json['photoUrl'] as String?,
       birthDate:
           birthDateRaw == null ? null : DateTime.tryParse(birthDateRaw),
+      gender: PetGender.fromApi(json['gender'] as String?),
+      bio: json['bio'] as String?,
     );
   }
 
@@ -45,6 +72,8 @@ class Pet {
     String? breed,
     String? photoUrl,
     DateTime? birthDate,
+    PetGender? gender,
+    String? bio,
   }) {
     return Pet(
       id: id,
@@ -53,6 +82,8 @@ class Pet {
       breed: breed ?? this.breed,
       photoUrl: photoUrl ?? this.photoUrl,
       birthDate: birthDate ?? this.birthDate,
+      gender: gender ?? this.gender,
+      bio: bio ?? this.bio,
     );
   }
 

@@ -34,8 +34,10 @@ class PetFormScreen extends StatefulWidget {
 class _PetFormScreenState extends State<PetFormScreen> {
   late final TextEditingController _nameController;
   late final TextEditingController _breedController;
+  late final TextEditingController _bioController;
   String _type = kPetTypes.first;
   DateTime? _birthDate;
+  PetGender? _gender;
   File? _pickedPhoto;
   bool _saving = false;
   bool _deleting = false;
@@ -48,16 +50,19 @@ class _PetFormScreenState extends State<PetFormScreen> {
     final pet = widget.pet;
     _nameController = TextEditingController(text: pet?.name ?? '');
     _breedController = TextEditingController(text: pet?.breed ?? '');
+    _bioController = TextEditingController(text: pet?.bio ?? '');
     _type = pet != null && kPetTypes.contains(pet.type)
         ? pet.type
         : kPetTypes.first;
     _birthDate = pet?.birthDate;
+    _gender = pet?.gender;
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _breedController.dispose();
+    _bioController.dispose();
     super.dispose();
   }
 
@@ -112,6 +117,7 @@ class _PetFormScreenState extends State<PetFormScreen> {
     setState(() => _saving = true);
     try {
       final breed = _breedController.text.trim();
+      final bio = _bioController.text.trim();
       Pet pet = _isEdit
           ? await petService.updatePet(
               widget.pet!.id,
@@ -119,12 +125,16 @@ class _PetFormScreenState extends State<PetFormScreen> {
               type: _type,
               breed: breed.isEmpty ? null : breed,
               birthDate: _birthDate,
+              gender: _gender,
+              bio: bio.isEmpty ? null : bio,
             )
           : await petService.createPet(
               name: name,
               type: _type,
               breed: breed.isEmpty ? null : breed,
               birthDate: _birthDate,
+              gender: _gender,
+              bio: bio.isEmpty ? null : bio,
             );
       final photo = _pickedPhoto;
       if (photo != null) {
@@ -303,6 +313,24 @@ class _PetFormScreenState extends State<PetFormScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          const _FieldLabel('Gender (opsional)'),
+          _GenderSelector(
+            value: _gender,
+            enabled: !busy,
+            onChanged: (v) => setState(() => _gender = v),
+          ),
+          const SizedBox(height: 16),
+          const _FieldLabel('Bio (opsional)'),
+          TextField(
+            controller: _bioController,
+            enabled: !busy,
+            maxLength: 150,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              hintText: 'Ceritakan sedikit tentang pet ini',
+            ),
+          ),
           if (_isEdit) ...[
             const SizedBox(height: 32),
             SizedBox(
@@ -355,6 +383,102 @@ class _FieldLabel extends StatelessWidget {
           fontSize: 12,
           fontWeight: FontWeight.w700,
           color: cs.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
+class _GenderSelector extends StatelessWidget {
+  final PetGender? value;
+  final bool enabled;
+  final ValueChanged<PetGender?> onChanged;
+
+  const _GenderSelector({
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _GenderChip(
+            label: 'Jantan',
+            icon: Icons.male_rounded,
+            selected: value == PetGender.male,
+            enabled: enabled,
+            onTap: () =>
+                onChanged(value == PetGender.male ? null : PetGender.male),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _GenderChip(
+            label: 'Betina',
+            icon: Icons.female_rounded,
+            selected: value == PetGender.female,
+            enabled: enabled,
+            onTap: () => onChanged(
+                value == PetGender.female ? null : PetGender.female),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GenderChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _GenderChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? NataloColors.primarySoft : null,
+            border: Border.all(
+              color: selected ? _brandBlue : cs.outlineVariant,
+            ),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon,
+                  size: 18, color: selected ? _brandBlue : cs.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? _brandBlue : cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
