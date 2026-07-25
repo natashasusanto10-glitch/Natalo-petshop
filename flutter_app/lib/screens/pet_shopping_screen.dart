@@ -566,3 +566,10 @@ class _SuggestionCard extends StatelessWidget {
     );
   }
 }
+
+/// Argumen named-route `/pets/belanja`.
+class PetShoppingArgs {
+  final String petId;
+  final String petName;
+  const PetShoppingArgs({required this.petId, required this.petName});
+}

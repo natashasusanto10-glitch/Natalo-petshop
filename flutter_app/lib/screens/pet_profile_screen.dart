@@ -6,12 +6,15 @@ import 'package:flutter/material.dart';
 
 import '../models/pet.dart';
 import '../models/pet_care_record.dart';
+import '../models/pet_shopping.dart';
 import '../services/pet_service.dart';
 import '../theme/natalo_colors.dart';
 import '../theme/natalo_text.dart';
 import '../utils/haptics.dart';
+import '../widgets/pet_shopping_rail.dart';
 import 'pet_care_screen.dart';
 import 'pet_form_screen.dart';
+import 'pet_shopping_screen.dart';
 
 const _brandBlue = NataloColors.primary;
 
@@ -52,6 +55,7 @@ class _PetProfileScreenState extends State<PetProfileScreen>
     );
     _loadCare();
     _extractPhotoTint();
+    _loadShopping();
   }
 
   /// Ambil warna rata-rata foto pet (sampling piksel) untuk tint cover.
@@ -151,6 +155,35 @@ class _PetProfileScreenState extends State<PetProfileScreen>
     await _loadCare();
   }
 
+  PetShopping? _shopping;
+
+  Future<void> _loadShopping() async {
+    try {
+      final data = await petService.fetchPetShopping(widget.pet.id);
+      if (!mounted) return;
+      setState(() => _shopping = data);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _shopping = const PetShopping(
+            usedCount: 0,
+            used: [],
+            manual: [],
+            suggested: [],
+          ));
+    }
+  }
+
+  void _openBelanja() {
+    Navigator.pushNamed(
+      context,
+      '/pets/belanja',
+      arguments: PetShoppingArgs(
+        petId: widget.pet.id,
+        petName: widget.pet.name,
+      ),
+    );
+  }
+
   Future<void> _openEdit() async {
     AppHaptics.tap();
     final result = await Navigator.of(context).push<Object>(
@@ -205,7 +238,12 @@ class _PetProfileScreenState extends State<PetProfileScreen>
           _Entrance(
             controller: _entrance,
             start: 0.28,
-            child: _StatsRow(pet: pet, onCareTap: _openCare),
+            child: _StatsRow(
+              pet: pet,
+              onCareTap: _openCare,
+              onBelanjaTap: _openBelanja,
+              belanjaCount: _shopping?.usedCount ?? 0,
+            ),
           ),
           _Entrance(
             controller: _entrance,
@@ -217,6 +255,14 @@ class _PetProfileScreenState extends State<PetProfileScreen>
               onSeeAll: _openCare,
               onAddFirst: _openCare,
             ),
+          ),
+          _PetShoppingSection(
+            petName: pet.name,
+            data: _shopping,
+            onSeeAll: _openBelanja,
+            // Wajib lewat helper: route '/product-detail' butuh Product penuh,
+            // data belanja cuma punya slug.
+            onTapProduct: (p) => openPetShoppingProduct(context, p.slug),
           ),
           _Entrance(
             controller: _entrance,
@@ -497,7 +543,15 @@ class _GenderPill extends StatelessWidget {
 class _StatsRow extends StatelessWidget {
   final Pet pet;
   final VoidCallback onCareTap;
-  const _StatsRow({required this.pet, required this.onCareTap});
+  final VoidCallback onBelanjaTap;
+  final int belanjaCount;
+
+  const _StatsRow({
+    required this.pet,
+    required this.onCareTap,
+    required this.onBelanjaTap,
+    required this.belanjaCount,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -505,16 +559,24 @@ class _StatsRow extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
       child: Row(
         children: [
+          // Momen belum dibangun (spec sendiri) — diredupkan, bukan diam.
           const Expanded(child: _StatCard(value: '0', label: 'Momen')),
           const SizedBox(width: 8),
           Expanded(
-            child: GestureDetector(
+            child: _StatCard(
+              value: '${pet.careCount}',
+              label: 'Perawatan',
               onTap: onCareTap,
-              child: _StatCard(value: '${pet.careCount}', label: 'Perawatan'),
             ),
           ),
           const SizedBox(width: 8),
-          const Expanded(child: _StatCard(value: '0', label: 'Belanja')),
+          Expanded(
+            child: _StatCard(
+              value: '$belanjaCount',
+              label: 'Belanja',
+              onTap: onBelanjaTap,
+            ),
+          ),
         ],
       ),
     );
@@ -524,34 +586,62 @@ class _StatsRow extends StatelessWidget {
 class _StatCard extends StatelessWidget {
   final String value;
   final String label;
-  const _StatCard({required this.value, required this.label});
+
+  /// Null = belum aktif: diredupkan, TIDAK diberi peran button, tanpa ripple.
+  final VoidCallback? onTap;
+
+  const _StatCard({required this.value, required this.label, this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style:
-                const TextStyle(fontSize: 15, fontWeight: NataloWeight.strong),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: NataloWeight.body,
-              color: cs.onSurfaceVariant,
+    final enabled = onTap != null;
+    final card = Opacity(
+      opacity: enabled ? 1 : 0.5,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: NataloWeight.strong),
             ),
-          ),
-        ],
+            const SizedBox(height: 2),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: NataloWeight.body,
+                      color: cs.onSurfaceVariant),
+                ),
+                if (enabled)
+                  Icon(Icons.chevron_right_rounded,
+                      size: 14, color: cs.onSurfaceVariant),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!enabled) return card;
+    return Semantics(
+      button: true,
+      label: '$label, $value',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: card,
+        ),
       ),
     );
   }
@@ -831,4 +921,143 @@ String _fmtDate(DateTime d) {
     'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
   ];
   return '${d.day} ${months[d.month - 1]} ${d.year}';
+}
+
+/// Section Belanja di profil. `data == null` = masih fetch → skeleton
+/// bertinggi sama dengan rail terisi supaya konten di bawah tidak melonjak.
+/// `data.isEmpty` = tak ada apa pun untuk ditawarkan → section disembunyikan
+/// penuh (spec Keputusan 13), sama seperti kegagalan fetch.
+class _PetShoppingSection extends StatelessWidget {
+  final String petName;
+  final PetShopping? data;
+  final VoidCallback onSeeAll;
+  final void Function(PetShoppingProduct product) onTapProduct;
+
+  const _PetShoppingSection({
+    required this.petName,
+    required this.data,
+    required this.onSeeAll,
+    required this.onTapProduct,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final d = data;
+    if (d != null && d.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Semantics(
+                header: true,
+                child: Text(
+                  'Belanja untuk $petName',
+                  style: const TextStyle(
+                      fontSize: 13, fontWeight: NataloWeight.strong),
+                ),
+              ),
+              const Spacer(),
+              if (d != null)
+                Semantics(
+                  button: true,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: onSeeAll,
+                      child: const Padding(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        child: Text('Lihat semua',
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: NataloWeight.strong,
+                                color: _brandBlue)),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (d == null)
+            const PetShoppingRailSkeleton()
+          else
+            PetShoppingRail(
+              used: d.used,
+              suggested: d.suggested,
+              onTapProduct: onTapProduct,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Wrapper test-only untuk `_StatsRow` (kelas privat).
+@visibleForTesting
+class PetStatsRowForTest extends StatelessWidget {
+  final String momenValue;
+  final String careValue;
+  final String belanjaValue;
+  final VoidCallback onCareTap;
+  final VoidCallback onBelanjaTap;
+
+  const PetStatsRowForTest({
+    super.key,
+    required this.momenValue,
+    required this.careValue,
+    required this.belanjaValue,
+    required this.onCareTap,
+    required this.onBelanjaTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+        child: Row(
+          children: [
+            Expanded(child: _StatCard(value: momenValue, label: 'Momen')),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _StatCard(
+                  value: careValue, label: 'Perawatan', onTap: onCareTap),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _StatCard(
+                  value: belanjaValue, label: 'Belanja', onTap: onBelanjaTap),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Wrapper test-only untuk `_PetShoppingSection` (kelas privat).
+@visibleForTesting
+class PetShoppingSectionForTest extends StatelessWidget {
+  final String petName;
+  final PetShopping? data;
+
+  const PetShoppingSectionForTest({
+    super.key,
+    required this.petName,
+    required this.data,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _PetShoppingSection(
+      petName: petName,
+      data: data,
+      onSeeAll: () {},
+      onTapProduct: (_) {},
+    );
+  }
 }

@@ -49,6 +49,7 @@ import 'screens/notification_preferences_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/order_success_screen.dart';
+import 'screens/pet_shopping_screen.dart';
 import 'screens/product_detail_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/saved_posts_screen.dart';
@@ -434,6 +435,14 @@ class NataloPetshopApp extends StatelessWidget {
               '/akun/followers' => const OwnFollowersScreen(),
               '/member/orders' =>
                 MemberOrdersScreen(initialFilterArgument: settings.arguments),
+              '/pets/belanja' when settings.arguments is PetShoppingArgs =>
+                (() {
+                  final args = settings.arguments as PetShoppingArgs;
+                  return PetShoppingScreen(
+                    petId: args.petId,
+                    petName: args.petName,
+                  );
+                })(),
               '/member/reviews' => const MemberReviewsScreen(),
               '/member/loyalty' => const MemberLoyaltyScreen(),
               '/member/loyalty/history' => const MemberLoyaltyHistoryScreen(),
