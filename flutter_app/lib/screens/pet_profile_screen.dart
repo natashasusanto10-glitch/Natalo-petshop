@@ -153,6 +153,7 @@ class _PetProfileScreenState extends State<PetProfileScreen>
     );
     _dirty = true;
     await _loadCare();
+    await _loadShopping();
   }
 
   PetShopping? _shopping;
@@ -984,11 +985,16 @@ class _PetShoppingSection extends StatelessWidget {
           const SizedBox(height: 8),
           if (d == null)
             const PetShoppingRailSkeleton()
-          else
+          else if (d.used.isNotEmpty || d.suggested.isNotEmpty)
             PetShoppingRail(
               used: d.used,
               suggested: d.suggested,
               onTapProduct: onTapProduct,
+            )
+          else
+            const Text(
+              'Lihat semua produk manual',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
             ),
         ],
       ),

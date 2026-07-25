@@ -161,6 +161,57 @@ void main() {
     );
   });
 
+  testWidgets('label pembaca layar tombol cari serupa memuat nama produk',
+      (tester) async {
+    await useTallViewport(tester);
+    await tester.pumpWidget(wrap(PetShopping(
+      usedCount: 1,
+      used: [
+        PetShoppingProduct(
+          productId: 'p1',
+          slug: 's1',
+          name: 'Combantrin',
+          imageUrl: null,
+          effectivePrice: 30000,
+          inStock: false,
+          hasVariants: false,
+          usageCount: 1,
+          lastUsedAt: DateTime(2026, 1, 25),
+        ),
+      ],
+      manual: const [],
+      suggested: const [],
+    )));
+    await pumpFrames(tester);
+
+    expect(
+      find.bySemanticsLabel('Cari serupa, Combantrin'),
+      findsOneWidget,
+      reason: 'bukan sekadar "Cari serupa" yang tak bisa dibedakan',
+    );
+  });
+
+  testWidgets(
+      'grup saran tak overflow saat text scale sistem membesar (1.3x)',
+      (tester) async {
+    await useTallViewport(tester);
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+        child: wrap(PetShopping(
+          usedCount: 1,
+          used: [used('Drontal')],
+          manual: const [],
+          suggested: [suggestion('Snack Dental'), suggestion('Vitamin Bulu')],
+        )),
+      ),
+    );
+    await pumpFrames(tester);
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Snack Dental'), findsOneWidget);
+  });
+
   testWidgets('pet baru: empty-state grup fakta, grup saran tetap terisi',
       (tester) async {
     await useTallViewport(tester);

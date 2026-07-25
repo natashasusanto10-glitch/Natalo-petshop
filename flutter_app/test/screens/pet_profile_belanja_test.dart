@@ -106,4 +106,35 @@ void main() {
     expect(find.text('Belanja untuk Bobby'), findsNothing,
         reason: 'kosong total → section tak dirender (Keputusan 13)');
   });
+
+  testWidgets(
+      'section Belanja: histori manual-only tampilkan header+Lihat semua tanpa rail kosong',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PetShoppingSectionForTest(
+          petName: 'Bobby',
+          data: PetShopping(
+            usedCount: 0,
+            used: const [],
+            manual: [
+              PetShoppingManual(
+                brandText: 'Bravecto',
+                usageCount: 1,
+                lastUsedAt: DateTime(2026, 7, 1),
+              ),
+            ],
+            suggested: const [],
+          ),
+        ),
+      ),
+    ));
+    await pumpFrames(tester);
+
+    expect(find.text('Belanja untuk Bobby'), findsOneWidget,
+        reason: 'histori manual tetap data nyata, section harus tampak');
+    expect(find.text('Lihat semua'), findsOneWidget);
+    expect(find.byType(PetShoppingRail), findsNothing,
+        reason: 'rail hanya render used/suggested, jangan tampil kosong');
+  });
 }

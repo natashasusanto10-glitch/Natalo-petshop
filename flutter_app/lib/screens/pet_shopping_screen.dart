@@ -250,17 +250,39 @@ class _PetShoppingScreenState extends State<PetShoppingScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                  childAspectRatio: 0.72,
+                // Bukan GridView.count(childAspectRatio: ...) — rasio tetap
+                // overflow saat text scale sistem membesar (kartu berisi
+                // gambar 1:1 + nama 2 baris + harga). Baris manual biar
+                // tiap kartu tinggi mengikuti kontennya sendiri.
+                Column(
                   children: [
-                    for (final s in data.suggested)
-                      _SuggestionCard(
-                          product: s, onTap: () => _openProduct(s)),
+                    for (var i = 0; i < data.suggested.length; i += 2)
+                      Padding(
+                        padding: EdgeInsets.only(
+                            bottom:
+                                i + 2 < data.suggested.length ? 10 : 0),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _SuggestionCard(
+                                product: data.suggested[i],
+                                onTap: () => _openProduct(data.suggested[i]),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: i + 1 < data.suggested.length
+                                  ? _SuggestionCard(
+                                      product: data.suggested[i + 1],
+                                      onTap: () =>
+                                          _openProduct(data.suggested[i + 1]),
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ],
@@ -416,10 +438,16 @@ class _UsedRow extends StatelessWidget {
               SizedBox(
                 width: 104,
                 child: habis
-                    ? TextButton(
-                        onPressed: onFindSimilar,
-                        child: const Text('Cari serupa',
-                            style: TextStyle(fontSize: 12)),
+                    ? Semantics(
+                        container: true,
+                        excludeSemantics: true,
+                        button: true,
+                        label: 'Cari serupa, ${product.name}',
+                        child: TextButton(
+                          onPressed: onFindSimilar,
+                          child: const Text('Cari serupa',
+                              style: TextStyle(fontSize: 12)),
+                        ),
                       )
                     : Semantics(
                         container: true,
