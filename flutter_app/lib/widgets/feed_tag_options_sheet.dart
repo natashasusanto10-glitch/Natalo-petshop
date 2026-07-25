@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import '../constants/official_brand.dart';
 import '../models/feed_post.dart';
 import '../services/feed_service.dart';
 import '../theme/natalo_colors.dart';
 import 'app_toast.dart';
+import 'official_brand_avatar.dart';
 import 'profile_avatar.dart';
 
 /// Grip bar ala IG di atas bottom sheet — penanda visual sheet bisa
@@ -185,17 +187,23 @@ Future<void> showFeedTaggedUsersSheet(
                 children: [
                   for (final tag in post.taggedUsers)
                     ListTile(
-                      leading: ProfileAvatar(
-                        initial: (tag.name.isNotEmpty
-                                ? tag.name
-                                : (tag.username ?? '?'))
-                            .characters
-                            .first
-                            .toUpperCase(),
-                        imageUrl: tag.profilePhotoUrl,
-                        size: 40,
-                        fontSize: 16,
-                      ),
+                      // Server null-kan foto asli akun official/admin (brand
+                      // guard, lib/social/brand-user.ts) — klien WAJIB render
+                      // logo brand lokal, sama seperti avatar author/likers/
+                      // komentar di tempat lain (feed_post_shared_widgets.dart).
+                      leading: tag.name == kOfficialBrandName
+                          ? const OfficialBrandAvatar(size: 40)
+                          : ProfileAvatar(
+                              initial: (tag.name.isNotEmpty
+                                      ? tag.name
+                                      : (tag.username ?? '?'))
+                                  .characters
+                                  .first
+                                  .toUpperCase(),
+                              imageUrl: tag.profilePhotoUrl,
+                              size: 40,
+                              fontSize: 16,
+                            ),
                       title: Text(
                         tag.name.isNotEmpty ? tag.name : (tag.username ?? ''),
                       ),

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/widgets/feed_tag_options_sheet.dart';
+import 'package:natalo_petshop_flutter/widgets/official_brand_avatar.dart';
+import 'package:natalo_petshop_flutter/widgets/profile_avatar.dart';
 
 void main() {
   Future<void> openSheet(
@@ -149,6 +151,51 @@ void main() {
     expect(find.text('Ditandai dalam video ini'), findsOneWidget);
     expect(find.text('Andi'), findsOneWidget);
     expect(find.text('Budi'), findsOneWidget);
+  });
+
+  testWidgets(
+      'sheet video: akun official (nama sudah di-brand server) render logo '
+      'brand lokal, BUKAN inisial (server null-kan foto asli admin)',
+      (tester) async {
+    final post = FeedPost(
+      id: 'p1',
+      slug: 'p1',
+      videoUrl: 'https://example.com/v.mp4',
+      author: const FeedAuthor(id: 'author1', name: 'Natalo Petshop'),
+      createdAt: DateTime(2024),
+      taggedUsers: const [
+        // Server sudah substitusi name→kOfficialBrandName & photoUrl→null
+        // untuk role ADMIN (brand-user.ts) — persis bentuk JSON asli.
+        FeedTaggedUser(
+          userId: 'admin1',
+          username: 'natalopetshop',
+          name: 'Natalo Petshop Official',
+          profilePhotoUrl: null,
+        ),
+        FeedTaggedUser(userId: 'u2', username: 'budi', name: 'Budi'),
+      ],
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(builder: (context) {
+        return ElevatedButton(
+          onPressed: () => showFeedTaggedUsersSheet(
+            context,
+            post: post,
+            selfUserId: 'someone-else',
+            onSelfRemoved: () {},
+            onSelfHiddenChanged: (_) {},
+          ),
+          child: const Text('open video sheet'),
+        );
+      }),
+    ));
+    await tester.tap(find.text('open video sheet'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Natalo Petshop Official'), findsOneWidget);
+    expect(find.byType(OfficialBrandAvatar), findsOneWidget);
+    // Baris lain (bukan official) tetap ProfileAvatar biasa.
+    expect(find.byType(ProfileAvatar), findsOneWidget);
   });
 
   testWidgets(
