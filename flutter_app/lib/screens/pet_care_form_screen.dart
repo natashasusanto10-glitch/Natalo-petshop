@@ -192,9 +192,17 @@ class _PetCareFormScreenState extends State<PetCareFormScreen> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
-        children: [
+      // Keyboard turun saat tap di area kosong mana pun (translucent supaya
+      // chip/field/tombol di dalamnya tetap dapat tap-nya) DAN saat mulai
+      // menggeser daftar — dulu keyboard angka "Berat" cuma bisa ditutup
+      // lewat tombol back sistem.
+      body: GestureDetector(
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        behavior: HitTestBehavior.translucent,
+        child: ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
+          children: [
           const _Label('Jenis perawatan'),
           const SizedBox(height: 8),
           Wrap(
@@ -276,9 +284,10 @@ class _PetCareFormScreenState extends State<PetCareFormScreen> {
                   selected: false,
                   onTap: () => setState(() => _nextDueAt = null),
                 ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

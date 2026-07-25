@@ -4,6 +4,8 @@ import '../models/pet_care_record.dart';
 import '../services/pet_service.dart';
 import '../theme/natalo_colors.dart';
 import '../theme/natalo_text.dart';
+import '../utils/formatters.dart';
+import 'app_product_image.dart';
 
 const _brandBlue = NataloColors.primary;
 
@@ -146,6 +148,10 @@ class _CareProductPickerState extends State<CareProductPicker> {
   }
 
   void _selectProduct(CareProduct product) {
+    // Produk habis tidak boleh terpilih — mencatat perawatan dengan produk
+    // yang tak bisa dibeli menyesatkan, dan kontrol yang tampak bisa ditekan
+    // tapi tak melakukan apa-apa melanggar aturan disabled-state.
+    if (!product.inStock) return;
     setState(() {
       _selectedId = product.id;
       _manual = false;
@@ -182,6 +188,7 @@ class _CareProductPickerState extends State<CareProductPicker> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final selected = _selectedProduct;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -197,48 +204,47 @@ class _CareProductPickerState extends State<CareProductPicker> {
               ),
             ),
           )
-        else if (!_manual && _products.isNotEmpty)
-          Column(
-            children: [
-              for (var i = 0; i < _products.length; i++) ...[
-                if (i > 0) const SizedBox(height: 8),
-                _ProductTile(
-                  product: _products[i],
-                  selected: _selectedId == _products[i].id,
-                  showBadge:
-                      i == 0 && (widget._isDebug || _weightMatched),
-                  onTap: () => _selectProduct(_products[i]),
-                ),
-              ],
-            ],
-          ),
-        if (!_manual) ...[
-          const SizedBox(height: 8),
-          InkWell(
-            onTap: _toggleManual,
-            child: const Text(
-              'Beli di luar Natalo? Ketik manual',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: NataloWeight.strong,
-                color: _brandBlue,
-                decoration: TextDecoration.underline,
-              ),
+        else if (!_manual)
+          // Satu kartu berpembatas, bukan kotak-kotak mengambang: daftar
+          // produk + jalur manual dibaca sebagai satu unit pilihan.
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: cs.outlineVariant),
+              borderRadius: BorderRadius.circular(12),
             ),
-          ),
-        ] else ...[
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                for (var i = 0; i < _products.length; i++) ...[
+                  if (i > 0) _hairline(cs),
+                  _ProductTile(
+                    product: _products[i],
+                    selected: _selectedId == _products[i].id,
+                    showBadge: i == 0 && (widget._isDebug || _weightMatched),
+                    onTap: () => _selectProduct(_products[i]),
+                  ),
+                ],
+                if (_products.isNotEmpty) _hairline(cs),
+                _ManualRow(onTap: _toggleManual),
+              ],
+            ),
+          )
+        else
           _ManualEntry(
             brandCtrl: _brandCtrl,
             dosageCtrl: _dosageCtrl,
             onChanged: _emitManual,
           ),
+        // Kartu dosis hanya untuk info yang BELUM tampil di tile terpilih —
+        // anjuran produk katalog sudah menempel di barisnya sendiri, jadi
+        // tidak diulang di sini (dulu blok biru selalu tampil & mendominasi).
+        if (_manual || selected?.instruction == null) ...[
+          const SizedBox(height: 12),
+          _DosageCard(
+            manual: _manual,
+            dosageNote: _manual ? _dosageCtrl.text.trim() : null,
+          ),
         ],
-        const SizedBox(height: 12),
-        _DosageCard(
-          instruction: !_manual ? selected?.instruction : null,
-          manual: _manual,
-          dosageNote: _manual ? _dosageCtrl.text.trim() : null,
-        ),
       ],
     );
   }
@@ -261,84 +267,178 @@ class _ProductTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          decoration: BoxDecoration(
+    final habis = !product.inStock;
+    final instruction = product.instruction;
+    // Semantics eksplisit: tile ini radio kustom, tanpa ini pembaca layar
+    // tak pernah mengumumkan status terpilih/nonaktif.
+    return Semantics(
+      inMutuallyExclusiveGroup: true,
+      selected: selected,
+      enabled: !habis,
+      button: !habis,
+      label: habis ? '${product.name}, stok habis' : product.name,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: habis ? null : onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            constraints: const BoxConstraints(minHeight: 56),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            // Hanya warna latar yang berubah saat dipilih — padding/ukuran
+            // tetap supaya tak ada geseran layout saat ditekan.
             color: selected
                 ? (isDark
-                    ? _brandBlue.withValues(alpha: 0.20)
+                    ? _brandBlue.withValues(alpha: 0.18)
                     : NataloColors.primarySoft)
                 : Colors.transparent,
-            border: Border.all(
-                color: selected ? _brandBlue : cs.outlineVariant),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            product.name,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: NataloWeight.strong,
-                              color: cs.onSurface,
-                            ),
-                          ),
-                        ),
-                        if (showBadge) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: isDark
-                                  ? _brandBlue.withValues(alpha: 0.20)
-                                  : NataloColors.primarySoft,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: const Text(
-                              'Paling sesuai',
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Opacity(
+                  opacity: habis ? 0.4 : 1,
+                  child: AppProductImage(
+                    imageUrl: product.imageUrl,
+                    width: 48,
+                    height: 48,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              product.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: 10,
+                                fontSize: 13,
                                 fontWeight: NataloWeight.strong,
-                                color: _brandBlue,
+                                color: habis ? cs.onSurfaceVariant : cs.onSurface,
                               ),
                             ),
                           ),
+                          if (showBadge && !habis) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? _brandBlue.withValues(alpha: 0.24)
+                                    : _brandBlue,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                'Paling sesuai',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: NataloWeight.strong,
+                                  color: isDark ? _brandBlue : Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Rp${product.effectivePrice}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: NataloWeight.body,
-                        color: cs.onSurfaceVariant,
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 3),
+                      Text(
+                        habis
+                            ? 'Stok habis'
+                            : formatRupiah(product.effectivePrice),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight:
+                              habis ? NataloWeight.body : NataloWeight.strong,
+                          color: habis ? cs.onSurfaceVariant : cs.onSurface,
+                        ),
+                      ),
+                      // Anjuran dosis menempel di produk terpilih — jawaban
+                      // yang dicari user ada di tempat keputusannya dibuat.
+                      if (selected && instruction != null && instruction.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          instruction,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: NataloWeight.strong,
+                            color: isDark ? cs.onSurface : _brandBlue,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-              Icon(
-                selected
-                    ? Icons.radio_button_checked_rounded
-                    : Icons.radio_button_off_rounded,
-                size: 18,
-                color: selected ? _brandBlue : cs.onSurfaceVariant,
-              ),
-            ],
+                const SizedBox(width: 8),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(
+                    selected
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_off_rounded,
+                    size: 20,
+                    color: selected
+                        ? _brandBlue
+                        : (habis ? cs.outlineVariant : cs.onSurfaceVariant),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Pembatas tipis antar baris di dalam kartu pilihan.
+Widget _hairline(ColorScheme cs) =>
+    Divider(height: 0.5, thickness: 0.5, color: cs.outlineVariant);
+
+/// Baris terakhir kartu: jalur ketik-manual. Baris penuh (bukan teks
+/// bergaris-bawah gaya web) supaya target sentuhnya lega.
+class _ManualRow extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _ManualRow({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 48),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            child: Row(
+              children: [
+                Icon(Icons.edit_outlined, size: 18, color: cs.onSurfaceVariant),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Beli di luar Natalo? Ketik manual',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: NataloWeight.strong,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded,
+                    size: 18, color: cs.onSurfaceVariant),
+              ],
+            ),
           ),
         ),
       ),
@@ -363,13 +463,17 @@ class _ManualEntry extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Label terlihat, bukan placeholder-only: begitu user mulai mengetik
+        // placeholder hilang dan konteks kolomnya ikut hilang.
+        _FieldLabel('Nama brand', cs: cs),
+        const SizedBox(height: 6),
         TextField(
           controller: brandCtrl,
           onChanged: (_) => onChanged(),
           decoration: InputDecoration(
             filled: true,
             fillColor: cs.surface,
-            hintText: 'Nama brand',
+            hintText: 'Mis. Drontal',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: BorderSide(color: cs.outlineVariant),
@@ -380,14 +484,16 @@ class _ManualEntry extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
+        _FieldLabel('Aturan pakai (opsional)', cs: cs),
+        const SizedBox(height: 6),
         TextField(
           controller: dosageCtrl,
           onChanged: (_) => onChanged(),
           decoration: InputDecoration(
             filled: true,
             fillColor: cs.surface,
-            hintText: 'Aturan pakai (opsional)',
+            hintText: 'Mis. 1 tablet per 10 kg',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: BorderSide(color: cs.outlineVariant),
@@ -403,13 +509,33 @@ class _ManualEntry extends StatelessWidget {
   }
 }
 
+/// Label kolom kecil, seragam dengan `_Label` di form perawatan.
+class _FieldLabel extends StatelessWidget {
+  final String text;
+  final ColorScheme cs;
+
+  const _FieldLabel(this.text, {required this.cs});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: NataloWeight.body,
+        color: cs.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+/// Catatan dosis — hanya tampil saat anjuran BELUM terlihat di baris produk
+/// terpilih (mode manual, atau produk tanpa data dosis).
 class _DosageCard extends StatelessWidget {
-  final String? instruction;
   final bool manual;
   final String? dosageNote;
 
   const _DosageCard({
-    required this.instruction,
     required this.manual,
     required this.dosageNote,
   });
@@ -418,16 +544,10 @@ class _DosageCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    String text;
-    if (!manual && instruction != null && instruction!.isNotEmpty) {
-      text =
-          'Anjuran pakai: $instruction. Ikuti aturan kemasan atau tanya dokter hewan.';
-    } else if (manual && dosageNote != null && dosageNote!.isNotEmpty) {
-      text = 'Dicatat sendiri: $dosageNote';
-    } else {
-      text =
-          'Dosis obat cacing/kutu umumnya dihitung per kg berat badan — cek kemasan atau tanya dokter hewan.';
-    }
+    final note = dosageNote;
+    final text = manual && note != null && note.isNotEmpty
+        ? 'Dicatat sendiri: $note'
+        : 'Dosis obat cacing/kutu dihitung per kg berat badan — cek kemasan atau tanya dokter hewan.';
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -436,13 +556,23 @@ class _DosageCard extends StatelessWidget {
             : NataloColors.primarySoft,
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: NataloWeight.body,
-          color: isDark ? cs.onSurface : _brandBlue,
-        ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline_rounded,
+              size: 16, color: isDark ? cs.onSurface : _brandBlue),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: NataloWeight.body,
+                color: isDark ? cs.onSurface : _brandBlue,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
