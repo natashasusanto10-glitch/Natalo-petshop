@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/widgets/care_product_picker.dart';
 import 'package:natalo_petshop_flutter/models/pet_care_record.dart';
+import 'package:natalo_petshop_flutter/widgets/app_product_image.dart';
 
 void main() {
   testWidgets('renders product list with top badge and manual toggle',
@@ -124,6 +125,47 @@ void main() {
     expect(find.text('Combantrin Kucing'), findsOneWidget);
     expect(find.text('Paling sesuai'), findsNothing);
     expect(find.textContaining('Ketik manual'), findsOneWidget);
+  });
+
+  testWidgets('thumbnail produk dirender dari imageUrl', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: CareProductPicker.debugWithProducts(
+          products: const [
+            CareProduct(
+              id: 'p1',
+              name: 'Drontal Plus Tasty Dog',
+              imageUrl: 'https://cf.shopee.co.id/file/abc123',
+              effectivePrice: 34800,
+              inStock: true,
+            ),
+          ],
+          onChanged: (_) {},
+        ),
+      ),
+    ));
+
+    final img = tester.widget<AppProductImage>(find.byType(AppProductImage));
+    expect(img.imageUrl, 'https://cf.shopee.co.id/file/abc123');
+    expect(img.width, 48);
+    expect(img.height, 48);
+  });
+
+  testWidgets('produk tanpa imageUrl tetap render tanpa crash', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: CareProductPicker.debugWithProducts(
+          products: const [
+            CareProduct(
+                id: 'p1', name: 'Tanpa Foto', effectivePrice: 1000, inStock: true),
+          ],
+          onChanged: (_) {},
+        ),
+      ),
+    ));
+    expect(tester.takeException(), isNull);
+    expect(find.text('Tanpa Foto'), findsOneWidget);
+    expect(find.byType(AppProductImage), findsOneWidget);
   });
 
   testWidgets('harga diformat rupiah, bukan angka mentah', (tester) async {
