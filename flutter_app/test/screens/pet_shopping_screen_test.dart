@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/pet_shopping.dart';
+import 'package:natalo_petshop_flutter/models/product.dart';
 import 'package:natalo_petshop_flutter/screens/pet_shopping_screen.dart';
 
 PetShoppingProduct used(String name) => PetShoppingProduct(
@@ -202,5 +203,142 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.textContaining('Gagal memuat'), findsOneWidget);
+  });
+
+  testWidgets('beli lagi produk non-varian: ambil produk by slug lalu addProduct',
+      (tester) async {
+    await useTallViewport(tester);
+    final fetchedSlugs = <String>[];
+    final added = <String>[];
+    final product = Product(
+      id: 'id-Drontal',
+      slug: 'slug-Drontal',
+      title: 'Drontal',
+      category: 'Obat & Suplemen',
+      brand: 'Bayer',
+      imageUrl: 'https://cdn/d.jpg',
+      price: 45000,
+      rating: 0,
+      reviewCount: 0,
+      stock: 5,
+      weightGram: 100,
+      isNew: false,
+      isTrending: false,
+      hasVariants: false,
+      description: 'Obat cacing untuk anjing dan kucing',
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: PetShoppingScreen(
+        petId: 'pet1',
+        petName: 'Bobby',
+        fetcher: (_) async => PetShopping(
+          usedCount: 1,
+          used: [used('Drontal')],
+          manual: const [],
+          suggested: const [],
+        ),
+        productFetcher: (slug) async {
+          fetchedSlugs.add(slug);
+          return product;
+        },
+        cartAdder: (p, {variant}) async {
+          added.add(p.slug);
+          return true;
+        },
+      ),
+    ));
+    await pumpFrames(tester);
+
+    await tester.tap(find.text('Beli lagi'));
+    await pumpFrames(tester);
+
+    expect(fetchedSlugs, ['slug-Drontal']);
+    expect(added, ['slug-Drontal']);
+  });
+
+  testWidgets('tap baris produk: fetch by slug lalu buka /product-detail',
+      (tester) async {
+    await useTallViewport(tester);
+    final fetchedSlugs = <String>[];
+    final product = Product(
+      id: 'id-Drontal',
+      slug: 'slug-Drontal',
+      title: 'Drontal',
+      category: 'Obat & Suplemen',
+      brand: 'Bayer',
+      imageUrl: 'https://cdn/d.jpg',
+      price: 45000,
+      rating: 0,
+      reviewCount: 0,
+      stock: 5,
+      weightGram: 100,
+      isNew: false,
+      isTrending: false,
+      hasVariants: false,
+      description: 'Obat cacing untuk anjing dan kucing',
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      routes: {
+        '/product-detail': (_) => const Scaffold(body: Text('DETAIL')),
+      },
+      home: PetShoppingScreen(
+        petId: 'pet1',
+        petName: 'Bobby',
+        fetcher: (_) async => PetShopping(
+          usedCount: 1,
+          used: [used('Drontal')],
+          manual: const [],
+          suggested: const [],
+        ),
+        productFetcher: (slug) async {
+          fetchedSlugs.add(slug);
+          return product;
+        },
+      ),
+    ));
+    await pumpFrames(tester);
+
+    await tester.tap(find.text('Drontal'));
+    await pumpFrames(tester);
+
+    expect(fetchedSlugs, ['slug-Drontal'],
+        reason: 'route /product-detail butuh Product penuh, bukan slug');
+    expect(find.text('DETAIL'), findsOneWidget);
+  });
+
+  testWidgets('beli lagi: produk sudah tak ada → pesan, tidak masuk keranjang',
+      (tester) async {
+    await useTallViewport(tester);
+    final added = <String>[];
+    await tester.pumpWidget(MaterialApp(
+      home: PetShoppingScreen(
+        petId: 'pet1',
+        petName: 'Bobby',
+        fetcher: (_) async => PetShopping(
+          usedCount: 1,
+          used: [used('Drontal')],
+          manual: const [],
+          suggested: const [],
+        ),
+        productFetcher: (_) async => null,
+        cartAdder: (p, {variant}) async {
+          added.add(p.slug);
+          return true;
+        },
+      ),
+    ));
+    await pumpFrames(tester);
+
+    await tester.tap(find.text('Beli lagi'));
+    await pumpFrames(tester);
+
+    expect(added, isEmpty);
+    expect(tester.takeException(), isNull);
+
+    // Toast error pakai timer sampai ~3.65s; habiskan sebelum test selesai
+    // agar tak ada Timer pending saat widget tree di-dispose.
+    await tester.pump(const Duration(seconds: 4));
   });
 }
