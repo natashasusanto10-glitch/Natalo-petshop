@@ -992,9 +992,12 @@ class _PetShoppingSection extends StatelessWidget {
               onTapProduct: onTapProduct,
             )
           else
-            const Text(
+            Text(
               'Lihat semua produk manual',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
         ],
       ),
