@@ -1,5 +1,6 @@
 import '../models/pet.dart';
 import '../models/pet_care_record.dart';
+import '../models/pet_shopping.dart';
 import '../utils/read_only_mode.dart';
 import 'api_client.dart';
 
@@ -184,6 +185,23 @@ class PetService {
         .map((e) => CareProduct.fromJson(e))
         .toList();
   }
+
+  /// Kolom Belanja profil pet: produk yang pernah dipakai + saran per spesies.
+  Future<PetShopping> fetchPetShopping(String petId) async {
+    final data = await apiClient.getJson('/api/member/pets/$petId/shopping');
+    if (data is! Map<String, dynamic>) {
+      return const PetShopping(
+        usedCount: 0,
+        used: [],
+        manual: [],
+        suggested: [],
+      );
+    }
+    return PetShopping.fromJson(data);
+  }
 }
 
 final petService = PetService._();
+
+/// Seam injeksi untuk test widget (hindari panggilan jaringan nyata).
+typedef PetShoppingFetcher = Future<PetShopping> Function(String petId);
