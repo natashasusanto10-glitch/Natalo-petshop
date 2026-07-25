@@ -95,6 +95,8 @@ Dua kelompok dengan **hierarki visual berbeda**, bukan cuma judul berbeda — su
 1. **"Pernah dipakai untuk {nama}"** — fakta, tampilan paling kaya: baris penuh (bukan grid), thumbnail 56px, nama, harga, baris konteks "Obat Cacing · 3 bulan lalu", tombol "Beli lagi" di kanan. Brand manual jadi baris teks tanpa foto/harga dengan tombol "Cari di Natalo".
 2. **"Mungkin cocok untuk {nama}"** — saran, tampilan lebih ringan/sekunder: grid 2 kolom, kartu tanpa baris konteks, header section berbobot lebih rendah daripada grup pertama.
 
+Di bawah grup 2, satu CTA tenang **"Jelajahi produk lain"** → `/products` (Katalog) tanpa filter. Halaman ini scope-nya sengaja sempit (khusus {nama}), tapi tanpa CTA ini jadi jalan buntu kalau semua produk {nama} sudah tercatat via katalog dan tersedia stoknya — tak ada jalan keluar selain tombol back. CTA di-styling sekunder (teks/outline, bukan filled) supaya tidak bersaing dengan aksi utama "Beli lagi"/"Cari di Natalo" di atasnya.
+
 ### Aksi
 
 - Beli lagi, produk biasa → `cartStore` + toast sukses.
@@ -150,6 +152,7 @@ Flutter (widget test):
 15. Angka kartu statistik sama dengan jumlah baris grup "Pernah dipakai" (regresi kontradiksi angka).
 16. Label pembaca layar tombol beli lagi memuat nama produk (bukan delapan "Beli lagi" identik).
 17. Rail dalam keadaan loading punya tinggi sama dengan rail terisi (regresi pergeseran layout).
+18. CTA "Jelajahi produk lain" tampil di bawah grup 2 dan menavigasi ke `/products` tanpa filter.
 
 ## Verifikasi device (setelah rilis)
 
