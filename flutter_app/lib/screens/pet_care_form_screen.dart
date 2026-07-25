@@ -233,7 +233,7 @@ class _PetCareFormScreenState extends State<PetCareFormScreen> {
             decoration: InputDecoration(
               filled: true,
               fillColor: cs.surface,
-              hintText: 'Mis. Mandi + potong kuku',
+              hintText: _category.noteHint,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
                 borderSide: BorderSide(color: cs.outlineVariant),
@@ -608,21 +608,29 @@ class _PhotoField extends StatelessWidget {
         ],
       );
     }
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          width: 56,
-          height: 56,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            border: Border.all(color: cs.outlineVariant),
-            borderRadius: BorderRadius.circular(10),
+    // WAJIB Align: sebagai anak ListView, constraint cross-axis-nya TIGHT
+    // (minWidth == maxWidth == lebar layar) sehingga `width: 56` di Container
+    // diabaikan dan kotaknya melebar full-width — persis blok "foto besar"
+    // yang spec form dinamis justru minta dihapus. Align meneruskan
+    // constraint loose, jadi thumbnail 56px benar-benar 56px.
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            width: 56,
+            height: 56,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              border: Border.all(color: cs.outlineVariant),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(Icons.add_a_photo_outlined,
+                size: 18, color: cs.onSurfaceVariant),
           ),
-          child: Icon(Icons.add_a_photo_outlined,
-              size: 18, color: cs.onSurfaceVariant),
         ),
       ),
     );

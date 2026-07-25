@@ -45,6 +45,25 @@ enum PetCareCategory {
     }
   }
 
+  /// Contoh isi kolom "Catatan" — beda per kategori supaya placeholder
+  /// nyambung dengan konteksnya (dulu satu contoh grooming dipakai semua).
+  String get noteHint {
+    switch (this) {
+      case PetCareCategory.grooming:
+        return 'Mis. Mandi + potong kuku';
+      case PetCareCategory.deworm:
+        return 'Mis. Diminum setelah makan, tidak dimuntahkan';
+      case PetCareCategory.flea:
+        return 'Mis. Diteteskan di kulit leher belakang';
+      case PetCareCategory.vaccine:
+        return 'Mis. Tidak ada reaksi setelah vaksin';
+      case PetCareCategory.vet:
+        return 'Mis. Hasil pemeriksaan & saran dokter';
+      case PetCareCategory.other:
+        return 'Mis. Potong kuku, bersihkan telinga';
+    }
+  }
+
   IconData get icon {
     switch (this) {
       case PetCareCategory.grooming:
