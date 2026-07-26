@@ -1892,8 +1892,10 @@ class _EmptyProductsState extends StatelessWidget {
             Container(
               width: 92,
               height: 92,
+              // primarySoft (bukan primaryLight): ikon primary di atas
+              // primaryLight cuma 2,4:1 — di bawah floor 3:1 utk glyph besar.
               decoration: BoxDecoration(
-                color: NataloColors.primaryLight,
+                color: NataloColors.primarySoft,
                 borderRadius: BorderRadius.circular(28),
               ),
               child: const Icon(
@@ -2367,95 +2369,104 @@ class _ProductsPageProductCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final discountPercent = _activeProductDiscountPercent(product);
 
-    return Material(
-      color: cs.surface,
-      borderRadius: BorderRadius.circular(8),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: cs.outlineVariant),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x08000000),
-                blurRadius: 10,
-                offset: Offset(0, 4),
-              ),
-            ],
+    // Shadow WAJIB di luar Material: Material clipBehavior antiAlias
+    // memotong child ke rounded-rect, jadi boxShadow yang dipasang di
+    // Container DI DALAM-nya jatuh di luar clip dan tidak pernah terlihat.
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x08000000),
+            blurRadius: 10,
+            offset: Offset(0, 4),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Foto 1:1 full-bleed (nempel tepi atas kartu), konten di
-              // bawahnya dapat padding sendiri — sama dengan grid Beranda.
-              Stack(
-                children: [
-                  _ProductGridImage(imageUrl: product.imageUrl),
-                  if (discountPercent != null)
-                    Positioned(
-                      right: 8,
-                      top: 8,
-                      child: _ProductDiscountBadge(
-                        percent: discountPercent,
-                      ),
-                    ),
-                  // Badge brand-exclusive: hanya kalau voucher preview produk
-                  // ini scoped ke brand. Nama brand diambil dari product.brand
-                  // (listing tidak kirim brandName voucher).
-                  if (productHasBrandExclusiveBadge(
-                    isBrandExclusive: product.voucherPreview?.isBrandExclusive,
-                    brand: product.brand,
-                  ))
-                    Positioned(
-                      left: 8,
-                      top: 8,
-                      child: BrandExclusiveBadge(brand: product.brand),
-                    ),
-                  // Badge video: indikator statis (play + durasi) — Katalog
-                  // TIDAK autoplay, cuma penanda. Tap kartu tetap ke detail
-                  // tempat video sungguhan main. Pojok kiri-bawah karena
-                  // kanan-atas & kiri-atas sudah dipakai diskon/brand.
-                  if (product.hasVideo)
-                    Positioned(
-                      left: 8,
-                      bottom: 8,
-                      child: _ProductVideoBadge(
-                        durationSec: product.videoDurationSec,
-                      ),
-                    ),
-                ],
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        ],
+      ),
+      child: Material(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(8),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: cs.outlineVariant),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Foto 1:1 full-bleed (nempel tepi atas kartu), konten di
+                // bawahnya dapat padding sendiri — sama dengan grid Beranda.
+                Stack(
                   children: [
-                    // Tinggi nama dipaku 34 (2 baris) — sama Beranda Fase 1 —
-                    // supaya baris harga antar-kartu sebaris tetap sejajar.
-                    SizedBox(
-                      height: 34,
-                      child: Text(
-                        product.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          height: 1.25,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurface,
+                    _ProductGridImage(imageUrl: product.imageUrl),
+                    if (discountPercent != null)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: _ProductDiscountBadge(
+                          percent: discountPercent,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    _ProductPriceRow(product: product),
-                    _ProductSavingBadge(product: product),
-                    _ProductRatingSoldRow(product: product),
+                    // Badge brand-exclusive: hanya kalau voucher preview produk
+                    // ini scoped ke brand. Nama brand diambil dari product.brand
+                    // (listing tidak kirim brandName voucher).
+                    if (productHasBrandExclusiveBadge(
+                      isBrandExclusive:
+                          product.voucherPreview?.isBrandExclusive,
+                      brand: product.brand,
+                    ))
+                      Positioned(
+                        left: 8,
+                        top: 8,
+                        child: BrandExclusiveBadge(brand: product.brand),
+                      ),
+                    // Badge video: indikator statis (play + durasi) — Katalog
+                    // TIDAK autoplay, cuma penanda. Tap kartu tetap ke detail
+                    // tempat video sungguhan main. Pojok kiri-bawah karena
+                    // kanan-atas & kiri-atas sudah dipakai diskon/brand.
+                    if (product.hasVideo)
+                      Positioned(
+                        left: 8,
+                        bottom: 8,
+                        child: _ProductVideoBadge(
+                          durationSec: product.videoDurationSec,
+                        ),
+                      ),
                   ],
                 ),
-              ),
-            ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Tinggi nama dipaku 34 (2 baris) — sama Beranda Fase 1 —
+                      // supaya baris harga antar-kartu sebaris tetap sejajar.
+                      SizedBox(
+                        height: 34,
+                        child: Text(
+                          product.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            height: 1.25,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      _ProductPriceRow(product: product),
+                      _ProductSavingBadge(product: product),
+                      _ProductRatingSoldRow(product: product),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -2540,14 +2551,16 @@ class _ProductPriceRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Harga lama diredam (selaras grid Beranda) — pakai onSurface,
+        // harga coret tampil sekuat harga promo dan hierarki jadi ambigu.
         Text(
           formatRupiah(product.price),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: cs.onSurface,
+            fontWeight: FontWeight.w500,
+            color: cs.onSurfaceVariant,
             height: 1.05,
             decoration: TextDecoration.lineThrough,
             decorationThickness: 1.5,
