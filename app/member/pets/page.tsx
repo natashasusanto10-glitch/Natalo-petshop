@@ -7,12 +7,19 @@ import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { requireCustomerSession } from "@/lib/session-guards";
 
-const PET_TYPES = ["Kucing", "Anjing", "Ikan", "Burung", "Reptil", "Lainnya"];
+// Opsi dropdown untuk pet BARU — 5 spesies kanonis, sinkron dengan
+// flutter_app/lib/models/pet.dart kPetTypes. Pet lama dengan jenis di luar
+// daftar ini (Burung/Reptil/Lainnya) masih valid di backend (lib/pets-api.ts
+// PET_TYPES superset) dan tetap tampil apa adanya — hanya opsi pemilihan
+// untuk pet baru/edit yang dipersempit di sini.
+const PET_TYPES = ["Kucing", "Anjing", "Hamster", "Kelinci", "Ikan"];
 
 // Keyword mapping untuk rekomendasi produk
 const PET_KEYWORDS: Record<string, string[]> = {
   Kucing: ["kucing", "cat"],
   Anjing: ["anjing", "dog"],
+  Hamster: ["hamster"],
+  Kelinci: ["kelinci", "rabbit"],
   Ikan: ["ikan", "aquarium", "aquatic"],
   Burung: ["burung", "bird"],
   Reptil: ["reptil", "reptile"],
@@ -37,6 +44,8 @@ function petAge(birthDate: Date): string {
 const PET_EMOJI: Record<string, string> = {
   Kucing: "🐱",
   Anjing: "🐶",
+  Hamster: "🐹",
+  Kelinci: "🐰",
   Ikan: "🐠",
   Burung: "🐦",
   Reptil: "🦎",
@@ -340,6 +349,13 @@ export default async function MemberPetsPage({
                             defaultValue={pet.type}
                             className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-natalo-400"
                           >
+                            {/* Jenis lama (mis. Burung/Reptil) yang sudah tak
+                                lagi jadi opsi baru tetap ditampilkan sebagai
+                                opsi tambahan supaya edit pet lama (mis. ganti
+                                nama saja) tidak diam-diam mengubah jenisnya. */}
+                            {!PET_TYPES.includes(pet.type) && (
+                              <option key={pet.type}>{pet.type}</option>
+                            )}
                             {PET_TYPES.map((t) => (
                               <option key={t}>{t}</option>
                             ))}
