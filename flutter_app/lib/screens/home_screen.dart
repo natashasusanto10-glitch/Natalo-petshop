@@ -2829,70 +2829,77 @@ class _FlashSaleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final discountPercent = _activeHomeProductDiscountPercent(product);
 
-    return Material(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(8),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x08000000),
-                blurRadius: 10,
-                offset: Offset(0, 4),
-              ),
-            ],
+    // Shadow WAJIB di luar Material (clipBehavior antiAlias memotong child
+    // ke rounded-rect → shadow di Container dalam tidak pernah terlihat).
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x08000000),
+            blurRadius: 10,
+            offset: Offset(0, 4),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Foto 1:1 full-bleed cover (spec grid) + badge diskon overlay.
-              Stack(
-                children: [
-                  _HomeProductImageSquare(imageUrl: product.imageUrl),
-                  if (discountPercent != null)
-                    Positioned(
-                      right: 6,
-                      top: 6,
-                      child: _HomeProductDiscountBadge(
-                        percent: discountPercent,
-                        compact: true,
-                      ),
-                    ),
-                ],
+        ],
+      ),
+      child: Material(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(8),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(7, 6, 7, 7),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Foto 1:1 full-bleed cover (spec grid) + badge diskon overlay.
+                Stack(
                   children: [
-                    SizedBox(
-                      height: 27,
-                      child: Text(
-                        product.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 10.8,
-                          height: 1.18,
-                          fontWeight: FontWeight.w700,
-                          color: Theme.of(context).colorScheme.onSurface,
+                    _HomeProductImageSquare(imageUrl: product.imageUrl),
+                    if (discountPercent != null)
+                      Positioned(
+                        right: 6,
+                        top: 6,
+                        child: _HomeProductDiscountBadge(
+                          percent: discountPercent,
+                          compact: true,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    _FlashSalePriceBlock(product: product),
-                    _FlashSaleSoldProgress(product: product),
                   ],
                 ),
-              ),
-            ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(7, 6, 7, 7),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        height: 27,
+                        child: Text(
+                          product.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 10.8,
+                            height: 1.18,
+                            fontWeight: FontWeight.w700,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _FlashSalePriceBlock(product: product),
+                      _FlashSaleSoldProgress(product: product),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -3232,25 +3239,33 @@ class _HomeProductCard extends StatelessWidget {
 
     return SizedBox(
       width: width,
-      child: Material(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(cardRadius),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(cardRadius),
-              border: Border.all(color: cs.outlineVariant),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x08000000),
-                  blurRadius: 10,
-                  offset: Offset(0, 4),
-                ),
-              ],
+      // Shadow WAJIB di luar Material: Material clipBehavior antiAlias
+      // memotong child ke rounded-rect, jadi boxShadow yang dipasang di
+      // Container DI DALAM-nya jatuh di luar clip dan tidak pernah terlihat.
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(cardRadius),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x08000000),
+              blurRadius: 10,
+              offset: Offset(0, 4),
             ),
-            child: cardBody,
+          ],
+        ),
+        child: Material(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(cardRadius),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(cardRadius),
+                border: Border.all(color: cs.outlineVariant),
+              ),
+              child: cardBody,
+            ),
           ),
         ),
       ),
