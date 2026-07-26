@@ -12,6 +12,7 @@ import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { syncProduct } from "@/lib/search";
 import { putVariantsPayloadSchema, formatVariantIssues } from "@/lib/validators/variant-schema";
+import { describeVariantSkuConflict } from "@/lib/product/sku-conflict";
 
 export async function PUT(
   request: NextRequest,
@@ -57,9 +58,12 @@ export async function PUT(
 
       if (!hasVariants) {
         // Nonaktifkan semua variant yang ada
+        // sku: null WAJIB (konsisten dgn soft-delete di bawah) — tanpa ini,
+        // mematikan mode varian lalu menyalakannya lagi dengan SKU yang sama
+        // gagal P2002 karena baris lama masih memegang kodenya.
         await tx.productVariant.updateMany({
           where: { productId, deletedAt: null },
-          data: { deletedAt: new Date(), isActive: false },
+          data: { deletedAt: new Date(), isActive: false, sku: null },
         });
         // Tidak perlu sync — Product.price/stock/weightGram pakai nilai sendiri
         return;
@@ -131,14 +135,10 @@ export async function PUT(
           continue;
         }
 
-        // Validasi SKU unik (kalau ada)
+        // Validasi SKU unik (kalau ada) — pesan menyebut produk pemegangnya.
         if (v.sku) {
-          const existingSku = await tx.productVariant.findFirst({
-            where: { sku: v.sku },
-          });
-          if (existingSku) {
-            throw new Error(`SKU "${v.sku}" sudah digunakan oleh varian lain.`);
-          }
+          const conflict = await describeVariantSkuConflict(tx, v.sku, productId);
+          if (conflict) throw new Error(conflict);
         }
 
         await tx.productVariant.create({

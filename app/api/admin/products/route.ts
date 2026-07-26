@@ -6,6 +6,7 @@ import { putVariantsPayloadSchema, formatVariantIssues } from "@/lib/validators/
 import { createProductSchema, formatProductFieldErrors } from "@/lib/validators/product-schema";
 import { Prisma } from "@prisma/client";
 import { normalizeProductFormPayload } from "@/lib/product/admin-product-form";
+import { describeProductSkuConflict, describeVariantSkuConflict } from "@/lib/product/sku-conflict";
 import { validateCareFields } from "@/lib/product-dosage";
 
 const MAX_LIMIT = 100;
@@ -189,12 +190,8 @@ export async function POST(request: NextRequest) {
     const trimmedSku = body.sku?.trim();
     const productSku = body.hasVariants ? null : trimmedSku || null;
     if (productSku) {
-      const existingSku = await tx.product.findFirst({
-        where: { sku: productSku },
-      });
-      if (existingSku) {
-        throw new Error(`SKU Induk "${productSku}" sudah digunakan oleh produk lain.`);
-      }
+      const conflict = await describeProductSkuConflict(tx, productSku);
+      if (conflict) throw new Error(conflict);
     }
 
     const product = await tx.product.create({
@@ -282,12 +279,8 @@ export async function POST(request: NextRequest) {
       if (optionIds.length !== v.optionRefs.length) continue;
 
       if (v.sku) {
-        const existingSku = await tx.productVariant.findFirst({
-          where: { sku: v.sku },
-        });
-        if (existingSku) {
-          throw new Error(`SKU "${v.sku}" sudah digunakan oleh varian lain.`);
-        }
+        const conflict = await describeVariantSkuConflict(tx, v.sku, product.id);
+        if (conflict) throw new Error(conflict);
       }
 
       await tx.productVariant.create({

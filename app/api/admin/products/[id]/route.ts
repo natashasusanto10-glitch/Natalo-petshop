@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { normalizeProductFormPayload } from "@/lib/product/admin-product-form";
 import { putVariantsPayloadSchema, formatVariantIssues } from "@/lib/validators/variant-schema";
+import { describeVariantSkuConflict } from "@/lib/product/sku-conflict";
 import { validateCareFields } from "@/lib/product-dosage";
 
 /**
@@ -156,7 +157,9 @@ export async function PATCH(
     );
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
+  let updated;
+  try {
+  updated = await prisma.$transaction(async (tx) => {
     const result = await tx.product.update({
       where: { id },
       data,
@@ -171,7 +174,11 @@ export async function PATCH(
       },
     });
     if (variantPayload) {
-      await tx.productVariant.updateMany({ where: { productId: id, deletedAt: null }, data: { deletedAt: new Date(), isActive: false } });
+      // sku: null WAJIB — sku @unique di level DB, jadi varian lama yang
+      // soft-delete tanpa membebaskan SKU mengunci kodenya selamanya
+      // (varian baru di bawah tak bisa pakai kode yang sama → P2002).
+      // Konsisten dengan pola di variants/route.ts (soft-delete + sku null).
+      await tx.productVariant.updateMany({ where: { productId: id, deletedAt: null }, data: { deletedAt: new Date(), isActive: false, sku: null } });
       await tx.variantAttribute.deleteMany({ where: { productId: id } });
       const optionMap = new Map<string, string>();
       for (const attr of variantPayload.attributes) {
@@ -181,6 +188,13 @@ export async function PATCH(
       for (const v of variantPayload.variants) {
         const optionIds = v.optionRefs.map((r: string) => optionMap.get(r)).filter(Boolean) as string[];
         if (optionIds.length !== v.optionRefs.length) continue;
+        // Pre-check SKU DENGAN pesan menyebut pemegangnya — tanpa ini,
+        // duplikat meledak sebagai P2002 mentah (jalur EDIT tak punya cek
+        // sama sekali sebelumnya) dan admin cuma lihat error generik.
+        if (v.sku) {
+          const conflict = await describeVariantSkuConflict(tx, v.sku, id);
+          if (conflict) throw new Error(conflict);
+        }
         await tx.productVariant.create({ data: { productId: id, sku: v.sku || null, price: v.price, stock: v.stock, weightGram: v.weightGram, imageUrl: v.imageUrl || null, isActive: v.isActive, options: { create: optionIds.map((optionId) => ({ optionId })) } } });
       }
       const active = await tx.productVariant.findMany({ where: { productId: id, deletedAt: null, isActive: true }, select: { price: true, stock: true, weightGram: true } });
@@ -191,6 +205,23 @@ export async function PATCH(
     }
     return tx.product.findUnique({ where: { id }, select: { id: true, name: true, slug: true, price: true, stock: true, weightGram: true, isActive: true, imageUrl: true } });
   }).catch((err) => { if (err.code === "P2025") return null; throw err; });
+  } catch (error) {
+    // Tanpa ini, throw di dalam transaction (bentrok SKU, constraint Prisma)
+    // jadi 500 non-JSON → klien dapat {} → pesan generik. Sama dengan pola
+    // di POST /api/admin/products.
+    console.error(`[PATCH /api/admin/products/${id}] gagal update produk`, error);
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      const target = Array.isArray(error.meta?.target) ? error.meta.target.join(", ") : String(error.meta?.target ?? "");
+      return NextResponse.json(
+        { error: `Nilai duplikat pada ${target || "field unik"} — sudah dipakai produk/varian lain.` },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Gagal menyimpan perubahan produk." },
+      { status: 400 },
+    );
+  }
 
   if (!updated) {
     return NextResponse.json({ error: "Produk tidak ditemukan" }, { status: 404 });
