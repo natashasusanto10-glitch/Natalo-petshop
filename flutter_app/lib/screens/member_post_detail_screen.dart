@@ -4087,8 +4087,8 @@ class _MediaPlaceholder extends StatelessWidget {
 ///
 /// Aturan (plan 2026-07-13):
 ///  - Autoplay saat terlihat ≥60% (ala IG Postingan).
-///  - Mute mengikuti coordinator (feedMuted) — tombol mute menulis ke
-///    `appSettingsStore.setFeedMuted`, coordinator re-apply ke sesi aktif.
+///  - Mute mengikuti coordinator (feedMuted). TIDAK ada tombol mute di
+///    preview inline (ala IG Reels) — toggle-nya hanya di view imersif.
 ///  - Dormant (fullscreen terbuka utk sesi ini): berhenti lapor visibilitas,
 ///    tampilkan frozen frame/thumbnail; JANGAN sentuh controller (dimiliki
 ///    coordinator & dipakai fullscreen).
@@ -4279,13 +4279,6 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _toggleMute() async {
-    AppHaptics.tap();
-    // Tulis ke preferensi global — coordinator listener re-apply ke sesi
-    // aktif (mute konsisten di semua permukaan, §2.2).
-    await appSettingsStore.setFeedMuted(!appSettingsStore.feedMuted);
-  }
-
   /// Tombol "Coba lagi" — init ulang manual (reset budget retry di sesi).
   /// Sesi tetap dimiliki coordinator; kita hanya minta re-init dari view.
   void _onRetry() {
@@ -4306,7 +4299,6 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     final visualLoading = ready &&
         session != null &&
         (!hasVisualOutput || session.isRecoveringVisualOutput);
-    final muted = appSettingsStore.feedMuted;
     // Spinner hanya saat kita memang sedang memuat (attached, belum ready,
     // tanpa error), atau saat audio ditahan karena frame baru belum terbukti.
     final loading = _attached && !hasError && (!ready || visualLoading);
@@ -4317,8 +4309,8 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Media detector — membungkus HANYA layer media. Kontrol (mute,
-          // retry) di bawah adalah SIBLING di ATAS detector ini (pola feed):
+          // Media detector — membungkus HANYA layer media. Kontrol (retry)
+          // di bawah adalah SIBLING di ATAS detector ini (pola feed):
           // tap kontrol terserap dulu → arena double-tap media tak aktif →
           // kontrol instan. _anchorKey WAJIB tetap di sini (morph transition
           // anchor; bounds tak berubah krn ini child pertama full-size Stack).
@@ -4450,29 +4442,10 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
                 ],
               ),
             ),
-          // Ikon mute pojok kanan bawah — mengikuti feedMuted global.
-          if (ready && !hasError && !widget.dormant)
-            Positioned(
-              right: 10,
-              bottom: 10,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _toggleMute,
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.55),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                    color: Colors.white,
-                    size: 16,
-                  ),
-                ),
-              ),
-            ),
+          // TIDAK ada ikon mute di sini — ala IG Reels, preview inline bebas
+          // kontrol. Suara tetap mengikuti preferensi global `feedMuted`;
+          // toggle-nya hidup di view imersif (overlay saat video di-pause,
+          // lihat _PausedVideoControls di feed_video_post_view.dart).
         ],
       ),
     );
