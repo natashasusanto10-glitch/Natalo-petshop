@@ -11,6 +11,8 @@ import '../utils/formatters.dart';
 import '../widgets/added_to_cart_sheet.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/compact_commerce_product_card.dart'
+    show commerceGridSurfaceTint;
 import '../widgets/product_variant_picker_sheet.dart';
 
 typedef ProductBySlugFetcher = Future<Product?> Function(String slug);
@@ -250,40 +252,49 @@ class _PetShoppingScreenState extends State<PetShoppingScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                // Bukan GridView.count(childAspectRatio: ...) — rasio tetap
-                // overflow saat text scale sistem membesar (kartu berisi
-                // gambar 1:1 + nama 2 baris + harga). Baris manual biar
-                // tiap kartu tinggi mengikuti kontennya sendiri.
-                Column(
-                  children: [
-                    for (var i = 0; i < data.suggested.length; i += 2)
-                      Padding(
-                        padding: EdgeInsets.only(
-                            bottom:
-                                i + 2 < data.suggested.length ? 10 : 0),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: _SuggestionCard(
-                                product: data.suggested[i],
-                                onTap: () => _openProduct(data.suggested[i]),
+                // Kanal abu di belakang grid — kartu putih hanya terbaca
+                // sebagai "kartu" kalau latarnya lebih gelap sedikit. Token
+                // dan helper sama dengan grid Beranda/Katalog/Keranjang.
+                Container(
+                  decoration: BoxDecoration(
+                    color: commerceGridSurfaceTint(context),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.all(6),
+                  // Bukan GridView.count(childAspectRatio: ...) — rasio tetap
+                  // overflow saat text scale sistem membesar (kartu berisi
+                  // gambar 1:1 + nama 2 baris + harga). Baris manual biar
+                  // tiap kartu tinggi mengikuti kontennya sendiri.
+                  child: Column(
+                    children: [
+                      for (var i = 0; i < data.suggested.length; i += 2)
+                        Padding(
+                          padding: EdgeInsets.only(
+                              bottom: i + 2 < data.suggested.length ? 6 : 0),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: _SuggestionCard(
+                                  product: data.suggested[i],
+                                  onTap: () => _openProduct(data.suggested[i]),
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: i + 1 < data.suggested.length
-                                  ? _SuggestionCard(
-                                      product: data.suggested[i + 1],
-                                      onTap: () =>
-                                          _openProduct(data.suggested[i + 1]),
-                                    )
-                                  : const SizedBox.shrink(),
-                            ),
-                          ],
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: i + 1 < data.suggested.length
+                                    ? _SuggestionCard(
+                                        product: data.suggested[i + 1],
+                                        onTap: () =>
+                                            _openProduct(data.suggested[i + 1]),
+                                      )
+                                    : const SizedBox.shrink(),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
               const SizedBox(height: 20),
@@ -537,6 +548,11 @@ class _ManualRow extends StatelessWidget {
   }
 }
 
+/// Kartu saran — token disamakan dengan kartu grid Katalog
+/// (`_ProductsPageProductCard`): kartu putih radius 8 + border + shadow
+/// halus, foto 1:1 full-bleed `cover`, nama 13/w600 tinggi dipaku 34, harga
+/// 16/w900. TANPA badge diskon/hemat/brand/rating: DTO Belanja tidak membawa
+/// datanya.
 class _SuggestionCard extends StatelessWidget {
   final PetShoppingProduct product;
   final VoidCallback onTap;
@@ -546,48 +562,78 @@ class _SuggestionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            border: Border.all(color: cs.outlineVariant),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AspectRatio(
-                aspectRatio: 1,
-                child: AppProductImage(
-                  imageUrl: product.imageUrl,
-                  borderRadius: BorderRadius.circular(8),
+    return Semantics(
+      button: true,
+      container: true,
+      excludeSemantics: true,
+      label: product.name,
+      child: Material(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(8),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: cs.outlineVariant),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x08000000),
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                product.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: NataloWeight.strong,
-                  color: cs.onSurface,
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AspectRatio(
+                  aspectRatio: 1,
+                  child: AppProductImage(
+                    imageUrl: product.imageUrl,
+                    fit: BoxFit.cover,
+                    borderRadius: BorderRadius.zero,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                formatRupiah(product.effectivePrice),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: NataloWeight.body,
-                  color: cs.onSurfaceVariant,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Tinggi nama dipaku 34 (2 baris) — sama Katalog —
+                      // supaya baris harga antar-kartu sebaris tetap sejajar.
+                      SizedBox(
+                        height: 34,
+                        child: Text(
+                          product.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            height: 1.25,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        formatRupiah(product.effectivePrice),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          height: 1.1,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

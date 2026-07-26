@@ -3,6 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/pet_shopping.dart';
 import 'package:natalo_petshop_flutter/models/product.dart';
 import 'package:natalo_petshop_flutter/screens/pet_shopping_screen.dart';
+import 'package:natalo_petshop_flutter/widgets/app_product_image.dart';
+import 'package:natalo_petshop_flutter/widgets/compact_commerce_product_card.dart'
+    show commerceGridSurfaceTint;
 
 PetShoppingProduct used(String name) => PetShoppingProduct(
       productId: 'id-$name',
@@ -38,6 +41,13 @@ Widget wrap(PetShopping data) => MaterialApp(
         petName: 'Bobby',
         fetcher: (_) async => data,
       ),
+    );
+
+PetShopping dataWithSuggestions(int n) => PetShopping(
+      usedCount: 0,
+      used: const [],
+      manual: const [],
+      suggested: [for (var i = 0; i < n; i++) suggestion('Produk $i')],
     );
 
 void main() {
@@ -391,5 +401,184 @@ void main() {
     // Toast error pakai timer sampai ~3.65s; habiskan sebelum test selesai
     // agar tak ada Timer pending saat widget tree di-dispose.
     await tester.pump(const Duration(seconds: 4));
+  });
+
+  testWidgets('grid saran: kartu tanpa badge "Saran"', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: PetShoppingScreen(
+        petId: 'pet-1',
+        petName: 'Didi',
+        fetcher: (_) async => dataWithSuggestions(4),
+      ),
+    ));
+    await pumpFrames(tester);
+    expect(find.text('Saran'), findsNothing);
+  });
+
+  testWidgets('grid saran: nama 13/w600 tinggi dipaku, harga 16/w900',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: PetShoppingScreen(
+        petId: 'pet-1',
+        petName: 'Didi',
+        fetcher: (_) async => PetShopping(
+          usedCount: 0,
+          used: const [],
+          manual: const [],
+          suggested: [
+            PetShoppingProduct(
+              productId: 'id-kaniva',
+              slug: 'kaniva',
+              name: 'Kaniva Dog',
+              imageUrl: null,
+              effectivePrice: 335000,
+              inStock: true,
+              hasVariants: false,
+            ),
+          ],
+        ),
+      ),
+    ));
+    await pumpFrames(tester);
+
+    final nama = tester.widget<Text>(find.text('Kaniva Dog'));
+    expect(nama.style!.fontSize, 13);
+    expect(nama.style!.fontWeight, FontWeight.w600);
+
+    expect(find.text('Rp335.000'), findsOneWidget);
+    final harga = tester.widget<Text>(find.text('Rp335.000'));
+    expect(harga.style!.fontSize, 16);
+    expect(harga.style!.fontWeight, FontWeight.w900);
+  });
+
+  testWidgets('grid saran: foto 1:1 BoxFit.cover full-bleed', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: PetShoppingScreen(
+        petId: 'pet-1',
+        petName: 'Didi',
+        fetcher: (_) async => dataWithSuggestions(2),
+      ),
+    ));
+    await pumpFrames(tester);
+    final imgs = tester
+        .widgetList<AppProductImage>(find.byType(AppProductImage))
+        .toList();
+    expect(imgs, isNotEmpty);
+    for (final img in imgs) {
+      expect(img.fit, BoxFit.cover);
+    }
+    final size = tester.getSize(find.byType(AppProductImage).first);
+    expect(size.width, closeTo(size.height, 0.5), reason: 'foto WAJIB 1:1');
+  });
+
+  testWidgets('grid saran duduk di atas kanal abu (ala Beranda/Katalog)',
+      (tester) async {
+    late BuildContext ctx;
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(builder: (c) {
+        ctx = c;
+        return PetShoppingScreen(
+          petId: 'pet-1',
+          petName: 'Didi',
+          fetcher: (_) async => dataWithSuggestions(4),
+        );
+      }),
+    ));
+    await pumpFrames(tester);
+
+    final expected = commerceGridSurfaceTint(ctx);
+    final tinted = tester.widgetList<Container>(find.byType(Container)).where(
+          (c) =>
+              c.decoration is BoxDecoration &&
+              (c.decoration as BoxDecoration).color == expected,
+        );
+    expect(tinted, isNotEmpty,
+        reason: 'kartu putih butuh kanal abu supaya terbaca sebagai kartu');
+  });
+
+  testWidgets('grid saran menampilkan 12 kartu tanpa overflow', (tester) async {
+    tester.view.physicalSize = const Size(1080, 6000);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(
+      home: PetShoppingScreen(
+        petId: 'pet-1',
+        petName: 'Didi',
+        fetcher: (_) async => dataWithSuggestions(12),
+      ),
+    ));
+    await pumpFrames(tester);
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Produk 0'), findsOneWidget);
+    expect(find.text('Produk 11'), findsOneWidget);
+  });
+
+  testWidgets('grid saran ganjil: kartu terakhir tidak melebar penuh',
+      (tester) async {
+    tester.view.physicalSize = const Size(1080, 6000);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(
+      home: PetShoppingScreen(
+        petId: 'pet-1',
+        petName: 'Didi',
+        fetcher: (_) async => dataWithSuggestions(3),
+      ),
+    ));
+    await pumpFrames(tester);
+
+    final w0 = tester.getSize(find.text('Produk 0')).width;
+    final w2 = tester.getSize(find.text('Produk 2')).width;
+    expect(w2, closeTo(w0, 1.0),
+        reason: 'kartu ganjil terakhir tetap selebar 1 kolom');
+  });
+
+  testWidgets('grid saran tidak overflow pada text scale 1.3', (tester) async {
+    tester.view.physicalSize = const Size(1080, 8000);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(
+      home: MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+        child: PetShoppingScreen(
+          petId: 'pet-1',
+          petName: 'Didi',
+          fetcher: (_) async => PetShopping(
+            usedCount: 0,
+            used: const [],
+            manual: const [],
+            suggested: [
+              for (var i = 0; i < 6; i++)
+                suggestion('Nama Produk Panjang Sekali Nomor $i'),
+            ],
+          ),
+        ),
+      ),
+    ));
+    await pumpFrames(tester);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('CTA "Jelajahi produk lain" tetap ada di bawah grid',
+      (tester) async {
+    // Kartu grid gaya Katalog (foto 1:1 full-bleed) jauh lebih tinggi per
+    // baris dibanding kartu lama; viewport default flutter_test (800x600)
+    // tak cukup untuk memuat CTA di bawah grid ke dalam cacheExtent sliver.
+    // Sama seperti gotcha yang sudah didokumentasikan di useTallViewport
+    // untuk test lain di file ini.
+    await useTallViewport(tester);
+    await tester.pumpWidget(MaterialApp(
+      home: PetShoppingScreen(
+        petId: 'pet-1',
+        petName: 'Didi',
+        fetcher: (_) async => dataWithSuggestions(2),
+      ),
+    ));
+    await pumpFrames(tester);
+    expect(find.text('Jelajahi produk lain'), findsOneWidget);
   });
 }
