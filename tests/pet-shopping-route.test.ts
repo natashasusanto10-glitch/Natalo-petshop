@@ -4,7 +4,12 @@ import {
   buildUsageMaps,
   composeUsed,
   toShoppingProduct,
+  SUGGESTED_LIMIT,
+  inStockCandidates,
+  orderRowsByIds,
+  toStockCandidate,
 } from "../app/api/member/pets/[id]/shopping/route";
+import type { ProductRow } from "../app/api/member/pets/[id]/shopping/route";
 
 const d = (s: string) => new Date(s);
 
@@ -109,4 +114,94 @@ test("INVARIAN: usedCount == jumlah baris yang tampil, walau ada produk nonaktif
   const usedList = composeUsed([row("p1", "s1")], used);
   const usedCount = usedList.length + manual.size;
   assert.equal(usedCount, 2, "1 produk aktif + 1 brand manual; yang nonaktif tak dihitung");
+});
+
+test("SUGGESTED_LIMIT = 12 (grid), rail memakai 6 pertama", () => {
+  assert.equal(SUGGESTED_LIMIT, 12);
+});
+
+test("toStockCandidate: produk varian base stock 0 tetap in-stock", () => {
+  const out = toStockCandidate({
+    id: "p1",
+    stock: 0,
+    targetSpecies: [],
+    category: { name: "Makanan Anjing" },
+    variants: [{ stock: 4 }],
+  });
+  assert.equal(out.inStock, true, "stok varian WAJIB dijumlahkan");
+  assert.equal(out.categoryName, "Makanan Anjing");
+  assert.deepEqual(out.targetSpecies, []);
+});
+
+test("toStockCandidate: produk tanpa kategori → categoryName null", () => {
+  const out = toStockCandidate({
+    id: "p2",
+    stock: 3,
+    targetSpecies: [],
+    category: null,
+    variants: [],
+  });
+  assert.equal(out.categoryName, null);
+  assert.equal(out.inStock, true);
+});
+
+test("inStockCandidates: item habis dibuang SEBELUM seleksi", () => {
+  // Kalau filter stok terjadi SESUDAH seleksi, permintaan 12 slot bisa
+  // menghasilkan 7 kartu — slot bocor tanpa sebab yang terlihat user.
+  const out = inStockCandidates([
+    {
+      id: "ada",
+      stock: 2,
+      targetSpecies: [],
+      category: { name: "Makanan Anjing" },
+      variants: [],
+    },
+    {
+      id: "habis",
+      stock: 0,
+      targetSpecies: [],
+      category: { name: "Makanan Anjing" },
+      variants: [],
+    },
+    {
+      id: "varian-habis",
+      stock: 0,
+      targetSpecies: [],
+      category: { name: "Snack Anjing" },
+      variants: [{ stock: 0 }],
+    },
+  ]);
+  assert.deepEqual(out.map((c) => c.id), ["ada"]);
+});
+
+test("orderRowsByIds: urutan hasil mengikuti urutan id, bukan urutan DB", () => {
+  const row = (id: string): ProductRow => ({
+    id,
+    slug: id,
+    name: id,
+    imageUrl: null,
+    price: 1000,
+    stock: 5,
+    targetSpecies: [],
+    category: { name: "Makanan Anjing" },
+    variants: [],
+  });
+  const out = orderRowsByIds([row("c"), row("a"), row("b")], ["b", "c", "a"]);
+  assert.deepEqual(out.map((r) => r.id), ["b", "c", "a"]);
+});
+
+test("orderRowsByIds: id tanpa baris (produk hilang) dilewati diam-diam", () => {
+  const row = (id: string): ProductRow => ({
+    id,
+    slug: id,
+    name: id,
+    imageUrl: null,
+    price: 1000,
+    stock: 5,
+    targetSpecies: [],
+    category: null,
+    variants: [],
+  });
+  const out = orderRowsByIds([row("a")], ["a", "hilang"]);
+  assert.deepEqual(out.map((r) => r.id), ["a"]);
 });

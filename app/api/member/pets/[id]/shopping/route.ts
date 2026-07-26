@@ -7,13 +7,30 @@ import {
   type RecoProductInput,
 } from "@/lib/product-dosage";
 import {
-  PET_SPECIES,
-  rankShoppingCandidates,
+  allowedCategoriesFor,
+  selectSuggestionIds,
   type ShoppingCandidate,
 } from "@/lib/pet-shopping";
 
-const SUGGESTED_LIMIT = 8;
-const POOL_TAKE = 40;
+/** Slot grid halaman penuh; rail profil memakai 6 pertama dari urutan sama. */
+export const SUGGESTED_LIMIT = 12;
+
+/**
+ * Kolom minimal untuk menghitung stok efektif + grup kategori. Query ringan
+ * ini boleh menyapu seluruh kandidat spesies (≤380 baris di katalog per
+ * 2026-07-26) karena payload per baris sangat kecil; baris PENUH hanya
+ * diambil untuk 12 id yang benar-benar terpilih.
+ */
+const STOCK_SELECT = {
+  id: true,
+  stock: true,
+  targetSpecies: true,
+  category: { select: { name: true } },
+  variants: {
+    where: { isActive: true, deletedAt: null },
+    select: { stock: true },
+  },
+} as const;
 
 const PRODUCT_SELECT = {
   id: true,
@@ -128,6 +145,56 @@ export function composeUsed(
     .sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt));
 }
 
+export type StockRow = {
+  id: string;
+  stock: number;
+  targetSpecies: string[];
+  category: { name: string } | null;
+  variants: { stock: number }[];
+};
+
+/** Kandidat + status stok efektif (base + semua varian aktif). */
+export function toStockCandidate(
+  row: StockRow,
+): ShoppingCandidate & { inStock: boolean } {
+  const variantTotal = row.variants.reduce((sum, v) => sum + v.stock, 0);
+  return {
+    id: row.id,
+    targetSpecies: row.targetSpecies ?? [],
+    categoryName: row.category?.name ?? null,
+    // GOTCHA: produk varian punya Product.stock = 0 dan stok sebenarnya di
+    // ProductVariant, jadi stok TIDAK BOLEH difilter di SQL.
+    inStock: row.stock + variantTotal > 0,
+  };
+}
+
+/**
+ * Buang produk habis SEBELUM seleksi. Urutannya penting: kalau filter stok
+ * terjadi setelah `selectSuggestionIds`, permintaan 12 slot bisa berakhir
+ * jadi 7 kartu karena sebagian tersaring — slot bocor tanpa sebab terlihat.
+ */
+export function inStockCandidates(rows: StockRow[]): ShoppingCandidate[] {
+  return rows
+    .map(toStockCandidate)
+    .filter((c) => c.inStock)
+    .map(({ id, targetSpecies, categoryName }) => ({
+      id,
+      targetSpecies,
+      categoryName,
+    }));
+}
+
+/** Susun baris penuh mengikuti urutan `ids` (urutan DB tidak dijamin). */
+export function orderRowsByIds(
+  rows: ProductRow[],
+  ids: string[],
+): ProductRow[] {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return ids
+    .map((id) => byId.get(id))
+    .filter((r): r is ProductRow => r !== undefined);
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -172,55 +239,58 @@ export async function GET(
     }))
     .sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt));
 
-  // Kandidat saran: dua query berbatas, lalu diperingkat di JS supaya
-  // aturannya teruji (Task 1) dan tidak perlu memindai 1300+ produk.
+  // Kandidat saran: satu query RINGAN untuk seluruh kategori allowlist,
+  // seleksi murni (allowlist + rotasi harian + penjalinan) di JS, lalu satu
+  // query PENUH untuk 12 id terpilih. Pola ini menggantikan pool
+  // "40 produk terbaru" yang lama — pool itu membuat 200+ produk lain tak
+  // pernah punya kesempatan tampil, jadi rotasi apa pun tak akan terasa.
   const usedIds = used.map((u) => u.productId);
   const notUsed = usedIds.length ? { id: { notIn: usedIds } } : {};
-  const speciesMatched = (await prisma.product.findMany({
-    where: {
-      isActive: true,
-      ...notUsed,
-      OR: [
-        { targetSpecies: { has: pet.type } },
-        { category: { name: { contains: pet.type, mode: "insensitive" } } },
-      ],
-    },
-    select: PRODUCT_SELECT,
-    orderBy: { createdAt: "desc" },
-    take: POOL_TAKE,
-  })) as unknown as ProductRow[];
+  const allowedCategories = [...allowedCategoriesFor(pet.type)];
 
-  let pool = speciesMatched;
-  if (pool.length < SUGGESTED_LIMIT) {
-    const neutral = (await prisma.product.findMany({
-      where: {
-        isActive: true,
-        ...notUsed,
-        targetSpecies: { isEmpty: true },
-        AND: PET_SPECIES.map((s) => ({
-          NOT: { category: { name: { contains: s, mode: "insensitive" } } },
-        })),
-      },
-      select: PRODUCT_SELECT,
-      orderBy: { createdAt: "desc" },
-      take: POOL_TAKE,
-    })) as unknown as ProductRow[];
-    pool = [...pool, ...neutral];
-  }
+  const stockRows =
+    allowedCategories.length === 0
+      ? ((await prisma.product.findMany({
+          where: {
+            isActive: true,
+            ...notUsed,
+            targetSpecies: { has: pet.type },
+          },
+          select: STOCK_SELECT,
+          orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        })) as unknown as StockRow[])
+      : ((await prisma.product.findMany({
+          where: {
+            isActive: true,
+            ...notUsed,
+            OR: [
+              { targetSpecies: { has: pet.type } },
+              { category: { name: { in: allowedCategories } } },
+            ],
+          },
+          select: STOCK_SELECT,
+          // Urutan dasar deterministik — id sebagai tie-break supaya rotasi
+          // harian tidak bergeser hanya karena dua produk lahir bersamaan.
+          orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        })) as unknown as StockRow[]);
 
-  const candidates: (ShoppingCandidate & { row: ProductRow })[] = pool.map(
-    (row) => ({
-      id: row.id,
-      targetSpecies: row.targetSpecies ?? [],
-      categoryName: row.category?.name ?? null,
-      row,
-    }),
+  const suggestedIds = selectSuggestionIds(inStockCandidates(stockRows), {
+    petType: pet.type,
+    petId: pet.id,
+    now: new Date(),
+    limit: SUGGESTED_LIMIT,
+  });
+
+  const suggestedRows = suggestedIds.length
+    ? ((await prisma.product.findMany({
+        where: { id: { in: suggestedIds } },
+        select: PRODUCT_SELECT,
+      })) as unknown as ProductRow[])
+    : [];
+
+  const suggested = orderRowsByIds(suggestedRows, suggestedIds).map(
+    toShoppingProduct,
   );
-
-  const suggested = rankShoppingCandidates(candidates, pet.type)
-    .map((c) => toShoppingProduct(c.row))
-    .filter((p) => p.inStock)
-    .slice(0, SUGGESTED_LIMIT);
 
   return NextResponse.json({
     usedCount: used.length + manual.length,
