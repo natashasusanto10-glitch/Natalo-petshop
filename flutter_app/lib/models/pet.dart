@@ -77,7 +77,7 @@ class Pet {
     return Pet(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
-      type: json['type'] as String? ?? kPetTypes.last,
+      type: json['type'] as String? ?? 'Lainnya',
       breed: json['breed'] as String?,
       photoUrl: json['photoUrl'] as String?,
       birthDate:
