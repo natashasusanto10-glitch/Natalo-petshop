@@ -11,7 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { syncProduct } from "@/lib/search";
-import { putVariantsPayloadSchema } from "@/lib/validators/variant-schema";
+import { putVariantsPayloadSchema, formatVariantIssues } from "@/lib/validators/variant-schema";
 
 export async function PUT(
   request: NextRequest,
@@ -30,7 +30,7 @@ export async function PUT(
     if (!parsed.success) {
       return NextResponse.json(
         {
-          error: "Payload varian tidak valid",
+          error: formatVariantIssues(parsed.error.issues),
           fields: parsed.error.flatten().fieldErrors,
           // Detail per-issue (path + pesan) supaya UI bisa tunjuk baris/field
           // mana yang salah, bukan cuma pesan generik.

@@ -2,7 +2,7 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { syncProduct, productSearchWhere } from "@/lib/search";
-import { putVariantsPayloadSchema } from "@/lib/validators/variant-schema";
+import { putVariantsPayloadSchema, formatVariantIssues } from "@/lib/validators/variant-schema";
 import { createProductSchema, formatProductFieldErrors } from "@/lib/validators/product-schema";
 import { Prisma } from "@prisma/client";
 import { normalizeProductFormPayload } from "@/lib/product/admin-product-form";
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
       imageUrls: body.imageUrls ?? [body.imageUrl ?? "", ...body.gallery],
     });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Payload tidak valid" }, { status: 400 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Foto produk tidak bisa diproses." }, { status: 400 });
   }
 
   // Kalau hasVariants=true, validate attributes + variants pakai schema
@@ -143,11 +143,9 @@ export async function POST(request: NextRequest) {
       }));
       return NextResponse.json(
         {
-          // Sebut masalah pertama di `error` juga — klien lama yang cuma baca
-          // `error` (tanpa render `issues`) tetap dapat petunjuk konkret.
-          error: issues.length > 0
-            ? `Varian tidak valid — ${issues[0].path}: ${issues[0].message}`
-            : "Data varian tidak valid.",
+          // Sebut baris + field bermasalah di `error` juga — klien lama yang
+          // cuma baca `error` (tanpa render `issues`) tetap dapat petunjuk.
+          error: formatVariantIssues(variantParsed.error.issues),
           issues,
           fields: variantParsed.error.flatten().fieldErrors,
         },

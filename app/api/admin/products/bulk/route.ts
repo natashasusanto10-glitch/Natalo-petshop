@@ -21,7 +21,7 @@ export async function PATCH(request: NextRequest) {
 
   const body = await request.json();
   if (!Array.isArray(body?.updates)) {
-    return NextResponse.json({ error: "Payload tidak valid" }, { status: 400 });
+    return NextResponse.json({ error: "Tidak ada perubahan produk yang dikirim." }, { status: 400 });
   }
   const updates: Update[] = body.updates;
   if (updates.length === 0 || updates.length > MAX_BULK) {

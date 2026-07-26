@@ -27,7 +27,7 @@ export function validateCarePayload(
   body: unknown,
 ): { data: ValidatedCarePayload } | { error: string } {
   if (typeof body !== "object" || body === null) {
-    return { error: "Payload tidak valid." };
+    return { error: "Data perawatan tidak terkirim dengan benar. Coba ulangi." };
   }
   const { category, doneAt, note, nextDueAt } = body as Record<string, unknown>;
 

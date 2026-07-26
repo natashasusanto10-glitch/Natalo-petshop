@@ -23,7 +23,7 @@ export async function PATCH(
   const { id: productId } = await params;
   const body = await request.json();
   if (!Array.isArray(body?.updates)) {
-    return NextResponse.json({ error: "Payload tidak valid" }, { status: 400 });
+    return NextResponse.json({ error: "Tidak ada perubahan varian yang dikirim." }, { status: 400 });
   }
 
   const updates: Update[] = body.updates;

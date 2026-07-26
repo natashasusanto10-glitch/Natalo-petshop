@@ -39,7 +39,7 @@ export function validatePetPayload(
   body: unknown,
 ): { data: ValidatedPetPayload } | { error: string } {
   if (typeof body !== "object" || body === null) {
-    return { error: "Payload tidak valid." };
+    return { error: "Data pet tidak terkirim dengan benar. Coba ulangi." };
   }
   const { name, type, breed, birthDate, gender, bio, sterilized, allergy, healthNote } =
     body as Record<string, unknown>;

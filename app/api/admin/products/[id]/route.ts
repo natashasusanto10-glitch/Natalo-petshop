@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { normalizeProductFormPayload } from "@/lib/product/admin-product-form";
-import { putVariantsPayloadSchema } from "@/lib/validators/variant-schema";
+import { putVariantsPayloadSchema, formatVariantIssues } from "@/lib/validators/variant-schema";
 import { validateCareFields } from "@/lib/product-dosage";
 
 /**
@@ -104,7 +104,7 @@ export async function PATCH(
       data.imageUrl = normalized.imageUrl;
       data.gallery = normalized.gallery;
     } catch (error) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : "Payload foto tidak valid" }, { status: 400 });
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Foto produk tidak bisa diproses." }, { status: 400 });
     }
   }
   if (typeof body.categoryId === "string") data.category = body.categoryId.trim() ? { connect: { id: body.categoryId.trim() } } : { disconnect: true };
@@ -133,7 +133,7 @@ export async function PATCH(
       attributes: body.attributes ?? [],
       variants: body.variants ?? [],
     });
-    if (!parsedVariants.success) return NextResponse.json({ error: "Payload varian tidak valid", issues: parsedVariants.error.issues }, { status: 422 });
+    if (!parsedVariants.success) return NextResponse.json({ error: formatVariantIssues(parsedVariants.error.issues), issues: parsedVariants.error.issues, fields: parsedVariants.error.flatten().fieldErrors }, { status: 422 });
     variantPayload = parsedVariants.data;
     data.hasVariants = variantPayload.hasVariants;
     const effectivePrice = typeof body.price === "number" ? body.price : existingProduct.price;

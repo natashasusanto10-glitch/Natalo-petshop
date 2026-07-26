@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { formatFieldErrors } from "./format-errors";
 
 // Label Indonesia per field, dipakai untuk mengubah `flatten().fieldErrors`
 // jadi pesan yang bisa dibaca admin. TANPA ini, 14+ penyebab berbeda (nama
@@ -30,47 +31,16 @@ const FIELD_LABELS: Record<string, string> = {
 /**
  * Ubah `zodError.flatten().fieldErrors` jadi satu pesan siap-tampil.
  *
- * Contoh hasil: `Nama Produk: maksimal 200 karakter. Foto Produk: ada slot
- * foto yang belum selesai diunggah.`
+ * Contoh hasil: `Nama Produk: maksimal 200 karakter. Foto Produk: ada nilai
+ * kosong yang belum terisi.`
  */
 export function formatProductFieldErrors(
   fieldErrors: Record<string, string[] | undefined>,
   formErrors: string[] = [],
 ): string {
-  const parts = Object.entries(fieldErrors)
-    .filter(([, messages]) => messages && messages.length > 0)
-    .map(([field, messages]) => `${FIELD_LABELS[field] ?? field}: ${humanizeZodMessage(messages![0])}`);
-  const all = [...parts, ...formErrors];
-  return all.length > 0 ? all.join(". ") : "Data produk tidak valid.";
+  return formatFieldErrors(fieldErrors, FIELD_LABELS, formErrors, "Ada data produk yang belum valid.");
 }
 
-// Pesan bawaan Zod berbahasa Inggris dan bocorkan istilah teknis. Terjemahkan
-// pola yang paling sering muncul; sisanya dilewatkan apa adanya supaya kita
-// tidak pernah kehilangan informasi (lebih baik Inggris daripada buta).
-function humanizeZodMessage(message: string): string {
-  const tooBigChars = message.match(/have <=(\d+) characters/);
-  if (tooBigChars) return `maksimal ${tooBigChars[1]} karakter`;
-  const tooSmallChars = message.match(/have >=(\d+) characters/);
-  if (tooSmallChars) return `minimal ${tooSmallChars[1]} karakter`;
-  const tooBigItems = message.match(/have <=(\d+) items/);
-  if (tooBigItems) return `maksimal ${tooBigItems[1]} item`;
-  const tooSmallItems = message.match(/have >=(\d+) items/);
-  if (tooSmallItems) return `minimal ${tooSmallItems[1]} item`;
-  const tooBigNum = message.match(/number to be <=(\d+)/);
-  if (tooBigNum) return `maksimal ${tooBigNum[1]}`;
-  const tooSmallNum = message.match(/number to be >=(\d+)/);
-  if (tooSmallNum) return `minimal ${tooSmallNum[1]}`;
-  if (message.includes("received NaN")) return "harus berupa angka (nilai sekarang bukan angka)";
-  if (message.includes("expected int")) return "harus bilangan bulat, tanpa desimal";
-  if (message.includes("received null")) return "ada nilai kosong yang belum terisi";
-  if (message.includes("received undefined")) return "wajib diisi";
-  if (message.startsWith("Invalid input: expected")) return `format tidak sesuai (${message})`;
-  return message;
-}
-
-// Schema: Create product (extended dari POST sederhana original — sekarang
-// support gallery + opsional variants. Backwards compatible: caller lama
-// tanpa gallery / variants tetap jalan.
 export const createProductSchema = z.object({
   name: z.string().trim().min(1).max(200),
   description: z.string().trim().max(5000).optional().default(""),
