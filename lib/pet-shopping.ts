@@ -67,3 +67,46 @@ export function candidateGroup(
   }
   return c.categoryName ?? "";
 }
+
+/**
+ * Offset WIB dalam menit. Seed rotasi memakai tanggal WIB, BUKAN UTC:
+ * server berjalan di UTC, jadi tanggal-UTC akan mengganti isi saran jam
+ * 07.00 WIB — di tengah pagi user, yang terbaca sebagai acak.
+ */
+export const WIB_OFFSET_MINUTES = 420;
+
+/** Kunci tanggal `YYYY-MM-DD` menurut WIB. */
+export function wibDateKey(now: Date): string {
+  const shifted = new Date(now.getTime() + WIB_OFFSET_MINUTES * 60_000);
+  const y = shifted.getUTCFullYear();
+  const m = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(shifted.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * FNV-1a 32-bit. Algoritmanya dipatok di spec supaya test dan implementasi
+ * tidak bisa bergeser diam-diam; nilainya tidak pernah dipersistensi jadi
+ * tidak ada isu kompatibilitas lintas versi.
+ */
+export function fnv1a32(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    // Math.imul menjaga perkalian tetap di 32-bit (FNV prime 16777619).
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+/** Seed deterministik per (pet, hari WIB). */
+export function dailySeed(petId: string, now: Date): number {
+  return fnv1a32(`${petId}:${wibDateKey(now)}`);
+}
+
+/** Rotasi kiri `offset` posisi dengan wrap-around; input tidak dimutasi. */
+export function rotateFrom<T>(items: T[], offset: number): T[] {
+  if (items.length === 0) return [];
+  const start = ((offset % items.length) + items.length) % items.length;
+  return [...items.slice(start), ...items.slice(0, start)];
+}
