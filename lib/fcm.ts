@@ -30,23 +30,77 @@ import {
  * sama (root cause bug "sering double notifikasi").
  */
 
+/** App yang SUDAH berhasil di-init. Hanya sukses yang di-cache — lihat di
+ *  bawah kenapa meng-cache kegagalan berbahaya. */
 let fcmApp: import("firebase-admin/app").App | null = null;
-let fcmInitialized = false;
+/** Guard supaya peringatan "env belum di-set" tidak spam tiap kali dipanggil. */
+let fcmConfigWarned = false;
 
+/**
+ * Baca kredensial FCM dari env. Dipisah jadi fungsi murni supaya bisa dites
+ * tanpa menyentuh firebase-admin, dan supaya daftar env yang dibutuhkan punya
+ * satu tempat.
+ */
+export function readFcmConfig(env: Record<string, string | undefined>) {
+  return {
+    projectId: env.FCM_PROJECT_ID,
+    clientEmail: env.FCM_CLIENT_EMAIL,
+    rawPrivateKey: env.FCM_PRIVATE_KEY,
+  };
+}
+
+/**
+ * Nama env yang hilang dari config — dipakai untuk pesan log yang menyebut
+ * persis mana yang belum di-set, bukan sekadar "FCM tidak aktif".
+ */
+export function missingFcmConfigKeys(
+  env: Record<string, string | undefined>,
+): string[] {
+  const { projectId, clientEmail, rawPrivateKey } = readFcmConfig(env);
+  return [
+    !projectId && "FCM_PROJECT_ID",
+    !clientEmail && "FCM_CLIENT_EMAIL",
+    !rawPrivateKey && "FCM_PRIVATE_KEY",
+  ].filter((v): v is string => typeof v === "string");
+}
+
+/**
+ * SENGAJA hanya meng-cache hasil SUKSES.
+ *
+ * Dulu ada flag `fcmInitialized` yang di-set true SEBELUM init dicoba, dan
+ * saat init gagal `fcmApp` tinggal null — sehingga semua panggilan berikutnya
+ * berhenti di `if (!fcmApp) return null` tanpa pernah mencoba lagi. Di
+ * serverless efeknya parah: satu instance Vercel yang gagal init sekali (env
+ * telat ter-inject, hiccup jaringan saat ambil kredensial) akan DIAM SELAMANYA
+ * selama instance itu hidup — `sendFcmToUser` return di baris pertama, tanpa
+ * error, tanpa log. Request yang mendarat di instance sehat tetap terkirim,
+ * yang mendarat di instance rusak hilang tanpa jejak, lalu "sembuh sendiri"
+ * saat instance itu mati. Persis pola bug "push kadang tidak keluar" yang
+ * susah dilacak karena tidak meninggalkan jejak apa pun.
+ *
+ * Dengan hanya cache sukses, instance yang gagal akan mencoba ulang di request
+ * berikutnya. Biaya retry murah: baca env + `getApps()` lookup.
+ */
 async function getFcmMessaging() {
-  if (fcmInitialized) {
-    if (!fcmApp) return null;
+  if (fcmApp) {
     const { getMessaging } = await import("firebase-admin/messaging");
     return getMessaging(fcmApp);
   }
-  fcmInitialized = true;
 
-  const projectId = process.env.FCM_PROJECT_ID;
-  const clientEmail = process.env.FCM_CLIENT_EMAIL;
-  const rawPrivateKey = process.env.FCM_PRIVATE_KEY;
+  const { projectId, clientEmail, rawPrivateKey } = readFcmConfig(process.env);
 
   if (!projectId || !clientEmail || !rawPrivateKey) {
-    // FCM belum di-config — silently skip. Web Push & APNs tetap kerja.
+    // FCM belum di-config — skip. Web Push tetap kerja. Dulu ini return null
+    // benar-benar senyap, jadi "push native mati total" tidak terlihat sama
+    // sekali di log; sekarang minimal sekali per instance ada jejaknya.
+    if (!fcmConfigWarned) {
+      fcmConfigWarned = true;
+      const missing = missingFcmConfigKeys(process.env);
+      console.warn(
+        `FCM nonaktif — env belum di-set: ${missing.join(", ")}. ` +
+          "Push ke Android & iOS TIDAK terkirim.",
+      );
+    }
     return null;
   }
 
@@ -116,6 +170,26 @@ export type FcmPayload = {
  */
 export function apnsCollapseId(tag: string): string {
   return tag.slice(0, 64);
+}
+
+/**
+ * True kalau error dari FCM berarti TOKEN-nya yang sudah mati (app di-uninstall,
+ * token di-rotate) — hanya kasus ini yang boleh menghapus baris dari DB.
+ *
+ * `messaging/invalid-argument` SENGAJA TIDAK termasuk, walau dulu ada di sini.
+ * Kode itu berarti PAYLOAD-nya yang ditolak, bukan tokennya — dan payload sama
+ * dikirim ke semua token dalam satu multicast. Artinya satu bug bentuk pesan
+ * (mis. header APNs melewati batas, field baru salah tipe) akan menghasilkan
+ * `invalid-argument` untuk SETIAP token sekaligus, lalu logika cleanup ini
+ * menghapus SELURUH token di database — Android dan iOS, semua user. Setelah
+ * itu `subs.length === 0` dan push diam selamanya sampai tiap user membuka app
+ * dan mendaftar ulang. Kerusakan permanen dari bug yang sebenarnya sementara.
+ */
+export function isDeadTokenError(code: string | undefined): boolean {
+  return (
+    code === "messaging/registration-token-not-registered" ||
+    code === "messaging/invalid-registration-token"
+  );
 }
 
 /**
@@ -298,26 +372,27 @@ export async function sendFcmToUser(userId: string, payload: FcmPayload) {
         ...buildFcmMulticastMessage(payload, { clientRender: g.clientRender }),
       });
 
-      // Cleanup invalid tokens (UNREGISTERED, INVALID_ARGUMENT, etc).
+      // Cleanup token mati (UNREGISTERED / INVALID_REGISTRATION_TOKEN saja).
       if (res.failureCount > 0) {
         await Promise.all(
           res.responses.map(async (r, idx) => {
             if (r.success) return;
             const code = r.error?.code;
-            // Errors yang berarti token sudah tidak valid lagi → hapus dari DB.
-            // Codes dari firebase-admin/messaging:
-            // - messaging/registration-token-not-registered
-            // - messaging/invalid-registration-token
-            // - messaging/invalid-argument
-            if (
-              code === "messaging/registration-token-not-registered" ||
-              code === "messaging/invalid-registration-token" ||
-              code === "messaging/invalid-argument"
-            ) {
+            // Hanya error TOKEN yang boleh menghapus baris — lihat
+            // isDeadTokenError untuk kenapa invalid-argument dikecualikan.
+            if (isDeadTokenError(code)) {
               await prisma.pushSubscription
                 .delete({ where: { id: g.subs[idx].id } })
                 .catch(() => {});
+              return;
             }
+            // Error non-token (paling sering: payload ditolak). Jangan sentuh
+            // DB — cukup buat terlihat, karena kalau ini kena semua token
+            // artinya push native mati total dan penyebabnya ada di sini.
+            console.warn(
+              `FCM kirim gagal (token dipertahankan): ${code ?? "unknown"}`,
+              r.error?.message,
+            );
           }),
         );
       }
