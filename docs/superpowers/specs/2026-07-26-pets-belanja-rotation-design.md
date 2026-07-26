@@ -78,7 +78,9 @@ Mengganti mekanisme pool tunggal 40-terbaru:
 - **Exclusion produk terpakai** (`notIn: usedIds`) tetap berlaku, diterapkan di
   query per kategori; offset rotasi dihitung terhadap pool SETELAH exclusion +
   filter stok supaya tidak ada slot kosong.
-- **Rotasi**: seed deterministik = hash(`petId` + tanggal WIB `YYYY-MM-DD`).
+- **Rotasi**: seed deterministik = FNV-1a 32-bit atas string
+  `` `${petId}:${tanggalWIB}` `` (tanggal WIB format `YYYY-MM-DD`). Algoritma
+  dipatok supaya test dan implementasi tidak bisa bergeser diam-diam.
   Tanggal WIB = UTC+7, dihitung dari konstanta offset di satu tempat, dan
   fungsi menerima `now: Date` sebagai parameter supaya bisa di-test. Tiap
   kategori diambil mulai dari indeks `seed % poolKategori.length` (wrap-around).
@@ -140,6 +142,10 @@ widget Belanja, dengan komentar yang menunjuk sumber acuan:
   tanpa kanal abu tidak terbaca sebagai kartu.
 - Grup "Pernah dipakai" (baris full-width + tombol Beli lagi/Cari serupa)
   TIDAK berubah di revisi ini.
+- **Tap kartu** (rail & grid saran): seluruh kartu satu gesture → detail
+  produk via `openPetShoppingProduct` (fetch-by-slug), TIDAK berubah.
+- **CTA "Jelajahi produk lain"** di bawah grup saran DIPERTAHANKAN, posisinya
+  di bawah grid, di luar kanal abu (kanal abu membungkus grid saja).
 - Skeleton rail & grid mengikuti anatomi baru.
 
 ### 6. Placeholder "Segera hadir" di profil pet
@@ -170,7 +176,9 @@ Posisi kartu tetap. Nama pet diinterpolasi seperti sekarang.
   offset beda), batas WIB (23:59 WIB vs 00:01 WIB hari berikutnya = seed beda;
   16:59 UTC vs 17:01 UTC = ganti hari WIB), filter stok sebelum kuota.
 - `tests/pet-shopping-route.test.ts`: limit 12, exclusion usedIds tetap,
-  invariant `usedCount` tetap, gotcha stok varian tetap.
+  invariant `usedCount` tetap, gotcha stok varian tetap, dan **rail-prefix**:
+  komposisi dipanggil dua kali dengan input & tanggal sama → 6 item pertama
+  `suggested` identik (menjaga janji rail = prefix grid).
 - Flutter: test rail (tanpa badge "Saran"; 6 kartu; anatomi kartu baru — nama
   13/w600, harga biru brand; skeleton tinggi = rail), test grid (kanal abu,
   2 kolom, tanpa badge), test profil (teks placeholder baru "Momen {nama}",
