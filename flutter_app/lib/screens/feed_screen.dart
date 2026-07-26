@@ -39,7 +39,9 @@ import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/android_back_overlays.dart';
 import '../utils/app_route_observer.dart';
+import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
+import '../utils/motion_prefs.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/feed_comment_sheet.dart';
@@ -632,6 +634,23 @@ class _FeedScreenState extends State<FeedScreen>
     }
   }
 
+  /// Kembali ke post teratas dari halaman "sudah semua". Reduce-motion →
+  /// lompat langsung (animasi menyapu belasan halaman justru paling memicu
+  /// motion sickness).
+  void _backToTop() {
+    AppHaptics.tap();
+    if (!_pageController.hasClients) return;
+    if (MotionPrefs.shouldReduce(context)) {
+      _pageController.jumpToPage(0);
+      return;
+    }
+    _pageController.animateToPage(
+      0,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   /// Preload/activation window berbasis coordinator (Opsi D). §Urutan #1/#2
   /// — attach BARU→setActive BARU→detach LAMA (video→video) ATAU
   /// clearActive→detach LAMA TAK BERSYARAT (video→foto/kosong). Preload
@@ -790,6 +809,10 @@ class _FeedScreenState extends State<FeedScreen>
                   // setiap rebuild — cheap karena blockService.isLoaded check
                   // + Set lookup O(1) per post.
                   final visible = _visiblePosts;
+                  // Semua halaman sudah termuat (tak ada cursor lanjutan).
+                  // Toko satu brand → jumlah post terbatas, user PASTI
+                  // mentok; tanpa penanda, ujung feed terbaca seperti macet.
+                  final endReached = _nextCursor == null && visible.isNotEmpty;
                   return NotificationListener<ScrollEndNotification>(
                     // Tangkap kecepatan fling saat jari dilepas. dragDetails
                     // hanya non-null pada scroll-end akibat drag-release (bukan
@@ -820,9 +843,20 @@ class _FeedScreenState extends State<FeedScreen>
                             : const PageScrollPhysics(
                                 parent: BouncingScrollPhysics(),
                               ),
-                        itemCount: visible.length,
+                        // +1 halaman sentinel "sudah semua" saat tak ada
+                        // cursor berikutnya. Aman terhadap logic index:
+                        // _managePreloadWindow sudah guard `index <
+                        // visible.length` (→ activePost null → clearActive,
+                        // video berhenti di halaman ini), dan _onPageChanged
+                        // tak memanggil _loadMore karena _nextCursor null.
+                        itemCount: visible.length + (endReached ? 1 : 0),
                         onPageChanged: _onPageChanged,
                         itemBuilder: (context, index) {
+                          if (index >= visible.length) {
+                            return _FeedCaughtUpPage(
+                              onBackToTop: _backToTop,
+                            );
+                          }
                           final post = visible[index];
                           // Branch by kind: PHOTO_CAROUSEL render carousel
                           // PageView horizontal 1-8 foto; video kind render
@@ -1105,7 +1139,7 @@ class _FeedTopIconButton extends StatelessWidget {
               // gelap. Beda dari home AppCartButton (24px) karena context
               // berbeda: home header dense banyak icon, feed top icon harus
               // prominent solo dengan soft drop shadow.
-              size: 28,
+              size: feedIconMd,
               shadows: const [
                 Shadow(
                   color: Color(0xCC000000),
@@ -1125,7 +1159,7 @@ class _FeedTopIconButton extends StatelessWidget {
               ),
               padding: const EdgeInsets.symmetric(horizontal: 5),
               decoration: BoxDecoration(
-                color: const Color(0xFFEF4444),
+                color: NataloColors.likeRed,
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(color: Colors.black, width: 1.2),
               ),
@@ -1269,6 +1303,109 @@ class _SkeletonBar extends StatelessWidget {
   }
 }
 
+/// Halaman terakhir feed — "kamu sudah lihat semua" ala IG.
+///
+/// KENAPA ADA: feed kita satu toko, jumlah post terbatas, jadi user PASTI
+/// mencapai ujung (beda dari IG yang praktis tak terbatas). Tanpa penanda,
+/// swipe terakhir berhenti tanpa penjelasan dan terbaca seperti feed macet.
+class _FeedCaughtUpPage extends StatelessWidget {
+  final VoidCallback onBackToTop;
+
+  const _FeedCaughtUpPage({required this.onBackToTop});
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Colors.black,
+      child: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check_rounded,
+                    color: Colors.white,
+                    size: feedIconLg,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Kamu sudah lihat semua',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: NataloWeight.strong,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Postingan baru dari Natalo Petshop akan muncul di sini.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.62),
+                    fontSize: 13.5,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                // Hit target 44dp — jalan keluar dari halaman buntu.
+                Semantics(
+                  button: true,
+                  label: 'Kembali ke postingan teratas',
+                  excludeSemantics: true,
+                  child: Material(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                    child: InkWell(
+                      onTap: onBackToTop,
+                      borderRadius: BorderRadius.circular(999),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.keyboard_arrow_up_rounded,
+                              color: Colors.white,
+                              size: feedIconSm,
+                            ),
+                            SizedBox(width: 6),
+                            Text(
+                              'Kembali ke atas',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: NataloWeight.strong,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
@@ -1290,7 +1427,7 @@ class _EmptyState extends StatelessWidget {
               child: const Icon(
                 Icons.play_circle_outline_rounded,
                 color: Colors.white60,
-                size: 36,
+                size: feedIconLg,
               ),
             ),
             const SizedBox(height: 14),
@@ -1347,7 +1484,7 @@ class _FeedErrorState extends StatelessWidget {
               child: const Icon(
                 Icons.wifi_off_rounded,
                 color: Colors.white60,
-                size: 36,
+                size: feedIconLg,
               ),
             ),
             const SizedBox(height: 14),
@@ -1734,6 +1871,9 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     if (!_liked) {
       _onLikePressed();
     }
+    // Reduce-motion: like TETAP jalan (aksi & state berubah), hanya animasi
+    // hati terbangnya yang dilewati — itu murni dekoratif.
+    if (MotionPrefs.shouldReduce(context)) return;
     _heartBurstTarget = _resolveLikeCenter();
     _heartBurstController.forward(from: 0);
   }
@@ -2134,7 +2274,8 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                                 child: IgnorePointer(
                                   ignoring: _captionExpanded,
                                   child: Padding(
-                                    padding: const EdgeInsets.only(bottom: 9),
+                                    // 8 = ritme 4/8dp (dulu 9, ganjil).
+                                    padding: const EdgeInsets.only(bottom: 8),
                                     child: feedProductPillFor(
                                       products,
                                       _featuredProductIndex,
@@ -2208,7 +2349,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                         child: Icon(
                           Icons.broken_image_outlined,
                           color: Colors.white54,
-                          size: 48,
+                          size: feedIconXl,
                         ),
                       ),
                     ),

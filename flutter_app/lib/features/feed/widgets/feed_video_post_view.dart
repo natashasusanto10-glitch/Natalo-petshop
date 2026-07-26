@@ -29,6 +29,7 @@ import '../../../state/settings_store.dart';
 import '../../../utils/android_back_overlays.dart';
 import '../../../utils/app_route_observer.dart';
 import '../../../utils/haptics.dart';
+import '../../../utils/motion_prefs.dart';
 import '../video/post_video_coordinator.dart';
 import '../video/frame_output_heartbeat_service.dart';
 import '../video/feed_video_observation.dart';
@@ -2345,6 +2346,9 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     } else {
       AppHaptics.impact();
     }
+    // Reduce-motion: like TETAP jalan (aksi & state berubah), hanya animasi
+    // hati terbangnya yang dilewati — itu murni dekoratif.
+    if (MotionPrefs.shouldReduce(context)) return;
     _heartBurstTarget = _resolveLikeCenter();
     _heartBurstController.forward(from: 0);
   }
@@ -3119,9 +3123,16 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     }
   }
 
-  Future<void> _toggleMuteWhilePaused() async {
+  /// Toggle bisu — berlaku baik saat video JALAN maupun jeda.
+  ///
+  /// Dulu bernama `_toggleMuteWhilePaused` dengan guard `!_isPaused`: satu-
+  /// satunya jalan membisukan adalah menjeda video dulu, karena tombolnya
+  /// memang hanya ada di kontrol-jeda. Guard itu dibuang supaya tombol bisu
+  /// persisten (lihat pemakaian di overlay rail) bisa dipakai tanpa
+  /// mengganggu pemutaran.
+  Future<void> _toggleMute() async {
     final ctrl = _videoController;
-    if (ctrl == null || !_isPaused || widget.post.hasAudio == false) return;
+    if (ctrl == null || widget.post.hasAudio == false) return;
     AppHaptics.tap();
     final nextMuted = !appSettingsStore.feedMuted;
     await appSettingsStore.setFeedMuted(nextMuted);
@@ -3451,7 +3462,7 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                           child: _PausedVideoControls(
                             hasAudio: post.hasAudio,
                             muted: appSettingsStore.feedMuted,
-                            onToggleMute: _toggleMuteWhilePaused,
+                            onToggleMute: _toggleMute,
                             onTogglePlayPause: _onTapMedia,
                           ),
                         ),
@@ -3580,18 +3591,56 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                               // Cart di rail DIHAPUS — duplikat dengan cart
                               // kanan-atas (satu-satunya pintu keranjang di
                               // feed sekarang).
-                              child: FeedActionRail(
-                                likeKey: _likeButtonKey,
-                                likeCount: _likeCount,
-                                liked: _liked,
-                                commentCount: _commentCount,
-                                shareCount: _shareCount,
-                                saved: _saved,
-                                onLike: _onLikePressed,
-                                onComment: _onComment,
-                                onShare: _onShare,
-                                onSave: _onSavePressed,
-                                onMore: _onMoreActions,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  // Bisu persisten — HANYA saat video jalan;
+                                  // saat jeda, kontrol-jeda di tengah sudah
+                                  // punya tombol bisu sendiri (jangan dobel).
+                                  // Dulu bisu cuma ada di kontrol-jeda, jadi
+                                  // user WAJIB menjeda dulu untuk membisukan.
+                                  if (_videoController != null &&
+                                      !_isPaused &&
+                                      post.hasAudio != false) ...[
+                                    _PausedControlButton(
+                                      semanticLabel: appSettingsStore.feedMuted
+                                          ? 'Aktifkan suara'
+                                          : 'Matikan suara',
+                                      diameter: 32,
+                                      scrimAlpha: 0.42,
+                                      inkRadius: 22,
+                                      onTap: _toggleMute,
+                                      child: Icon(
+                                        appSettingsStore.feedMuted
+                                            ? Icons.volume_off_rounded
+                                            : Icons.volume_up_rounded,
+                                        color: Colors.white,
+                                        size: feedIconSm,
+                                        shadows: const [
+                                          Shadow(
+                                            color: Colors.black87,
+                                            blurRadius: 8,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 14),
+                                  ],
+                                  FeedActionRail(
+                                    likeKey: _likeButtonKey,
+                                    likeCount: _likeCount,
+                                    liked: _liked,
+                                    commentCount: _commentCount,
+                                    shareCount: _shareCount,
+                                    saved: _saved,
+                                    onLike: _onLikePressed,
+                                    onComment: _onComment,
+                                    onShare: _onShare,
+                                    onSave: _onSavePressed,
+                                    onMore: _onMoreActions,
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -4037,7 +4086,7 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
                           icon: const Icon(
                             Icons.close_rounded,
                             color: Colors.white,
-                            size: 28,
+                            size: feedIconMd,
                           ),
                           onPressed: () => Navigator.of(context).pop(),
                           tooltip: 'Tutup cinema mode',
@@ -4060,6 +4109,10 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
                                   ? Icons.pause_rounded
                                   : Icons.play_arrow_rounded,
                               color: Colors.white,
+                              // Pengecualian sadar dari skala feedIcon*:
+                              // ini kontrol utama cinema mode (permukaan
+                              // fullscreen terpisah, bukan overlay feed),
+                              // sengaja lebih besar dari feedIconMd.
                               size: 32,
                             ),
                             onPressed: () {
@@ -4119,7 +4172,7 @@ class _VideoRetryButton extends StatelessWidget {
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+              Icon(Icons.refresh_rounded, color: Colors.white, size: feedIconSm),
               SizedBox(width: 7),
               Text(
                 'Coba lagi',
@@ -4171,7 +4224,7 @@ class _PausedVideoControls extends StatelessWidget {
             child: Icon(
               muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
               color: Colors.white,
-              size: 17,
+              size: feedIconSm,
               shadows: const [
                 Shadow(color: Colors.black87, blurRadius: 8),
               ],
@@ -4190,7 +4243,7 @@ class _PausedVideoControls extends StatelessWidget {
           child: const Icon(
             Icons.play_arrow_rounded,
             color: Colors.white,
-            size: 28,
+            size: feedIconMd,
             shadows: [Shadow(color: Colors.black54, blurRadius: 8)],
           ),
         ),

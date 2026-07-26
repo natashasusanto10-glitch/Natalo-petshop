@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../models/feed_post.dart';
+import '../../../theme/natalo_colors.dart';
 import '../../../theme/natalo_text.dart';
 import '../../../models/product.dart';
 import '../../../services/follow_service.dart';
@@ -31,6 +32,23 @@ import 'feed_product_pill.dart';
 const feedPostOverlayBottomGap = 16.0;
 const feedPostActionRailBottomGap = 4.0;
 const feedPostActionRailRightInset = 10.0;
+
+/// Skala ukuran ikon feed — SATU sumber untuk seluruh permukaan feed.
+///
+/// Sebelumnya nilai berserakan (17/18/28/32/36/48) tanpa tangga, termasuk
+/// 17 dan 18 bersebelahan yang jelas hasil tuning by-eye. Empat tingkat di
+/// bawah menutup semua kebutuhan nyata feed; `feedIconRail` (30) sengaja
+/// dipisah karena rail punya proporsi sendiri ala IG Reels (stroke 2.2)
+/// dan tidak boleh ikut berubah kalau tangga ini digeser.
+///
+/// - [feedIconSm]  kontrol kecil di dalam pill/label (mute, "Coba lagi")
+/// - [feedIconMd]  chrome overlay & kontrol utama (top bar, play/pause)
+/// - [feedIconLg]  ikon ilustratif state kosong/galat
+/// - [feedIconXl]  placeholder media besar (broken image)
+const feedIconSm = 18.0;
+const feedIconMd = 28.0;
+const feedIconLg = 36.0;
+const feedIconXl = 48.0;
 
 /// Instagram-style social proof shown below the caption in Feed/fullscreen.
 /// The data remains owned by [FeedPost], so Feed, Postingan, and fullscreen
@@ -573,7 +591,7 @@ class FeedPostBurstHeartPainter extends CustomPainter {
     canvas.drawPath(path.shift(const Offset(0, 3)), shadowPaint);
 
     final fillPaint = Paint()
-      ..color = const Color(0xFFEF4444)
+      ..color = NataloColors.likeRed
       ..style = PaintingStyle.fill;
     canvas.drawPath(path, fillPaint);
   }

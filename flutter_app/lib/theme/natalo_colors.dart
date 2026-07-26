@@ -177,6 +177,14 @@ class NataloColors {
   /// Alias `danger` untuk legacy reference `NataloColors.discountRed`.
   static const Color discountRed = danger;
 
+  /// Merah hati "disukai" di feed — rail like, burst double-tap, dan badge.
+  /// SATU sumber: sebelumnya hex 0xFFEF4444 diulang di feed_action_rail,
+  /// feed_post_shared_widgets, feed_screen, dan gallery_post_tile (rawan
+  /// drift). Dinamai terpisah dari `danger` karena perannya semantik beda
+  /// (afeksi, bukan galat) sehingga bisa berdivergensi tanpa menyentuh
+  /// warna error di seluruh app.
+  static const Color likeRed = danger;
+
   static const Color info = Color(0xFF3B82F6);
   static const Color infoSoft = Color(0xFFEFF6FF);
   static const Color infoDark = Color(0xFF2563EB);

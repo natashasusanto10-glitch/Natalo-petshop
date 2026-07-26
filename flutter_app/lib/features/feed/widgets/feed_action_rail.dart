@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../theme/natalo_colors.dart';
 import '../../../utils/action_throttle.dart';
+import '../../../utils/motion_prefs.dart';
 
 const _feedActionForegroundColor = Color(0xFFFFFFFF);
 const _feedActionShadowColor = Color(0x99000000);
@@ -171,7 +173,12 @@ class _ReelsActionState extends State<_ReelsAction>
     final pulse = widget.shouldPulse?.call() ?? true;
     final accepted = _throttle.run(widget.onTap);
     if (!accepted) return;
-    if (pulse) _tapPulseController.forward(from: 0);
+    // Reduce-motion: lewati pop membal. Aksi tetap jalan & state tetap
+    // berubah (warna/ikon), jadi umpan balik tap tidak hilang — hanya
+    // gerakannya yang ditiadakan.
+    if (pulse && !MotionPrefs.shouldReduce(context)) {
+      _tapPulseController.forward(from: 0);
+    }
   }
 
   @override
@@ -211,7 +218,10 @@ class _ReelsActionState extends State<_ReelsAction>
                       const SizedBox(height: 2),
                       AnimatedOpacity(
                         opacity: showCount ? 1 : 0,
-                        duration: const Duration(milliseconds: 150),
+                        duration: MotionPrefs.effective(
+                          context,
+                          const Duration(milliseconds: 150),
+                        ),
                         child: RepaintBoundary(
                           child: Text(
                             // Saat 0 (invisible) tampilkan nilai terakhir yang
@@ -302,6 +312,13 @@ class _ReelsHeartGlyphState extends State<_ReelsHeartGlyph>
   void didUpdateWidget(covariant _ReelsHeartGlyph oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.liked != widget.liked) {
+      // Reduce-motion: lompat langsung ke state akhir. Warna merah tetap
+      // muncul/hilang (indikator status tak boleh ikut hilang), cuma
+      // transisi 180ms-nya yang ditiadakan.
+      if (MotionPrefs.shouldReduce(context)) {
+        _fillController.value = widget.liked ? 1 : 0;
+        return;
+      }
       // Unlike balik lebih cepat (tanpa easing panjang) — IG juga begitu.
       widget.liked ? _fillController.forward() : _fillController.reverse();
     }
@@ -330,8 +347,6 @@ class _HeartGlyphPainter extends CustomPainter {
     required this.fillProgress,
   }) : super(repaint: fillProgress);
 
-  static const _likedRed = Color(0xFFEF4444);
-
   @override
   void paint(Canvas canvas, Size size) {
     final t = fillProgress.value;
@@ -350,7 +365,7 @@ class _HeartGlyphPainter extends CustomPainter {
     // Fill merah masuk di dalam stroke — opacity mengikuti progress.
     if (t > 0) {
       final fillPaint = Paint()
-        ..color = _likedRed.withValues(alpha: t)
+        ..color = NataloColors.likeRed.withValues(alpha: t)
         ..style = PaintingStyle.fill;
       canvas.drawPath(path, fillPaint);
     }
@@ -358,7 +373,7 @@ class _HeartGlyphPainter extends CustomPainter {
     // Stroke digambar TERAKHIR di kedua state — dialah siluet konstan.
     // Warnanya lerp putih → merah supaya rim menyatu saat liked.
     final strokePaint = Paint()
-      ..color = Color.lerp(_feedActionForegroundColor, _likedRed, t)!
+      ..color = Color.lerp(_feedActionForegroundColor, NataloColors.likeRed, t)!
       ..style = PaintingStyle.stroke
       ..strokeWidth = _feedActionStrokeWidth
       ..strokeCap = StrokeCap.round
