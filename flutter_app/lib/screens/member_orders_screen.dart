@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
 import '../theme/natalo_text.dart';
@@ -13,6 +15,7 @@ import '../services/order_service.dart';
 import '../state/cart_store.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
+import '../utils/payment_countdown.dart';
 import '../utils/haptics.dart';
 import '../utils/order_chat_context.dart';
 import '../widgets/app_cart_button.dart';
@@ -963,9 +966,14 @@ class _OrderCardState extends State<_OrderCard> {
                           icon: const Icon(Icons.more_vert_rounded),
                           color: cs.onSurfaceVariant,
                           tooltip: 'Opsi pesanan',
+                          // 44×44 = minimum tap target. Sebelumnya 34×34 di
+                          // KEDUA sumbu — beda dari AppHeaderIconButton yang
+                          // sengaja 34 lebar TAPI 44 tinggi demi kerapatan
+                          // header. Di kartu tidak ada tekanan ruang yang
+                          // membenarkan target sekecil itu.
                           constraints: const BoxConstraints(
-                            minHeight: 34,
-                            minWidth: 34,
+                            minHeight: 44,
+                            minWidth: 44,
                           ),
                           style: IconButton.styleFrom(
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -983,6 +991,12 @@ class _OrderCardState extends State<_OrderCard> {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
+                    if (_isUnpaid &&
+                        !_hasProof &&
+                        order.paymentDeadline != null) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      _PaymentCountdownPill(deadline: order.paymentDeadline!),
+                    ],
                     const SizedBox(height: AppSpacing.sm),
                     _OrderFulfillmentMeta(order: order),
                     if (_pendingReviewCount > 0 && _isReorderable) ...[
@@ -1152,6 +1166,114 @@ class _OrderCardState extends State<_OrderCard> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Hitung mundur batas bayar di kartu daftar pesanan.
+///
+/// Halaman detail sudah lama punya banner countdown, tapi daftar hanya
+/// menampilkan status statis "Belum Bayar" — user baru tahu sisa waktunya
+/// setelah membuka detail, padahal keputusan bayar/tidak diambil di daftar.
+///
+/// Ticker 1 detik hanya hidup selama masih ada sisa waktu; setelah habis
+/// timer dimatikan supaya kartu kedaluwarsa tidak terus me-rebuild.
+class _PaymentCountdownPill extends StatefulWidget {
+  final DateTime deadline;
+
+  const _PaymentCountdownPill({required this.deadline});
+
+  @override
+  State<_PaymentCountdownPill> createState() => _PaymentCountdownPillState();
+}
+
+class _PaymentCountdownPillState extends State<_PaymentCountdownPill> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTickerIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(_PaymentCountdownPill oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Kartu di-reuse saat list refresh; deadline baru harus menyalakan ulang
+    // ticker yang mungkin sudah mati karena deadline lama sudah lewat.
+    if (oldWidget.deadline != widget.deadline) _startTickerIfNeeded();
+  }
+
+  void _startTickerIfNeeded() {
+    _timer?.cancel();
+    if (_remaining <= Duration.zero) return;
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {});
+      if (_remaining <= Duration.zero) _timer?.cancel();
+    });
+  }
+
+  Duration get _remaining => widget.deadline.difference(DateTime.now());
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = _remaining;
+
+    final (fg, bg, icon, label) = switch (paymentCountdownTone(remaining)) {
+      PaymentCountdownTone.expired => (
+          NataloColors.grey500,
+          NataloColors.grey100,
+          Icons.timer_off_rounded,
+          'Batas bayar habis',
+        ),
+      PaymentCountdownTone.urgent => (
+          NataloColors.dangerDark,
+          NataloColors.dangerTint,
+          Icons.timer_outlined,
+          'Bayar dalam ${formatCountdownCompact(remaining)}',
+        ),
+      PaymentCountdownTone.normal => (
+          NataloColors.warningDark,
+          NataloColors.warningTint,
+          Icons.timer_outlined,
+          'Bayar dalam ${formatCountdownCompact(remaining)}',
+        ),
+    };
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(AppRadius.full),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: fg),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: fg,
+                fontSize: NataloTextSize.caption,
+                fontWeight: FontWeight.w800,
+                // Angka countdown berubah tiap detik; tanpa lebar digit tetap
+                // pill-nya bergoyang mengikuti lebar tiap angka.
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
         ),
       ),
     );

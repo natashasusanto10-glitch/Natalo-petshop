@@ -16,6 +16,7 @@ import '../services/order_service.dart';
 import '../services/product_service.dart';
 import '../state/cart_store.dart';
 import '../utils/formatters.dart';
+import '../utils/payment_countdown.dart';
 import '../utils/haptics.dart';
 import '../utils/order_chat_context.dart';
 import '../utils/payment_url_policy.dart';
@@ -865,14 +866,6 @@ class _ManualPaymentBannerState extends State<_ManualPaymentBanner> {
     super.dispose();
   }
 
-  String _fmt(Duration d) {
-    String two(int n) => n.toString().padLeft(2, '0');
-    final h = d.inHours;
-    final m = d.inMinutes % 60;
-    final s = d.inSeconds % 60;
-    return h > 0 ? '${two(h)}:${two(m)}:${two(s)}' : '${two(m)}:${two(s)}';
-  }
-
   @override
   Widget build(BuildContext context) {
     if (widget.hasProof) {
@@ -886,7 +879,8 @@ class _ManualPaymentBannerState extends State<_ManualPaymentBanner> {
     final deadline = widget.deadline;
     if (deadline == null) return const SizedBox.shrink();
     final remaining = deadline.difference(DateTime.now());
-    if (remaining <= Duration.zero) {
+    final tone = paymentCountdownTone(remaining);
+    if (tone == PaymentCountdownTone.expired) {
       return _banner(
         accent: NataloColors.grey500,
         icon: Icons.timer_off_rounded,
@@ -894,11 +888,11 @@ class _ManualPaymentBannerState extends State<_ManualPaymentBanner> {
         subtitle: 'Pesanan akan dibatalkan otomatis. Silakan pesan lagi.',
       );
     }
-    final urgent = remaining.inMinutes < 60;
+    final urgent = tone == PaymentCountdownTone.urgent;
     return _banner(
       accent: urgent ? NataloColors.dangerDark : NataloColors.warningDark,
       icon: Icons.timer_outlined,
-      title: 'Bayar dalam ${_fmt(remaining)}',
+      title: 'Bayar dalam ${formatCountdownCompact(remaining)}',
       subtitle: urgent
           ? 'Segera selesaikan sebelum pesanan dibatalkan otomatis.'
           : 'Selesaikan transfer sebelum batas waktu agar pesanan tidak batal.',

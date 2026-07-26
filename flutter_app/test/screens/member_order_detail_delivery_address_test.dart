@@ -26,7 +26,7 @@ OrderSummary _order({
     shippingAddress: shippingAddress,
     shippingCity: shippingCity,
     items: [
-      OrderItemSummary(
+      const OrderItemSummary(
         id: 'item-1',
         productId: 'product-1',
         name: 'Makanan Kucing Natalo',

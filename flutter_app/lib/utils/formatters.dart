@@ -52,6 +52,21 @@ String formatCountdownHms(Duration duration) {
   return '$hours:$minutes:$seconds';
 }
 
+/// Hitung mundur ringkas: "02:15:30" kalau masih ada jam, "15:30" kalau
+/// kurang dari sejam. Negatif → "00:00".
+///
+/// Beda dari [formatCountdownHms] yang selalu menampilkan slot jam: dipakai di
+/// tempat sempit (pill kartu pesanan, banner bayar) yang mubazir menampilkan
+/// "00:" selama hampir seluruh masa hidup countdown.
+String formatCountdownCompact(Duration duration) {
+  if (duration.isNegative) return '00:00';
+  String two(int n) => n.toString().padLeft(2, '0');
+  final hours = duration.inHours;
+  final minutes = two(duration.inMinutes.remainder(60));
+  final seconds = two(duration.inSeconds.remainder(60));
+  return hours > 0 ? '${two(hours)}:$minutes:$seconds' : '$minutes:$seconds';
+}
+
 /// Truncate string with ellipsis.
 String truncate(String text, int max) {
   if (text.length <= max) return text;
