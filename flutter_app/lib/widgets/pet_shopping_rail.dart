@@ -1,19 +1,33 @@
 import 'package:flutter/material.dart';
 
 import '../models/pet_shopping.dart';
-import '../theme/natalo_colors.dart';
-import '../theme/natalo_text.dart';
 import '../utils/formatters.dart';
 import 'app_product_image.dart';
 
+/// Lebar kartu — identik rail "Terlaris" Beranda (`_MiniProductCard`).
+const double _kCardWidth = 150;
+
+/// Maksimal kartu di rail profil (spec Keputusan 4). Saran yang tampil di
+/// sini adalah 6 PERTAMA dari urutan `suggested` yang sama dengan grid
+/// halaman penuh — server sudah menjamin urutan itu stabil sehari.
+const int kPetShoppingRailMaxCards = 6;
+
 /// Tinggi TETAP rail — dipakai rail terisi maupun skeleton supaya konten di
-/// bawahnya tidak melonjak saat data tiba (spec: reserve space for async).
-const double kPetShoppingRailHeight = 168;
+/// bawahnya tidak melonjak saat data tiba.
+///
+/// Rinciannya: foto 1:1 (150) + padding atas konten (8) + tinggi nama
+/// dipaku (31) + jarak (8) + baris harga (≈19) + padding bawah (8) +
+/// cadangan border/shadow (10) = 234. Kalau anatomi kartu berubah, angka
+/// ini WAJIB dihitung ulang bersamaan — kalau tidak, skeleton→data akan
+/// terlihat melonjak.
+const double kPetShoppingRailHeight = 234;
 
-const double _kCardWidth = 104;
+/// Tinggi nama dipaku 2 baris supaya baris harga antar-kartu sejajar —
+/// sama dengan kartu Beranda mode `compact`.
+const double _kNameHeight = 31;
 
-/// Rail horizontal kolom Belanja di profil pet. Kartu TANPA tombol — satu
-/// gesture per kartu → detail produk (spec Keputusan 9).
+/// Rail horizontal kolom Belanja di profil pet. Kartu TANPA tombol dan TANPA
+/// badge — satu gesture per kartu → detail produk.
 class PetShoppingRail extends StatelessWidget {
   final List<PetShoppingProduct> used;
   final List<PetShoppingProduct> suggested;
@@ -28,12 +42,11 @@ class PetShoppingRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Fakta lebih dulu, saran menyusul kalau masih kurang dari 4 kartu.
-    final items = <_RailItem>[
-      for (final u in used) _RailItem(u, isSuggestion: false),
-      if (used.length < 4)
-        for (final s in suggested.take(4 - used.length))
-          _RailItem(s, isSuggestion: true),
+    // Fakta lebih dulu, saran mengisi sisa slot.
+    final items = <PetShoppingProduct>[
+      ...used.take(kPetShoppingRailMaxCards),
+      if (used.length < kPetShoppingRailMaxCards)
+        ...suggested.take(kPetShoppingRailMaxCards - used.length),
     ];
     return SizedBox(
       height: kPetShoppingRailHeight,
@@ -43,95 +56,106 @@ class PetShoppingRail extends StatelessWidget {
         itemCount: items.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (_, i) => _RailCard(
-          item: items[i],
-          onTap: () => onTapProduct(items[i].product),
+          product: items[i],
+          onTap: () => onTapProduct(items[i]),
         ),
       ),
     );
   }
 }
 
-class _RailItem {
-  final PetShoppingProduct product;
-  final bool isSuggestion;
-  const _RailItem(this.product, {required this.isSuggestion});
-}
-
+/// Kartu rail — token disamakan dengan kartu Beranda/Katalog: kartu putih
+/// radius 8 + border tipis + shadow halus, foto 1:1 full-bleed `cover`.
+/// TANPA badge diskon/hemat/rating: DTO Belanja tidak membawa datanya, dan
+/// menampilkan klaim yang tidak didukung data adalah justru yang dihindari.
 class _RailCard extends StatelessWidget {
-  final _RailItem item;
+  final PetShoppingProduct product;
   final VoidCallback onTap;
 
-  const _RailCard({required this.item, required this.onTap});
+  const _RailCard({required this.product, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final p = item.product;
     return Semantics(
       button: true,
-      label: item.isSuggestion ? '${p.name}, saran produk' : p.name,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
+      container: true,
+      excludeSemantics: true,
+      label: product.name,
+      child: SizedBox(
+        width: _kCardWidth,
+        child: Material(
+          color: cs.surface,
           borderRadius: BorderRadius.circular(8),
-          child: SizedBox(
-            width: _kCardWidth,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Stack(
-                  children: [
-                    AppProductImage(
-                      imageUrl: p.imageUrl,
-                      width: _kCardWidth,
-                      height: _kCardWidth,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    if (item.isSuggestion)
-                      Positioned(
-                        top: 4,
-                        left: 4,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: NataloColors.primary,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: const Text(
-                            'Saran',
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              // `border` di BoxDecoration.decoration bikin Container
+              // auto-inset child (padding = border width) → foto 1:1
+              // menyusut jadi 148x148. Border WAJIB di foregroundDecoration
+              // (dicat di atas, tak mempengaruhi layout) supaya foto tetap
+              // persis _kCardWidth x _kCardWidth.
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x08000000),
+                    blurRadius: 10,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+              ),
+              foregroundDecoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: cs.outlineVariant),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AppProductImage(
+                    imageUrl: product.imageUrl,
+                    width: _kCardWidth,
+                    height: _kCardWidth,
+                    fit: BoxFit.cover,
+                    borderRadius: BorderRadius.zero,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          height: _kNameHeight,
+                          child: Text(
+                            product.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: NataloWeight.strong,
-                              color: Colors.white,
+                              fontSize: 13,
+                              height: 1.25,
+                              fontWeight: FontWeight.w600,
+                              color: cs.onSurface,
                             ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  p.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: NataloWeight.strong,
-                    color: cs.onSurface,
+                        const SizedBox(height: 8),
+                        Text(
+                          formatRupiah(product.effectivePrice),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                            height: 1.1,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  formatRupiah(p.effectivePrice),
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: NataloWeight.body,
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -140,16 +164,16 @@ class _RailCard extends StatelessWidget {
   }
 }
 
-/// Placeholder selagi fetch — tinggi identik dengan [PetShoppingRail].
+/// Placeholder selagi fetch — anatomi & tinggi identik dengan [PetShoppingRail].
 class PetShoppingRailSkeleton extends StatelessWidget {
   const PetShoppingRailSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    Widget bar(double w) => Container(
+    Widget bar(double w, double h) => Container(
           width: w,
-          height: 9,
+          height: h,
           decoration: BoxDecoration(
             color: cs.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(4),
@@ -165,22 +189,47 @@ class PetShoppingRailSkeleton extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (_, __) => SizedBox(
           width: _kCardWidth,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: _kCardWidth,
-                height: _kCardWidth,
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
-                ),
+          child: Material(
+            color: cs.surface,
+            borderRadius: BorderRadius.circular(8),
+            clipBehavior: Clip.antiAlias,
+            child: Container(
+              foregroundDecoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: cs.outlineVariant),
               ),
-              const SizedBox(height: 6),
-              bar(_kCardWidth * 0.8),
-              const SizedBox(height: 4),
-              bar(_kCardWidth * 0.45),
-            ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: _kCardWidth,
+                    height: _kCardWidth,
+                    color: cs.surfaceContainerHighest,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          height: _kNameHeight,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              bar(_kCardWidth - 16, 9),
+                              const SizedBox(height: 5),
+                              bar((_kCardWidth - 16) * 0.6, 9),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        bar((_kCardWidth - 16) * 0.5, 14),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
