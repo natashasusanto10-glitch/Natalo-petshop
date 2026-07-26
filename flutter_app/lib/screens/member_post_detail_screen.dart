@@ -3820,9 +3820,16 @@ class _HeroVideoFlightSurfaceState extends State<_HeroVideoFlightSurface>
       child: ready
           ? ClipRect(
               child: FittedBox(
-                // contain, bukan cover — video tak pernah dipotong, sama
-                // dengan _InlineVideoPlayer di bawah (lihat komentar di sana).
-                fit: BoxFit.contain,
+                // cover — WAJIB sama dengan _InlineVideoPlayer (surface
+                // pendaratan) dan tile grid (`gridThumbnailFit`, crop-to-fill).
+                // Shuttle ini digambar sepanjang penerbangan di KEDUA arah,
+                // jadi fit yang beda dari kedua ujung = video melompat.
+                // Dulu `contain`: video portrait (9:16 = 0.5625) di dalam rect
+                // ujung-grid (~0.8) disusutkan jadi bar hitam ~30% lebar di
+                // kiri-kanan — terlihat sebagai glitch saat buka, dan bar
+                // hitam yang membesar saat back. Hanya kentara di video
+                // portrait; landscape/kotak tak berubah framing-nya.
+                fit: BoxFit.cover,
                 child: SizedBox(
                   width: controller.value.size.width > 0
                       ? controller.value.size.width
