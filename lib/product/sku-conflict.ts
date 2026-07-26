@@ -19,7 +19,7 @@ export async function describeVariantSkuConflict(
     where: { sku },
     select: {
       deletedAt: true,
-      product: { select: { id: true, name: true, isActive: true } },
+      product: { select: { id: true, name: true, isActive: true, creationState: true } },
     },
   });
   if (!holder) return null;
@@ -32,11 +32,18 @@ export async function describeVariantSkuConflict(
       ? `Kode SKU "${sku}" masih dipegang varian lama produk ini yang sudah dihapus. Simpan ulang dengan kode lain, atau hubungi developer untuk membebaskan kode lama.`
       : `Kode SKU "${sku}" dipakai dua kali di produk ini. Tiap varian harus punya kode berbeda.`;
   }
-  const status = holder.deletedAt
-    ? "varian sudah dihapus"
-    : p.isActive
-      ? "aktif"
-      : "diarsipkan";
+  // creationState "creating" berarti produk BELUM PERNAH selesai dibuat
+  // (video gagal difinalisasi) — produk begini invisible di semua tab
+  // /admin/products, jadi JANGAN dibilang "diarsipkan" (itu implikasinya
+  // bisa ditemukan admin di tab Arsip; padahal tidak akan pernah ketemu).
+  const status =
+    holder.deletedAt !== null
+      ? "varian sudah dihapus"
+      : p.creationState !== "ready"
+        ? "belum selesai dibuat — kemungkinan upload video gagal, produk ini tidak akan muncul di daftar produk manapun sampai dibersihkan otomatis (cron per jam) atau oleh developer"
+        : p.isActive
+          ? "aktif"
+          : "diarsipkan";
   return `Kode SKU "${sku}" sudah dipakai varian produk "${p.name}" (${status}). Ganti kodenya, atau ubah SKU di produk tersebut.`;
 }
 
@@ -48,8 +55,14 @@ export async function describeProductSkuConflict(
 ): Promise<string | null> {
   const holder = await tx.product.findFirst({
     where: { sku, ...(currentProductId ? { id: { not: currentProductId } } : {}) },
-    select: { name: true, isActive: true },
+    select: { name: true, isActive: true, creationState: true },
   });
   if (!holder) return null;
-  return `SKU Induk "${sku}" sudah dipakai produk "${holder.name}" (${holder.isActive ? "aktif" : "diarsipkan"}). Ganti kodenya, atau ubah SKU produk tersebut.`;
+  const status =
+    holder.creationState !== "ready"
+      ? "belum selesai dibuat — kemungkinan upload video gagal, produk ini tidak akan muncul di daftar produk manapun sampai dibersihkan"
+      : holder.isActive
+        ? "aktif"
+        : "diarsipkan";
+  return `SKU Induk "${sku}" sudah dipakai produk "${holder.name}" (${status}). Ganti kodenya, atau ubah SKU produk tersebut.`;
 }
