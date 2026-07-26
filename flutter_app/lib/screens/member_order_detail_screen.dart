@@ -482,6 +482,13 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
                 // atau belum diperlukan oleh status order tertentu.
                 _OrderItemsCard(order: order),
                 const SizedBox(height: 12),
+                // Alamat tujuan — pasangan _PickupInfoCard untuk pesanan yang
+                // dikirim. Ditaruh tepat di atas info resi supaya "ke mana" dan
+                // "sampai mana" terbaca sebagai satu blok pengiriman.
+                if (_shouldShowDeliveryAddress(order)) ...[
+                  _DeliveryAddressCard(order: order),
+                  const SizedBox(height: 12),
+                ],
                 // Info pengiriman — tampil mulai dari status SHIPPED.
                 // Display kondisional: nomor resi (kurir regular) atau
                 // info driver (kurir instant Gojek/Grab/dst).
@@ -1502,13 +1509,13 @@ class _PickupInfoCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          _PickupInfoRow(
+          _InfoIconRow(
             icon: Icons.location_on_outlined,
             title: 'Lokasi Toko',
             content: '$locationName\n$address',
           ),
           const SizedBox(height: 20),
-          _PickupInfoRow(
+          _InfoIconRow(
             icon: Icons.access_time_rounded,
             title: 'Jam Ambil',
             content: hours,
@@ -1791,15 +1798,105 @@ class _PickupCodeBox extends StatelessWidget {
   }
 }
 
-class _PickupInfoRow extends StatelessWidget {
+/// Alamat tujuan pesanan yang dikirim (bukan ambil sendiri).
+///
+/// Sebelum kartu ini ada, halaman detail TIDAK PERNAH menampilkan alamat
+/// pengiriman sama sekali — hanya alamat toko untuk self-pickup — sehingga
+/// user tak punya cara memverifikasi ke mana barangnya dikirim. Datanya
+/// sebenarnya sudah lama tersedia di [OrderSummary], cuma tidak pernah
+/// dirender.
+class _DeliveryAddressCard extends StatelessWidget {
+  final OrderSummary order;
+
+  const _DeliveryAddressCard({required this.order});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    final name = order.customerName.trim();
+    final phone = order.customerPhone.trim();
+    final city = order.shippingCity?.trim() ?? '';
+    // Kota kadang sudah tertulis di dalam alamat; jangan diulang.
+    final address = order.shippingAddress.trim();
+    final fullAddress = city.isNotEmpty &&
+            !address.toLowerCase().contains(city.toLowerCase())
+        ? '$address\n$city'
+        : address;
+
+    // Nama & telepon digabung satu baris supaya barisnya tidak jadi tiga blok
+    // untuk data yang secara konsep satu: "siapa penerimanya".
+    final recipient = [name, phone].where((v) => v.isNotEmpty).join('\n');
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        border: Border.all(color: cs.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Alamat Pengiriman',
+            style: TextStyle(
+              color: cs.onSurface,
+              fontSize: NataloTextSize.title,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 20),
+          if (recipient.isNotEmpty) ...[
+            _InfoIconRow(
+              icon: Icons.person_outline_rounded,
+              title: 'Penerima',
+              content: recipient,
+              iconColor: NataloColors.primaryDark,
+              iconBackground: NataloColors.primarySoft,
+            ),
+            const SizedBox(height: 20),
+          ],
+          _InfoIconRow(
+            icon: Icons.location_on_outlined,
+            title: 'Alamat',
+            content: fullAddress,
+            iconColor: NataloColors.primaryDark,
+            iconBackground: NataloColors.primarySoft,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Baris "ikon berkotak + judul + isi" untuk kartu informasi.
+///
+/// Dipakai bersama oleh kartu Ambil Sendiri (hijau, default) dan kartu Alamat
+/// Pengiriman (biru). Warnanya parameter supaya dua kartu itu tidak jadi dua
+/// salinan tata letak yang sama.
+class _InfoIconRow extends StatelessWidget {
   final IconData icon;
   final String title;
   final String content;
+  final Color iconColor;
+  final Color iconBackground;
 
-  const _PickupInfoRow({
+  const _InfoIconRow({
     required this.icon,
     required this.title,
     required this.content,
+    this.iconColor = NataloColors.successDark,
+    this.iconBackground = NataloColors.successSoft,
   });
 
   @override
@@ -1811,10 +1908,10 @@ class _PickupInfoRow extends StatelessWidget {
           width: 38,
           height: 38,
           decoration: BoxDecoration(
-            color: NataloColors.successSoft,
+            color: iconBackground,
             borderRadius: BorderRadius.circular(AppRadius.md),
           ),
-          child: Icon(icon, size: 21, color: NataloColors.successDark),
+          child: Icon(icon, size: 21, color: iconColor),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -3215,6 +3312,19 @@ class _CancelOrderCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Decide kapan card "Alamat Pengiriman" tampil:
+/// - Bukan self-pickup — alamat toko sudah ditangani _PickupInfoCard
+/// - Ada alamatnya
+///
+/// Sengaja TIDAK bergantung pada status: user harus bisa memverifikasi tujuan
+/// sejak pesanan baru dibuat, justru saat masih sempat menghubungi admin kalau
+/// alamatnya salah. Menundanya sampai SHIPPED (seperti _shouldShowShippingInfo)
+/// akan menampilkannya setelah tidak berguna lagi.
+bool _shouldShowDeliveryAddress(OrderSummary order) {
+  if (order.isSelfPickup) return false;
+  return order.shippingAddress.trim().isNotEmpty;
 }
 
 /// Decide kapan card "Info Pengiriman" tampil:
