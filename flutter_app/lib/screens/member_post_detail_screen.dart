@@ -38,6 +38,7 @@ import '../utils/haptics.dart';
 import '../utils/mention_text.dart';
 import '../services/share_sheet_launcher.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/calm_scroll_physics.dart';
 import '../widgets/feed_comment_sheet.dart';
 import '../widgets/feed_tagged_users_overlay.dart';
 import '../widgets/feed_tag_options_sheet.dart';
@@ -1166,11 +1167,10 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                                     kToolbarHeight,
                                 bottom: 48,
                               ),
-                              // Physics DEFAULT platform (bukan CalmScrollPhysics):
-                              // IG native pakai UIScrollView/RecyclerView default
-                              // tanpa peredam fling — flick kita sebelumnya terasa
-                              // berat/lambat karena skala 0.7 + momentum mati.
-                              physics: const AlwaysScrollableScrollPhysics(),
+                              // Titik tengah rasa IG — lihat CalmScrollPhysics:
+                              // 0.7+momentum-mati terasa berat, default platform
+                              // penuh terasa terlalu kencang.
+                              physics: const CalmScrollPhysics.postingan(),
                               itemCount: _posts.length,
                               // Whitespace pemisah antar post tetap ada, tapi lebih compact
                               // supaya detail terasa seperti feed/post Instagram.
