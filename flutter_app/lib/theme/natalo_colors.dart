@@ -189,6 +189,22 @@ class NataloColors {
   static const Color infoSoft = Color(0xFFEFF6FF);
   static const Color infoDark = Color(0xFF2563EB);
 
+  // ── Tingkat "tint" (satu langkah lebih pekat dari `*Soft`) ──
+  // Token `*Soft` di atas sangat pucat — pas sebagai latar seluruh panel, tapi
+  // terlalu samar untuk badge/pill kecil yang harus terbaca sebagai unit
+  // berwarna. Layar transaksi sebelumnya menambal kekosongan ini dengan hex
+  // mentah (D1FAE5, FEF3C7, FEE2E2). Pakai `*Tint` untuk latar badge/callout,
+  // `*Soft` untuk latar area luas.
+  static const Color successTint = Color(0xFFD1FAE5);
+  static const Color warningTint = Color(0xFFFEF3C7);
+  static const Color dangerTint = Color(0xFFFEE2E2);
+
+  /// Border pendamping [warningTint] (mis. kartu peringatan batas bayar).
+  static const Color warningBorder = Color(0xFFFCD34D);
+
+  /// Border pendamping [primarySoft] pada kotak info biru.
+  static const Color primaryBorder = Color(0xFFBFDBFE);
+
   /// Ungu "dalam perjalanan" — status pesanan DIKIRIM/SHIPPED.
   ///
   /// Perlu hue sendiri karena semua warna status lain sudah terpakai: menunggu

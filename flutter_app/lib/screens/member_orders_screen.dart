@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import 'package:flutter/services.dart';
@@ -278,7 +279,7 @@ class _OrderFilterTabs extends StatelessWidget {
 
               return InkWell(
                 onTap: () => onChanged(filter),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppRadius.md),
                 child: Padding(
                   padding: const EdgeInsets.only(top: 15),
                   child: Column(
@@ -288,7 +289,7 @@ class _OrderFilterTabs extends StatelessWidget {
                         filter.label,
                         style: TextStyle(
                           color: active ? _brandBlue : cs.onSurfaceVariant,
-                          fontSize: 14,
+                          fontSize: NataloTextSize.bodyLg,
                           fontWeight:
                               active ? FontWeight.w900 : FontWeight.w800,
                         ),
@@ -301,7 +302,7 @@ class _OrderFilterTabs extends StatelessWidget {
                         width: active ? 52 : 0,
                         decoration: BoxDecoration(
                           color: _brandBlue,
-                          borderRadius: BorderRadius.circular(999),
+                          borderRadius: BorderRadius.circular(AppRadius.full),
                         ),
                       ),
                     ],
@@ -484,17 +485,17 @@ class _OrderCardState extends State<_OrderCard> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
         icon: Container(
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: const Color(0xFFD1FAE5),
-            borderRadius: BorderRadius.circular(999),
+            color: NataloColors.successTint,
+            borderRadius: BorderRadius.circular(AppRadius.full),
           ),
           child: const Icon(
             Icons.check_circle_outline_rounded,
-            color: Color(0xFF059669),
+            color: NataloColors.successDark,
             size: 28,
           ),
         ),
@@ -512,7 +513,7 @@ class _OrderCardState extends State<_OrderCard> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurface,
-                fontSize: 13,
+                fontSize: NataloTextSize.body,
                 fontWeight: FontWeight.w700,
                 height: 1.5,
               ),
@@ -523,7 +524,7 @@ class _OrderCardState extends State<_OrderCard> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontSize: 12,
+                fontSize: NataloTextSize.caption,
                 fontWeight: FontWeight.w600,
                 height: 1.5,
               ),
@@ -538,7 +539,7 @@ class _OrderCardState extends State<_OrderCard> {
           FilledButton(
             onPressed: () => Navigator.pop(dialogCtx, true),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF059669),
+              backgroundColor: NataloColors.successDark,
             ),
             child: const Text('Ya, Sudah Terima'),
           ),
@@ -680,7 +681,7 @@ class _OrderCardState extends State<_OrderCard> {
   /// Warna CTA button — hijau emerald untuk konfirmasi diterima (primary
   /// action di stage SHIPPED, beda dari blue brand untuk action lain).
   Color get _actionColor {
-    if (_needsDeliveryConfirmation) return const Color(0xFF059669);
+    if (_needsDeliveryConfirmation) return NataloColors.successDark;
     return _brandBlue;
   }
 
@@ -708,17 +709,17 @@ class _OrderCardState extends State<_OrderCard> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
         icon: Container(
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: const Color(0xFFFEE2E2),
-            borderRadius: BorderRadius.circular(999),
+            color: NataloColors.dangerTint,
+            borderRadius: BorderRadius.circular(AppRadius.full),
           ),
           child: const Icon(
             Icons.cancel_outlined,
-            color: Color(0xFFDC2626),
+            color: NataloColors.dangerDark,
             size: 28,
           ),
         ),
@@ -734,7 +735,7 @@ class _OrderCardState extends State<_OrderCard> {
           textAlign: TextAlign.center,
           style: TextStyle(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
-            fontSize: 13,
+            fontSize: NataloTextSize.body,
             fontWeight: FontWeight.w700,
             height: 1.45,
           ),
@@ -747,7 +748,7 @@ class _OrderCardState extends State<_OrderCard> {
           FilledButton(
             onPressed: () => Navigator.pop(dialogCtx, true),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFDC2626),
+              backgroundColor: NataloColors.dangerDark,
             ),
             child: Text(paid ? 'Ajukan' : 'Batalkan'),
           ),
@@ -806,7 +807,7 @@ class _OrderCardState extends State<_OrderCard> {
         _OrderQuickAction(
           icon: Icons.check_circle_outline_rounded,
           title: 'Sudah diterima',
-          color: const Color(0xFF059669),
+          color: NataloColors.successDark,
           onTap: () => _confirmDelivered(context),
         ),
       );
@@ -857,7 +858,7 @@ class _OrderCardState extends State<_OrderCard> {
         _OrderQuickAction(
           icon: Icons.cancel_outlined,
           title: paid ? 'Ajukan pembatalan' : 'Batalkan pesanan',
-          color: const Color(0xFFDC2626),
+          color: NataloColors.dangerDark,
           onTap: () => _confirmCancelOrder(context),
         ),
       );
@@ -894,7 +895,7 @@ class _OrderCardState extends State<_OrderCard> {
       showDragHandle: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
       ),
       builder: (sheetContext) => _OrderOptionsSheet(
         order: order,
@@ -923,17 +924,17 @@ class _OrderCardState extends State<_OrderCard> {
           child: Material(
             color: cs.surface,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(AppRadius.xl),
               side: BorderSide(
                 color: Theme.of(context).brightness == Brightness.dark
                     ? cs.outlineVariant
-                    : const Color(0xFFEEF3FB),
+                    : NataloColors.primarySoft,
               ),
             ),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: () => _openOrderDetail(context),
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(AppRadius.xl),
               splashColor: _brandBlue.withValues(alpha: 0.06),
               highlightColor: _brandBlue.withValues(alpha: 0.035),
               child: Padding(
@@ -990,8 +991,8 @@ class _OrderCardState extends State<_OrderCard> {
                         '$_pendingReviewCount produk belum diulas',
                         key: const ValueKey('pending-review-count'),
                         style: const TextStyle(
-                          color: Color(0xFFB45309),
-                          fontSize: 12,
+                          color: NataloColors.warningDark,
+                          fontSize: NataloTextSize.caption,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -1013,7 +1014,7 @@ class _OrderCardState extends State<_OrderCard> {
                                 'Total Belanja',
                                 style: TextStyle(
                                   color: cs.onSurfaceVariant,
-                                  fontSize: 12,
+                                  fontSize: NataloTextSize.caption,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
@@ -1024,7 +1025,7 @@ class _OrderCardState extends State<_OrderCard> {
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: _brandBlue,
-                                  fontSize: 20,
+                                  fontSize: NataloTextSize.title,
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
@@ -1040,10 +1041,10 @@ class _OrderCardState extends State<_OrderCard> {
                                     vertical: 3,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFEAF2FF),
-                                    borderRadius: BorderRadius.circular(6),
+                                    color: NataloColors.primarySoft,
+                                    borderRadius: BorderRadius.circular(AppRadius.sm),
                                     border: Border.all(
-                                      color: const Color(0xFFBFDBFE),
+                                      color: NataloColors.primaryBorder,
                                     ),
                                   ),
                                   child: Row(
@@ -1059,7 +1060,7 @@ class _OrderCardState extends State<_OrderCard> {
                                         'Saldo Refund ${formatRupiah(order.refundBalanceUsed)}',
                                         style: const TextStyle(
                                           color: _brandBlue,
-                                          fontSize: 10.5,
+                                          fontSize: NataloTextSize.micro,
                                           fontWeight: FontWeight.w800,
                                         ),
                                       ),
@@ -1117,10 +1118,10 @@ class _OrderCardState extends State<_OrderCard> {
                               vertical: 9,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFFEF3C7),
-                              borderRadius: BorderRadius.circular(12),
+                              color: NataloColors.warningTint,
+                              borderRadius: BorderRadius.circular(AppRadius.md),
                               border: Border.all(
-                                color: const Color(0xFFFCD34D),
+                                color: NataloColors.warningBorder,
                               ),
                             ),
                             child: const Row(
@@ -1129,14 +1130,14 @@ class _OrderCardState extends State<_OrderCard> {
                                 Icon(
                                   Icons.schedule_rounded,
                                   size: 15,
-                                  color: Color(0xFFB45309),
+                                  color: NataloColors.warningDark,
                                 ),
                                 SizedBox(width: 5),
                                 Text(
                                   'Menunggu Verifikasi',
                                   style: TextStyle(
-                                    color: Color(0xFFB45309),
-                                    fontSize: 12,
+                                    color: NataloColors.warningDark,
+                                    fontSize: NataloTextSize.caption,
                                     fontWeight: FontWeight.w900,
                                   ),
                                 ),
@@ -1208,7 +1209,7 @@ class _OrderMetaLabel extends StatelessWidget {
           label,
           style: TextStyle(
             color: cs.onSurfaceVariant,
-            fontSize: 12,
+            fontSize: NataloTextSize.caption,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -1272,9 +1273,9 @@ class _OrderOptionsSheet extends StatelessWidget {
                   height: 42,
                   decoration: BoxDecoration(
                     color: Theme.of(context).brightness == Brightness.dark
-                        ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
-                        : const Color(0xFFEAF5FF),
-                    borderRadius: BorderRadius.circular(14),
+                        ? NataloColors.primaryDark.withValues(alpha: 0.20)
+                        : NataloColors.primarySoft,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
                   child: const Icon(
                     Icons.receipt_long_outlined,
@@ -1293,7 +1294,7 @@ class _OrderOptionsSheet extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurface,
-                          fontSize: 15,
+                          fontSize: NataloTextSize.bodyLg,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
@@ -1302,7 +1303,7 @@ class _OrderOptionsSheet extends StatelessWidget {
                         _statusLabel(order.status),
                         style: TextStyle(
                           color: _statusColor(order.status),
-                          fontSize: 12,
+                          fontSize: NataloTextSize.caption,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
@@ -1345,7 +1346,7 @@ class _OrderQuickActionTile extends StatelessWidget {
         height: 36,
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppRadius.md),
         ),
         child: action.iconBuilder?.call(color) ??
             Icon(action.icon, color: color, size: 20),
@@ -1354,7 +1355,7 @@ class _OrderQuickActionTile extends StatelessWidget {
         action.title,
         style: TextStyle(
           color: color,
-          fontSize: 14.5,
+          fontSize: NataloTextSize.bodyLg,
           fontWeight: FontWeight.w900,
         ),
       ),
@@ -1379,9 +1380,9 @@ class _OrderProductPreview extends StatelessWidget {
             width: 58,
             decoration: BoxDecoration(
               color: Theme.of(context).brightness == Brightness.dark
-                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
-                  : const Color(0xFFEAF5FF),
-              borderRadius: BorderRadius.circular(16),
+                  ? NataloColors.primaryDark.withValues(alpha: 0.20)
+                  : NataloColors.primarySoft,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
             ),
             child: const Icon(
               Icons.inventory_2_outlined,
@@ -1398,7 +1399,7 @@ class _OrderProductPreview extends StatelessWidget {
                   'Produk pesanan',
                   style: TextStyle(
                     color: cs.onSurface,
-                    fontSize: 15,
+                    fontSize: NataloTextSize.bodyLg,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -1463,16 +1464,16 @@ class _OrderProductPreview extends StatelessWidget {
                       gradient: const LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [Color(0xFFC8CED8), Color(0xFF929AA8)],
+                        colors: [NataloColors.grey300, NataloColors.grey400],
                       ),
-                      borderRadius: BorderRadius.circular(11),
+                      borderRadius: BorderRadius.circular(AppRadius.md),
                       border: Border.all(color: Colors.white, width: 2),
                     ),
                     child: Text(
                       '+$extraCount',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 13,
+                        fontSize: NataloTextSize.body,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -1492,7 +1493,7 @@ class _OrderProductPreview extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: cs.onSurface,
-                  fontSize: 14.5,
+                  fontSize: NataloTextSize.bodyLg,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -1503,7 +1504,7 @@ class _OrderProductPreview extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
-                  fontSize: 13.5,
+                  fontSize: NataloTextSize.body,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -1528,7 +1529,7 @@ class _PreviewImage extends StatelessWidget {
       width: size,
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
@@ -1572,7 +1573,7 @@ class _EmptyOrdersState extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurface,
-              fontSize: 20,
+              fontSize: NataloTextSize.title,
               fontWeight: FontWeight.w900,
               letterSpacing: -0.2,
             ),
@@ -1586,7 +1587,7 @@ class _EmptyOrdersState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontSize: 13.5,
+                fontSize: NataloTextSize.body,
                 fontWeight: FontWeight.w600,
                 height: 1.55,
               ),
@@ -1606,12 +1607,12 @@ class _EmptyOrdersState extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.w900),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0B7FEA),
+                  backgroundColor: NataloColors.primaryDark,
                   foregroundColor: Colors.white,
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(AppRadius.full),
                   ),
                 ),
               ),
@@ -1647,9 +1648,9 @@ class _FilteredOrdersEmptyState extends StatelessWidget {
               width: 76,
               decoration: BoxDecoration(
                 color: Theme.of(context).brightness == Brightness.dark
-                    ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
-                    : const Color(0xFFEAF5FF),
-                borderRadius: BorderRadius.circular(26),
+                    ? NataloColors.primaryDark.withValues(alpha: 0.20)
+                    : NataloColors.primarySoft,
+                borderRadius: BorderRadius.circular(AppRadius.xl),
               ),
               child: const Icon(
                 Icons.receipt_long_outlined,
@@ -1664,7 +1665,7 @@ class _FilteredOrdersEmptyState extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: cs.onSurface,
-              fontSize: 18,
+              fontSize: NataloTextSize.title,
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -1745,17 +1746,17 @@ int _displayItemCount(OrderSummary order) {
 
 Color _statusColor(String status) {
   return switch (status.toUpperCase()) {
-    'UNPAID' || 'PENDING' => const Color(0xFFF59E0B),
+    'UNPAID' || 'PENDING' => NataloColors.warning,
     'PAID' || 'PROCESSING' => _brandBlue,
     'READY_TO_PICKUP' || 'READY_FOR_PICKUP' || 'READY_PICKUP' => _brandBlue,
-    'SHIPPED' => _brandBlue,
-    'DELIVERED' || 'COMPLETED' => const Color(0xFF16A34A),
+    'SHIPPED' => NataloColors.shipping,
+    'DELIVERED' || 'COMPLETED' => NataloColors.successDark,
     'CANCELLED' ||
     'CANCELED' ||
     'REFUNDED' ||
     'EXPIRED' =>
-      const Color(0xFFEF4444),
-    _ => const Color(0xFF6B7280),
+      NataloColors.danger,
+    _ => NataloColors.grey500,
   };
 }
 
@@ -1769,10 +1770,10 @@ void _showSnack(
 
 BoxDecoration _cardDecoration() {
   return BoxDecoration(
-    borderRadius: BorderRadius.circular(24),
+    borderRadius: BorderRadius.circular(AppRadius.xl),
     boxShadow: [
       BoxShadow(
-        color: const Color(0xFF111111).withValues(alpha: 0.04),
+        color: NataloColors.black.withValues(alpha: 0.04),
         blurRadius: 18,
         offset: const Offset(0, 8),
       ),
