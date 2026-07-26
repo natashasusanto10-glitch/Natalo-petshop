@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../theme/app_radius.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 
 import '../models/member_profile.dart';
 import '../services/api_client.dart';
@@ -19,8 +21,8 @@ import '../widgets/bottom_nav.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 
 const _brandBlue = NataloColors.primary;
-const _danger = Color(0xFFEF4444);
-const _warning = Color(0xFFF97316);
+const _danger = NataloColors.danger;
+const _warning = NataloColors.warning;
 // Feature flag — Saldo Refund sekarang AKTIF (backend phase 1+2 ready).
 // User bisa tap menu → masuk halaman aktif RefundBalanceScreen.
 // Admin issue refund via /admin/orders/[id] page.
@@ -156,7 +158,7 @@ class _TransactionsHeader extends StatelessWidget {
     return const DecoratedBox(
       decoration: BoxDecoration(
         gradient: NataloColors.heroGradientV,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(AppRadius.lg)),
       ),
       child: Padding(
         padding: EdgeInsets.fromLTRB(20, 14, 14, 18),
@@ -171,7 +173,7 @@ class _TransactionsHeader extends StatelessWidget {
                     'Transaksi',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 32,
+                      fontSize: NataloTextSize.display,
                       fontWeight: FontWeight.w900,
                       height: 1.05,
                     ),
@@ -181,7 +183,7 @@ class _TransactionsHeader extends StatelessWidget {
                     'Kelola pesanan dan aktivitas belanjamu',
                     style: TextStyle(
                       color: NataloColors.onHeroBright,
-                      fontSize: 14,
+                      fontSize: NataloTextSize.bodyLg,
                       fontWeight: FontWeight.w600,
                       height: 1.3,
                     ),
@@ -343,9 +345,9 @@ class _TransactionAlertsState extends State<_TransactionAlerts> {
                             subtitle:
                                 'Selesaikan pembayaran sebelum ${formatCountdownHms(unpaid.first.createdAt.add(_paymentWindow).difference(DateTime.now()))}',
                             cta: 'Lanjut Bayar',
-                            background: const Color(0xFFFFF5F5),
-                            border: const Color(0xFFFECACA),
-                            iconBackground: const Color(0xFFFEE2E2),
+                            background: NataloColors.dangerSoft,
+                            border: NataloColors.dangerTint,
+                            iconBackground: NataloColors.dangerTint,
                             color: _danger,
                             filledCta: true,
                             onTap: () => _openUnpaid(unpaid),
@@ -360,9 +362,9 @@ class _TransactionAlertsState extends State<_TransactionAlerts> {
                             subtitle:
                                 'Gunakan sebelum ${formatCountdownHms(vouchers.first.expiresAt.difference(DateTime.now()))}',
                             cta: 'Lihat Voucher',
-                            background: const Color(0xFFFFF7ED),
-                            border: const Color(0xFFFED7AA),
-                            iconBackground: const Color(0xFFFFEDD5),
+                            background: NataloColors.warningSoft,
+                            border: NataloColors.warningBorder,
+                            iconBackground: NataloColors.warningTint,
                             color: _warning,
                             onTap: () {
                               AppHaptics.tap();
@@ -420,7 +422,7 @@ class _TransactionAlertCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: border),
       ),
       child: Row(
@@ -430,7 +432,7 @@ class _TransactionAlertCard extends StatelessWidget {
             height: 48,
             decoration: BoxDecoration(
               color: iconBackground,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
             ),
             child: Icon(icon, color: color, size: 25),
           ),
@@ -445,7 +447,7 @@ class _TransactionAlertCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurface,
-                    fontSize: 14,
+                    fontSize: NataloTextSize.bodyLg,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -456,7 +458,7 @@ class _TransactionAlertCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: color,
-                    fontSize: 12.5,
+                    fontSize: NataloTextSize.caption,
                     fontWeight: FontWeight.w800,
                     height: 1.25,
                   ),
@@ -477,13 +479,13 @@ class _TransactionAlertCard extends StatelessWidget {
                       vertical: 10,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(13),
+                      borderRadius: BorderRadius.circular(AppRadius.md),
                     ),
                   ),
                   child: Text(
                     cta,
                     style: const TextStyle(
-                      fontSize: 12,
+                      fontSize: NataloTextSize.caption,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -498,13 +500,13 @@ class _TransactionAlertCard extends StatelessWidget {
                       vertical: 10,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(13),
+                      borderRadius: BorderRadius.circular(AppRadius.md),
                     ),
                   ),
                   child: Text(
                     cta,
                     style: const TextStyle(
-                      fontSize: 12,
+                      fontSize: NataloTextSize.caption,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -611,8 +613,8 @@ class _OrderStatusCardState extends State<_OrderStatusCard> {
                   children: [
                     _OrderStatusItem(
                       icon: Icons.account_balance_wallet_rounded,
-                      iconColor: const Color(0xFFF59E0B),
-                      iconBg: const Color(0xFFFFF7E0),
+                      iconColor: NataloColors.warning,
+                      iconBg: NataloColors.warningTint,
                       label: 'Belum Bayar',
                       count: counts.unpaid,
                       onTap: () => _openOrdersByStatus('unpaid'),
@@ -620,23 +622,27 @@ class _OrderStatusCardState extends State<_OrderStatusCard> {
                     _OrderStatusItem(
                       icon: Icons.inventory_2_rounded,
                       iconColor: _brandBlue,
-                      iconBg: const Color(0xFFEAF2FF),
+                      iconBg: NataloColors.primarySoft,
                       label: 'Diproses',
                       count: counts.processing,
                       onTap: () => _openOrdersByStatus('processing'),
                     ),
                     _OrderStatusItem(
                       icon: Icons.local_shipping_rounded,
-                      iconColor: const Color(0xFF22C55E),
-                      iconBg: const Color(0xFFE8F8EC),
+                      // Dikirim = ungu, Selesai = hijau. Sebelumnya kebalik di
+                      // layar ini sementara halaman detail sudah benar, jadi
+                      // status yang sama tampil beda warna tergantung dari mana
+                      // dibuka.
+                      iconColor: NataloColors.shipping,
+                      iconBg: NataloColors.shippingSoft,
                       label: 'Dikirim',
                       count: counts.shipped,
                       onTap: () => _openOrdersByStatus('shipped'),
                     ),
                     _OrderStatusItem(
                       icon: Icons.check_circle_rounded,
-                      iconColor: const Color(0xFF8B5CF6),
-                      iconBg: const Color(0xFFF3E8FF),
+                      iconColor: NataloColors.successDark,
+                      iconBg: NataloColors.successTint,
                       label: 'Selesai',
                       count: counts.recentCompleted,
                       onTap: () => _openOrdersByStatus('delivered'),
@@ -726,7 +732,7 @@ class _BalancePointsCardState extends State<_BalancePointsCard> {
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
       child: _PremiumCard(
         padding: const EdgeInsets.all(16),
-        borderColor: const Color(0xFFDBEAFE),
+        borderColor: NataloColors.primaryBorder,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -739,7 +745,7 @@ class _BalancePointsCardState extends State<_BalancePointsCard> {
                     child: _BalanceItem(
                       icon: Icons.account_balance_wallet_rounded,
                       iconColor: _brandBlue,
-                      iconBg: const Color(0xFFEAF2FF),
+                      iconBg: NataloColors.primarySoft,
                       title: 'Saldo Refund',
                       value: balanceText,
                       valueColor: _balanceError ? _danger : null,
@@ -747,7 +753,7 @@ class _BalancePointsCardState extends State<_BalancePointsCard> {
                           ? const _SmallChip(
                               text: 'Segera hadir',
                               color: _brandBlue,
-                              background: Color(0xFFEFF6FF),
+                              background: NataloColors.infoSoft,
                             )
                           : (_balanceError
                               ? const Icon(Icons.refresh_rounded,
@@ -765,8 +771,8 @@ class _BalancePointsCardState extends State<_BalancePointsCard> {
                   Expanded(
                     child: _BalanceItem(
                       icon: Icons.stars_rounded,
-                      iconColor: const Color(0xFFF59E0B),
-                      iconBg: const Color(0xFFFFF7E0),
+                      iconColor: NataloColors.warning,
+                      iconBg: NataloColors.warningTint,
                       title: 'Poin Natalo',
                       value: '${_formatNumber(points)} poin',
                       onTap: () => Navigator.pushNamed(
@@ -830,7 +836,7 @@ class _BalanceItem extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return AppPressable(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
@@ -840,7 +846,7 @@ class _BalanceItem extends StatelessWidget {
               height: 42,
               decoration: BoxDecoration(
                 color: iconBg,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(AppRadius.md),
               ),
               child: Icon(icon, color: iconColor, size: 22),
             ),
@@ -855,7 +861,7 @@ class _BalanceItem extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: cs.onSurfaceVariant,
-                      fontSize: 11.5,
+                      fontSize: NataloTextSize.caption,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -866,7 +872,7 @@ class _BalanceItem extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: valueColor ?? cs.onSurface,
-                      fontSize: 15,
+                      fontSize: NataloTextSize.bodyLg,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -899,30 +905,30 @@ class _TransactionMenuList extends StatelessWidget {
               route: '/member/vouchers',
               icon: Icons.confirmation_number_rounded,
               iconColor: _warning,
-              iconBg: Color(0xFFFFF7E0),
+              iconBg: NataloColors.warningTint,
               title: 'Voucher',
               subtitle: 'Promo & diskon belanja',
             ),
             const _TransactionMenuItem(
               route: '/wishlist',
               icon: Icons.favorite_rounded,
-              iconColor: Color(0xFFEF4444),
-              iconBg: Color(0xFFFFE4E6),
+              iconColor: NataloColors.danger,
+              iconBg: NataloColors.dangerTint,
               title: 'Wishlist',
               subtitle: 'Produk favoritmu',
             ),
             const _TransactionMenuItem(
               route: '/member/reviews',
               icon: Icons.rate_review_rounded,
-              iconColor: Color(0xFF8B5CF6),
-              iconBg: Color(0xFFF3E8FF),
+              iconColor: NataloColors.violet,
+              iconBg: NataloColors.violetSoft,
               title: 'Ulasan',
               subtitle: 'Beri ulasan untuk produk yang kamu beli',
             ),
             _TransactionMenuItem(
               icon: Icons.account_balance_wallet_rounded,
               iconColor: _brandBlue,
-              iconBg: const Color(0xFFEAF2FF),
+              iconBg: NataloColors.primarySoft,
               title: 'Saldo Refund',
               subtitle: 'Dana pengembalian pesanan',
               chip: _refundBalanceEnabled
@@ -930,7 +936,7 @@ class _TransactionMenuList extends StatelessWidget {
                   : const _SmallChip(
                       text: 'Segera hadir',
                       color: _brandBlue,
-                      background: Color(0xFFEFF6FF),
+                      background: NataloColors.infoSoft,
                     ),
               muted: !_refundBalanceEnabled,
               onTap: () => _openRefundBalance(context),
@@ -938,16 +944,16 @@ class _TransactionMenuList extends StatelessWidget {
             const _TransactionMenuItem(
               route: '/member/loyalty',
               icon: Icons.stars_rounded,
-              iconColor: Color(0xFFF59E0B),
-              iconBg: Color(0xFFFFF7E0),
+              iconColor: NataloColors.warning,
+              iconBg: NataloColors.warningTint,
               title: 'Tukar Poin',
               subtitle: 'Tukar poin dengan voucher menarik',
             ),
             const _TransactionMenuItem(
               route: '/member/loyalty/history',
               icon: Icons.history_rounded,
-              iconColor: Color(0xFF0EA5E9),
-              iconBg: Color(0xFFE0F2FE),
+              iconColor: NataloColors.info,
+              iconBg: NataloColors.infoSoft,
               title: 'Riwayat Poin',
               subtitle: 'Riwayat masuk & tukar poin',
               showDivider: false,
@@ -1001,7 +1007,7 @@ class _TransactionMenuItem extends StatelessWidget {
               }
               if (route != null) Navigator.pushNamed(context, route!);
             },
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Row(
@@ -1011,7 +1017,7 @@ class _TransactionMenuItem extends StatelessWidget {
                     height: 42,
                     decoration: BoxDecoration(
                       color: iconBg,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(AppRadius.md),
                     ),
                     child: Icon(icon, color: iconColor, size: 23),
                   ),
@@ -1026,7 +1032,7 @@ class _TransactionMenuItem extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: cs.onSurface,
-                            fontSize: 14,
+                            fontSize: NataloTextSize.bodyLg,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -1037,7 +1043,7 @@ class _TransactionMenuItem extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: cs.onSurfaceVariant,
-                            fontSize: 12,
+                            fontSize: NataloTextSize.caption,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -1066,7 +1072,7 @@ class _TransactionMenuItem extends StatelessWidget {
               // di light seperti semula; di dark pakai border gelap.
               color: Theme.of(context).brightness == Brightness.dark
                   ? cs.outlineVariant
-                  : const Color(0xFFEEF2F7),
+                  : NataloColors.primarySoft,
               indent: 55,
             ),
         ],
@@ -1086,8 +1092,8 @@ class _HelpCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFBFDBFE)),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        border: Border.all(color: NataloColors.primaryBorder),
       ),
       child: Row(
         children: [
@@ -1096,9 +1102,9 @@ class _HelpCard extends StatelessWidget {
             height: 44,
             decoration: BoxDecoration(
               color: Theme.of(context).brightness == Brightness.dark
-                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
-                  : const Color(0xFFEAF2FF),
-              borderRadius: BorderRadius.circular(15),
+                  ? NataloColors.primaryDark.withValues(alpha: 0.20)
+                  : NataloColors.primarySoft,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
             ),
             child: const Icon(
               Icons.support_agent_rounded,
@@ -1115,7 +1121,7 @@ class _HelpCard extends StatelessWidget {
                   'Butuh bantuan?',
                   style: TextStyle(
                     color: cs.onSurface,
-                    fontSize: 14,
+                    fontSize: NataloTextSize.bodyLg,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -1124,7 +1130,7 @@ class _HelpCard extends StatelessWidget {
                   'Kami siap membantumu',
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
-                    fontSize: 12,
+                    fontSize: NataloTextSize.caption,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1135,14 +1141,14 @@ class _HelpCard extends StatelessWidget {
             onPressed: () => Navigator.pushNamed(context, '/help'),
             style: OutlinedButton.styleFrom(
               foregroundColor: _brandBlue,
-              side: const BorderSide(color: Color(0xFFBFDBFE)),
+              side: const BorderSide(color: NataloColors.primaryBorder),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(13),
+                borderRadius: BorderRadius.circular(AppRadius.md),
               ),
             ),
             child: const Text(
               'Hubungi Kami',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
+              style: TextStyle(fontSize: NataloTextSize.caption, fontWeight: FontWeight.w900),
             ),
           ),
         ],
@@ -1248,7 +1254,7 @@ class _OrderStatusItem extends StatelessWidget {
     return Expanded(
       child: AppPressable(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
           child: Column(
@@ -1261,7 +1267,7 @@ class _OrderStatusItem extends StatelessWidget {
                     width: 50,
                     decoration: BoxDecoration(
                       color: iconBg,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
                     ),
                     child: Icon(icon, color: iconColor, size: 25),
                   ),
@@ -1297,7 +1303,7 @@ class _OrderStatusItem extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 11.5,
+                  fontSize: NataloTextSize.caption,
                   fontWeight: FontWeight.w800,
                   height: 1.12,
                 ),
@@ -1323,14 +1329,14 @@ class _OrderStatusBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 5),
       alignment: Alignment.center,
       decoration: const BoxDecoration(
-        color: Color(0xFFFF2D3D),
+        color: NataloColors.danger,
         shape: BoxShape.circle,
       ),
       child: Text(
         text,
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 10,
+          fontSize: NataloTextSize.micro,
           fontWeight: FontWeight.w900,
           height: 1,
         ),
@@ -1357,7 +1363,7 @@ class _PremiumCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: borderColor ?? cs.outlineVariant),
         boxShadow: [
           BoxShadow(
@@ -1389,7 +1395,7 @@ class _SmallChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.full),
       ),
       child: Text(
         text,
@@ -1397,7 +1403,7 @@ class _SmallChip extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           color: color,
-          fontSize: 10.5,
+          fontSize: NataloTextSize.micro,
           fontWeight: FontWeight.w900,
           height: 1,
         ),
@@ -1417,7 +1423,7 @@ class _SectionTitle extends StatelessWidget {
       title,
       style: TextStyle(
         color: Theme.of(context).colorScheme.onSurface,
-        fontSize: 18,
+        fontSize: NataloTextSize.title,
         fontWeight: FontWeight.w900,
       ),
     );
@@ -1458,7 +1464,7 @@ void _showRefundBalanceInfo(BuildContext context) {
           padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
             color: cs.surface,
-            borderRadius: BorderRadius.circular(26),
+            borderRadius: BorderRadius.circular(AppRadius.xl),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1470,7 +1476,7 @@ void _showRefundBalanceInfo(BuildContext context) {
                   height: 5,
                   decoration: BoxDecoration(
                     color: cs.outlineVariant,
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(AppRadius.full),
                   ),
                 ),
               ),
@@ -1479,7 +1485,7 @@ void _showRefundBalanceInfo(BuildContext context) {
                 'Saldo Refund',
                 style: TextStyle(
                   color: cs.onSurface,
-                  fontSize: 20,
+                  fontSize: NataloTextSize.title,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -1488,7 +1494,7 @@ void _showRefundBalanceInfo(BuildContext context) {
                 'Saldo Refund adalah dana pengembalian dari pesanan Natalo, misalnya jika produk kosong, pesanan dibatalkan sebagian, atau refund disetujui admin.\n\nSaldo ini nantinya dapat digunakan untuk mengurangi pembayaran pesanan berikutnya.',
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
-                  fontSize: 14,
+                  fontSize: NataloTextSize.bodyLg,
                   height: 1.45,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1504,13 +1510,13 @@ void _showRefundBalanceInfo(BuildContext context) {
                     backgroundColor: _brandBlue,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
                     ),
                   ),
                   child: const Text(
                     'Mengerti',
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: NataloTextSize.bodyLg,
                       fontWeight: FontWeight.w900,
                     ),
                   ),

@@ -205,18 +205,28 @@ class NataloColors {
   /// Border pendamping [primarySoft] pada kotak info biru.
   static const Color primaryBorder = Color(0xFFBFDBFE);
 
-  /// Ungu "dalam perjalanan" — status pesanan DIKIRIM/SHIPPED.
+  /// Ungu — hue keenam di luar primary/success/warning/danger/info. Dipakai
+  /// sebagai aksen ikon dekoratif (mis. chip ikon "Ulasan" di menu Transaksi).
+  static const Color violet = Color(0xFF7C3AED);
+  static const Color violetSoft = Color(0xFFF3E8FF);
+
+  /// Status pesanan DIKIRIM/SHIPPED.
   ///
-  /// Perlu hue sendiri karena semua warna status lain sudah terpakai: menunggu
+  /// Perlu hue sendiri karena warna status lain sudah terpakai semua: menunggu
   /// bayar = [warning], diproses & siap ambil = [primary], selesai =
-  /// [success], dibatalkan = [danger]. Tanpa ungu, "dikirim" akan menumpuk
-  /// warna dengan "diproses" padahal itu dua tahap berbeda di timeline.
+  /// [success], dibatalkan = [danger]. Tanpa ungu, "dikirim" menumpuk warna
+  /// dengan "diproses" padahal itu dua tahap berbeda di timeline — persis yang
+  /// terjadi di daftar pesanan sebelum token ini ada.
+  ///
+  /// Dinamai terpisah dari [violet] karena perannya semantik (tahap
+  /// pengiriman, bukan sekadar hue) sehingga bisa berdivergensi tanpa
+  /// menyentuh aksen dekoratif. Pola sama dengan [likeRed] vs [danger].
   ///
   /// SATU sumber: sebelumnya hub Transaksi dan halaman detail memakai warna
   /// TERTUKAR untuk status yang sama (hub: dikirim hijau/selesai ungu; detail:
   /// dikirim ungu/selesai hijau).
-  static const Color shipping = Color(0xFF7C3AED);
-  static const Color shippingSoft = Color(0xFFF3E8FF);
+  static const Color shipping = violet;
+  static const Color shippingSoft = violetSoft;
 
   // ── Brand-exclusive (aksen amber "Brand Eksklusif") ──
   // Satu sumber untuk palet voucher/badge brand-exclusive — dipakai di badge
