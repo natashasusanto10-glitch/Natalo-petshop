@@ -114,7 +114,20 @@ export function ProductForm({ mode, categories, brands, initialProduct }: {
           setVariantErrors(details);
           throw new Error(`Gagal menyimpan: ${details.length} masalah pada varian. Periksa detail di editor varian.`);
         }
-        throw new Error(data.error ?? "Gagal menyimpan produk.");
+        // `fields` = detail per-field dari Zod (dikirim server sejak selalu).
+        // JANGAN dibuang: kalau `error` masih generik (klien/route lama, atau
+        // 500 non-JSON yang bikin `data` kosong), inilah satu-satunya petunjuk
+        // field mana yang salah.
+        const fieldDetail = data?.fields && typeof data.fields === "object"
+          ? Object.entries(data.fields as Record<string, string[] | undefined>)
+              .filter(([, messages]) => Array.isArray(messages) && messages.length > 0)
+              .map(([field, messages]) => `${field}: ${messages![0]}`)
+              .join(". ")
+          : "";
+        if (data?.error && fieldDetail && !String(data.error).includes(":")) throw new Error(`${data.error} (${fieldDetail})`);
+        if (data?.error) throw new Error(String(data.error));
+        if (fieldDetail) throw new Error(fieldDetail);
+        throw new Error(`Gagal menyimpan produk (HTTP ${res.status}). Cek log server untuk detail.`);
       }
       createdId = data.id;
       if (video && data.id) { await videoRef.current?.commitAfterProductSave(data.id); if (mode === "create") { const finalized = await fetch(`/api/admin/products/${data.id}/finalize`, { method: "POST" }); if (!finalized.ok) throw new Error("Produk belum dapat difinalisasi."); } }

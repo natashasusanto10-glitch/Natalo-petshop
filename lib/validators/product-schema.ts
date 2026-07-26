@@ -1,8 +1,46 @@
 import { z } from "zod";
+import { formatFieldErrors } from "./format-errors";
 
-// Schema: Create product (extended dari POST sederhana original — sekarang
-// support gallery + opsional variants. Backwards compatible: caller lama
-// tanpa gallery / variants tetap jalan.
+// Label Indonesia per field, dipakai untuk mengubah `flatten().fieldErrors`
+// jadi pesan yang bisa dibaca admin. TANPA ini, 14+ penyebab berbeda (nama
+// kepanjangan, harga NaN, slot foto null, SKU ada spasi, dll.) semuanya
+// tampil sebagai "Payload tidak valid" — admin tidak punya petunjuk apa pun
+// dan cuma bisa tebak-tebakan.
+const FIELD_LABELS: Record<string, string> = {
+  name: "Nama Produk",
+  description: "Deskripsi",
+  price: "Harga Satuan",
+  stock: "Stok",
+  weightGram: "Berat (gram)",
+  imageUrl: "Foto cover",
+  imageUrls: "Foto Produk",
+  gallery: "Galeri foto",
+  categoryId: "Kategori",
+  brandId: "Brand",
+  isActive: "Status aktif",
+  sku: "SKU Induk",
+  hasVariants: "Mode varian",
+  attributes: "Atribut varian",
+  variants: "Daftar varian",
+  video: "Video produk",
+  careCategory: "Kategori Obat",
+  targetSpecies: "Spesies target",
+  dosageRules: "Aturan dosis",
+};
+
+/**
+ * Ubah `zodError.flatten().fieldErrors` jadi satu pesan siap-tampil.
+ *
+ * Contoh hasil: `Nama Produk: maksimal 200 karakter. Foto Produk: ada nilai
+ * kosong yang belum terisi.`
+ */
+export function formatProductFieldErrors(
+  fieldErrors: Record<string, string[] | undefined>,
+  formErrors: string[] = [],
+): string {
+  return formatFieldErrors(fieldErrors, FIELD_LABELS, formErrors, "Ada data produk yang belum valid.");
+}
+
 export const createProductSchema = z.object({
   name: z.string().trim().min(1).max(200),
   description: z.string().trim().max(5000).optional().default(""),

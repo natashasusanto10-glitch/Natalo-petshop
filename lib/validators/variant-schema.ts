@@ -178,3 +178,42 @@ export const putVariantsPayloadSchema = z
   });
 
 export type PutVariantsPayload = z.infer<typeof putVariantsPayloadSchema>;
+
+const VARIANT_FIELD_LABELS: Record<string, string> = {
+  sku: "Kode SKU",
+  price: "Harga",
+  stock: "Stok",
+  weightGram: "Berat",
+  imageUrl: "Foto varian",
+  isActive: "Status aktif",
+  optionRefs: "Opsi/kombinasi",
+  value: "Nama opsi",
+  position: "Urutan",
+  name: "Nama atribut",
+  options: "Daftar opsi",
+};
+
+/**
+ * Ubah issues Zod (termasuk custom path dari superRefine) jadi pesan yang
+ * menyebut BARIS dan FIELD-nya, mis. `Varian #3 — Harga: Varian aktif harus
+ * punya harga lebih dari 0.`
+ *
+ * Dipakai menggantikan "Payload varian tidak valid" — string itu tidak
+ * memberi tahu admin baris varian mana yang bermasalah, padahal satu produk
+ * bisa punya sampai 200 varian.
+ */
+export function formatVariantIssues(
+  issues: Array<{ path: Array<string | number | symbol>; message: string }>,
+): string {
+  if (issues.length === 0) return "Ada data varian yang belum valid.";
+  const described = issues.slice(0, 3).map((issue) => {
+    const [root, index, field] = issue.path;
+    const rootLabel = root === "attributes" ? "Atribut" : root === "variants" ? "Varian" : "";
+    const where = typeof index === "number" ? `${rootLabel} #${index + 1}` : rootLabel;
+    const fieldLabel = typeof field === "string" ? VARIANT_FIELD_LABELS[field] ?? field : "";
+    const prefix = [where, fieldLabel].filter(Boolean).join(" — ");
+    return prefix ? `${prefix}: ${issue.message}` : issue.message;
+  });
+  const sisa = issues.length - described.length;
+  return described.join(". ") + (sisa > 0 ? ` (dan ${sisa} masalah lain)` : "");
+}

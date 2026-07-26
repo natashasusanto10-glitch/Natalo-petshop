@@ -21,6 +21,19 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { sendProductDiscountPromoPush } from "@/lib/push-promo";
+import { formatFieldErrors } from "@/lib/validators/format-errors";
+
+
+// Label field Promo Toko untuk pesan error yang menyebut penyebabnya
+// (menggantikan "Payload tidak valid" yang tidak memberi petunjuk apa pun).
+const PROMO_FIELD_LABELS: Record<string, string> = {
+  name: "Nama promo",
+  startsAt: "Tanggal mulai",
+  endsAt: "Tanggal berakhir",
+  items: "Daftar produk promo",
+  notifyCustomers: "Notifikasi pelanggan",
+  isActive: "Status aktif",
+};
 
 const itemSchema = z.object({
   productId: z.string().trim().min(1),
@@ -107,7 +120,12 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json(
       {
-        error: "Payload tidak valid",
+        error: formatFieldErrors(
+          parsed.error.flatten().fieldErrors,
+          PROMO_FIELD_LABELS,
+          parsed.error.flatten().formErrors,
+          "Ada data promo yang belum valid.",
+        ),
         fields: parsed.error.flatten().fieldErrors,
       },
       { status: 400 },

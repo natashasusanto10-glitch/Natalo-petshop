@@ -4,7 +4,9 @@ import { validateCarePayload, computeUpcoming, CARE_CATEGORIES } from "@/lib/pet
 
 describe("validateCarePayload", () => {
   test("rejects non-object", () => {
-    assert.deepEqual(validateCarePayload(null), { error: "Payload tidak valid." });
+    assert.deepEqual(validateCarePayload(null), {
+      error: "Data perawatan tidak terkirim dengan benar. Coba ulangi.",
+    });
   });
   test("rejects unknown category", () => {
     assert.deepEqual(

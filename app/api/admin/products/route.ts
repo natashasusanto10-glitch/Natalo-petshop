@@ -2,8 +2,8 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { syncProduct, productSearchWhere } from "@/lib/search";
-import { putVariantsPayloadSchema } from "@/lib/validators/variant-schema";
-import { createProductSchema } from "@/lib/validators/product-schema";
+import { putVariantsPayloadSchema, formatVariantIssues } from "@/lib/validators/variant-schema";
+import { createProductSchema, formatProductFieldErrors } from "@/lib/validators/product-schema";
 import { Prisma } from "@prisma/client";
 import { normalizeProductFormPayload } from "@/lib/product/admin-product-form";
 import { validateCareFields } from "@/lib/product-dosage";
@@ -100,10 +100,15 @@ export async function POST(request: NextRequest) {
 
   const parsed = createProductSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
+    const flat = parsed.error.flatten();
     return NextResponse.json(
       {
-        error: "Payload tidak valid",
-        fields: parsed.error.flatten().fieldErrors,
+        // `error` WAJIB menyebut field pelakunya, bukan "Payload tidak valid".
+        // Klien (ProductForm.tsx + flutter_admin) menampilkan `error` apa
+        // adanya, jadi pesan buta di sini bikin admin tidak bisa menebak
+        // field mana yang salah dari belasan kemungkinan.
+        error: formatProductFieldErrors(flat.fieldErrors, flat.formErrors),
+        fields: flat.fieldErrors,
       },
       { status: 400 },
     );
@@ -116,7 +121,7 @@ export async function POST(request: NextRequest) {
       imageUrls: body.imageUrls ?? [body.imageUrl ?? "", ...body.gallery],
     });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Payload tidak valid" }, { status: 400 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Foto produk tidak bisa diproses." }, { status: 400 });
   }
 
   // Kalau hasVariants=true, validate attributes + variants pakai schema
@@ -138,7 +143,9 @@ export async function POST(request: NextRequest) {
       }));
       return NextResponse.json(
         {
-          error: "Payload varian tidak valid",
+          // Sebut baris + field bermasalah di `error` juga — klien lama yang
+          // cuma baca `error` (tanpa render `issues`) tetap dapat petunjuk.
+          error: formatVariantIssues(variantParsed.error.issues),
           issues,
           fields: variantParsed.error.flatten().fieldErrors,
         },
@@ -173,7 +180,9 @@ export async function POST(request: NextRequest) {
   // Atomic create — product + variants dalam satu transaction supaya
   // kalau varian gagal di-create, product juga di-rollback (no orphan).
   const hasVideo = Boolean(normalized.video?.guid || normalized.video?.url || normalized.video?.status);
-  const created = await prisma.$transaction(async (tx) => {
+  let created;
+  try {
+  created = await prisma.$transaction(async (tx) => {
     // Validasi SKU Induk unik kalau ada (Product.sku @unique). NULL kalau
     // varian aktif atau kosong — admin tidak isi SKU Induk untuk produk
     // multi-varian (pakai SKU per-varian saja).
@@ -331,6 +340,24 @@ export async function POST(request: NextRequest) {
 
     return product;
   });
+  } catch (error) {
+    // TANPA try/catch ini, throw di dalam transaction (mis. "SKU sudah
+    // digunakan oleh varian lain", atau constraint Prisma) jadi unhandled
+    // exception → Next.js balas 500 non-JSON → klien dapat `{}` → tampil
+    // "Gagal menyimpan produk." tanpa sebab. Padahal pesannya sudah spesifik.
+    console.error("[POST /api/admin/products] gagal create produk", error);
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      const target = Array.isArray(error.meta?.target) ? error.meta.target.join(", ") : String(error.meta?.target ?? "");
+      return NextResponse.json(
+        { error: `Nilai duplikat pada ${target || "field unik"} — sudah dipakai produk/varian lain.` },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Gagal menyimpan produk." },
+      { status: 400 },
+    );
+  }
 
   // Sync search index non-blocking via after() — sebelumnya fire-and-forget
   // promise yang bisa dibekukan Vercel sebelum jalan → produk baru tidak
