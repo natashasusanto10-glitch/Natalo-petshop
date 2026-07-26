@@ -1,21 +1,36 @@
 /**
  * Helper murni pencocokan produk↔spesies untuk kolom Belanja profil pet
- * (spec docs/superpowers/specs/2026-07-25-pets-belanja-design.md).
+ * (spec docs/superpowers/specs/2026-07-26-pets-belanja-rotation-design.md).
  *
- * Kenapa nama kategori jadi sumber utama: `targetSpecies` cuma terisi di 2
- * dari 1304 produk aktif, sedangkan nama kategori sudah mengandung spesies
- * ("Makanan Kucing", "Obat Ikan"). Jadi fallback inilah yang menopang fitur
- * hari ini; `targetSpecies` tetap menang kalau admin sudah mengisinya.
+ * Kenapa allowlist eksplisit, bukan `categoryName.includes(petType)`:
+ * pencocokan substring membuat setiap kategori baru otomatis ikut tanpa
+ * keputusan manusia, dan kategori tanpa nama spesies ("Peralatan Aquarium",
+ * "Grooming Tools") lolos sebagai "netral" lalu tampil untuk hewan yang
+ * salah. Katalog cuma punya ~20 kategori dan 5 spesies, jadi peta eksplisit
+ * murah dan bisa diuji. `targetSpecies` tetap menang kalau admin mengisinya
+ * (per 2026-07-26 baru 2 dari 1307 produk).
  */
 
 /** Nilai `Pet.type` yang dipakai app. */
 export const PET_SPECIES: readonly string[] = [
   "Kucing",
   "Anjing",
+  "Hamster",
+  "Kelinci",
   "Ikan",
-  "Burung",
-  "Reptil",
 ];
+
+/**
+ * Nama kategori (EXACT match) yang relevan per spesies. Hamster & Kelinci
+ * berbagi kategori "Hewan Kecil" karena begitulah katalog menamainya.
+ */
+export const SPECIES_CATEGORIES: Readonly<Record<string, readonly string[]>> = {
+  Kucing: ["Makanan Kucing", "Snack Kucing", "Pasir Kucing"],
+  Anjing: ["Makanan Anjing", "Snack Anjing"],
+  Hamster: ["Makanan Hewan Kecil", "Perlengkapan Hewan Kecil"],
+  Kelinci: ["Makanan Hewan Kecil", "Perlengkapan Hewan Kecil"],
+  Ikan: ["Makanan Ikan", "Obat Ikan"],
+};
 
 export type ShoppingCandidate = {
   id: string;
@@ -23,38 +38,32 @@ export type ShoppingCandidate = {
   categoryName: string | null;
 };
 
-function mentions(haystack: string, species: string): boolean {
-  return haystack.toLowerCase().includes(species.toLowerCase());
+/** Kategori yang boleh muncul untuk `petType`; `[]` kalau spesies tak dikenal. */
+export function allowedCategoriesFor(petType: string): readonly string[] {
+  return SPECIES_CATEGORIES[petType] ?? [];
+}
+
+/** Lolos via `targetSpecies` (menang mutlak) atau via allowlist kategori. */
+export function speciesAllows(
+  c: ShoppingCandidate,
+  petType: string,
+): boolean {
+  if (c.targetSpecies.length > 0) return c.targetSpecies.includes(petType);
+  const name = c.categoryName;
+  if (name === null) return false;
+  return allowedCategoriesFor(petType).includes(name);
 }
 
 /**
- * Tingkat kecocokan: 0 = targetSpecies cocok, 1 = kategori ber-spesies cocok,
- * 2 = kategori netral, -1 = dikecualikan (ditandai/berkategori spesies LAIN).
+ * Grup untuk penjalinan: produk ber-`targetSpecies` masuk grup "target"
+ * (sinyal terkuat, dapat giliran pertama), sisanya per nama kategori.
  */
-export function speciesMatchTier(
+export function candidateGroup(
   c: ShoppingCandidate,
   petType: string,
-): number {
-  if (c.targetSpecies.length > 0) {
-    return c.targetSpecies.includes(petType) ? 0 : -1;
+): string {
+  if (c.targetSpecies.length > 0 && c.targetSpecies.includes(petType)) {
+    return "target";
   }
-  const name = c.categoryName ?? "";
-  if (name === "") return 2;
-  if (mentions(name, petType)) return 1;
-  for (const other of PET_SPECIES) {
-    if (other !== petType && mentions(name, other)) return -1;
-  }
-  return 2;
-}
-
-/** Buang kandidat tak relevan, urut menurut tier, stabil di dalam tier. */
-export function rankShoppingCandidates<T extends ShoppingCandidate>(
-  items: T[],
-  petType: string,
-): T[] {
-  return items
-    .map((item, index) => ({ item, index, tier: speciesMatchTier(item, petType) }))
-    .filter((e) => e.tier >= 0)
-    .sort((a, b) => (a.tier - b.tier) || (a.index - b.index))
-    .map((e) => e.item);
+  return c.categoryName ?? "";
 }
