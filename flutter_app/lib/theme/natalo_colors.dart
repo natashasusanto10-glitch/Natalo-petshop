@@ -189,6 +189,19 @@ class NataloColors {
   static const Color infoSoft = Color(0xFFEFF6FF);
   static const Color infoDark = Color(0xFF2563EB);
 
+  /// Ungu "dalam perjalanan" — status pesanan DIKIRIM/SHIPPED.
+  ///
+  /// Perlu hue sendiri karena semua warna status lain sudah terpakai: menunggu
+  /// bayar = [warning], diproses & siap ambil = [primary], selesai =
+  /// [success], dibatalkan = [danger]. Tanpa ungu, "dikirim" akan menumpuk
+  /// warna dengan "diproses" padahal itu dua tahap berbeda di timeline.
+  ///
+  /// SATU sumber: sebelumnya hub Transaksi dan halaman detail memakai warna
+  /// TERTUKAR untuk status yang sama (hub: dikirim hijau/selesai ungu; detail:
+  /// dikirim ungu/selesai hijau).
+  static const Color shipping = Color(0xFF7C3AED);
+  static const Color shippingSoft = Color(0xFFF3E8FF);
+
   // ── Brand-exclusive (aksen amber "Brand Eksklusif") ──
   // Satu sumber untuk palet voucher/badge brand-exclusive — dipakai di badge
   // grid produk, chip voucher detail/cart/checkout, dan pill member vouchers.

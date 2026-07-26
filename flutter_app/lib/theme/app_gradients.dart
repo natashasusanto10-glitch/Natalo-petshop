@@ -32,6 +32,15 @@ class NataloGradients {
     end: Alignment.bottomRight,
   );
 
+  /// Wash biru pucat untuk header layar konfirmasi/perayaan (mis. header
+  /// "Pesanan Berhasil"). Sengaja jauh lebih terang dari [primary]: latarnya
+  /// menaungi teks gelap, bukan teks putih.
+  static const LinearGradient headerWash = LinearGradient(
+    colors: [Color(0xFFD7E9FF), Color(0xFFF7FBFF)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+
   static const LinearGradient rankGold = LinearGradient(
     colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
     begin: Alignment.topLeft,
