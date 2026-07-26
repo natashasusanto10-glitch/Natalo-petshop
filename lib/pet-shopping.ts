@@ -110,3 +110,67 @@ export function rotateFrom<T>(items: T[], offset: number): T[] {
   const start = ((offset % items.length) + items.length) % items.length;
   return [...items.slice(start), ...items.slice(0, start)];
 }
+
+/**
+ * Jalin beberapa grup secara round-robin sampai `limit`. Grup yang habis
+ * dilewati, jadi grup besar otomatis mengisi sisa slot di akhir. Efeknya:
+ * selama masih ada grup lain yang punya stok item, tidak akan pernah ada
+ * dua slot berurutan dari grup yang sama — inilah yang membuat grid tidak
+ * terbaca "monoton" walau 91% katalog Anjing adalah makanan.
+ */
+export function interleaveGroups<T>(groups: T[][], limit: number): T[] {
+  const out: T[] = [];
+  const cursors = groups.map(() => 0);
+  let progressed = true;
+  while (out.length < limit && progressed) {
+    progressed = false;
+    for (let g = 0; g < groups.length; g++) {
+      if (out.length >= limit) break;
+      const cursor = cursors[g];
+      if (cursor >= groups[g].length) continue;
+      out.push(groups[g][cursor]);
+      cursors[g] = cursor + 1;
+      progressed = true;
+    }
+  }
+  return out;
+}
+
+/**
+ * Pilih id produk saran untuk satu pet pada satu hari WIB.
+ *
+ * Sifat yang dijamin (dan diuji): deterministik dalam satu hari WIB — jadi
+ * rail di profil (limit 6) SELALU merupakan prefix dari grid halaman penuh
+ * (limit 12), tanpa perlu state atau caching apa pun.
+ *
+ * PENTING: `candidates` harus SUDAH difilter stok & exclusion oleh pemanggil.
+ * Kalau stok difilter setelah fungsi ini, slot akan bocor (12 diminta, <12
+ * tampil) — lihat komentar di route.
+ */
+export function selectSuggestionIds(
+  candidates: ShoppingCandidate[],
+  opts: { petType: string; petId: string; now: Date; limit: number },
+): string[] {
+  const { petType, petId, now, limit } = opts;
+
+  const byGroup = new Map<string, ShoppingCandidate[]>();
+  for (const c of candidates) {
+    if (!speciesAllows(c, petType)) continue;
+    const group = candidateGroup(c, petType);
+    const bucket = byGroup.get(group);
+    if (bucket) bucket.push(c);
+    else byGroup.set(group, [c]);
+  }
+
+  // "target" dulu (sinyal terkuat), sisanya grup besar dulu; nama sebagai
+  // tie-break supaya urutan tak bergantung urutan iterasi Map.
+  const ordered = [...byGroup.entries()].sort((a, b) => {
+    if (a[0] === "target") return -1;
+    if (b[0] === "target") return 1;
+    return b[1].length - a[1].length || a[0].localeCompare(b[0]);
+  });
+
+  const seed = dailySeed(petId, now);
+  const rotated = ordered.map(([, items]) => rotateFrom(items, seed));
+  return interleaveGroups(rotated, limit).map((c) => c.id);
+}

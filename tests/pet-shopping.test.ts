@@ -8,7 +8,9 @@ import {
   candidateGroup,
   dailySeed,
   fnv1a32,
+  interleaveGroups,
   rotateFrom,
+  selectSuggestionIds,
   speciesAllows,
   wibDateKey,
 } from "../lib/pet-shopping";
@@ -175,4 +177,167 @@ test("rotateFrom: tidak memutasi input", () => {
   const input = [1, 2, 3];
   rotateFrom(input, 1);
   assert.deepEqual(input, [1, 2, 3]);
+});
+
+test("interleaveGroups: round-robin, tak pernah dua slot berurutan satu grup", () => {
+  const out = interleaveGroups([["a1", "a2", "a3"], ["b1", "b2"]], 5);
+  assert.deepEqual(out, ["a1", "b1", "a2", "b2", "a3"]);
+});
+
+test("interleaveGroups: grup habis dilewati, grup besar mengisi sisa", () => {
+  const out = interleaveGroups([["a1", "a2", "a3", "a4"], ["b1"]], 5);
+  assert.deepEqual(out, ["a1", "b1", "a2", "a3", "a4"]);
+});
+
+test("interleaveGroups: berhenti di limit", () => {
+  const out = interleaveGroups([["a1", "a2", "a3"], ["b1", "b2", "b3"]], 3);
+  assert.deepEqual(out, ["a1", "b1", "a2"]);
+});
+
+test("interleaveGroups: total lebih kecil dari limit → keluarkan semua", () => {
+  const out = interleaveGroups([["a1"], ["b1"]], 12);
+  assert.deepEqual(out, ["a1", "b1"]);
+});
+
+test("interleaveGroups: tanpa grup → kosong", () => {
+  assert.deepEqual(interleaveGroups([], 12), []);
+});
+
+// ── selectSuggestionIds ──────────────────────────────────────────────
+
+const NOW = new Date("2026-07-26T05:00:00Z");
+
+/** Kandidat sintetis: n produk di satu kategori, id `{prefix}{i}`. */
+const many = (prefix: string, categoryName: string, n: number) =>
+  Array.from({ length: n }, (_, i) => ({
+    id: `${prefix}${i}`,
+    categoryName,
+    targetSpecies: [] as string[],
+  }));
+
+test("selectSuggestionIds: menjalin kategori, bukan blok satu kategori", () => {
+  const out = selectSuggestionIds(
+    [...many("m", "Makanan Anjing", 20), ...many("s", "Snack Anjing", 20)],
+    { petType: "Anjing", petId: "pet-1", now: NOW, limit: 12 },
+  );
+  assert.equal(out.length, 12);
+  // Tak ada dua slot berurutan dari kategori yang sama (m vs s).
+  for (let i = 1; i < out.length; i++) {
+    assert.notEqual(
+      out[i][0],
+      out[i - 1][0],
+      `slot ${i} dan ${i - 1} dari kategori yang sama: ${out.join(",")}`,
+    );
+  }
+});
+
+test("selectSuggestionIds: kategori kecil tetap kebagian slot", () => {
+  // Realita katalog Anjing: 234 makanan vs 21 snack. Tanpa penjalinan,
+  // makanan menelan seluruh grid — inilah keluhan 'monoton'.
+  const out = selectSuggestionIds(
+    [...many("m", "Makanan Anjing", 234), ...many("s", "Snack Anjing", 21)],
+    { petType: "Anjing", petId: "pet-1", now: NOW, limit: 12 },
+  );
+  assert.ok(
+    out.filter((id) => id.startsWith("s")).length >= 5,
+    `snack terlalu sedikit: ${out.join(",")}`,
+  );
+});
+
+test("selectSuggestionIds: grup 'target' dapat slot pertama", () => {
+  const out = selectSuggestionIds(
+    [
+      ...many("m", "Makanan Anjing", 10),
+      { id: "tagged", categoryName: "Obat & Suplemen", targetSpecies: ["Anjing"] },
+    ],
+    { petType: "Anjing", petId: "pet-1", now: NOW, limit: 12 },
+  );
+  assert.equal(out[0], "tagged");
+});
+
+test("selectSuggestionIds: produk spesies lain & netral dibuang", () => {
+  const out = selectSuggestionIds(
+    [
+      { id: "cat", categoryName: "Makanan Kucing", targetSpecies: [] },
+      { id: "aqua", categoryName: "Peralatan Aquarium", targetSpecies: [] },
+      { id: "groom", categoryName: "Grooming Tools", targetSpecies: [] },
+      { id: "dog", categoryName: "Makanan Anjing", targetSpecies: [] },
+    ],
+    { petType: "Anjing", petId: "pet-1", now: NOW, limit: 12 },
+  );
+  assert.deepEqual(out, ["dog"]);
+});
+
+test("selectSuggestionIds: deterministik dalam satu hari WIB", () => {
+  const cands = [
+    ...many("m", "Makanan Anjing", 50),
+    ...many("s", "Snack Anjing", 10),
+  ];
+  const pagi = selectSuggestionIds(cands, {
+    petType: "Anjing",
+    petId: "pet-1",
+    now: new Date("2026-07-26T01:00:00Z"),
+    limit: 12,
+  });
+  const malam = selectSuggestionIds(cands, {
+    petType: "Anjing",
+    petId: "pet-1",
+    now: new Date("2026-07-26T15:00:00Z"),
+    limit: 12,
+  });
+  assert.deepEqual(pagi, malam, "rail & grid dalam sehari WAJIB sama");
+});
+
+test("selectSuggestionIds: hari berbeda → isi berputar", () => {
+  const cands = [
+    ...many("m", "Makanan Anjing", 50),
+    ...many("s", "Snack Anjing", 10),
+  ];
+  const hariIni = selectSuggestionIds(cands, {
+    petType: "Anjing",
+    petId: "pet-1",
+    now: new Date("2026-07-26T05:00:00Z"),
+    limit: 12,
+  });
+  const besok = selectSuggestionIds(cands, {
+    petType: "Anjing",
+    petId: "pet-1",
+    now: new Date("2026-07-27T05:00:00Z"),
+    limit: 12,
+  });
+  assert.notDeepEqual(hariIni, besok);
+});
+
+test("selectSuggestionIds: 6 pertama = prefix dari 12 (janji rail=prefix grid)", () => {
+  const cands = [
+    ...many("m", "Makanan Anjing", 50),
+    ...many("s", "Snack Anjing", 10),
+  ];
+  const opts = { petType: "Anjing", petId: "pet-1", now: NOW };
+  const dua_belas = selectSuggestionIds(cands, { ...opts, limit: 12 });
+  const enam = selectSuggestionIds(cands, { ...opts, limit: 6 });
+  assert.deepEqual(enam, dua_belas.slice(0, 6));
+});
+
+test("selectSuggestionIds: pool kecil (Hamster 7 produk) tidak dipaksa 12", () => {
+  const out = selectSuggestionIds(
+    [
+      ...many("f", "Makanan Hewan Kecil", 6),
+      ...many("p", "Perlengkapan Hewan Kecil", 1),
+    ],
+    { petType: "Hamster", petId: "pet-9", now: NOW, limit: 12 },
+  );
+  assert.equal(out.length, 7);
+});
+
+test("selectSuggestionIds: kandidat kosong → kosong", () => {
+  assert.deepEqual(
+    selectSuggestionIds([], {
+      petType: "Anjing",
+      petId: "pet-1",
+      now: NOW,
+      limit: 12,
+    }),
+    [],
+  );
 });
