@@ -123,14 +123,16 @@ widget Belanja, dengan komentar yang menunjuk sumber acuan:
   kartu container putih (`cs.surface`) radius 8 dengan border tipis
   (`cs.outlineVariant`), foto 1:1 full-bleed `BoxFit.cover` (AppProductImage,
   radius atas mengikuti kartu), nama 13px `FontWeight.w600` maks 2 baris
-  (tinggi baris di-reserve supaya kartu seragam), harga `formatRupiah` biru
-  brand (`NataloColors.primary`) `FontWeight.w800` — harga final saja.
-  Lebar kartu ~120 (disesuaikan supaya ~3 kartu terlihat di viewport 360dp).
+  (tinggi baris di-reserve 31 supaya kartu seragam), harga `formatRupiah`
+  14px `FontWeight.w900` `cs.onSurface` — harga final saja. Lebar kartu 150
+  (identik rail "Terlaris").
   `kPetShoppingRailHeight` DIHITUNG ULANG mengikuti anatomi baru; skeleton
   digambar ulang dengan anatomi & tinggi identik (anti layout-jump).
 - **Grid** (`pet_shopping_screen.dart`, grup "Mungkin cocok") — acuan grid
-  produk Katalog: 2 kolom, gap 6, kartu putih radius 8, foto 1:1 full-bleed
-  cover, nama 13px w600 2 baris, harga biru brand; di atas kanal latar abu
+  produk Katalog: 2 kolom, gap 6, kartu putih radius 8 + border
+  `cs.outlineVariant` + shadow `0x08000000` blur 10 offset (0,4), foto 1:1
+  full-bleed cover, nama 13px w600 height 1.25 tinggi dipaku 34, harga 16px
+  `FontWeight.w900` `cs.onSurface`; di atas kanal latar abu
   `commerceGridSurfaceTint(context)` (helper bersama yang sudah ada di
   `compact_commerce_product_card.dart`) — kanal abu membungkus grup saran di
   halaman penuh. Layout tetap manual Column/Row-Expanded (BUKAN
@@ -180,6 +182,6 @@ Posisi kartu tetap. Nama pet diinterpolasi seperti sekarang.
   komposisi dipanggil dua kali dengan input & tanggal sama → 6 item pertama
   `suggested` identik (menjaga janji rail = prefix grid).
 - Flutter: test rail (tanpa badge "Saran"; 6 kartu; anatomi kartu baru — nama
-  13/w600, harga biru brand; skeleton tinggi = rail), test grid (kanal abu,
+  13/w600, harga 14px w900 onSurface; skeleton tinggi = rail), test grid (kanal abu,
   2 kolom, tanpa badge), test profil (teks placeholder baru "Momen {nama}",
   tidak lagi menyebut Belanja), regresi text-scale 1.3 untuk grid.
