@@ -11,6 +11,8 @@ import '../services/pet_service.dart';
 import '../theme/natalo_colors.dart';
 import '../theme/natalo_text.dart';
 import '../utils/haptics.dart';
+import '../widgets/compact_commerce_product_card.dart'
+    show commerceGridSurfaceTint;
 import '../widgets/pet_shopping_rail.dart';
 import 'pet_care_screen.dart';
 import 'pet_form_screen.dart';
@@ -675,7 +677,7 @@ class _ComingSoonCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Journey dan Belanja untuk $petName akan muncul di sini.',
+              'Momen $petName akan muncul di sini.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 12,
@@ -984,12 +986,29 @@ class _PetShoppingSection extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           if (d == null)
-            const PetShoppingRailSkeleton()
+            Container(
+              decoration: BoxDecoration(
+                color: commerceGridSurfaceTint(context),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.all(6),
+              child: const PetShoppingRailSkeleton(),
+            )
           else if (d.used.isNotEmpty || d.suggested.isNotEmpty)
-            PetShoppingRail(
-              used: d.used,
-              suggested: d.suggested,
-              onTapProduct: onTapProduct,
+            // Kanal abu sama dengan grid Beranda/Katalog — di halaman profil
+            // yang berlatar putih, kartu putih tanpa kanal ini tidak terbaca
+            // sebagai kartu. Padding 6 = gap grid Katalog.
+            Container(
+              decoration: BoxDecoration(
+                color: commerceGridSurfaceTint(context),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.all(6),
+              child: PetShoppingRail(
+                used: d.used,
+                suggested: d.suggested,
+                onTapProduct: onTapProduct,
+              ),
             )
           else
             Text(
@@ -1069,4 +1088,14 @@ class PetShoppingSectionForTest extends StatelessWidget {
       onTapProduct: (_) {},
     );
   }
+}
+
+/// Wrapper test-only untuk `_ComingSoonCard` (kelas privat).
+@visibleForTesting
+class PetComingSoonCardForTest extends StatelessWidget {
+  final String petName;
+  const PetComingSoonCardForTest({super.key, required this.petName});
+
+  @override
+  Widget build(BuildContext context) => _ComingSoonCard(petName: petName);
 }
