@@ -202,6 +202,9 @@ class NataloColors {
   /// Border pendamping [warningTint] (mis. kartu peringatan batas bayar).
   static const Color warningBorder = Color(0xFFFCD34D);
 
+  /// Border pendamping [dangerTint] (mis. kartu pesanan dibatalkan).
+  static const Color dangerBorder = Color(0xFFFCA5A5);
+
   /// Border pendamping [primarySoft] pada kotak info biru.
   static const Color primaryBorder = Color(0xFFBFDBFE);
 

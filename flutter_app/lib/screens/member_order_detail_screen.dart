@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import 'package:flutter/services.dart';
@@ -114,17 +115,17 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
         icon: Container(
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: const Color(0xFFFEE2E2),
-            borderRadius: BorderRadius.circular(999),
+            color: NataloColors.dangerTint,
+            borderRadius: BorderRadius.circular(AppRadius.full),
           ),
           child: const Icon(
             Icons.cancel_outlined,
-            color: Color(0xFFEF4444),
+            color: NataloColors.danger,
             size: 28,
           ),
         ),
@@ -141,7 +142,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurface,
-                fontSize: 13,
+                fontSize: NataloTextSize.body,
                 fontWeight: FontWeight.w700,
                 height: 1.5,
               ),
@@ -153,7 +154,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontSize: 12,
+                fontSize: NataloTextSize.caption,
                 fontWeight: FontWeight.w600,
                 height: 1.5,
               ),
@@ -168,7 +169,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
           FilledButton(
             onPressed: () => Navigator.pop(dialogCtx, true),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFEF4444),
+              backgroundColor: NataloColors.danger,
             ),
             child: const Text('Ya, Batalkan'),
           ),
@@ -253,17 +254,17 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
         icon: Container(
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: const Color(0xFFD1FAE5),
-            borderRadius: BorderRadius.circular(999),
+            color: NataloColors.successTint,
+            borderRadius: BorderRadius.circular(AppRadius.full),
           ),
           child: const Icon(
             Icons.check_circle_outline_rounded,
-            color: Color(0xFF059669),
+            color: NataloColors.successDark,
             size: 28,
           ),
         ),
@@ -282,7 +283,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurface,
-                fontSize: 13,
+                fontSize: NataloTextSize.body,
                 fontWeight: FontWeight.w700,
                 height: 1.5,
               ),
@@ -294,7 +295,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontSize: 12,
+                fontSize: NataloTextSize.caption,
                 fontWeight: FontWeight.w600,
                 height: 1.5,
               ),
@@ -309,7 +310,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
           FilledButton(
             onPressed: () => Navigator.pop(dialogCtx, true),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF059669),
+              backgroundColor: NataloColors.successDark,
             ),
             child: const Text('Ya, Sudah Terima'),
           ),
@@ -681,7 +682,7 @@ class _PaymentActionCard extends StatelessWidget {
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: cs.surface,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(AppRadius.xl),
           border: Border.all(color: cs.outlineVariant),
           boxShadow: [
             BoxShadow(
@@ -738,7 +739,7 @@ class _PaymentActionCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
@@ -869,7 +870,7 @@ class _ManualPaymentBannerState extends State<_ManualPaymentBanner> {
   Widget build(BuildContext context) {
     if (widget.hasProof) {
       return _banner(
-        accent: const Color(0xFF2563EB),
+        accent: NataloColors.infoDark,
         icon: Icons.hourglass_top_rounded,
         title: 'Bukti terkirim — menunggu verifikasi',
         subtitle: 'Admin akan cek pembayaranmu. Biasanya beberapa menit.',
@@ -880,7 +881,7 @@ class _ManualPaymentBannerState extends State<_ManualPaymentBanner> {
     final remaining = deadline.difference(DateTime.now());
     if (remaining <= Duration.zero) {
       return _banner(
-        accent: const Color(0xFF6B7280),
+        accent: NataloColors.grey500,
         icon: Icons.timer_off_rounded,
         title: 'Batas waktu bayar habis',
         subtitle: 'Pesanan akan dibatalkan otomatis. Silakan pesan lagi.',
@@ -888,7 +889,7 @@ class _ManualPaymentBannerState extends State<_ManualPaymentBanner> {
     }
     final urgent = remaining.inMinutes < 60;
     return _banner(
-      accent: urgent ? const Color(0xFFDC2626) : const Color(0xFFB45309),
+      accent: urgent ? NataloColors.dangerDark : NataloColors.warningDark,
       icon: Icons.timer_outlined,
       title: 'Bayar dalam ${_fmt(remaining)}',
       subtitle: urgent
@@ -911,7 +912,7 @@ class _ManualPaymentBannerState extends State<_ManualPaymentBanner> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: accent.withValues(alpha: 0.30)),
       ),
       child: Row(
@@ -940,7 +941,7 @@ class _ManualPaymentBannerState extends State<_ManualPaymentBanner> {
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
-                    fontSize: 11.5,
+                    fontSize: NataloTextSize.caption,
                     height: 1.3,
                   ),
                 ),
@@ -960,12 +961,12 @@ class _BankBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFF1D4ED8);
+    const accent = NataloColors.infoDark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
         border: Border.all(color: accent.withValues(alpha: 0.30)),
       ),
       child: Text(
@@ -973,7 +974,7 @@ class _BankBadge extends StatelessWidget {
         style: const TextStyle(
           color: accent,
           fontWeight: FontWeight.w900,
-          fontSize: 13,
+          fontSize: NataloTextSize.body,
           letterSpacing: 0.5,
         ),
       ),
@@ -1010,7 +1011,7 @@ class _BcaTransferSteps extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: cs.outlineVariant),
       ),
       child: Column(
@@ -1026,7 +1027,7 @@ class _BcaTransferSteps extends StatelessWidget {
                 style: TextStyle(
                   color: cs.onSurface,
                   fontWeight: FontWeight.w900,
-                  fontSize: 13.5,
+                  fontSize: NataloTextSize.body,
                 ),
               ),
             ],
@@ -1050,7 +1051,7 @@ class _BcaTransferSteps extends StatelessWidget {
                     style: const TextStyle(
                       color: _brandBlue,
                       fontWeight: FontWeight.w900,
-                      fontSize: 12,
+                      fontSize: NataloTextSize.caption,
                     ),
                   ),
                 ),
@@ -1062,7 +1063,7 @@ class _BcaTransferSteps extends StatelessWidget {
                       steps[i],
                       style: TextStyle(
                         color: cs.onSurface,
-                        fontSize: 12.5,
+                        fontSize: NataloTextSize.caption,
                         fontWeight: FontWeight.w600,
                         height: 1.35,
                       ),
@@ -1119,7 +1120,7 @@ class _ProofThumbnail extends StatelessWidget {
     return GestureDetector(
       onTap: () => _openFull(context),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         child: Stack(
           children: [
             ConstrainedBox(
@@ -1157,7 +1158,7 @@ class _ProofThumbnail extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(AppRadius.full),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1168,7 +1169,7 @@ class _ProofThumbnail extends StatelessWidget {
                       'Lihat',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 11,
+                        fontSize: NataloTextSize.micro,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -1264,10 +1265,10 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
     final proofVerified = _proofStatus == 'VERIFIED';
     final hasActiveProof = _hasStoredProof && !proofRejected;
     final statusColor = proofRejected
-        ? const Color(0xFFDC2626)
+        ? NataloColors.dangerDark
         : hasActiveProof
-            ? const Color(0xFF16A34A)
-            : const Color(0xFFF59E0B);
+            ? NataloColors.successDark
+            : NataloColors.warning;
     final title = proofRejected
         ? 'Bukti Perlu Diperbarui'
         : proofVerified
@@ -1287,7 +1288,7 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
@@ -1321,7 +1322,7 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
                       title,
                       style: TextStyle(
                         color: cs.onSurface,
-                        fontSize: 16,
+                        fontSize: NataloTextSize.subtitle,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -1329,7 +1330,7 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
                       subtitle,
                       style: TextStyle(
                         color: cs.onSurfaceVariant,
-                        fontSize: 12,
+                        fontSize: NataloTextSize.caption,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -1445,7 +1446,7 @@ class _PickupInfoCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
@@ -1466,7 +1467,7 @@ class _PickupInfoCard extends StatelessWidget {
                   'Ambil Sendiri di Toko',
                   style: TextStyle(
                     color: cs.onSurface,
-                    fontSize: 18,
+                    fontSize: NataloTextSize.title,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -1477,14 +1478,14 @@ class _PickupInfoCard extends StatelessWidget {
                   vertical: 7,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE8F8EF),
-                  borderRadius: BorderRadius.circular(999),
+                  color: NataloColors.successSoft,
+                  borderRadius: BorderRadius.circular(AppRadius.full),
                 ),
                 child: const Text(
                   'Gratis ongkir',
                   style: TextStyle(
-                    color: Color(0xFF108A43),
-                    fontSize: 12,
+                    color: NataloColors.successDark,
+                    fontSize: NataloTextSize.caption,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -1495,8 +1496,8 @@ class _PickupInfoCard extends StatelessWidget {
           const Text(
             'Self Pick Up - Gratis Ongkir',
             style: TextStyle(
-              color: Color(0xFF0B83E6),
-              fontSize: 14,
+              color: NataloColors.primaryDark,
+              fontSize: NataloTextSize.bodyLg,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -1564,13 +1565,13 @@ class _PickupGoogleMapsButton extends StatelessWidget {
       label: const Text('Buka di Google Maps'),
       style: OutlinedButton.styleFrom(
         minimumSize: const Size.fromHeight(56),
-        side: const BorderSide(color: Color(0xFF0B83E6), width: 1.5),
-        foregroundColor: const Color(0xFF0B83E6),
+        side: const BorderSide(color: NataloColors.primaryDark, width: 1.5),
+        foregroundColor: NataloColors.primaryDark,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
         ),
         textStyle: const TextStyle(
-          fontSize: 16,
+          fontSize: NataloTextSize.subtitle,
           fontWeight: FontWeight.w800,
         ),
       ),
@@ -1591,7 +1592,7 @@ class _ReadyPickupNoticeCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
@@ -1602,13 +1603,13 @@ class _ReadyPickupNoticeCard extends StatelessWidget {
             height: 42,
             decoration: BoxDecoration(
               color: Theme.of(context).brightness == Brightness.dark
-                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
-                  : const Color(0xFFE8F4FF),
-              borderRadius: BorderRadius.circular(14),
+                  ? NataloColors.primaryDark.withValues(alpha: 0.20)
+                  : NataloColors.primarySoft,
+              borderRadius: BorderRadius.circular(AppRadius.md),
             ),
             child: const Icon(
               Icons.verified_user_outlined,
-              color: Color(0xFF0B83E6),
+              color: NataloColors.primaryDark,
             ),
           ),
           const SizedBox(width: 12),
@@ -1621,7 +1622,7 @@ class _ReadyPickupNoticeCard extends StatelessWidget {
                   'Pesanan Anda sudah siap diambil.',
                   style: TextStyle(
                     color: cs.onSurface,
-                    fontSize: 14,
+                    fontSize: NataloTextSize.bodyLg,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -1630,7 +1631,7 @@ class _ReadyPickupNoticeCard extends StatelessWidget {
                   'Harap ambil pesanan sesuai jam operasional toko.',
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
-                    fontSize: 12,
+                    fontSize: NataloTextSize.caption,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1658,7 +1659,7 @@ class _PickupCodeBox extends StatelessWidget {
     if (status == 'READY_FOR_PICKUP') {
       return (
         label: 'Siap diambil',
-        bg: const Color(0xFF16A34A),
+        bg: NataloColors.successDark,
         fg: Colors.white,
         icon: Icons.check_circle_rounded,
       );
@@ -1666,16 +1667,16 @@ class _PickupCodeBox extends StatelessWidget {
     if (status == 'DELIVERED' || status == 'COMPLETED') {
       return (
         label: 'Sudah diambil',
-        bg: const Color(0xFFE5E7EB),
-        fg: const Color(0xFF6B7280),
+        bg: NataloColors.grey200,
+        fg: NataloColors.grey500,
         icon: Icons.task_alt_rounded,
       );
     }
     if (status == 'PROCESSING' || status == 'PAID' || status == 'PENDING') {
       return (
         label: 'Sedang disiapkan',
-        bg: const Color(0xFFFFF7E0),
-        fg: const Color(0xFFB45309),
+        bg: NataloColors.warningTint,
+        fg: NataloColors.warningDark,
         icon: Icons.inventory_2_rounded,
       );
     }
@@ -1700,14 +1701,14 @@ class _PickupCodeBox extends StatelessWidget {
               );
             }
           : null,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
         decoration: BoxDecoration(
-          color: const Color(0xFFEAF8EF),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFCBEFD8)),
+          color: NataloColors.successSoft,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: NataloColors.successTint),
         ),
         child: Column(
           children: [
@@ -1717,14 +1718,14 @@ class _PickupCodeBox extends StatelessWidget {
                 Icon(
                   Icons.qr_code_2_rounded,
                   size: 16,
-                  color: Color(0xFF087A3A),
+                  color: NataloColors.successDark,
                 ),
                 SizedBox(width: 6),
                 Text(
                   'Kode Pengambilan',
                   style: TextStyle(
-                    color: Color(0xFF087A3A),
-                    fontSize: 13,
+                    color: NataloColors.successDark,
+                    fontSize: NataloTextSize.body,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -1735,7 +1736,7 @@ class _PickupCodeBox extends StatelessWidget {
               hasCode ? code : 'Kode pengambilan belum tersedia',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: const Color(0xFF087A3A),
+                color: NataloColors.successDark,
                 fontSize: hasCode ? 28 : 15,
                 fontWeight: FontWeight.w900,
                 letterSpacing: hasCode ? 3 : 0,
@@ -1749,8 +1750,8 @@ class _PickupCodeBox extends StatelessWidget {
                   : 'Kode keluar saat pesanan selesai disiapkan toko.',
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: Color(0xFF087A3A),
-                fontSize: 12.5,
+                color: NataloColors.successDark,
+                fontSize: NataloTextSize.caption,
                 height: 1.4,
                 fontWeight: FontWeight.w600,
               ),
@@ -1764,7 +1765,7 @@ class _PickupCodeBox extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: badge.bg,
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(AppRadius.full),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1775,7 +1776,7 @@ class _PickupCodeBox extends StatelessWidget {
                       badge.label,
                       style: TextStyle(
                         color: badge.fg,
-                        fontSize: 12,
+                        fontSize: NataloTextSize.caption,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -1810,10 +1811,10 @@ class _PickupInfoRow extends StatelessWidget {
           width: 38,
           height: 38,
           decoration: BoxDecoration(
-            color: const Color(0xFFEAF8EF),
-            borderRadius: BorderRadius.circular(13),
+            color: NataloColors.successSoft,
+            borderRadius: BorderRadius.circular(AppRadius.md),
           ),
-          child: Icon(icon, size: 21, color: const Color(0xFF059669)),
+          child: Icon(icon, size: 21, color: NataloColors.successDark),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -1824,7 +1825,7 @@ class _PickupInfoRow extends StatelessWidget {
                 title,
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurface,
-                  fontSize: 13,
+                  fontSize: NataloTextSize.body,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -1833,7 +1834,7 @@ class _PickupInfoRow extends StatelessWidget {
                 content,
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurface,
-                  fontSize: 14,
+                  fontSize: NataloTextSize.bodyLg,
                   height: 1.45,
                   fontWeight: FontWeight.w700,
                 ),
@@ -1872,7 +1873,7 @@ class _SectionTitle extends StatelessWidget {
                 title,
                 style: TextStyle(
                   color: cs.onSurface,
-                  fontSize: 16,
+                  fontSize: NataloTextSize.subtitle,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -1880,7 +1881,7 @@ class _SectionTitle extends StatelessWidget {
                 subtitle,
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
-                  fontSize: 12,
+                  fontSize: NataloTextSize.caption,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -1918,11 +1919,11 @@ class _CopyRow extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF60A5FA).withValues(alpha: 0.05),
+            color: NataloColors.primaryLight.withValues(alpha: 0.05),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -1938,7 +1939,7 @@ class _CopyRow extends StatelessWidget {
                   label,
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
-                    fontSize: 12,
+                    fontSize: NataloTextSize.caption,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -1958,7 +1959,7 @@ class _CopyRow extends StatelessWidget {
                     helper!,
                     style: TextStyle(
                       color: cs.onSurfaceVariant,
-                      fontSize: 12,
+                      fontSize: NataloTextSize.caption,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -1989,15 +1990,15 @@ class _OrderHeader extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(AppRadius.xxl),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            const Color(0xFF1493F7),
+            NataloColors.primaryDark,
             Color.alphaBlend(
               statusColor.withValues(alpha: 0.18),
-              const Color(0xFF075EBB),
+              NataloColors.primary,
             ),
           ],
         ),
@@ -2033,7 +2034,7 @@ class _OrderHeader extends StatelessWidget {
                     width: 52,
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(18),
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
                       border: Border.all(
                         color: statusColor.withValues(alpha: 0.38),
                       ),
@@ -2055,7 +2056,7 @@ class _OrderHeader extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 18,
+                            fontSize: NataloTextSize.title,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -2075,7 +2076,7 @@ class _OrderHeader extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.78),
-                            fontSize: 12.5,
+                            fontSize: NataloTextSize.caption,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -2094,7 +2095,7 @@ class _OrderHeader extends StatelessWidget {
                 'No. Pesanan',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.68),
-                  fontSize: 11.5,
+                  fontSize: NataloTextSize.caption,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -2108,7 +2109,7 @@ class _OrderHeader extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 19,
+                        fontSize: NataloTextSize.title,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -2142,7 +2143,7 @@ class _OrderHeader extends StatelessWidget {
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(AppRadius.xl),
                   border: Border.all(
                     color: Colors.white.withValues(alpha: 0.20),
                   ),
@@ -2199,7 +2200,7 @@ class _HeaderMetric extends StatelessWidget {
           label,
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.66),
-            fontSize: 11,
+            fontSize: NataloTextSize.micro,
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -2211,7 +2212,7 @@ class _HeaderMetric extends StatelessWidget {
           textAlign: alignEnd ? TextAlign.right : TextAlign.left,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 13,
+            fontSize: NataloTextSize.body,
             fontWeight: FontWeight.w900,
           ),
         ),
@@ -2235,7 +2236,7 @@ class _OrderItemsCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
@@ -2265,7 +2266,7 @@ class _OrderItemsCard extends StatelessWidget {
                       'Produk Pesanan',
                       style: TextStyle(
                         color: cs.onSurface,
-                        fontSize: 16,
+                        fontSize: NataloTextSize.subtitle,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -2274,7 +2275,7 @@ class _OrderItemsCard extends StatelessWidget {
                       'Item yang masuk dalam pesanan ini.',
                       style: TextStyle(
                         color: cs.onSurfaceVariant,
-                        fontSize: 12,
+                        fontSize: NataloTextSize.caption,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -2296,8 +2297,8 @@ class _OrderItemsCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Theme.of(context).brightness == Brightness.dark
                     ? cs.surfaceContainerHighest
-                    : const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(18),
+                    : NataloColors.surface,
+                borderRadius: BorderRadius.circular(AppRadius.lg),
                 border: Border.all(color: cs.outlineVariant),
               ),
               child: Text(
@@ -2402,18 +2403,18 @@ class _OrderProductTileState extends State<_OrderProductTile> {
       color: Colors.transparent,
       child: InkWell(
         onTap: _navigating ? null : _openProductDetail,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         child: Ink(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Theme.of(context).brightness == Brightness.dark
                 ? cs.surfaceContainerHighest
-                : const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(20),
+                : NataloColors.surface,
+            borderRadius: BorderRadius.circular(AppRadius.xl),
             border: Border.all(
               color: Theme.of(context).brightness == Brightness.dark
                   ? cs.outlineVariant
-                  : const Color(0xFFE7EEF7),
+                  : NataloColors.primarySoft,
             ),
           ),
           child: Column(
@@ -2423,7 +2424,7 @@ class _OrderProductTileState extends State<_OrderProductTile> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
                     child: AppProductImage(
                       imageUrl: item.imageUrl,
                       height: 68,
@@ -2441,7 +2442,7 @@ class _OrderProductTileState extends State<_OrderProductTile> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: cs.onSurface,
-                            fontSize: 13.5,
+                            fontSize: NataloTextSize.body,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -2471,7 +2472,7 @@ class _OrderProductTileState extends State<_OrderProductTile> {
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   color: cs.onSurfaceVariant,
-                                  fontSize: 12,
+                                  fontSize: NataloTextSize.caption,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
@@ -2496,7 +2497,7 @@ class _OrderProductTileState extends State<_OrderProductTile> {
                   padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
                   decoration: BoxDecoration(
                     color: cs.surface,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
                     border: Border.all(color: cs.outlineVariant),
                   ),
                   child: Row(
@@ -2507,8 +2508,8 @@ class _OrderProductTileState extends State<_OrderProductTile> {
                               ? 'Sudah direview'
                               : 'Menunggu review',
                           color: item.reviewed
-                              ? const Color(0xFF16A34A)
-                              : const Color(0xFFF59E0B),
+                              ? NataloColors.successDark
+                              : NataloColors.warning,
                           icon: item.reviewed
                               ? Icons.check_circle_outline_rounded
                               : Icons.rate_review_outlined,
@@ -2580,7 +2581,7 @@ class _MiniChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.full),
         border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
@@ -2596,7 +2597,7 @@ class _MiniChip extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: cs.onSurfaceVariant,
-                fontSize: 11.5,
+                fontSize: NataloTextSize.caption,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -2634,7 +2635,7 @@ class _PaymentSummary extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
@@ -2671,7 +2672,7 @@ class _PaymentSummary extends StatelessWidget {
             _SummaryLine(
               label: 'Total Diskon',
               value: '-${formatRupiah(productDiscountTotal)}',
-              valueColor: const Color(0xFFDC2626),
+              valueColor: NataloColors.dangerDark,
             ),
           // Saldo Refund line — tampil hanya kalau order pakai saldo.
           // Tanpa line ini, math tidak nyambung: subtotal - diskon ≠ total
@@ -2699,10 +2700,10 @@ class _PaymentSummary extends StatelessWidget {
                 end: Alignment.bottomRight,
                 colors: [
                   _brandBlue.withValues(alpha: 0.10),
-                  const Color(0xFFEAF6FF),
+                  NataloColors.primarySoft,
                 ],
               ),
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
               border: Border.all(color: _brandBlue.withValues(alpha: 0.16)),
             ),
             child: _SummaryLine(
@@ -2802,7 +2803,7 @@ class _OngkirLine extends StatelessWidget {
               style: TextStyle(
                 color: cs.onSurface,
                 fontWeight: FontWeight.w900,
-                fontSize: 14,
+                fontSize: NataloTextSize.bodyLg,
               ),
             )
           else ...[
@@ -2811,7 +2812,7 @@ class _OngkirLine extends StatelessWidget {
               style: TextStyle(
                 color: cs.onSurfaceVariant,
                 fontWeight: FontWeight.w600,
-                fontSize: 13,
+                fontSize: NataloTextSize.body,
                 decoration: TextDecoration.lineThrough,
               ),
             ),
@@ -2819,9 +2820,9 @@ class _OngkirLine extends StatelessWidget {
             Text(
               isFree ? 'GRATIS' : formatRupiah(shippingCost),
               style: TextStyle(
-                color: isFree ? const Color(0xFF059669) : cs.onSurface,
+                color: isFree ? NataloColors.successDark : cs.onSurface,
                 fontWeight: FontWeight.w900,
-                fontSize: 14,
+                fontSize: NataloTextSize.bodyLg,
               ),
             ),
           ],
@@ -2847,9 +2848,9 @@ class _VoucherUsageList extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFEEF2FF),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFC7D2FE)),
+        color: NataloColors.primarySoft,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: NataloColors.primaryBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2859,14 +2860,14 @@ class _VoucherUsageList extends StatelessWidget {
               Icon(
                 Icons.local_offer_outlined,
                 size: 14,
-                color: Color(0xFF4338CA),
+                color: NataloColors.infoDark,
               ),
               SizedBox(width: 6),
               Text(
                 'Voucher Digunakan',
                 style: TextStyle(
-                  color: Color(0xFF4338CA),
-                  fontSize: 11.5,
+                  color: NataloColors.infoDark,
+                  fontSize: NataloTextSize.caption,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0.3,
                 ),
@@ -2882,8 +2883,8 @@ class _VoucherUsageList extends StatelessWidget {
                   const Text(
                     '✓ ',
                     style: TextStyle(
-                      color: Color(0xFF059669),
-                      fontSize: 12,
+                      color: NataloColors.successDark,
+                      fontSize: NataloTextSize.caption,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -2894,16 +2895,16 @@ class _VoucherUsageList extends StatelessWidget {
                           TextSpan(
                             text: '${u.displayLabel}: ',
                             style: const TextStyle(
-                              color: Color(0xFF4338CA),
-                              fontSize: 12,
+                              color: NataloColors.infoDark,
+                              fontSize: NataloTextSize.caption,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                           TextSpan(
                             text: u.code,
                             style: const TextStyle(
-                              color: Color(0xFF1E1B4B),
-                              fontSize: 12,
+                              color: NataloColors.textPrimary,
+                              fontSize: NataloTextSize.caption,
                               fontWeight: FontWeight.w900,
                               fontFamily: 'monospace',
                             ),
@@ -2915,8 +2916,8 @@ class _VoucherUsageList extends StatelessWidget {
                   Text(
                     '-${formatRupiah(u.discountAmount)}',
                     style: const TextStyle(
-                      color: Color(0xFFDC2626),
-                      fontSize: 12,
+                      color: NataloColors.dangerDark,
+                      fontSize: NataloTextSize.caption,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -2954,15 +2955,15 @@ Color _orderStatusColor(String status) {
     'PENDING' ||
     'WAITING_PAYMENT' ||
     'PENDING_PAYMENT' =>
-      const Color(0xFFF59E0B),
+      NataloColors.warning,
     'PAID' || 'PROCESSING' => _brandBlue,
     'READY_TO_PICKUP' ||
     'READY_FOR_PICKUP' ||
     'READY_PICKUP' =>
-      const Color(0xFF1E5FBF),
-    'SHIPPED' => const Color(0xFF7C3AED),
-    'PICKED_UP' || 'DELIVERED' || 'COMPLETED' => const Color(0xFF16A34A),
-    'CANCELLED' => const Color(0xFFEF4444),
+      NataloColors.primary,
+    'SHIPPED' => NataloColors.shipping,
+    'PICKED_UP' || 'DELIVERED' || 'COMPLETED' => NataloColors.successDark,
+    'CANCELLED' => NataloColors.danger,
     _ => _brandBlue,
   };
 }
@@ -3137,7 +3138,7 @@ class _CancelOrderCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
@@ -3146,12 +3147,12 @@ class _CancelOrderCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: const Color(0xFFFEE2E2),
-              borderRadius: BorderRadius.circular(14),
+              color: NataloColors.dangerTint,
+              borderRadius: BorderRadius.circular(AppRadius.md),
             ),
             child: const Icon(
               Icons.cancel_outlined,
-              color: Color(0xFFEF4444),
+              color: NataloColors.danger,
               size: 22,
             ),
           ),
@@ -3165,7 +3166,7 @@ class _CancelOrderCard extends StatelessWidget {
                   'Mau batalkan pesanan?',
                   style: TextStyle(
                     color: cs.onSurface,
-                    fontSize: 14.5,
+                    fontSize: NataloTextSize.bodyLg,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -3174,7 +3175,7 @@ class _CancelOrderCard extends StatelessWidget {
                   'Bisa dibatalkan sebelum paket dikirim.',
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
-                    fontSize: 12,
+                    fontSize: NataloTextSize.caption,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -3187,14 +3188,14 @@ class _CancelOrderCard extends StatelessWidget {
             child: OutlinedButton(
               onPressed: loading ? null : onCancel,
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFEF4444),
-                side: const BorderSide(color: Color(0xFFFCA5A5), width: 1.2),
+                foregroundColor: NataloColors.danger,
+                side: const BorderSide(color: NataloColors.dangerBorder, width: 1.2),
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(AppRadius.full),
                 ),
                 textStyle: const TextStyle(
-                  fontSize: 13,
+                  fontSize: NataloTextSize.body,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -3204,7 +3205,7 @@ class _CancelOrderCard extends StatelessWidget {
                       width: 16,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Color(0xFFEF4444),
+                        color: NataloColors.danger,
                       ),
                     )
                   : const Text('Batalkan'),
@@ -3254,7 +3255,7 @@ class _ShippingInfoCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: cs.outlineVariant),
       ),
       child: Column(
@@ -3267,15 +3268,15 @@ class _ShippingInfoCard extends StatelessWidget {
                 height: 36,
                 decoration: BoxDecoration(
                   color: Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
-                      : const Color(0xFFEAF2FF),
-                  borderRadius: BorderRadius.circular(10),
+                      ? NataloColors.primaryDark.withValues(alpha: 0.20)
+                      : NataloColors.primarySoft,
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                 ),
                 child: Icon(
                   hasDriver
                       ? Icons.two_wheeler_rounded
                       : Icons.local_shipping_rounded,
-                  color: const Color(0xFF1E5FBF),
+                  color: NataloColors.primary,
                   size: 20,
                 ),
               ),
@@ -3289,7 +3290,7 @@ class _ShippingInfoCard extends StatelessWidget {
                       'Info Pengiriman',
                       style: TextStyle(
                         color: cs.onSurface,
-                        fontSize: 14,
+                        fontSize: NataloTextSize.bodyLg,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -3299,7 +3300,7 @@ class _ShippingInfoCard extends StatelessWidget {
                           : courierLabel,
                       style: TextStyle(
                         color: cs.onSurfaceVariant,
-                        fontSize: 11.5,
+                        fontSize: NataloTextSize.caption,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -3318,8 +3319,8 @@ class _ShippingInfoCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Theme.of(context).brightness == Brightness.dark
                     ? cs.surfaceContainerHighest
-                    : const Color(0xFFF9FAFB),
-                borderRadius: BorderRadius.circular(12),
+                    : NataloColors.grey50,
+                borderRadius: BorderRadius.circular(AppRadius.md),
                 border: Border.all(color: cs.outlineVariant),
               ),
               child: Row(
@@ -3329,7 +3330,7 @@ class _ShippingInfoCard extends StatelessWidget {
                       'Nomor Resi',
                       style: TextStyle(
                         color: cs.onSurfaceVariant,
-                        fontSize: 11.5,
+                        fontSize: NataloTextSize.caption,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -3338,7 +3339,7 @@ class _ShippingInfoCard extends StatelessWidget {
                     order.trackingNumber!,
                     style: TextStyle(
                       color: cs.onSurface,
-                      fontSize: 13,
+                      fontSize: NataloTextSize.body,
                       fontWeight: FontWeight.w900,
                       fontFamily: 'monospace',
                     ),
@@ -3351,7 +3352,7 @@ class _ShippingInfoCard extends StatelessWidget {
               'Info Driver',
               style: TextStyle(
                 color: cs.onSurfaceVariant,
-                fontSize: 11.5,
+                fontSize: NataloTextSize.caption,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -3365,8 +3366,8 @@ class _ShippingInfoCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Theme.of(context).brightness == Brightness.dark
                     ? cs.surfaceContainerHighest
-                    : const Color(0xFFF9FAFB),
-                borderRadius: BorderRadius.circular(12),
+                    : NataloColors.grey50,
+                borderRadius: BorderRadius.circular(AppRadius.md),
                 border: Border.all(color: cs.outlineVariant),
               ),
               // SelectableText supaya user bisa copy nomor HP / link GPS.
@@ -3374,7 +3375,7 @@ class _ShippingInfoCard extends StatelessWidget {
                 order.shippingDriverInfo!,
                 style: TextStyle(
                   color: cs.onSurface,
-                  fontSize: 12.5,
+                  fontSize: NataloTextSize.caption,
                   fontWeight: FontWeight.w600,
                   height: 1.5,
                   fontFamily: 'monospace',
@@ -3434,9 +3435,9 @@ class _ConfirmDeliveredCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
-        color: const Color(0xFFECFDF5),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFA7F3D0), width: 1.5),
+        color: NataloColors.successSoft,
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        border: Border.all(color: NataloColors.successTint, width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3447,12 +3448,12 @@ class _ConfirmDeliveredCard extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFD1FAE5),
-                  borderRadius: BorderRadius.circular(14),
+                  color: NataloColors.successTint,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 child: const Icon(
                   Icons.check_circle_outline_rounded,
-                  color: Color(0xFF059669),
+                  color: NataloColors.successDark,
                   size: 22,
                 ),
               ),
@@ -3465,8 +3466,8 @@ class _ConfirmDeliveredCard extends StatelessWidget {
                     Text(
                       'Pesanan sudah sampai?',
                       style: TextStyle(
-                        color: Color(0xFF065F46),
-                        fontSize: 14.5,
+                        color: NataloColors.successDark,
+                        fontSize: NataloTextSize.bodyLg,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -3474,8 +3475,8 @@ class _ConfirmDeliveredCard extends StatelessWidget {
                     Text(
                       'Konfirmasi untuk selesaikan pesanan.',
                       style: TextStyle(
-                        color: Color(0xFF047857),
-                        fontSize: 12,
+                        color: NataloColors.successDark,
+                        fontSize: NataloTextSize.caption,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -3488,13 +3489,13 @@ class _ConfirmDeliveredCard extends StatelessWidget {
                 child: FilledButton(
                   onPressed: loading ? null : onConfirm,
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF059669),
+                    backgroundColor: NataloColors.successDark,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: BorderRadius.circular(AppRadius.full),
                     ),
                     textStyle: const TextStyle(
-                      fontSize: 13,
+                      fontSize: NataloTextSize.body,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -3521,7 +3522,7 @@ class _ConfirmDeliveredCard extends StatelessWidget {
               children: [
                 const Icon(
                   Icons.schedule_rounded,
-                  color: Color(0xFF047857),
+                  color: NataloColors.successDark,
                   size: 14,
                 ),
                 const SizedBox(width: 6),
@@ -3529,8 +3530,8 @@ class _ConfirmDeliveredCard extends StatelessWidget {
                   child: Text(
                     'Otomatis selesai ${_formatAutoConfirm(autoConfirmAt!)} kalau belum dikonfirmasi.',
                     style: const TextStyle(
-                      color: Color(0xFF047857),
-                      fontSize: 11.5,
+                      color: NataloColors.successDark,
+                      fontSize: NataloTextSize.caption,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -3581,9 +3582,9 @@ class _CancellationPendingBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFBEB),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFFCD34D), width: 1.5),
+        color: NataloColors.warningSoft,
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        border: Border.all(color: NataloColors.warningBorder, width: 1.5),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3592,12 +3593,12 @@ class _CancellationPendingBanner extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: const Color(0xFFFEF3C7),
-              borderRadius: BorderRadius.circular(14),
+              color: NataloColors.warningTint,
+              borderRadius: BorderRadius.circular(AppRadius.md),
             ),
             child: const Icon(
               Icons.hourglass_top_rounded,
-              color: Color(0xFFB45309),
+              color: NataloColors.warningDark,
               size: 22,
             ),
           ),
@@ -3610,8 +3611,8 @@ class _CancellationPendingBanner extends StatelessWidget {
                 const Text(
                   'Menunggu konfirmasi admin',
                   style: TextStyle(
-                    color: Color(0xFF92400E),
-                    fontSize: 14.5,
+                    color: NataloColors.warningDark,
+                    fontSize: NataloTextSize.bodyLg,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -3620,8 +3621,8 @@ class _CancellationPendingBanner extends StatelessWidget {
                   'Pembatalan kamu sedang ditinjau. Kalau disetujui, total '
                   'pesanan akan dikembalikan ke Saldo Refund.',
                   style: TextStyle(
-                    color: Color(0xFF78350F),
-                    fontSize: 12.5,
+                    color: NataloColors.warningDark,
+                    fontSize: NataloTextSize.caption,
                     fontWeight: FontWeight.w600,
                     height: 1.45,
                   ),
@@ -3635,13 +3636,13 @@ class _CancellationPendingBanner extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                     child: Text(
                       'Alasan kamu: "${reason!}"',
                       style: const TextStyle(
-                        color: Color(0xFF422006),
-                        fontSize: 12,
+                        color: NataloColors.warningDark,
+                        fontSize: NataloTextSize.caption,
                         fontWeight: FontWeight.w700,
                         height: 1.4,
                       ),
@@ -3653,8 +3654,8 @@ class _CancellationPendingBanner extends StatelessWidget {
                   Text(
                     'Diajukan ${_formatTime(requestedAt!)}',
                     style: const TextStyle(
-                      color: Color(0xFFB45309),
-                      fontSize: 11,
+                      color: NataloColors.warningDark,
+                      fontSize: NataloTextSize.micro,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -3707,9 +3708,9 @@ class _CancellationRejectedBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       decoration: BoxDecoration(
-        color: const Color(0xFFFEF2F2),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFFCA5A5), width: 1.5),
+        color: NataloColors.dangerSoft,
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        border: Border.all(color: NataloColors.dangerBorder, width: 1.5),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3718,12 +3719,12 @@ class _CancellationRejectedBanner extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: const Color(0xFFFEE2E2),
-              borderRadius: BorderRadius.circular(14),
+              color: NataloColors.dangerTint,
+              borderRadius: BorderRadius.circular(AppRadius.md),
             ),
             child: const Icon(
               Icons.block_rounded,
-              color: Color(0xFFB91C1C),
+              color: NataloColors.dangerDark,
               size: 22,
             ),
           ),
@@ -3736,8 +3737,8 @@ class _CancellationRejectedBanner extends StatelessWidget {
                 const Text(
                   'Permintaan pembatalan ditolak',
                   style: TextStyle(
-                    color: Color(0xFF7F1D1D),
-                    fontSize: 14.5,
+                    color: NataloColors.dangerDark,
+                    fontSize: NataloTextSize.bodyLg,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -3750,13 +3751,13 @@ class _CancellationRejectedBanner extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                     child: Text(
                       'Alasan admin: "${rejectReason!}"',
                       style: const TextStyle(
-                        color: Color(0xFF7F1D1D),
-                        fontSize: 12.5,
+                        color: NataloColors.dangerDark,
+                        fontSize: NataloTextSize.caption,
                         fontWeight: FontWeight.w700,
                         height: 1.45,
                       ),
@@ -3768,8 +3769,8 @@ class _CancellationRejectedBanner extends StatelessWidget {
                   Text(
                     'Alasan kamu sebelumnya: "${userReason!}"',
                     style: const TextStyle(
-                      color: Color(0xFF991B1B),
-                      fontSize: 12,
+                      color: NataloColors.dangerDark,
+                      fontSize: NataloTextSize.caption,
                       fontWeight: FontWeight.w600,
                       height: 1.4,
                     ),
@@ -3780,8 +3781,8 @@ class _CancellationRejectedBanner extends StatelessWidget {
                   Text(
                     'Ditolak ${_formatTime(respondedAt!)}',
                     style: const TextStyle(
-                      color: Color(0xFFB91C1C),
-                      fontSize: 11,
+                      color: NataloColors.dangerDark,
+                      fontSize: NataloTextSize.micro,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
