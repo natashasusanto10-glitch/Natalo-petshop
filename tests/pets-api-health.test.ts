@@ -33,3 +33,28 @@ describe("validatePetPayload health fields", () => {
     );
   });
 });
+
+describe("validatePetPayload type: canonical + legacy grandfather", () => {
+  test("accepts the 5 new canonical species (Hamster, Kelinci included)", () => {
+    for (const type of ["Kucing", "Anjing", "Hamster", "Kelinci", "Ikan"]) {
+      const r = validatePetPayload({ ...base, type });
+      assert.ok("data" in r, `${type} harus valid`);
+      assert.equal(r.data.type, type);
+    }
+  });
+  test("legacy types (Burung/Reptil/Lainnya) still validate on write — grandfathered, not removable from dropdown users' existing pets", () => {
+    for (const type of ["Burung", "Reptil", "Lainnya"]) {
+      const r = validatePetPayload({ ...base, type });
+      assert.ok(
+        "data" in r,
+        `${type} adalah jenis lama yang sudah tak jadi opsi dropdown baru, tapi WAJIB tetap valid untuk edit pet lama`,
+      );
+      assert.equal(r.data.type, type);
+    }
+  });
+  test("rejects a genuinely unknown type", () => {
+    assert.deepEqual(validatePetPayload({ ...base, type: "Naga" }), {
+      error: "Jenis pet tidak valid.",
+    });
+  });
+});

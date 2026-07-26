@@ -1,6 +1,16 @@
+// Superset yang diterima validator tulis (PATCH/POST pet). Berisi 5 spesies
+// kanonis yang bisa dipilih di dropdown form Flutter baru (lihat kPetTypes di
+// flutter_app/lib/models/pet.dart) DITAMBAH jenis lama yang sudah tak lagi
+// jadi opsi dropdown (Burung/Reptil/Lainnya). Baris terakhir WAJIB tetap ada
+// walau bukan opsi baru — kolom `type` di DB adalah string bebas, bukan enum,
+// jadi pet lama dengan jenis tsb boleh dibaca kapan saja; kalau dibuang dari
+// sini, setiap edit pet lama (bahkan cuma ganti nama) akan gagal dengan
+// "Jenis pet tidak valid."
 export const PET_TYPES = new Set([
   "Kucing",
   "Anjing",
+  "Hamster",
+  "Kelinci",
   "Ikan",
   "Burung",
   "Reptil",

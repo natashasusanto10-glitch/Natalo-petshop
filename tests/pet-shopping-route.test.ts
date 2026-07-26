@@ -133,6 +133,22 @@ test("toStockCandidate: produk varian base stock 0 tetap in-stock", () => {
   assert.deepEqual(out.targetSpecies, []);
 });
 
+test("toStockCandidate: produk PUNYA varian, base stock 5 tapi varian stock 0 → habis (sinkron dengan effectiveStock)", () => {
+  // Regresi: dulu toStockCandidate pakai `row.stock + variantTotal > 0`
+  // (base ATAU varian), beda semantik dari effectiveStock yang dipakai
+  // toShoppingProduct (`variants.length > 0 ? sum(variants) : baseStock`).
+  // Produk dengan varian mengabaikan base stock sepenuhnya, jadi base=5 +
+  // varian=0 WAJIB dilaporkan habis di sini juga, bukan cuma di respons akhir.
+  const out = toStockCandidate({
+    id: "p3",
+    stock: 5,
+    targetSpecies: [],
+    category: { name: "Obat & Suplemen" },
+    variants: [{ stock: 0 }],
+  });
+  assert.equal(out.inStock, false, "produk bervarian: base stock diabaikan, varian 0 = habis");
+});
+
 test("toStockCandidate: produk tanpa kategori → categoryName null", () => {
   const out = toStockCandidate({
     id: "p2",

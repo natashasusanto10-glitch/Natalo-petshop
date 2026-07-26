@@ -57,6 +57,19 @@ class _PetFormScreenState extends State<PetFormScreen> {
 
   bool get _isEdit => widget.pet != null;
 
+  /// Opsi dropdown Jenis: 5 spesies kanonis + jenis pet-yang-diedit kalau
+  /// bukan salah satu dari 5 itu (pet lama Burung/Reptil/Lainnya). Tanpa ini
+  /// DropdownButtonFormField akan crash/berperilaku aneh karena `initialValue`
+  /// tak ada di `items`, dan kalaupun tidak crash, hilangnya opsi itu adalah
+  /// akar masalah "silent species swap" — user tak sadar harus memilih ulang.
+  List<String> get _dropdownTypes {
+    final pet = widget.pet;
+    if (pet != null && !kPetTypes.contains(pet.type)) {
+      return [...kPetTypes, pet.type];
+    }
+    return kPetTypes;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -64,9 +77,12 @@ class _PetFormScreenState extends State<PetFormScreen> {
     _nameController = TextEditingController(text: pet?.name ?? '');
     _breedController = TextEditingController(text: pet?.breed ?? '');
     _bioController = TextEditingController(text: pet?.bio ?? '');
-    _type = pet != null && kPetTypes.contains(pet.type)
-        ? pet.type
-        : kPetTypes.first;
+    // Pet baru default ke opsi pertama; pet yang sudah ada WAJIB tetap
+    // menampilkan jenis aslinya walau sudah bukan opsi kanonis (mis. jenis
+    // lama "Burung"/"Reptil"/"Lainnya") — jangan pernah timpa diam-diam ke
+    // kPetTypes.first, lihat _dropdownTypes di bawah untuk cara nilai ini
+    // tetap muncul sebagai opsi dropdown yang valid.
+    _type = pet?.type ?? kPetTypes.first;
     _birthDate = pet?.birthDate;
     _gender = pet?.gender;
     _sterilized = widget.pet?.sterilized;
@@ -313,7 +329,7 @@ class _PetFormScreenState extends State<PetFormScreen> {
             initialValue: _type,
             onChanged: busy ? null : (v) => setState(() => _type = v!),
             items: [
-              for (final type in kPetTypes)
+              for (final type in _dropdownTypes)
                 DropdownMenuItem(value: type, child: Text(type)),
             ],
           ),

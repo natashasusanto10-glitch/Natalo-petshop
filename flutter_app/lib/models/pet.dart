@@ -1,14 +1,20 @@
 import 'pet_care_record.dart';
 
-/// Jenis pet — WAJIB sinkron dengan `PET_TYPES` di
-/// `lib/pets-api.ts` (backend). Urutan dipakai sebagai opsi dropdown form.
+/// Jenis pet yang bisa DIPILIH untuk pet BARU — 5 spesies yang didukung fitur
+/// Belanja (lihat `allowedCategoriesFor` di lib/pet-shopping.ts). Backend
+/// (`PET_TYPES` di `lib/pets-api.ts`) menerima SUPERSET ini ditambah jenis
+/// lama (Burung/Reptil/Lainnya) supaya edit pet lama tak pernah gagal validasi
+/// hanya karena jenisnya sudah tak lagi jadi opsi dropdown baru — pet lama
+/// dengan jenis di luar daftar ini WAJIB tetap ditampilkan sebagai opsi
+/// tambahan saat form edit dibuka (lihat pet_form_screen.dart), bukan
+/// dipaksa berubah ke opsi pertama. Urutan di sini dipakai sebagai urutan
+/// opsi dropdown form.
 const List<String> kPetTypes = [
   'Kucing',
   'Anjing',
+  'Hamster',
+  'Kelinci',
   'Ikan',
-  'Burung',
-  'Reptil',
-  'Lainnya',
 ];
 
 /// Gender pet — 'male' | 'female' | null (belum diisi).

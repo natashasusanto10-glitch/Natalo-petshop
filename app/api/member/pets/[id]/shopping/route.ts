@@ -157,14 +157,27 @@ export type StockRow = {
 export function toStockCandidate(
   row: StockRow,
 ): ShoppingCandidate & { inStock: boolean } {
-  const variantTotal = row.variants.reduce((sum, v) => sum + v.stock, 0);
   return {
     id: row.id,
     targetSpecies: row.targetSpecies ?? [],
     categoryName: row.category?.name ?? null,
     // GOTCHA: produk varian punya Product.stock = 0 dan stok sebenarnya di
-    // ProductVariant, jadi stok TIDAK BOLEH difilter di SQL.
-    inStock: row.stock + variantTotal > 0,
+    // ProductVariant, jadi stok TIDAK BOLEH difilter di SQL. WAJIB pakai
+    // effectiveStock yang sama dengan toShoppingProduct di bawah — kalau
+    // dua fungsi ini punya semantik stok yang beda, kandidat bisa lolos
+    // seleksi di sini tapi dilaporkan habis di respons akhir (kartu saran
+    // tanpa indikator stok, produk ternyata tak bisa dibeli).
+    inStock:
+      effectiveStock({
+        id: row.id,
+        name: "",
+        price: 0,
+        baseStock: row.stock,
+        variantStocks: row.variants.map((v) => v.stock),
+        variantPrices: [],
+        targetSpecies: [],
+        dosageRules: [],
+      }) > 0,
   };
 }
 
