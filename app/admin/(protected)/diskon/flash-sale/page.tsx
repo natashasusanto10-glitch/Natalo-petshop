@@ -13,6 +13,7 @@ import Link from "next/link";
 import { AdminPage, Button } from "@/components/admin/ui";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
+import { productSearchWhere } from "@/lib/search";
 import { EndFlashSaleButton } from "@/components/admin/EndFlashSaleButton";
 
 export const dynamic = "force-dynamic";
@@ -61,7 +62,8 @@ export default async function FlashSaleListPage({
   const products = await prisma.product.findMany({
     where: {
       ...whereStatus,
-      ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
+      // Matcher sama dengan katalog: token multi-kata + nama brand + SKU.
+      ...((search ? productSearchWhere(search) : undefined) ?? {}),
     },
     orderBy: { flashSaleEndsAt: "desc" },
     take: 100,

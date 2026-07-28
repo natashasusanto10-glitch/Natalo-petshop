@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { deleteProductVideo } from "@/lib/product/product-video";
 import { productIsVisibleWhere } from "@/lib/product/admin-product-form";
+import { productSearchWhere } from "@/lib/search";
 import { formatRupiah } from "@/lib/format";
 import { InlineEditCell } from "@/components/admin/InlineEditCell";
 import { VariantInlineEditCell } from "@/components/admin/VariantInlineEditCell";
@@ -59,9 +60,12 @@ export default async function AdminProductsPage({
     : stockFilter === "archived" ? { isActive: false }
     : {};
 
-  const searchWhere = search
-    ? { name: { contains: search, mode: "insensitive" as const } }
-    : {};
+  // Pakai matcher yang SAMA dengan katalog storefront/app (lib/search.ts):
+  // query dipecah jadi token, tiap token dicocokkan ke nama produk, nama
+  // brand, SKU varian, dan nilai opsi varian. Dulu `name contains search`
+  // saja — "royal canin persian" atau pencarian by SKU/brand tidak ketemu
+  // walau produknya ada.
+  const searchWhere = (search ? productSearchWhere(search) : undefined) ?? {};
 
   const categoryWhere = activeCategory
     ? { categoryId: activeCategory.id }

@@ -14,6 +14,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { AdminAction } from "@/lib/admin-audit";
+import { tokenizedSearchWhere } from "@/lib/search-tokens";
 import {
   AdminPage,
   Button,
@@ -110,12 +111,13 @@ export default async function AdminAuditLogPage({
   if (actorId) where.actorUserId = actorId;
   if (actionFilter) where.action = actionFilter;
   if (targetFilter) where.targetType = targetFilter;
-  if (searchQuery) {
-    where.OR = [
-      { summary: { contains: searchQuery, mode: "insensitive" } },
-      { targetId: { contains: searchQuery, mode: "insensitive" } },
-    ];
-  }
+  // Token-based: "hapus produk" ketemu ringkasan "Produk dihapus: ...".
+  // `contains` tunggal menuntut urutan kata persis.
+  const searchWhere = tokenizedSearchWhere(searchQuery, (token) => [
+    { summary: { contains: token, mode: "insensitive" as const } },
+    { targetId: { contains: token, mode: "insensitive" as const } },
+  ]);
+  if (searchWhere) where.AND = searchWhere.AND;
 
   const [logs, distinctActions, distinctTargets, distinctActors] =
     await Promise.all([

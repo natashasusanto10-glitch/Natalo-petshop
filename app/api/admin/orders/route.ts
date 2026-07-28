@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import type { OrderStatus, Prisma } from "@prisma/client";
+import { tokenizedSearchWhere } from "@/lib/search-tokens";
 
 /**
  * GET /api/admin/orders
@@ -63,13 +64,15 @@ export async function GET(request: NextRequest) {
     // perilaku lama tapi sekarang strict: status mismatch sengaja
     // di-treat sebagai "no filter" daripada throw 500.
   }
-  if (q) {
-    where.OR = [
-      { orderNumber: { contains: q, mode: "insensitive" } },
-      { customerName: { contains: q, mode: "insensitive" } },
-      { customerPhone: { contains: q } },
-    ];
-  }
+  // Token-based: "santoso budi" ketemu "Budi Santoso", dan nomor pesanan
+  // ber-tanda-hubung ("INV-20260728-001") tetap cocok walau admin hanya
+  // mengetik sebagian potongannya.
+  const searchWhere = tokenizedSearchWhere(q, (token) => [
+    { orderNumber: { contains: token, mode: "insensitive" as const } },
+    { customerName: { contains: token, mode: "insensitive" as const } },
+    { customerPhone: { contains: token } },
+  ]);
+  if (searchWhere) where.AND = searchWhere.AND;
 
   const orders = await prisma.order.findMany({
     where,

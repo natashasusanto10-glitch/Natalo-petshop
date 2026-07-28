@@ -16,6 +16,7 @@
 import { Meilisearch } from "meilisearch";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { normalizeSearchText, tokenizeSearchQuery } from "@/lib/search-tokens";
 import {
   applyProductIndexSettings,
   buildProductSearchText,
@@ -496,22 +497,6 @@ function getProductSearchInclude() {
       },
     },
   };
-}
-
-function normalizeSearchText(value: string) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function tokenizeSearchQuery(query: string) {
-  return normalizeSearchText(query)
-    .split(/\s+/)
-    .map((token) => token.trim())
-    .filter((token) => token.length >= 2);
 }
 
 function levenshtein(a: string, b: string) {

@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { AdminPage, Button } from "@/components/admin/ui";
 import { prisma } from "@/lib/prisma";
+import { tokenizedSearchWhere } from "@/lib/search-tokens";
 import { DeletePromoTokoButton } from "@/components/admin/DeletePromoTokoButton";
 
 export const dynamic = "force-dynamic";
@@ -64,7 +65,11 @@ export default async function PromoTokoListPage({
   const promos = await prisma.productDiscount.findMany({
     where: {
       ...whereStatus,
-      ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
+      // Nama campaign, bukan produk — tapi tetap token-based supaya
+      // "lebaran promo" ketemu "Promo Lebaran 2026".
+      ...(tokenizedSearchWhere(search, (token) => [
+        { name: { contains: token, mode: "insensitive" as const } },
+      ]) ?? {}),
     },
     orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
     take: 100,

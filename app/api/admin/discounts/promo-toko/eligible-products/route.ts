@@ -13,8 +13,10 @@
  * Refactor untuk schema ProductDiscountItem (per-variant tracking).
  */
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { productSearchWhere } from "@/lib/search";
 
 export async function GET(request: NextRequest) {
   const session = await getSession("ADMIN");
@@ -53,26 +55,13 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const where: {
-    isActive: boolean;
-    AND?: Array<{ name: { contains: string; mode: "insensitive" } }>;
-    categoryId?: string;
-    id?: { notIn: string[] };
-  } = { isActive: true };
-  // Token-based search: split query jadi tokens, semua harus appear di
-  // name. Lebih lenient dari single substring match — "adult cat"
-  // match "Pro Plan Adult Cat Chicken" karena setiap token ada.
-  if (q) {
-    const tokens = q
-      .split(/\s+/)
-      .map((t) => t.trim())
-      .filter((t) => t.length >= 1);
-    if (tokens.length > 0) {
-      where.AND = tokens.map((t) => ({
-        name: { contains: t, mode: "insensitive" as const },
-      }));
-    }
-  }
+  const where: Prisma.ProductWhereInput = { isActive: true };
+  // Matcher bersama dengan katalog (lib/search.ts): token multi-kata yang
+  // dicocokkan ke nama produk, nama brand, SKU, dan nilai opsi varian.
+  // Sebelumnya token dicocokkan ke `name` SAJA, jadi memilih produk lewat
+  // SKU atau nama brand tidak bisa.
+  const searchWhere = q ? productSearchWhere(q) : undefined;
+  if (searchWhere) where.AND = searchWhere.AND;
   if (categoryId) where.categoryId = categoryId;
   if (blockedProductIds.size > 0) {
     where.id = { notIn: Array.from(blockedProductIds) };
