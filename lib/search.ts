@@ -16,7 +16,11 @@
 import { Meilisearch } from "meilisearch";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { normalizeSearchText, tokenizeSearchQuery } from "@/lib/search-tokens";
+import {
+  normalizeSearchText,
+  tokenizeSearchQuery,
+  tokenizedSearchWhere,
+} from "@/lib/search-tokens";
 import {
   applyProductIndexSettings,
   buildProductSearchText,
@@ -256,35 +260,29 @@ function productPriceWhere(opts: NormalizedSearchOptions): Prisma.ProductWhereIn
 }
 
 export function productSearchWhere(query: string): Prisma.ProductWhereInput | undefined {
-  const q = query.trim();
-  if (!q) return undefined;
-  const tokens = tokenizeSearchQuery(q);
-  if (tokens.length === 0) return undefined;
-
-  const tokenWhere = (token: string): Prisma.ProductWhereInput => ({
-    OR: [
-      { name: { contains: token, mode: "insensitive" as const } },
-      { brand: { name: { contains: token, mode: "insensitive" as const } } },
-      { variants: { some: { sku: { contains: token, mode: "insensitive" as const } } } },
-      {
-        variants: {
-          some: {
-            options: {
-              some: {
-                option: {
-                  value: { contains: token, mode: "insensitive" as const },
-                },
+  // Dibangun lewat tokenizedSearchWhere supaya SATU aturan tokenisasi
+  // berlaku di seluruh app — termasuk fallback query mentah saat query
+  // terlalu pendek untuk jadi token (mis. "5"). Tanpa fallback itu,
+  // pencarian 1 karakter mengembalikan undefined = TANPA filter, sehingga
+  // katalog/daftar admin tampil utuh dan terlihat seperti filter rusak.
+  return tokenizedSearchWhere<Prisma.ProductWhereInput>(query, (token) => [
+    { name: { contains: token, mode: "insensitive" as const } },
+    { brand: { name: { contains: token, mode: "insensitive" as const } } },
+    { variants: { some: { sku: { contains: token, mode: "insensitive" as const } } } },
+    {
+      variants: {
+        some: {
+          options: {
+            some: {
+              option: {
+                value: { contains: token, mode: "insensitive" as const },
               },
             },
           },
         },
       },
-    ],
-  });
-
-  return {
-    AND: tokens.map(tokenWhere),
-  };
+    },
+  ]);
 }
 
 export function buildDbProductWhere(opts: NormalizedSearchOptions) {

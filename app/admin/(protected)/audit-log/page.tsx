@@ -12,6 +12,7 @@
  *
  * Pagination cursor-based — 50 entries per page. Newest first.
  */
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { AdminAction } from "@/lib/admin-audit";
 import { tokenizedSearchWhere } from "@/lib/search-tokens";
@@ -107,7 +108,9 @@ export default async function AdminAuditLogPage({
   const searchQuery = sp.q?.trim() ?? "";
   const cursor = sp.cursor;
 
-  const where: Record<string, unknown> = {};
+  // Prisma-typed (dulu Record<string, unknown>): tanpa ini, salah nama
+  // field di klausa pencarian baru lolos compile dan baru meledak runtime.
+  const where: Prisma.AdminActionLogWhereInput = {};
   if (actorId) where.actorUserId = actorId;
   if (actionFilter) where.action = actionFilter;
   if (targetFilter) where.targetType = targetFilter;
