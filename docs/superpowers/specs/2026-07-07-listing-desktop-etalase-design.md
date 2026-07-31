@@ -83,6 +83,19 @@ Ditemukan saat investigasi, keduanya menular ke `/products` begitu migrasi:
 - `discountOnly` versi `where` bisa meloloskan produk yang `discount_price`-nya ternyata `null` (kasus varian). Untuk sama persis dengan badge kartu, saring juga setelah map: `doc.discount_price !== null`.
 - `trending` punya filter keras `purchaseFrequencyDays >= 2` → bisa balik sedikit/0 item; siapkan fallback supaya halaman tidak tampak "kosong".
 
+### 4.7 Hasil PR2 + syarat wajib sebelum PR3 (dari review akhir PR2)
+
+**PR2 SELESAI** — search kini setara: `best_seller` pakai penjualan asli (top-2 identik dengan `/api/products?popular=best-seller`), `trending` ada, `discount_only` ada, produk `creating` tidak lagi bocor, `take: 2000` punya urutan deterministik. Diverifikasi live di Preview DB (1324 produk aktif).
+
+**🚧 BLOKER WAJIB UNTUK PR3 — batas 2000 baris.**
+`searchProductsFromDb` mengambil maksimal **2000** produk (terbaru dulu), tapi query ranking penjualan **tidak dibatasi**. Selama katalog < 2000 aman. Begitu lewat, best-seller lama bisa di-rank #1 tapi tidak ikut terambil → hilang diam-diam, dan `total` ikut terpotong. **Headroom sekarang: 1324 / 2000 (~676 produk lagi).** PR2 sudah memasang `console.warn` saat menyentuh batas supaya gagalnya berisik, bukan senyap. **PR3 tidak boleh memindahkan `/products` (halaman paling ramai) ke stack ini sebelum** salah satu dikerjakan: (a) ambil produk berdasarkan ranked-ids lebih dulu untuk sort penjualan, atau (b) naikkan batas + pastikan alarm terpantau.
+
+**Keterbatasan Meilisearch (Meili OFF sekarang — dicatat supaya tidak jadi jebakan).**
+`searchProductsFromMeili` belum mendukung `discountOnly` maupun `sort=trending`, dan `filterSearchDocs` hanya cek `is_active` sehingga **fix visibilitas `creationState: "ready"` TIDAK berlaku di jalur Meili**. PR2 sudah menambahkan guard: permintaan `discountOnly`/`trending` langsung dilayani DB path (filter yang diam-diam diabaikan lebih berbahaya daripada error). Kalau nanti Meili diaktifkan, `creationState` harus masuk dokumen + reindex sebelum dipercaya.
+
+**Temuan sampingan (bug pre-existing di stack produk, bukan dibuat PR2).**
+`/api/products?discountOnly=true` **terlalu longgar**: ia mencocokkan produk yang punya baris promo aktif walau harga efektifnya tidak benar-benar turun — respons API-nya sendiri menunjukkan `discountPrice: null` untuk produk-produk itu. Search lebih ketat (menyaring ulang dengan `discount_price < price_min`, sama dengan syarat badge di kartu) sehingga mengembalikan 0 di Preview DB, yang **lebih jujur**. Kalau nanti pelanggan mengeluh "filter diskon kosong", cek dulu apakah memang tidak ada diskon efektif — bukan bug filter.
+
 ## 5. Desain per halaman
 
 ### 5.1 `/products` (inti)
