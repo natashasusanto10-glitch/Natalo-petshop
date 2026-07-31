@@ -3123,13 +3123,12 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
     }
   }
 
-  /// Toggle bisu — berlaku baik saat video JALAN maupun jeda.
+  /// Toggle bisu — dipakai kontrol-jeda di tengah layar.
   ///
-  /// Dulu bernama `_toggleMuteWhilePaused` dengan guard `!_isPaused`: satu-
-  /// satunya jalan membisukan adalah menjeda video dulu, karena tombolnya
-  /// memang hanya ada di kontrol-jeda. Guard itu dibuang supaya tombol bisu
-  /// persisten (lihat pemakaian di overlay rail) bisa dipakai tanpa
-  /// mengganggu pemutaran.
+  /// Tidak ada guard `!_isPaused`: tombol bisu persisten di atas rail sudah
+  /// DIHAPUS (rail ala IG Reels hanya berisi aksi sosial), jadi satu-satunya
+  /// pemanggil saat ini adalah _PausedVideoControls. Guard tetap tidak
+  /// dipasang supaya fungsi ini aman kalau dipanggil dari state lain.
   Future<void> _toggleMute() async {
     final ctrl = _videoController;
     if (ctrl == null || widget.post.hasAudio == false) return;
@@ -3595,38 +3594,11 @@ class _FeedVideoPostViewState extends State<FeedVideoPostView>
                                 mainAxisSize: MainAxisSize.min,
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  // Bisu persisten — HANYA saat video jalan;
-                                  // saat jeda, kontrol-jeda di tengah sudah
-                                  // punya tombol bisu sendiri (jangan dobel).
-                                  // Dulu bisu cuma ada di kontrol-jeda, jadi
-                                  // user WAJIB menjeda dulu untuk membisukan.
-                                  if (_videoController != null &&
-                                      !_isPaused &&
-                                      post.hasAudio != false) ...[
-                                    _PausedControlButton(
-                                      semanticLabel: appSettingsStore.feedMuted
-                                          ? 'Aktifkan suara'
-                                          : 'Matikan suara',
-                                      diameter: 32,
-                                      scrimAlpha: 0.42,
-                                      inkRadius: 22,
-                                      onTap: _toggleMute,
-                                      child: Icon(
-                                        appSettingsStore.feedMuted
-                                            ? Icons.volume_off_rounded
-                                            : Icons.volume_up_rounded,
-                                        color: Colors.white,
-                                        size: feedIconSm,
-                                        shadows: const [
-                                          Shadow(
-                                            color: Colors.black87,
-                                            blurRadius: 8,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 14),
-                                  ],
+                                  // TIDAK ada tombol bisu persisten di atas
+                                  // rail — ala IG Reels, rail hanya berisi
+                                  // aksi sosial. Bisu tetap bisa dijangkau
+                                  // lewat kontrol-jeda di tengah layar
+                                  // (_PausedVideoControls) saat video dijeda.
                                   FeedActionRail(
                                     likeKey: _likeButtonKey,
                                     likeCount: _likeCount,

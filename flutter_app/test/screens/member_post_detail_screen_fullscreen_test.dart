@@ -272,7 +272,7 @@ void main() {
   }
 
   testWidgets(
-    'inline preview has no mute control; single media tap opens scoped feed',
+    'single media tap opens scoped feed; mute stays an isolated corner action',
     (tester) async {
       await pumpAndInitialize(tester);
 
@@ -280,12 +280,12 @@ void main() {
       expect(find.byType(ScopedVideoFeedScreen), findsNothing);
 
       expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
-      // Ala IG Reels: preview inline bebas kontrol — tidak ada speaker di
-      // pojok video (dulu menumpuk tepat di atas ikon ♡ pada action rail).
-      expect(find.byIcon(Icons.volume_off_rounded), findsNothing,
-          reason: 'inline preview must not render a mute button');
-      expect(find.byIcon(Icons.volume_up_rounded), findsNothing,
-          reason: 'inline preview must not render an unmute button');
+      await tester.tap(find.byIcon(Icons.volume_off_rounded));
+      await tester.pump();
+      expect(find.byIcon(Icons.volume_up_rounded), findsOneWidget,
+          reason: 'mute tap should update immediately');
+      expect(find.byType(ScopedVideoFeedScreen), findsNothing,
+          reason: 'mute tap must not open the scoped feed');
 
       await tester.tapAt(tester.getCenter(find.byType(VideoPlayer).first));
       for (var i = 0; i < 30; i++) {
