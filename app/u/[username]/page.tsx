@@ -12,10 +12,10 @@
  * baru diganti, link lama tetap valid sementara (anti broken share).
  */
 import type { Metadata } from "next";
-import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 
+import OpenInAppButtons from "@/components/OpenInAppButtons";
 import { prisma } from "@/lib/prisma";
 import {
   buildPublicProfilePageViewModel,
@@ -135,20 +135,7 @@ export default async function PublicProfilePage({ params }: PageProps) {
           Buka di aplikasi Natalo Petshop untuk pengalaman lebih baik —
           like, komentar, dan ikuti {handle}.
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Link
-            href="https://apps.apple.com/id/app/natalo-petshop/id6745123456"
-            className="rounded-full bg-blue-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
-          >
-            Download di App Store
-          </Link>
-          <Link
-            href="https://play.google.com/store/apps/details?id=com.natalo.petshop"
-            className="rounded-full bg-slate-900 px-4 py-1.5 text-xs font-bold text-white hover:bg-slate-800"
-          >
-            Download di Play Store
-          </Link>
-        </div>
+        <OpenInAppButtons path={`/u/${encodeURIComponent(view.username)}`} />
       </div>
 
       {/* Postingan grid */}

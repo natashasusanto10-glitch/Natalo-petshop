@@ -3,11 +3,14 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/feed_post.dart';
+import '../models/product.dart';
 import '../screens/member_post_detail_screen.dart';
 import '../screens/scoped_video_feed_screen.dart';
 import '../state/member_store.dart';
+import '../utils/in_app_browser.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/scaled_video_feed_route.dart';
 import 'feed_service.dart';
@@ -417,6 +420,30 @@ class DeepLinkService {
           nav.pushNamed('/products');
         }
         break;
+      case 'kategori':
+        // /kategori → tab kategori web ≈ katalog produk di app.
+        // /kategori/<slug> → katalog dengan slug sebagai kata kunci awal
+        // (slug kategori tidak dijamin sama dengan nama kategori di app,
+        // jadi pakai search-hint, pola sama dgn fallback product slug).
+        if (segments.length > 1 && segments[1].isNotEmpty) {
+          final keyword = segments[1].replaceAll('-', ' ').trim();
+          nav.pushNamed('/products',
+              arguments: ProductCatalogArgs(initialQuery: keyword));
+        } else {
+          nav.pushNamed('/products');
+        }
+        break;
+      case 'order-status':
+        // /order-status?order=<no>&token=<t> — halaman lacak pesanan web
+        // (di-claim AASA iOS; sebelumnya jatuh ke default → dead-end di
+        // Beranda). Reuse jalur order-detail yang sama dgn /pesanan/<no>.
+        final orderNo = uri.queryParameters['order']?.trim() ?? '';
+        if (orderNo.isNotEmpty) {
+          await _openOrderByNumber(nav, orderNo, uri.queryParameters['token']);
+        } else {
+          nav.pushNamed('/member/orders');
+        }
+        break;
       case 'u':
         // Public profile — /u/<username> deep link target. Lowercase
         // di sini supaya konsisten dengan format DB (username always
@@ -429,7 +456,24 @@ class DeepLinkService {
         }
         break;
       default:
-        if (kDebugMode) debugPrint('[DeepLink] ignored unknown path: $uri');
+        // Path resmi natalopetshop.com yang tidak punya layar native
+        // (blog, bantuan, promo landing, dst). Intent-filter Android
+        // menangkap SEMUA path host kita, jadi dead-end "app terbuka tapi
+        // diam di Beranda" harus diganti: buka halamannya di in-app
+        // browser — pola Shopee/Tokopedia untuk konten web-only. Hanya
+        // untuk URL HTTPS resmi; path-only internal tak dikenal tetap
+        // diabaikan (kontrak notifikasi lama).
+        if (segments.first == 'admin') {
+          // Admin tetap di browser (paritas exclude AASA iOS) — Android
+          // intent-filter catch-all tak bisa exclude path, jadi lempar
+          // balik ke browser eksternal dari sini.
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } else if (isOfficialNataloHttpsUrl(uri) && nav.mounted) {
+          await AppInAppBrowser.open(nav.context,
+              url: uri.toString(), haptic: false);
+        } else if (kDebugMode) {
+          debugPrint('[DeepLink] ignored unknown path: $uri');
+        }
     }
   }
 
@@ -503,8 +547,12 @@ class DeepLinkService {
     if (!stillCurrent() || !nav.mounted) return;
     // Slug-to-keyword fallback — replace dash dengan spasi sebagai
     // search query hint (mis. `royal-canin-kitten` → `royal canin kitten`).
+    // ProductCatalogArgs, BUKAN Map — onGenerateRoute cuma mengenali
+    // ProductCatalogArgs/String; Map dibuang diam-diam (katalog kebuka
+    // tanpa query, user tak tahu produk mana yang dimaksud).
     final keyword = slug.replaceAll('-', ' ').trim();
-    nav.pushNamed('/products', arguments: {'initialQuery': keyword});
+    nav.pushNamed('/products',
+        arguments: ProductCatalogArgs(initialQuery: keyword));
   }
 
   /// Fetch order by orderNumber (+ optional trackingToken untuk akses

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import Link from "next/link";
 import { notFound } from "next/navigation";
+
+import OpenInAppButtons from "@/components/OpenInAppButtons";
 
 import { getPublicShareFeedPost } from "@/lib/share/feed-share-data";
 import {
@@ -81,20 +82,7 @@ export default async function PublicFeedPostPage({ params }: PageProps) {
 
         <section className="mt-6 border-t border-slate-100 pt-5">
           <p className="text-sm font-medium text-slate-700">Lihat postingan lengkap di aplikasi Natalo Petshop.</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Link
-              href="https://apps.apple.com/id/app/natalo-petshop/id6745123456"
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white"
-            >
-              App Store
-            </Link>
-            <Link
-              href="https://play.google.com/store/apps/details?id=com.natalo.petshop"
-              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Google Play
-            </Link>
-          </div>
+          <OpenInAppButtons path={`/feed/${encodeURIComponent(post.id)}`} />
         </section>
       </article>
     </main>
