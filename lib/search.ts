@@ -16,7 +16,11 @@
 import { Meilisearch } from "meilisearch";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { discountOnlyWhere } from "@/lib/product-ranking";
+import {
+  discountOnlyWhere,
+  getBestSellerProductIds,
+  getTrendingProductIds,
+} from "@/lib/product-ranking";
 import { productIsVisibleWhere } from "@/lib/product/admin-product-form";
 import {
   normalizeSearchText,
@@ -422,7 +426,8 @@ export type SearchSort =
   | "price_desc"
   | "newest"
   | "rating_desc"
-  | "best_seller";
+  | "best_seller"
+  | "trending";
 
 export interface SearchOptions {
   q?: string;
@@ -856,6 +861,20 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
       )
     : allDocs;
 
+  // best_seller & trending di-rank dari data penjualan asli (OrderItem),
+  // bukan proksi review_count. Pakai `where` yang sama supaya ranking
+  // menghormati filter aktif.
+  let salesRank: Map<string, number> | null = null;
+  if (opts.sort === "best_seller" || opts.sort === "trending") {
+    const rankedIds =
+      opts.sort === "trending"
+        ? await getTrendingProductIds({ productWhere: where })
+        : await getBestSellerProductIds({ productWhere: where });
+    if (rankedIds.length > 0) {
+      salesRank = new Map(rankedIds.map((id, index) => [id, index]));
+    }
+  }
+
   // Kalau ada candidateIds, sort sesuai urutan kandidat (sudah by similarity).
   // Kalau opts.sort bukan "relevance", override dengan compareSearchItems.
   let items: ProductSearchDoc[];
@@ -864,6 +883,18 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
     items = [...docs].sort(
       (a, b) => (orderMap.get(a.id) ?? Infinity) - (orderMap.get(b.id) ?? Infinity),
     );
+  } else if (salesRank) {
+    const rank = salesRank;
+    const tiebreak = compareSearchItems(opts.sort, q);
+    // Produk tanpa penjualan TIDAK dibuang — didorong ke ekor. Sort tidak
+    // boleh menghilangkan hasil (beda dengan /api/products yang menggabung
+    // filter+sort dalam satu param `popular`).
+    items = [...docs].sort((a, b) => {
+      const rankA = rank.get(a.id) ?? Infinity;
+      const rankB = rank.get(b.id) ?? Infinity;
+      if (rankA !== rankB) return rankA - rankB;
+      return tiebreak(a, b);
+    });
   } else {
     items = [...docs].sort(compareSearchItems(opts.sort, q));
   }
