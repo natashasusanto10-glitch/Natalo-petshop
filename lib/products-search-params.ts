@@ -62,6 +62,14 @@ function positiveNumber(raw: string | null): number | undefined {
   return value !== undefined && value > 0 ? value : undefined;
 }
 
+/**
+ * Default sort bergantung konteks: pencarian kata kunci diurut relevansi,
+ * penelusuran katalog biasa diurut terlaris (keputusan owner §4.8).
+ */
+function defaultSortFor(q: string): SearchSort {
+  return q ? "relevance" : PRODUCTS_DEFAULT_SORT;
+}
+
 export function parseProductsParams(sp: URLSearchParams): ProductsCatalogParams {
   const rawSort = sp.get("sort");
 
@@ -97,17 +105,18 @@ export function parseProductsParams(sp: URLSearchParams): ProductsCatalogParams 
   const categorySlugs = categoryValues.filter((slug) => slug && slug !== "all");
 
   const page = Number(sp.get("page"));
+  const q = (sp.get("q") ?? "").trim();
 
   return {
-    q: (sp.get("q") ?? "").trim(),
+    q,
     categorySlugs,
     brandSlugs: [...new Set(sp.getAll("brand").filter(Boolean))],
     minPrice: nonNegativeNumber(sp.get("min_price")),
-    maxPrice: nonNegativeNumber(sp.get("max_price")),
+    maxPrice: positiveNumber(sp.get("max_price")),
     inStock: sp.get("in_stock") === "true",
     minRating: positiveNumber(sp.get("min_rating")),
     discountOnly,
-    sort: sort ?? PRODUCTS_DEFAULT_SORT,
+    sort: sort ?? defaultSortFor(q),
     page: Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1,
   };
 }
@@ -139,7 +148,7 @@ export function buildProductsHref(p: ProductsCatalogParams): string {
   if (p.inStock) params.set("in_stock", "true");
   if (p.minRating !== undefined) params.set("min_rating", String(p.minRating));
   if (p.discountOnly) params.set("discount_only", "true");
-  if (p.sort !== PRODUCTS_DEFAULT_SORT) params.set("sort", p.sort);
+  if (p.sort !== defaultSortFor(p.q)) params.set("sort", p.sort);
   if (p.page > 1) params.set("page", String(p.page));
   const query = params.toString();
   return query ? `/products?${query}` : "/products";

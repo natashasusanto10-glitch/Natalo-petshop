@@ -6,6 +6,7 @@ import type { SearchSort } from "@/lib/search";
 
 /** Label disamakan dengan app Flutter supaya web & app satu bahasa. */
 export const PRODUCTS_SORT_OPTIONS: { value: SearchSort; label: string }[] = [
+  { value: "relevance", label: "Paling Sesuai" },
   { value: "best_seller", label: "Paling Populer" },
   { value: "trending", label: "Trending" },
   { value: "newest", label: "Terbaru" },

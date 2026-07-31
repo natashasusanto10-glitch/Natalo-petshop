@@ -239,6 +239,18 @@ export function ProductsCatalogClient() {
         <p className="text-xs text-gray-500">
           {loading ? (
             "Memuat produk..."
+          ) : params.page > 1 ? (
+            <>
+              Menampilkan produk ke-
+              <span className="font-black text-natalo-700">
+                {(params.page - 1) * PRODUCTS_PER_PAGE + 1}
+              </span>
+              –
+              <span className="font-black text-natalo-700">
+                {(params.page - 1) * PRODUCTS_PER_PAGE + loadedCount}
+              </span>{" "}
+              dari <span className="font-black text-natalo-700">{total}</span>
+            </>
           ) : (
             <>
               Menampilkan <span className="font-black text-natalo-700">{loadedCount}</span> dari{" "}

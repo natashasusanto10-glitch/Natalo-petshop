@@ -167,14 +167,41 @@ test("min_rating=0 is a no-op filter, not a rating floor", () => {
   assert.equal(parse("min_rating=4").minRating, 4);
 });
 
-test("minPrice/maxPrice of 0 remain legitimate explicit bounds", () => {
+test("min_price=0 remains a legitimate explicit lower bound", () => {
   assert.equal(parse("min_price=0").minPrice, 0);
-  assert.equal(parse("max_price=0").maxPrice, 0);
+});
+
+test("max_price=0 is not a meaningful filter and is dropped", () => {
+  assert.equal(parse("max_price=0").maxPrice, undefined);
 });
 
 test("duplicate brand slugs are de-duplicated preserving first-seen order", () => {
   const p = parse("brand=a&brand=a&brand=b&brand=a");
   assert.deepEqual(p.brandSlugs, ["a", "b"]);
+});
+
+test("keyword search defaults to relevance, plain browsing defaults to best_seller", () => {
+  assert.equal(parse("q=whiskas").sort, "relevance");
+  assert.equal(parse("").sort, "best_seller");
+  assert.equal(parse("q=whiskas&sort=price_asc").sort, "price_asc");
+});
+
+test("href omits sort when it matches the contextual default, keeps it otherwise", () => {
+  assert.equal(
+    buildProductsHref(parse("q=whiskas&sort=relevance")),
+    buildProductsHref(parse("q=whiskas")),
+  );
+  assert.ok(!buildProductsHref(parse("q=whiskas")).includes("sort="));
+  assert.ok(
+    buildProductsHref(parse("q=whiskas&sort=price_asc")).includes("sort=price_asc"),
+  );
+});
+
+test("relevance sort survives a round trip via buildProductsHref for q-searches", () => {
+  const p = parse("q=whiskas&sort=relevance");
+  const href = buildProductsHref(p);
+  const roundTripped = parse(href.split("?")[1] ?? "");
+  assert.deepEqual(roundTripped, p);
 });
 
 test("number edge cases fail closed", () => {
