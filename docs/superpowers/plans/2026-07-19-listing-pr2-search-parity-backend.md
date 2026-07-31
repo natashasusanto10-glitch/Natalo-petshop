@@ -1043,8 +1043,14 @@ git commit -m "feat(api): expose discount_only filter and trending sort on /api/
 npx tsc --noEmit
 npm run lint
 npm test
+npx tsx --test tests/product-ranking.test.ts
 ```
-Expected: tsc shows only the 2 pre-existing `app/api/admin/reset-all/route.ts` errors; lint 0 errors; all tests pass including the 9 new `tests/product-ranking.test.ts` cases.
+
+**Measured baseline on this branch point (`origin/main` @ `b9bc79ec`) — do not mistake these for regressions:**
+- `npx tsc --noEmit` → **6 pre-existing errors**, all `Cannot find module 'vitest'`, in `tests/admin-brand-schema.test.ts`, `tests/admin-product-form.test.ts`, `tests/admin-product-media.test.ts`, `tests/admin-product-schema.test.ts`, `tests/admin-product-visibility.test.ts`, `tests/product-video-draft.test.ts`. Another session committed vitest-based tests but `vitest` is not a dependency. Not ours to fix in this PR.
+- `npm test` (`tsx --test tests/*.test.ts`) → **609 tests, 603 pass, 6 fail** — the 6 failures are exactly those same vitest files failing to import. Pre-existing.
+
+Expected AFTER this PR: tsc still exactly those 6 errors and nothing else; lint 0 errors; `npm test` shows **612 tests, 612−6=606 pass, still exactly 6 fail** (the 9 new ranking tests all pass, raising the total); and `npx tsx --test tests/product-ranking.test.ts` alone reports 9/9 pass.
 
 - [ ] **Step 2: Live API verification**
 
