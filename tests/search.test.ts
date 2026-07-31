@@ -290,3 +290,22 @@ test("sales rank ordering does not mutate the caller's array", () => {
     ["a", "b"],
   );
 });
+
+test("rank wins over tiebreak, and tiebreak only orders the unranked tail", () => {
+  const ranked = doc({ id: "ranked", slug: "ranked", price_min: 99_000 });
+  const cheapUnranked = doc({ id: "cheap", slug: "cheap", price_min: 10_000 });
+  const priceyUnranked = doc({ id: "pricey", slug: "pricey", price_min: 50_000 });
+
+  const ordered = orderDocsBySalesRank(
+    [priceyUnranked, cheapUnranked, ranked],
+    ["ranked"],
+    (a, b) => a.price_min - b.price_min,
+  );
+
+  // "ranked" is most expensive, so a price tiebreak would put it LAST —
+  // it must still come first because sales rank outranks the tiebreak.
+  assert.deepEqual(
+    ordered.map((item) => item.id),
+    ["ranked", "cheap", "pricey"],
+  );
+});

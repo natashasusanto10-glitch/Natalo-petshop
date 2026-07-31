@@ -807,16 +807,27 @@ async function trigramCandidateIds(query: string, limit = 500): Promise<string[]
 }
 
 /**
- * Batas baris yang diambil untuk satu permintaan search TANPA kata kunci.
- * Hanya membatasi ekor (produk yang belum pernah terjual) — kepala yang
- * terurut-penjualan diambil lewat id-nya sendiri, jadi tidak pernah terpotong.
+ * Batas baris yang diambil per query untuk permintaan search TANPA kata kunci.
+ *
+ * Untuk sort berbasis penjualan (best_seller/trending) batas ini hanya mengenai
+ * EKOR — kepala diambil lewat id-nya sendiri jadi tidak pernah terpotong.
+ * Untuk sort lain (newest/price_asc/price_desc/rating_desc/relevance) tidak ada
+ * kepala, sehingga batas ini memotong SELURUH hasil, persis seperti sebelumnya.
+ *
+ * Menaikkan batas ini menaikkan pemakaian memori: sort penjualan bisa
+ * menghidrasi hingga (kepala + batas) baris sekaligus.
  */
 const CATALOG_FETCH_CAP = 2000;
 
 /**
- * Batas panjang kepala terurut-penjualan. Produk dengan peringkat di bawah ini
- * jatuh ke ekor — aman, karena tidak ada pembeli yang membuka halaman sejauh
- * itu, dan batas ini menjaga ukuran klausa `IN`/`NOT IN` tetap waras.
+ * Batas panjang kepala terurut-penjualan, sekaligus penjaga ukuran klausa
+ * `IN`/`NOT IN`.
+ *
+ * EFEK NYATA kalau terlampaui: produk dengan peringkat di bawah batas ini
+ * KEHILANGAN peringkat penjualannya — ia jatuh ke ekor lalu diurut ulang oleh
+ * proksi `review_count` di `compareSearchItems`, dan ikut berebut kuota ekor
+ * dengan produk yang belum pernah terjual. Bukan sekadar "halaman dalam".
+ * Karena itu pelampauannya di-warn di bawah, bukan didiamkan.
  */
 const SALES_HEAD_CAP = 2000;
 
@@ -887,6 +898,16 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
       opts.sort === "trending"
         ? await getTrendingProductIds({ productWhere: where, take: SALES_HEAD_CAP })
         : await getBestSellerProductIds({ productWhere: where, take: SALES_HEAD_CAP });
+  }
+
+  // Kepala pun punya batas. Kalau tersentuh, produk peringkat di bawahnya
+  // kehilangan urutan penjualannya (lihat SALES_HEAD_CAP). Jangan didiamkan.
+  if (rankedIds.length >= SALES_HEAD_CAP) {
+    console.warn(
+      `[searchProductsFromDb] Kepala ranking menyentuh batas ${SALES_HEAD_CAP}. ` +
+        "Produk dengan peringkat penjualan di bawah batas kehilangan urutannya dan jatuh ke ekor. " +
+        "Naikkan SALES_HEAD_CAP atau pindahkan ranking+paginasi ke SQL.",
+    );
   }
 
   // Ambil KEPALA (pernah terjual, lewat id ranking) terpisah dari EKOR (belum
